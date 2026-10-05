@@ -82,7 +82,32 @@ describe('the M2 settings table', () => {
 
   it('marks exactly the settings that feed SimConfig as "applies next race"', () => {
     const next = SETTINGS.filter((s) => s.nextRace).map((s) => s.id);
-    expect(next.sort()).toEqual(['assists.steer', 'difficulty', 'raceLength', 'slowMo', 'speedMultiplier']);
+    expect(next.sort()).toEqual([
+      'assists.steer',
+      'difficulty',
+      'raceLength',
+      'slowMo',
+      'speedMultiplier',
+      'steerStyle',
+    ]);
+  });
+
+  it('offers the steering style on the Race tab: Arcade by default, Free in the switch, kept by the record', () => {
+    // Playtest 4, P4-8: today's guided model under its honest name, and an opt-in Free style.
+    const def = settingDef('steerStyle');
+    expect(def.tab).toBe('race');
+    expect(def.nextRace).toBe(true);
+    expect(def.options?.map((o) => o.label)).toEqual(['Arcade', 'Free']);
+    expect(settingValue(DEFAULT_SETTINGS, 'steerStyle')).toBe('arcade');
+    expect(nonDefaultValue(def)).toBe('free');
+    expect(settingPersists('steerStyle', sanitiseSettings)).toBe(true);
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'steerStyle', value: 'free' }).steerStyle,
+    ).toBe('free');
+    // It is not the steering assist: changing one leaves the other.
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'steerStyle', value: 'free' }).assists,
+    ).toEqual(DEFAULT_SETTINGS.assists);
   });
 
   it("takes save-2's defaults, and each default is one of the choices on offer", () => {

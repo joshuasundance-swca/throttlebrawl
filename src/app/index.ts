@@ -717,6 +717,8 @@ export function createApp(opts: AppOptions): AppHandle {
       'raceLength',
       'speedMultiplier',
       'assists.steer',
+      // Playtest 4, P4-8: Arcade or Free, through settingsAssists into the slot's SimAssists.
+      'steerStyle',
       'slowMo',
       'reduceShake',
       'frameRateCap',

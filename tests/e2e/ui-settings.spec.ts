@@ -193,7 +193,11 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
   await page.locator('#settings-tab-race').click();
   const tags = page.locator('#settings-pane-race .next-race');
   const tagCount = await tags.count();
-  expect(tagCount).toBe(5);
+  // Every Race setting applies next race, so every row on the tab carries the tag (not a fixed
+  // count: playtest 4's steering style added a sixth row).
+  const raceRows = await page.locator('#settings-pane-race [data-setting]').count();
+  expect(raceRows).toBeGreaterThan(0);
+  expect(tagCount).toBe(raceRows);
   for (let i = 0; i < tagCount; i++) await expect(tags.nth(i)).toBeVisible();
   await shot(page, 'settings-race-from-pause');
 
@@ -587,6 +591,8 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
   ),
   speedMultiplier: raceProbe('race', 'speedMultiplier', '0.8', '"speedMultiplier":0.8'),
   'assists.steer': raceProbe('race', 'assists-steer', 'light', '"steer":"light"'),
+  // Playtest 4, P4-8: the Free steering style reaches the next race's SimConfig (its replay header).
+  steerStyle: raceProbe('race', 'steerStyle', 'free', '"steerStyle":"free"'),
   slowMo: {
     set: async (page) => {
       await page.locator('#settings-tab-race').click();
