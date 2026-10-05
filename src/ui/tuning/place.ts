@@ -5,7 +5,8 @@
 //
 //   - it docks on the pause button's side (the other thumb's side stays free to steer, so the panel
 //     is still usable mid-race, as decided), under the pause button, and stops above the touch
-//     buttons, scrolling inside that gap;
+//     buttons, scrolling inside that gap; while the pause screen is up it docks on the right, off
+//     the pause menu (Resume) in the left half;
 //   - ui/index.ts already tells the rest of the UI how far the touch buttons reach in from their side
 //     and up from the bottom (`--touch-reach`, `--touch-rise` on the UI root, set from the layout
 //     record whether or not the touch surface is showing), and the pause button wears `.mirrored`
@@ -35,6 +36,11 @@ export interface PanelInput {
   /** How far the touch buttons reach in from their side, and up from the bottom (0 when there are none). */
   reach: number;
   rise: number;
+  /**
+   * The pause screen is up. The pause button is under it, and its menu (Resume first) stands in the
+   * left half, so the panel docks on the right, over the cards, whichever hand.
+   */
+  paused?: boolean;
 }
 
 export interface PanelPlan {
@@ -59,10 +65,11 @@ export function touchBand(reach: string, rise: string): { reach: number; rise: n
 
 export function planPanel(input: PanelInput): PanelPlan {
   const { w, h, safe, mirror, reach, rise } = input;
-  const side = mirror ? 'left' : 'right';
+  const onLeft = mirror && !input.paused;
+  const side = onLeft ? 'left' : 'right';
   const width = Math.min(PANEL_MAX_W, PANEL_VW * w, w - 2 * PANEL_AIR);
-  const edge = Math.max(PANEL_AIR, mirror ? safe.left : safe.right);
-  const left = mirror ? edge : w - edge - width;
+  const edge = Math.max(PANEL_AIR, onLeft ? safe.left : safe.right);
+  const left = onLeft ? edge : w - edge - width;
   const right = left + width;
 
   const clear: Box[] = [pauseBox(w, safe, mirror)];

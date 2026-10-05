@@ -259,6 +259,7 @@ export function createTuningPanel(
       h,
       safe: readSafe(root),
       mirror: root.querySelector('#hud-pause')?.classList.contains('mirrored') ?? false,
+      paused: root.querySelector<HTMLElement>('#pause-screen')?.hidden === false,
       ...touchBand(root.style.getPropertyValue('--touch-reach'), root.style.getPropertyValue('--touch-rise')),
     });
     const css = {
@@ -301,6 +302,9 @@ export function createTuningPanel(
     watch.observe(root, { attributes: true, attributeFilter: ['style'] });
     const pause = root.querySelector('#hud-pause');
     if (pause) watch.observe(pause, { attributes: true, attributeFilter: ['class'] });
+    // The pause screen opening or closing moves it (./place: it docks right while paused).
+    const pauseScreen = root.querySelector('#pause-screen');
+    if (pauseScreen) watch.observe(pauseScreen, { attributes: true, attributeFilter: ['hidden'] });
   }
 
   window.addEventListener('keydown', (e) => {

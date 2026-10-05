@@ -114,6 +114,21 @@ describe('where the tuning panel stands', () => {
     });
   }
 
+  it('while the pause screen is up it docks on the right, in the right half, clear of the pause menu, either hand', () => {
+    // The pause menu (Resume first) stands in the left half: the first column on a short landscape
+    // screen, the middle on a tall one. The pause button is under the pause screen then, so the
+    // left-handed panel would only cover Resume there.
+    for (const mirror of [false, true]) {
+      for (const s of SCREENS) {
+        const { input: i } = input(s, mirror);
+        const plan = planPanel({ ...i, paused: true });
+        expect(plan.side, `${s.w}x${s.h}`).toBe('right');
+        expect(plan.box.left, `${s.w}x${s.h}: the right half`).toBeGreaterThanOrEqual(s.w / 2);
+        expect(plan.box.right).toBeLessThanOrEqual(s.w - PANEL_AIR);
+      }
+    }
+  });
+
   it('says what it keeps clear of: the pause button, and the touch buttons where there are any', () => {
     const phone = SCREENS[0] as (typeof SCREENS)[number];
     const laptop = SCREENS.find((s) => s.w === 1366) as (typeof SCREENS)[number];
