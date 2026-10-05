@@ -188,8 +188,8 @@
             "lane": "R1"
           },
           "splitZone": {
-            "s0": 300.9659,
-            "s1": 340.9659,
+            "s0": 230.9659,
+            "s1": 270.9659,
             "d0": -10.5,
             "d1": -6.0
           }
@@ -235,9 +235,9 @@
     },
     {
       "id": "osm-pnw-portland-j7",
-      "x": 1013.041,
-      "y": 20.1084,
-      "z": 806.2807,
+      "x": 1073.0382,
+      "y": 19.0084,
+      "z": 806.2775,
       "ends": [
         {
           "road": "osm-pnw-pdx-hawthorne-bridge",
@@ -380,7 +380,7 @@
   "provenance": {
     "origin": "gis-pipeline",
     "author": "tools/gis",
-    "createdAt": "2026-10-04",
+    "createdAt": "2026-10-05",
     "tool": {
       "name": "tools/gis/src/tbgis/network.py",
       "version": "0.1.0",
@@ -393,8 +393,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
-        "retrievedAt": "2026-10-04T22:46:05Z",
-        "sha256": "95e74e6fffdb70bd8a1f9760fd88b72ab6776fe135882321f056ecdc809deea1"
+        "retrievedAt": "2026-10-05T13:16:11Z",
+        "sha256": "585360f0126dec18e8e4780c4bf6e822c1d0f93999b9198fda52976becb143a5"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -402,7 +402,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 490 points in 1 request(s) (lon, lat WGS84, sha256 a34e500ccf3e93a4), bilinear (line pdx)",
-        "retrievedAt": "2026-10-04T22:55:31Z",
+        "retrievedAt": "2026-10-05T13:16:12Z",
         "sha256": "a7dba5dd8ee7e7838a3f46dad3418ec83941862a0e3bd5bcd2d157cf8284c829"
       },
       {
@@ -411,7 +411,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 207 points in 1 request(s) (lon, lat WGS84, sha256 6655e03817a1ff0d), bilinear (line morrison)",
-        "retrievedAt": "2026-10-04T22:55:16Z",
+        "retrievedAt": "2026-10-05T13:16:13Z",
         "sha256": "e843d7a8e2f65278bc9e410ff059fb4980be66a15078b545c47fad592a1cfc18"
       }
     ],

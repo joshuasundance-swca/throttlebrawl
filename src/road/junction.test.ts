@@ -402,7 +402,7 @@ describe('road-2: the lint rules for junctions, connectors and jumps', () => {
   it('junction-ends: an end listed at a connector junction must lie within its radius', () => {
     const b = bundle();
     const j = b.network.junctions[1];
-    if (j) j.x += 100;
+    if (j) j.x += 300;
     expect(rules(b).filter((r) => r.startsWith('junction-ends')).length).toBeGreaterThan(0);
   });
 });

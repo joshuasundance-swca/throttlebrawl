@@ -32,6 +32,7 @@ export type RoadLintRule =
   | 'network'
   | 'connectors'
   | 'jump'
+  | 'shortcut'
   | 'landmark-clear'
   | 'route';
 
@@ -70,9 +71,12 @@ export const ROAD_LINT = {
   junctionTolM: 0.5,
   /**
    * At a junction with connector roads, the ends it lists must lie within this of its point: the
-   * connector roads span the junction, and continuity is checked along each of them instead.
+   * connector roads span the junction, and continuity is checked along each of them instead. 250 m
+   * since playtest 4 (P4-4): a 90 degree corner taken at speed needs a connector of a few hundred
+   * metres' sweep (the shortcut rule's radius), so the road ends stand that far from the real
+   * junction's point.
    */
-  junctionRadiusM: 60,
+  junctionRadiusM: 250,
   /** A connector's end and the road end it joins must point the same way within this, radians (3°). */
   joinAngleRad: 0.0524,
   /**
@@ -84,6 +88,36 @@ export const ROAD_LINT = {
   jumpMaxKappa: 0.002,
   /** Jump lint: road checked past the end of a `gap` feature, metres. */
   gapRunOutM: 20,
+  /**
+   * Shortcut lint (playtest 4, P4-4 and P4-8; the riding audit's F8b): the speed a rider arrives at a
+   * shortcut's connector, m/s (67 mph; a fast bike is well past it), and the bend it has to hold.
+   */
+  shortcutArrivalMps: 30,
+  /**
+   * The steering rate the bend is held with, m/s: the starter bike's (`rustbucket-400`'s
+   * `steerRateMps`; tests/sim pins it to the pack). A steering bike's heading follows the road's at
+   * `shortcutYawResponse` per second and is capped at steerRate / speed (sim/riders `stepGrounded`), so
+   * full lock holds a bend of radius R only up to the speed where v² = yawResponse · steerRate · R.
+   */
+  shortcutSteerRateMps: 5.5,
+  /** The riders' heading response, 1/s (sim/riders `YAW_RESPONSE`; the same test pins it). */
+  shortcutYawResponse: 4,
+  /** Road checked past a turn-off's connector, metres: the shortcut's first 80 m, where a rider arrives at speed. */
+  shortcutRunUpM: 80,
+  /** A split zone must start at least this far inside the rider's reach, metres. */
+  shortcutZoneInsideM: 1.5,
+  /** Half a bike: a rider's centre stops this far inside the lanes' outer edge (sim/riders `BIKE_HALF_WIDTH_M`). */
+  riderEdgeM: 0.5,
+  /**
+   * A shortcut connector's lanes, where they lie inside a main road's surface (it leaves tangentially, so
+   * for tens of metres it is drawn over the road it leaves), stand within this of that surface's height,
+   * metres: the 5 cm the shortcut surface is lifted by design, and the few centimetres a flat
+   * connector's lane edge differs from a steep main road that it leaves at an angle. Past it the rider
+   * is drawn under the road, or the road under the rider.
+   */
+  shortcutHeightM: 0.15,
+  /** A main road's verge, drawn past its lanes (render/road-mesh `VERGE_M`), metres. */
+  mainVergeM: 0.6,
 } as const;
 
 const GRAVITY = 9.81;
@@ -622,6 +656,181 @@ function joinCheck(
   }
 }
 
+/** The largest |kappa| stored on a road between s0 and s1, 1/m. */
+function tightestKappa(road: BakedRoad, s0: number, s1: number): number {
+  const k = road.samples.data['kappa'];
+  const sp = road.sampleSpacingM;
+  if (!k || !(sp > 0)) return 0;
+  let worst = 0;
+  const lo = Math.max(0, Math.floor(s0 / sp));
+  const hi = Math.min(k.length - 1, Math.ceil(s1 / sp));
+  for (let i = lo; i <= hi; i++) {
+    const v = Math.abs(k[i] as number);
+    if (v > worst) worst = v;
+  }
+  return worst;
+}
+
+/** The lanes' outer edges over s0..s1 of a road: the lowest and the highest d any lane reaches. */
+function laneExtent(road: BakedRoad, s0: number, s1: number): { lo: number; hi: number } {
+  let lo = 0;
+  let hi = 0;
+  road.laneSections.forEach((sec, i) => {
+    const end = road.laneSections[i + 1]?.s0 ?? road.lengthM;
+    if (sec.s0 > s1 || end < s0) return;
+    for (const l of sec.lanes) {
+      lo = Math.min(lo, l.dCenterM - l.widthM / 2);
+      hi = Math.max(hi, l.dCenterM + l.widthM / 2);
+    }
+  });
+  return { lo, hi };
+}
+
+/**
+ * The most a connector's surface lies above or below a main road's where its lanes are inside that
+ * road's drawn surface (its lanes and verges, 0.3 m in from the edge): the gap, the connector's s and
+ * the main road's s there. Read at the connector's centre and at both lane edges, since a steep
+ * branch can leave the main road's centre at its height and still have a lane edge under its verge.
+ */
+function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number; sMain: number } | null {
+  const cx = c.samples.data['x'];
+  const cy = c.samples.data['y'];
+  const cz = c.samples.data['z'];
+  const mx = m.samples.data['x'];
+  const my = m.samples.data['y'];
+  const mz = m.samples.data['z'];
+  if (!cx || !cy || !cz || !mx || !my || !mz || mx.length < 2 || cx.length < 2) return null;
+  const half = laneExtent(c, 0, c.lengthM);
+  const offsets = [0, half.hi - 0.3, half.lo + 0.3];
+  let worst: { gap: number; s: number; sMain: number } | null = null;
+  for (let i = 0; i < cx.length; i++) {
+    // The connector's direction here, from its neighbouring samples; d runs to the right of it.
+    const j0 = Math.max(0, i - 1);
+    const j1 = Math.min(cx.length - 1, i + 1);
+    const tx = (cx[j1] as number) - (cx[j0] as number);
+    const tz = (cz[j1] as number) - (cz[j0] as number);
+    const tl = Math.sqrt(tx * tx + tz * tz) || 1;
+    for (const off of offsets) {
+      const px = (cx[i] as number) + (off * -tz) / tl;
+      const pz = (cz[i] as number) + (off * tx) / tl;
+      // The nearest sample of the main road, then the nearer of its two segments.
+      let bi = 0;
+      let bd = Infinity;
+      for (let k = 0; k < mx.length; k++) {
+        const dx = (mx[k] as number) - px;
+        const dz = (mz[k] as number) - pz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bd) {
+          bd = d2;
+          bi = k;
+        }
+      }
+      if (bd > 30 * 30) continue;
+      let best: { dist: number; y: number; d: number; s: number } | null = null;
+      for (const k of [bi - 1, bi]) {
+        if (k < 0 || k + 1 >= mx.length) continue;
+        const ax = mx[k] as number;
+        const az = mz[k] as number;
+        const sx = (mx[k + 1] as number) - ax;
+        const sz = (mz[k + 1] as number) - az;
+        const len2 = sx * sx + sz * sz || 1;
+        const raw = ((px - ax) * sx + (pz - az) * sz) / len2;
+        // Past either end of the road there is no surface of its own (the junction's piece draws it).
+        if ((k === 0 && raw < 0) || (k + 2 === mx.length && raw > 1)) continue;
+        const f = Math.min(1, Math.max(0, raw));
+        const dx = px - (ax + f * sx);
+        const dz = pz - (az + f * sz);
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (!best || dist < best.dist) {
+          const len = Math.sqrt(len2);
+          best = {
+            dist,
+            y: (my[k] as number) + f * ((my[k + 1] as number) - (my[k] as number)),
+            d: (-(px - ax) * sz + (pz - az) * sx) / len,
+            s: (k + f) * m.sampleSpacingM,
+          };
+        }
+      }
+      if (!best) continue;
+      const { lo, hi } = laneExtent(m, best.s, best.s);
+      if (best.d <= lo - ROAD_LINT.mainVergeM + 0.3 || best.d >= hi + ROAD_LINT.mainVergeM - 0.3) continue;
+      const gap = (cy[i] as number) - best.y;
+      if (!worst || Math.abs(gap) > Math.abs(worst.gap))
+        worst = { gap, s: i * c.sampleSpacingM, sMain: best.s };
+    }
+  }
+  return worst;
+}
+
+/**
+ * The shortcut lint (playtest 4, P4-4 and P4-8; the riding audit's F8b), for one connector row that
+ * leads onto or off a shortcut (a row with a split zone, or whose connector carries a `shortcut`
+ * lane):
+ * - the tightest bend must hold at `shortcutArrivalMps` for the starter bike, or a rider runs wide
+ *   of it into the edge. For a turn-off (the row with the zone) that is the connector and the first
+ *   `shortcutRunUpM` of the road it leads onto, where a rider arrives at speed; for a rejoin it is
+ *   the connector alone, since the road before it is the shortcut's own (a real street's corner
+ *   there is the map's, and a rider has slowed for it);
+ * - a split zone a rider steers into must start at least `shortcutZoneInsideM` inside the rider's
+ *   reach (the lanes' outer edge less half a bike), or only a bike pressed against the rail takes it.
+ *   A zone that starts past the edge is reached over a wall by a ramp truck, and a secret fork (its
+ *   connector tagged `secret`) is unpainted and found on the beach, so neither is held to the zone rule.
+ */
+function lintShortcutRow(
+  row: BakedConnector,
+  c: BakedRoad,
+  a: BakedRoad,
+  b: BakedRoad,
+  mains: readonly BakedRoad[],
+  add: (rule: RoadLintRule, pointer: string, message: string) => void,
+): void {
+  const zone = row.splitZone;
+  if (!zone && !lanesOf(c).some((l) => l.kind === 'shortcut')) return;
+  for (const m of mains) {
+    const over = overlapHeightGap(c, m);
+    if (over && Math.abs(over.gap) > ROAD_LINT.shortcutHeightM) {
+      const side =
+        over.gap < 0 ? 'under it: a rider is drawn inside the road' : 'over it: a rider is drawn floating';
+      add(
+        'shortcut',
+        '/road',
+        `connector ${c.id} lies inside ${m.id}'s surface at its s ${over.s.toFixed(0)} but ${Math.abs(over.gap).toFixed(2)} m ${side} (at most ${ROAD_LINT.shortcutHeightM} m apart)`,
+      );
+      break;
+    }
+  }
+  const run = ROAD_LINT.shortcutRunUpM;
+  const [r0, r1] = row.to.end === 'from' ? [0, run] : [b.lengthM - run, b.lengthM];
+  const onConnector = tightestKappa(c, 0, c.lengthM);
+  const onRoad = zone ? tightestKappa(b, r0, r1) : 0;
+  const kappa = Math.max(onConnector, onRoad);
+  const maxKappa =
+    (ROAD_LINT.shortcutYawResponse * ROAD_LINT.shortcutSteerRateMps) /
+    (ROAD_LINT.shortcutArrivalMps * ROAD_LINT.shortcutArrivalMps);
+  if (kappa > maxKappa) {
+    const radius = 1 / kappa;
+    const holds = Math.sqrt(ROAD_LINT.shortcutYawResponse * ROAD_LINT.shortcutSteerRateMps * radius);
+    add(
+      'shortcut',
+      '/road',
+      `the bend through connector ${c.id}${zone ? ` and the ${run} m of ${b.id} beyond it` : ''} has a radius of ${radius.toFixed(1)} m: the starter bike holds it only up to ${holds.toFixed(1)} m/s, under the ${ROAD_LINT.shortcutArrivalMps} m/s a rider arrives at (needs ${(1 / maxKappa).toFixed(1)} m or more)`,
+    );
+  }
+  if (!zone || (c.tags ?? []).some((t) => t.tag === 'secret')) return;
+  const { lo, hi } = laneExtent(a, zone.s0, zone.s1);
+  const right = zone.d0 + zone.d1 >= 0;
+  if (right ? zone.d0 >= hi : zone.d1 <= lo) return;
+  const reach = right ? hi - ROAD_LINT.riderEdgeM : lo + ROAD_LINT.riderEdgeM;
+  const inside = right ? reach - zone.d0 : zone.d1 - reach;
+  if (inside < ROAD_LINT.shortcutZoneInsideM) {
+    add(
+      'shortcut',
+      '/splitZone',
+      `the split zone starts ${inside.toFixed(2)} m inside a rider's reach (d ${reach.toFixed(2)} on ${a.id}); it needs ${ROAD_LINT.shortcutZoneInsideM} m, or only a bike pressed against the edge takes the turn-off`,
+    );
+  }
+}
+
 /** Lints a network, its roads and its routes together. */
 export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = defaultLabel): RoadLintIssue[] {
   const out: RoadLintIssue[] = [];
@@ -797,6 +1006,11 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
             `split zone must reach the ${row.from.end} end of ${a.id}, where the connector leaves`,
           );
       }
+      // The main roads this connector can lie inside: the junction's through pieces and the roads it joins.
+      const mains = [a, b, ...rows.map((r) => byId.get(r.row.road))].filter(
+        (m): m is BakedRoad => !!m && m !== c && !lanesOf(m).some((l) => l.kind === 'shortcut'),
+      );
+      lintShortcutRow(row, c, a, b, mains, add);
       const shortcut = (r: BakedRoad) => lanesOf(r).some((l) => l.kind === 'shortcut');
       if ((shortcut(a) || shortcut(b)) && lanesOf(c).some((l) => l.kind === 'drive')) {
         add(

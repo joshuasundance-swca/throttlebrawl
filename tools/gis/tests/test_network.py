@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from itertools import pairwise
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -14,11 +14,15 @@ from tbgis.config import BakeConfig
 from tbgis.fetch import FetchMeta
 from tbgis.lint import lint_network
 from tbgis.network import (
+    BakedLine,
     NetworkBake,
     NetworkConfig,
+    Shape,
     bake_line,
     bake_network,
+    connector_shape,
     correction,
+    curve_piece,
     solve_shape,
     stretch_config,
 )
@@ -271,3 +275,68 @@ def test_the_connector_solve_lands_on_its_target() -> None:
     x, z = sh.end(0, 0, 2000)
     assert math.hypot(x - 30, z + 60) < 1e-3
     assert sh.heading(sh.length) == pytest.approx(math.pi / 2)
+
+
+def test_a_connector_keeps_its_minimum_radius_or_is_refused() -> None:
+    """The shortcut lint's bend rule (playtest 4): a 90 degree corner taken with a radius to keep
+    gets the least sweeping turns that keep it, and a corner with no room for them is refused."""
+    start, end = (0.0, 0.0, 0.0), (130.0, -130.0, math.pi / 2)
+    plain = connector_shape(start, end, (20.0, 20.0), 6.0)
+    kept = connector_shape(start, end, (20.0, 20.0), 6.0, 40.0, "branch b leave")
+
+    def tightest(sh: Shape) -> float:
+        return 1 / max(abs(sh.kappa(u)) for u in np.linspace(0, sh.length, 400))
+
+    assert tightest(kept) >= 39.5
+    assert tightest(plain) < tightest(kept)
+    with pytest.raises(ValueError, match=r"branch b leave: no connector .* keeps every bend at 80 m or more"):
+        connector_shape(start, end, (20.0, 20.0), 6.0, 80.0, "branch b leave")
+
+
+class _ClimbingMain:
+    """A straight main road running north (heading 0) and climbing 10 percent, as far as curve_piece asks."""
+
+    def project(self, x: float, z: float) -> tuple[float, float]:
+        return -z, abs(x)
+
+    def at(self, s: float) -> tuple[float, float, float, float]:
+        return 0.0, 0.1 * s, -s, 0.0
+
+
+def test_a_connector_follows_the_main_road_while_a_lane_lies_over_it_and_ends_on_the_branch() -> None:
+    """Playtest 4 (P4-4): a branch that descends from a climbing main road stayed at its own height
+    while its lane edge lay under the road's verge, 2 m deep on Jones Street. The lane now follows
+    the main road's height while any of it is over the road's surface, and the end that joins the
+    branch's own road keeps that road's height."""
+    start, end = (0.0, 0.0, 0.0), (40.0, -260.0, 0.0)
+    sh = connector_shape(start, end, (80.0, 80.0), 6.0)
+    reach, width = 6.1, 6.0
+    # The branch ends 3 m lower than where it left, while the main road climbs 14 m over the same run.
+    piece = curve_piece(
+        "c",
+        "c",
+        (0.0, 0.0, 0.0, 0.0),
+        (40.0, -3.0, -260.0, 0.0),
+        sh,
+        width,
+        2.0,
+        20.0,
+        [],
+        None,
+        cast(BakedLine, _ClimbingMain()),
+        reach,
+        True,
+    )
+    main_y = 0.1 * -piece.z
+    dist = np.abs(piece.x)
+    over = dist <= reach + width / 2
+    # Over the road's surface (and not yet near the branch's end) the connector is at the road's height.
+    near_start = over & (np.arange(len(dist)) * 2.0 < 100.0)
+    assert near_start.any()
+    assert np.allclose(piece.y[near_start], main_y[near_start], atol=1e-6)
+    # It meets the branch's own road at the branch's height, whatever the main road does there.
+    assert piece.y[-1] == pytest.approx(-3.0)
+    # Far from the road the connector has come down toward the branch's height, under the main road's.
+    far = dist > reach + width / 2 + 6.0
+    assert far.any()
+    assert np.all(piece.y[far] < main_y[far] - 1.0)

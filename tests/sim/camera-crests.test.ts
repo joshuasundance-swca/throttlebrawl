@@ -89,9 +89,16 @@ const ROUTES = [
  * and 126 on the rejoin (51 at 2.17, 76 at 1.78), every hidden frame on these roads. They are
  * counted and printed, capped at BLIND_BY_DESIGN_MAX per aspect, and every other road keeps the
  * full check.
+ *
+ * Playtest 4 (P4-4) moved the hump: the branch's connectors now hold the main road's height while
+ * any of their lane lies over its surface (the 6 m wide leave connector sat up to 2 m under
+ * Union's verge on the 12 % climb, a rider drawn inside the road), so the climb carries the leave
+ * connector up 2 m before it peels off and drops: that crest hides 135 frames at 2.17 and 145 at
+ * 1.78, all on the leave connector, and the rejoin now hides none. The cap is 160, the new
+ * measurement plus about 10 %.
  */
 const BLIND_BY_DESIGN = /jones/;
-const BLIND_BY_DESIGN_MAX = 120;
+const BLIND_BY_DESIGN_MAX = 160;
 
 function renderCamera(pose: CameraPose, aspect: number): PerspectiveCamera {
   const cam = new PerspectiveCamera(pose.fov, aspect, 0.3, 1500);

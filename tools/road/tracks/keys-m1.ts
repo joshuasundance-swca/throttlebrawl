@@ -1187,7 +1187,7 @@ export const KEYS_M1: TrackSource = {
         zone: { lengthM: 40, d0: -8.5, d1: -2 },
       },
       join: { road: 'm1-sandbar-shoal', offsetM: -2, lane: 'S1' },
-      turnsM: [60, 60],
+      turnsM: [68, 68],
       via: [{ x: 1920.5, z: -4310, headingDeg: 80, turnM: 70 }],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
       roads: [

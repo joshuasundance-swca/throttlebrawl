@@ -131,7 +131,13 @@ real junction choice.
   connectors carry one `shortcut` lane, so traffic stays on the main road; the branch's own roads
   keep their real lanes and carry none. `shiftM` moves a junction along the main line off the real
   gore (at a wide fork the main road already bends there; beside a ramp the connector then stands in
-  for the ramp's first stretch, where the two roads' land would overlap). A branch's `id` must be
+  for the ramp's first stretch, where the two roads' land would overlap). `minRadiusM` (playtest 4,
+  P4-4 and P4-8) is the tightest bend either connector may have: the bake tries the turn lengths in
+  small steps and keeps the first that holds it, or refuses the branch naming the radius it did
+  reach (the road lint's `shortcut` rule wants 42.5 m for a rider arriving at 30 m/s). Where a
+  connector's lane lies over the main road's surface it takes that road's height, easing into its
+  own over 14 m beyond the surface, and the end that joins the branch's own road keeps that road's
+  height (`curve_piece`). A branch's `id` must be
   its first road's (the id the game derives, so a career's `route#id` holds); `label` names the
   generated junction roads.
 - **The closure.** Positions are integrated from the smoothed heading, so a line drifts off the real
@@ -259,7 +265,7 @@ Peaks stretch from one cached extract to byte-identical files.
   turn back. The bake finds where that shape meets the branch line and starts (or ends) the branch's
   own road there. It then solves the curve exactly onto it, which nudges the straight and the turn
   angle; the report's `branches[].leave` and `.join` give the solved numbers. A junction's road ends
-  lie within 60 m of it (`src/road/validate.ts`), so a synthetic end is two roads. One is the
+  lie within 250 m of it (`src/road/validate.ts`), so a synthetic end is two roads. One is the
   junction's connector (the turn off the main road, or onto it). The other is an ordinary staging
   road (`roadId`), with the straight and the other turn, joined end to end with the branch road
   (so `toOffsetM` and `fromOffsetM` stay 0). The `features` (a `rampTruck`, a `gap`) stand on the
@@ -330,7 +336,7 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   does, which puts a rider into the oncoming lane, and `tools/road/branch-rejoins.test.ts` refused it.
   Its join is moved 20 m east of the real junction (`shiftM: 20`): joined straight, the sweep in `tests/sim/geometry-land.test.ts`
   found one open land edge at Grand Avenue's end (3.9 m drop, 35 m left of the road), and a 20 m shift
-  closes it. A larger shift breaks the lint's 60 m rule for a junction's road ends.
+  closes it. A larger shift breaks the lint's 250 m rule for a junction's road ends.
 - **Dressing:** two boost-pad slots on the main road (Burnside and the Hawthorne deck), a cop lot, the
   junction sign, and a pedestrian zone beside Pioneer Courthouse Square on Broadway's left.
   T10.5 adds the downtown's people and signs: sidewalk `roadsideZone`s that name their `kinds`

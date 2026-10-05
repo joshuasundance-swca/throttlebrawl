@@ -7,6 +7,35 @@
       "driftClosedM": {
         "lake-samish leave": 0.42,
         "lake-samish join": 4.18
+      },
+      "fun": {
+        "real_length_m": 7308.1,
+        "game_length_m": 7304.2,
+        "corners": 0,
+        "tightest_radius_m": 352.3,
+        "share_tighter_than_m": {
+          "50": 0.0,
+          "100": 0.0,
+          "200": 0.0
+        },
+        "turn_deg_per_km": 32.0,
+        "elev_min_m": 81.4,
+        "elev_max_m": 166.3,
+        "climb_m": 28.8,
+        "descent_m": 105.1,
+        "max_grade_pct": 5.0,
+        "p95_grade_pct": 4.6,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 4,
+        "junctions_per_km": 0.55,
+        "bridges_m": 130.1,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 2.9
       }
     },
     "samish": {
@@ -14,6 +43,35 @@
       "lanesPerDirection": 1,
       "driftClosedM": {
         "lake-samish join": 43.23
+      },
+      "fun": {
+        "real_length_m": 5909.8,
+        "game_length_m": 5871.1,
+        "corners": 10,
+        "tightest_radius_m": 21.8,
+        "share_tighter_than_m": {
+          "50": 0.0175,
+          "100": 0.0611,
+          "200": 0.1681
+        },
+        "turn_deg_per_km": 160.9,
+        "elev_min_m": 85.9,
+        "elev_max_m": 157.9,
+        "climb_m": 22.0,
+        "descent_m": 82.8,
+        "max_grade_pct": 5.6,
+        "p95_grade_pct": 5.3,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 12,
+        "junctions_per_km": 2.03,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 21.4
       }
     }
   },
