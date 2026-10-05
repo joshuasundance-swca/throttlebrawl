@@ -2,5 +2,25 @@
   "formatVersion": 1,
   "network": "osm-sf-golden-gate",
   "originLatDeg": 37.817,
-  "originLonDeg": -122.48
+  "originLonDeg": -122.48,
+  "pieces": [
+    {
+      "id": "golden-gate-far",
+      "kind": "bridge",
+      "style": "suspension",
+      "frame": "local",
+      "from": [56.8, -1291.3],
+      "to": [238.4, 660.3],
+      "deckM": 71.2,
+      "deckEndM": 58.6,
+      "humpAt": 0.5,
+      "humpM": 3.5,
+      "towersAt": [0.175, 0.825],
+      "towerM": 227,
+      "colour": "#c0452f",
+      "keepOutM": 0,
+      "nearFadeM": 250,
+      "traffic": 16
+    }
+  ]
 }
