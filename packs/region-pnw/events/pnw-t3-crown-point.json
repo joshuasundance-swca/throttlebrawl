@@ -1,0 +1,78 @@
+{
+  "type": "event",
+  "id": "pnw-t3-crown-point",
+  "name": "Crown Point Loops",
+  "kind": "classic-race",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-gorge-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["juniper-moss", "base:chad-speedwell", "base:dial-up", "base:kevin-from-accounting"],
+    "paceMps": 50
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "finish",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 5
+      },
+      "required": true
+    },
+    {
+      "id": "drift",
+      "kind": "style-cash",
+      "params": {
+        "cash": 300,
+        "kinds": ["drift"]
+      },
+      "required": true
+    },
+    {
+      "id": "podium",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": false,
+      "rewardCash": 450
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [2950, 1600, 1050, 450, 300, 150, 100],
+    "perTakedownCash": 300,
+    "perNearMissCash": 31,
+    "perAirtimeCash": 46,
+    "perOncomingSecondCash": 12,
+    "takedownComboScale": 0.5,
+    "perStealCash": 77
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A drift race on the real Crown Point loops (the Historic Columbia River Highway: 17 corners of at least 60 degrees, 7 of them hairpins), the tier-3 drift event (playtest 3, the maintainer: \"Braking into a hairpin at speeds makes a nice drift like mechanism\"; the critic's C4 and G5). A classic race whose second required objective is $300 of drift style cash (the HUD reads DRIFT $x/$300; other style does not count), so finishing the pack and sliding the hairpins both matter; the optional podium bonus is the usual 0.15 W. The target is not the purse-based figure the progression spec drew ($1,750, 0.6 W): the scripted drift bot (tests/sim/drift-events.test.ts) rides this route alone at this event's own drift rate ($36 a second of full slip, 3 times the oncoming rate) and banks $562 on the weakest bike a player could own by now and $614 to $1,093 on the rest, so the critic's cap of 60 % of what the bot earns is $337 and the target is $300 below it, rounded down to $50. A test fails if any drift event's target goes over its cap. The purse, the style rewards and the rival pace are global tier 7's, as the Gorge race beside it. [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}
