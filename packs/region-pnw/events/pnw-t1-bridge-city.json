@@ -1,14 +1,14 @@
 {
   "type": "event",
-  "id": "pnw-t1-tulip-traffic",
-  "name": "Tulip Traffic",
+  "id": "pnw-t1-bridge-city",
+  "name": "Bridge City",
   "kind": "classic-race",
   "region": "pacific-northwest",
-  "timeOfDay": "noon",
+  "timeOfDay": "dusk",
   "lengths": [
     {
       "id": "standard",
-      "route": "osm-i5-samish-run",
+      "route": "osm-bridge-city-run",
       "laps": 1
     }
   ],
@@ -33,10 +33,10 @@
       "required": true
     },
     {
-      "id": "back-road",
+      "id": "pick-your-bridge",
       "kind": "ride-branch",
       "params": {
-        "branch": "osm-samish-north-shore"
+        "branch": "osm-pnw-pdx-alder"
       },
       "required": false,
       "rewardCash": 300
@@ -59,7 +59,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A classic race, top 3, on the real I-5 by Lake Samish at noon: the whole county is in the same lane for the flowers, and the back road along the lake is the way round. Top 3 wins it; the optional bonus is that back road. Playtest 3 (T10.2): the first tier's third regular event (docs/product-spec.md, Career). The real-world content task may swap it for a downtown Portland race. Global tier 5's purse and pace. [default] every number and name.",
+    "notes": "A classic race, top 3, through downtown Portland at dusk in the rain (the maintainer, playtest 3: \"Duval St, downtown Portland, Golden Gate\"; the critic's W1, \"so the chapter opens in the city\"): East Burnside over the Burnside Bridge, down Broadway past the courthouse square, east on Madison and over the Hawthorne Bridge, two lanes each way and a streetcar line on Grand Avenue. Top 3 wins it; the optional bonus is the junction choice, \"Pick your bridge\": left off Broadway onto Alder and over the Morrison Bridge, about 140 m shorter, with the streetcar on its Grand Avenue end. It is the first tier's third regular event and replaces Tulip Traffic, a race on I-5 by Lake Samish; the Samish road keeps He's Writing It All Down (tier 2) and Weigh Station Closed (tier 4). The purse and the rival pace are global tier 5's, as the tier's other races. [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -82,7 +82,20 @@
       "d0": -19.0,
       "d1": -12.0,
       "params": {
-        "spawns": "pedestrians"
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "broadway-south-crowd",
+      "s0": 220.0,
+      "s1": 320.0,
+      "d0": 12.0,
+      "d1": 17.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter"]
       }
     }
   ],
