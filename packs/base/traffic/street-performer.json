@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "street-performer",
+  "name": "Street Performer",
+  "category": "pedestrian",
+  "tags": ["tourist", "key-oldtown"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 0.5,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true, "strolls": true },
+  "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#f2c14e", "#2ab7a9", "#c04a8a"] },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 3 (T10.4; Duval Street's sunset pier): a juggler, a human statue, a man with a guitar and one song. Paces its patch of the kerb and never crosses; dives clear without dropping a pin. Only the Mallory Square zone spawns it (a zone's `kinds`). [default] every number.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-04" }
+  }
+}

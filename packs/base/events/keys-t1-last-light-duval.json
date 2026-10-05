@@ -1,14 +1,14 @@
 {
   "type": "event",
-  "id": "keys-t1-rental-return",
-  "name": "Rental Return",
+  "id": "keys-t1-last-light-duval",
+  "name": "Last Light on Duval",
   "kind": "classic-race",
   "region": "florida-keys",
-  "timeOfDay": "golden-hour",
+  "timeOfDay": "dusk",
   "lengths": [
     {
       "id": "standard",
-      "route": "m1-standard-run",
+      "route": "osm-duval-run",
       "laps": 1
     }
   ],
@@ -33,10 +33,10 @@
       "required": true
     },
     {
-      "id": "shortcut",
-      "kind": "ride-branch",
+      "id": "style",
+      "kind": "style-cash",
       "params": {
-        "branch": "m1-sandbar-flats"
+        "cash": 300
       },
       "required": false,
       "rewardCash": 150
@@ -59,7 +59,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A classic race, the standard run: the rental has to be at the counter by the line, upright, and the deposit is on every rider's mind. Top 3 wins it; the optional bonus is the Sandbar Flats, the back road across the shallows. Playtest 3 (T10.1): the first tier's third regular event (progression.md, section 2). Its sunset is the region's golden hour until the Keys add a noon (T10.4). [default] every number and name.",
+    "notes": "A classic race on the real Duval Street (playtest 3, T10.4; critic W1: the real world reaches the career; the maintainer, round 1: \"Duval St\"). It replaces Rental Return: the same first-tier slot, the same field and purse, a new place. Mallory Square's pier edge to the Southernmost Point buoy and back up Duval to the Gulf, at dusk, through the cruise-ship crowd, the pedicabs, the island tour tram and the roosters. Top 3 wins it; the optional bonus is $300 of style, since a crowded street is no place for a shortcut and Duval has none. The tier-one paces and cops of the Keys. [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -121,19 +121,16 @@ describe('decide', () => {
 });
 
 type Needs = Record<string, { result?: string; outputs?: Record<string, string> }>;
+const suite = (result: string): Needs => Object.fromEntries(SUITE.map((job) => [job, { result }]));
 const suitePath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'false' } },
-  'static-unit': { result: 'success' },
-  sim: { result: 'success' },
-  browser: { result: 'success' },
+  ...suite('success'),
   'prod-build': { result: 'skipped' },
   ...over,
 });
 const skipPath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'true' } },
-  'static-unit': { result: 'skipped' },
-  sim: { result: 'skipped' },
-  browser: { result: 'skipped' },
+  ...suite('skipped'),
   'prod-build': { result: 'success' },
   ...over,
 });
@@ -163,11 +160,7 @@ describe('gateVerdict', () => {
   });
 
   it('a skipped suite passes only when plan ran green and said skip=true', () => {
-    const skipped = {
-      'static-unit': { result: 'skipped' },
-      sim: { result: 'skipped' },
-      browser: { result: 'skipped' },
-    };
+    const skipped = suite('skipped');
     // A PR whose suite was skipped (for example, cancelled before it started) is red.
     expect(gateVerdict(suitePath({ ...skipped, plan: { result: 'skipped', outputs: {} } })).ok).toBe(false);
     // plan failed: its jobs were skipped as dependents, which is not the skip path.

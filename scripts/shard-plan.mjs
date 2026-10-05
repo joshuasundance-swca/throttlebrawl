@@ -1,4 +1,4 @@
-// Duration-balanced slices for CI's sim and browser jobs (docs/engineering.md, "CI on GitHub
+// Duration-balanced slices for CI's unit, sim and browser jobs (docs/engineering.md, "CI on GitHub
 // Actions"). `npm run check -- --tier sim --shard i/n` (and `--tier browser`) asks planSlices which
 // test files slice i runs. The slices are a partition of the files the test runner itself lists:
 // every file lands in exactly one slice, so the slices' test counts add up to the unsharded run's.
@@ -15,6 +15,15 @@
 //   by side on their workers, so they are planned like any other file. (Until 2026-10-03 the
 //   readers were one block as long as the longest reader, which left the other readers' time out:
 //   main run 37157149149 planned 387 s for sim slice 1/4, which took 537 s.)
+// - No other file shares the readers' slice (since 2026-10-05). The readers wait on the Normal batch,
+//   which one worker computes in 218 to 375 s depending on the runner, then do their own work, so
+//   their measured times cannot price the slice well; other files there only stretch it (run
+//   37270067041: 15 other files beside them, 535 s against a plan of 335).
+// - The readers of the Easy and Hard batches (presetBatch) start before every other sim file, on CI
+//   and in tests/sequencer.ts alike, so those two batches compute beside the Normal one instead of
+//   after it. Until 2026-10-05 the three longest readers started first and all waited about 280 s
+//   for the Normal batch, and only then did Easy and Hard start (about 120 s each): the reader
+//   slice took 517 s on #475's run.
 // - A runner runs several files at once (WORKERS): Vitest's default on CI's 4 vCPUs is 3, and
 //   Playwright's is 2. A slice's predicted time simulates that: each file goes to the first free
 //   worker, in the order the runner starts them (Vitest: longest first, see
@@ -27,8 +36,14 @@ import { repoRoot } from './lib.mjs';
 
 export const TIMINGS_FILE = 'tests/timings.json';
 
-/** Parallel test workers per CI runner, and the order each runner starts its files in. */
+/**
+ * Parallel test workers per CI runner, the order each runner starts its files in, and seconds each
+ * file costs beyond its measured time (perFile). Vitest's per-file line times the tests only; the
+ * unit files' setup and import add about 0.8 s each (run 37266882407: 695 s of tests in a 320-file
+ * slice, which Vitest put at 73% of its time). Few, long sim files make it negligible there.
+ */
 export const TIERS = {
+  unit: { workers: 3, order: 'longest-first', perFile: 0.8 },
   sim: { workers: 3, order: 'longest-first' },
   e2e: { workers: 2, order: 'path' },
 };
@@ -47,6 +62,11 @@ export function batchUsers(files, read = (f) => readFileSync(path.join(repoRoot,
   return files.filter((f) => /\b(?:simBatch|presetBatch)\s*\(/.test(read(f)));
 }
 
+/** The sim test files that read the Easy or Hard batch (presetBatch), found by their source: they start first. */
+export function presetUsers(files, read = (f) => readFileSync(path.join(repoRoot, f), 'utf8')) {
+  return files.filter((f) => /\bpresetBatch\s*\(/.test(read(f)));
+}
+
 /** What a file with no measured time is planned as: the mean of the measured ones; 1 for none. */
 export function estimateSeconds(values) {
   if (values.length === 0) return 1;
@@ -57,9 +77,9 @@ const isSeconds = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
 /**
  * The files of a tier that the timing table has no time for, and the seconds each is planned as.
- * @param {'sim' | 'e2e'} tier
+ * @param {'unit' | 'sim' | 'e2e'} tier
  * @param {string[]} files
- * @param {{ timings?: { sim?: Record<string, number>, e2e?: Record<string, number> } }} [options]
+ * @param {{ timings?: { unit?: Record<string, number>, sim?: Record<string, number>, e2e?: Record<string, number> } }} [options]
  * @returns {{ files: string[], seconds: number }}
  */
 export function unmeasured(tier, files, { timings = readTimings() } = {}) {
@@ -92,7 +112,9 @@ function makespan(items, workers) {
  * @param {number} o.workers parallel workers per runner
  * @param {'longest-first' | 'path'} [o.order] the order a runner starts its files in
  * @param {string[]} [o.together] files that must share one slice, run first (the batch readers)
+ * @param {string[]} [o.first] files the runner starts before all others (the preset batch readers)
  * @param {number} [o.lastExtra] seconds the last slice spends after its files (perf)
+ * @param {number} [o.perFile] seconds each file costs beyond its measured time (setup and import)
  * @returns {{ files: string[], predicted: number }[]}
  */
 export function planSlices({
@@ -102,14 +124,16 @@ export function planSlices({
   workers,
   order = 'path',
   together = [],
+  first = [],
   lastExtra = 0,
+  perFile = 0,
 }) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`planSlices: n must be a whole number >= 1, got ${n}`);
   const all = [...new Set(files)].sort();
   // The table's own times, not only this tier's files: the same estimate as unmeasured() reports
   // and tests/sequencer.ts orders by.
   const fallback = estimateSeconds(Object.values(seconds).filter(isSeconds));
-  const cost = (f) => (isSeconds(seconds[f]) ? seconds[f] : fallback);
+  const cost = (f) => (isSeconds(seconds[f]) ? seconds[f] : fallback) + perFile;
 
   const item = (f) => ({ files: [f], cost: cost(f), pinned: together.includes(f) });
   const items = all.filter((f) => !together.includes(f)).map(item);
@@ -120,16 +144,22 @@ export function planSlices({
     items: i === 0 ? all.filter((f) => together.includes(f)).map(item) : [],
     tail: i === n - 1 ? lastExtra : 0,
   }));
+  const early = (it) => (first.includes(it.files[0]) ? 0 : 1);
   const runOrder = (list) =>
     order === 'longest-first'
-      ? [...list].sort((a, b) => b.cost - a.cost || a.files[0].localeCompare(b.files[0]))
+      ? [...list].sort(
+          (a, b) => early(a) - early(b) || b.cost - a.cost || a.files[0].localeCompare(b.files[0]),
+        )
       : [...list].sort((a, b) => a.files[0].localeCompare(b.files[0]));
   const predict = (s, extra) => makespan(runOrder(extra ? [...s.items, extra] : s.items), workers) + s.tail;
 
+  // The batch readers' slice holds the readers alone (when there is another slice): they wait on a
+  // batch one worker computes, whose time varies by runner, and other files there only stretch it.
+  const start = together.length > 0 && n > 1 ? 1 : 0;
   for (const item of items) {
-    let best = 0;
-    let bestTime = predict(slices[0], item);
-    for (let i = 1; i < n; i++) {
+    let best = start;
+    let bestTime = predict(slices[start], item);
+    for (let i = start + 1; i < n; i++) {
       const t = predict(slices[i], item);
       if (t < bestTime) {
         best = i;
@@ -158,10 +188,10 @@ export function planSlices({
 
 /**
  * The plan for one tier, from the timing table and (for sim) the batch readers.
- * @param {'sim' | 'e2e'} tier
+ * @param {'unit' | 'sim' | 'e2e'} tier
  * @param {string[]} files
  * @param {number} n
- * @param {{ timings?: { sim?: Record<string, number>, e2e?: Record<string, number>, perf?: number }, read?: (file: string) => string }} [options]
+ * @param {{ timings?: { unit?: Record<string, number>, sim?: Record<string, number>, e2e?: Record<string, number>, perf?: number }, read?: (file: string) => string }} [options]
  */
 export function planTier(tier, files, n, { timings = readTimings(), read } = {}) {
   const spec = TIERS[tier];
@@ -173,6 +203,8 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     workers: spec.workers,
     order: spec.order,
     together: tier === 'sim' ? batchUsers(files, read) : [],
+    first: tier === 'sim' ? presetUsers(files, read) : [],
     lastExtra: tier === 'e2e' ? (timings.perf ?? 0) : 0,
+    perFile: 'perFile' in spec ? spec.perFile : 0,
   });
 }

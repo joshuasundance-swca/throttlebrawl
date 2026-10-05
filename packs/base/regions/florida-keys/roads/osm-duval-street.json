@@ -85,6 +85,45 @@
   ],
   "features": [
     {
+      "kind": "roadsideZone",
+      "id": "duval-roosters-a",
+      "s0": 300.0,
+      "s1": 400.0,
+      "d0": -10.6,
+      "d1": -5.6,
+      "params": {
+        "spawns": "animals",
+        "kinds": ["rooster"]
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-roosters",
+      "s0": 420.0,
+      "s1": 430.0,
+      "d0": -9.0,
+      "d1": -6.5,
+      "item": "oldtown-roosters"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-tram",
+      "s0": 600.0,
+      "s1": 610.0,
+      "d0": -9.0,
+      "d1": -6.5,
+      "item": "tram-tours"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-shore-desk",
+      "s0": 700.0,
+      "s1": 710.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "item": "shore-desk"
+    },
+    {
       "kind": "boostPad",
       "id": "pad-duval-lower",
       "s0": 500.0,
@@ -105,8 +144,29 @@
       "d0": 5.6,
       "d1": 10.6,
       "params": {
-        "spawns": "pedestrians"
+        "spawns": "pedestrians",
+        "kinds": ["cruise-day-tripper", "tourist-with-cooler"]
       }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "duval-roosters-b",
+      "s0": 1100.0,
+      "s1": 1180.0,
+      "d0": 5.6,
+      "d1": 10.6,
+      "params": {
+        "kinds": ["rooster", "cruise-day-tripper"]
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-ship",
+      "s0": 1400.0,
+      "s1": 1410.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "item": "oldtown-ship"
     },
     {
       "kind": "boostPad",
@@ -122,6 +182,15 @@
       }
     },
     {
+      "kind": "billboard",
+      "id": "sign-duval-sunset",
+      "s0": 1600.0,
+      "s1": 1610.0,
+      "d0": -9.0,
+      "d1": -6.5,
+      "item": "oldtown-sunset"
+    },
+    {
       "kind": "roadsideZone",
       "id": "mallory-sunset",
       "s0": 1660.0,
@@ -129,19 +198,20 @@
       "d0": -10.6,
       "d1": -5.6,
       "params": {
-        "spawns": "pedestrians"
+        "spawns": "pedestrians",
+        "kinds": ["street-performer", "cruise-day-tripper"]
       }
     },
     {
       "kind": "landmark",
       "id": "mallory-pier",
-      "s0": 1755.9614,
-      "s1": 1767.9614,
-      "d0": -196.7569,
-      "d1": -190.7569,
+      "s0": 1730.0,
+      "s1": 1760.0,
+      "d0": -33.0,
+      "d1": -9.0,
       "params": {
         "model": "models/landmarks/keys-landmarks#mallory_pier",
-        "yawDeg": -54.0
+        "yawDeg": -90.0
       }
     }
   ],

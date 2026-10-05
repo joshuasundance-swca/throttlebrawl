@@ -1,0 +1,272 @@
+// Bridge bays (playtest 3, T12.3; the maintainer's round 3: the Seven Mile has "real geometry", the
+// old bridge beside it, and "the real 80 m missing span is the big jump"). The Seven Mile's two
+// spans, its repair platforms and the Moser gap's two ends are dressed with Codex batch CX2's kit
+// (`models/scenery/seven-mile-kit`): the new span's 41 m segmental bays, the old bridge's concrete
+// arches and steel girders, the platforms the ramp trucks stand on, and the broken end of a deck.
+// Each bay is a rigid module with its origin at the deck top where it starts, running along +Z, so
+// this module only decides where each one stands: end to end along a bridge, turned to the road's
+// heading and sheared up its grade so the deck of the bay is the deck of the road.
+//
+// Nothing here draws. The spots (`ScenerySpot`, kind `bay`) go into the road scene's merged
+// scenery blocks (road-mesh.ts, scenery-merge.ts), so a bay costs no mesh where a block already
+// stands, and only blocks near the camera are ever built. Presentation only: nothing reaches the sim.
+import { BufferGeometry, Float32BufferAttribute } from 'three';
+import type { Point3 } from './geometry';
+import type { ScenerySpot } from './scenery';
+
+/** What a bay is: the new span's, the old bridge's two, a gap's broken end and a repair platform. */
+export type BayKind = 'newSpan' | 'newSpanTall' | 'oldArch' | 'oldGirder' | 'gapEnd' | 'staging';
+
+/** The kit's root node for each bay kind (tools/blender/props/seven_mile_kit.py). */
+export const BAY_ROOT: Readonly<Record<BayKind, string>> = {
+  newSpan: 'nsm_bay',
+  newSpanTall: 'nsm_bay_tall',
+  oldArch: 'osm_arch_bay',
+  oldGirder: 'osm_girder_bay',
+  gapEnd: 'osm_gap_end',
+  staging: 'staging_platform',
+};
+/** The bay kinds in the order of the kit's variants: a spot's `variant` indexes this. */
+export const BAY_KINDS: readonly BayKind[] = [
+  'newSpan',
+  'newSpanTall',
+  'oldArch',
+  'oldGirder',
+  'gapEnd',
+  'staging',
+];
+/** The kit's root nodes in variant order (models.ts bakes one variant per root). */
+export const BAY_ROOTS: readonly string[] = BAY_KINDS.map((k) => BAY_ROOT[k]);
+
+/** Each bay's length along the road, m: the root's `bay_m` extra, which the kit's score checks to 1%. */
+export const BAY_M: Readonly<Record<BayKind, number>> = {
+  newSpan: 41,
+  newSpanTall: 41,
+  oldArch: 18,
+  oldGirder: 24,
+  gapEnd: 8,
+  staging: 10,
+};
+/** How far each bay's pier reaches under the deck, m: the root's `pier_m` extra. */
+export const PIER_M: Readonly<Record<BayKind, number>> = {
+  newSpan: 6,
+  newSpanTall: 19.8,
+  oldArch: 6,
+  oldGirder: 6,
+  gapEnd: 6,
+  staging: 6,
+};
+
+/** A gap end stands this far back from the gap along the deck: its whole length, m. */
+export const GAP_END_ZONE_M = BAY_M.gapEnd;
+/** The short pier stands in the water while the deck is at most this high above the sea, m. [default] */
+export const SHORT_PIER_MAX_DECK_M = PIER_M.newSpan - 0.5;
+/**
+ * Bays merge into blocks of this size, m, apart from the scatter's 160 m blocks, and draw within
+ * `BAY_DRAW_M` of the camera (so none is ever built a kilometre out, as the plan says). A bridge
+ * crosses a 160 m square every 160 m, so bays in the scatter's blocks cost a mesh for each of them
+ * (measured: up to 8 more draw calls in one view of the Seven Mile); 320 m squares and a 300 m
+ * reach cost two to four. [default]
+ */
+export const BAY_BLOCK_M = 320;
+export const BAY_DRAW_M = 300;
+/** Room allowed across a bay's own width when a block counts how far it reaches, m. */
+const BAY_ASIDE_M = 6;
+/** The old bridge's bays in turn: two girders, then an arch. [default] */
+const OLD_CYCLE: readonly BayKind[] = ['oldGirder', 'oldGirder', 'oldArch'];
+
+export interface BayTag {
+  s0: number;
+  s1: number;
+  side?: string | undefined;
+  tag: string;
+}
+export interface BayRange {
+  s0: number;
+  s1: number;
+}
+
+/** One road's bridge spans, gaps and kickers, as the road scene reads them. */
+export interface BayEdge {
+  edge: number;
+  length: number;
+  /** The road's scenery tags (`bridge` marks a deck; `old-bridge` the old span). */
+  tags: readonly BayTag[] | undefined;
+  /** A deck with no drive lane, only the ramp trucks' shortcut: a repair platform. */
+  shortcutOnly: boolean;
+  /** Whether this network has an old span at all (the Seven Mile): its other bridge decks are the new span. */
+  sevenMile: boolean;
+  /** The gaps the road draws as broken ends (road-mesh `gapSpans`). */
+  gaps: readonly BayRange[];
+  /** The ramps; a bay never stands under a kicker's lifted road. */
+  ramps: readonly BayRange[];
+  /** The road's centre line at s, in world metres (deck top height). */
+  at(s: number): Point3;
+}
+
+/** Whether any of a network's roads carries the `old-bridge` tag: the Seven Mile. */
+export function isSevenMile(tagLists: readonly (readonly { tag: string }[] | undefined)[]): boolean {
+  return tagLists.some((tags) => (tags ?? []).some((t) => t.tag === 'old-bridge'));
+}
+
+type Span = readonly [number, number];
+
+/** Merges overlapping spans, in order. */
+function union(spans: readonly Span[]): Span[] {
+  const out: [number, number][] = [];
+  for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + 1e-9) last[1] = Math.max(last[1], b);
+    else if (b > a) out.push([a, b]);
+  }
+  return out;
+}
+/** The parts of `a` that are inside `b` (both sorted, merged). */
+function intersect(a: readonly Span[], b: readonly Span[]): Span[] {
+  const out: Span[] = [];
+  for (const [a0, a1] of a) {
+    for (const [b0, b1] of b) {
+      const lo = Math.max(a0, b0);
+      const hi = Math.min(a1, b1);
+      if (hi - lo > 1e-9) out.push([lo, hi]);
+    }
+  }
+  return out;
+}
+/** The parts of `a` that are not inside `b` (both sorted, merged). */
+function subtract(a: readonly Span[], b: readonly Span[]): Span[] {
+  let out: Span[] = [...a];
+  for (const [b0, b1] of b) {
+    const next: Span[] = [];
+    for (const [a0, a1] of out) {
+      if (b1 <= a0 || b0 >= a1) next.push([a0, a1]);
+      else {
+        if (b0 > a0) next.push([a0, b0]);
+        if (b1 < a1) next.push([b1, a1]);
+      }
+    }
+    out = next;
+  }
+  return out;
+}
+
+type Style = 'new' | 'old' | 'staging';
+
+/**
+ * Plans the bays of one road, as spots for the merged scenery blocks.
+ *
+ * What a deck gets follows its tags and lanes: a `bridge` stretch also tagged `old-bridge` is the
+ * old bridge (girders and arches in turn); one of a road with no drive lane is a repair platform
+ * (the ramp trucks' decks); any other bridge of the Seven Mile's network is the new span. Bays stand
+ * end to end from the start of each stretch, as many as fit (the last metres, short of a whole bay,
+ * stay bare). None stands over a gap, the kicker that feeds it (the lifted road is no flat deck) or
+ * a gap end; each gap has two gap ends, one against each broken end of the deck, facing the gap.
+ *
+ * Each bay is turned to its chord (its start to its end along the road) and sheared up the chord's
+ * grade, so its deck is the road's at both ends and the joints abut.
+ */
+export function planBays(e: BayEdge): ScenerySpot[] {
+  if (!e.sevenMile) return [];
+  const tags = e.tags ?? [];
+  const span = (t: BayTag): Span => [
+    Math.max(0, Math.min(t.s0, t.s1)),
+    Math.min(e.length, Math.max(t.s0, t.s1)),
+  ];
+  const bridge = union(tags.filter((t) => t.tag === 'bridge').map(span));
+  if (!bridge.length) return [];
+  const old = intersect(bridge, union(tags.filter((t) => t.tag === 'old-bridge').map(span)));
+  const rest = subtract(bridge, old);
+  const styled: { span: Span; style: Style }[] = [
+    ...old.map((s) => ({ span: s, style: 'old' as const })),
+    ...rest.map((s) => ({ span: s, style: e.shortcutOnly ? ('staging' as const) : ('new' as const) })),
+  ];
+
+  const out: ScenerySpot[] = [];
+  const place = (kind: BayKind, origin: number, far: number) => {
+    const p0 = e.at(origin);
+    const p1 = e.at(far);
+    const run = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+    out.push({
+      kind: 'bay',
+      variant: BAY_KINDS.indexOf(kind),
+      p: p0,
+      turn: Math.atan2(p1.x - p0.x, p1.z - p0.z),
+      size: 1,
+      phase: 0,
+      edge: e.edge,
+      s: origin,
+      d: 0,
+      slope: run > 1e-6 ? (p1.y - p0.y) / run : 0,
+      reachM: BAY_M[kind] + BAY_ASIDE_M,
+    });
+  };
+
+  // A gap's two ends, each against the broken end of the deck the road draws at s0 and s1.
+  const ends: Span[] = [];
+  for (const g of e.gaps) {
+    const before: Span = [g.s0 - GAP_END_ZONE_M, g.s0];
+    const after: Span = [g.s1, g.s1 + GAP_END_ZONE_M];
+    ends.push(before, after);
+    const held = (z: Span) => styled.some(({ span: [a, b] }) => z[0] >= a - 1e-6 && z[1] <= b + 1e-6);
+    if (held(before)) place('gapEnd', before[0], before[1]);
+    if (held(after)) place('gapEnd', after[1], after[0]);
+  }
+
+  const blocked = union([
+    ...e.gaps.map((g): Span => [g.s0, g.s1]),
+    ...e.ramps.map((r): Span => [Math.min(r.s0, r.s1), Math.max(r.s0, r.s1)]),
+    ...ends,
+  ]);
+  for (const { span: whole, style } of styled) {
+    for (const [from, to] of subtract([whole], blocked)) {
+      let a = from;
+      for (let k = 0; ; k++) {
+        const kind = bayKind(e, style, k, a);
+        const b = a + BAY_M[kind];
+        if (b > to + 1e-9) break;
+        place(kind, a, b);
+        a = b;
+      }
+    }
+  }
+  return out;
+}
+
+/** The next bay of a stretch: the old bridge's cycle, the platform, or the new span's by deck height. */
+function bayKind(e: BayEdge, style: Style, k: number, a: number): BayKind {
+  if (style === 'staging') return 'staging';
+  if (style === 'old') return OLD_CYCLE[k % OLD_CYCLE.length] ?? 'oldGirder';
+  // The short pier reaches the water only under a low deck; the channel hump's high one needs the tall.
+  const high = Math.max(e.at(a).y, e.at(a + BAY_M.newSpan).y);
+  return high > SHORT_PIER_MAX_DECK_M ? 'newSpanTall' : 'newSpan';
+}
+
+/**
+ * The model of a gap end without what stands above its deck: the batch drew a barricade, two posts
+ * and a "bridge out" board across the lanes at the lip, where a rider passes (the sim has nothing
+ * there), so only the stub under the deck is kept (the triangles with a corner below the deck's top
+ * face). A new geometry; the source is left alone.
+ */
+export function belowDeck(g: BufferGeometry, topY = -0.05): BufferGeometry {
+  const src = g.index ? g.toNonIndexed() : g;
+  const pos = src.getAttribute('position');
+  const names = ['position', 'normal', 'color'].filter((n) => src.getAttribute(n));
+  const kept = new Map<string, number[]>(names.map((n) => [n, []]));
+  for (let t = 0; t + 2 < pos.count; t += 3) {
+    const low = Math.min(pos.getY(t), pos.getY(t + 1), pos.getY(t + 2));
+    if (low >= topY) continue;
+    for (const n of names) {
+      const a = src.getAttribute(n);
+      const list = kept.get(n);
+      if (!list) continue;
+      for (let k = 0; k < 3; k++) for (let c = 0; c < a.itemSize; c++) list.push(a.getComponent(t + k, c));
+    }
+  }
+  const out = new BufferGeometry();
+  for (const n of names) {
+    out.setAttribute(n, new Float32BufferAttribute(kept.get(n) ?? [], src.getAttribute(n).itemSize));
+  }
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  return out;
+}

@@ -106,7 +106,7 @@ export async function decide(tree, { repo, api }) {
 }
 
 /** The suite jobs, which run on every PR and on a push whose tree was not tested. */
-export const SUITE = ['static-unit', 'sim', 'browser'];
+export const SUITE = ['static', 'unit', 'sim', 'browser'];
 /** The push-only job of the skip path: identity leak scan and the prod-stamped build. */
 export const PROD_BUILD = 'prod-build';
 

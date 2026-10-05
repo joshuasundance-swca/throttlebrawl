@@ -100,15 +100,16 @@
       "claims": ["m1-pelican-bridge"]
     },
     {
-      "id": "rental-return",
-      "event": "keys-t1-rental-return",
+      "id": "last-light",
+      "event": "keys-t1-last-light-duval",
       "length": "standard",
       "tier": "t1",
       "at": {
-        "road": "m1-marina-bends",
-        "s": 420
+        "road": "osm-duval-street",
+        "s": 900
       },
-      "requires": ["shakedown"]
+      "requires": ["shakedown"],
+      "claims": ["osm-duval-whitehead"]
     },
     {
       "id": "kevin-grudge",
@@ -206,9 +207,11 @@
       "length": "standard",
       "tier": "t3",
       "at": {
-        "road": "m1-tarpon-flats",
-        "s": 250
-      }
+        "road": "osm-sm-bridge",
+        "s": 4800
+      },
+      "opens": ["osm-sm-old-east", "osm-sm-old-moser", "osm-sm-old-west"],
+      "claims": ["osm-sm-knights-key", "osm-sm-bridge-east", "osm-sm-bridge-west", "osm-sm-little-duck-key"]
     },
     {
       "id": "junkyard-hunt",
