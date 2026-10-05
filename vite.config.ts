@@ -8,6 +8,7 @@ import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 import { bootPreloadPlugin } from './scripts/boot-preload.mjs';
 import { datasetAssetsPlugin } from './scripts/dataset-assets.mjs';
 import { stripPackNotesPlugin } from './scripts/pack-notes.mjs';
+import { serviceWorkerPlugin } from './scripts/service-worker.mjs';
 
 // Build stamp (docs/engineering.md, "Vite settings"). CI sets BUILD_ID, BUILD_CHANNEL and
 // BUILD_BRANCH; a local build falls back to git and the `dev` channel.
@@ -64,6 +65,7 @@ export default defineConfig({
   // The big files pinned in assets.lock.json are baked in under assets/ds/ (run W-Q).
   // The packs' `meta.notes` stay out of the bundled pack JSON (scripts/pack-notes.mjs, run W-R).
   // index.html preloads the Keys' hand-made road data boot fetches (scripts/boot-preload.mjs, run W-S).
+  // The offline worker, sw.js beside index.html, caches the whole build (scripts/service-worker.mjs).
   plugins: [
     stripPackNotesPlugin(),
     selfTestHash(),
@@ -71,6 +73,7 @@ export default defineConfig({
     minifyJsonAssetsPlugin(),
     datasetAssetsPlugin({ root }),
     bootPreloadPlugin(),
+    serviceWorkerPlugin({ root, buildId }),
   ],
   // Relative asset paths, so one build works at a Space root or under any sub-path.
   base: './',

@@ -220,9 +220,11 @@ export interface AudioSystem {
   setRegion(regionId: string | null): void;
   /**
    * The race's road, for the regional soundscape: its scenery tags say where the bridges, the water,
-   * the marinas, the cable lines and the forest are (null = none, so no regional sounds).
+   * the marinas, the cable lines and the forest are (null = none, so no regional sounds). `wet` (the
+   * default) is whether the race rains (playtest 4: the Pacific Northwest has dry races): the rain on
+   * the helmet is heard only then.
    */
-  setRoad(road: ScapeRoad | null): void;
+  setRoad(road: ScapeRoad | null, wet?: boolean): void;
   /** Radio tracks cut on this device (the settings record's veto refs): never played. */
   setRadioCut(refs: readonly string[]): void;
   /**
@@ -378,6 +380,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let scape: ScapeVoices | null = null;
   const director: Director = createDirector(opts.radioSeed ?? 0x5ca9e);
   let scapeRoad: ScapeRoad | null = null;
+  let scapeWet = true;
   let scapeRegion: ScapeRegion | null = null;
   const scapePlayed: { kind: ScapeEvent['kind']; at: number; level: number }[] = [];
   const slowmoParams = () => ({
@@ -845,6 +848,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       music: musicAt(scapeRoad, me.road.edge, me.road.s),
       // The Gorge's falls (B11, CR4): the roar by distance to the zone.
       falls: region === 'pnw' ? fallsAt(scapeRoad, me.road.edge, me.road.s) : 0,
+      dry: !scapeWet,
     });
     const level = Math.max(0, params.soundscape) * (hitStop ? 0.3 : 1);
     scape.setRain(frame.rain * level);
@@ -1267,8 +1271,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       regionId = id;
       retune();
     },
-    setRoad(road) {
+    setRoad(road, wet = true) {
       scapeRoad = road;
+      scapeWet = wet;
       director.reset();
     },
     setRadioCut(refs) {

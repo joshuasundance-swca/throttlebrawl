@@ -30,6 +30,16 @@ interface Base {
   exaggerate?: number;
   /** Extra haze on top of the distance haze, 0..1 (default 0). */
   haze?: number;
+  /**
+   * The far form of something the near world also builds (playtest 4, P4-19, G1: the Golden Gate seen
+   * from the headlands, where the near kit draws the bridge up close). The piece is never drawn nearer
+   * than the near fog's end (`fadeFrom` in builder.ts: where the near model is wholly in the fog, or
+   * past the camera's far plane) and comes out of the haze over this many metres past it, so the two
+   * never show at once and the far one takes over where the near one has faded. A piece with it may
+   * stand over a road (its keep-out can be 0): the geometry sweep lets a faded vertex through, since it
+   * is never drawn inside the fog. Default: none (drawn at any distance, kept off the roads).
+   */
+  nearFadeM?: number;
 }
 
 export interface RidgePiece extends Base {
@@ -84,6 +94,12 @@ export interface BridgePiece extends Base {
    */
   style: BridgeStyle;
   deckM: number;
+  /**
+   * The deck's height at `to`, m (default `deckM`, a level deck): a deck that climbs or falls end to end
+   * (playtest 4, G1: the Golden Gate, about 71 m at the Marin end and 59 m at the toll plaza). Suspension
+   * and girder bridges only.
+   */
+  deckEndM?: number;
   colour: string;
   /** Tower positions along the span, 0..1, and their height over the water, m. */
   towersAt?: readonly number[];
@@ -392,6 +408,9 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
     }
     if (q['frame'] !== undefined && q['frame'] !== 'geo' && q['frame'] !== 'local')
       out.push(`${at}: bad frame`);
+    const fade = q['nearFadeM'];
+    if (fade !== undefined && !(typeof fade === 'number' && Number.isFinite(fade) && fade > 0))
+      out.push(`${at}: nearFadeM must be > 0`);
     const pts: unknown[] = [];
     for (const k of ['at', 'from', 'to', 'centre']) if (q[k] !== undefined) pts.push(q[k]);
     for (const k of ['path', 'area']) if (Array.isArray(q[k])) pts.push(...(q[k] as unknown[]));
@@ -469,6 +488,11 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
           !(arch[0] >= 0 && arch[0] < arch[1] && arch[1] <= 1))
       )
         out.push(`${at}: archAt must be [from, to] shares of the length, 0 <= from < to <= 1`);
+      const end = q['deckEndM'];
+      if (end !== undefined && !(typeof end === 'number' && Number.isFinite(end) && end > 0))
+        out.push(`${at}: deckEndM must be > 0`);
+      if (end !== undefined && q['style'] !== 'suspension' && q['style'] !== 'girder')
+        out.push(`${at}: deckEndM is for a suspension or girder bridge`);
       if (q['deckOnTop'] !== undefined && typeof q['deckOnTop'] !== 'boolean')
         out.push(`${at}: deckOnTop must be true or false`);
     }

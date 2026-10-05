@@ -6,7 +6,7 @@
 // targets against the drift bot are tests/sim/drift-events.test.ts, and "every route of a region has
 // an event" is career-content.test.ts.
 import { describe, expect, it } from 'vitest';
-import { buildSimConfig, racePalette, streamForRoute } from '../../src/app';
+import { buildSimConfig, racePalette, raceSky, streamForRoute } from '../../src/app';
 import { careerDefs, eventPlan, type CareerDef } from '../../src/career';
 import { REG } from './career-harness';
 
@@ -170,5 +170,30 @@ describe("Bridge City's local life", () => {
       expect(sign, `${item} is a region sign`).toBeDefined();
       expect(sign?.tags, `${item} is a site sign`).toContain('site');
     }
+  });
+});
+
+// Playtest 4 (the identity sheets, cause 10): the region's palette used to rain at every hour, so
+// Chuckanut at noon drizzled like Bridge City at dusk. Rain is now a property of the light and of the
+// event (`raceSky`), and the region has dry races as well as wet ones.
+describe('the Pacific Northwest rains by the light and the event, and has dry races too', () => {
+  const eventIds = Object.keys(REG.events).filter((id) =>
+    String(REG.events[id]?.region).includes('pacific-northwest'),
+  );
+  const sky = (id: string) => raceSky(REG, id, String(REG.events[id]?.timeOfDay));
+  const wet = eventIds.filter((id) => sky(id).wet);
+  const dry = eventIds.filter((id) => !sky(id).wet);
+
+  it('some races rain and some do not, each a good share of the region (a band, not a count)', () => {
+    console.log(
+      `[examined] ${eventIds.length} PNW events: ${wet.length} wet, ${dry.length} dry (dry: ${dry.join(', ')})`,
+    );
+    expect(eventIds.length).toBeGreaterThanOrEqual(10);
+    expect(wet.length / eventIds.length).toBeGreaterThanOrEqual(0.25);
+    expect(dry.length / eventIds.length).toBeGreaterThanOrEqual(0.25);
+  });
+
+  it("Bridge City's neon dusk keeps its rain (playtest 3, T10.5)", () => {
+    expect(wet).toContain(bridgeCityNode?.event);
   });
 });

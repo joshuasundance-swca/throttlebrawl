@@ -123,6 +123,9 @@ describe('the Golden Gate hangs suspender ropes on the real bridge', () => {
 // every slab within keepOutM of a road, and on this route that is every slab; if that ever changes (a
 // shorter keep-out, a route off the bridge), this fails rather than drawing a second bridge. Control:
 // from Lombard, which races nowhere near the bridge, the same piece still draws on the horizon.
+// Playtest 4 (G1) brings a far bridge back to this route as its own network piece, `golden-gate-far`,
+// with a near fade: it is never drawn nearer than the near fog's end, where the near kit is wholly in
+// the fog. So on the route every far Golden Gate vertex must carry that fade (one bridge, never two).
 const backdropRegion = import.meta.glob<BackdropRegionFile>(
   '../../packs/region-sf/assets/backdrop/san-francisco/region.json',
   {
@@ -159,6 +162,33 @@ describe('one Golden Gate on its route (gate G2)', () => {
     expect(onRoute).toBe(0);
     expect(fromLombard).toBeGreaterThan(0);
     expect(landmarkPlacements(track('osm-sf-lombard')).some((p) => p.node === 'gg_bridge')).toBe(false);
+  });
+
+  it("fades every far Golden Gate vertex on its route (G1), and none of the horizon's elsewhere", () => {
+    const fadedOf = (id: string) => {
+      const network = Object.entries(backdropNetworks).find(([k]) => k.endsWith(`/${id}.json`))?.[1];
+      if (!network) throw new Error(`no backdrop for ${id}`);
+      const keep = (p: { id: string }) => p.id.startsWith('golden-gate');
+      const { soup } = buildSoup(
+        { ...backdropRegion, pieces: backdropRegion.pieces.filter(keep) },
+        { ...network, pieces: (network.pieces ?? []).filter(keep) },
+        roadPointsOf(track(id).edges, 1),
+        7,
+      );
+      const ring =
+        buildSoup({ ...backdropRegion, pieces: [] }, { ...network, pieces: [] }, [], 7).soup.pos.length / 3;
+      const verts = soup.fade.slice(ring);
+      return { verts: verts.length, faded: verts.filter((f) => f > 0).length };
+    };
+    const onRoute = fadedOf('osm-sf-golden-gate');
+    const fromLombard = fadedOf('osm-sf-lombard');
+    stdout.write(
+      `[examined] far Golden Gate vertices: ${onRoute.faded} of ${onRoute.verts} faded on its route; ${fromLombard.faded} of ${fromLombard.verts} from Lombard\n`,
+    );
+    expect(onRoute.verts).toBeGreaterThan(100);
+    expect(onRoute.faded).toBe(onRoute.verts);
+    expect(fromLombard.verts).toBeGreaterThan(100);
+    expect(fromLombard.faded).toBe(0);
   });
 });
 

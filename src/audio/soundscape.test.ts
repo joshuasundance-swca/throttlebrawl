@@ -193,6 +193,17 @@ describe('the Pacific Northwest: rain and the engine brake', () => {
     expect(rain({ grounded: false })).toBeLessThan(rain({ speedMps: 0 }));
   });
 
+  it('a dry race has no rain on the helmet, and keeps the rest of the region (playtest 4)', () => {
+    const dry = createDirector(1).step(input({ region: 'pnw', speedMps: 30, dry: true }));
+    expect(dry.rain).toBe(0);
+    // The control: the same frame without the flag rains.
+    expect(createDirector(1).step(input({ region: 'pnw', speedMps: 30 })).rain).toBeGreaterThan(0.3);
+    // A log truck braking close by is still heard in a dry race.
+    const near = [{ id: 7, contentId: 'region-pnw:log-truck', distanceM: 40, tags: new Set<string>() }];
+    const truck = createDirector(1).step(input({ region: 'pnw', dry: true, near }));
+    expect(kinds(truck.events)).toContain('engineBrake');
+  });
+
   it('no rain in the Keys or San Francisco', () => {
     for (const region of ['keys', 'sf'] as const) {
       expect(createDirector(1).step(input({ region, speedMps: 30 })).rain).toBe(0);
@@ -503,6 +514,20 @@ describe('the mixer plays the soundscape', () => {
     expect(h.audio.inspect().soundscape.rain).toBeGreaterThan(0.5);
     h.audio.frame(null, 0);
     expect(h.audio.inspect().soundscape.rain).toBe(0);
+  });
+
+  it('the Pacific Northwest: a dry race has no rain, and the next wet one has it again (playtest 4)', async () => {
+    const h = await started('region-pnw:pacific-northwest');
+    h.audio.setRoad(road, false);
+    drive(h, 20);
+    expect(h.audio.inspect().soundscape.rain).toBe(0);
+    h.audio.setRoad(road, true);
+    drive(h, 20);
+    expect(h.audio.inspect().soundscape.rain).toBeGreaterThan(0.5);
+    // Left at its default, a road is wet, as before.
+    h.audio.setRoad(road);
+    drive(h, 20);
+    expect(h.audio.inspect().soundscape.rain).toBeGreaterThan(0.5);
   });
 
   it('San Francisco: a cable car on a cable line rings its bell, and the same car off one does not', async () => {

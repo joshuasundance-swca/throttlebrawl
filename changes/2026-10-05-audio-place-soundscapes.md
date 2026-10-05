@@ -14,3 +14,5 @@ For devs (playtest 4 run B, B11; the identity sheets D4, P6, G5, CR4; the existi
 - **Budget**: audio only. No draw calls or triangles. First-load JavaScript grows by one inline object in `audio/index.ts`'s stand-in (about 60 bytes; the new code is in the lazy audio engine chunk, held by `lazy-engine.test.ts`); the full build was not run here, so the number is CI's. Not browser-run; not phone-verified.
 
 Keeper fix: the two falls zones first sat over the creek bridges, which stood their hikers over the water and pushed roadside posts onto the deck; CI's land and scenery sweeps on the Gorge caught it. They now stand on the land just past each bridge (Latourell s 1150 to 1220, Shepperd's Dell s 600 to 660, in the baked roads and the bake config), and the roar is still loud on the bridge (0.40 and 0.55 of full at its middle).
+
+Keeper merge with main (#542, dry races): both the falls and the dry flag reach the soundscape, the music zone plays in any region as this change meant, and the rain on Bridge City's awnings is silent in a dry race.

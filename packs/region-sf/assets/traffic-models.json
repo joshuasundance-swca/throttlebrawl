@@ -1,14 +1,18 @@
 {
   "formatVersion": 1,
-  "notes": "Render-only (playtest 3, T12.2): see the base pack's traffic-models.json. San Francisco's own types that draw from a shared base-pack model; its other types keep their figures until its own models arrive.",
+  "notes": "Render-only (playtest 3, T12.2; playtest 4 run B): see the base pack's traffic-models.json. San Francisco's own types that draw from a model: the rideshare from the shared hatchback, and the startup shuttle and the robotaxi from this pack's own models (models/traffic/<name> in this pack's assets). Its other types keep their figures.",
   "types": {
     "region-sf:rideshare-hatchback": {
       "models": ["models/traffic/hatchback"],
       "paint": ["#2f3a4a", "#d9d9d9", "#5c6b73"]
     },
     "region-sf:startup-shuttle": {
-      "models": ["models/traffic/city-bus"],
+      "models": ["models/traffic/startup-shuttle"],
       "paint": ["#f4f4f2", "#2b2d33"]
+    },
+    "region-sf:hesitron-robotaxi": {
+      "models": ["models/traffic/robotaxi"],
+      "paint": ["#f4f4f4", "#d9d9d9"]
     }
   }
 }

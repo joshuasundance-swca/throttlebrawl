@@ -136,6 +136,8 @@ export interface ScapeInput {
   music?: BarMusic | null;
   /** The falls' roar under the rider (`fallsAt`), 0..1. */
   falls?: number;
+  /** A dry race (playtest 4): no rain on the helmet. Absent: the region's own weather. */
+  dry?: boolean;
 }
 
 export interface ScapeFrame {
@@ -359,7 +361,7 @@ export function createDirector(seed = 0x5ca9e): Director {
       let rain = 0;
       if (region === 'pnw') {
         // Rain on the helmet: a steady patter, harder with speed; softer when off the bike.
-        rain = i.grounded ? 0.45 + 0.55 * clamp01(speed / 35) : 0.25;
+        if (!i.dry) rain = i.grounded ? 0.45 + 0.55 * clamp01(speed / 35) : 0.25;
         for (const n of i.near) {
           if (!n.contentId.includes('log-truck') || n.distanceM > LOG_TRUCK_RANGE_M) continue;
           if (i.t - (lastNear.get(n.id) ?? -99) < 30) continue;
@@ -382,7 +384,7 @@ export function createDirector(seed = 0x5ca9e): Director {
         const riverDeck = i.tags.has('pdx-deck');
         if (blocks) {
           beds.city = 1;
-          beds.awnings = 1;
+          beds.awnings = i.dry ? 0 : 1; // no rain on the awnings in a dry race (#542)
         } else if (riverDeck) beds.city = DECK_CITY;
         if (blocks || riverDeck) {
           // A streetcar's gong, once a few seconds a car, louder the nearer.
