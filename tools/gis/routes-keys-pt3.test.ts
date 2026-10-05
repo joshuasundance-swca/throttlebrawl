@@ -10,8 +10,9 @@
 //   with a small margin while a rider well under top speed misses (measured here in the sim, with
 //   its air drag, per bike: T3.1 found the vacuum figures too optimistic).
 // - Duval Street (round 1: "Duval St, downtown Portland, Golden Gate"; "real landmarks"): Whitehead,
-//   South and Duval at their real size, the buoy, the Mile 0 marker and Mallory Square's pier where
-//   the real ones stand.
+//   South and Duval at their real size, the buoy and the Mile 0 marker where the real ones stand, and
+//   Mallory Square's pier where the finish can see it (T10.4: its real spot is about 190 m from the
+//   road, so the race never showed it).
 //
 // The bikes are read from the packs, so a new bike is measured the day it lands. The road lint, the
 // licence, the 4 m lanes and the scenery and land sweeps run on both networks in
@@ -540,15 +541,14 @@ describe('Duval Street: Whitehead, the Southernmost Point and Duval at their rea
     expect(tightest).toBeGreaterThan(14);
   });
 
-  it('stands the buoy, the Mile 0 marker and the Mallory Square pier where the real ones are', () => {
-    // The real points from OpenStreetMap (2026-10-04): node 1283754992 "Southernmost Point Buoy",
-    // node 4898623221 "Mile 0", and the middle of Mallory Square's waterfront (the coastline).
+  it('stands the buoy and the Mile 0 marker where the real ones are', () => {
+    // The real points from OpenStreetMap (2026-10-04): node 1283754992 "Southernmost Point Buoy" and
+    // node 4898623221 "Mile 0". (Mallory Square's pier is placed for sight, in the next case.)
     const REAL: Record<string, { at: [number, number]; within: number }> = {
       'southernmost-buoy': { at: [24.5465112, -81.7974964], within: 8 },
       // On the sidewalk: the OSM point is 2.3 m from the road's centre line, so the marker stands a
       // few metres out, past the verge.
       'mile-0': { at: [24.5552807, -81.8040252], within: 7 },
-      'mallory-pier': { at: [24.55968, -81.80799], within: 12 },
     };
     const found = new Set<string>();
     for (const [i, r] of DV.roads.entries()) {
@@ -570,5 +570,39 @@ describe('Duval Street: Whitehead, the Southernmost Point and Duval at their rea
       }
     }
     expect([...found].sort()).toEqual(Object.keys(REAL).sort());
+  });
+
+  it("stands Mallory Square's pier where the finish can see it, on the Gulf side, its deck square to the road", () => {
+    // T10.4, wave B's punch list (item 2): the real pier is about 190 m from Duval's end, so the race
+    // never showed it. The rule is sight: the pier stands within SIGHT_M of the finish line, on the
+    // side the Mallory Square zone is, clear of the verge (the road lint's `landmark-clear` runs on
+    // every network in region-routes.test.ts), and turned about square to the road.
+    const SIGHT_M = 60;
+    /** The verge ends 7 m from the centre line here; the forecourt starts within 5 m of that. */
+    const FORECOURT_FROM_ROAD_M = 12;
+    const road = roadOf(DV.roads, DV.route.finish.road);
+    const edge = DV_ROAD.edgeIndex(road.id);
+    const pier = featuresOf(road).find((f) => f.id === 'mallory-pier');
+    const zone = featuresOf(road).find((f) => f.id === 'mallory-sunset');
+    expect(pier, 'the pier is a landmark of the finish road').toBeDefined();
+    expect(zone, 'the Mallory Square zone').toBeDefined();
+    if (!pier || !zone) return;
+    const at = DV_ROAD.toWorld(edge, (pier.s0 + pier.s1) / 2, (pier.d0 + pier.d1) / 2, 0);
+    const line = DV_ROAD.toWorld(edge, DV.route.finish.s, 0, 0);
+    const away = Math.hypot(at.x - line.x, at.z - line.z);
+    print(
+      `Mallory pier ${away.toFixed(1)} m from the finish line (s ${((pier.s0 + pier.s1) / 2).toFixed(0)}, d ${((pier.d0 + pier.d1) / 2).toFixed(1)}, yaw ${String(pier.params?.['yawDeg'])})`,
+    );
+    expect(away).toBeLessThan(SIGHT_M);
+    // Nothing stands between the road and the pier: its footprint (the ground the scenery keeps off)
+    // reaches back to within a few metres of the verge, an open forecourt rather than a lone box at the
+    // water's edge a row of facades could hide.
+    const nearEdge = Math.min(Math.abs(pier.d0), Math.abs(pier.d1));
+    expect(nearEdge).toBeLessThanOrEqual(FORECOURT_FROM_ROAD_M);
+    expect(Math.sign(pier.d0 + pier.d1)).toBe(Math.sign(zone.d0 + zone.d1));
+    const yaw = Number(pier.params?.['yawDeg']);
+    // The kit's +Z lies along the road and its seaward edge on -Z: a quarter turn puts that edge away
+    // from the road, a left-hand pier (d < 0) at -90 and a right-hand one at +90.
+    expect(Math.abs(yaw - 90 * Math.sign(pier.d0 + pier.d1))).toBeLessThanOrEqual(10);
   });
 });

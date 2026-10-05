@@ -154,11 +154,13 @@ describe('the distinct Keys (keys-m1)', () => {
       }
     print(`[examined] key signs and billboards placed: ${[...perKey].join(', ')}`);
     for (const k of KEYS) expect(perKey.get(k) ?? 0, k).toBeGreaterThanOrEqual(3);
-    // Every key's item is placed somewhere (no orphan words).
+    // Every key's item is placed somewhere (no orphan words). The Old Town's (`key-oldtown`) stand on
+    // the real Duval Street network, not keys-m1: tests/sim/keys-real-world.test.ts places them.
     const placed = new Set(
       roads.flatMap((r) => (r.features ?? []).map((f) => (f as { item?: string }).item)),
     );
     for (const i of items.values())
-      if (i.tags?.some((t) => t.startsWith('key-'))) expect(placed.has(i.id), i.id).toBe(true);
+      if (i.tags?.some((t) => t.startsWith('key-') && t !== 'key-oldtown'))
+        expect(placed.has(i.id), i.id).toBe(true);
   });
 });

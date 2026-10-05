@@ -50,8 +50,6 @@ function regionRoutes(def: CareerDef): string[] {
  * a listed route that gets an event fails below until it is struck off, and wave C empties it.
  */
 const AWAITING_EVENT = new Set([
-  'base:osm-duval-run',
-  'base:osm-seven-mile-run',
   'region-pnw:osm-bridge-city-run',
   'region-sf:osm-sf-golden-gate-run',
   'region-sf:osm-sf-lombard-run',
