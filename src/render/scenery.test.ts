@@ -457,7 +457,7 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
   });
 
   it('stays inside the feature box end to end', () => {
-    // The model's front bumper falls inside s1 (21.05 m of a 22 m box).
+    // The model's front bumper falls inside s1 (21.05 m of a 21.1 m box: the box is the drawn truck, playtest 4 hitbox audit).
     expect(down(truck.s1 + 0.3, mid)).toBeNull();
     expect(down(truck.s1 - 1.5, mid)).not.toBeNull();
   });

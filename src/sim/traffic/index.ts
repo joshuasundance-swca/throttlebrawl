@@ -65,7 +65,7 @@
 //   outer edge inside the smashables' line, but is not light: it keeps the old contact rules (a
 //   solid rear-end is still a crash).
 // Every number below is a [default] starting value, to be tuned on the phone.
-import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
+import { clamp, cos, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
@@ -252,6 +252,11 @@ export const TRAFFIC = {
   /** The rider's contact box. */
   riderLengthM: 2.0,
   riderWidthM: 0.8,
+  /**
+   * Within this much of touching in corridor terms, a contact is measured on the vehicle's rigid,
+   * drawn box instead (rigidOffset): the two differ by at most about a metre on the tightest bends, m.
+   */
+  rigidNearM: 1.5,
   /** Speed kept after a wobble, and after a crash. */
   wobbleScrub: 0.6,
   crashScrub: 0.3,
@@ -1744,6 +1749,40 @@ function wheelieReasonData(reason: string | undefined): { wheelieReason?: string
 }
 
 /**
+ * Where the vehicle is from the rider as its drawn body sees it (playtest 4, the maintainer,
+ * 2026-10-05: "you need to give trucks a wider berth"): the vehicle is a rigid box, along its own
+ * heading (the road's tangent at its middle, turned by its yaw), as the render draws it, and the
+ * rider's middle is measured in that box's frame, in metres. Corridor coordinates bend with the road
+ * and stretch with the offset across it, so on a bend a 16 m log truck's corridor box reached up to
+ * half a metre past the truck drawn there: riders crashed into air beside and behind it. Returned in
+ * corridor signs (+du: the vehicle is further along u; +dcd: further across), null when either mover
+ * is missing. Plain + - * / and the core trig: the sim's determinism rules.
+ */
+function rigidOffset(
+  config: SimConfig,
+  v: Mover | undefined,
+  rider: Mover,
+  dirC: number,
+): { du: number; dcd: number } | null {
+  if (!v) return null;
+  const road = config.road;
+  const f = road.frameAt(v.pos.edge, v.pos.s);
+  const tx = f.tx * v.pos.dir;
+  const tz = f.tz * v.pos.dir;
+  const c = cos(v.yaw);
+  const sn = sin(v.yaw);
+  // Its heading (as tumble/contacts.ts builds a vehicle's box), turned to point along +u.
+  const ux = (c * tx - sn * tz) * dirC;
+  const uz = (c * tz + sn * tx) * dirC;
+  const a = road.toWorld(v.pos.edge, v.pos.s, v.pos.d, 0);
+  const b = road.toWorld(rider.pos.edge, rider.pos.s, rider.pos.d, 0);
+  const ox = a.x - b.x;
+  const oz = a.z - b.z;
+  // +cd is +u turned a quarter to its right: (x, z) to (-z, x), as +d is to the tangent.
+  return { du: ox * ux + oz * uz, dcd: -ox * uz + oz * ux };
+}
+
+/**
  * Wobbles, crashes and near misses between riders and vehicles (M1 traffic-1, reshaped by
  * playtest 1, 2026-09-30: "hitting cars feels bouncy"). A first contact is classed by how the
  * boxes met:
@@ -1779,8 +1818,18 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
     for (let k = 0; k < st.id.length; k++) {
       const vid = st.id[k] ?? -1;
       const t = typeOf(config, st, k);
-      const du = (st.u[k] ?? 0) - r.u;
-      const dcd = (st.cd[k] ?? 0) - r.cd;
+      let du = (st.u[k] ?? 0) - r.u;
+      let dcd = (st.cd[k] ?? 0) - r.cd;
+      if (
+        Math.abs(du) < (t.lengthM + T.riderLengthM) / 2 + T.rigidNearM &&
+        Math.abs(dcd) < (t.widthM + T.riderWidthM) / 2 + T.rigidNearM
+      ) {
+        const rigid = rigidOffset(config, world.movers[vid], m, st.dir[k] ?? 1);
+        if (rigid) {
+          du = rigid.du;
+          dcd = rigid.dcd;
+        }
+      }
       const overU = (t.lengthM + T.riderLengthM) / 2 - Math.abs(du);
       const overD = (t.widthM + T.riderWidthM) / 2 - Math.abs(dcd);
       const ahead = r.dir * du;

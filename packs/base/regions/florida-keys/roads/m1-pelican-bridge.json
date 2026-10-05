@@ -48,7 +48,7 @@
       "kind": "rampTruck",
       "id": "carrier-bridge-flat",
       "s0": 620,
-      "s1": 642,
+      "s1": 641.1,
       "d0": 3.4,
       "d1": 5.4,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "keys-truck" }
@@ -57,7 +57,7 @@
       "kind": "rampTruck",
       "id": "carrier-bridge-far",
       "s0": 1090,
-      "s1": 1112,
+      "s1": 1111.1,
       "d0": 3.4,
       "d1": 5.4,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "keys-truck" }

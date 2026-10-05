@@ -124,7 +124,7 @@
           "kind": "rampTruck",
           "id": "carrier-larrabee",
           "s0": 2150,
-          "s1": 2172,
+          "s1": 2171.1,
           "d0": 3.4,
           "d1": 5.4,
           "params": {
@@ -177,7 +177,7 @@
           "kind": "rampTruck",
           "id": "carrier-cliffs",
           "s0": 1500,
-          "s1": 1522,
+          "s1": 1521.1,
           "d0": 3.4,
           "d1": 5.4,
           "params": {

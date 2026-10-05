@@ -544,6 +544,12 @@ const CARRIER = { w: 2.4, h: 2.6, l: 7.5 };
 const CARRIER_RUN_M = 5;
 const CARRIER_LIP_M = 1.22;
 const CARRIER_REAR_M = CARRIER.l / 2;
+/**
+ * The lowered ramp's width, m: the sim's deck is the carrier's whole 2.4 m width (sim/modifiers
+ * moving.ts), so the ramp a rider sees runs nearly that wide, over the rear wheels' tops (it was 1.8:
+ * 0.3 m of deck either side of it held riders up on thin air; playtest 4 hitbox audit).
+ */
+const CARRIER_RAMP_W_M = 2.3;
 const CARRIER_YELLOW = '#f2c14e';
 const CARRIER_SLATE = '#4a4f55';
 
@@ -603,7 +609,7 @@ const CAR_CARRIER_RAMP: BoxPart[] = [
     0.02,
     CARRIER_REAR_M - CARRIER_RUN_M,
     CARRIER_LIP_M,
-    1.8,
+    CARRIER_RAMP_W_M,
     0.14,
     CARRIER_SLATE,
   ),
@@ -616,7 +622,7 @@ const CAR_CARRIER_RAMP: BoxPart[] = [
       rise(d - 0.1),
       CARRIER_REAR_M - (d + 0.1),
       rise(d + 0.1),
-      1.7,
+      CARRIER_RAMP_W_M - 0.1,
       0.03,
       CARRIER_YELLOW,
       0.02,

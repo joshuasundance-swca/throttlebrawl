@@ -91,7 +91,7 @@ export const MOVING = {
    * Its ramp's run, m, and the slope it rises at: the parked truck's 13.7° (RAMP_TRUCK_DEFAULTS),
    * which is also the steepest the riders' kerb rule lets the quickest bike ride onto. The carrier is
    * a 7.5 m tow truck, the longest vehicle every region's race may add: the rival AI sizes every
-   * vehicle by the largest in the race, so it cannot be the parked truck's 22 m.
+   * vehicle by the largest in the race, so it cannot be the parked truck's 21.1 m.
    */
   rampRunM: 5,
   rampSlope: RAMP_TRUCK_DEFAULTS.lipHeightM / RAMP_TRUCK_DEFAULTS.rampLengthM,

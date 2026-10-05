@@ -121,8 +121,8 @@ export const KIND_SPEC: Readonly<
   mailbox: { halfAlong: 0.3, halfAcross: 0.3, min: 3, max: 5, pitchM: 1.6, scrub: 0.96, kick: 0.1 },
   'parking-meter': { halfAlong: 0.2, halfAcross: 0.2, min: 3, max: 4, pitchM: 5.5, scrub: 0.96, kick: 0.12 },
   'pop-up-desk': { halfAlong: 1.0, halfAcross: 0.5, min: 1, max: 1, pitchM: 0, scrub: 0.85, kick: 0.2 },
-  'cafe-table': { halfAlong: 0.6, halfAcross: 0.6, min: 2, max: 3, pitchM: 2.4, scrub: 0.9, kick: 0.15 },
-  'firewood-stand': { halfAlong: 0.8, halfAcross: 0.6, min: 1, max: 1, pitchM: 0, scrub: 0.85, kick: 0.2 },
+  'cafe-table': { halfAlong: 0.85, halfAcross: 0.45, min: 2, max: 3, pitchM: 2.4, scrub: 0.9, kick: 0.15 },
+  'firewood-stand': { halfAlong: 0.8, halfAcross: 0.55, min: 1, max: 1, pitchM: 0, scrub: 0.85, kick: 0.2 },
 };
 
 // Run W-U: nothing stands among a road's solid hazards (the ferry's pickups, the festival's bears),
