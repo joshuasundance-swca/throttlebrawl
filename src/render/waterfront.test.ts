@@ -335,6 +335,18 @@ describe('the waterfront after the port (the physical world, 2026-10-06): placed
     r === 'street-block';
 
   type Row = readonly [string, number, number, number, number, number, number, number, number, ...number[]];
+  /** A golden row: its fields joined by commas (a rule's name, then numbers). */
+  const parse = (s: string): Row => {
+    const [rule = '', ...numbers] = s.split(',');
+    return [rule, ...numbers.map(Number)] as unknown as Row;
+  };
+  const goldenOf = (seed: number) =>
+    (
+      golden as unknown as Record<
+        string,
+        { rows: string[]; frontages: string[]; streets: string[]; others: Record<string, number> }
+      >
+    )[`seed${seed}`]!;
   const rowsOf = (seed: number): Row[] =>
     planWaterfront(inputOf(seed), MODELS)
       .items.filter((i) => MOVED(i.rule))
@@ -390,7 +402,7 @@ describe('the waterfront after the port (the physical world, 2026-10-06): placed
   it('draws every pier shed, the hall, block, tower and street block where and as tall as main drew it', () => {
     let rows = 0;
     for (const seed of [7, 8]) {
-      const was = (golden as unknown as Record<string, { rows: Row[] }>)[`seed${seed}`]!.rows;
+      const was = goldenOf(seed).rows.map(parse);
       const now = rowsOf(seed);
       const { worst, why } = compare(now, was);
       rows += now.length;
@@ -403,7 +415,7 @@ describe('the waterfront after the port (the physical world, 2026-10-06): placed
   });
 
   it('control: a block moved a metre, or a tower a metre taller, is found', () => {
-    const was = (golden as unknown as Record<string, { rows: Row[] }>)['seed7']!.rows;
+    const was = goldenOf(7).rows.map(parse);
     const now = rowsOf(7);
     const moved = now.map((r, i): Row =>
       i === 3 ? ([r[0], r[1], r[2], r[3], r[4] + 1, ...r.slice(5)] as unknown as Row) : r,
@@ -419,12 +431,33 @@ describe('the waterfront after the port (the physical world, 2026-10-06): placed
 
   it('the other items (palms, lamps, benches, cars, floats, boats) are as many as main drew', () => {
     for (const seed of [7, 8]) {
-      const was = (golden as unknown as Record<string, { others: Record<string, number> }>)[`seed${seed}`]!
-        .others;
+      const was = goldenOf(seed).others;
       const counts: Record<string, number> = {};
       for (const i of planWaterfront(inputOf(seed), MODELS).items)
         if (!MOVED(i.rule)) counts[i.rule] = (counts[i.rule] ?? 0) + 1;
       expect(counts).toEqual(was);
+    }
+  });
+
+  it("keeps the piers' numbers and the side streets where main had them", () => {
+    for (const seed of [7, 8]) {
+      const p = planWaterfront(inputOf(seed), MODELS);
+      const g = goldenOf(seed);
+      const fronts = p.frontages.map(
+        (f) => `${f.kind},${f.edge},${f.s0.toFixed(3)},${f.s1.toFixed(3)},${f.d.toFixed(3)},${f.pier}`,
+      );
+      const was = g.frontages.map((s) => {
+        const [k = '', ...n] = s.split(',');
+        const [edge = 0, s0 = 0, s1 = 0, d = 0, pier = 0] = n.map(Number);
+        return `${k},${edge},${s0.toFixed(3)},${s1.toFixed(3)},${d.toFixed(3)},${pier}`;
+      });
+      expect(fronts).toEqual(was);
+      expect(p.streets.map((q) => `${q.edge},${q.s.toFixed(3)}`)).toEqual(
+        g.streets.map((s) => {
+          const [edge = 0, at = 0] = s.split(',').map(Number);
+          return `${edge},${at.toFixed(3)}`;
+        }),
+      );
     }
   });
 

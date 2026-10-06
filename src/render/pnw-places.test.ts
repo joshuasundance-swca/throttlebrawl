@@ -225,7 +225,12 @@ describe('the places after the port (the physical world, 2026-10-06): placed by 
     }
     return { worst, why };
   }
-  const was = (golden as unknown as { seed7: { rows: Row[]; total: number } }).seed7;
+  const parse = (s: string): Row => {
+    const [kind = '', ...numbers] = s.split(',');
+    return [kind, ...numbers.map(Number)] as unknown as Row;
+  };
+  const wasFile = golden.seed7;
+  const was = { rows: wasFile.rows.map(parse), total: wasFile.total };
 
   it('draws every ferry part, shop, side street, bunting and banner where main drew it, and as big', () => {
     const now = rowsOf(items);
