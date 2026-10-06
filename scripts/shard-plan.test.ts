@@ -6,6 +6,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   batchUsers,
+  collectedOnly,
   estimateSeconds,
   JOB_SHARE,
   overLine,
@@ -177,6 +178,36 @@ describe('planSlices', () => {
     expect(files_(plan.find((s) => s.files.includes('big')) ?? { predicted: 0 })).toBe(301);
   });
 
+  // Vitest's per-file time leaves out a file's collection, and 8 sim files race at describe time
+  // (app-cast-and-law, riders-race, ...), so the table times them at 0 s. Priced at 0 s they all went
+  // to one slice: 3/6 on main took 590 to 597 s of 600; 3/7 on #601's run took 488 s against a plan
+  // of 340, every other sim slice 200 to 399 s. A sim file timed at 0 s is now planned as the mean.
+  it('plans a sim file timed at 0 s as the mean file, so those files no longer all ride one slice', () => {
+    const zeros = [
+      'tests/sim/z1.test.ts',
+      'tests/sim/z2.test.ts',
+      'tests/sim/z3.test.ts',
+      'tests/sim/z4.test.ts',
+    ];
+    const sim = {
+      'tests/sim/a.test.ts': 100,
+      'tests/sim/b.test.ts': 50,
+      ...Object.fromEntries(zeros.map((z) => [z, 0])),
+    };
+    const opts = { timings: { sim, overhead: { sim: 0 } }, read: () => '' };
+    // Alone, a 0 s file is planned as the mean of the timed ones (75 s), not as 0.
+    expect(planTier('sim', [zeros[0] ?? ''], 1, opts)[0]?.predicted).toBe(75);
+    const plan = planTier('sim', Object.keys(sim), 3, opts);
+    expect(Math.max(...plan.map((s) => s.files.filter((f) => zeros.includes(f)).length))).toBeLessThan(
+      zeros.length,
+    );
+    expect(collectedOnly(sim)).toEqual({ 'tests/sim/a.test.ts': 100, 'tests/sim/b.test.ts': 50 });
+    // A unit file at 0 s is a tiny file, and stays one (perFile prices its setup).
+    const [unit] = planTier('unit', ['src/a.test.ts'], 1, {
+      timings: { unit: { 'src/a.test.ts': 0, 'src/b.test.ts': 50 }, overhead: { unit: 0 } },
+    });
+    expect(unit?.predicted).toBe(Math.round(TIERS.unit.perFile));
+  });
   it('leaves the last slice room for perf (lastExtra)', () => {
     const files = ['a', 'b', 'c', 'd', 'e', 'f'];
     const seconds = Object.fromEntries(files.map((f) => [f, 10]));

@@ -280,6 +280,19 @@ export function planSlices({
 }
 
 /**
+ * The sim table without its files timed at 0 s, so the plan prices them as the mean file. Vitest's
+ * per-file time leaves out a file's collection, and some sim files race at describe time
+ * (app-cast-and-law, riders-race and six more on 2026-10-06), so the table times them at 0 s. Priced
+ * at 0 s they tied every slice and all went to one: sim slice 3/6 took 590 to 597 s of 600 on main
+ * runs of 2026-10-06, and slice 3/7 took 488 s on #601's first run against a plan of 340, every other sim
+ * slice 200 to 399 s. Their work is 30 to 56 s a file by that slice's overrun, about the mean.
+ * @param {Record<string, number>} table
+ */
+export function collectedOnly(table) {
+  return Object.fromEntries(Object.entries(table).filter(([, v]) => !(isSeconds(v) && v < 0.05)));
+}
+
+/**
  * The plan for one tier, from the timing table and (for sim) the batch readers.
  * @param {'unit' | 'sim' | 'e2e'} tier
  * @param {string[]} files
@@ -291,7 +304,7 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
   if (!spec) throw new Error(`planTier: no slice plan for tier ${tier} (${Object.keys(TIERS).join(', ')})`);
   return planSlices({
     files,
-    seconds: timings[tier] ?? {},
+    seconds: tier === 'sim' ? collectedOnly(timings.sim ?? {}) : (timings[tier] ?? {}),
     n,
     workers: spec.workers,
     order: spec.order,

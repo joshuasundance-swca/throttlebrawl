@@ -214,15 +214,15 @@ jobs:
   # slice never hides another's result; on a PR the first red job cancels the run (see static).
   # Full suite only. [default]
   # Seven slices since 2026-10-06: with six, slice 3/6 took 590 to 597 s of its 600 on three runs
-  # (37435436811, 37437164463, 37439710625), its table stale after the test diet, and two files whose
-  # work Vitest's per-file time leaves out (app-cast-and-law, riders-race, priced at 0 s) put about
-  # 80 s more on whichever slice holds them. The slowest files are the floor (docs/engineering.md,
-  # "The floors").
+  # (37435436811, 37437164463, 37439710625). Its table was stale after the test diet, and the eight
+  # sim files that race at describe time, which Vitest's per-file time leaves out, were all planned
+  # at 0 s into that one slice (scripts/shard-plan.mjs collectedOnly now plans them as the mean
+  # file). The slowest files are the floor (docs/engineering.md, "The floors").
   sim:
     name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
     runs-on: ubuntu-latest
-    # The plan puts the batch readers' slice at about 329 s of job and the others at about 340 s
+    # The plan puts the batch readers' slice at about 329 s of job and the others at about 343 s
     # (2026-10-06 table, 16 s of job setup included), 57% of this timeout.
     timeout-minutes: 10
     strategy:
