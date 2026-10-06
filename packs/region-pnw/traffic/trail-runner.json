@@ -6,6 +6,7 @@
   "tags": ["local"],
   "lengthM": 0.5,
   "widthM": 0.5,
+  "heightM": 1.6,
   "cruiseMps": 3.2,
   "hazard": "normal",
   "behaviour": {

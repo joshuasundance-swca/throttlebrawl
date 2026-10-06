@@ -21,8 +21,10 @@ import {
   DIFFICULTY_TUNING,
   SIGNATURE_IDS,
   SIM_TUNING,
+  SMASHABLE_HEIGHT_M,
   difficultyTuningId,
   secondsToTicks,
+  trafficHeightM,
   tuningDefaults,
   type DifficultyPreset,
   type EventPatch,
@@ -503,6 +505,10 @@ function riderDef(
             : 'rival',
     faction: rider.role === 'cop' ? 'law' : 'rider',
     controller,
+    // The contact box where the rider's file or its bike's gives one; the default box otherwise.
+    ...((box) => (box ? { hitbox: { lengthM: box.lengthM, widthM: box.widthM } } : {}))(
+      rider.hitbox ?? bike.hitbox,
+    ),
     bike: {
       contentId: bikeKey,
       topSpeedMps: Math.min(Math.max(h.topSpeedMps * speedScale, floor), level.topCapMps ?? Infinity),
@@ -685,6 +691,7 @@ function regionSmashables(reg: ContentRegistry, event: RaceEvent, eventPack: str
     contentId: `${pack}:region/${bare}#${item.id}`,
     kind: item.kind,
     name: item.text,
+    heightM: item.heightM ?? SMASHABLE_HEIGHT_M[item.kind],
     weight: item.weight ?? 1,
     tags: [...(item.tags ?? [])],
   }));
@@ -952,6 +959,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       widthM: t.widthM,
       cruiseMps: t.cruiseMps,
       hazard: t.hazard,
+      heightM: trafficHeightM(t),
       ...(weights ? { weight: weights.get(contentId) ?? 0 } : {}),
       ...areaWeightsOf(areaWeights, contentId),
       ...trafficBehaviour(t.behaviour),

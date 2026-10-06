@@ -11,6 +11,7 @@
     "steerRateMps": 4.0,
     "massKg": 220
   },
+  "hitbox": { "lengthM": 1.65, "widthM": 1.15 },
   "engineSound": {
     "preset": "mower-putt"
   },
