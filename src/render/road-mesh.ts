@@ -53,6 +53,12 @@ import {
 export const ELEVATED_M = 2.5;
 /** Metres of shoulder beyond the outermost lane, drawn as verge. */
 const VERGE_M = 0.6;
+/**
+ * A rail band or wall stands this far past the outermost lane edge, m: the line the sim stops riders
+ * and tumbling bodies at is the lane edge itself (sim/tumble wallBand, the riders' ride limits), so
+ * the drawn face is where they meet it (playtest 4 hitbox audit: it stood 0.55 m out, on the verge).
+ */
+export const BARRIER_OUT_M = 0.05;
 const STEP_M = 2;
 /**
  * Land under roadside zones (playtest 1b). The zone's side reaches its far edge plus a pedestrian's
@@ -1840,8 +1846,8 @@ export function buildRoadScene(
     }
     // Rails (a band on posts) and walls, from the dressing or the elevation rule.
     for (const [side, d] of [
-      ['left', outerL + 0.05],
-      ['right', outerR - 0.05],
+      ['left', e.dMin - BARRIER_OUT_M],
+      ['right', e.dMax + BARRIER_OUT_M],
     ] as const) {
       for (const b of barriersFor(road, e, dress, side).flatMap((x) => cutByGaps(x, gaps))) {
         const s0 = Math.max(0, b.s0);

@@ -157,9 +157,10 @@ function stumpSocial(): BakedFeature[] {
     }
   }
   const barricade: [number, number] = [6.2, 9.4];
-  for (const [k, s0] of [FESTIVAL.s0 + 4, FESTIVAL.s1 - 6].entries()) {
-    out.push(solid(`barricade-r${k}`, 'barricade', s0, 1.2, barricade, 1.2));
-    out.push(solid(`barricade-l${k}`, 'barricade', s0, 1.2, left(barricade), 1.2));
+  // 0.6 m deep, as deep as the barricade is drawn (the playtest 4 hitbox audit, scripts/hitboxes.test.ts).
+  for (const [k, s0] of [FESTIVAL.s0 + 4.3, FESTIVAL.s1 - 5.7].entries()) {
+    out.push(solid(`barricade-r${k}`, 'barricade', s0, 0.6, barricade, 1.2));
+    out.push(solid(`barricade-l${k}`, 'barricade', s0, 0.6, left(barricade), 1.2));
   }
   for (let s0 = FESTIVAL.s0 + 10; s0 < FESTIVAL.s1 - 10; s0 += 80) {
     const s1 = Math.min(s0 + 80, FESTIVAL.s1 - 10);
@@ -212,7 +213,7 @@ export const MILL_CUT = {
     kind: 'rampTruck',
     id: 'carrier-mill-cut',
     s0: 563.5,
-    s1: 585.5,
+    s1: 584.6,
     d0: 3.4,
     d1: 5.4,
     params: { rampLengthM: 11.5, lipHeightM: 2.8 },
@@ -591,7 +592,7 @@ export const PNW_C1: TrackSource = {
           kind: 'rampTruck',
           id: 'carrier-trestle',
           s0: 160,
-          s1: 182,
+          s1: 181.1,
           d0: 3.4,
           d1: 5.4,
           params: { rampLengthM: 11.5, lipHeightM: 2.8, slot: 'pnw-truck' },
@@ -601,7 +602,7 @@ export const PNW_C1: TrackSource = {
           kind: 'rampTruck',
           id: 'carrier-trestle-mid',
           s0: 300,
-          s1: 322,
+          s1: 321.1,
           d0: 3.4,
           d1: 5.4,
           params: { rampLengthM: 11.5, lipHeightM: 2.8, slot: 'pnw-truck' },
@@ -610,7 +611,7 @@ export const PNW_C1: TrackSource = {
           kind: 'rampTruck',
           id: 'carrier-trestle-far',
           s0: 440,
-          s1: 462,
+          s1: 461.1,
           d0: 3.4,
           d1: 5.4,
           params: { rampLengthM: 11.5, lipHeightM: 2.8, slot: 'pnw-truck' },

@@ -177,7 +177,7 @@ export const TRAFFIC_FIGURE_DIMS: Readonly<
   carCarrier: { widthM: 2.4, lengthM: 7.5 },
   carCarrierRamp: { widthM: 2.4, lengthM: 7.5 },
   dog: { widthM: 0.35, lengthM: 0.9 },
-  elk: { widthM: 0.9, lengthM: 2.4 },
+  elk: { widthM: 0.6, lengthM: 2.4 },
   raccoon: { widthM: 0.3, lengthM: 0.6 },
   seaLion: { widthM: 0.8, lengthM: 2.0 },
   rooster: { widthM: 0.3, lengthM: 0.45 },
@@ -502,6 +502,11 @@ function fit(parts: readonly BoxPart[], w: number, h: number, l: number): BoxPar
   }));
 }
 
+/** Boxes in metres moved `dz` along the figure (+z: toward its tail). */
+function along(dz: number, parts: readonly BoxPart[]): BoxPart[] {
+  return parts.map((p) => ({ ...p, at: [p.at[0], p.at[1], p.at[2] + dz] }));
+}
+
 /**
  * A thin slab whose TOP surface runs from (z0, y0) to (z1, y1), in metres, on a figure of this
  * width, height and length. A box turns in the unit box before the instance scale stretches it, so
@@ -544,6 +549,12 @@ const CARRIER = { w: 2.4, h: 2.6, l: 7.5 };
 const CARRIER_RUN_M = 5;
 const CARRIER_LIP_M = 1.22;
 const CARRIER_REAR_M = CARRIER.l / 2;
+/**
+ * The lowered ramp's width, m: the sim's deck is the carrier's whole 2.4 m width (sim/modifiers
+ * moving.ts), so the ramp a rider sees runs nearly that wide, over the rear wheels' tops (it was 1.8:
+ * 0.3 m of deck either side of it held riders up on thin air; playtest 4 hitbox audit).
+ */
+const CARRIER_RAMP_W_M = 2.3;
 const CARRIER_YELLOW = '#f2c14e';
 const CARRIER_SLATE = '#4a4f55';
 
@@ -603,7 +614,7 @@ const CAR_CARRIER_RAMP: BoxPart[] = [
     0.02,
     CARRIER_REAR_M - CARRIER_RUN_M,
     CARRIER_LIP_M,
-    1.8,
+    CARRIER_RAMP_W_M,
     0.14,
     CARRIER_SLATE,
   ),
@@ -616,7 +627,7 @@ const CAR_CARRIER_RAMP: BoxPart[] = [
       rise(d - 0.1),
       CARRIER_REAR_M - (d + 0.1),
       rise(d + 0.1),
-      1.7,
+      CARRIER_RAMP_W_M - 0.1,
       0.03,
       CARRIER_YELLOW,
       0.02,
@@ -656,8 +667,11 @@ const PEDICAB: BoxPart[] = fit(
 );
 
 /** An island tram (a generic tourist road train): a tractor and two open carts of sightseers. */
+// Built 13 m long, its tractor's nose at -7.1 and its last cart's tail at 5.9: moved back 0.6 m and
+// fitted to 13, so it fills its type's box end to end (the hitbox audit, playtest 4: it was fitted to
+// 14 m, and drawn 0.5 m short of its sim box's tail).
 const ROAD_TRAIN: BoxPart[] = fit(
-  [
+  along(0.6, [
     // The tractor.
     { size: [1.4, 0.8, 1.3], at: [0, 0.95, -6.45], color: '#2f7d4f' },
     { size: [1.6, 1.0, 1.3], at: [0, 1.5, -5.25], color: '#2f7d4f' },
@@ -686,10 +700,10 @@ const ROAD_TRAIN: BoxPart[] = fit(
     // The hitches between them.
     { size: [0.2, 0.15, 0.7], at: [0, 0.5, -3.9], color: METAL },
     { size: [0.2, 0.15, 0.7], at: [0, 0.5, 1.0], color: METAL },
-  ],
+  ]),
   2.2,
   2.6,
-  14,
+  13,
 );
 
 /** A streetcar: a 20 m low-floor car in two sections, a pantograph on the roof (Portland). */
@@ -772,8 +786,8 @@ const ELK: BoxPart[] = fit(
     { size: [0.16, 0.14, 0.18], at: [0, 1.88, -1.35], color: '#2b2b2b' },
     { size: [0.05, 0.4, 0.05], at: [-0.15, 2.2, -0.95], color: '#d8c9a3' },
     { size: [0.05, 0.4, 0.05], at: [0.15, 2.2, -0.95], color: '#d8c9a3' },
-    { size: [0.3, 0.05, 0.05], at: [-0.3, 2.3, -0.95], color: '#d8c9a3' },
-    { size: [0.3, 0.05, 0.05], at: [0.3, 2.3, -0.95], color: '#d8c9a3' },
+    { size: [0.2, 0.05, 0.05], at: [-0.2, 2.3, -0.95], color: '#d8c9a3' },
+    { size: [0.2, 0.05, 0.05], at: [0.2, 2.3, -0.95], color: '#d8c9a3' },
     { size: [0.12, 1.0, 0.14], at: [-0.2, 0.5, -0.25], color: '#4a3a28' },
     { size: [0.12, 1.0, 0.14], at: [0.2, 0.5, -0.25], color: '#4a3a28' },
     { size: [0.12, 1.0, 0.14], at: [-0.2, 0.5, 0.7], color: '#4a3a28' },
@@ -781,7 +795,9 @@ const ELK: BoxPart[] = fit(
     { size: [0.4, 0.3, 0.05], at: [0, 1.2, 0.87], color: '#e8d9b8' },
     { size: [0.08, 0.14, 0.06], at: [0, 1.4, 0.9], color: '#e8d9b8' },
   ],
-  0.9,
+  // 0.6 m wide, its body's width (playtest 4 hitbox audit: it was fitted to 0.9 m, the spread of
+  // its antlers, so the sim's box stood 0.18 m out from its flanks; the antlers spread 0.6 now).
+  0.6,
   2.4,
   2.4,
 );

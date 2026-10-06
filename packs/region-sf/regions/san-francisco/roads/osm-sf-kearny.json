@@ -58,7 +58,7 @@
       "kind": "rampTruck",
       "id": "carrier-kearny",
       "s0": 140.0,
-      "s1": 162.0,
+      "s1": 161.1,
       "d0": 3.4,
       "d1": 5.4,
       "params": {
@@ -71,7 +71,7 @@
       "kind": "rampTruck",
       "id": "carrier-kearny-far",
       "s0": 260.0,
-      "s1": 282.0,
+      "s1": 281.1,
       "d0": 3.4,
       "d1": 5.4,
       "params": {

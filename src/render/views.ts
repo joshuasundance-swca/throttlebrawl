@@ -436,6 +436,18 @@ export function fitUnitFootprint(g: BufferGeometry): void {
   g.computeBoundingBox();
 }
 
+/** The ped figures scaled to their type's width and length (the animals), not drawn at their own size. */
+const SCALED_PED_FIGURES: ReadonlySet<string> = new Set([
+  'iguana',
+  'pelican',
+  'gator',
+  'lawnGator',
+  'critter',
+]);
+export function isScaledPedFigure(name: string): boolean {
+  return isAnimalFigure(name) || SCALED_PED_FIGURES.has(name);
+}
+
 export class EntityViews {
   readonly root = new Group();
   /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
@@ -942,7 +954,9 @@ export class EntityViews {
     // reach past the unit footprint: a kayak rack or a tow hitch drawn past it was paint the sim
     // calls empty road, ridden into (the helmet clipping, 2026-10-05). A figure is pulled in only
     // on an axis it overhangs, about its origin, so one that fits is drawn exactly as before.
-    if (boxes && kind === 'vehicle') fitUnitFootprint(boxes);
+    // An animal figure is scaled to its type's box the same way (playtest 4 hitbox audit: a pelican's
+    // beak, a gator's tail and an elk's head reached past theirs); a person is drawn at its own size.
+    if (boxes && (kind === 'vehicle' || isScaledPedFigure(name))) fitUnitFootprint(boxes);
     const mesh = new InstancedMesh(boxes ?? (parts as BufferGeometry), this.material(kind), capacity);
     mesh.name = `views-${name}`;
     mesh.count = 0;

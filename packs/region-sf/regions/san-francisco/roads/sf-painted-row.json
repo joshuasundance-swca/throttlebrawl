@@ -75,7 +75,7 @@
       "kind": "rampTruck",
       "id": "carrier-painted-row",
       "s0": 250,
-      "s1": 272,
+      "s1": 271.1,
       "d0": 3.4,
       "d1": 5.4,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "sf-truck" }
@@ -84,7 +84,7 @@
       "kind": "rampTruck",
       "id": "carrier-painted-row-late",
       "s0": 398,
-      "s1": 420,
+      "s1": 419.1,
       "d0": 3.4,
       "d1": 5.4,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "sf-truck" }

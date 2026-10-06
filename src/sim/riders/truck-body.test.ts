@@ -11,6 +11,7 @@ import { createSim, quantizeInput } from '../api';
 import type { SimConfig, SimEvent } from '../types';
 import {
   deckHeight,
+  HAZARD_REACH_D_M,
   RAMP_TRUCK_LENGTH_M,
   RAMP_TRUCK_LIP_M,
   TRUCK_PLATFORM_M,
@@ -110,11 +111,24 @@ describe("the ramp truck's body (skeptic F2)", () => {
     expect(r.events.filter((e) => e.ev.type === 'crash')).toEqual([]);
   });
 
+  it('riding alongside, the bike meets the truck with its side, not its middle (playtest 4 hitbox audit)', () => {
+    // The bike's side 0.1 m into the drawn truck: held off by its reach, a scrape against the body.
+    const h = riderHarness(withTruck(), { s: TRUCK.s0 + 15, d: TRUCK.d0 - 0.3, speed: 10 });
+    const events = h.step(input(0.3));
+    expect(events.some((e) => e.data?.['object'] === 'rampTruck')).toBe(true);
+    expect(h.rider.pos.d).toBeLessThanOrEqual(TRUCK.d0 - HAZARD_REACH_D_M);
+    // The control: a bike whose side is clear of the truck rides by untouched.
+    const clear = riderHarness(withTruck(), { s: TRUCK.s0 + 15, d: TRUCK.d0 - 0.6, speed: 10 });
+    expect(clear.step(input(0.3)).filter((e) => e.data?.['object'] === 'rampTruck')).toEqual([]);
+    expect(clear.rider.pos.d).toBeCloseTo(TRUCK.d0 - 0.6, 6);
+  });
+
   it('a rider put down inside the truck (a remount) steps out beside it on the road side', () => {
     const h = riderHarness(withTruck(), { s: TRUCK.s0 + 15, d: 3.4, speed: 0 });
     const events = h.step(input(0));
-    expect(h.rider.pos.d).toBeLessThan(TRUCK.d0);
-    expect(h.rider.pos.d).toBeGreaterThan(TRUCK.d0 - 0.5);
+    // Beside it by the rider's reach (its bike's side clear of the truck's), and no further than a bike.
+    expect(h.rider.pos.d).toBeLessThan(TRUCK.d0 - HAZARD_REACH_D_M);
+    expect(h.rider.pos.d).toBeGreaterThan(TRUCK.d0 - 2 * HAZARD_REACH_D_M);
     expect(h.rider.h).toBe(0);
     expect(events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toEqual([]);
   });

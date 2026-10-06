@@ -65,7 +65,7 @@
       "kind": "rampTruck",
       "id": "carrier-wf-reach",
       "s0": 200,
-      "s1": 222,
+      "s1": 221.1,
       "d0": 7.2,
       "d1": 9.2,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "wf-truck" }
@@ -74,7 +74,7 @@
       "kind": "rampTruck",
       "id": "carrier-wf-reach-late",
       "s0": 380,
-      "s1": 402,
+      "s1": 401.1,
       "d0": 7.2,
       "d1": 9.2,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "wf-truck" }

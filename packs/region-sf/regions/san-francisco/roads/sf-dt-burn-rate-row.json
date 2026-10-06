@@ -62,7 +62,7 @@
       "kind": "rampTruck",
       "id": "carrier-dt-burn-rate",
       "s0": 180,
-      "s1": 202,
+      "s1": 201.1,
       "d0": 7.2,
       "d1": 9.2,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "dt-truck" }
@@ -71,7 +71,7 @@
       "kind": "rampTruck",
       "id": "carrier-dt-burn-rate-late",
       "s0": 440,
-      "s1": 462,
+      "s1": 461.1,
       "d0": 7.2,
       "d1": 9.2,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "dt-truck" }

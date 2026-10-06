@@ -397,7 +397,8 @@ function stump(size: number, h: number): BufferGeometry {
     [],
     [
       { r: size / 2, rTop: size * 0.44, h, at: [0, h / 2, 0], color: C.bark, cap: C.cut, sides: 7 },
-      { r: size * 0.16, h: 0.18, at: [size * 0.45, 0.09, 0], color: C.bark, sides: 5, lie: true },
+      // a root nub on the ground, inside the stump's round (its box's sides: the hitbox audit)
+      { r: size * 0.16, h: 0.18, at: [size * 0.33, 0.09, 0], color: C.bark, sides: 5, lie: true },
     ],
   );
 }
@@ -405,8 +406,11 @@ function stump(size: number, h: number): BufferGeometry {
 /** A log deck's pile: logs lying along the road, three layers, filling the hazard's box. */
 function logPile(w: number, len: number, h: number): BufferGeometry {
   const prisms: PrismPart[] = [];
-  const r = h / 6;
-  const rows = [Math.max(2, Math.floor(w / (2 * r))), 0, 0];
+  // The bottom row spans the box's whole width (the sim's solid box: the hitbox audit, playtest 4),
+  // its logs as near a sixth of the height across as fits a whole number of them.
+  const n = Math.max(2, Math.round(w / (h / 3)));
+  const r = w / (2 * n);
+  const rows = [n, 0, 0];
   rows[1] = Math.max(1, (rows[0] ?? 2) - 1);
   rows[2] = Math.max(1, (rows[1] ?? 1) - 1);
   rows.forEach((n, layer) => {
@@ -475,6 +479,42 @@ function barricade(w: number): BufferGeometry {
     parts.push(B([0.08, 1.2, 0.08], [sd * (w / 2 - 0.2), 0.6, -0.25], '#9a9a9a'));
   }
   return model(parts);
+}
+
+/**
+ * The model a solid hazard draws as, sized to its box (`w` across, `len` along, `h` high; `side` the
+ * road side, `v` the feature's hash), and its turn about the up axis; null for an object with none.
+ * `once` shares a geometry between hazards of one size. The hitbox audit (scripts/hitboxes.test.ts)
+ * measures these against the sim's boxes.
+ */
+export function solidHazardModel(
+  kind: string,
+  box: { w: number; len: number; h: number; side: 1 | -1; v: number },
+  once: (key: string, make: () => BufferGeometry) => BufferGeometry = (_k, make) => make(),
+): { geometry: BufferGeometry; turn: number } | null {
+  const { w, len, h, side, v } = box;
+  if (kind === 'pickup') {
+    const paint = C.pickups[v % C.pickups.length] ?? '#3f5a48';
+    return { geometry: once(`pickup:${w}:${len}:${paint}`, () => pickup(w, len, paint)), turn: 0 };
+  }
+  if (kind === 'coffee-cart')
+    return { geometry: once(`cart:${w}:${len}`, () => coffeeCart(w, len)), turn: 0 };
+  if (kind === 'stair-tower')
+    return { geometry: once(`tower:${w}:${len}:${h}:${side}`, () => stairTower(w, len, h, side)), turn: 0 };
+  if (kind === 'stump') {
+    const size = Math.round(Math.min(w, len) * 10) / 10;
+    return { geometry: once(`stump:${size}:${h}`, () => stump(size, h)), turn: (v % 628) / 100 };
+  }
+  if (kind === 'log-pile')
+    return { geometry: once(`pile:${w}:${len}:${h}`, () => logPile(w, len, h)), turn: 0 };
+  if (kind === 'bear') {
+    const pose = v % 3;
+    // face the road: its front (+Z) turned toward the centre line
+    const turn = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+    return { geometry: once(`bear:${pose}`, () => bear(pose, Math.min(w, len))), turn };
+  }
+  if (kind === 'barricade') return { geometry: once(`barricade:${w}`, () => barricade(w)), turn: 0 };
+  return null;
 }
 
 /** A false-front shop on the main street, its front on the sidewalk's back edge, facing the road. */
@@ -673,26 +713,9 @@ export function placeItems(road: RoadNetwork, seed: number, landReach: LandReach
       const side: 1 | -1 = d >= 0 ? 1 : -1;
       const v = hashOf(f.id);
       const kind = objectOf(f);
-      let geometry: BufferGeometry | null = null;
-      let turn = 0;
-      if (kind === 'pickup') {
-        const paint = C.pickups[v % C.pickups.length] ?? '#3f5a48';
-        geometry = once(`pickup:${w}:${len}:${paint}`, () => pickup(w, len, paint));
-      } else if (kind === 'coffee-cart') geometry = once(`cart:${w}:${len}`, () => coffeeCart(w, len));
-      else if (kind === 'stair-tower')
-        geometry = once(`tower:${w}:${len}:${h}:${side}`, () => stairTower(w, len, h, side));
-      else if (kind === 'stump') {
-        const size = Math.round(Math.min(w, len) * 10) / 10;
-        geometry = once(`stump:${size}:${h}`, () => stump(size, h));
-        turn = (v % 628) / 100;
-      } else if (kind === 'log-pile') geometry = once(`pile:${w}:${len}:${h}`, () => logPile(w, len, h));
-      else if (kind === 'bear') {
-        const pose = v % 3;
-        geometry = once(`bear:${pose}`, () => bear(pose, Math.min(w, len)));
-        // face the road: its front (+Z) turned toward the centre line
-        turn = side > 0 ? Math.PI / 2 : -Math.PI / 2;
-      } else if (kind === 'barricade') geometry = once(`barricade:${w}`, () => barricade(w));
-      if (!geometry) continue;
+      const drawn = solidHazardModel(kind, { w, len, h, side, v }, once);
+      if (!drawn) continue;
+      const { geometry, turn } = drawn;
       items.push({ kind, edge: e.index, s, d, h: BAND_TOP_M, turn, geometry, threat: true });
     }
 

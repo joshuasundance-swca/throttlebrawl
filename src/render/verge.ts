@@ -67,8 +67,12 @@ const HEDGE_TAG = 'gardens';
 export const RAILING_SEG_M = 2;
 /** A railing panel's own height, m: the barrier's `heightM` scales it. The Golden Gate's is 1.3. */
 const RAILING_H_M = 1.3;
-/** The railing stands this far past the road's outermost lane edge, as the road's own rail band does, m. */
-export const RAILING_OUT_M = 0.55;
+/**
+ * The railing's middle stands this far past the road's outermost lane edge, m: its kerb's inner face
+ * (0.17 m in from the middle) is then just past the edge, where the sim stops a rider and a tumbling
+ * body (playtest 4 hitbox audit: it stood 0.55 m out, so a rider "hugging" it never reached it).
+ */
+export const RAILING_OUT_M = 0.2;
 /** Railings are drawn out to this far from the camera, m. [default] */
 export const RAILING_DRAW_M = 120;
 /** The railing's paint when the region's palette has no `bridgePaint`: International Orange. [default] */

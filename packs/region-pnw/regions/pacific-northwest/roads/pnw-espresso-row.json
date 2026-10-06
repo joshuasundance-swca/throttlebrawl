@@ -211,8 +211,8 @@
     {
       "kind": "hazard",
       "id": "barricade-r0",
-      "s0": 124,
-      "s1": 125.2,
+      "s0": 124.3,
+      "s1": 124.9,
       "d0": 6.2,
       "d1": 9.4,
       "params": { "solid": true, "object": "barricade", "heightM": 1.2 }
@@ -220,8 +220,8 @@
     {
       "kind": "hazard",
       "id": "barricade-l0",
-      "s0": 124,
-      "s1": 125.2,
+      "s0": 124.3,
+      "s1": 124.9,
       "d0": -9.4,
       "d1": -6.2,
       "params": { "solid": true, "object": "barricade", "heightM": 1.2 }
@@ -229,8 +229,8 @@
     {
       "kind": "hazard",
       "id": "barricade-r1",
-      "s0": 614,
-      "s1": 615.2,
+      "s0": 614.3,
+      "s1": 614.9,
       "d0": 6.2,
       "d1": 9.4,
       "params": { "solid": true, "object": "barricade", "heightM": 1.2 }
@@ -238,8 +238,8 @@
     {
       "kind": "hazard",
       "id": "barricade-l1",
-      "s0": 614,
-      "s1": 615.2,
+      "s0": 614.3,
+      "s1": 614.9,
       "d0": -9.4,
       "d1": -6.2,
       "params": { "solid": true, "object": "barricade", "heightM": 1.2 }

@@ -4,7 +4,7 @@
   "name": "Doodle",
   "category": "animal",
   "tags": ["region-sf"],
-  "lengthM": 0.9,
+  "lengthM": 1.1,
   "widthM": 0.4,
   "cruiseMps": 6.0,
   "hazard": "normal",

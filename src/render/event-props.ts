@@ -67,10 +67,7 @@ function flareStick(): Parts {
 
 /** The flare's glow, unlit, so it reads at speed in every look. */
 function flareGlow(): Parts {
-  return [
-    box([0.22, 0.32, 0.22], [0, 0.18, 0.17], '#ff3b1f'),
-    box([0.1, 0.5, 0.1], [0, 0.3, 0.17], '#ffd27a'),
-  ];
+  return [box([0.22, 0.32, 0.22], [0, 0.18, 0], '#ff3b1f'), box([0.1, 0.5, 0.1], [0, 0.3, 0], '#ffd27a')];
 }
 
 function barricade(): Parts {
@@ -359,7 +356,7 @@ function shapeKey(p: PropSnapshot): string {
   }
 }
 
-function partsFor(key: string): Parts {
+export function partsFor(key: string): Parts {
   const [kind, variant = ''] = key.split(':');
   switch (kind) {
     case 'cone':
@@ -402,7 +399,7 @@ function partsFor(key: string): Parts {
  * a few pixels). Stylized, not literal: the small props are drawn larger than life. The sim's contact
  * boxes are sized to match (sim/modifiers, `extent`).
  */
-const READ_SCALE: Readonly<Record<string, number>> = {
+export const READ_SCALE: Readonly<Record<string, number>> = {
   cone: 1.7,
   flare: 1.8,
   flareGlow: 2.2,

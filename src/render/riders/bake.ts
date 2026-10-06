@@ -6,7 +6,7 @@
 //
 // The GLBs face +Z (glTF); the game's models face -Z, so the part is turned half round about Y here,
 // once: after baking, a part's rest frame is the game's (x right, y up, forward -z).
-import { Color, Group, Vector3, type Material, type Mesh, type Object3D } from 'three';
+import { Box3, Color, Group, Vector3, type Material, type Mesh, type Object3D } from 'three';
 
 /** A rider's bones, flat under its root (tools/blender/riders/_rider_lib.py BONES). */
 export const RIDER_BONES = [
@@ -57,6 +57,55 @@ export const BIKE_ANCHORS = [
 ] as const;
 
 export type PartKind = 'rider' | 'bike';
+
+/**
+ * The sim's contact box for a rider on a bike, metres (sim/traffic TRAFFIC.riderLengthM and
+ * riderWidthM, the same in peds, smash, set pieces and the tumble's crash boxes; scripts/hitboxes.test.ts
+ * holds the two equal). Playtest 4 (the maintainer, 2026-10-05: "I'd like all hitboxes on everything
+ * to make sense"): every bike draws inside it, give or take `BIKE_FIT_SLACK_M` a side.
+ */
+export const RIDER_BOX_M = { lengthM: 2.0, widthM: 0.8 } as const;
+/** How far a bike may draw past, or short of, the rider's box on each end and side before it is scaled, m. */
+export const BIKE_FIT_SLACK_M = 0.12;
+
+/**
+ * The scale a bike of this footprint draws at so its ends and sides sit within `BIKE_FIT_SLACK_M` of
+ * the rider's box: 1 for most, under 1 for the long tourers and the chopper, over 1 for the stubby
+ * mobility scooter. One scale for all three axes, so the wheels stay round when they spin. A bike
+ * whose shape cannot fit both ways (the wide, short trike and mower) takes the scale that misses
+ * its length and its width by the same amount.
+ */
+export function bikeFitScale(lengthM: number, widthM: number): number {
+  if (!(lengthM > 0) || !(widthM > 0)) return 1;
+  const L = RIDER_BOX_M.lengthM;
+  const W = RIDER_BOX_M.widthM;
+  const [lo, hi] = fitRange(lengthM, widthM);
+  // Never up: the rider is not scaled, so a bigger bike's pegs leave his feet (the mobility scooter).
+  if (lo > 1) return 1;
+  if (lo <= hi) return Math.min(hi, 1);
+  // Too short for its width (or too long for it): the scale where the two misses are equal.
+  return Math.min(1, (L + W) / (lengthM + widthM));
+}
+
+/** The scales that bring a bike's length and width each within the slack of the rider's box. */
+function fitRange(lengthM: number, widthM: number): [number, number] {
+  const L = RIDER_BOX_M.lengthM;
+  const W = RIDER_BOX_M.widthM;
+  const k = 2 * BIKE_FIT_SLACK_M;
+  return [Math.max((L - k) / lengthM, (W - k) / widthM), Math.min((L + k) / lengthM, (W + k) / widthM)];
+}
+
+/**
+ * Whether a bike is fitted to the rider's box, and so centred on it along its length. The ones that
+ * are not (too short to fit without growing, or too wide and short for any one scale) keep their
+ * modelled place under the rider: moving the lawnmower 0.08 m along its length leaves the riders'
+ * feet short of its pegs (tools/blender/riders/riders.test.ts). scripts/hitboxes.test.ts names them.
+ */
+export function bikeFits(lengthM: number, widthM: number): boolean {
+  if (!(lengthM > 0) || !(widthM > 0)) return true;
+  const [lo, hi] = fitRange(lengthM, widthM);
+  return lo <= hi && lo <= 1;
+}
 
 export interface BakedBone {
   name: string;
@@ -116,6 +165,20 @@ export function bakePart(scene: Object3D, kind: PartKind): BakedPart {
   turn.rotation.y = Math.PI;
   turn.add(scene);
   turn.updateMatrixWorld(true);
+  let fit = 1;
+  if (kind === 'bike') {
+    // A bike is drawn at the rider's contact box's size (bikeFitScale), anchors and all,
+    const box = new Box3().setFromObject(scene);
+    fit = bikeFitScale(box.max.z - box.min.z, box.max.x - box.min.x);
+    turn.scale.setScalar(fit);
+    turn.updateMatrixWorld(true);
+    // And centred on it along its length: the rider's box is centred on the rider's position.
+    if (bikeFits(box.max.z - box.min.z, box.max.x - box.min.x)) {
+      const fitted = new Box3().setFromObject(scene);
+      turn.position.z = -(fitted.min.z + fitted.max.z) / 2;
+      turn.updateMatrixWorld(true);
+    }
+  }
   for (const name of REQUIRED[kind]) {
     if (!scene.getObjectByName(name)) throw new Error(`${kind} model has no ${name} node`);
   }
@@ -209,9 +272,17 @@ export function bakePart(scene: Object3D, kind: PartKind): BakedPart {
     points,
     pointBone,
     roles,
-    extras: { ...root.userData },
+    extras: fitExtras(root.userData, fit),
     triangles: total / 3,
   };
+}
+
+/** The root's extras, with a bike's measured `wheelbase_m` scaled with the bike. */
+function fitExtras(data: Record<string, unknown>, fit: number): Record<string, unknown> {
+  const out = { ...data };
+  const wb = Number(out['wheelbase_m']);
+  if (fit !== 1 && Number.isFinite(wb)) out['wheelbase_m'] = wb * fit;
+  return out;
 }
 
 /** Each triangle's normal from its winding (the faceted look; the GLBs carry no normals). */

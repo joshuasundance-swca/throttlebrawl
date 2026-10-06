@@ -72,7 +72,7 @@
       "kind": "rampTruck",
       "id": "carrier-dt-plaza-cut",
       "s0": 628.5,
-      "s1": 650.5,
+      "s1": 649.6,
       "d0": 7.2,
       "d1": 9.2,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8 }
