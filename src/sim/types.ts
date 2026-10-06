@@ -1,7 +1,7 @@
 // The sim contract's types (docs/architecture.md, "Sim contract"). Re-exported by src/sim/api.ts,
 // which is the only file outside src/sim may import. Field lists are the architecture doc's
 // minimum plus what the M1 lanes need; the contract owner may add fields in a contract PR.
-import type { EntityId, GroundSurface, GrudgeRuleId, SmashableKind, TuningValues } from '../core';
+import type { EntityId, GroundSurface, GrudgeRuleId, Hitbox, SmashableKind, TuningValues } from '../core';
 import type { RoadNetwork, RouteProgress } from '../road';
 
 export const SIM_HZ = 60;
@@ -885,6 +885,13 @@ export interface SimRiderDef {
   faction: Faction;
   controller: SimController;
   bike: SimBikeDef;
+  /**
+   * The rider's contact box on its bike, m, where the rider's file or its bike's gives one (the
+   * lawnmower, the mobility scooter, the parking trike): the rider's `hitbox`, else the bike's.
+   * Absent is the default 2.0 x 0.8 box (core `DEFAULT_HITBOX`, sim/traffic's `riderLengthM` and
+   * `riderWidthM`). Nothing in the sim reads it yet (docs/content-packs.md, "Heights and hitboxes").
+   */
+  hitbox?: Hitbox;
   massKg: number;
   healthMax: number;
   /**
@@ -955,6 +962,14 @@ export interface SimTrafficTypeDef {
   widthM: number;
   cruiseMps: number;
   hazard: 'normal' | 'big';
+  /**
+   * How tall it is drawn, m: the type file's `heightM`, else its category's default
+   * (`TRAFFIC_HEIGHT_DEFAULT_M`; docs/content-packs.md, "Heights and hitboxes"). Nothing in the sim
+   * reads it yet: the contact rules measure every vehicle at one height until the sim lane adopts
+   * this. Absent in hand-built configs, which means the category default (core `trafficHeightM`);
+   * buildSimConfig always writes it.
+   */
+  heightM?: number;
   /**
    * How often traffic (or peds) picks this type, relative to the others in its pool: the weight
    * the event's region file gives the type in `traffic.mix`, `pedestrians` or `animals`; 0 when
@@ -1235,6 +1250,11 @@ export interface SimSmashableDef {
   kind: SmashableKind;
   /** The takedown name ('CATCH OF THE DAY'). */
   name: string;
+  /**
+   * How tall it is, m: the item's `heightM`, else its kind's (`SMASHABLE_HEIGHT_M`). Nothing in the
+   * sim reads it yet. Absent in hand-built configs; buildSimConfig always writes it.
+   */
+  heightM?: number;
   /** How often it is picked against the region's others (1 when the file leaves it out). */
   weight: number;
   /** The road tags it stands on (any one); empty: any open road of the region. */
