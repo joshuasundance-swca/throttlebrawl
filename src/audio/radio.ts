@@ -16,7 +16,7 @@
 // 2026-10-02): this file holds only the stations, the playlists and the player's clock, and the
 // player is handed the band, or a promise of it, and stays silent until it arrives.
 import type { Composition } from './radio-compose';
-import { isExtra, isMore, isRegional } from './radio-genres';
+import { isExtra, isMore, isRegional, isTrio } from './radio-genres';
 import type { RadioGenre, RadioRig } from './radio-synth';
 import { seededRandom, trackSeed } from './radio-util';
 
@@ -60,7 +60,9 @@ export interface RadioBand {
 
 /** The band a station plays on: its `genre`, surf when the genre has no band of its own yet. */
 export const genreOf = (s: RadioStation): RadioGenre =>
-  s.genre === 'rockabilly' || isRegional(s.genre) || isMore(s.genre) || isExtra(s.genre) ? s.genre : 'surf';
+  s.genre === 'rockabilly' || isRegional(s.genre) || isMore(s.genre) || isExtra(s.genre) || isTrio(s.genre)
+    ? s.genre
+    : 'surf';
 
 export interface NowPlaying {
   stationId: string;
@@ -102,7 +104,8 @@ export interface RadioPlayerOptions {
 }
 
 const LOOKAHEAD_S = 0.25;
-const RADIO_LEVEL = 0.62;
+/** The level the tuned station's band fades up to (times its rig's trim), [default]. */
+export const RADIO_LEVEL = 0.62;
 
 export function createRadioPlayer(
   ctx: BaseAudioContext,

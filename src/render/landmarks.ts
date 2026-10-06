@@ -37,6 +37,7 @@ import {
 import { landmarkParams, type BakedFeature, type LandmarkParams, type RoadNetwork } from '../road';
 import { fredSoup, FRED, type Soup } from './fred';
 import type { LookStyle } from './look';
+import { islandSoup, pigeonKeyPlan, PIGEON_KEY } from './pigeon-key';
 import {
   LANDMARK_KITS,
   LANDMARK_ROLE_PALETTE,
@@ -820,10 +821,42 @@ function fredTheTree(c: Compose): Piece[] {
   ];
 }
 
+/**
+ * Pigeon Key (playtest 4, P4-19): `seven-mile-kit#pigeon_key`, the island under the old Seven Mile Bridge.
+ * The island's ground and palms are code-made (pigeon-key.ts); the cottages and the dock are the kit's
+ * nodes, set on it by `pigeonKeyPlan`. It stands on the sea (world y = 0), not on the deck, with its
+ * cottages facing the road (the soup is built for a left-hand landmark; a right-hand one turns round).
+ * One piece, one level, drawn out to LANDMARK_MID_M.
+ */
+function pigeonKey(c: Compose): Piece[] | null {
+  const { at, kit, builder, paint } = c;
+  const plan = pigeonKeyPlan(kit);
+  if (!plan.buildings.some((b) => b.node === 'pigeon_key_cottage_a')) return null;
+  const flip = at.feature.d0 + at.feature.d1 > 0 ? Math.PI : 0;
+  const island = matrixAt(at.x, 0, at.z, at.yaw + flip);
+  const v0 = builder.vertices;
+  builder.addSoup(islandSoup(), island);
+  for (const b of plan.buildings) {
+    const node = kit.nodes.get(b.node);
+    if (!node) continue;
+    const local = matrixAt(b.x, b.baseY, b.z, b.yaw);
+    builder.addNode(node, island.clone().multiply(local), paint);
+  }
+  return [
+    {
+      x: at.x,
+      z: at.z,
+      r: Math.hypot(PIGEON_KEY.semiAcrossM, PIGEON_KEY.semiAlongM) * at.scale,
+      tiers: [{ maxM: LANDMARK_MID_M, v0, n: builder.vertices - v0 }],
+    },
+  ];
+}
+
 /** Virtual nodes composed in code, by `<kit>#<node>`. */
 const COMPOSITES: Readonly<Record<string, (c: Compose) => Piece[] | null>> = {
   'golden-gate#gg_bridge': suspensionBridge,
   'keys-landmarks#fred_the_tree': fredTheTree,
+  'seven-mile-kit#pigeon_key': pigeonKey,
 };
 
 export interface LandmarkCounts {
@@ -966,7 +999,12 @@ export class LandmarkLayer {
     const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
     if (finite(bayM) && bayM > 0) m.multiply(new Matrix4().makeTranslation(0, 0, -bayM / 2));
     // Its blank boards (the roof sign's) are painted with pack text, by text-surfaces.ts.
-    for (const surface of near.surfaces) this.surfaceList.push(placeSurface(surface, m));
+    // A per-instance number (a mile post's) goes with each of its surfaces, for the sign's `{n}`.
+    for (const surface of near.surfaces) {
+      const placed = placeSurface(surface, m);
+      if (at.params.number !== null) placed.number = at.params.number;
+      this.surfaceList.push(placed);
+    }
     const pieces: Piece[] = [
       {
         x: at.x,

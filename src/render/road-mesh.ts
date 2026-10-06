@@ -33,7 +33,9 @@ import type { SceneryModel, SceneryModels } from './models';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
+  islandBoxes,
   isTropical,
+  onIsland,
   LAND_TOP_M,
   ridableBandPast,
   SCENERY_KINDS,
@@ -874,6 +876,8 @@ export function buildRoadScene(
   const strip = (kind: Layer): ChunkedStrips => (acc[kind] ??= new ChunkedStrips(chunkKey));
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   const locator = new EdgeLocator(road);
+  // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
+  const islands = islandBoxes(road);
   const gores = goreLines(road);
   // Run W-U: a fork onto a road tagged 'secret' (the Keys' Unlisted Key, off the sandbar) is never
   // painted: no zone, no chevrons. The sim still takes it by position.
@@ -1714,7 +1718,7 @@ export function buildRoadScene(
           ) && !otherRoadAt(s, d, radius),
         openWater: (s, d) => {
           const p = w(e.index, s, d, 0);
-          return locator.at(p.x, p.z, e.index).length === 0;
+          return locator.at(p.x, p.z, e.index).length === 0 && !onIsland(islands, p.x, p.z);
         },
         world: (s, d, h) => w(e.index, s, d, h),
         skirt: terrain

@@ -22,7 +22,7 @@ from tbgis.emit import bake
 from tbgis.features import RampSpec, ramp_profile
 from tbgis.fetch import FetchMeta
 from tbgis.lint import lint_bake, lint_network
-from tbgis.network import NetworkBake, NetworkConfig, bake_network
+from tbgis.network import MILE_M, Landmark, Milepost, NetworkBake, NetworkConfig, bake_network
 from tbgis.osm import Way
 from tbgis.stretch import F64, RealPath, build_profile, real_path, route_ways
 from tbgis.tmerc import Frame
@@ -699,3 +699,90 @@ def test_a_branch_can_leave_and_rejoin_on_the_left() -> None:
     assert lint_network(nb.network, nb.roads, nb.routes) == []
     kin = next(c for j in nb.network["junctions"] for c in j["connectors"] if "splitZone" in c)
     assert kin["splitZone"]["d1"] < 0
+
+
+# ----------------------------------------------------------------------------------------------
+# Mile-marker posts and islands (playtest 4, P4-19: the Seven Mile's identity)
+
+
+def mile_config(**over: Any) -> NetworkConfig:
+    cfg = net_config()
+    spec = {"model": "keys-identity#keys_mile_marker", "mile": 3.7, "at": pt(100, 0), **over}
+    mp = Milepost.model_validate(spec)
+    return cfg.model_copy(update={"lines": [cfg.lines[0].model_copy(update={"mileposts": mp}), cfg.lines[1]]})
+
+
+def posts_of(nb: NetworkBake) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    return [(r, f) for r in nb.roads for f in r["features"] if f["id"].startswith("mile-")]
+
+
+def test_mileposts_stand_a_mile_apart_with_the_numbers_falling() -> None:
+    nb = bake_network(mile_config(), OSM, NET_WAYS, flat, "2026-10-04")
+    posts = posts_of(nb)
+    assert sorted(f["params"]["number"] for _, f in posts) == [2, 3]
+    xs: dict[int, float] = {}
+    for road, f in posts:
+        x, _, _ = at_s(road, (f["s0"] + f["s1"]) / 2)
+        xs[f["params"]["number"]] = x
+    # The line runs east: mile 3 first, mile 2 a statute mile on (1,609.344 m), the number lower.
+    assert xs[2] - xs[3] == pytest.approx(MILE_M, abs=0.5)
+    # Mile 3.7 is at the anchor 100 m east of the origin: mile 3 stands 0.7 mile past it.
+    assert xs[3] - world(100, 0)[0] == pytest.approx(0.7 * MILE_M, abs=1.0)
+    for _, f in posts:
+        assert f["params"] == {
+            "model": "keys-identity#keys_mile_marker",
+            "yawDeg": 180.0,
+            "number": f["params"]["number"],
+        }
+        assert type(f["params"]["number"]) is int
+    assert lint_network(nb.network, nb.roads, nb.routes) == []
+
+
+def test_a_milepost_stands_on_its_side_of_the_road_and_the_numbers_can_rise() -> None:
+    right = posts_of(bake_network(mile_config(offsetM=5.85), OSM, NET_WAYS, flat, "2026-10-04"))
+    for _, f in right:
+        assert (f["d0"] + f["d1"]) / 2 == pytest.approx(5.85, abs=0.01)
+        assert f["s1"] - f["s0"] == pytest.approx(0.6, abs=0.01)
+        assert f["d1"] - f["d0"] == pytest.approx(0.6, abs=0.01)
+    left = posts_of(bake_network(mile_config(side="left"), OSM, NET_WAYS, flat, "2026-10-04"))
+    assert left and all(f["d1"] < 0 for _, f in left)
+    # Rising numbers run the other way: with mile 2.4 at the anchor, 3 stands 0.6 mile on, then 4.
+    rising = posts_of(
+        bake_network(mile_config(falling=False, mile=2.4, at=pt(130, 0)), OSM, NET_WAYS, flat, "2026-10-04")
+    )
+    assert sorted(f["params"]["number"] for _, f in rising) == [3, 4]
+
+
+def test_a_post_near_a_roads_end_is_left_out() -> None:
+    # Mile 3.0 sits at the anchor, 2 m from the line's start; the margin keeps it off the road's end.
+    near = bake_network(mile_config(mile=3.0, at=pt(12, 0), marginM=40), OSM, NET_WAYS, flat, "2026-10-04")
+    assert 3 not in [f["params"]["number"] for _, f in posts_of(near)]
+    clear = bake_network(mile_config(mile=3.0, at=pt(12, 0), marginM=0), OSM, NET_WAYS, flat, "2026-10-04")
+    assert 3 in [f["params"]["number"] for _, f in posts_of(clear)]
+
+
+def test_an_island_and_a_number_reach_the_landmark_params() -> None:
+    lm = Landmark.model_validate(
+        {
+            "id": "pigeon-key",
+            "model": "seven-mile-kit#pigeon_key",
+            "at": pt(1500, -30),
+            "footprintM": [110, 54],
+            "island": True,
+        }
+    )
+    assert lm.params() == {"model": "seven-mile-kit#pigeon_key", "island": True}
+    post = Landmark.model_validate(
+        {
+            "id": "m",
+            "model": "keys-identity#keys_mile_marker",
+            "at": pt(1, 1),
+            "footprintM": [1, 1],
+            "number": 46,
+        }
+    )
+    assert post.params()["number"] == 46
+    with pytest.raises(ValidationError):
+        Landmark.model_validate(
+            {"id": "m", "model": "a#b", "at": pt(1, 1), "footprintM": [1, 1], "number": -2}
+        )
