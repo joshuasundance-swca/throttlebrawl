@@ -25,6 +25,11 @@ const CACHE_PREFIX = 'offline-';
 const HASHED_DIR = 'assets/';
 /** A page's entry script: Vite's `<script type="module" ... src="./assets/index-<hash>.js">`. */
 const ENTRY_SCRIPT = /<script\b[^>]*\btype="module"[^>]*\bsrc="(?:\.\/)?([^"]+)"/;
+/** A tag by which a page loads a file itself: a script's src, or a preload's or module preload's href. */
+const PAGE_LOADS =
+  /<script\b[^>]*\bsrc="(?:\.\/)?([^"]+)"|<link\b(?=[^>]*\brel="?(?:module)?preload\b)[^>]*\bhref="(?:\.\/)?([^"]+)"/g;
+/** The page the worker's first-load list is read from. */
+const PAGE = 'index.html';
 /**
  * The files under assets/ that get a gzip copy, by extension, in name order. Audio and images are
  * compressed already (gzip saves under 10% on the build's Ogg files). [default]
@@ -67,13 +72,29 @@ function fileCheck(f) {
 }
 
 /**
+ * The built files under assets/ that the page loads itself (its entry script, module preloads and
+ * preloads), in name order: a first visit's page has these in the browser's HTTP cache, stored under
+ * the Origin header its module and `crossorigin` requests carry (playtest 4 run B fix check, punch
+ * item 1; offline-worker.ts).
+ * @param {{ path: string, bytes: Uint8Array } | undefined} page
+ * @param {ReadonlySet<string>} built
+ */
+function pageLoads(page, built) {
+  if (!page) return [];
+  const html = Buffer.from(page.bytes).toString('utf8');
+  const loads = [...html.matchAll(PAGE_LOADS)].map((m) => m[1] ?? m[2] ?? '');
+  return [...new Set(loads)].filter((rel) => rel.startsWith(HASHED_DIR) && built.has(rel)).sort();
+}
+
+/**
  * The worker's config for one build: its cache name (the build id and a hash of every file's path
  * and bytes, so any change in the build names a new cache), every file but the worker and the gzip
- * copies, as page-relative posix paths in name order, the check of each file outside assets/, and
- * the extensions whose files under assets/ have a gzip copy.
+ * copies, as page-relative posix paths in name order, the check of each file outside assets/, the
+ * extensions whose files under assets/ have a gzip copy, and the files under assets/ the page loads
+ * itself.
  * @param {string} buildId
  * @param {readonly { path: string, bytes: Uint8Array }[]} files every file the build wrote
- * @returns {{ cache: string, files: string[], checks: Record<string, { contains: string } | { sha256: string }>, gzip: string[] }}
+ * @returns {{ cache: string, files: string[], checks: Record<string, { contains: string } | { sha256: string }>, gzip: string[], firstLoad: string[] }}
  */
 export function workerConfig(buildId, files) {
   const all = files.map((f) => ({ path: posix(f.path), bytes: f.bytes }));
@@ -94,12 +115,16 @@ export function workerConfig(buildId, files) {
       listed.filter((f) => !f.path.startsWith(HASHED_DIR)).map((f) => [f.path, fileCheck(f)]),
     ),
     gzip: [...GZIP_EXTENSIONS],
+    firstLoad: pageLoads(
+      listed.find((f) => f.path === PAGE),
+      new Set(listed.map((f) => f.path)),
+    ),
   };
 }
 
 /**
  * The worker's file: its config as `self.__OFFLINE__`, then its built code.
- * @param {{ cache: string, files: readonly string[], checks: Record<string, unknown>, gzip?: readonly string[] }} config
+ * @param {{ cache: string, files: readonly string[], checks: Record<string, unknown>, gzip?: readonly string[], firstLoad?: readonly string[] }} config
  * @param {string} code
  */
 export function workerSource(config, code) {
