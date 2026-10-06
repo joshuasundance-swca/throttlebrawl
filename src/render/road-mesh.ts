@@ -858,8 +858,8 @@ function standIn(kind: SceneryKind): BufferGeometry {
 /** Scenery kinds kept instanced: the boats bob every frame and the fog banks are unlit (run W-S). */
 const INSTANCED_KINDS: ReadonlySet<SceneryKind> = new Set(['skiff', 'boat', 'fogBank']);
 
-/** Which model draws each scenery kind. */
-const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
+/** Which model draws each scenery kind (exported for the merge test, which counts each prop's vertices). */
+export const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   palm: 'palms',
   mangrove: 'mangroves',
   shack: 'baitShack',
