@@ -8,6 +8,12 @@
 // rest), one mesh and one draw call whatever the length of the street, drawn as party-lights.ts draws
 // its bulbs: the whole street in one static buffer and an index of the ones near the camera, refilled as
 // it moves. Presentation only.
+//
+// Run B's check (punch item 4: "the sidewalks look empty in the frames, although the zones sample many party
+// kinds"): the same mesh also stands a few people on the pavement of every party block (`sidewalkWalkers`),
+// at the back of it under the balconies, a few metres apart. They are scenery too: none stands where a rider
+// is held, so a rider hugging the wall passes within a hand of one at most, and the sim's own pedestrians
+// stay the ones a rider can hit.
 import {
   BufferAttribute,
   BufferGeometry,
@@ -17,8 +23,9 @@ import {
   Mesh,
   type Vector3,
 } from 'three';
+import type { RoadNetwork } from '../sim/api';
 import type { LookStyle } from './look';
-import { scatterHash } from './scenery';
+import { LAND_TOP_M, scatterHash } from './scenery';
 
 /** A text surface as the crowd needs it: where the board stands and which way it faces (text-surfaces.ts). */
 export interface CrowdSurface {
@@ -48,10 +55,26 @@ export const CROWD = {
   refillM: 10,
 } as const;
 
+/** The people on a party block's pavement (run B's check, item 4). [default] */
+export const WALKERS = {
+  /** A group of this many stands every `everyM` along each side of a party block, spread over `groupM`. */
+  perGroup: 2,
+  everyM: 7,
+  groupM: 2.4,
+  /**
+   * They stand this far in from the pavement's back edge, m (the facade's line): the range of the centre of a
+   * figure. A rider's wheels are held at the edge, so the nearest a rider comes is a hand's width.
+   */
+  inM: [0.55, 1.15],
+  /** The walkers within this far of the camera are drawn, m (a figure is 2 m tall: 100 m is a speck). */
+  drawM: 100,
+} as const;
+
 /** Shirt, hat and cup colours: the party street's palette (the revellers of traffic-figures.ts). */
 const SHIRTS = ['#ff4fa3', '#2de2ff', '#ffd23f', '#b6ff3c', '#ff9f1c', '#c9a0ff', '#ffffff'] as const;
 const SKINS = ['#e8b894', '#c68c64', '#8d5a3b', '#f1cdae', '#6e4429'] as const;
 const CUPS = ['#2de2ff', '#ffd23f', '#ff4fa3', '#b6ff3c'] as const;
+const TROUSERS = ['#2b2f3a', '#3b4a63', '#6b5a4a', '#e8e0cf', '#4a3f35'] as const;
 
 /** One reveller: where the feet stand (on the balcony's floor), and the way they face (toward the street). */
 export interface Reveller {
@@ -61,8 +84,10 @@ export interface Reveller {
   /** The facade's outward normal, flat. */
   nx: number;
   nz: number;
-  /** Which board it stands over. */
+  /** Which board it stands over (a walker's group). */
   board: number;
+  /** Stands on the pavement, whole, instead of leaning on a balcony rail. */
+  walker?: boolean;
 }
 
 /** The revellers of every balcony shop board among `surfaces`, in a stable order. */
@@ -110,6 +135,8 @@ interface Span {
   x: number;
   z: number;
   figures: number;
+  /** Drawn within this far of the camera, m. */
+  drawM: number;
 }
 
 export interface BalconyCrowdCounts {
@@ -119,16 +146,69 @@ export interface BalconyCrowdCounts {
   drawCalls: number;
 }
 
+/** One stretch of a party block's side: the road's edge, from s0 to s1, on one side. */
+export interface WalkerRun {
+  edge: number;
+  s0: number;
+  s1: number;
+  side: -1 | 1;
+}
+
+/**
+ * The people standing on the pavement of every party run: a group of `WALKERS.perGroup` every `WALKERS.everyM`,
+ * at the back of the pavement (the facade's line), facing the road. Their groups' ids start past every board's.
+ */
+export function sidewalkWalkers(road: RoadNetwork, runs: readonly WalkerRun[], seed: number): Reveller[] {
+  const out: Reveller[] = [];
+  let group = 1_000_000;
+  for (const run of runs) {
+    const e = road.edges[run.edge];
+    if (!e) continue;
+    const key = run.side < 0 ? 'left' : 'right';
+    for (let s = run.s0 + WALKERS.everyM / 2; s < run.s1 - WALKERS.everyM / 2; s += WALKERS.everyM) {
+      group++;
+      for (let k = 0; k < WALKERS.perGroup; k++) {
+        const along =
+          s +
+          (k - (WALKERS.perGroup - 1) / 2) * WALKERS.groupM +
+          (scatterHash(seed, 6131, run.edge * 7919 + s, k) - 0.5) * 1.2;
+        const back = Math.abs(road.vergeAt(run.edge, along, key).dOuter);
+        const inM =
+          WALKERS.inM[0] +
+          scatterHash(seed, 6133, run.edge * 7919 + s, k) * (WALKERS.inM[1] - WALKERS.inM[0]);
+        const d = run.side * (back - inM);
+        const at = road.toWorld(run.edge, along, d, LAND_TOP_M);
+        const centre = road.toWorld(run.edge, along, 0, 0);
+        const flat = Math.hypot(centre.x - at.x, centre.z - at.z) || 1;
+        out.push({
+          x: at.x,
+          y: at.y,
+          z: at.z,
+          nx: (centre.x - at.x) / flat,
+          nz: (centre.z - at.z) / flat,
+          board: group,
+          walker: true,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export interface BalconyCrowdInput {
   surfaces: readonly CrowdSurface[];
   seed: number;
   /** Whether a board at this world position is on a party block (the caller's test). */
   accept?: (x: number, z: number) => boolean;
+  /** The party runs to stand people on the pavement of (`sidewalkWalkers`), with the road they are on. */
+  walkers?: { road: RoadNetwork; runs: readonly WalkerRun[] };
 }
 
 export class BalconyCrowd {
   readonly group = new Group();
   private readonly list: Reveller[];
+  private readonly walkerList: Reveller[];
+  private readonly rails: Reveller[];
   private readonly spans: Span[] = [];
   private readonly live: Uint32Array;
   private readonly geometry: BufferGeometry | null = null;
@@ -140,7 +220,12 @@ export class BalconyCrowd {
 
   constructor(look: LookStyle, input: BalconyCrowdInput) {
     this.group.name = 'balcony-crowd';
-    this.list = balconyRevellers(input.surfaces, input.seed, input.accept);
+    const rail = balconyRevellers(input.surfaces, input.seed, input.accept);
+    this.walkerList = input.walkers
+      ? sidewalkWalkers(input.walkers.road, input.walkers.runs, input.seed)
+      : [];
+    this.list = [...rail, ...this.walkerList];
+    this.rails = rail;
     const pos: number[] = [];
     const nrm: number[] = [];
     const col: number[] = [];
@@ -163,6 +248,7 @@ export class BalconyCrowd {
         x: sx / (end - start),
         z: sz / (end - start),
         figures: end - start,
+        drawM: (this.list[start] as Reveller).walker ? WALKERS.drawM : CROWD.drawM,
       });
       start = end;
     }
@@ -239,6 +325,18 @@ export class BalconyCrowd {
         }
       }
     };
+    if (r.walker) {
+      // A person on the pavement, whole: legs in dark trousers, a torso in a party shirt, a head, a hat, an arm
+      // held high with a cup (six boxes, 60 triangles).
+      const trousers = new Color(pick(TROUSERS, 6123));
+      box(0, 0.42, 0, 0.16, 0.42, 0.1, trousers);
+      box(0, 1.15, 0, 0.21, 0.31, 0.12, shirt);
+      box(0, 1.62, 0, 0.1, 0.12, 0.1, skin);
+      box(0, 1.78, 0, 0.12, 0.04, 0.12, hat);
+      box(0.3, 1.5, 0, 0.05, 0.3, 0.05, skin);
+      box(0.3, 1.88, 0, 0.075, 0.09, 0.075, cup);
+      return;
+    }
     // From the rail up: a torso in a party shirt, a head, a hat, an arm held high with a cup.
     box(0, 1.28, 0, 0.23, 0.3, 0.14, shirt);
     box(0, 1.72, 0, 0.11, 0.13, 0.11, skin);
@@ -256,7 +354,7 @@ export class BalconyCrowd {
     let w = 0;
     let figures = 0;
     for (const sp of this.spans) {
-      if (Math.hypot(sp.x - cameraX, sp.z - cameraZ) > CROWD.drawM) continue;
+      if (Math.hypot(sp.x - cameraX, sp.z - cameraZ) > sp.drawM) continue;
       for (let k = 0; k < sp.n; k++) this.live[w++] = sp.v0 + k;
       figures += sp.figures;
     }
@@ -268,9 +366,14 @@ export class BalconyCrowd {
     this.mesh.visible = w > 0;
   }
 
-  /** Every reveller stood (tests). */
+  /** Every reveller stood on a balcony (tests). */
   revellers(): readonly Reveller[] {
-    return this.list;
+    return this.rails;
+  }
+
+  /** Every person stood on a pavement (tests). */
+  walkers(): readonly Reveller[] {
+    return this.walkerList;
   }
 
   counts(): BalconyCrowdCounts {

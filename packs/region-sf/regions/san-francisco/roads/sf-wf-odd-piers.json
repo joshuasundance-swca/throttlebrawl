@@ -62,7 +62,7 @@
       "s1": 320,
       "d0": 10.4,
       "d1": 17.4,
-      "params": { "spawns": "pedestrians" }
+      "params": { "spawns": "pedestrians", "kinds": ["sea-lion", "e-scooter-commuter", "dog-walker-sf"] }
     },
     {
       "kind": "roadsideZone",
@@ -71,7 +71,7 @@
       "s1": 660,
       "d0": 10.4,
       "d1": 17.4,
-      "params": { "spawns": "pedestrians" }
+      "params": { "spawns": "pedestrians", "kinds": ["sea-lion", "e-scooter-commuter", "dog-walker-sf"] }
     },
     {
       "kind": "boostPad",

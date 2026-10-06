@@ -94,7 +94,8 @@ const DUVAL = 'osm-keys-duval';
 
 /** Whether an item is one of the Duval kit's (a rule that draws from it). */
 const fromDuval = (it: RoadsideItem) => KEYS_KIT.rules.find((r) => r.id === it.rule)?.model === 'duvalKit';
-const isFront = (it: RoadsideItem) => fromDuval(it) && !!it.foot;
+/** The street front's first row; the second row behind it (`oldtown-back`) has its own checks, duval-city.test.ts. */
+const isFront = (it: RoadsideItem) => fromDuval(it) && !!it.foot && it.rule !== 'oldtown-back';
 
 function scene(id: string, seed: number, withModels = true) {
   const { road, dressing } = track(id);
