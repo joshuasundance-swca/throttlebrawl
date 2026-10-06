@@ -111,11 +111,24 @@ export function nearFadeAt(depth: number, fadeM: number, fogFar: number): number
 }
 
 /**
- * The haze over a floor vertex `d` metres from the eye (a camera `camY` m up), before the aerial haze: the far
+ * The haze over a floor point `d` metres from the eye (a camera `camY` m up), before the aerial haze: the far
  * floors (the sea, the far ground) are wholly the haze inside the fog's end, where the near world's own sea and
  * ground cover them, then come out of it gradually and only part way. The vertex shader below does the same.
+ *
+ * A lake (flag 2) has no near world over it, so inside the fog's end it takes the fog the land round it takes:
+ * three's own law, smoothstep(fog near, fog far) of the point's view depth `depth`, which the fragment shader
+ * computes per pixel (playtest 4 run C's fix check, punch item 5: "From the default chase camera, the lake is still
+ * a pale band beyond the cabins"). It hazed by straight distance from 0 m before, per vertex: at 150 m the lake was
+ * 0.23 haze (0.43 at 219 m) and the bank beside it clear. With `fogNear` 0 and `depth` d (the defaults) this is that old law.
  */
-export function floorHazeAt(d: number, fogFar: number, camY: number, flag = 1): number {
+export function floorHazeAt(
+  d: number,
+  fogFar: number,
+  camY: number,
+  flag = 1,
+  fogNear = 0,
+  depth = d,
+): number {
   const smooth = (a: number, b: number, x: number) => {
     const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
     return t * t * (3 - 2 * t);
@@ -123,8 +136,8 @@ export function floorHazeAt(d: number, fogFar: number, camY: number, flag = 1): 
   const floorMin = 0.82 + (0.3 - 0.82) * smooth(15, 220, camY);
   const far = 1 + (floorMin - 1) * smooth(fogFar, fogFar * 4, d);
   if (flag <= 0.5) return 0;
-  // A lake: the fog's haze by distance, so inside the fog's end it keeps its colour and meets the far floor at its end.
-  return flag > 1.5 ? Math.min(far, smooth(0, fogFar, d)) : far;
+  // A lake: the fog's haze, so inside the fog's end it keeps its colour and meets the far floor at its end.
+  return flag > 1.5 ? Math.min(far, smooth(fogNear, fogFar, depth)) : far;
 }
 
 /** A glide is fully seen over the middle of its run; past this share of the half-run it thins out. */
@@ -161,6 +174,8 @@ varying vec3 vColor;
 varying float vHaze;
 varying float vFade;
 varying float vDepth;
+varying float vLake;
+varying float vLakeFar;
 void main() {
   vec3 p = position;
   // A swing (a ship, a fog bank) or, with a negative speed, a one-way glide that comes round again
@@ -185,11 +200,13 @@ void main() {
   // lies along the ground, so a camera high on a hill sees more of the ground below than one at sea level.
   float floorMin = mix(0.82, 0.3, smoothstep(15.0, 220.0, uCam.y));
   // A lake (a water floor above the sea, flag 2) has no near sea or ground over it inside the fog's end: it keeps
-  // its own colour there and takes the fog's haze by distance (floorHazeAt mirrors this).
+  // its own colour there and takes the fog the land round it takes, per pixel in the fragment shader (vLake,
+  // vLakeFar; floorHazeAt mirrors this).
   float nearWater = step(1.5, aInfo.y);
   float floorH = mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d));
-  floorH = mix(floorH, min(floorH, smoothstep(0.0, uFogFar, d)), nearWater);
-  h = max(h, min(aInfo.y, 1.0) * floorH);
+  vLake = nearWater;
+  vLakeFar = floorH;
+  h = max(h, min(aInfo.y, 1.0) * floorH * (1.0 - nearWater));
   // A glide thins into the haze at each end of its run, so it never pops round.
   if (glide) h = max(h, smoothstep(GLIDE_FADE, 1.0, abs(m)));
   vHaze = clamp(h, 0.0, 1.0);
@@ -215,12 +232,18 @@ void main() {
 const FRAGMENT = /* glsl */ `
 uniform vec3 uHaze;
 uniform float uFadeFrom;
+uniform float uFogNear;
+uniform float uFogFar;
 varying vec3 vColor;
 varying float vHaze;
 varying float vFade;
 varying float vDepth;
+varying float vLake;
+varying float vLakeFar;
 void main() {
   float h = vHaze;
+  // A lake: three's fog law by view depth, as on the land round it, and the far floor's haze past the fog's end.
+  if (vLake > 0.5) h = max(h, min(vLakeFar, smoothstep(uFogNear, uFogFar, vDepth)));
   // The far form of a near model (nearFadeAt mirrors this): nothing of it nearer than the near fog's
   // end, where the near model is wholly in the fog, then out of the haze over vFade metres.
   if (vFade > 0.0) {
@@ -247,8 +270,14 @@ export interface BackdropStats {
 export interface BuiltBackdrop {
   mesh: Mesh;
   stats: BackdropStats;
-  /** Per frame: the camera, the scene's haze and fog end, the time. */
-  update(cam: { x: number; y: number; z: number }, haze: Color, fogFar: number, timeS: number): void;
+  /** Per frame: the camera, the scene's haze and fog end, the time, and where the fog starts (a lake takes it). */
+  update(
+    cam: { x: number; y: number; z: number },
+    haze: Color,
+    fogFar: number,
+    timeS: number,
+    fogNear?: number,
+  ): void;
   dispose(): void;
 }
 
@@ -487,6 +516,7 @@ export function buildBackdrop(
     uHazeM: { value: region.hazeM },
     uHazeMax: { value: region.hazeMax ?? 0.8 },
     uFogFar: { value: 700 },
+    uFogNear: { value: 0 },
     uFadeFrom: { value: fadeFrom(700) },
     uHaze: { value: new Color('#ffffff') },
   };
@@ -505,12 +535,13 @@ export function buildBackdrop(
   return {
     mesh,
     stats,
-    update(cam, haze, fogFar, timeS) {
+    update(cam, haze, fogFar, timeS, fogNear = 0) {
       uniforms.uCam.value = [cam.x, cam.y, cam.z];
       uniforms.uTime.value = timeS;
       // The squeeze starts where the near fog is full, never past the far end.
       uniforms.uRMin.value = squeezeStart(fogFar);
       uniforms.uFogFar.value = fogFar;
+      uniforms.uFogNear.value = fogNear;
       uniforms.uFadeFrom.value = fadeFrom(fogFar);
       uniforms.uHaze.value.copy(haze);
     },

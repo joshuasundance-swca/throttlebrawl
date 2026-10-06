@@ -98,6 +98,9 @@ TAGS = {
     "bluff",
     "rock-cut",
     "lake",
+    # Where a foggy region's haze thins (the maintainer, 2026-10-06: Chuckanut Drive, and Lake Samish's
+    # East Shore Drive): atmosphere, like `fog`; it says nothing about the ground (src/render/haze.ts).
+    "thin-haze",
 }
 
 # The jump lint (src/road/validate.ts ROAD_LINT, docs/content-packs.md "Jump lint"): from a ramp,

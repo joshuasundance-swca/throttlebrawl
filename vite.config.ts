@@ -8,8 +8,10 @@ import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 import { bootPreloadPlugin } from './scripts/boot-preload.mjs';
 import { datasetAssetsPlugin } from './scripts/dataset-assets.mjs';
 import { stripPackNotesPlugin } from './scripts/pack-notes.mjs';
+import { preParsePacksPlugin } from './scripts/pre-parse-packs.mjs';
 import { serviceWorkerPlugin } from './scripts/service-worker.mjs';
 import { creditsPlugin } from './scripts/credits.mjs';
+import { firstLoadModulesPlugin } from './scripts/first-load-modules.mjs';
 
 // Build stamp (docs/engineering.md, "Vite settings"). CI sets BUILD_ID, BUILD_CHANNEL and
 // BUILD_BRANCH; a local build falls back to git and the `dev` channel.
@@ -65,11 +67,15 @@ export default defineConfig({
   // The road data shipped as JSON files is written on one line (scripts/json-assets.mjs, run W-P).
   // The big files pinned in assets.lock.json are baked in under assets/ds/ (run W-Q).
   // The packs' `meta.notes` stay out of the bundled pack JSON (scripts/pack-notes.mjs, run W-R).
+  // The build validates every pack file and ships Zod's output; the page's loader skips Zod
+  // (scripts/pre-parse-packs.mjs, lane F1).
   // index.html preloads the Keys' hand-made road data boot fetches (scripts/boot-preload.mjs, run W-S).
   // The offline worker, sw.js beside index.html, caches the whole build (scripts/service-worker.mjs).
   // credits.json, the credits page's data, is made from the ledger and the packs (scripts/credits.mjs).
+  // The first load by module goes to .cache/ for the perf check (scripts/first-load-modules.mjs).
   plugins: [
     stripPackNotesPlugin(),
+    preParsePacksPlugin({ root }),
     selfTestHash(),
     simCodeHashPlugin(),
     minifyJsonAssetsPlugin(),
@@ -77,6 +83,7 @@ export default defineConfig({
     bootPreloadPlugin(),
     creditsPlugin({ root }),
     serviceWorkerPlugin({ root, buildId }),
+    firstLoadModulesPlugin({ root }),
   ],
   // Relative asset paths, so one build works at a Space root or under any sub-path.
   base: './',

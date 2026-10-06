@@ -4,7 +4,8 @@
 // content hash covers everything loaded, including the pack manifests. Both are computed over the
 // frozen registry, so vetoed entries and items (which the loader drops) never count.
 import { FNV_OFFSET, fnvString, hashHex } from '../core';
-import { SIM_EXCLUDED_FIELDS, type EntryType } from './schema';
+import type { EntryType } from './schema';
+import { SIM_EXCLUDED_FIELDS } from './schema/tables';
 
 type Json = Record<string, unknown>;
 
