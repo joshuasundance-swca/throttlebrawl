@@ -36,12 +36,16 @@ import {
 import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, installOffer, runStartTap, startOffline, watchLifecycle } from '../platform';
 import {
+  createQualityGovernor,
   createRenderer,
   interpolateEntity,
+  loadAutoTier,
   riderLookOf,
   type BoardItem,
   type LookEnv,
+  type QualityTierId,
   type RiderRigCounts,
+  saveAutoTier,
 } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import {
@@ -215,8 +219,14 @@ export interface FrameStats {
 export interface AppPresentation {
   /** `shake` is the reduce-shake amount app handed the camera (1 full, 0 none). */
   camera: { view: ViewMode; mode: CameraMode; shake: number };
-  /** The loop draws one animation frame in every `frameDivisor`. */
-  display: { frameDivisor: number };
+  /**
+   * The loop draws one animation frame in every `frameDivisor`. `quality` is the Graphics setting,
+   * the tier and resolution scale drawn now, and the pixel ratio the scene draws at.
+   */
+  display: {
+    frameDivisor: number;
+    quality: { setting: string; tier: QualityTierId; scale: number; pixelRatio: number; on: boolean };
+  };
   /**
    * Reduce motion as app handed it on (M5's a11y-1): `camera` is the camera's motion amount (1 full
    * lean roll and FOV kick, 0 softened), `calm` whether the picture's flashes and the HUD's
@@ -326,6 +336,17 @@ function testSlowFrameMs(): number {
 function countdownOn(): boolean {
   const w = window as Window & { __GAME_TEST__?: boolean; __countdown?: unknown };
   return w.__GAME_TEST__ !== true || w.__countdown === true;
+}
+
+/**
+ * Quality tiers and dynamic resolution (roadmap M5; render/quality.ts) run in production always; under
+ * the test flag only when a spec asks (`window.__dynamicResolution = true`), so the browser specs and
+ * the perf check draw the `high` tier at full resolution whatever the runner's speed, and their draw
+ * calls, triangles and screenshots never depend on it.
+ */
+function qualityOn(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __dynamicResolution?: unknown };
+  return w.__GAME_TEST__ !== true || w.__dynamicResolution === true;
 }
 
 /** The settings' Frame rate as the loop's divisor. */
@@ -470,6 +491,17 @@ export function createApp(opts: AppOptions): AppHandle {
   const renderer = createRenderer(opts.canvas, { assets });
   // The look (playtest 1b item 6): render only, applied at once and never part of SimConfig.
   renderer.setLook(settings.look);
+  // Quality tiers and dynamic resolution (roadmap M5): `auto` starts on the tier this device settled
+  // on last time; the governor judges each drawn frame's interval (in the loop's render, below).
+  const quality = createQualityGovernor({
+    setting: settings.qualityTier,
+    autoTier: loadAutoTier(safeStorage(), APP_ID),
+  });
+  const applyQuality = (q: { tier: QualityTierId; scale: number }) => {
+    if (qualityOn()) renderer.setQuality(q.tier, q.scale);
+  };
+  applyQuality(quality.state);
+  let drawnTier = quality.state.tier;
   /** The canvas's width over its height, as the renderer's camera uses it. */
   const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
   const camera = createFollowCamera({ road: stream.road });
@@ -735,6 +767,8 @@ export function createApp(opts: AppOptions): AppHandle {
       'reduceShake',
       'reduceMotion',
       'frameRateCap',
+      // Graphics (roadmap M5): Auto or a pinned quality tier, applied at once.
+      'qualityTier',
       // The voices off switch (run W-O): the voices bus volume, above.
       'voicesOn',
     ],
@@ -860,6 +894,11 @@ export function createApp(opts: AppOptions): AppHandle {
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
         renderer.setLook(next.look);
+        const q = quality.setSetting(next.qualityTier);
+        if (q) {
+          drawnTier = q.tier;
+          applyQuality(q);
+        }
         applyShake(next);
         audio.setRadioCut(radioCut(next));
       },
@@ -1041,6 +1080,17 @@ export function createApp(opts: AppOptions): AppHandle {
         if (lookWatch.frame(dt * 1000, { racing, inkLook, divisor: frameDivisor() })) {
           // The offer is ui's toast (one tap to Classic, or "No thanks"); the strip does not repeat it.
           ui.offerClassicLook();
+        }
+        // Dynamic resolution and `auto`'s tier: this frame's interval against the display's budget.
+        if (qualityOn()) {
+          const q = quality.frame(dt * 1000, { racing, divisor: frameDivisor() });
+          if (q) {
+            // `auto`'s tier is kept per device for the next race; a resolution step is not stored.
+            if (settings.qualityTier === 'auto' && q.tier !== drawnTier)
+              saveAutoTier(safeStorage(), APP_ID, q.tier);
+            drawnTier = q.tier;
+            renderer.setQuality(q.tier, q.scale);
+          }
         }
         const slowMs = testSlowFrameMs();
         if (slowMs > 0) {
@@ -1670,7 +1720,15 @@ export function createApp(opts: AppOptions): AppHandle {
       const r = mix.radio;
       return {
         camera: { view: camera.view, mode: camera.mode, shake: shakeAmount },
-        display: { frameDivisor: frameDivisor() },
+        display: {
+          frameDivisor: frameDivisor(),
+          quality: {
+            setting: settings.qualityTier,
+            ...quality.state,
+            pixelRatio: renderer.stats().pixelRatio,
+            on: qualityOn(),
+          },
+        },
         motion: motionNow,
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
         look: renderer.look,

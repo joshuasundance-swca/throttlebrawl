@@ -38,7 +38,7 @@ type TestWindow = Window & {
   __app?: {
     presentation(): {
       camera: { shake: number };
-      display: { frameDivisor: number };
+      display: { frameDivisor: number; quality: { tier: string } };
       motion: { camera: number; calm: boolean };
       audio: { busTargets: { voices: number } };
     };
@@ -100,12 +100,26 @@ const pauseEntries = (page: Page) =>
       .map((e) => e.dataset['entry'] ?? ''),
   );
 
-/** Visible text inside the viewport and inside its own box (as in ui-screens.spec.ts). */
+/**
+ * Visible text inside the viewport and inside its own box (as in ui-screens.spec.ts). Text scrolled
+ * down out of an on-screen scroller (a screen scrolls when its settings outgrow a phone) is
+ * reachable, the same rule as ui-text-size.spec.ts.
+ */
 function findOverflow(page: Page) {
   return page.evaluate(() => {
     const out: string[] = [];
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const onScreen = (r: DOMRect) =>
+      r.left >= -0.5 && r.top >= -0.5 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5;
+    // The nearest ancestor that scrolls up and down and has more than it shows.
+    const scrollerOf = (e: HTMLElement) => {
+      for (let p = e.parentElement; p; p = p.parentElement) {
+        const mode = getComputedStyle(p).overflowY;
+        if ((mode === 'auto' || mode === 'scroll') && p.scrollHeight > p.clientHeight + 1) return p;
+      }
+      return null;
+    };
     let examined = 0;
     for (const e of document.querySelectorAll<HTMLElement>('#ui *')) {
       if (e.closest('#tuning-panel')) continue;
@@ -115,8 +129,10 @@ function findOverflow(page: Page) {
       examined++;
       const r = e.getBoundingClientRect();
       const name = `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''} "${(e.textContent ?? '').trim().slice(0, 30)}"`;
-      if (r.left < -0.5 || r.top < -0.5 || r.right > vw + 0.5 || r.bottom > vh + 0.5) {
-        out.push(`${name} leaves the screen`);
+      if (!onScreen(r)) {
+        const box = scrollerOf(e)?.getBoundingClientRect();
+        const viaScroll = !!box && onScreen(box) && r.left >= box.left - 0.5 && r.right <= box.right + 0.5;
+        if (!viaScroll) out.push(`${name} leaves the screen`);
       }
       if (getComputedStyle(e).display !== 'inline') {
         if (e.scrollWidth > e.clientWidth + 1) out.push(`${name} overflows sideways`);
@@ -669,6 +685,20 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
     persisted: (page) => chosen(page, 'display', 'frameRateCap', 'third'),
   },
+  qualityTier: {
+    // Graphics (roadmap M5): a pinned tier is the tier app/ draws with. Under the test flag the
+    // governor leaves the renderer alone (render-quality.spec.ts turns it on), so the tier is read
+    // from app's presentation view.
+    set: (page) => choose(page, 'display', 'qualityTier', 'low'),
+    effect: async (page) => {
+      await raceAlone(page);
+      expect(
+        await page.evaluate(() => (window as TestWindow).__app?.presentation().display.quality.tier),
+      ).toBe('low');
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'display', 'qualityTier', 'low'),
+  },
   view: {
     // The helmet cam: the camera rides at the rider's head, so the rider's own bike and back, at
     // the bottom middle of the chase framing, are gone. Seen in the drawn pixels against the chase
@@ -912,17 +942,23 @@ test('every settings tab fits a phone-landscape screen over the paused race, unc
       tab,
     );
     expect(small, `${tab}: controls are big enough to hit`).toEqual([]);
-    // Nothing (a bark bubble, the HUD) sits on top of a control: the top element at its centre is it.
-    const covered = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('#settings button, #settings input')]
-        .filter((e) => e.checkVisibility())
-        .filter((e) => {
-          const r = e.getBoundingClientRect();
-          const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-          return !top || !(top === e || e.contains(top) || top.contains(e));
-        })
-        .map((e) => e.id || e.textContent),
-    );
+    // Nothing (a bark bubble, the HUD) sits on top of a control: scrolled onto the screen if the
+    // tab outgrows it, the top element at its centre is the control.
+    const covered: string[] = [];
+    const controls = page.locator('#settings button:visible, #settings input:visible');
+    for (let i = 0, n = await controls.count(); i < n; i++) {
+      const control = controls.nth(i);
+      await control.scrollIntoViewIfNeeded();
+      const hit = await control.evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          ok: !!top && (top === e || e.contains(top) || top.contains(e)),
+          name: e.id || e.textContent,
+        };
+      });
+      if (!hit.ok) covered.push(hit.name ?? '');
+    }
     expect(covered, `${tab}: no control is covered`).toEqual([]);
     await shot(page, `settings-${tab}`);
   }
