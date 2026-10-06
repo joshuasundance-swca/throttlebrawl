@@ -361,7 +361,7 @@
     "tools/blender/sf.test.ts": 0.1,
     "tools/career/pack-rules.test.ts": 0.9,
     "tools/gis/osm-route.test.ts": 48.7,
-    "tools/gis/region-routes.test.ts": 189.2,
+    "tools/gis/region-routes.test.ts": 64.3,
     "tools/gis/routes-keys-pt3.test.ts": 20.6,
     "tools/gis/routes-pnw-dressing.test.ts": 0,
     "tools/gis/routes-pnw-pt3.test.ts": 0,
