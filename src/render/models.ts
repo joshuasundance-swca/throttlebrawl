@@ -33,6 +33,7 @@ import {
   belowDeck,
   withStagingLegs,
 } from './bridge-bays';
+import { withBatteryGuns } from './battery-guns';
 import { readGlb } from './glb';
 import { markAtlasUv } from './scenery-merge';
 
@@ -649,7 +650,17 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     const trimmed = kind === 'sevenMileKit' && name === BAY_ROOT.gapEnd;
     // The repair platform gets outrigger piles a camera over its deck can see (`withStagingLegs`).
     const platform = kind === 'sevenMileKit' && name === BAY_ROOT.staging;
-    variants.push(trimmed ? belowDeck(v.geometry) : platform ? withStagingLegs(v.geometry) : v.geometry);
+    // The headland battery gets its guns, one in each pit (`withBatteryGuns`: the file has none).
+    const battery = kind === 'sfHeadlands' && name === 'gg_battery';
+    variants.push(
+      trimmed
+        ? belowDeck(v.geometry)
+        : platform
+          ? withStagingLegs(v.geometry)
+          : battery
+            ? withBatteryGuns(v.geometry)
+            : v.geometry,
+    );
     roles.push(trimmed ? [] : v.roles);
     tiles.push(trimmed ? [] : v.tiles);
     surfaces.push(v.surfaces);
