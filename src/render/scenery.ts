@@ -143,9 +143,9 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'rock-cut': 'cut',
   lake: 'lake',
 };
-/** A bluff's shelf past the verge, m: its 4 m dirt band to the parapet (road/cross-section.ts), the
- * parapet's 0.55 m depth, and a lip of rock to the drop. [default] */
-export const BLUFF_LAND_M = 4.2;
+/** A bluff's shelf past the verge, m: its 4 m dirt band to the parapet (road/cross-section.ts), then room
+ * for the bay side's madrones (B9's, roadside.ts) behind the parapet, then the lip of the drop. [default] */
+export const BLUFF_LAND_M = 10;
 /** A lake side's land past the verge, m: room for a cabin and its deck behind the soft grass band, then
  * the bank to the water, where a dock's root stands. [default] */
 export const LAKE_LAND_M = 20;
@@ -345,7 +345,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   blocks: {},
   presidio: { coastTree: 0.85 },
   oldtown: {},
-  // Playtest 4 (P4-19, C4): nothing grows on the bluff's narrow shelf; the firs stand behind the rock cut
+  // Playtest 4 (P4-19, C4): no fir on the bluff's shelf (the madrones stand there, roadside.ts); the firs stand behind the rock cut
   // (THEME_NEAR_M); a few stand among the lake's cabins.
   bluff: {},
   cut: { conifer: 0.8 },
@@ -372,7 +372,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'blocks',
   'presidio',
   'oldtown',
-  // Playtest 4 (P4-19, C4): the bluff's shelf holds only the parapet; the lake's bank, cabins and docks.
+  // Playtest 4 (P4-19, C4): the bluff's shelf holds the parapet and the madrones; the lake's bank, cabins and docks.
   'bluff',
   'lake',
 ]);

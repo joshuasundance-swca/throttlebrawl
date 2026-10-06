@@ -185,7 +185,7 @@ function probeSkirt(
 }
 
 describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H1, I3)', () => {
-  it("a bluff side's land is a 4.2 m shelf that drops sheer; the same road all forest has its skirt", () => {
+  it("a bluff side's land is a 10 m shelf that drops sheer; the same road all forest has its skirt", () => {
     const span: BakedTag = { s0: 400, s1: 1400, side: 'right', tag: 'bluff' };
     const [plain, bluff] = retagged('osm-pnw-chuckanut', 'osm-chuckanut-cliffs', span);
     const control = probeSkirt(plain!, span, 1, BLUFF_LAND_M);
@@ -333,10 +333,20 @@ describe('Chuckanut Drive: the bay side drops, the uphill side is cut sandstone 
     let spanM = 0;
     for (const e of b.road.edges)
       for (const t of e.tags.filter((x) => x.tag === 'bluff')) {
-        // The drop side is the side the span says: never both.
+        // The drop side is one side, and the road's own drop runs say it (B9's `bay-bluff`, found from the
+        // ground either side, tbgis/drops.py): every bluff span lies inside one on the same side.
         expect(t.side === 'left' || t.side === 'right', `${e.id} ${t.s0}`).toBe(true);
+        const inside = e.tags.some(
+          (d) => d.tag === 'bay-bluff' && d.side === t.side && d.s0 <= t.s0 + 1e-6 && d.s1 >= t.s1 - 1e-6,
+        );
+        expect(inside, `${e.id} bluff ${t.s0}..${t.s1} inside a bay-bluff run`).toBe(true);
         spanM += t.s1 - t.s0;
       }
+    // No bluff land where the drop runs do not reach (the control: they cover more than the bluff does).
+    let dropM = 0;
+    for (const e of b.road.edges)
+      for (const d of e.tags.filter((x) => x.tag === 'bay-bluff')) dropM += d.s1 - d.s0;
+    expect(dropM).toBeGreaterThan(spanM);
     const parapets = byRule('parapet');
     const bluffs = byRule('bluff');
     for (const it of [...parapets, ...bluffs]) {
@@ -355,10 +365,20 @@ describe('Chuckanut Drive: the bay side drops, the uphill side is cut sandstone 
         expect(Math.abs(it.d) - Math.abs(v.dOuter)).toBeLessThan(0.3);
       }
     }
+    // B9's madrones stand on the shelf too: behind the parapet, wholly before the drop.
+    const madrones = b.items.filter((i) => i.rule === 'madrone' && themeOf(i) === 'bluff');
+    for (const it of madrones) {
+      const v = b.road.vergeAt(it.edge, it.s, sideName(sideOf(it)));
+      expect(Math.abs(it.d)).toBeGreaterThan(Math.abs(v.dOuter) + 0.55);
+      expect(Math.abs(it.d) - outerOf(b.road, it.edge, sideOf(it)) + 2).toBeLessThanOrEqual(
+        BLUFF_LAND_M + 1e-6,
+      );
+    }
     const parapetM = parapets.length * 6;
     print(
-      `[examined] ${(spanM / 1000).toFixed(2)} km of bluff spans: ${parapets.length} parapet sections (${parapetM} m, ${((100 * parapetM) / spanM).toFixed(0)} %), ${bluffs.length} bluff sections`,
+      `[examined] ${(spanM / 1000).toFixed(2)} km of bluff spans (${(dropM / 1000).toFixed(2)} km of bay-bluff runs): ${parapets.length} parapet sections (${parapetM} m, ${((100 * parapetM) / spanM).toFixed(0)} %), ${bluffs.length} bluff sections, ${madrones.length} madrones on the shelf`,
     );
+    expect(madrones.length).toBeGreaterThan(20);
     expect(spanM).toBeGreaterThan(1000);
     // The parapet runs along nearly all of it (it keeps off the signs, the pads and the zones).
     expect(parapetM).toBeGreaterThan(spanM * 0.7);

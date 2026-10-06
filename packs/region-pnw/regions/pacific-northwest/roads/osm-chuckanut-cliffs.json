@@ -53,8 +53,20 @@
       "tag": "forest"
     },
     {
-      "s0": 355.0,
-      "s1": 2415.0,
+      "s0": 180.0,
+      "s1": 280.0,
+      "side": "right",
+      "tag": "bay-bluff"
+    },
+    {
+      "s0": 370.0,
+      "s1": 2410.0,
+      "side": "right",
+      "tag": "bay-bluff"
+    },
+    {
+      "s0": 370.0,
+      "s1": 2410.0,
       "side": "right",
       "tag": "bluff"
     },

@@ -62,13 +62,6 @@ default so the Keys bake is unchanged. Their bakes are in the region packs as re
   creek or a ravine, not open water, so no boats float below it. `features` take every road-file
   kind, `boostPad` and `rampTruck` included (with numeric `params` and a `slot`), and a `billboard`
   slot names a region `item` or a `pool` (`signs` or `billboards`).
-- Per road, `spanTags` (playtest 4, P4-19, C4): tags over part of one side only, each
-  `{ "s0", "s1" (or "end"), "side": "left" | "right" | "both", "tag" }` in the road's own metres, after
-  its `tags` and off its decks. A span that runs off its road is refused, and a branch's connector never
-  takes its neighbour's span tags. Chuckanut's `bluff` (its bay side) and `rock-cut` (its uphill side)
-  and Lake Samish's `lake` (East Shore Drive's lake side) are span tags; their ranges came from a USGS
-  3DEP probe beside the baked roads (Chuckanut) and from the OSM lake outline (Samish), and both bakes
-  were rebaked from fresh fetches with nothing else changed but the provenance.
 - USGS `getSamples` answers at most 1,000 points per request and silently drops the rest, so longer
   stretches go in batches.
 
@@ -400,6 +393,20 @@ frame origin. Two more switches, both off by default, so every earlier bake is u
   bridge that holds it, instead of at each long bridge's middle.
 - `deckTags` on a road: tags written over its bridges only, beside `bridge` (the Old Seven Mile
   Bridge's `old-bridge` deck look). A road's `tags` still never reach a deck.
+- `sideRuns` on a stretch config's road (playtest 4, P4-19, B9): `[{tag, side: "left" | "right", s0,
+  s1}]` writes a tag on ONE side of the road over a run of s, never over a deck. The Gorge's
+  `guard-wall` (the masonry wall on its cliff side) and Chuckanut's `bay-bluff` (the madrones over its
+  bay side) are the two so far. The runs come from the ground, not from the map:
+  `uv run python -m tbgis.drops configs/osm-pnw-gorge.json <road id> ...` samples the USGS 3DEP ground
+  14 m and 30 m to each side every 10 m (once; cached under `.cache/usgs`) and prints where each side
+  falls away (5 m below the road at 14 m, 12 m at 30 m, runs of 30 m or more, 40 m gaps joined).
+- Since C4 (playtest 4, P4-19) a network bake writes `sideRuns` too, the same way (a run off its road is
+  refused), and a branch's connector, dressed like the road beside it, never takes that road's side runs.
+  Three more are land tags: Chuckanut's `bluff` (inside its `bay-bluff` runs, where the ground falls 15 m
+  within 30 m and 30 m within 60 m: a cliff, not a slope) and `rock-cut` (its uphill side, where the ground
+  rises 6 m within 15 m and 15 m within 30 m), from the same kind of 3DEP probe at 15, 30 and 60 m, and
+  Lake Samish's `lake` (East Shore Drive, where the OSM outline of the lake lies within 30 m of the baked
+  road). Both bakes were redone from fresh fetches; nothing else changed but the provenance.
 
 | Network | Route (picker name) | What it is | Numbers (from the bake) |
 |---|---|---|---|

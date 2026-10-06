@@ -69,6 +69,48 @@
       "s1": 2970.0978,
       "side": "both",
       "tag": "forest"
+    },
+    {
+      "s0": 0.0,
+      "s1": 90.0,
+      "side": "left",
+      "tag": "guard-wall"
+    },
+    {
+      "s0": 390.0128,
+      "s1": 490.0,
+      "side": "left",
+      "tag": "guard-wall"
+    },
+    {
+      "s0": 670.0,
+      "s1": 710.0,
+      "side": "left",
+      "tag": "guard-wall"
+    },
+    {
+      "s0": 790.0,
+      "s1": 870.0,
+      "side": "left",
+      "tag": "guard-wall"
+    },
+    {
+      "s0": 910.0,
+      "s1": 1000.0,
+      "side": "left",
+      "tag": "guard-wall"
+    },
+    {
+      "s0": 1080.0,
+      "s1": 1720.0,
+      "side": "left",
+      "tag": "guard-wall"
+    },
+    {
+      "s0": 2870.0,
+      "s1": 2970.0,
+      "side": "left",
+      "tag": "guard-wall"
     }
   ],
   "features": [
@@ -82,13 +124,27 @@
     },
     {
       "kind": "roadsideZone",
-      "id": "vista-house",
-      "s0": 120.0,
-      "s1": 200.0,
-      "d0": -12.6,
-      "d1": -5.6,
+      "id": "vista-house-visitors",
+      "s0": 232.0,
+      "s1": 284.0,
+      "d0": 5.6,
+      "d1": 12.6,
       "params": {
         "spawns": "pedestrians"
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "vista-house",
+      "s0": 239.0,
+      "s1": 261.0,
+      "d0": 19.0,
+      "d1": 41.0,
+      "params": {
+        "model": "models/landmarks/gorge-landmarks#vista_house",
+        "yawDeg": 0.0,
+        "scale": 1.0,
+        "farM": 200.0
       }
     },
     {
@@ -99,7 +155,9 @@
       "d0": 6.5,
       "d1": 9.0,
       "pool": "signs",
-      "params": { "style": "historic" }
+      "params": {
+        "style": "historic"
+      }
     },
     {
       "kind": "boostPad",
@@ -1053,7 +1111,7 @@
   "provenance": {
     "origin": "gis-pipeline",
     "author": "tools/gis",
-    "createdAt": "2026-10-05",
+    "createdAt": "2026-10-06",
     "tool": {
       "name": "tools/gis/src/tbgis/cli.py",
       "version": "0.1.0",
@@ -1066,8 +1124,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
-        "retrievedAt": "2026-10-05T21:24:18Z",
-        "sha256": "ec4f4cef2881aa73ad1d5813efecc255e24e5ed080d7868814d23edd2dfcfa71"
+        "retrievedAt": "2026-10-06T03:25:45Z",
+        "sha256": "f3b3d55decee609d6729a1f5e0a6adf2b8de75d677f4ce18ace97ca83a7465fe"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -1075,7 +1133,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 824 points in 1 request(s) (lon, lat WGS84, sha256 21461fed9fc27ed7), bilinear",
-        "retrievedAt": "2026-10-05T21:24:22Z",
+        "retrievedAt": "2026-10-06T03:25:54Z",
         "sha256": "7f8cfdb7b51911e54cca1dfb7460e9c44832beb6b12903dd68b3005e6ff3842a"
       }
     ],

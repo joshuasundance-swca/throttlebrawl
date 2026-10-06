@@ -57,6 +57,15 @@
       "name": "Crown Point Loops",
       "tags": ["forest"],
       "deckTags": ["arch-bridge"],
+      "sideRuns": [
+        { "tag": "guard-wall", "side": "left", "s0": 0, "s1": 90 },
+        { "tag": "guard-wall", "side": "left", "s0": 320, "s1": 490 },
+        { "tag": "guard-wall", "side": "left", "s0": 670, "s1": 710 },
+        { "tag": "guard-wall", "side": "left", "s0": 790, "s1": 870 },
+        { "tag": "guard-wall", "side": "left", "s0": 910, "s1": 1000 },
+        { "tag": "guard-wall", "side": "left", "s0": 1080, "s1": 1720 },
+        { "tag": "guard-wall", "side": "left", "s0": 2870, "s1": 2970 }
+      ],
       "features": [
         {
           "kind": "copSpawn",
@@ -68,13 +77,27 @@
         },
         {
           "kind": "roadsideZone",
-          "id": "vista-house",
-          "s0": 120,
-          "s1": 200,
-          "d0": -12.6,
-          "d1": -5.6,
+          "id": "vista-house-visitors",
+          "s0": 232,
+          "s1": 284,
+          "d0": 5.6,
+          "d1": 12.6,
           "params": {
             "spawns": "pedestrians"
+          }
+        },
+        {
+          "kind": "landmark",
+          "id": "vista-house",
+          "s0": 239,
+          "s1": 261,
+          "d0": 19,
+          "d1": 41,
+          "params": {
+            "model": "models/landmarks/gorge-landmarks#vista_house",
+            "yawDeg": 0,
+            "scale": 1,
+            "farM": 200
           }
         },
         {
@@ -107,6 +130,13 @@
       "name": "Latourell Run",
       "tags": ["forest"],
       "deckTags": ["arch-bridge"],
+      "sideRuns": [
+        { "tag": "guard-wall", "side": "left", "s0": 0, "s1": 80 },
+        { "tag": "guard-wall", "side": "left", "s0": 330, "s1": 400 },
+        { "tag": "guard-wall", "side": "left", "s0": 660, "s1": 710 },
+        { "tag": "guard-wall", "side": "left", "s0": 760, "s1": 1070 },
+        { "tag": "guard-wall", "side": "left", "s0": 1749, "s1": 1899 }
+      ],
       "features": [
         {
           "kind": "billboard",
@@ -198,6 +228,11 @@
       "name": "Shepperd's Dell",
       "tags": ["forest"],
       "deckTags": ["arch-bridge"],
+      "sideRuns": [
+        { "tag": "guard-wall", "side": "left", "s0": 140, "s1": 200 },
+        { "tag": "guard-wall", "side": "left", "s0": 690, "s1": 780 },
+        { "tag": "guard-wall", "side": "left", "s0": 840, "s1": 1060 }
+      ],
       "features": [
         {
           "kind": "billboard",

@@ -51,6 +51,12 @@
       "s1": 2498.0553,
       "side": "both",
       "tag": "forest"
+    },
+    {
+      "s0": 170.0,
+      "s1": 200.0,
+      "side": "right",
+      "tag": "bay-bluff"
     }
   ],
   "features": [

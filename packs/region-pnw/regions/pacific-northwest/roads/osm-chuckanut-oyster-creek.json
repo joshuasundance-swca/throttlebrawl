@@ -53,10 +53,34 @@
       "tag": "forest"
     },
     {
-      "s0": 35.0,
-      "s1": 145.0,
+      "s0": 190.0,
+      "s1": 430.0,
       "side": "right",
-      "tag": "bluff"
+      "tag": "bay-bluff"
+    },
+    {
+      "s0": 510.0,
+      "s1": 600.0,
+      "side": "right",
+      "tag": "bay-bluff"
+    },
+    {
+      "s0": 740.0,
+      "s1": 1490.0,
+      "side": "right",
+      "tag": "bay-bluff"
+    },
+    {
+      "s0": 1600.0,
+      "s1": 1820.0,
+      "side": "right",
+      "tag": "bay-bluff"
+    },
+    {
+      "s0": 2250.0,
+      "s1": 2540.0,
+      "side": "right",
+      "tag": "bay-bluff"
     },
     {
       "s0": 195.0,
@@ -71,7 +95,7 @@
       "tag": "bluff"
     },
     {
-      "s0": 1585.0,
+      "s0": 1600.0,
       "s1": 1805.0,
       "side": "right",
       "tag": "bluff"

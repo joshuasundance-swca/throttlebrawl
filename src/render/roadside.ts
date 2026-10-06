@@ -68,6 +68,11 @@ export interface RoadsideRule {
   along?: number;
   /** Turns its front (+Z) to the road; otherwise a random turn. */
   face?: boolean;
+  /**
+   * With `face`: turns its back to the road instead, its +Z away from it (playtest 4, P4-19, B9: a madrone
+   * on a bluff leans out over the water, which its model does toward +Z).
+   */
+  away?: boolean;
   /** A run of sections laid end to end along the road (a fence): [min, max] sections, its length. */
   run?: readonly [number, number, number];
   /** Scale range (uniform). */
@@ -122,6 +127,11 @@ export interface RoadsideRule {
    * 4, P4-19, C4: a parapet section half past the bluff's end would stand in the forest's ridable band).
    */
   whole?: boolean;
+  /**
+   * A low prop (playtest 4, P4-19, C4: a parapet, a boulder, the lip of a bluff): it stands under a tree's crown,
+   * so a canopy's clear-ground disc does not keep it off, as it does not keep off the understory.
+   */
+  low?: boolean;
   /**
    * Stands at the water's level, not the land's (playtest 4, P4-19, C4: a dock's root is at the shore at the
    * waterline): its anchor's height is the water under it (`RoadsideInput.waterAt`), at most `BANK_MAX_M`
@@ -197,7 +207,7 @@ const FENCE = { along: 3, face: true, tier: 0 } as const;
 /** Ferns and bushes: they grow under the trees and fade first. */
 const UNDER = { understory: true, tier: 2 } as const;
 /** A section of Chuckanut's rock or wall (playtest 4, P4-19, C4): from the shore kit, facing the road, laid exactly. */
-const ROCK = { model: 'pnwShore', face: true, tier: 0, align: true, whole: true } as const;
+const ROCK = { model: 'pnwShore', face: true, tier: 0, align: true, whole: true, low: true } as const;
 
 /**
  * The Pacific Northwest (the maintainer: "NW tree species"; the 2026-10-01b amendment's list):
@@ -228,13 +238,41 @@ export const PNW_KIT: RoadsideKit = {
     rule('verge', [0, 0, 1], WOODS_AND_TOWN, 3.8, 0.75, [0.3, 1.8], 0.45, { ...UNDER, size: [0.75, 1.2] }),
     rule('salal', [1], FOREST, 12, 0.7, [2.4, 7], 0.8, { ...UNDER, size: [0.8, 1.3] }),
     rule('fern', [0], FOREST, 6, 0.85, [2.2, 9], 0.6, { ...UNDER, size: [0.8, 1.35] }),
+    // Playtest 4 (P4-19, B9; the maintainer: "The real roads do not have the characteristics of the roads in
+    // question in terms of scenery and feel"). Codex CX5's identity kit (`pnwIdentity`: 0 and 1 a madrone,
+    // 2 a 6 m section of masonry guard wall), on the two side runs the bake config names (`sideRuns`, found
+    // from the ground either side, tbgis/drops.py). The Historic Columbia River Highway's dry-masonry guard
+    // wall stands end to end along the side where the ground falls away (`guard-wall`), at the verge's
+    // outer edge, where a rider is stopped; Chuckanut Drive's madrones stand over its bay side
+    // (`bay-bluff`) with their crowns leaning out over the water, their backs to the road. Both claim their
+    // ground first, without moving any other rule's place in the list.
+    rule('gorge-wall', [2], FOREST, 6, 1, [0.3, 0], 0.4, {
+      ...FENCE,
+      run: [1, 1, 6],
+      align: true,
+      district: ['guard-wall'],
+      model: 'pnwIdentity',
+      first: true,
+    }),
+    // Since C4 (playtest 4, P4-19) the madrones stand on Chuckanut's `bluff` shelf too, between the parapet and
+    // the drop, where the bay-side runs and the bluff meet.
+    rule('madrone', [0, 1], [...FOREST, 'bluff'], 22, 0.7, [1.5, 6], 2, {
+      face: true,
+      away: true,
+      tier: 0,
+      canopy: true,
+      size: [0.85, 1.2],
+      district: ['bay-bluff'],
+      model: 'pnwIdentity',
+      first: true,
+    }),
     // Playtest 4 (P4-19, C4; the identity sheets' H1, H2 and I3; Codex CX6's `pnw-shore` kit, models.ts
     // `pnwShore`: 0 and 1 the cuts, 2 the parapet, 3 the bluff, 4 and 5 the boulders, 6 the cabin, 7 the
-    // dock). Last in the list, so no other rule's seeded placements move; none of the rules above stands
-    // on these themes. Each 6 m section lays end to end in a run that follows the road's grade, as a fence's.
-    // Chuckanut's bay side (`bluff`): the low parapet all along the drop, its face on the 4 m band's hard
-    // edge (road/cross-section.ts); and the 20 m bluff sections, their lip at the drop's edge, the rock
-    // falling 40 m away from the road.
+    // dock). Last in the list, so no other rule's seeded placements move. Each section lays end to end in a
+    // run that follows the road's grade, as a fence's. Chuckanut's bay side (`bluff`): the low parapet all
+    // along the shelf, its face on the 4 m band's hard edge (road/cross-section.ts), under the madrones'
+    // crowns (`low`); and the 20 m bluff sections, their lip at the drop's edge, the rock falling 40 m away
+    // from the road.
     rule('parapet', [2], ['bluff'], 36, 1, [0, 0], 0.1, { ...ROCK, run: [6, 6, 6], along: 3, back: 0.55 }),
     rule('bluff', [3], ['bluff'], 60, 1, [BLUFF_LAND_M, 0], 0.1, {
       ...ROCK,
@@ -254,6 +292,7 @@ export const PNW_KIT: RoadsideKit = {
     rule('boulder', [4, 5], ['cut'], 14, 0.5, [0, 1.5], 1.4, {
       model: 'pnwShore',
       tier: 1,
+      low: true,
       size: [0.8, 1.2],
     }),
     // Lake Samish's shore (`lake`): a cabin now and then, its porch to the road and its deck to the water,
@@ -1068,7 +1107,7 @@ export class RoadsideScatter {
         const dc = rule.discBack ? side * (outer + across + rule.discBack) : d;
         const c = rule.discBack ? road.toWorld(e.index, s, dc, LAND_TOP_M) : p;
         if (!featureClear(s, dc, r) || !zoneClear(s, d, r)) break;
-        if (taken.hits(c.x, c.z, r, !!rule.understory)) {
+        if (taken.hits(c.x, c.z, r, !!rule.understory || !!rule.low)) {
           if (rule.run) break;
           continue;
         }
@@ -1086,7 +1125,7 @@ export class RoadsideScatter {
         let turn: number;
         let pitch = 0;
         if (rule.face) {
-          turn = Math.atan2(toRoad.x - p.x, toRoad.z - p.z);
+          turn = Math.atan2(toRoad.x - p.x, toRoad.z - p.z) + (rule.away ? Math.PI : 0);
           if (rule.run) {
             // A section follows the road's grade, so neither end floats or sinks.
             const a = road.toWorld(e.index, Math.max(0, s - along), d, LAND_TOP_M);
