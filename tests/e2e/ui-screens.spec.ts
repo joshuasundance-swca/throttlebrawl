@@ -144,9 +144,13 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('start, menu and settings: controls card, build id, sliders, and the mirror moves the buttons', async ({
-  page,
-}) => {
+// The start, menu and settings screens, and the mirror's two races, were one test until 2026-10-06:
+// it took 25.4 s of its 30 s limit on main (run 37427759843) and ran out twice on a PR run
+// (37430031610), both times in its last screenshot, taken mid-race in a software renderer. Its CI
+// log's timestamps put the screens at about 12 s from the page load and the two races at about
+// 13 s more, so they are two tests now, each asserting what it did, and the races get their own
+// hang guard like every other race spec. [default]
+test('start, menu and settings: controls card, build id and sliders', async ({ page }) => {
   const problems = watchErrors(page);
   await page.goto('./');
   await expect(page.locator('#start-screen')).toBeVisible();
@@ -170,9 +174,24 @@ test('start, menu and settings: controls card, build id, sliders, and the mirror
   await expect(page.locator('#settings-mirror')).not.toBeChecked();
   await expectNoOverflow(page, 'settings');
   await shot(page, 'settings');
+  await page.locator('#settings-back').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+
+  expect(problems).toEqual([]);
+});
+
+test('the mirror moves the buttons: the attack button and your health bar change sides, and the HUD never overlaps', async ({
+  page,
+}) => {
+  // A hang guard, not a measurement: two race starts and a mid-race screenshot took about 13 s of
+  // the old test's 25.4 s, and the screenshot alone was still waiting after 8.6 s on a busy runner.
+  test.setTimeout(90_000);
+  const problems = watchErrors(page);
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
 
   // Without the mirror the attack button sits on the right; with it, on the left.
-  await page.locator('#settings-back').click();
   await page.locator('#menu-race').click();
   await expect(page.locator('#touch-attack')).toBeVisible();
   const vw = page.viewportSize()?.width ?? 0;
