@@ -15,7 +15,12 @@
 // of the right stick under the right thumb, as the touch button is under the right thumb. Hold to lift
 // the front and keep it up, release to drop it; R2 stays the throttle. Playtest 3's double pull of R2
 // is gone.
+//
+// Remapping (2026-10-05): every action here, and the steering stick, has its buttons in Settings,
+// Keys. Two actions joined the pad then: the U-turn button (d-pad down: hold it and steer the way
+// round, input/uturn-macro.ts) and pause (Options, a press edge app/ reads). [default]
 import type { ActionState } from '../actions';
+import { UturnMacro } from '../uturn-macro';
 
 /** The parts of a Gamepad this device reads (a real Gamepad satisfies it). */
 export interface PadLike {
@@ -38,7 +43,9 @@ export type PadButtonAction =
   | 'lookBack'
   | 'skipRunBack'
   | 'cycleCamera'
-  | 'wheelie';
+  | 'wheelie'
+  | 'uturn'
+  | 'pause';
 
 export interface GamepadMap {
   /** The stick axis that steers (-1 left .. 1 right). */
@@ -88,6 +95,10 @@ export const DEFAULT_PAD_MAP: GamepadMap = {
     cycleCamera: [PAD.dpadUp],
     // Playtest 4's wheelie button: hold R3, free in the default map [default].
     wheelie: [PAD.r3],
+    // The U-turn button: hold d-pad down and steer the way round (2026-10-05). [default]
+    uturn: [PAD.dpadDown],
+    // Options pauses the race (2026-10-05). [default]
+    pause: [PAD.options],
   },
 };
 
@@ -136,6 +147,9 @@ export class GamepadState {
   private wasHeld = new Set<PadButtonAction>();
   /** Whether the view button was held at the last poll (its press edge). */
   private viewHeld = false;
+  /** Whether the pause button was held at the last poll (its press edge). */
+  private pauseHeld = false;
+  private readonly uturnButton = new UturnMacro();
 
   constructor(map: GamepadMap = DEFAULT_PAD_MAP) {
     this.map = map;
@@ -150,19 +164,16 @@ export class GamepadState {
   clear(): void {
     this.wasHeld.clear();
     this.viewHeld = false;
+    this.pauseHeld = false;
+    this.uturnButton.clear();
   }
 
   /**
    * Writes this poll's gamepad actions into `a`. Every connected pad counts; `deadZone` is the
-   * radial stick dead zone as a fraction of full deflection. `_dt`, the seconds since the last poll,
-   * is unused since the wheelie's double pull of R2 went (playtest 4); callers still pass it.
+   * radial stick dead zone as a fraction of full deflection. `dt`, the seconds since the last poll,
+   * paces the U-turn button's taps (a sim step when left out).
    */
-  sample(
-    a: ActionState,
-    pads: readonly (PadLike | null | undefined)[],
-    deadZone: number,
-    _dt?: number,
-  ): void {
+  sample(a: ActionState, pads: readonly (PadLike | null | undefined)[], deadZone: number, dt?: number): void {
     const live = pads.filter((p): p is PadLike => !!p && p.connected);
     const value = (action: PadButtonAction) => {
       let v = 0;
@@ -209,5 +220,9 @@ export class GamepadState {
     const view = held('cycleCamera');
     if (view && !this.viewHeld) a.cycleCamera = true;
     this.viewHeld = view;
+    const pause = held('pause');
+    if (pause && !this.pauseHeld) a.pause = true;
+    this.pauseHeld = pause;
+    this.uturnButton.apply(a, held('uturn'), dt ?? 1 / 60);
   }
 }
