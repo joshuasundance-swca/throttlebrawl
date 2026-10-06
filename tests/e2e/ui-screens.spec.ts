@@ -49,8 +49,12 @@ function findOverflow(page: Page) {
     // cards scroll on a short phone, playtest 1c item 8; the "recently seen" list fills with signs
     // since the visibleContent poll, T8.2), or side to side (the menu's route chips, a row that
     // scrolls sideways on a narrow phone, ui/routes.ts).
+    // A whole screen only scrolls sideways as a side effect of its up-and-down scrolling (CSS makes
+    // the other axis auto too), so text past a screen's side is lost, not a row to swipe: only a row
+    // inside a screen counts as a sideways scroller.
     const scrollerOf = (e: HTMLElement, axis: 'x' | 'y') => {
       for (let p = e.parentElement; p; p = p.parentElement) {
+        if (axis === 'x' && p.classList.contains('screen')) continue;
         const style = getComputedStyle(p);
         const o = axis === 'y' ? style.overflowY : style.overflowX;
         const more = axis === 'y' ? p.scrollHeight > p.clientHeight + 1 : p.scrollWidth > p.clientWidth + 1;
