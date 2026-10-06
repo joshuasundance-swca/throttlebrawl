@@ -113,7 +113,7 @@ function lanePrompt(l, parent) {
       l.needs +
       "'s unmerged work (its PR: " +
       parent.prs.map((n) => '#' + n).join(', ') +
-      "): follow the AGENTS.md rule for it: branch from origin/<that PR's head branch> (gh pr view <n> --json headRefName,state), build and test there, and open your own PR against main only after that PR is MERGED (wait synchronously), after merging origin/main into your branch"
+      "): follow the AGENTS.md rule for it: git switch --no-track -c <your branch> origin/<that PR's head branch> (gh pr view <n> --json headRefName,state), build and test there, push with git push -u origin HEAD, and open your own PR against main only after that PR is MERGED (wait synchronously), after merging origin/main into your branch"
     : '';
   return (
     'Follow AGENTS.md (already loaded); your task: ' +

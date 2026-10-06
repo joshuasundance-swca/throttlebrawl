@@ -92,7 +92,9 @@ const unsafeAdvice = (text: string) =>
 // ---------------------------------------------------------------------------------------------
 
 const RULE: [string, RegExp][] = [
-  ['branches from the parent branch', /branch from `origin\/<parent>`/],
+  ['branches from the parent branch, untracked', /`git switch --no-track -c <your branch> origin\/<parent>`/],
+  ['pushes with -u, never bare', /`git push -u origin HEAD`.*never a bare `git push`/],
+  ['bounded wait', /still not merged after 8 hours, push your branch, report it blocked and end/],
   ['builds and tests there', /build and run your tests there/],
   ['opens the PR against main', /open your PR against `main`/i],
   ['only after the parent is MERGED', /only after the parent's PR is MERGED/],
@@ -156,7 +158,9 @@ describe("AGENTS.md: a lane that needs another lane's unmerged work", () => {
 });
 
 const ENGINEERING_CLAIMS: [string, RegExp][] = [
-  ['branches from the parent', /branch from `origin\/<parent>`/],
+  ['branches from the parent, untracked', /`git switch --no-track -c <your branch> origin\/<parent>`/],
+  ['pushes with -u', /`git push -u origin HEAD`/],
+  ['bounded wait', /still open after 8 hours \(red, or stuck\), push your branch, report it blocked and end/],
   ['waits for the merge', /only after the parent's PR is MERGED/],
   ['merges main in', /`git merge origin\/main` into your branch/],
   ['no rebase, no force-push', /Never a rebase and never a force-push/],
@@ -183,7 +187,10 @@ const ENGINEERING_CLAIMS: [string, RegExp][] = [
     /cascade rebase and force-with-lease push conflict with the never-rebase and never-force-push rules/,
   ],
   ['train sees main only', /CI and the train only see PRs into `main`/],
-  ['merge queue reason', /merge path is built for GitHub's merge queue, which this repo does not use/],
+  [
+    'merge path reason',
+    /its merge lands the whole stack at once, directly or through GitHub's merge queue, never through the train/,
+  ],
   ['revisit', /Revisit if the repo ever adopts the merge queue/],
   ['template', /`needs`/],
   ['test', /`scripts\/stack-lite-docs\.test\.ts`/],
@@ -241,7 +248,11 @@ describe('docs/engineering.md: lanes that build on another lane', () => {
 const TEMPLATE_CLAIMS: [string, RegExp][] = [
   ['accepts needs', /needs\? \}/],
   ['awaits the parent', /parent = await runLane\(lanes\.find\(\(x\) => x\.key === l\.needs\)\)/],
-  ['branches from the parent PR head', /branch from origin\/<that PR\\?'s head branch>/],
+  [
+    'branches from the parent PR head, untracked',
+    /git switch --no-track -c <your branch> origin\/<that PR\\?'s head branch>/,
+  ],
+  ['pushes with -u', /push with git push -u origin HEAD/],
   ['PR only after MERGED', /open your own PR against main only after that PR is MERGED/],
   ['merges main in', /after merging origin\/main into your branch/],
   ['keeper keeps watching', /A lane that needs another lane opens its PR only once/],

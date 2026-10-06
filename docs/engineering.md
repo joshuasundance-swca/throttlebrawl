@@ -635,10 +635,10 @@ For a quick look without a dev machine, open the game Space's `*.hf.space` URL o
 
 **The rule.** The dependent lane builds while the parent is still in flight:
 
-1. `git fetch`, then branch from `origin/<parent>` (the parent's `lane/<lane-id>/<topic>` branch). Build and run your own tests there. Push the branch when they pass: a branch with no PR starts no CI, so this costs nothing, and a lane that builds on yours can fetch it.
+1. `git fetch`, then `git switch --no-track -c <your branch> origin/<parent>` (the parent's `lane/<lane-id>/<topic>` branch). Build and run your own tests there. Push the branch with `git push -u origin HEAD` when they pass: a branch with no PR starts no CI, so this costs nothing, and a lane that builds on yours can fetch it. `--no-track` matters: a branch made from `origin/<parent>` without it tracks the parent's branch, and a bare `git push` would then fail, or with `push.default=upstream` push your commits onto the parent's PR.
 2. Open your PR against `main` only after the parent's PR is MERGED (`gh pr view --json state,mergedAt`, polled synchronously, under 9 minutes per call, as [AGENTS.md](../AGENTS.md#the-dev-machine-what-runs-locally) says). Then `git merge origin/main` into your branch, re-run your tests, push, open the PR and arm auto-merge as usual. Never a rebase and never a force-push, so the never-rewrite-published-history rule holds.
-3. The parent's squash commit holds the same changes as the parent's branch, so the merge usually brings little or no conflict. Where you changed a line the parent wrote, git reports a conflict: resolve it keeping your version of that line and the parent's intent.
-4. If the parent changes after you branched (a fix on its branch, a keeper's push), merge its branch into yours again. If the parent's PR is CLOSED unmerged, rebuild on `main` without the parent's work, or say what is missing.
+3. The parent's squash commit holds the same changes as the parent's branch, so the merge usually brings little or no conflict. Where you changed a line the parent wrote, or one next to it, git reports a conflict: resolve it keeping your version of that line and the parent's intent.
+4. If the parent changes after you branched (a fix on its branch, a keeper's push), merge its branch into yours again. If the parent's PR is CLOSED unmerged, rebuild on `main` without the parent's work, or say what is missing. If it is still open after 8 hours (red, or stuck), push your branch, report it blocked and end: an unbounded wait holds the run's pool slot and the run never reaches its live check.
 5. Never open a PR against another lane's branch.
 
 **Why the PR waits for `main`.** Each of these was read from the repo on 2026-10-06:
@@ -652,7 +652,7 @@ For a quick look without a dev machine, open the game Space's `*.hf.space` URL o
 
 - its cascade rebase and force-with-lease push conflict with the never-rebase and never-force-push rules;
 - CI and the train only see PRs into `main`, not a stack's inner PRs;
-- its merge path is built for GitHub's merge queue, which this repo does not use (the repo is a personal account's; see [Branch protection and auto-merge](#branch-protection-and-auto-merge)).
+- its merge lands the whole stack at once, directly or through GitHub's merge queue, never through the train (this repo has no merge queue: it is a personal account's; see [Branch protection and auto-merge](#branch-protection-and-auto-merge)).
 
 These points are the coordinator's comparison of 2026-10-06; they were not re-measured here. Revisit if the repo ever adopts the merge queue.
 
