@@ -735,21 +735,23 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   };
   // Playtest 4 (P4-16): a party street's string lights (party-lights.ts), a lazy chunk loaded only for a road
   // with a party zone, and hung only at dusk and after. Built with the road scene, whose land it stands on.
+  // The crowd on its balconies (run A's check, item 7) is there by day too, once the street fronts are placed.
   let partyModule: typeof import('./party-lights') | null = null;
   let party: PartyLights | null = null;
   const buildParty = () => {
     party?.dispose();
     party = null;
     const rs = roadScene;
-    if (!partyModule || !roadArgs || !rs || !isLitTime(roadTime)) return;
+    if (!partyModule || !roadArgs || !rs) return;
     party = new partyModule.PartyLights(look, {
       road: roadArgs.road,
       dressing: roadArgs.dressing,
       seed: sceneSeed,
-      lit: true,
+      lit: isLitTime(roadTime),
       landReach: (e, side, s) => rs.landReach(e, side, s),
     });
     scene.add(party.group);
+    if (roadside?.ready) party.setFronts(roadside.surfaces());
   };
   const buildRoad = () => {
     if (!roadArgs) return;
@@ -908,7 +910,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           (f) => f.kind === 'roadsideZone' && f.params?.['dressing'] === 'party',
         ),
       );
-      if (hasParty && isLitTime(env.timeOfDay)) {
+      if (hasParty) {
         if (partyModule) buildParty();
         else
           void import('./party-lights').then((m) => {
@@ -967,6 +969,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (roadside?.ready && !roadsideWords) {
         roadsideWords = true;
         buildTextSurfaces();
+        party?.setFronts(roadside.surfaces());
       }
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
