@@ -49,6 +49,7 @@ import { SeaBands, seaPlanFor } from './sea-bands';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
+  facesWater,
   islandBoxes,
   isTropical,
   onIsland,
@@ -56,9 +57,11 @@ import {
   ridableBandPast,
   SCENERY_KINDS,
   SEAWALL_LAND_M,
+  SUMMIT_REACH_M,
   WIDE_LAND_M,
   scatterEdge,
   themeAt,
+  waterCentre,
   type SceneryKind,
   type ScenerySpot,
   type SideTheme,
@@ -845,6 +848,10 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [0.6, 5, 0.6], at: [0, 2.5, 0], color: '#5b4a3a' },
       { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
     ],
+    // the headlands' own, until the kit loads: a long low concrete block, a dark shrub, a red rock
+    battery: [{ size: [30, 3.7, 11.5], at: [0, 1.85, -0.25], color: '#a1a497' }],
+    brush: [{ size: [2, 1.2, 1.9], at: [0, 0.6, 0], color: '#505f3c' }],
+    outcrop: [{ size: [5, 2.6, 2.4], at: [0, 1.3, 0], color: '#a45440' }],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -852,8 +859,8 @@ function standIn(kind: SceneryKind): BufferGeometry {
 /** Scenery kinds kept instanced: the boats bob every frame and the fog banks are unlit (run W-S). */
 const INSTANCED_KINDS: ReadonlySet<SceneryKind> = new Set(['skiff', 'boat', 'fogBank']);
 
-/** Which model draws each scenery kind. */
-const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
+/** Which model draws each scenery kind (exported for the merge test, which counts each prop's vertices). */
+export const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   palm: 'palms',
   mangrove: 'mangroves',
   shack: 'baitShack',
@@ -868,6 +875,9 @@ const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   bay: 'sevenMileKit',
   arch: 'gorgeArches',
   coastTree: 'sfIdentity',
+  battery: 'sfHeadlands',
+  brush: 'sfHeadlands',
+  outcrop: 'sfHeadlands',
 };
 
 /**
@@ -999,6 +1009,8 @@ export function buildRoadScene(
   const sevenMile = bayModel ? isSevenMile(road.edges.map((e) => dressingOf(e, dressing).tags)) : false;
   const baySpots: ScenerySpot[] = [];
   const nearWater = terrain ? waterGrid(road, dressing) : () => false;
+  // The middle of the water the network crosses, for a headlands road's sea side (scenery.ts `facesWater`).
+  const seaCentre = terrain ? waterCentre(road, (e) => dressingOf(e, dressing).tags) : null;
   let railM = 0;
   let boardSeams = 0;
   let brickCourses = 0;
@@ -1782,6 +1794,10 @@ export function buildRoadScene(
             }
           : undefined,
         fogBanks: opts.palette?.['fogBank'] !== undefined,
+        // Playtest 4 (P4-19, C2): a headlands battery covers the water the network crosses, and the
+        // chert stands at the top of a road that ends there.
+        seaward: seaCentre ? (side, s) => facesWater(road, e.index, side, s, seaCentre) : undefined,
+        summit: e.nextLinks.length === 0 ? (s) => s >= e.length - SUMMIT_REACH_M : undefined,
       }),
     );
     if (sevenMile) {
