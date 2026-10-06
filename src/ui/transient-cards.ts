@@ -101,8 +101,12 @@ export interface CardSlots {
   /** Raises the card for the screen that shows now (`ownerOf`); a card already up moves with it. */
   raise(id: SlotCardId, on: Screen): void;
   drop(id: SlotCardId): void;
-  /** The screen changed: a card that was shown on another screen goes. */
-  screenChanged(to: Screen): void;
+  /**
+   * The screen changed: a card that was shown on another screen goes. A notice on the start screen is
+   * carried to the menu the start tap opens instead (polish batch E's check, punch item 4: a start tap
+   * inside the boot notice's 4 s lost it). Returns the cards carried, so their time starts again.
+   */
+  screenChanged(to: Screen): SlotCardId[];
   /** A busy "Loading ..." line went up: the did-not-load card goes (the load runs again, and says so if it fails). */
   busy(): void;
   /** The cards to show on `on`, in stacking order. */
@@ -119,10 +123,15 @@ export function createCardSlots(): CardSlots {
     },
     drop: (id) => void up.delete(id),
     screenChanged(to) {
+      const carried: SlotCardId[] = [];
       for (const [id, c] of up) {
         if (c.owner === to) c.seen = true;
-        else if (c.seen) up.delete(id);
+        else if (c.owner === 'start' && to === 'menu') {
+          up.set(id, { owner: 'menu', seen: true });
+          carried.push(id);
+        } else if (c.seen) up.delete(id);
       }
+      return carried;
     },
     busy: () => void up.delete('load-retry'),
     visible: (on) =>
@@ -135,12 +144,17 @@ export function createCardSlots(): CardSlots {
 
 /**
  * The Retry button while the host's wait runs (`waitUntil`, ms on the same clock as `now`): off, and
- * counting the wait down in whole seconds; then plain Retry.
+ * counting the wait down in whole seconds; then plain Retry. `label` is the button's word when it
+ * offers something else (Reload, for a build whose files are gone).
  */
-export function retryButton(waitUntil: number | null, now: number): { label: string; disabled: boolean } {
+export function retryButton(
+  waitUntil: number | null,
+  now: number,
+  label = 'Retry',
+): { label: string; disabled: boolean } {
   const left = waitUntil === null ? 0 : waitUntil - now;
-  if (left <= 0) return { label: 'Retry', disabled: false };
-  return { label: `Retry in ${Math.ceil(left / 1000)} s`, disabled: true };
+  if (left <= 0) return { label, disabled: false };
+  return { label: `${label} in ${Math.ceil(left / 1000)} s`, disabled: true };
 }
 
 // ---- The layout judge (the browser spec measures, this decides) -----------------------------------
@@ -206,4 +220,20 @@ export function cardFindings(
     if (hit(card.box, road)) out.push(`${card.id} covers the road ahead`);
   }
   return [...new Set(out)];
+}
+
+/**
+ * A card just raised must be in view (polish batch E's check, mustFix 1: a failed career ride raised
+ * the did-not-load card first in the career's flow while the screen was scrolled down to the event,
+ * 420 to 590 px above the top of the screen, and the player saw no word). In view: all of it is on
+ * the screen, or, for a card taller than the screen, it fills the screen. Empty when it is.
+ */
+export function inViewFindings(id: string, box: Box, viewport: { width: number; height: number }): string[] {
+  const height = box.bottom - box.top;
+  if (height <= 0.5 || box.right - box.left <= 0.5) return [`${id} is out of view (not drawn)`];
+  const seen = Math.min(box.bottom, viewport.height) - Math.max(box.top, 0);
+  if (seen >= Math.min(height, viewport.height) - 1) return [];
+  return [
+    `${id} is out of view (y ${Math.round(box.top)} to ${Math.round(box.bottom)} of a ${viewport.height} px screen)`,
+  ];
 }

@@ -42,8 +42,12 @@ import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
 import {
+  bendSpeed,
   blockerAt as blockerAtClear,
+  FIXED_OFF_ROAD_MPS,
+  furnitureSeen,
   lineClear as lineClearAt,
+  offRoadAmongFixed,
   pathClear as pathClearAt,
   PED_SIZE,
   see,
@@ -270,6 +274,13 @@ const LINE_CHECK_M = 15;
 const PASS_WARN_S = 3;
 /** Along-road margin past a vehicle's ends within which it counts as alongside, m. */
 const ALONGSIDE_MARGIN_M = 2.5;
+/**
+ * How far behind a rival it still sees a solid piece of street furniture, m: past the alongside rule's
+ * reach for the longest piece (a parked car's 2.2 m half length plus ALONGSIDE_MARGIN_M), with room.
+ */
+const FIXED_BEHIND_M = 6;
+/** The crawl a rival boxed in behind a piece of street furniture keeps, m/s (well under the 10 m/s crash line). */
+const FIXED_CRAWL_MPS = 3;
 const STUCK_TICKS = 240;
 const UNSTICK_TICKS = 150;
 // rivals-1 (M4, [default]).
@@ -732,6 +743,14 @@ function driveRider(
       if (s) obstacles.push({ s, size: other.kind === 'vehicle' ? vSize : PED_SIZE });
     }
   }
+  // The solid street furniture in reach (the live check of #619: rivals rode into Russian Hill's street
+  // trees). It stands still: a line it picks must be clear of it, and it goes round one in its way or
+  // alongside as round a stopped car (`avoid`). Only moving traffic blocks the way across to a line
+  // (a piece further on in a line it only crosses is passed long before it is reached; with it, a
+  // rider on a tree-lined sidewalk never found a way back to the road). The signature moves and the
+  // fight's push read the traffic alone (`obstacles`).
+  const fixed = furnitureSeen(world, config, m, Math.min(SEE_TRAFFIC_M, v * 6 + 40), FIXED_BEHIND_M);
+  const avoid = fixed.length > 0 ? [...obstacles, ...fixed] : obstacles;
   // A road weaver keeps its swerve inside its lane while other riders are close, so a bunched pack
   // (the start, a fight) does not turn its swerve into random bumps (rivals-1).
   const packed = riders.some((r) => Math.abs(r.ahead) < ROAD_WEAVE_CLEAR_M);
@@ -962,9 +981,10 @@ function driveRider(
     ? obstacles.filter((o) => Math.abs(o.s.mover.pos.d - pos.d) >= o.size.halfWidth + RIDER_CLEAR)
     : obstacles;
   const reachable = (d: number): boolean =>
-    weaving
+    (fixed.length === 0 || lineClear(fixed, v, d, LINE_CHECK_M)) &&
+    (weaving
       ? lineClear(obstacles, v, d, LINE_CHECK_M) && pathClear(across, v, pos.d, d, LINE_CHECK_M)
-      : pathClear(obstacles, v, pos.d, d, LINE_CHECK_M);
+      : pathClear(obstacles, v, pos.d, d, LINE_CHECK_M));
   if (!reachable(dTarget)) {
     const home = laneCentre + clamp(st.laneOffset[id] ?? 0, -laneHalf, laneHalf);
     const fallbacks: number[] = [];
@@ -1003,7 +1023,7 @@ function driveRider(
   // 3. Traffic: go around the nearest blocker, or brake behind it.
   const committed = (st.avoidUntil[id] ?? -1) >= tick;
   if (committed) dTarget = st.avoidD[id] ?? dTarget;
-  const blocker = blockerAt(obstacles, v, dTarget, look) ?? blockerAt(obstacles, v, pos.d, look * 0.5);
+  const blocker = blockerAt(avoid, v, dTarget, look) ?? blockerAt(avoid, v, pos.d, look * 0.5);
   if (blocker) {
     const o = blocker.s;
     const gap = o.ahead - blocker.size.halfLength;
@@ -1016,7 +1036,7 @@ function driveRider(
       let bestCost = Infinity;
       for (const cand of [od - w, od + w, od - w - 1, od + w + 1]) {
         if (cand < dLo || cand > dHi) continue;
-        if (!lineClear(obstacles, v, cand, gap + 20)) continue;
+        if (!lineClear(avoid, v, cand, gap + 20)) continue;
         // Crossing other traffic's lines on the way there counts too (not the blocker's own).
         const others = obstacles.filter((x) => x !== blocker);
         if (!pathClear(others, v, pos.d, cand, LINE_CHECK_M)) continue;
@@ -1048,15 +1068,28 @@ function driveRider(
         st.avoidD[id] = escape;
         st.avoidUntil[id] = tick + 30;
       } else {
-        // Boxed in: a speed that stops about 4 m behind it, braking at 5 m/s².
+        // Boxed in: a speed that stops about 4 m behind it, braking at 5 m/s². Behind a piece of street
+        // furniture it never stops: it crawls on, slow enough to slide past it (a wobble at most) and
+        // still rolling, so it can steer (a bike turns only as it rolls).
         const room = Math.max(0, gap - 4);
-        speedTarget = Math.min(speedTarget, Math.max(0, o.vAlong) + Math.sqrt(2 * 5 * room));
+        const crawl = o.mover.id < 0 ? FIXED_CRAWL_MPS : 0;
+        speedTarget = Math.min(speedTarget, Math.max(crawl, Math.max(0, o.vAlong) + Math.sqrt(2 * 5 * room)));
         st.avoidUntil[id] = -1;
       }
     }
   }
-  // Hard rule last: never steer into a vehicle alongside; hold at least its clearance from it.
-  for (const o of obstacles) {
+  // Off the road among solid street furniture (shoved onto a sidewalk in a fight, or carried wide in a
+  // bend): it rides back at a crawl, under the crash line, so a trunk it cannot get round is a wobble,
+  // and slow enough to steer back across the kerb line between the pieces.
+  if (fixed.length > 0 && racing && offRoadAmongFixed(pos.d, edge?.dMin ?? -5, edge?.dMax ?? 5, fixed))
+    speedTarget = Math.min(speedTarget, FIXED_OFF_ROAD_MPS);
+  // A bend on a street lined with solid furniture: slow enough to hold it, so it is not carried wide onto
+  // the sidewalk into a trunk or a pole (Russian Hill's corners, in the live check of #619).
+  if (fixed.length > 0 && racing && def)
+    speedTarget = Math.min(speedTarget, bendSpeed(world, config, m, def.bike.steerRateMps));
+
+  // Hard rule last: never steer into a vehicle (or a solid piece) alongside; hold at least its clearance from it.
+  for (const o of avoid) {
     const along = o.size.halfLength + ALONGSIDE_MARGIN_M;
     if (o.s.ahead > along || o.s.ahead < -along) continue;
     const od = o.s.mover.pos.d;

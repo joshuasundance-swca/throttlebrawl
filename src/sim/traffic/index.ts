@@ -2137,7 +2137,9 @@ function rigidOffset(
  *   the roof; a wobble rides the roof (held at its top, never sunk into the car) until it drops off
  *   past an end or a side;
  * - **into a side or an end** below the top: classed and pushed out as on the road.
- * Both carry `data.air`. A rider a wheelie's hood or trunk launch threw off a car flies clear of
+ * Both carry `data.air`. A light kerb rider has no roof: coming down on one is its soft contact
+ * (`hit` `top`, `kerb`), never a crash and never ridden on (the live check of #619).
+ * A rider a wheelie's hood or trunk launch threw off a car flies clear of
  * that car (the launch starts 1 m up, under its roof) until it is back on the road or clear of it.
  * The near miss stays a riding rider's (`touchable`).
  */
@@ -2215,7 +2217,10 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         let soft = false;
         // Over its roof a tick ago (in the air): it came down onto it, or it is riding the roof.
         const fromAbove = r.airborne && hBefore >= top - 1e-6;
-        if (st.contactWith[r.id] !== vid && fromAbove && top - r.h <= Math.min(overU, overD)) {
+        // A light kerb rider has no roof (the live check of #619): coming down on one is the soft
+        // contact below, as from any other direction, never a car's roof (never a crash, never ridden on).
+        const kerbLight = kerbSoft && isKerb(t) && softContact(t);
+        if (!kerbLight && st.contactWith[r.id] !== vid && fromAbove && top - r.h <= Math.min(overU, overD)) {
           // Supports (the maintainer, 2026-10-06): a roof that holds the bike is ground, and the riders
           // land the rider on it (sim/riders/supports.ts). One the riders' step missed (the vehicle
           // moved under it as traffic stepped) is held at its top, still falling as it was, and landed
@@ -2228,7 +2233,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           const crashed = roofContact(world, config, st, r, m, { t, vid, top, dcd, hold: !supports });
           // Under the line, with supports, it wobbles off the top: pushed clear below, falling on.
           if (!supports || crashed) continue;
-        } else if (st.contactWith[r.id] === vid && fromAbove && !supports) {
+        } else if (!kerbLight && st.contactWith[r.id] === vid && fromAbove && !supports) {
           // Still over the roof after a wobble on it: held at its top, never sunk into the car.
           onRoof(world, config, m, top);
           continue;
@@ -2263,8 +2268,9 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             st.launchedOff[r.id] = vid;
             continue;
           }
-          const hit = graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
-          if (kerbSoft && isKerb(t) && softContact(t)) {
+          const hit =
+            kerbLight && fromAbove ? 'top' : graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
+          if (kerbLight) {
             // Soft contact (T4.1): the rider only wobbles, even when it is still unstable from an
             // earlier wobble, and a hard enough clip topples the cyclist. A toppled cyclist is moved
             // clear, so the rider is neither pushed out of its box nor slowed to its speed; a slow

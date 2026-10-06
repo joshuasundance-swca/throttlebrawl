@@ -502,10 +502,12 @@ export const KEYS_KIT: RoadsideKit = {
       tier: 0,
     }),
     // The sidewalk's furniture: within its 4 m (it spans 0 to 3.4 m past the drawn verge).
-    // Both stand where road/furniture.ts plans them (`planned`), as the frangipanis below.
-    rule('oldtown-planter', [7], OLDTOWN_LAND, 22, 0.55, [1.4, 0.8], 1.3, {
+    // Both stand where road/furniture.ts plans them (`planned`), as the frangipanis below: the palm
+    // planters in a row along the kerb, square to the street, leaving the shop side of the sidewalk clear.
+    rule('oldtown-planter', [7], OLDTOWN_LAND, 22, 0.55, [0.6, 0.1], 0.6, {
       model: 'duvalKit',
       district: OLDTOWN,
+      face: true,
       tier: 1,
       planned: true,
     }),
@@ -654,8 +656,8 @@ export const KEYS_KIT: RoadsideKit = {
       tier: 0,
       first: true,
     }),
-    // A frangipani on the sidewalk now and then.
-    rule('oldtown-frangipani', [5], OLDTOWN_LAND, 26, 0.6, [1.1, 0.5], 1.1, {
+    // A frangipani on the sidewalk now and then, by the kerb.
+    rule('oldtown-frangipani', [5], OLDTOWN_LAND, 26, 0.6, [0.5, 0.2], 0.5, {
       model: 'keysIdentity',
       district: OLDTOWN,
       size: [0.85, 1.15],
