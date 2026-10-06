@@ -393,6 +393,13 @@ frame origin. Two more switches, both off by default, so every earlier bake is u
   bridge that holds it, instead of at each long bridge's middle.
 - `deckTags` on a road: tags written over its bridges only, beside `bridge` (the Old Seven Mile
   Bridge's `old-bridge` deck look). A road's `tags` still never reach a deck.
+- `sideRuns` on a stretch config's road (playtest 4, P4-19, B9): `[{tag, side: "left" | "right", s0,
+  s1}]` writes a tag on ONE side of the road over a run of s, never over a deck. The Gorge's
+  `guard-wall` (the masonry wall on its cliff side) and Chuckanut's `bay-bluff` (the madrones over its
+  bay side) are the two so far. The runs come from the ground, not from the map:
+  `uv run python -m tbgis.drops configs/osm-pnw-gorge.json <road id> ...` samples the USGS 3DEP ground
+  14 m and 30 m to each side every 10 m (once; cached under `.cache/usgs`) and prints where each side
+  falls away (5 m below the road at 14 m, 12 m at 30 m, runs of 30 m or more, 40 m gaps joined).
 
 | Network | Route (picker name) | What it is | Numbers (from the bake) |
 |---|---|---|---|

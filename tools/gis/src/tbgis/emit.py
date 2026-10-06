@@ -261,6 +261,17 @@ def bake(
             for t in rn.tags
             for t0, t1 in without(0, length, decks)
         ]
+        # A district tag on one side over a run of s (the Gorge's guard walls, Chuckanut's bay bluff),
+        # off the decks like the land tags (a deck has its own rail).
+        for run in rn.sideRuns:
+            if run.s1 > length:
+                raise ValueError(
+                    f"{rn.id}: side run {run.tag} at {run.s0}..{run.s1} is off the {length} m road"
+                )
+            tags += [
+                {"s0": r4(t0), "s1": r4(t1), "side": run.side, "tag": run.tag}
+                for t0, t1 in without(run.s0, run.s1, decks)
+            ]
         barriers = [
             *bridge_barriers(tags, cfg.bridgeRailHeightM, cfg.bridgeBarrier),
             *(b.as_json(length) for b in rn.barriers),

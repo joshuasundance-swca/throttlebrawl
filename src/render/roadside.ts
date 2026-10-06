@@ -66,6 +66,11 @@ export interface RoadsideRule {
   along?: number;
   /** Turns its front (+Z) to the road; otherwise a random turn. */
   face?: boolean;
+  /**
+   * With `face`: turns its back to the road instead, its +Z away from it (playtest 4, P4-19, B9: a madrone
+   * on a bluff leans out over the water, which its model does toward +Z).
+   */
+  away?: boolean;
   /** A run of sections laid end to end along the road (a fence): [min, max] sections, its length. */
   run?: readonly [number, number, number];
   /** Scale range (uniform). */
@@ -205,6 +210,32 @@ export const PNW_KIT: RoadsideKit = {
     rule('verge', [0, 0, 1], WOODS_AND_TOWN, 3.8, 0.75, [0.3, 1.8], 0.45, { ...UNDER, size: [0.75, 1.2] }),
     rule('salal', [1], FOREST, 12, 0.7, [2.4, 7], 0.8, { ...UNDER, size: [0.8, 1.3] }),
     rule('fern', [0], FOREST, 6, 0.85, [2.2, 9], 0.6, { ...UNDER, size: [0.8, 1.35] }),
+    // Playtest 4 (P4-19, B9; the maintainer: "The real roads do not have the characteristics of the roads in
+    // question in terms of scenery and feel"). Codex CX5's identity kit (`pnwIdentity`: 0 and 1 a madrone,
+    // 2 a 6 m section of masonry guard wall), on the two side runs the bake config names (`sideRuns`, found
+    // from the ground either side, tbgis/drops.py). The Historic Columbia River Highway's dry-masonry guard
+    // wall stands end to end along the side where the ground falls away (`guard-wall`), at the verge's
+    // outer edge, where a rider is stopped; Chuckanut Drive's madrones stand over its bay side
+    // (`bay-bluff`) with their crowns leaning out over the water, their backs to the road. Both claim their
+    // ground first, without moving any other rule's place in the list.
+    rule('gorge-wall', [2], FOREST, 6, 1, [0.3, 0], 0.4, {
+      ...FENCE,
+      run: [1, 1, 6],
+      align: true,
+      district: ['guard-wall'],
+      model: 'pnwIdentity',
+      first: true,
+    }),
+    rule('madrone', [0, 1], FOREST, 22, 0.7, [1.5, 6], 2, {
+      face: true,
+      away: true,
+      tier: 0,
+      canopy: true,
+      size: [0.85, 1.2],
+      district: ['bay-bluff'],
+      model: 'pnwIdentity',
+      first: true,
+    }),
   ],
 };
 
@@ -999,7 +1030,7 @@ export class RoadsideScatter {
         let turn: number;
         let pitch = 0;
         if (rule.face) {
-          turn = Math.atan2(toRoad.x - p.x, toRoad.z - p.z);
+          turn = Math.atan2(toRoad.x - p.x, toRoad.z - p.z) + (rule.away ? Math.PI : 0);
           if (rule.run) {
             // A section follows the road's grade, so neither end floats or sinks.
             const a = road.toWorld(e.index, Math.max(0, s - along), d, LAND_TOP_M);
