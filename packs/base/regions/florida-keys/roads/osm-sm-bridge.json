@@ -111,6 +111,84 @@
         "holdS": 1.5,
         "slot": "sm-pad-west"
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-41",
+      "s0": 8700.3344,
+      "s1": 8700.9344,
+      "d0": 5.55,
+      "d1": 6.15,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 41
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-42",
+      "s0": 7090.9904,
+      "s1": 7091.5904,
+      "d0": 5.55,
+      "d1": 6.15,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 42
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-43",
+      "s0": 5481.6464,
+      "s1": 5482.2464,
+      "d0": 5.55,
+      "d1": 6.15,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 43
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-44",
+      "s0": 3872.3024,
+      "s1": 3872.9024,
+      "d0": 5.55,
+      "d1": 6.15,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 44
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-45",
+      "s0": 2262.9584,
+      "s1": 2263.5584,
+      "d0": 5.55,
+      "d1": 6.15,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 45
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-46",
+      "s0": 653.6144,
+      "s1": 654.2144,
+      "d0": 5.55,
+      "d1": 6.15,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 46
+      }
     }
   ],
   "barriers": [

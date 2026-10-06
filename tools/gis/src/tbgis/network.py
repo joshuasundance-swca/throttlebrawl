@@ -137,6 +137,10 @@ class Landmark(Strict):
     scale: float | None = Field(None, gt=0, le=4)
     farM: float | None = Field(None, gt=0)  # noqa: N815
     overRoad: bool = False  # noqa: N815 (a structure the road passes through or under)
+    # An island of its own in open water (playtest 4, Pigeon Key): boats and islets keep off its box.
+    island: bool = False
+    # A per-instance number a model's text surface shows (a mile post's); the sign's words carry `{n}`.
+    number: int | None = Field(None, ge=0)
 
     @model_validator(mode="after")
     def _footprint(self) -> Landmark:
@@ -152,7 +156,37 @@ class Landmark(Strict):
                 out[k] = float(v)
         if self.overRoad:
             out["overRoad"] = True
+        if self.island:
+            out["island"] = True
+        if self.number is not None:
+            out["number"] = self.number
         return out
+
+
+MILE_M = 1609.344  # one statute mile, m
+
+
+class Milepost(Strict):
+    """Mile-marker posts along a line (playtest 4, P4-19: the identity study's S3). A post stands at
+    every whole mile number, ``everyM`` apart in the game's own metres, beside the road: a ``landmark``
+    feature on the road that holds it, with its number in ``params.number`` for the model's text
+    surface. ``mile`` is the number at the real point ``at`` (the Seven Mile Bridge's east end is mile
+    46.804: Wikipedia, "Overseas Highway", "40.011-46.804"); numbers ``falling`` along the line, as US 1's
+    do toward Key West. The post stands ``offsetM`` from the centre line on a bridge (just outside the
+    rail) and ``landOffsetM`` (default the same) on land, where the verge is wider. A post within
+    ``marginM`` of a road's end is left out, so none straddles a junction, and one that would stand in a
+    junction's connector (not a road of the line) is left out too."""
+
+    model: str = Field(pattern=r"^[^#\s]+#[^#\s]+$")
+    mile: float = Field(ge=0)
+    at: LatLon
+    falling: bool = True
+    everyM: float = Field(MILE_M, gt=100)  # noqa: N815
+    side: Literal["left", "right"] = "right"
+    offsetM: float = Field(6.1, gt=0)  # noqa: N815
+    landOffsetM: float | None = Field(None, gt=0)  # noqa: N815
+    yawDeg: float = Field(180.0, ge=-180, le=180)  # noqa: N815
+    marginM: float = Field(12.0, ge=0)  # noqa: N815
 
 
 class Line(Strict):
@@ -173,6 +207,7 @@ class Line(Strict):
     # Spans the map does not draw, joined by a straight deck; a gap stitch also writes a gap there.
     stitches: list[Stitch] = Field(default_factory=list)
     landmarks: list[Landmark] = Field(default_factory=list)
+    mileposts: Milepost | None = None
     # What stands along every bridge (None: a rail of the network's bridgeRailHeightM).
     bridgeBarrier: BridgeBarrier | None = None  # noqa: N815
     respectOneway: bool = True  # noqa: N815
@@ -933,6 +968,44 @@ def line_cuts(
     return LineCuts(spans)
 
 
+def milepost_features(cfg: NetworkConfig, bl: BakedLine, a: float, b: float, tags: list[Json]) -> list[Json]:
+    """The line's mile-marker posts that fall on the piece from line s ``a`` to ``b``, as ``landmark``
+    features in the piece's own s (see ``Milepost``)."""
+    mp = bl.line.mileposts
+    if mp is None:
+        return []
+    frame = Frame(cfg.crs.originLatDeg, cfg.crs.originLonDeg)
+    s_real, _, _, _ = real_station(bl.rp, frame, mp.at.lat, mp.at.lon)
+    s_anchor = float(np.interp(s_real, bl.p.s_real, bl.p.s))
+    sign = -1.0 if mp.falling else 1.0
+    lo, hi = a + mp.marginM, b - mp.marginM
+    # s = s_anchor + sign * (n - mile) * everyM for the whole number n; the n whose s is inside [lo, hi].
+    n_a = mp.mile + (lo - s_anchor) / (sign * mp.everyM)
+    n_b = mp.mile + (hi - s_anchor) / (sign * mp.everyM)
+    out: list[Json] = []
+    bridges = [(t["s0"], t["s1"]) for t in tags if t["tag"] == "bridge"]
+    for n in range(math.ceil(min(n_a, n_b) - 1e-9), math.floor(max(n_a, n_b) + 1e-9) + 1):
+        s_line = s_anchor + sign * (n - mp.mile) * mp.everyM
+        if not lo <= s_line <= hi:
+            continue
+        s = s_line - a
+        on_bridge = any(t0 <= s <= t1 for t0, t1 in bridges)
+        off = mp.offsetM if on_bridge or mp.landOffsetM is None else mp.landOffsetM
+        d = off if mp.side == "right" else -off
+        out.append(
+            {
+                "kind": "landmark",
+                "id": f"mile-{n}",
+                "s0": r4(s - 0.3),
+                "s1": r4(s + 0.3),
+                "d0": r4(d - 0.3),
+                "d1": r4(d + 0.3),
+                "params": {"model": mp.model, "yawDeg": float(mp.yawDeg), "number": n},
+            }
+        )
+    return out
+
+
 def make_piece(
     cfg: NetworkConfig,
     bl: BakedLine,
@@ -954,6 +1027,8 @@ def make_piece(
         if not 0 <= f.s0 <= f.s1 <= length:
             raise ValueError(f"{pid}: feature {f.id} at {f.s0}..{f.s1} is off the {length} m road")
         features.append(f.model_dump(exclude_none=True))
+    if rn is not None:
+        features += milepost_features(cfg, bl, a, b, tags)
     barriers = [
         *bridge_barriers(tags, cfg.bridgeRailHeightM, bl.line.bridgeBarrier),
         *(br.as_json(length) for br in (rn.barriers if rn else [])),
