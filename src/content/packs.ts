@@ -10,7 +10,13 @@
 // region never changes the Keys race or its replay key.
 import { basePackFiles, loadBasePack } from './base-pack';
 import type { PackFile } from './parse';
-import { buildRegistry, ContentError, type ContentRegistry, type LoadOptions } from './registry';
+import {
+  buildRegistry,
+  ContentError,
+  httpLoadError,
+  type ContentRegistry,
+  type LoadOptions,
+} from './registry';
 
 /** Baked road data: network, road and route files under `regions/<region>/`. */
 export function isRoadDataPath(path: string): boolean {
@@ -210,7 +216,7 @@ function bundledSources(): PackSources {
 
 async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
-  if (!res.ok) throw new ContentError(`could not load ${url}: HTTP ${res.status}`);
+  if (!res.ok) throw httpLoadError(url, res);
   return (await res.json()) as unknown;
 }
 

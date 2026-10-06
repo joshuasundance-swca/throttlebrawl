@@ -84,6 +84,25 @@ const TABLE_OF: Record<LoadedType, keyof ContentRegistry> = {
 
 export class ContentError extends Error {}
 
+/**
+ * A data file the host answered with an error (a 404, a 429, a 5xx), after platform/retry-fetch.ts's
+ * tries. It carries the status and the answer's raw Retry-After, so app/ can tell the player the game
+ * server had a problem (not the connection) and keep Retry off for the wait the host asked for.
+ */
+export class HttpLoadError extends ContentError {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfter: string | null,
+  ) {
+    super(message);
+  }
+}
+
+/** The error for a data file's failed answer (`res.ok` false). */
+export const httpLoadError = (url: string, res: Response): HttpLoadError =>
+  new HttpLoadError(`could not load ${url}: HTTP ${res.status}`, res.status, res.headers.get('Retry-After'));
+
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);
