@@ -1319,6 +1319,12 @@ for (const [where, width, height, finePointer] of [
       await press(page, '#changelog-back', where);
       await expect(page.locator('#menu-race')).toBeVisible();
 
+      await press(page, '#menu-credits', where);
+      await expect(page.locator('#credits')).toBeVisible();
+      await expectStampClear(page, `${where}, credits`);
+      await press(page, '#credits-back', where);
+      await expect(page.locator('#menu-race')).toBeVisible();
+
       // The tap on Race lands: the race starts, and the stamp is out of the race.
       await page.locator('#menu-race').click();
       await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
@@ -1340,7 +1346,7 @@ for (const [where, width, height, finePointer] of [
 async function menuOffScreen(page: Page) {
   return page.evaluate(() => {
     const picks =
-      '#menu-career, #menu-race, #menu-settings, #menu-changelog, #menu-copy-report, #region-picker .region, #menu .menu-main, #menu .title';
+      '#menu-career, #menu-race, #menu-settings, #menu-changelog, #menu-credits, #menu-copy-report, #region-picker .region, #menu .menu-main, #menu .title';
     const off: string[] = [];
     let examined = 0;
     for (const e of document.querySelectorAll<HTMLElement>(picks)) {

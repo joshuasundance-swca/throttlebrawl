@@ -140,6 +140,8 @@ export type Screen =
   | 'race'
   | 'results'
   | 'changelog'
+  // The credits and data licences (roadmap M5, credits-1).
+  | 'credits'
   // The menu race's options (playtest 4, P4-12 and P4-13).
   | 'raceOptions'
   // The career (run W-R): its map and garage, its results, the next region's teaser.
@@ -342,6 +344,24 @@ const EDGE_PX = 24;
 /** How long the slow-frames offer stays up in the race, unanswered, before it fades (ms). [default] */
 export const LOOK_OFFER_MS = 12_000;
 
+/** The credits page (credits-screen.ts draws into it): a scrolling list under a Back bar, like the changelog. */
+const CREDITS_CSS = `
+#credits { justify-content: flex-start; padding-top: 8px; padding-bottom: 34px; gap: 8px; }
+#credits .settings-bar { display: flex; gap: 6px; justify-content: center; }
+#credits-list { width: min(680px, 94vw); flex: 1 1 auto; min-height: 0; overflow-y: auto; text-align: left;
+  pointer-events: auto; touch-action: pan-y; background: #000a; padding: 6px 12px; box-sizing: border-box;
+  font: 500 14px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }
+#credits-list h3 { margin: 10px 0 4px; font: 800 13px ui-monospace, monospace; color: #f5c542; }
+#credits-list p { margin: 0 0 8px; }
+#credits-list a { color: #f5c542; }
+#credits-list details { margin: 0 0 6px; }
+#credits-list summary { cursor: pointer; min-height: 32px; font-weight: 700; }
+#credits-list pre { margin: 4px 0 8px; white-space: pre-wrap; font: 500 12px/1.4 ui-monospace, monospace; }
+#credits-list .credit-ai { display: inline-block; margin-right: 6px; padding: 0 5px; font: 800 11px ui-monospace, monospace;
+  color: #111; background: #f5c542; }
+#credits-list .credit-label { font: 800 11px ui-monospace, monospace; text-transform: uppercase; opacity: 0.8; }
+`;
+
 const CSS = `
 #ui { position: fixed; inset: 0; pointer-events: none; font: 600 1rem/1.3 system-ui, sans-serif; color: #fff;
   --hl-safe-t: env(safe-area-inset-top, 0px); --hl-safe-r: env(safe-area-inset-right, 0px);
@@ -427,6 +447,7 @@ const CSS = `
   border-radius: 50%; background: #fffa; }
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
+${CREDITS_CSS}
 ${TICKER_CSS}
 ${REDUCE_MOTION_CSS}
 #results-tally { font: 800 0.9375rem ui-monospace, monospace; }
@@ -718,6 +739,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         { className: 'row' },
         button('menu-settings', 'small', 'Settings', () => show('settings')),
         button('menu-changelog', 'small', "What's new", () => show('changelog')),
+        button('menu-credits', 'small', 'Credits', () => show('credits')),
         button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
         ...(install ? [installButton] : []),
       ),
@@ -1412,6 +1434,35 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       .then((r) => (r.ok ? r.json() : null))
       .then((d: unknown) => (d === null ? null : parseChangelog(d)))
       .catch(() => null));
+  // The credits page (roadmap M5, credits-1): dist/credits.json, written by the build from the ledger,
+  // the packs' licence rules and the licence texts, drawn by a lazy chunk (credits-screen.ts) the
+  // first time the page opens. The host, its Back button and its words while loading are here.
+  const creditsList = el('div', { id: 'credits-list' });
+  const creditsScreen = el(
+    'div',
+    { id: 'credits', className: 'screen', hidden: true },
+    el(
+      'div',
+      { className: 'settings-bar' },
+      button('credits-back', 'small', 'Back', () => show('menu')),
+    ),
+    creditsList,
+  );
+  let creditsDrawn = false;
+  const loadCredits = () => {
+    if (creditsDrawn) return;
+    const say = (text: string) => creditsList.replaceChildren(el('p', { textContent: text }));
+    say('Loading the credits…');
+    void Promise.all([
+      fetch('credits.json').then((r) => (r.ok ? (r.json() as Promise<unknown>) : null)),
+      import('./credits-screen'),
+    ])
+      .then(([data, page]) => {
+        creditsDrawn = data !== null && page.showCredits(creditsList, data);
+        if (!creditsDrawn) say('The credits could not be loaded.');
+      })
+      .catch(() => say('The credits could not be loaded.'));
+  };
   // The card needs the record to keep the last build seen, or it would greet every launch.
   const newsAllowed = lastSeenPersists(sanitiseSettings) && buildId.length > 0;
   let newsChecked = false;
@@ -1580,6 +1631,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     menu,
     settingsScreen.root,
     changelogScreen.root,
+    creditsScreen,
     results,
     pauseScreen,
     resumeCard,
@@ -1669,7 +1721,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         if (esc) closeSettings();
       } else if (paused) resume();
       else pause();
-    } else if (current === 'settings' || current === 'raceOptions') show('menu');
+    } else if (current === 'settings' || current === 'raceOptions' || current === 'credits') show('menu');
   });
 
   const screens: Record<Screen, HTMLElement[]> = {
@@ -1679,6 +1731,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     race: [hud, touchSurface],
     results: [results],
     changelog: [changelogScreen.root],
+    credits: [creditsScreen],
     // Filled when the options screen's lazy chunk arrives (below).
     raceOptions: [],
     // Filled when the career's lazy chunk arrives (below).
@@ -1870,6 +1923,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       offerNews();
     }
     if (screen === 'changelog') void loadChangelog().then((notes) => changelogScreen.setNotes(notes));
+    if (screen === 'credits') loadCredits();
     // The choices follow the region and the road the menu has picked, and the garage.
     if (screen === 'raceOptions') {
       raceView = cb.raceOptions?.() ?? null;
