@@ -38,6 +38,8 @@ function plant(road: RoadNetwork): Group {
   };
   // A building on the lanes: 8 m across, standing on the asphalt.
   box('in-road', 0, 8, -0.5, 12);
+  // A rail, as a verge's fence or a bridge's rail is drawn: 0.1 m thick, 1.1 m high, along the lanes (polish J2).
+  box('rail', 1, 0.1, 0, 1.1);
   // The same building with its face 0.1 m past the lanes' edge (the column starts RIM_M inside it): beside them.
   box('beside', hi + 0.1 + 4, 8, -0.5, 12);
   // A sign board hung over the lanes, its bottom clear of the column's top.
@@ -45,7 +47,7 @@ function plant(road: RoadNetwork): Group {
   return group;
 }
 
-describe('the negative control: a building planted on a branch of Bridge City', () => {
+describe('the negative control: a building and a rail planted on a branch of Bridge City', () => {
   it('is found on the branch, by road and s; one beside the lanes and one hung over them are not', async () => {
     const { places } = await sweepNetwork('osm-pnw-portland', 1, plant);
     const mine = places.filter((p) => p.part.startsWith('control/'));
@@ -57,6 +59,13 @@ describe('the negative control: a building planted on a branch of Bridge City', 
     expect(on?.s0).toBeLessThanOrEqual(AT_S);
     expect(on?.s1).toBeGreaterThanOrEqual(AT_S - 3);
     expect(on?.cells, 'a building cuts many cells').toBeGreaterThan(20);
-    expect(mine.filter((p) => p.part !== 'control/in-road').map(placeLine)).toEqual([]);
+    // A thin rail on the lanes is found too (the edge kit the pattern of polish J2 drew across a sibling's lanes).
+    expect(
+      mine.filter((p) => p.part === 'control/rail' && p.edge === BRANCH).length,
+      'the rail',
+    ).toBeGreaterThan(0);
+    expect(mine.filter((p) => !['control/in-road', 'control/rail'].includes(p.part)).map(placeLine)).toEqual(
+      [],
+    );
   }, 300_000);
 });

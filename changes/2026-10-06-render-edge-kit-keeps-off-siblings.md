@@ -1,0 +1,19 @@
+---
+kind: fixed
+audience: player
+---
+Fences, brush, hedges, guardrails, bridge rails and bridge supports no longer stand across another road where two roads overlap. At a split or a join the shortcut's verge used to be drawn over the main road's lanes, and you rode straight through a fence, a clump of ferns, a hedge or a rail: the Keys' marina split, the Seven Mile's old road at both ends, Lake Samish's leave and join, the logging mill and spur splits, Lombard's crooked block and the park cut on the SF hills. Each piece now stops where the other road's lanes begin and starts again past them. On the Seven Mile the old road's repair platform lost its rails and its tall posts over the bridge's lanes, and the new span lost its low side walls there.
+
+For devs:
+
+- **The fix.** `EdgeLocator.onLanes` in `src/render/overlap.ts` says whether a point lies over another edge's lanes (every drive, shoulder and shortcut lane), widened by a margin. It looks the point up in a vertex map instead of walking every edge, so building a scene costs about what it did: best of three builds on the dev machine, Lake Samish's verge took 94 ms against 67 ms before, and the verge and road scene of five other networks took the same or less (noisy).
+  - `VergeLayer` (`verge.ts`) skips a fence panel, a fern clump, a hedge stretch and any rail or guardrail panel that reaches such lanes. The brush clump keeps clear by its size.
+  - `road-mesh.ts` cuts a bridge's rail band and its posts every metre where the lanes lie under them (`clearOfOtherLanes`).
+  - A bay is one model, so it can't stop part way. A bay whose parts above its deck would stand over another road's lanes is placed bare (`BARE_BAYS` in `bridge-bays.ts`): three variants baked after the kit's roots, from the kit's own triangles, without the new span's wall slabs, or without the platform's rails and posts (`withStagingLegs(g, false)` leaves out the tall outrigger posts). Their piers and undersides stay. 21 of the Seven Mile's 334 new-span and platform bays are placed bare (3 new span, 18 platform). `ScenerySpot` gains `bare`, and the kit now bakes 9 variants.
+- **The CI check.** The `KNOWN` lines for this pattern are gone from `road-clear.test-util.ts`: the Keys' marina fence, the Seven Mile's bays, rail and posts, Samish's brush and guardrail, the C1 brush, Lombard's hedge and the SF hills' park cut fence. All 19 networks pass, with Bridge City on seeds 2 and 3. Five lines are left, which are not the edge kit: the two billboards (Sandbar Flats' and the SF hills'), Campus Yard's lamps, hydrants and planter, and the stair alley's bricks.
+  - The negative control now also plants a thin rail (0.1 m thick, 1.1 m high) on Alder Street and finds it.
+  - `edge-kit-overlap.test.ts` holds the plan behind the triangles. On the marina split's six edges it counts 917 fence panels drawn and 105 left out, and every panel left out lies over another road's lanes, with none drawn there. On main's code the same test finds 105 panels drawn over another road. The Seven Mile test finds each bay that should be bare and no other, and that each bare variant has nothing above its deck.
+- **The sim.** It reads each edge's own barrier and verge, never a sibling's, and a rider past its edge's lanes over a sibling's lanes is handed to the sibling (`crossToBranch`). So nothing the rider could reach is gone with the drawn piece, except on a route that does not allow the sibling: its rider is held at its own edge's barrier line, which is now undrawn over the sibling's lanes. That is for the sim lane.
+- **Budgets.** `scene-cost` passes (3 files, 26 tests, every route). The Seven Mile's busiest view draws 67,596 triangles and Bridge City's 78 draw calls and 85,811 triangles (the same as polish G1 measured). Bays merge into the same blocks, so no draw call is added by design.
+
+Not phone-verified. No local browser was run.
