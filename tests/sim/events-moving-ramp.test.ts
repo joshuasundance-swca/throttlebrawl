@@ -23,6 +23,7 @@ import { bypassedSpans, SET_PIECE } from '../../src/sim/modifiers/setpieces';
 import { MOVING } from '../../src/sim/modifiers/moving';
 import { riderState } from '../../src/sim/riders';
 import { toCorridor, trafficState } from '../../src/sim/traffic';
+import { TRAFFIC_HIT_DEFAULT_MPS } from '../../src/sim/traffic/contact-rule';
 import { fromCorridor, lanesAt } from '../../src/sim/traffic/corridor';
 import { MOVING_DECKS_KEY, type SimMovingDecks } from '../../src/sim/types';
 import type { Mover, World } from '../../src/sim/world';
@@ -228,21 +229,30 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
     expect(u0).not.toBe(p.u);
   });
 
-  it('is an ordinary big vehicle until its ramp is down: riding into it crashes you', () => {
-    const s = scene(placedRace(region));
-    const { carrier } = approach(s, 290, 30);
-    const car = s.world.movers[carrier];
-    expect(car).toBeDefined();
-    if (!car) return;
-    // The ramp comes down at the end of the tick a racer is within range, so a rider can only meet
-    // it still up by arriving in one tick: put the player against its tail, ramp not yet down.
-    expect(pieceOf(s).beat).toBe(0);
-    expect(decks(s)).toEqual([]);
-    const carU = toCorridor(s.c, car.pos)?.u ?? 0;
-    putPlayer(s, carU - s.c.routeDir * 4, outerCd(s, carU), 12);
-    step(s, carrier);
-    const crash = mine(s, 'crash')[0];
-    expect(crash?.data).toMatchObject({ cause: 'traffic', hazard: 'big' });
+  it('is an ordinary big vehicle until its ramp is down: riding into it is traffic, by the one rule', () => {
+    // Playtest 4's one rule for meeting a vehicle (src/sim/traffic/contact-rule.ts): into its tail
+    // closing over the line is a crash, under it a wobble, as with any car (it was a crash at any
+    // speed, being `big`).
+    for (const [over, outcome] of [
+      [TRAFFIC_HIT_DEFAULT_MPS + 5, 'crash'],
+      [TRAFFIC_HIT_DEFAULT_MPS - 5, 'wobble'],
+    ] as const) {
+      const s = scene(placedRace(region));
+      const { carrier } = approach(s, 290, 30);
+      const car = s.world.movers[carrier];
+      expect(car).toBeDefined();
+      if (!car) return;
+      // The ramp comes down at the end of the tick a racer is within range, so a rider can only meet
+      // it still up by arriving in one tick: put the player against its tail, ramp not yet down.
+      expect(pieceOf(s).beat).toBe(0);
+      expect(decks(s)).toEqual([]);
+      const carU = toCorridor(s.c, car.pos)?.u ?? 0;
+      putPlayer(s, carU - s.c.routeDir * 4, outerCd(s, carU), car.speed + over);
+      step(s, carrier);
+      const hit = [...mine(s, 'crash'), ...mine(s, 'wobble')][0];
+      expect(hit?.type, `${over.toFixed(1)} m/s faster than it`).toBe(outcome);
+      expect(hit?.data).toMatchObject({ cause: 'traffic', hazard: 'big', hit: 'frontal' });
+    }
   });
 
   it('comes down with a racer close behind, and only then is it a deck for the riders', () => {

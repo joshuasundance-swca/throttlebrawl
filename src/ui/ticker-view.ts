@@ -36,13 +36,13 @@ export const TICKER_CSS = `
   position: absolute; left: var(--hl-ticker-x, 50%); top: var(--hl-ticker-y, max(8px, env(safe-area-inset-top)));
   transform: translateX(-50%); width: max-content; max-width: var(--hl-ticker-w, min(80vw, 560px)); box-sizing: border-box; padding: 4px 12px 5px;
   border-radius: 4px; background: var(--tk-band); border-bottom: var(--tk-rule); color: var(--tk-text);
-  font: 700 15px/1.2 system-ui, sans-serif; text-align: center; white-space: nowrap; overflow: hidden;
+  font: 700 0.9375rem/1.2 system-ui, sans-serif; text-align: center; white-space: nowrap; overflow: hidden;
   pointer-events: none; opacity: 0; transition: opacity 160ms ease-out; }
 #hud-ticker.up { opacity: 1; }
 #hud-ticker.in { animation: tb-tick-in 100ms ease-out; }
-#hud-ticker[data-fit='13'] { font-size: 13px; }
-#hud-ticker[data-fit='12'] { font-size: 12px; }
-#hud-ticker[data-fit='wrap'] { font-size: 12px; white-space: normal; max-height: calc(2.4em + 9px); }
+#hud-ticker[data-fit='13'] { font-size: 0.8125rem; }
+#hud-ticker[data-fit='12'] { font-size: 0.75rem; }
+#hud-ticker[data-fit='wrap'] { font-size: 0.75rem; white-space: normal; max-height: calc(2.4em + 9px); }
 #hud-ticker.held { outline: 2px solid var(--tk-accent); }
 #hud-ticker .ticker-tag { display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 3px;
   background: var(--tk-tag-bg); color: var(--tk-tag-fg); font: 800 0.78em/1.25 ui-monospace, 'Courier New', monospace;
@@ -57,7 +57,7 @@ export const TICKER_CSS = `
 #hud-ticker[data-cls='meter'].pending { opacity: 0.7; }
 #hud-ticker[data-cls='meter'].pending .ticker-cash { color: var(--tk-text); }
 #hud-ticker[data-cls='name'] { background: none; border-bottom: 1px solid var(--tk-accent); padding: 2px 8px 3px;
-  font: 900 12px/1.2 ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em; color: var(--tk-accent);
+  font: 900 0.75rem/1.2 ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em; color: var(--tk-accent);
   text-shadow: 0 1px 2px #000, 0 0 3px #000; }
 #hud-ticker[data-cls='teach'] { border-left: 3px solid var(--tk-accent); }
 #hud-ticker.landed .ticker-cash { color: var(--tk-accent); }

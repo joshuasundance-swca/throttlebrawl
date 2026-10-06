@@ -235,6 +235,49 @@ describe('ci.yml wiring', () => {
     }
   });
 
+  // Fail fast on a PR (docs/engineering.md, "Fail fast on a PR"): the first red suite job cancels
+  // the rest of its PR run, so a red PR stops holding runner slots other PRs need. A push to main
+  // keeps running every job (a red slice never hides another's result there, and rerun-main
+  // re-runs only the failed ones). The gate still reads a cancelled job as red.
+  const jobBlock = (job: string) => new RegExp(`\\n {2}${job}:\\n((?:(?: {4}.*)?\\n)*)`).exec(ci)?.[1] ?? '';
+
+  it('on a PR, a red suite job cancels the rest of its run, as its last step', () => {
+    for (const job of SUITE) {
+      const block = jobBlock(job);
+      expect(block, job).not.toBe('');
+      // Job-level permissions replace the workflow's, so contents: read must be restated.
+      expect(block, `${job} permissions`).toMatch(
+        /^ {4}permissions:\n {6}actions: write\n {6}contents: read\n(?! {6})/m,
+      );
+      const steps = block.split(/\n {6}- /);
+      const last = steps[steps.length - 1] ?? '';
+      expect(last, `${job} last step`).toContain("if: failure() && github.event_name == 'pull_request'");
+      expect(last, `${job} last step`).toContain('GH_TOKEN: ${{ github.token }}');
+      expect(last, `${job} last step`).toMatch(
+        /gh run cancel "\$GITHUB_RUN_ID" --repo "\$GITHUB_REPOSITORY" \|\| /,
+      );
+    }
+  });
+
+  it('every matrix fails fast on a PR only', () => {
+    const matrices = SUITE.filter((job) => /^ {4}strategy:$/m.test(jobBlock(job)));
+    expect(matrices.sort()).toEqual(['browser', 'sim', 'unit']);
+    for (const job of matrices) {
+      expect(jobBlock(job), job).toContain("      fail-fast: ${{ github.event_name == 'pull_request' }}\n");
+    }
+    expect(ci).not.toMatch(/fail-fast: (?:false|true)/);
+  });
+
+  it('only the suite jobs and plan get an actions token, and the workflow default stays read-only', () => {
+    expect(ci).toMatch(/\npermissions:\n {2}contents: read\n\n/);
+    for (const { name } of jobs()) {
+      const block = jobBlock(name);
+      if (SUITE.includes(name)) continue;
+      expect(block, name).not.toContain('actions: write');
+      expect(block, name).not.toContain('gh run cancel');
+    }
+  });
+
   it('deploy-prod and release check their own upstream result, not only the status function', () => {
     const byName = new Map(jobs().map((j) => [j.name, j.cond ?? '']));
     expect(byName.get('deploy-prod')).toContain("needs.gate.result == 'success'");

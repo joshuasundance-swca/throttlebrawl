@@ -436,6 +436,44 @@
       "status": "live"
     },
     {
+      "id": "duval-open-bar-a-name",
+      "text": "THE MISSING WALL",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-19, Duval Street as a street, Codex CX5): the neon words on an open-fronted bar's blank board, an invented business. A text surface, not a board: the game paints it on the identity kit's `duval_open_bar_a_name` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-open-bar-a-name-2` and `duval-open-bar-a-name-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-open-bar-a-name-2",
+      "text": "WALLS OPTIONAL",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-open-bar-a-name-3",
+      "text": "THE DRAFTY ANNEX",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-open-bar-b-name",
+      "text": "NO COVER, NO DOOR",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-19, Duval Street as a street, Codex CX5): the neon words on an open-fronted bar's blank board, an invented business. A text surface, not a board: the game paints it on the identity kit's `duval_open_bar_b_name` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-open-bar-b-name-2` and `duval-open-bar-b-name-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-open-bar-b-name-2",
+      "text": "THE BREEZEWAY BAR",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-open-bar-b-name-3",
+      "text": "LAST CALL IS A RUMOR",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
       "id": "sidewalk-capacity",
       "text": "SIDEWALK CAPACITY: 40. Current occupancy: all of them. City notice.",
       "tags": ["key-oldtown"],

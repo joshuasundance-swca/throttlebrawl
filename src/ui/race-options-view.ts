@@ -12,10 +12,10 @@ export const RACE_OPTIONS_CSS = `
   padding-bottom: max(6px, env(safe-area-inset-bottom)); }
 #ui #race-options .ro-head { display: flex; align-items: baseline; justify-content: center; gap: 4px 12px; flex-wrap: wrap;
   flex-shrink: 0; }
-#ui #race-options .ro-title { font: 900 18px/1.2 ui-monospace, 'Courier New', monospace; letter-spacing: 0.06em;
+#ui #race-options .ro-title { font: 900 1.125rem/1.2 ui-monospace, 'Courier New', monospace; letter-spacing: 0.06em;
   text-transform: uppercase; background: #111; color: #f2ead8; padding: 1px 10px; transform: rotate(-1deg);
   box-shadow: 3px 3px 0 #e0543a; }
-#ui #race-options .ro-where { font: italic 500 13px/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
+#ui #race-options .ro-where { font: italic 500 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
   text-shadow: 1px 1px 0 #111; }
 #ui #race-options .ro-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   width: min(820px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -23,19 +23,19 @@ export const RACE_OPTIONS_CSS = `
 #ui #race-options .ro-row { display: flex; align-items: stretch; gap: 4px; min-height: 44px; background: #000a;
   border: 1px dashed #fff6; }
 #ui #race-options .ro-step { flex: 0 0 44px; min-height: 44px; padding: 0; cursor: pointer;
-  font: 900 20px ui-monospace, monospace; color: #111; background: #f2ead8; border: 2px solid #111; }
+  font: 900 1.25rem ui-monospace, monospace; color: #111; background: #f2ead8; border: 2px solid #111; }
 #ui #race-options .ro-step:active, #ui #race-options .ro-value:active { transform: translate(1px, 1px); }
 #ui #race-options .ro-value { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 2px 6px; cursor: pointer;
   display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px; text-align: left;
-  color: #f2ead8; background: transparent; border: 0; font: 800 15px/1.15 ui-monospace, monospace; }
-#ui #race-options .ro-label { font: 700 10px/1.1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #f2ead8; background: transparent; border: 0; font: 800 0.9375rem/1.15 ui-monospace, monospace; }
+#ui #race-options .ro-label { font: 700 0.625rem/1.1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;
   color: #f5c542; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ui #race-options .ro-choice { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ui #race-options .ro-foot { display: flex; gap: 12px; justify-content: center; align-items: center; flex-shrink: 0; }
 @media (max-height: 360px) {
   #ui #race-options { gap: 4px; }
-  #ui #race-options .ro-title { font-size: 15px; }
-  #ui #race-options .big { font-size: 20px; min-height: 44px; padding: 2px 28px; }
+  #ui #race-options .ro-title { font-size: 0.9375rem; }
+  #ui #race-options .big { font-size: 1.25rem; min-height: 44px; padding: 2px 28px; }
 }
 `;
 

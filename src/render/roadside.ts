@@ -104,14 +104,22 @@ export interface RoadsideRule {
   model?: string;
   /** A street front: buildings stood end to end along the road instead of scattered (see `Frontage`). */
   frontage?: Frontage;
+  /**
+   * Runs before the kit's other rules, so it claims its ground first, without moving any rule's place in
+   * the list: a rule's random stream follows its index, so a rule added at the end leaves every other
+   * rule's props where they were (playtest 4, P4-19: Old Town's open bars).
+   */
+  first?: boolean;
 }
 
 /**
  * A street front (playtest 3, T12.1; the wave-B punch list: Duval "with no Old Town shopfronts"): the
  * rule's buildings stood end to end along each side, each by its own width and depth (its model's
- * bounding box), their fronts on one line `across[0]` m past the verge, facing the road. A building
- * that does not fit (a feature, a pedestrian zone, a landmark, a palm, another road, too little land)
- * is skipped and the next tried a few metres on; now and then a lot is left empty.
+ * bounding box), their facades on one line `across[0]` m past the verge band's outer edge (the
+ * sidewalk's, for a street; playtest 4, P4-19), facing the road, so a balcony hangs out over the
+ * pavement. A building that does not fit (a feature, a landmark, a tree, another road, too little land,
+ * or a pedestrian zone behind its facade; a crowd may stand under a balcony) is skipped and the next
+ * tried a few metres on; now and then a lot is left empty.
  */
 export interface Frontage {
   /** The gap between neighbours, [min, max] m. */
@@ -262,11 +270,16 @@ const PARTY = ['key-party'];
 // and a flamingo, and none of the conch town's cottages, pickets, mailboxes or pie.
 const SECRET = ['key-secret'];
 // Playtest 3 (T12.1): Key West's Old Town (Duval and Whitehead Streets). Its street front comes from
-// the Duval kit (models.ts `duvalKit`): balconied shopfronts, conch houses and the corner bar behind
-// the sidewalk palms, with planters and scooter racks on the sidewalk; no trailers, traps, pelicans
-// or bait boards there.
+// the Duval kit (models.ts `duvalKit`): balconied shopfronts, conch houses and the corner bar, with
+// planters and scooter racks on the sidewalk; no trailers, traps, pelicans or bait boards there.
+// Playtest 4 (P4-19; the maintainer: "The real roads do not have the characteristics of the roads in
+// question in terms of scenery and feel"): it is a street, the `oldtown` theme (scenery.ts) and a 4 m
+// sidewalk (road/cross-section.ts): the fronts stand on the sidewalk's edge with their balconies over it,
+// and the scatter's palms, bait shacks and power poles are gone. Codex CX5's identity kit
+// (`keysIdentity`) adds an open-fronted bar among the shops and the Old Town's own trees: frangipanis on
+// the sidewalk, royal poincianas and banyans in the yards behind the row.
 const OLDTOWN = ['key-oldtown'];
-const OLDTOWN_LAND: readonly LandTheme[] = ['palms', 'commercial', 'beach'];
+const OLDTOWN_LAND: readonly LandTheme[] = ['oldtown'];
 /** Keys where mailboxes do not stand (the hotels, the junk, the party). */
 const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY, ...SECRET];
 /** Every key with its own look: conch cottages and their pickets stand only in the conch town. */
@@ -276,22 +289,24 @@ const TOWN_AND_SHORE: readonly LandTheme[] = [...KEYS_TOWN, ...SHORE];
 export const KEYS_KIT: RoadsideKit = {
   id: 'keys',
   rules: [
-    // Old Town's street front first (playtest 3, T12.1), its fronts 9 m past the verge, behind the
-    // scatter's palms (they stand 2.2 to 7.7 m out): the Duval kit's variants 0 to 2 balconied
-    // shopfronts, 3 and 4 conch houses, 5 the corner bar.
-    rule('oldtown-front', [0, 0, 1, 1, 2, 2, 3, 4, 5], OLDTOWN_LAND, 0, 1, [9, 0], 0, {
+    // Old Town's street front first (playtest 3, T12.1), its facades on the sidewalk's edge (playtest 4,
+    // P4-19; `across[0]` is past the verge band): the Duval kit's variants 0 to 2 are balconied shopfronts,
+    // 3 and 4 conch houses, 5 the corner bar; the sidewalk's planters and scooter racks. The Old Town's open
+    // bars and trees follow the kit's last rule below (a rule's place in this list is its random stream).
+    rule('oldtown-front', [0, 0, 1, 1, 2, 2, 3, 4, 5], OLDTOWN_LAND, 0, 1, [0.3, 0], 0, {
       model: 'duvalKit',
       frontage: { gap: [0.6, 3], lotRate: 0.08, lotM: 9 },
       district: OLDTOWN,
       face: true,
       tier: 0,
     }),
-    rule('oldtown-planter', [7], OLDTOWN_LAND, 22, 0.55, [3.4, 2.5], 1.3, {
+    // The sidewalk's furniture: within its 4 m (it spans 0 to 3.4 m past the drawn verge).
+    rule('oldtown-planter', [7], OLDTOWN_LAND, 22, 0.55, [1.4, 0.8], 1.3, {
       model: 'duvalKit',
       district: OLDTOWN,
       tier: 1,
     }),
-    rule('oldtown-scooters', [6], OLDTOWN_LAND, 40, 0.5, [3.6, 2], 2.1, {
+    rule('oldtown-scooters', [6], OLDTOWN_LAND, 40, 0.5, [1.2, 0.6], 0.9, {
       model: 'duvalKit',
       district: OLDTOWN,
       face: true,
@@ -424,6 +439,42 @@ export const KEYS_KIT: RoadsideKit = {
     rule('mailbox', [8], KEYS_TOWN, 30, 0.6, [0.6, 0.3], 0.5, { face: true, notDistrict: NOT_TOWN }),
     // The verge: sea grape crowding the road's edge, the near parallax at speed.
     rule('seagrape', [0], KEYS_LAND, 6, 0.7, [0.4, 2.5], 0.9, { ...UNDER, size: [0.8, 1.3] }),
+    // Playtest 4, P4-19 (Codex CX5's identity kit: variants 3 a banyan, 4 a royal poinciana, 5 a frangipani,
+    // 6 and 7 two open-fronted bars). The open bars claim their ground before the street front does
+    // (`first`), a long way apart, and stand on the sidewalk's edge like the shops around them.
+    rule('oldtown-bar', [6, 7], OLDTOWN_LAND, 0, 1, [0.3, 0], 0, {
+      model: 'keysIdentity',
+      frontage: { gap: [70, 150], lotRate: 0, lotM: 0 },
+      district: OLDTOWN,
+      face: true,
+      tier: 0,
+      first: true,
+    }),
+    // A frangipani on the sidewalk now and then.
+    rule('oldtown-frangipani', [5], OLDTOWN_LAND, 26, 0.6, [1.1, 0.5], 1.1, {
+      model: 'keysIdentity',
+      district: OLDTOWN,
+      size: [0.85, 1.15],
+      tier: 0,
+      canopy: true,
+    }),
+    // The yards behind the row: a royal poinciana and a banyan now and then, their crowns over the roofs
+    // (the banyan is 12 m high and 17 m across). Behind the front's deepest building (about 12 m past the
+    // drawn verge) so no trunk stands in a shop.
+    rule('oldtown-poinciana', [4], OLDTOWN_LAND, 52, 0.55, [14.5, 3], 3.2, {
+      model: 'keysIdentity',
+      district: OLDTOWN,
+      size: [0.85, 1.15],
+      tier: 0,
+      canopy: true,
+    }),
+    rule('oldtown-banyan', [3], OLDTOWN_LAND, 90, 0.6, [15.5, 3], 3.4, {
+      model: 'keysIdentity',
+      district: OLDTOWN,
+      size: [0.9, 1.1],
+      tier: 0,
+      canopy: true,
+    }),
     // Playtest 4 (P4-19, B5; the identity sheets' B2): Big Pine's Key deer, CX5's buck and doe (models.ts
     // `keysIdentity`, variant 0 the buck and 1 the doe, mostly does), grazing the verges of the road tagged
     // `key-deer`, past the sign that warns of them (`fromS`), each facing its own way. Last in the list, so
@@ -678,6 +729,8 @@ export class RoadsideScatter {
   private readonly taken = new Discs();
   private edge = 0;
   private unit = 0;
+  /** The order the rules run in: the `first` ones, then the rest, each in list order (the index is the rule's stream). */
+  private readonly order: number[];
   private readonly density: number;
   /**
    * The painted split zones (road-mesh.ts), by edge. One may reach past its road's edge onto the
@@ -690,6 +743,9 @@ export class RoadsideScatter {
   constructor(private readonly input: RoadsideInput) {
     const { road } = input;
     this.density = Math.max(0, input.density);
+    this.order = input.kit.rules
+      .map((_, i) => i)
+      .sort((a, b) => Number(!!input.kit.rules[b]?.first) - Number(!!input.kit.rules[a]?.first) || a - b);
     this.roads = new RoadGrid(road);
     for (const z of road.splitZones()) {
       const list = this.zones.get(z.edge) ?? [];
@@ -724,7 +780,7 @@ export class RoadsideScatter {
     const t0 = performance.now();
     const units = this.input.kit.rules.length * 2;
     while (!this.done) {
-      this.runUnit(this.edge, Math.floor(this.unit / 2), this.unit % 2 === 0 ? -1 : 1);
+      this.runUnit(this.edge, this.order[Math.floor(this.unit / 2)] ?? 0, this.unit % 2 === 0 ? -1 : 1);
       if (++this.unit >= units) {
         finished.push(this.edge);
         this.edge++;
@@ -798,34 +854,47 @@ export class RoadsideScatter {
         const sc = s + half;
         if (sc + half > e.length) break;
         const ends = [sc - half, sc, sc + half];
-        // Its front line past the ridable band; its whole depth on the drawn land.
-        const across = Math.max(rule.across[0], ridableBandPast(road, e.index, side, sc, outer));
+        // Its facade `across[0]` past the verge band's outer edge, whatever the band is made of (a
+        // sidewalk, a loose band the rider rides), so the front stands on the street's edge and the
+        // balcony, `front` further out, hangs over the pavement; its whole depth on the drawn land.
+        const sideKey = side < 0 ? 'left' : 'right';
+        const bandPast = Math.max(
+          ...ends.map((u) => Math.max(0, Math.abs(road.vergeAt(e.index, u, sideKey).dOuter) - outer)),
+        );
+        const across = bandPast + rule.across[0] - front;
         let fits =
           ends.every(onLand) && ends.every((u) => across + depth <= input.landReach(e.index, side, u));
         const dFront = side * (outer + across);
+        const dFacade = side * (outer + across + front);
         const dBack = side * (outer + across + depth);
-        const lo = Math.min(dFront, dBack);
-        const hi = Math.max(dFront, dBack);
-        const overlaps = (s0: number, s1: number, d0: number, d1: number) =>
+        const overlaps = (s0: number, s1: number, d0: number, d1: number, from: number, to: number) =>
           sc + half > Math.min(s0, s1) - 1 &&
           sc - half < Math.max(s0, s1) + 1 &&
-          hi > Math.min(d0, d1) - 1 &&
-          lo < Math.max(d0, d1) + 1;
-        if (fits) fits = !blocks.some((f) => overlaps(f.s0, f.s1, f.d0, f.d1));
-        if (fits) fits = !zones.some((z) => overlaps(z.s0, z.s1, z.lo, z.hi));
-        // Its ground as discs along its middle: clear of the scenery, the scenes and the landmarks.
-        const r = Math.min(depth, 2 * half) / 2;
+          Math.max(from, to) > Math.min(d0, d1) - 1 &&
+          Math.min(from, to) < Math.max(d0, d1) + 1;
+        // A crowd stands on the pavement, under the balcony: only the building's body is in its way.
+        // Everything else (a board's posts, a pad, a landmark) keeps off the balcony too.
+        if (fits)
+          fits = !blocks.some((f) =>
+            f.kind === 'roadsideZone'
+              ? overlaps(f.s0, f.s1, f.d0, f.d1, dFacade, dBack)
+              : overlaps(f.s0, f.s1, f.d0, f.d1, dFront, dBack),
+          );
+        if (fits) fits = !zones.some((z) => overlaps(z.s0, z.s1, z.lo, z.hi, dFront, dBack));
+        // Its ground as discs along its body (facade to back): clear of the scenery, the scenes and
+        // the landmarks.
+        const r = Math.min(back, 2 * half) / 2;
         const discs: { x: number; z: number }[] = [];
         if (fits) {
-          const mid = side * (outer + across + depth / 2);
-          if (2 * half >= depth) {
+          const mid = side * (outer + across + front + back / 2);
+          if (2 * half >= back) {
             for (let u = -half + r; u < half - r + r / 2; u += r)
               discs.push(road.toWorld(e.index, sc + u, mid, 0));
             discs.push(road.toWorld(e.index, sc + half - r, mid, 0));
           } else {
-            for (let t = r; t < depth - r + r / 2; t += r)
-              discs.push(road.toWorld(e.index, sc, side * (outer + across + t), 0));
-            discs.push(road.toWorld(e.index, sc, side * (outer + across + depth - r), 0));
+            for (let t = r; t < back - r + r / 2; t += r)
+              discs.push(road.toWorld(e.index, sc, side * (outer + across + front + t), 0));
+            discs.push(road.toWorld(e.index, sc, side * (outer + across + front + back - r), 0));
           }
           fits = !discs.some((c) => taken.hits(c.x, c.z, r, false));
         }

@@ -7,17 +7,17 @@ export const CHANGELOG_CSS = `
 #menu.with-news { flex-direction: row; gap: 28px; }
 #menu .menu-main { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 #whats-new { width: min(320px, 40vw); display: flex; flex-direction: column; gap: 6px; }
-#whats-new .wn-title { font: 800 15px ui-monospace, monospace; color: #f5c542; }
+#whats-new .wn-title { font: 800 0.9375rem ui-monospace, monospace; color: #f5c542; }
 #whats-new ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 #whats-new .row { justify-content: flex-start; gap: 8px; }
 #changelog { justify-content: flex-start; padding-top: 8px; padding-bottom: 34px; gap: 8px; }
 #changelog .settings-bar { display: flex; gap: 6px; justify-content: center; }
 #changelog-list { width: min(680px, 94vw); flex: 1 1 auto; min-height: 0; overflow-y: auto; text-align: left;
   pointer-events: auto; touch-action: pan-y; background: #000a; padding: 6px 12px; box-sizing: border-box;
-  font: 500 14px/1.4 system-ui, sans-serif; }
-#changelog-list h3 { margin: 8px 0 4px; font: 800 13px ui-monospace, monospace; color: #f5c542; }
+  font: 500 0.875rem/1.4 system-ui, sans-serif; }
+#changelog-list h3 { margin: 8px 0 4px; font: 800 0.8125rem ui-monospace, monospace; color: #f5c542; }
 #changelog-list p { margin: 0 0 8px; }
-#changelog-list .cl-kind { font: 800 11px ui-monospace, monospace; text-transform: uppercase; margin-right: 6px;
+#changelog-list .cl-kind { font: 800 0.6875rem ui-monospace, monospace; text-transform: uppercase; margin-right: 6px;
   color: #f2ead8; opacity: 0.8; }
 `;
 
