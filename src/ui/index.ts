@@ -538,8 +538,13 @@ ${REDUCE_MOTION_CSS}
 /* Beside the what's-new card the menu is a row, centred up and down: a menu column taller than the screen
    (the cards above its title make it so at 915x412) would stand out above the screen's top, where no scroll
    reaches, and Retry with it (train 237's run of ui-transient-cards.spec.ts). Safe centring starts it at
-   the top instead, and the screen scrolls down to the rest. */
-#ui #menu.with-news { align-items: safe center; }
+   the top instead, and the screen scrolls down to the rest. Only where the menu is that row (as
+   changelog-screen.ts lays it out): the short landscape layout stacks the card under the menu, a column
+   whose cross axis is across, and safe centring there pushed the cards off the right edge at 568x320
+   (train 246). */
+@media (min-height: 381px), (orientation: portrait) {
+  #ui #menu.with-news { align-items: safe center; }
+}
 #ui #load-retry, #ui #ui-notice { flex-shrink: 0; width: max-content; max-width: min(560px, 100%);
   box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   background: rgb(10 5 20 / 92%); }
