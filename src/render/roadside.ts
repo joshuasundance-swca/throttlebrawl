@@ -37,6 +37,8 @@ import type { RoadDressing } from './road-mesh';
 import { formsOf, writeUv, type FlatForm } from './scenery-merge';
 import { placeSurface, type PlacedSurface } from './text-surfaces';
 import {
+  BLUFF_LAND_M,
+  LAKE_LAND_M,
   LAND_TOP_M,
   ridableBandPast,
   scatterHash,
@@ -115,7 +117,31 @@ export interface RoadsideRule {
    * rule's props where they were (playtest 4, P4-19: Old Town's open bars).
    */
   first?: boolean;
+  /**
+   * A run section whose body is solid (playtest 4, P4-19, C4: a sandstone cut, 6 m long and 3 m deep): its
+   * clear ground covers its length and depth, not only its anchor, so nothing later stands inside the rock.
+   */
+  body?: boolean;
+  /**
+   * Stands only where its land theme covers its whole length, both ends too, not only its middle (playtest
+   * 4, P4-19, C4: a parapet section half past the bluff's end would stand in the forest's ridable band).
+   */
+  whole?: boolean;
+  /**
+   * A low prop (playtest 4, P4-19, C4: a parapet, a boulder, the lip of a bluff): it stands under a tree's crown,
+   * so a canopy's clear-ground disc does not keep it off, as it does not keep off the understory.
+   */
+  low?: boolean;
+  /**
+   * Stands at the water's level, not the land's (playtest 4, P4-19, C4: a dock's root is at the shore at the
+   * waterline): its anchor's height is the water under it (`RoadsideInput.waterAt`), at most `BANK_MAX_M`
+   * below the land. No water there, or not yet known: it is not placed.
+   */
+  waterline?: boolean;
 }
+
+/** A `waterline` prop stands no more than this far below the land at its anchor, m (a dock under a low bank). [default] */
+export const BANK_MAX_M = 6;
 
 /**
  * A street front (playtest 3, T12.1; the wave-B punch list: Duval "with no Old Town shopfronts"): the
@@ -187,6 +213,8 @@ const BIG = { face: true, tier: 0 } as const;
 const FENCE = { along: 3, face: true, tier: 0 } as const;
 /** Ferns and bushes: they grow under the trees and fade first. */
 const UNDER = { understory: true, tier: 2 } as const;
+/** A section of Chuckanut's rock or wall (playtest 4, P4-19, C4): from the shore kit, facing the road, laid exactly. */
+const ROCK = { model: 'pnwShore', face: true, tier: 0, align: true, whole: true, low: true } as const;
 
 /**
  * The Pacific Northwest (the maintainer: "NW tree species"; the 2026-10-01b amendment's list):
@@ -256,7 +284,9 @@ export const PNW_KIT: RoadsideKit = {
       model: 'pnwIdentity',
       first: true,
     }),
-    rule('madrone', [0, 1], FOREST, 22, 0.7, [1.5, 6], 2, {
+    // Since C4 (playtest 4, P4-19) the madrones stand on Chuckanut's `bluff` shelf too, between the parapet and
+    // the drop, where the bay-side runs and the bluff meet.
+    rule('madrone', [0, 1], [...FOREST, 'bluff'], 22, 0.7, [1.5, 6], 2, {
       face: true,
       away: true,
       tier: 0,
@@ -265,6 +295,53 @@ export const PNW_KIT: RoadsideKit = {
       district: ['bay-bluff'],
       model: 'pnwIdentity',
       first: true,
+    }),
+    // Playtest 4 (P4-19, C4; the identity sheets' H1, H2 and I3; Codex CX6's `pnw-shore` kit, models.ts
+    // `pnwShore`: 0 and 1 the cuts, 2 the parapet, 3 the bluff, 4 and 5 the boulders, 6 the cabin, 7 the
+    // dock). Last in the list, so no other rule's seeded placements move. Each section lays end to end in a
+    // run that follows the road's grade, as a fence's. Chuckanut's bay side (`bluff`): the low parapet all
+    // along the shelf, its face on the 4 m band's hard edge (road/cross-section.ts), under the madrones'
+    // crowns (`low`); and the 20 m bluff sections, their lip at the drop's edge, the rock falling 40 m away
+    // from the road.
+    rule('parapet', [2], ['bluff'], 36, 1, [0, 0], 0.1, { ...ROCK, run: [6, 6, 6], along: 3, back: 0.55 }),
+    rule('bluff', [3], ['bluff'], 60, 1, [BLUFF_LAND_M, 0], 0.1, {
+      ...ROCK,
+      run: [3, 3, 20],
+      along: 10,
+      back: 0,
+    }),
+    // Its uphill side (`cut`): bedded sandstone at the forest band's edge, low and tall cuts in runs of 24 to
+    // 36 m, the firs behind them (scenery.ts THEME_NEAR_M); boulders fallen at the foot between the runs.
+    rule('rock-cut', [0, 0, 1], ['cut'], 48, 0.9, [0, 0], 0.3, {
+      ...ROCK,
+      run: [4, 6, 6],
+      along: 3,
+      back: 3,
+      body: true,
+    }),
+    rule('boulder', [4, 5], ['cut'], 14, 0.5, [0, 1.5], 1.4, {
+      model: 'pnwShore',
+      tier: 1,
+      low: true,
+      size: [0.8, 1.2],
+    }),
+    // Lake Samish's shore (`lake`): a cabin now and then, its porch to the road and its deck to the water,
+    // and a dock whose root is at the shore at the water's level, out over the lake (`waterline`).
+    rule('lake-cabin', [6], ['lake'], 40, 0.6, [6, 2], 4.6, {
+      model: 'pnwShore',
+      ...BIG,
+      back: 11,
+      along: 4.5,
+      discBack: 4.5,
+      whole: true,
+    }),
+    rule('lake-dock', [7], ['lake'], 30, 0.55, [LAKE_LAND_M, 0], 1.2, {
+      model: 'pnwShore',
+      ...BIG,
+      along: 2.5,
+      back: 0,
+      waterline: true,
+      whole: true,
     }),
   ],
 };
@@ -669,6 +746,11 @@ export interface RoadsideInput {
    * Old Town's Duval kit). A rule whose model is missing places nothing.
    */
   models?: Readonly<Partial<Record<string, SceneryModel>>>;
+  /**
+   * The level of the network's own water over a world point, m, or null (playtest 4, P4-19, C4: Lake
+   * Samish, from its backdrop's water floor, backdrop/water.ts). A `waterline` rule places nothing without it.
+   */
+  waterAt?: (x: number, z: number) => number | null;
 }
 
 /** A grid of discs, for keeping props apart. Discs over 8 m (the sawmill) are kept in a list. */
@@ -1040,6 +1122,13 @@ export class RoadsideScatter {
         const sideName = side < 0 ? 'left' : 'right';
         const theme = themeAt(tags, sideName, s);
         if (!(rule.on as readonly string[]).includes(theme)) break;
+        if (
+          rule.whole &&
+          [s - along, s + along].some(
+            (u) => !(rule.on as readonly string[]).includes(themeAt(tags, sideName, u)),
+          )
+        )
+          break;
         if (rule.district && !inDistrict(tags, sideName, s, rule.district)) break;
         if (rule.notDistrict && inDistrict(tags, sideName, s, rule.notDistrict)) break;
         // On the drawn land, all of it: across its depth and along its length.
@@ -1051,12 +1140,18 @@ export class RoadsideScatter {
         if (across + back > land) break;
         const d = side * (outer + across);
         const p = road.toWorld(e.index, s, d, LAND_TOP_M);
+        if (rule.waterline) {
+          // At the water's level under it, a low bank below the land (playtest 4, P4-19, C4: a dock).
+          const water = input.waterAt?.(p.x, p.z) ?? null;
+          if (water === null || water > p.y || p.y - water > BANK_MAX_M) break;
+          p.y = water;
+        }
         const r = rule.r * (rule.run ? 1 : (rule.size?.[1] ?? 1));
         // Its clear ground: round the anchor, or round its body behind it (`discBack`).
         const dc = rule.discBack ? side * (outer + across + rule.discBack) : d;
         const c = rule.discBack ? road.toWorld(e.index, s, dc, LAND_TOP_M) : p;
         if (!featureClear(s, dc, r) || !zoneClear(s, d, r)) break;
-        if (taken.hits(c.x, c.z, r, !!rule.understory)) {
+        if (taken.hits(c.x, c.z, r, !!rule.understory || !!rule.low)) {
           if (rule.run) break;
           continue;
         }
@@ -1084,8 +1179,18 @@ export class RoadsideScatter {
         } else turn = h(k * 31 + j, side, 5) * Math.PI * 2;
         const size = rule.size ? rule.size[0] + (rule.size[1] - rule.size[0]) * h(k * 31 + j, side, 6) : 1;
         // A section's own disc covers its length; the next one along may touch it.
-        if (rule.run) taken.add(p.x, p.z, 0.3);
-        else if (rule.canopy) taken.add(p.x, p.z, r, true);
+        if (rule.run) {
+          taken.add(p.x, p.z, 0.3);
+          // A solid section's body too (playtest 4, P4-19, C4: the sandstone cut): two discs along it, at
+          // half its depth, so nothing later stands inside the rock.
+          if (rule.body) {
+            const reach = Math.max(along, back) / 2 + 0.1;
+            for (const u of [-along / 2, along / 2]) {
+              const q = road.toWorld(e.index, s + u, side * (outer + across + back / 2), 0);
+              taken.add(q.x, q.z, reach);
+            }
+          }
+        } else if (rule.canopy) taken.add(p.x, p.z, r, true);
         else taken.add(c.x, c.z, rule.understory ? r * 0.6 : r);
         this.items.push({
           rule: rule.id,

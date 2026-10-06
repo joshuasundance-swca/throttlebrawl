@@ -311,6 +311,12 @@ export interface MastPiece extends Base {
   bandColour: string;
 }
 
+/**
+ * How far under its `y` a floor is drawn, m (shapes.ts `buildFloor`): water a hair under, land a metre, so
+ * the near sea and ground always cover them. A lake's water (playtest 4, P4-19, C4) shows at `y` less this.
+ */
+export const FLOOR_UNDER_M = { water: 0.5, land: 1 } as const;
+
 export interface FloorPiece extends Base {
   kind: 'floor';
   /** "land" or "water": water lies a hair above land where they overlap. */

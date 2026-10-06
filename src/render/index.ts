@@ -31,7 +31,7 @@
 // mascot on two corner walls, painted over by a crew as the race's leader goes round.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
-import { Backdrop, backdropFilesFor, type BackdropStats } from './backdrop';
+import { Backdrop, backdropFilesFor, loadNetworkWater, type BackdropStats } from './backdrop';
 import type {
   EntitySnapshot,
   RendererStats,
@@ -432,6 +432,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // Run W-P: the region's roadside props (roadside.ts), a lazy chunk that arrives with the kit.
   let roadsideModule: typeof import('./roadside') | null = null;
   let roadside: RoadsideLayer | null = null;
+  /** The race network's own water above the sea, once its backdrop file is in (`requestWater`). */
+  let water: { road: RoadNetwork; at: (x: number, z: number) => number | null } | null = null;
   const buildRoadside = () => {
     roadside?.dispose();
     roadside = null;
@@ -467,8 +469,24 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // Playtest 3 (T12.1): rules that draw from another kit (Key West's Old Town, the Duval kit,
       // with its region atlas loaded alongside it in models.ts).
       models,
+      // Playtest 4 (P4-19, C4): the network's own water (Lake Samish), where a dock stands at its level.
+      ...(water && water.road === roadArgs.road ? { waterAt: water.at } : {}),
     });
     scene.add(roadside.group);
+  };
+  // Playtest 4 (P4-19, C4): the network's own water above the sea, from its backdrop file (Lake Samish);
+  // the roadside props are placed again once it is in, so the docks stand at the lake's level.
+  const requestWater = (road: RoadNetwork) => {
+    water = null;
+    void loadNetworkWater(road.id)
+      .then((at) => {
+        if (!at || roadArgs?.road !== road) return;
+        water = { road, at };
+        buildRoadside();
+      })
+      .catch(() => {
+        // No water floor: no docks; the race goes on.
+      });
   };
   // Run W-T: the staged roadside scenes (scenes/), a lazy chunk with the region's scenes file. They
   // are placed on the road scene's land before the roadside props, which keep off their ground.
@@ -935,6 +953,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       backdrop.setRoad(road);
       requestLandmarks(road);
       requestScenes(road);
+      requestWater(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
     },

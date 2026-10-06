@@ -32,6 +32,20 @@ export function backdropFilesFor(networkId: string): { network: string; region: 
   return REGION_FILES[region] ? { network, region } : null;
 }
 
+/**
+ * The level of a network's own water above the sea at a world point (playtest 4, P4-19, C4: Lake Samish),
+ * from the water floors of its backdrop file (water.ts), or null when it has none.
+ */
+export async function loadNetworkWater(
+  networkId: string,
+): Promise<((x: number, z: number) => number | null) | null> {
+  const files = backdropFilesFor(networkId);
+  if (!files) return null;
+  const [file, m] = await Promise.all([NETWORK_FILES[files.network]!(), import('./water')]);
+  const floors = m.waterFloors(file);
+  return floors.length ? m.waterAtOf(floors) : null;
+}
+
 const WHITE = new Color('#ffffff');
 
 export class Backdrop {
