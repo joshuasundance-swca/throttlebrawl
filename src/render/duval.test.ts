@@ -292,7 +292,9 @@ describe('drawing Old Town', () => {
     );
     const named = landmarkPlacements(road).filter((p) => p.kit === 'keys-landmarks');
     expect(named.map((p) => p.node)).toEqual(expect.arrayContaining(['southernmost_buoy', 'mile_marker_0']));
-    for (const p of named) expect(kit.nodes.has(p.node), p.node).toBe(true);
+    // As the layer looks a node up: its own name, else its near form (`cruise_ship` is `cruise_ship_lod0`).
+    for (const p of named)
+      expect(kit.nodes.has(p.node) || kit.nodes.has(`${p.node}_lod0`), p.node).toBe(true);
     const layer = new LandmarkLayer(new Map([['keys-landmarks', kit]]), look, { road });
     expect(layer.counts()).toMatchObject({ placed: named.length, skipped: 0 });
     print(
