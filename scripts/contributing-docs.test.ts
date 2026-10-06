@@ -15,6 +15,8 @@ const readme = read('README.md');
 const engineering = read('docs/engineering.md');
 const trainSource = read('scripts/train.mjs').replace(/\s+/g, ' ');
 const suiteYml = read('.github/workflows/suite.yml');
+const ciYml = read('.github/workflows/ci.yml');
+const agents = read('AGENTS.md');
 
 // ---------------------------------------------------------------------------------------------
 // Checkers (each is run on the real page and on a planted fault)
@@ -450,6 +452,186 @@ describe('docs/engineering.md: the train section opens in plain words', () => {
       browser: 7,
     });
     expect(suiteSize('a: [1]\nshard: [1, 2]\nshard: [1, 2, 3]\nshard: [1, 2, 3, 4]').all).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The precision residue the final review of #620 left: each claim below was true only in part, so each
+// is pinned to the code that decides it, and to a planted fault the check must find.
+
+/** The number words ci.yml's header uses for the suite's slices. */
+const words: Record<string, number> = { six: 6, seven: 7, eight: 8, nine: 9 };
+
+/** What a comment says about the suite's slices ("sim in seven, browser in eight"), as numbers. */
+function slicesInWords(text: string) {
+  const m = /sim in (\w+), browser in (\w+)/.exec(text);
+  return { sim: words[m?.[1] ?? ''] ?? Number(m?.[1]), browser: words[m?.[2] ?? ''] ?? Number(m?.[2]) };
+}
+
+/** The "N on the full gate" push cost AGENTS.md quotes. */
+const fullGatePushCost = (text: string) => Number(/(\d+) on the full gate/.exec(text)?.[1]);
+
+describe('CONTRIBUTING.md: the final review of #620, one claim at a time', () => {
+  const text = contributing.replace(/\s+/g, ' ');
+  const landing = section(contributing, 'How a pull request lands');
+  const flat = (md: string) => md.replace(/\s+/g, ' ');
+  const bullet = (start: string) =>
+    flat(new RegExp(`- \\*\\*${start}([^]*?)(?=\\n- \\*\\*|\\n\\n[A-Z]|$)`).exec(contributing)?.[0] ?? '');
+
+  it('says how the cap falls as the code does: half the red bundle, rounded up, or straight to 1', () => {
+    const cap = flat(/A pending line ends with[^]*?(?=\n###)/.exec(contributing)?.[0] ?? '');
+    expect(cap).not.toMatch(/8, 4, 2, 1/);
+    expect(cap).toMatch(/half[^.]*size[^.]*rounded up/);
+    expect(cap).toMatch(/bundle of 3 gives 2/);
+    expect(cap).toMatch(/straight to 1/);
+    // The code: the halving, the example's arithmetic, and the cases that write cap 1.
+    expect(trainSource).toContain('const cap = Math.ceil(bundle.length / 2);');
+    expect(Math.ceil(3 / 2)).toBe(2);
+    expect(trainSource).toContain('main ${b7} is red; waits`, 1)');
+    expect(trainSource).toContain('timed out; rides once more alone`, 1)');
+    // control: the old sentence and a page that leaves the cases out are found
+    expect('halves each time a bundle your PR rode in is red (8, 4, 2, 1)').toMatch(/8, 4, 2, 1/);
+    expect('the cap becomes half the size, rounded up').not.toMatch(/straight to 1/);
+  });
+
+  it('says a red quick check gives no `gate`, and keeps the advice to push', () => {
+    const row = flat(/\| `not waiting for a train: \.\.\.`[^\n]*/.exec(contributing)?.[0] ?? '');
+    expect(row).not.toMatch(/quick check is red, so its own CI run gives/);
+    expect(row).toMatch(/red quick check[^|]*no `gate`|quick check is red[^|]*no `gate`/);
+    expect(row).toMatch(/push a commit/);
+    // The code: a red quick check is "not eligible", and a `gate` check run comes from the full or docs path only.
+    expect(trainSource).toContain("if (pr.quick !== 'success') return no(`its quick check is ${pr.quick}`)");
+    expect(trainSource).toContain("if (pr.gateCheck) return no('its head commit already has a gate check");
+    // control
+    expect('or its quick check is red, so its own CI run gives `gate`').toMatch(
+      /quick check is red, so its own CI run gives/,
+    );
+  });
+
+  it('says an unarmed docs-only or full-path PR has no `train` line, and where the reason is instead', () => {
+    const step3 = steps(landing).find((s) => /^3\. /.test(s)) ?? '';
+    expect(step3).toMatch(/on the train path/);
+    expect(step3).toMatch(/docs-only or full-path PR[^.]*no `train` line/);
+    expect(step3).toMatch(/plan log[^.]*auto-merge is not armed/);
+    // The code: arming is asked about before the `gate` check run, so the plan log names it; and
+    // noteFor posts a note only for a PR that would ride once armed.
+    const asked = (what: string) => trainSource.indexOf(what);
+    expect(asked("no('auto-merge is not armed')")).toBeGreaterThan(0);
+    expect(asked("no('auto-merge is not armed')")).toBeLessThan(
+      asked("no('its head commit already has a gate check"),
+    );
+    expect(trainSource).toContain('{ ...pr, draft: false, autoMerge: true }');
+    // control
+    expect('Without it, a green PR waits for ever, and its `train` line says so.').not.toMatch(
+      /no `train` line/,
+    );
+  });
+
+  it('says a docs-only PR never rides a train and can land while `main` is red', () => {
+    const useIt = flat(
+      /\*\*When to use `\[full-gate\]`\.\*\*([^]*?)(?=- \*\*Forks)/.exec(contributing)?.[1] ?? '',
+    );
+    expect(useIt).toMatch(/Every other PR on the train path leaves it out/);
+    expect(useIt).toMatch(/docs-only PR never rides a train[^.]*land while `main` is red/);
+    // The code: the docs path is decided before the train's switch, so a docs-only PR never gets a train.
+    const docsOnly = { fork: false, author: 'a', title: 't', body: '', files: ['docs/a.md'] };
+    expect(route({ ...docsOnly, live: true }).path).toBe('docs');
+    expect(route({ ...docsOnly, live: false }).path).toBe('docs');
+    // control
+    expect('Every other PR leaves it out, even while `main` is red: it waits').not.toMatch(
+      /on the train path/,
+    );
+  });
+
+  it('says the gate is posted while a PR rides or waits and on failure, not only on success', () => {
+    const gate = flat(/- \*\*`gate`\*\* is[^]*?(?=\n- \*\*Where)/.exec(contributing)?.[0] ?? '');
+    expect(gate).toMatch(/pending[^.]*rides or waits/);
+    expect(gate).toMatch(/success[^.]*full suite has passed/);
+    expect(gate).toMatch(/failure/);
+    // The code posts all three states on `gate`.
+    for (const state of ['pending', 'success', 'failure']) expect(trainSource).toContain(`state: '${state}'`);
+    // control
+    expect('once the full suite has passed on a bundle that holds your PR').not.toMatch(/pending/);
+  });
+
+  it('says what the plan log holds while `main` is red: the `main is` line, then one line, no per-PR lines', () => {
+    const why = steps(section(landing, 'How to see why a PR waits')).find((s) => /^3\. /.test(s)) ?? '';
+    expect(why).toMatch(/While `main` is red the log has no per-PR lines/);
+    expect(why).toMatch(/first line, `plan: main is [^`]*`/);
+    expect(why).toMatch(/nobody departs/i);
+    // The code: that line is logged before the red-main return, and the return comes before the per-PR lines.
+    const at = (s: string) => trainSource.indexOf(s);
+    expect(at('`plan: main is ${base}; its own ci run:')).toBeGreaterThan(0);
+    expect(at('`plan: main is ${base}; its own ci run:')).toBeLessThan(at('Nobody departs.`'));
+    expect(at('Nobody departs.`')).toBeLessThan(at("'eligible' : 'not eligible'"));
+    // control
+    expect('only one line saying that `main` is red and that nobody departs').not.toMatch(/`plan: main is/);
+  });
+
+  it('says `gh pr checks` shows the text in the description column, the second one in a terminal', () => {
+    expect(text).not.toMatch(/in its last column/);
+    expect(text).toMatch(/description column/);
+    expect(text).toMatch(/second column[^.]*terminal|terminal[^.]*second column/);
+    // control
+    expect('with that text in its last column').toMatch(/in its last column/);
+  });
+
+  it('says a `train` line appears only for a PR that has not ridden, and what starts a plan', () => {
+    const why = steps(section(landing, 'How to see why a PR waits')).find((s) => /^2\. /.test(s)) ?? '';
+    expect(why).toMatch(/never ridden|has not ridden/);
+    expect(why).toMatch(/armed|ready for review/);
+    expect(trainSource).toContain('cur || stateOf(pr.gateStatus, cap).kind');
+    expect(read('.github/workflows/train-kick.yml')).toContain(
+      'types: [auto_merge_enabled, ready_for_review]',
+    );
+    // control
+    expect('which is when a CI run or a train finishes.').not.toMatch(/ready for review/);
+  });
+
+  it('says the docs-only and full-path PRs still arm auto-merge, in the "Which path" bullets', () => {
+    for (const start of ['A docs-only change', 'The full path']) {
+      const b = bullet(start);
+      expect(b, start).toMatch(/arm auto-merge all the same \(step 3\)/);
+    }
+    expect(bullet('A docs-only change')).toMatch(/never rides a train/);
+    // control
+    expect(bullet('An ordinary change')).not.toMatch(/all the same/);
+  });
+
+  it("says that on a fork the first red job's cancel is refused, so the run goes on", () => {
+    const after = flat(/A new push gives the PR[^]*?(?=\n###)/.exec(contributing)?.[0] ?? '');
+    expect(after).toMatch(/first red job cancels the rest of that run/);
+    expect(after).toMatch(/fork[^.]*cancel[^.]*refused[^.]*(?:goes|go|runs?|continues?) on/);
+    expect(suiteYml).toContain(
+      "A fork's token is read-only, so there the cancel is refused and the other jobs run on",
+    );
+    // control
+    expect('its first red job cancels the rest of that run to free the runners').not.toMatch(/refused/);
+  });
+});
+
+describe('AGENTS.md and ci.yml: the numbers and the link the #620 review found stale', () => {
+  it("quotes the full gate's push cost as the suite makes it: the route job, every suite job and the aggregate", () => {
+    const size = suiteSize(suiteYml);
+    expect(fullGatePushCost(agents)).toBe(size.all + 2);
+    // control: the old number, and the arithmetic of a different suite
+    expect(fullGatePushCost('5 jobs on the quick check, 18 on the full gate')).toBe(18);
+    expect(suiteSize('shard: [1, 2]\nshard: [1, 2, 3]\nshard: [1, 2, 3, 4]').all + 2).toBe(12);
+  });
+
+  it("says in ci.yml's header the slices suite.yml has", () => {
+    const size = suiteSize(suiteYml);
+    const head = ciYml.split('\n').slice(0, 6).join(' ').replace(/#/g, ' ').replace(/\s+/g, ' ');
+    expect(slicesInWords(head)).toEqual({ sim: size.sim, browser: size.browser });
+    // control
+    expect(slicesInWords('sim in six, browser in seven')).toEqual({ sim: 6, browser: 7 });
+  });
+
+  it('links CONTRIBUTING.md from AGENTS.md, and the link resolves', () => {
+    expect(agents).toContain('](CONTRIBUTING.md');
+    expect(brokenLinks(agents, 'AGENTS.md')).toEqual([]);
+    // control: a link to a missing page is found
+    expect(brokenLinks('[x](CONTRIBUTING-nope.md)', 'AGENTS.md')).toEqual(['CONTRIBUTING-nope.md']);
   });
 });
 
