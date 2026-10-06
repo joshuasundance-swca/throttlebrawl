@@ -96,6 +96,7 @@ import {
 } from './radio-panel';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
+import { createManualClock, type Schedule } from './narrative/long-press';
 import type { TuningPanel } from './tuning';
 import { keyLegend, keyMapFromBindings } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
@@ -567,6 +568,28 @@ const tickerQuiet = (): boolean => {
   const w = window as TickerSeamWindow;
   return w.__GAME_TEST__ === true && w.__uiTickerQuiet === true;
 };
+
+type LongPressSeamWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __uiLongPressManual?: boolean;
+  __uiLongPress?: { advance(ms: number): void; pending(): number };
+};
+
+/**
+ * The browser specs' long-press clock (docs/architecture.md, "Testing seams"), only when the test
+ * flag and `window.__uiLongPressManual = true` are set before the page loads: the ticker's "cut this"
+ * press then counts a manual clock instead of wall time, and `window.__uiLongPress.advance(ms)`
+ * moves it, so a press is held 500 ms by saying so, whatever the runner's frame rate. `pending()` is
+ * how many presses are timing. Without the flag the press is wall time, as in production. It writes
+ * no sim state.
+ */
+function longPressSchedule(): Schedule | undefined {
+  const w = window as LongPressSeamWindow;
+  if (w.__GAME_TEST__ !== true || w.__uiLongPressManual !== true) return undefined;
+  const clock = createManualClock();
+  w.__uiLongPress = { advance: (ms) => clock.advance(ms), pending: () => clock.pending() };
+  return clock.schedule;
+}
 
 /**
  * The browser specs' stand-in radio (docs/architecture.md, "Testing seams"), only when the test
@@ -1664,6 +1687,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // the ticker's long-press ignores presses in the stick and attack zones mid-race.
   const barks = createNarrative({
     surface: ticker.surface,
+    longPressSchedule: longPressSchedule(),
     ...(opts.barkContent
       ? {
           barkSets: opts.barkContent.barkSets,
