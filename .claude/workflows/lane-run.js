@@ -3,7 +3,7 @@ export const meta = {
   description:
     'A throttlebrawl run: a pool of 5 build lanes that end at push, one keeper that lands every PR of the run and owns main, then one live check of the game link',
   whenToUse:
-    'Launching a batch of build lanes. Pass args { lanes: [{ key, brief }], t0 } where t0 is an ISO time just before launch; PRs created after it belong to this run.',
+    'Launching a batch of build lanes. Pass args { lanes: [{ key, brief, needs? }], t0 } where t0 is an ISO time just before launch; PRs created after it belong to this run.',
   phases: [
     { title: 'Build', detail: 'pool of 5 lanes in worktrees; each ends at push' },
     { title: 'Keep', detail: 'one keeper lands every PR created after t0 and owns main' },
@@ -27,6 +27,19 @@ for (const l of lanes) {
   }
   if (seen.has(l.key)) throw new Error('duplicate lane key: ' + l.key);
   seen.add(l.key);
+}
+// A lane may name one lane it `needs` (that lane's unmerged work). It starts when the parent lane has
+// finished, builds on the parent's branch, and waits for the parent's merge only before it opens its PR
+// (AGENTS.md, "A lane that needs another lane's unmerged work").
+for (const l of lanes) {
+  if (l.needs === undefined) continue;
+  if (typeof l.needs !== 'string' || !seen.has(l.needs) || l.needs === l.key)
+    throw new Error('lane ' + l.key + ': needs must be the key of another lane in this run');
+  const chain = new Set([l.key]);
+  for (let k = l.needs; k; k = (lanes.find((x) => x.key === k) || {}).needs) {
+    if (chain.has(k)) throw new Error('lane ' + l.key + ': needs makes a cycle');
+    chain.add(k);
+  }
 }
 
 const REPORTS = 'scratch/m2/lanes/';
@@ -94,10 +107,18 @@ async function withRetry(fn) {
   }
 }
 
-function lanePrompt(l) {
+function lanePrompt(l, parent) {
+  const onParent = parent
+    ? '; this lane needs lane ' +
+      l.needs +
+      "'s unmerged work (its PR: " +
+      parent.prs.map((n) => '#' + n).join(', ') +
+      "): follow the AGENTS.md rule for it: branch from origin/<that PR's head branch> (gh pr view <n> --json headRefName,state), build and test there, and open your own PR against main only after that PR is MERGED (wait synchronously), after merging origin/main into your branch"
+    : '';
   return (
     'Follow AGENTS.md (already loaded); your task: ' +
     l.brief.trim() +
+    onParent +
     '; write your report to ' +
     REPORTS +
     l.key +
@@ -106,30 +127,46 @@ function lanePrompt(l) {
 }
 
 phase('Build');
-const lanesP = parallel(
-  lanes.map((l) => async () => {
-    await acquire();
-    try {
-      const r = await withRetry(() =>
-        agent(lanePrompt(l), {
-          label: 'lane ' + l.key,
-          phase: 'Build',
-          model: 'opus',
-          effort: 'high',
-          isolation: 'worktree',
-          schema: LANE_OUT,
-        }),
-      );
-      return r
-        ? { ...r, key: l.key }
-        : { key: l.key, prs: [], reportPath: '', summary: 'no result (skipped or died)' };
-    } catch (e) {
-      return { key: l.key, prs: [], reportPath: '', summary: 'error: ' + String(e).slice(0, 300) };
-    } finally {
-      release();
-    }
-  }),
-);
+const laneRuns = new Map(); // key -> promise of that lane's result, so a dependent lane can await its parent
+function runLane(l) {
+  if (!laneRuns.has(l.key)) laneRuns.set(l.key, runLaneOnce(l));
+  return laneRuns.get(l.key);
+}
+async function runLaneOnce(l) {
+  // Wait for the parent before taking a pool slot, so a waiting lane never holds one.
+  let parent = null;
+  if (l.needs) {
+    parent = await runLane(lanes.find((x) => x.key === l.needs));
+    if (!parent.prs || !parent.prs.length)
+      return {
+        key: l.key,
+        prs: [],
+        reportPath: '',
+        summary: 'not started: lane ' + l.needs + ' opened no PR',
+      };
+  }
+  await acquire();
+  try {
+    const r = await withRetry(() =>
+      agent(lanePrompt(l, parent), {
+        label: 'lane ' + l.key,
+        phase: 'Build',
+        model: 'opus',
+        effort: 'high',
+        isolation: 'worktree',
+        schema: LANE_OUT,
+      }),
+    );
+    return r
+      ? { ...r, key: l.key }
+      : { key: l.key, prs: [], reportPath: '', summary: 'no result (skipped or died)' };
+  } catch (e) {
+    return { key: l.key, prs: [], reportPath: '', summary: 'error: ' + String(e).slice(0, 300) };
+  } finally {
+    release();
+  }
+}
+const lanesP = parallel(lanes.map((l) => () => runLane(l)));
 
 const keeperP = withRetry(() =>
   agent(
@@ -139,6 +176,7 @@ const keeperP = withRetry(() =>
       ' (gh pr list --search "created:>' +
       T0 +
       '"), including PRs opened while you work; the build lanes end at push.\n' +
+      "- A lane that needs another lane opens its PR only once that lane's PR has merged (AGENTS.md); keep watching for such PRs while any lane is still running.\n" +
       '- A PR red only because of main: once main is green, gh pr update-branch.\n' +
       '- A PR red on its own change: fix it on its branch; its lane report is in ' +
       REPORTS +
