@@ -9,3 +9,5 @@ For devs: three new scenery kinds, `battery`, `brush` and `outcrop`, draw the ro
 Measured with the real models (`src/render/scene-cost.test.ts`, worst view of each route, before then after): Golden Gate 42 then 49 draw calls and 42,408 then 44,723 triangles; Twin Peaks 56 then 60 draw calls and 78,820 then 78,820 triangles. The busiest route anywhere stays at 70 of 120 draw calls (Russian Hill). No download grows: the GLB (7.9 KB) already ships in region-sf's pack. The sheets' cypress windbreak rows are not built. Docs: `docs/content-packs.md`, the scenery tags. Not phone-verified.
 
 Keeper fix: `src/render/scenery-merge.test.ts` kept its own copy of which model draws each scenery kind, so the new battery, brush and outcrop kinds failed it on Twin Peaks ("brush: expected undefined to be defined"). It now reads the renderer's own table (`MODEL_OF`, now exported from `src/render/road-mesh.ts`), whose type already makes every kind name its model.
+
+Keeper merge of main: kept both new model kinds (this change's `sfHeadlands` and main's `pnwIdentity`) in `modelKindsFor` and the model-count test, and both sets of scenery tags in the content-packs paragraph.

@@ -58,6 +58,11 @@ TAGS = {
     "key-party",
     # Big Pine's Key deer (playtest 4, P4-19, B5): the road they graze beside.
     "key-deer",
+    # District tags on ONE side of a road over a run of s (playtest 4, P4-19, B9; config `sideRuns`): the
+    # Gorge's masonry guard walls on its cliff side, Chuckanut's madrones over its bay side. Neither says
+    # anything about the ground.
+    "guard-wall",
+    "bay-bluff",
     # San Francisco's waterfront (run W-U; docs/content-packs.md, "San Francisco's waterfront").
     "promenade",
     "pier-shed",

@@ -83,6 +83,10 @@ export const MODEL_ASSETS = {
   // Gorge's landmark kit (bridge-bays.ts `planArches`, under an `arch-bridge` deck). The file is a
   // landmark kit, so it loads with the kit's own decoder (`KIT_MODELS`).
   gorgeArches: 'models/landmarks/gorge-landmarks',
+  // Playtest 4 (P4-19, Codex CX5, B9): the Pacific Northwest's identity props, in region-pnw's pack: the
+  // Columbia River Highway's masonry guard walls on its cliff side and Chuckanut Drive's red-barked madrones
+  // over its bay side (roadside.ts PNW_KIT, the `gorge-wall` and `madrone` rules).
+  pnwIdentity: 'models/scenery/pnw-identity',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -231,6 +235,10 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'duval_open_bar_b',
     'keys_osprey_post',
   ],
+  // Variants 0 and 1 the madrones (a tall one leaning 3.5 m out and a small twin-trunked one; the lean is toward
+  // +Z, so a tree on a bluff turns its back to the road), 2 a 6 m section of masonry guard wall with three arched
+  // openings, 0.9 m high (tools/blender/props/pnw_identity.py).
+  pnwIdentity: ['pnw_madrone_a', 'pnw_madrone_b', 'gorge_guard_wall'],
   // Its variants: 0 to 2 balconied shopfronts, 3 and 4 conch houses, 5 the corner bar, 6 a scooter
   // rack, 7 a palm in a planter (roadside.ts KEYS_KIT, the `oldtown` rules).
   duvalKit: [
@@ -317,6 +325,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('presidio')) out.add('sfIdentity');
     // Playtest 4 (P4-19, C2): the headlands' batteries, brush and chert.
     if (n.tags.has('headlands')) out.add('sfHeadlands');
+    // Playtest 4 (P4-19, B9): the Gorge's masonry guard walls and Chuckanut's bay-side madrones.
+    if (n.tags.has('guard-wall') || n.tags.has('bay-bluff')) out.add('pnwIdentity');
     const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
     if (urban) {
       out.add('rowHouses');

@@ -56,6 +56,7 @@
       "id": "osm-chuckanut-larrabee",
       "name": "Larrabee Bends",
       "tags": ["forest"],
+      "sideRuns": [{ "tag": "bay-bluff", "side": "right", "s0": 170, "s1": 200 }],
       "features": [
         {
           "kind": "copSpawn",
@@ -139,6 +140,10 @@
       "id": "osm-chuckanut-cliffs",
       "name": "Samish Cliffs",
       "tags": ["forest"],
+      "sideRuns": [
+        { "tag": "bay-bluff", "side": "right", "s0": 180, "s1": 280 },
+        { "tag": "bay-bluff", "side": "right", "s0": 370, "s1": 2410 }
+      ],
       "features": [
         {
           "kind": "billboard",
@@ -192,6 +197,13 @@
       "id": "osm-chuckanut-oyster-creek",
       "name": "Oyster Creek Hairpins",
       "tags": ["forest"],
+      "sideRuns": [
+        { "tag": "bay-bluff", "side": "right", "s0": 190, "s1": 430 },
+        { "tag": "bay-bluff", "side": "right", "s0": 510, "s1": 600 },
+        { "tag": "bay-bluff", "side": "right", "s0": 740, "s1": 1490 },
+        { "tag": "bay-bluff", "side": "right", "s0": 1600, "s1": 1820 },
+        { "tag": "bay-bluff", "side": "right", "s0": 2250, "s1": 2540 }
+      ],
       "features": [
         {
           "kind": "billboard",
