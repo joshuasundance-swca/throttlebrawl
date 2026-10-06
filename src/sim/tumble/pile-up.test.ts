@@ -116,11 +116,11 @@ interface Harness {
   hash(): number;
 }
 
-function harness(tuning: Record<string, number>): Harness {
+function harness(tuning: Record<string, number>, knocked = 0): Harness {
   const cfg = config(tuning);
   const world = createWorld(cfg);
   cfg.riders.forEach((_d, i) => addMover(world, 'rider', gridPosition(cfg, i), i));
-  const orders = [{ tick: 5, rider: 0 }];
+  const orders = [{ tick: 5, rider: knocked }];
   const systems = orderSystems([
     aiSystem,
     ridersSystem,
@@ -306,5 +306,41 @@ describe('pile-ups: a dropped bike is solid by closing speed (the maintainer, 20
       return hashes;
     };
     expect(run()).toEqual(run());
+  });
+});
+
+describe('pile-ups: a rival keeps his line clear of a dropped bike, as of the other solid things', () => {
+  it('goes round one standing where his line runs, never touching it (the control: with no bike there, his line runs through that spot)', () => {
+    // The player knocked off; his bike stands far up the road (out of the way) or at the spot the rival's
+    // own line crosses at s 320, measured in the run without it. The rival is put at s 200 at 25 m/s.
+    const run = (bikeAt: { s: number; d: number }) => {
+      const h = harness(SOLID, 1);
+      until(h, () => h.player.mode === 'OnFoot');
+      const r = tumbleRecord(h.world, 1);
+      if (!r) throw new Error('no record');
+      r.parked = { ...BIKE, ...bikeAt };
+      h.player.pos = { ...BIKE, s: 1150 };
+      h.rival.pos = { edge: 0, s: 200, d: BIKE.d, dir: 1 };
+      h.rival.speed = 25;
+      h.rival.yaw = 0;
+      const events: SimEvent[] = [];
+      let dAt320: number | null = null;
+      for (let t = 0; t < 400 && h.rival.pos.s < 360; t++) {
+        const s0 = h.rival.pos.s;
+        for (const e of h.step())
+          if (e.actor === h.rival.id && e.data['object'] === 'parked-bike') events.push(e);
+        if (s0 < 320 && h.rival.pos.s >= 320) dAt320 = h.rival.pos.d;
+      }
+      return { events, dAt320, mode: h.rival.mode, s: h.rival.pos.s };
+    };
+    const free = run({ s: 1100, d: BIKE.d });
+    expect(free.dAt320).not.toBeNull();
+    const line = free.dAt320 ?? 0;
+    const blocked = run({ s: 320, d: line });
+    expect(blocked.events).toEqual([]);
+    expect(blocked.mode).toBe('Road');
+    expect(blocked.s).toBeGreaterThanOrEqual(360);
+    // He went round it: where he passed s 320 he was clear of it by the two half widths.
+    expect(Math.abs((blocked.dAt320 ?? line) - line)).toBeGreaterThanOrEqual(2 * RIDER_CONTACT_HALF_WIDTH_M);
   });
 });
