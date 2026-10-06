@@ -104,6 +104,10 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
     tags: ['towers', 'plaza', 'cross-street', 'cable-crossing'],
     load: () => import('./structures/downtown').then((m) => m.SF_DOWNTOWN_STRUCTURES),
   },
+  // Every landmark's solid parts at its drawn heights (road/structures/landmarks.ts).
+  landmarks: { features: ['landmark'], load: () => import('./structures/landmarks').then((m) => m.planner) },
+  // Key West's Old Town street fronts (road/structures/oldtown.ts).
+  oldtown: { tags: ['key-oldtown'], load: () => import('./structures/oldtown').then((m) => m.planner) },
 };
 
 /** The plan: every structure, numbered, and a grid of the world for finding them. */
