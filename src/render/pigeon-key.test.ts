@@ -9,7 +9,7 @@ import type { BufferAttribute, Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { AssetManifest } from '../assets';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
-import { BAY_ROOTS } from './bridge-bays';
+import { BARE_BAYS, BAY_ROOTS } from './bridge-bays';
 import { LANDMARK_MID_M, LandmarkLayer, landmarkKitsFor, landmarkPlacements } from './landmarks';
 import { createFlatLook } from './look';
 import { loadLandmarkKits, loadSceneryModels, type LandmarkKit } from './models';
@@ -84,7 +84,9 @@ describe('the Seven Mile kit, one file for the bays and for Pigeon Key', () => {
       const models = order === 'scenery first' ? a : b;
       const landmark = (order === 'scenery first' ? b : a) as Awaited<ReturnType<typeof kits>>;
       const bays = (models as Awaited<ReturnType<typeof scenery>>).models.sevenMileKit;
-      expect(bays?.variants, 'the bays still bake, one variant per root').toHaveLength(BAY_ROOTS.length);
+      expect(bays?.variants, 'the bays still bake, one variant per root and the bare ones').toHaveLength(
+        BAY_ROOTS.length + Object.keys(BARE_BAYS).length,
+      );
       const kit = landmark.get('seven-mile-kit');
       expect(kit, 'the landmark kit').toBeDefined();
       for (const node of ['pigeon_key_cottage_a', 'pigeon_key_cottage_b', 'pigeon_key_dock'])

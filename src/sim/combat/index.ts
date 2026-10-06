@@ -212,7 +212,7 @@
 //   race, he hardly ever swung and you hardly ever had a steal chance. [default]
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
-import { riderLimits, riderState } from '../riders';
+import { outPastEdge, riderLimits, riderState } from '../riders';
 import { parkedBike } from '../tumble';
 import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef, type TakedownKind } from '../types';
 import { addMover, emit, setSlowmo, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -1478,7 +1478,10 @@ function slide(world: World, config: SimConfig, st: CombatState, ts: number): vo
     const d = m.pos.d + (peak / 60) * (t1 - t0 - (t1 * t1 - t0 * t0) / (2 * n));
     // The riders' limits: the lanes' edges, or the verge's with off-road on (run W-R), so a kick
     // can send a rider onto the verge and never snaps one riding there back onto the road.
-    const { lo, hi } = riderLimits(world, config, m.pos.edge, m.pos.s, m.pos.d);
+    // A rider out past its road's edge in the air (over the barrier) has no edge to stop at.
+    const { lo, hi } = outPastEdge(world, m.id)
+      ? { lo: -Infinity, hi: Infinity }
+      : riderLimits(world, config, m.pos.edge, m.pos.s, m.pos.d);
     m.pos.d = clamp(d, lo, hi);
     st.knockT[m.id] = t1;
     if (m.pos.d !== d || t1 >= n - EPS) endShove(st, m.id);

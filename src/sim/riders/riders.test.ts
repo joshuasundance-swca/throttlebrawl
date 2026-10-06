@@ -363,6 +363,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.driftMinMps',
       'riders.driftEdgeForgive',
       'riders.driftExitMps',
+      'riders.highDropM',
       'riders.furniture',
       'riders.smokeSlowdown',
       'riders.supports',

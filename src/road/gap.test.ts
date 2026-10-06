@@ -1,19 +1,17 @@
 // The road's gap queries (playtest 3, T3.1): where there is no surface, where a rider who fell
-// through one wakes, and the jumpable walls. The sim's use of them is in sim/riders/gap.test.ts and
-// sim/tumble/gap.test.ts.
+// through one wakes. The sim's use of them is in sim/riders/gap.test.ts and sim/tumble/gap.test.ts;
+// the edge a rider may fly over (once the jumpable walls) is road/beyond.test.ts's.
 import { describe, expect, it } from 'vitest';
-import { gapAt, gapById, gapFarSide, jumpableWallAt, nearestOnEdges } from './gap';
+import { gapAt, gapById, gapFarSide, nearestOnEdges } from './gap';
 import { createRoadNetwork, fixtureNetwork, type BakedFeature, type BakedNetworkBundle } from './index';
 
 function withFeatures(
   features: readonly BakedFeature[],
   specs = [{ id: 'a', lengthM: 400, kappa: 0 }],
-  barriers: readonly unknown[] = [],
 ): ReturnType<typeof createRoadNetwork> {
   const bundle = JSON.parse(JSON.stringify(fixtureNetwork(specs))) as BakedNetworkBundle;
-  const road = bundle.roads[0] as unknown as { features: BakedFeature[]; barriers: unknown[] };
+  const road = bundle.roads[0] as unknown as { features: BakedFeature[] };
   road.features = [...features];
-  road.barriers = [...barriers];
   return createRoadNetwork(bundle);
 }
 
@@ -112,17 +110,5 @@ describe('nearestOnEdges', () => {
     expect(onA?.s).toBeCloseTo(200, 3);
     expect(nearestOnEdges(road, [1, 0], wb.x, wb.z)?.edge).toBe(1);
     expect(nearestOnEdges(road, [], 0, 0)).toBeNull();
-  });
-});
-
-describe('jumpableWallAt', () => {
-  it('is the jumpable wall on that side at s, or null', () => {
-    const road = withFeatures([], undefined, [
-      { s0: 50, s1: 150, side: 'right', kind: 'wall', heightM: 1.2, jumpable: true },
-      { s0: 0, s1: 400, side: 'left', kind: 'wall', heightM: 1 },
-    ]);
-    expect(jumpableWallAt(road, 0, 100, 'right')?.heightM).toBe(1.2);
-    expect(jumpableWallAt(road, 0, 160, 'right')).toBeNull();
-    expect(jumpableWallAt(road, 0, 100, 'left')).toBeNull();
   });
 });
