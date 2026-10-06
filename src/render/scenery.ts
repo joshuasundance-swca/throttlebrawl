@@ -36,6 +36,14 @@ export const BLUFF_LAND_M = 10;
  * the bank to the water, where a dock's root stands. [default] */
 export const LAKE_LAND_M = 20;
 /**
+ * A lake side's bank, once the lake's water is known (playtest 4 run C, punch item 6): the verge's own land at the
+ * road's height this far past the verge, m (the sim's 4 m of soft grass is ridable there, so it is drawn at the
+ * road's height), then a wall down to the shore, which lies at the water's level (road-mesh.ts `waterAt`). [default]
+ */
+export const LAKE_BANK_M = 4.2;
+/** The lake's shore lies this far over the water as drawn, m: a hand's breadth, so the dock's deck stands on it. [default] */
+export const LAKE_SHORE_OVER_M = 0.3;
+/**
  * Land that ends at a drop: its strip reaches only this far past the verge, m, and drops straight down
  * there (into the sea, or under the lake's water), with no terrain skirt (road-mesh.ts). The promenade's
  * seawall (run W-U): its 12 m verge band (road/cross-section.ts) less the drawn 0.6 m verge, so the drawn

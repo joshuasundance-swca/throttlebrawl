@@ -317,6 +317,13 @@ export interface MastPiece extends Base {
  */
 export const FLOOR_UNDER_M = { water: 0.5, land: 1 } as const;
 
+/**
+ * The floor flag of a water floor above the sea (a lake: playtest 4 run C's check, "Lake Samish ... a pale flat
+ * plain in the haze"): no near sea covers it, so inside the fog's end it keeps its own colour and takes the fog's
+ * haze by distance (builder.ts `floorHazeAt`). Every other floor has flag 1, a vertex that is no floor 0.
+ */
+export const NEAR_WATER_FLOOR = 2;
+
 export interface FloorPiece extends Base {
   kind: 'floor';
   /** "land" or "water": water lies a hair above land where they overlap. */

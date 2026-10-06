@@ -173,6 +173,11 @@ describe('tiers', () => {
       expect(lo.maxScale).toBeLessThanOrEqual(hi.maxScale);
       expect(sceneryReach(p, lo).drawM).toBeLessThanOrEqual(sceneryReach(p, hi).drawM);
       expect(sceneryReach(p, lo).lodM).toBeLessThanOrEqual(sceneryReach(p, hi).lodM);
+      // Playtest 4 run C (punch item 9): and each lower tier cuts real geometry, not only the reach.
+      for (const k of ['lodReach', 'propDetail', 'treeShare', 'cityDetail'] as const) {
+        expect(lo[k], k).toBeLessThan(hi[k]);
+        expect(lo[k], k).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -185,7 +190,13 @@ describe('tiers', () => {
       expect(reach.lodM).toBeLessThanOrEqual(p.sceneryLodM);
     }
     // The top tier is the game as it drew before tiers: the sliders' own reach.
-    expect(sceneryReach(p, QUALITY_TIERS.high)).toEqual({ drawM: p.sceneryDrawM, lodM: p.sceneryLodM });
+    expect(sceneryReach(p, QUALITY_TIERS.high)).toEqual({
+      drawM: p.sceneryDrawM,
+      lodM: p.sceneryLodM,
+      propDetail: 1,
+      treeShare: 1,
+      cityDetail: 1,
+    });
   });
 });
 

@@ -53,6 +53,8 @@ import {
   islandBoxes,
   isTropical,
   onIsland,
+  LAKE_BANK_M,
+  LAKE_SHORE_OVER_M,
   LAND_TOP_M,
   ridableBandPast,
   SCENERY_KINDS,
@@ -258,10 +260,19 @@ export interface RoadScene {
   /**
    * Per frame: hides scenery farther than `drawM` from the camera, draws the merged blocks past
    * `lodM` as their far stand-ins, builds up to `builds` blocks coming into range (default one),
-   * bobs the boats, and leaves the road's fine detail out of chunks past ROAD_FINE_DRAW_M. Returns
-   * the scenery props left visible.
+   * bobs the boats, and leaves the road's fine detail out of chunks past ROAD_FINE_DRAW_M. `detail` is a
+   * quality tier's (quality.ts): the share of the scatter's trees drawn, and the share of
+   * ROAD_FINE_DRAW_M the fine detail reaches (by default 1 and 1). Returns the scenery props left visible.
    */
-  update(cameraX: number, cameraZ: number, t: number, drawM: number, lodM?: number, builds?: number): number;
+  update(
+    cameraX: number,
+    cameraZ: number,
+    t: number,
+    drawM: number,
+    lodM?: number,
+    builds?: number,
+    detail?: { treeShare?: number; propDetail?: number },
+  ): number;
   /** The merged still scenery as the last update drew it (run W-S). */
   merged(): MergedSceneryCounts;
   /**
@@ -269,6 +280,11 @@ export interface RoadScene {
    * it: the roadside layer (roadside.ts, run W-P) stands its clutter on it.
    */
   landReach(edge: number, side: -1 | 1, s: number): number;
+  /**
+   * The height of the drawn land `across` m past the verge at s on a side of an edge when it is not the road's own
+   * height, or null (a lake's shore, `RoadSceneOptions.waterAt`): the roadside layer stands a cabin on it.
+   */
+  landTop(edge: number, side: -1 | 1, s: number, across: number): number | null;
   dispose(): void;
 }
 
@@ -703,6 +719,13 @@ export interface RoadSceneOptions {
    * `isHighway`. A test that needs posts on a real two-lane network passes `() => true`.
    */
   postRoads?: ((edge: Edge) => boolean) | undefined;
+  /**
+   * The height of the network's own water above the sea over a world point, or null (playtest 4 run C, punch item 6:
+   * Lake Samish, backdrop/water.ts). A `lake` side's land then ends in a bank down to the shore at the water's level
+   * (the verge's `LAKE_BANK_M` at the road's height, a wall, a flat shore), so the water and the docks stand in sight
+   * of the road; with none, the lake's land is the plateau it was.
+   */
+  waterAt?: ((x: number, z: number) => number | null) | undefined;
 }
 
 /** A road with this many drive lanes (both ways) or more is a highway: the 4-6 lane kind. [default] */
@@ -739,6 +762,10 @@ const SIDEWALK_FEATURES = new Set(['roadsideZone', 'billboard']);
 export const SCENERY_LAND_M = 24;
 /** The shelf from the land's edge down to the sea floor, m. */
 const SCENERY_SHELF_M = 4;
+/** A lake side gets its bank only where the verge land stands at least this far over the shore, m (else the plateau is as good). [default] */
+const LAKE_WALL_MIN_M = 0.5;
+/** Where a lake's bank begins or ends, its wall grows this many metres per metre along the road, from none. [default] */
+const LAKE_RAMP_M_PER_M = 0.5;
 /** A wide land strip keeps off a landmark standing beyond the usual strip from this far before it to this far after it, m. */
 export const LANDMARK_LEAD_M = 12;
 /** A seawall's drop (run W-U): near sheer, m out from the strip's edge. */
@@ -999,7 +1026,7 @@ export function buildRoadScene(
   const pylonSpots: { p: Point3; h: number }[] = [];
   const spots: ScenerySpot[] = [];
   /** Each edge's land reach per sample and side, and its sample step (RoadScene.landReach). */
-  const landOf: { step: number; reach: Record<-1 | 1, number[]> }[] = [];
+  const landOf: { step: number; reach: Record<-1 | 1, number[]>; shore: Record<-1 | 1, number[]> }[] = [];
   /**
    * Each edge's land at its two end rows, per side: [level, reach] (see the end caps), the strip's
    * top at a reach, and the row's whole cross-section.
@@ -1545,7 +1572,18 @@ export function buildRoadScene(
       });
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
-    landOf[e.index] = { step, reach: reachOf };
+    /** A lake side's shore per sample (playtest 4 run C): the height of its flat shore past the bank, or NaN (no bank). */
+    const shoreOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    landOf[e.index] = { step, reach: reachOf, shore: shoreOf };
+    /** The shore's height at s a distance `across` past the verge, or null where the land is at the road's height. */
+    const shoreTop = (side: -1 | 1, s: number, across: number): number | null => {
+      if (across <= LAKE_BANK_M) return null;
+      const rows = shoreOf[side];
+      if (!rows.length) return null;
+      const i = Math.max(0, Math.min(rows.length - 1, Math.round(s / step)));
+      const y = rows[i] ?? Number.NaN;
+      return Number.isNaN(y) ? null : y;
+    };
     /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
     const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
     /** The skirt's flat ground as drawn, per side: each row's foot and far edge, and the rows kept. */
@@ -1682,6 +1720,42 @@ export function buildRoadScene(
         }
         reach.push(r);
       }
+      // Playtest 4 run C (punch item 6): a lake side's land ends in a bank to the shore, once the lake's water is
+      // known. The shore is flat at the water's level; the bank's wall stands at the verge land's end, and where the
+      // bank begins or ends (a theme's end, a gap in the water) its wall grows from nothing at LAKE_RAMP_M_PER_M,
+      // so the land meets the plateau beside it with no step to close.
+      const shore = shoreOf[side];
+      const plateauAt = (s: number) => w(e.index, s, side * (outer + LAKE_BANK_M), LAND_TOP_M).y;
+      const wall: number[] = [];
+      for (const [i, s] of ss.entries()) {
+        const r = reach[i] ?? 0;
+        let h = Number.NaN;
+        if (opts.waterAt && r > LAKE_BANK_M + 2 && !meets[i] && theme(side, s) === 'lake') {
+          const mid = w(e.index, s, side * (outer + (LAKE_BANK_M + r) / 2), 0);
+          const far = w(e.index, s, side * (outer + r + 1), 0);
+          const water = opts.waterAt(mid.x, mid.z);
+          // The water past the shore too (the lake's own apron): else this is not the lake's edge.
+          if (water !== null && opts.waterAt(far.x, far.z) !== null) {
+            const drop = plateauAt(s) - (water + LAKE_SHORE_OVER_M);
+            if (drop >= LAKE_WALL_MIN_M) h = drop;
+          }
+        }
+        wall.push(h);
+      }
+      // Rows to the nearest row without a bank (the road's ends count as none).
+      const toNone = ss.map(() => Number.POSITIVE_INFINITY);
+      for (const pass of [1, -1]) {
+        let run = Number.POSITIVE_INFINITY;
+        for (let k = pass > 0 ? 0 : ss.length - 1; k >= 0 && k < ss.length; k += pass) {
+          run = Number.isNaN(wall[k] ?? Number.NaN) ? 0 : run + 1;
+          toNone[k] = Math.min(toNone[k] ?? Number.POSITIVE_INFINITY, run);
+        }
+      }
+      for (const [i, s] of ss.entries()) {
+        const h = wall[i] ?? Number.NaN;
+        const ramped = Math.min(h, LAKE_RAMP_M_PER_M * Math.max(0, (toNone[i] ?? 0) - 1) * step);
+        shore.push(Number.isNaN(h) ? Number.NaN : plateauAt(s) - ramped);
+      }
       if (meets.some(Boolean))
         meetsRuns.push({
           edge: e,
@@ -1690,21 +1764,57 @@ export function buildRoadScene(
           rows: ss.map((s, i) => [s, reach[i] ?? 0, !!meets[i]] as const),
         });
       const ground = strip('land');
-      ground.breakStrip();
-      ss.forEach((s, i) => {
-        const r = reach[i] ?? 0;
-        if (r <= 0) {
-          ground.breakStrip();
-          return;
-        }
-        if (i > 0) sceneryLandM += step;
-        const near = w(e.index, s, side * outer, LAND_TOP_M);
-        const edge = w(e.index, s, side * (outer + r), LAND_TOP_M);
-        // Pairs in increasing d, so the faces point up.
-        if (side < 0) ground.pair(edge, near);
-        else ground.pair(near, edge);
+      /** A row is a lake side's with a bank: its land ends at the plateau, a wall and the flat shore. */
+      const banked = (i: number) => !Number.isNaN(shore[i] ?? Number.NaN);
+      /**
+       * A plain row beside a bank: its wall has no height and its shore is the plateau, so the shore's band runs on
+       * into it and no gap opens between the two rows' different widths (the plateau's, past the bank's wall).
+       */
+      const beside = (i: number) =>
+        !banked(i) &&
+        (reach[i] ?? 0) > LAKE_BANK_M + SEAWALL_SHELF_M + 0.1 &&
+        (banked(i - 1) || banked(i + 1));
+      /** The bank's wall: from the verge land's end straight down to the shore's level (a few cm out, as a seawall's). */
+      const wallTop = (s: number) => w(e.index, s, side * (outer + LAKE_BANK_M), LAND_TOP_M);
+      const wallFoot = (s: number, i: number) => {
+        const p = w(e.index, s, side * (outer + LAKE_BANK_M + SEAWALL_SHELF_M), LAND_TOP_M);
+        return banked(i) ? { ...p, y: shore[i] ?? 0 } : p;
+      };
+      /** The strip's rows in the order the bands are drawn, one run per band (pairs in increasing d, so the faces point up). */
+      const emit = (row: (i: number, s: number, r: number) => readonly [Point3, Point3] | null) => {
+        ground.breakStrip();
+        ss.forEach((s, i) => {
+          const r = reach[i] ?? 0;
+          const pair = r > 0 ? row(i, s, r) : null;
+          if (!pair) {
+            ground.breakStrip();
+            return;
+          }
+          if (side < 0) ground.pair(pair[1], pair[0]);
+          else ground.pair(pair[0], pair[1]);
+        });
+        ground.breakStrip();
+      };
+      ss.forEach((_, i) => {
+        if (i > 0 && (reach[i] ?? 0) > 0) sceneryLandM += step;
       });
-      ground.breakStrip();
+      // The strip: from the verge to the land's edge, or to the bank's wall where it has one.
+      emit((i, s, r) => [
+        w(e.index, s, side * outer, LAND_TOP_M),
+        banked(i) ? wallTop(s) : w(e.index, s, side * (outer + r), LAND_TOP_M),
+      ]);
+      emit((i, s) => (banked(i) || beside(i) ? [wallTop(s), wallFoot(s, i)] : null));
+      emit((i, s, r) =>
+        banked(i) || beside(i)
+          ? [
+              wallFoot(s, i),
+              {
+                ...w(e.index, s, side * (outer + r), LAND_TOP_M),
+                ...(banked(i) ? { y: shore[i] ?? 0 } : {}),
+              },
+            ]
+          : null,
+      );
       // The terrain skirt (not on the Keys): from the strip's edge a slope down to flat ground just
       // over the sea, then a short shelf into it. It shortens, or falls back to the shelf alone,
       // where it would bury another road, cover another road's water or fold on a tight turn.
@@ -1732,7 +1842,11 @@ export function buildRoadScene(
         g.breakStrip();
       };
       const at = (s: number, d: number, y: number) => ({ ...w(e.index, s, side * d, 0), y });
-      const top = (s: number, r: number) => w(e.index, s, side * (outer + r), LAND_TOP_M);
+      const top = (s: number, r: number) => {
+        const p = w(e.index, s, side * (outer + r), LAND_TOP_M);
+        const y = shoreTop(side, s, r);
+        return y === null ? p : { ...p, y };
+      };
       // The slope keeps every third foot but every top: its top edge is the strip's own edge, vertex
       // for vertex. Thinned there too, its chords cut inside a bend's arc and left a sliver open
       // between the strip and the slope (the 1 to 2 px light seam on Twin Peaks, run W-S): each
@@ -1818,18 +1932,27 @@ export function buildRoadScene(
         }
       };
       /** Row i's land in cross-section, from the verge outward: the strip, then its skirt or shelf. */
-      const profileOf = (i: number): Point3[] => {
+      const profileOf = (i: number): Point3[] => profileRows(i).map(([, p]) => p);
+      /** Row i's cross-section with each point's distance past the verge (a bank's wall stands inside the reach). */
+      const profileRows = (i: number): (readonly [number, Point3])[] => {
         const li = level(i);
         if (li === 0) return [];
         const s = ss[i] ?? 0;
         const r = reach[i] ?? 0;
         const k = skirts[i];
-        const profile = [top(s, 0), top(s, r)];
+        const profile: (readonly [number, Point3])[] = [[0, top(s, 0)]];
+        if (banked(i))
+          profile.push([LAKE_BANK_M, wallTop(s)], [LAKE_BANK_M + SEAWALL_SHELF_M, wallFoot(s, i)]);
+        profile.push([r, top(s, r)]);
         if (k) {
-          profile.push(at(s, outer + r + k.run, GROUND_Y));
-          if (k.flat > 0) profile.push(at(s, outer + r + k.run + k.flat, GROUND_Y));
-          profile.push(at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
-        } else if (li === 2) profile.push(at(s, outer + r + shelfOf(side, i), LAND_CAP_FOOT_Y));
+          profile.push([r + k.run, at(s, outer + r + k.run, GROUND_Y)]);
+          if (k.flat > 0) profile.push([r + k.run + k.flat, at(s, outer + r + k.run + k.flat, GROUND_Y)]);
+          profile.push([
+            r + k.run + k.flat + SCENERY_SHELF_M,
+            at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y),
+          ]);
+        } else if (li === 2)
+          profile.push([r + shelfOf(side, i), at(s, outer + r + shelfOf(side, i), LAND_CAP_FOOT_Y)]);
         return profile;
       };
       /** Closes row i's land past what the neighbouring land (level lj, reach rj) covers. */
@@ -1838,9 +1961,10 @@ export function buildRoadScene(
         const r = reach[i] ?? 0;
         if (li === 0 || (lj >= li && rj >= r - LAND_CAP_NARROW_M)) return;
         const s = ss[i] ?? 0;
-        const [near, ...rest] = profileOf(i);
-        const head = lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), near!] : rj < r ? [top(s, rj)] : [];
-        curtain([...head, ...rest]);
+        const [first, ...rest] = profileRows(i);
+        const head = lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), first![1]] : rj < r ? [top(s, rj)] : [];
+        // Past a narrower neighbour's reach only (a bank's wall inside it is the neighbour's own ground to close).
+        curtain([...head, ...rest.filter(([d]) => lj === 0 || rj >= r || d > rj).map(([, p]) => p)]);
       };
       const last = ss.length - 1;
       const rowOf = (end: 'from' | 'to') => (end === 'from' ? 0 : last);
@@ -1932,7 +2056,13 @@ export function buildRoadScene(
           const p = w(e.index, s, d, 0);
           return locator.at(p.x, p.z, e.index).length === 0 && !onIsland(islands, p.x, p.z);
         },
-        world: (s, d, h) => w(e.index, s, d, h),
+        world: (s, d, h) => {
+          const p = w(e.index, s, d, h);
+          // A lake's shore lies below the road: what stands on it stands at its level.
+          const side = d < 0 ? -1 : 1;
+          const y = shoreTop(side, s, Math.abs(d) - outerOf(side));
+          return y === null ? p : { ...p, y: y + (h - LAND_TOP_M) };
+        },
         skirt: terrain
           ? (side, s) => {
               const i = Math.max(0, Math.min(ss.length - 1, Math.round(s / step)));
@@ -2779,6 +2909,15 @@ export function buildRoadScene(
     },
     spots,
     bays: baySpots,
+    landTop(edge, side, s, across) {
+      const l = landOf[edge];
+      if (!l || across <= LAKE_BANK_M) return null;
+      const rows = l.shore[side];
+      const i = Math.max(0, Math.min(rows.length - 1, Math.floor(s / l.step)));
+      const a = rows[i] ?? Number.NaN;
+      const b = rows[Math.min(rows.length - 1, i + 1)] ?? Number.NaN;
+      return Number.isNaN(a) || Number.isNaN(b) ? null : (a + b) / 2;
+    },
     landReach(edge, side, s) {
       const l = landOf[edge];
       if (!l) return 0;
@@ -2786,13 +2925,14 @@ export function buildRoadScene(
       const i = Math.max(0, Math.min(n - 1, Math.floor(s / l.step)));
       return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
     },
-    update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1) {
+    update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1, detail = {}) {
       sea?.update(cameraX, cameraZ);
+      const fineM = ROAD_FINE_DRAW_M * (detail.propDetail ?? 1);
       for (const [key, fine] of fineByChunk) {
-        const near = chunkDistance(key, cameraX, cameraZ) < ROAD_FINE_DRAW_M;
+        const near = chunkDistance(key, cameraX, cameraZ) < fineM;
         for (const mesh of fine) mesh.visible = near;
       }
-      let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds);
+      let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds, detail.treeShare ?? 1);
       if (bayMerged) shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), lodM, builds);
       for (const b of batches) {
         const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;

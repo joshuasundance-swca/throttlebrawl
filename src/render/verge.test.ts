@@ -161,6 +161,26 @@ describe("each region's ground and edges", () => {
     console.log(`[examined] keys-m1: ${JSON.stringify(c)}`);
   });
 
+  // Roadmap M5 (playtest 4 run C, punch item 9): a lower quality tier draws only its share of the fern
+  // clumps (quality.ts `treeShare`, ranked as the scatter's trees are); a share of 1 draws every one.
+  it("a lower tier's share of the ferns: fewer clumps drawn, all of them at a share of 1", () => {
+    const { road, verge } = layer('pnw-c1');
+    const p = road.toWorld(0, 300, 0, 0);
+    const drawn = (share: number) => {
+      verge.setTreeShare(share);
+      verge.update(p.x, p.z, null, 0);
+      return verge.counts().nearClumps;
+    };
+    const all = drawn(1);
+    const low = drawn(0.4);
+    const again = drawn(1);
+    print(`[examined] pnw-c1 edge 0 s 300: ${all} fern clumps drawn at a share of 1, ${low} at 0.4`);
+    expect(all).toBeGreaterThan(10);
+    expect(again).toBe(all);
+    expect(low).toBeLessThan(all * 0.6);
+    expect(low).toBeGreaterThan(all * 0.2);
+  });
+
   it('the Pacific Northwest: dirt under the trees ending in ferns, split rails at the landing', () => {
     const { verge } = layer('pnw-c1');
     const c = verge.counts();

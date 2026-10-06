@@ -1218,16 +1218,17 @@ export class BlocksLayer {
 
   /**
    * Per frame: builds, shows and frees the stretches by distance from the camera (full detail near,
-   * the stand-in far). Returns the stretches in view.
+   * the stand-in far). `nearM` (a quality tier's, quality.ts `cityDetail`): where the far stand-in
+   * starts, NEAR_M on the top tier. Returns the stretches in view.
    */
-  update(cameraX: number, cameraZ: number): number {
+  update(cameraX: number, cameraZ: number, nearM = NEAR_M): number {
     // Build at most one mesh a frame: the nearest stretch that needs one.
     let next: { st: Built; which: 'near' | 'far' } | null = null;
     let nextDist = Infinity;
     for (const st of this.stretches) {
       const dist = Math.hypot(st.cx - cameraX, st.cz - cameraZ) - st.radius;
       if (dist >= BLOCKS_DRAW_M + PREFETCH_M || dist >= nextDist) continue;
-      const which = dist < NEAR_M + PREFETCH_M ? 'near' : 'far';
+      const which = dist < nearM + PREFETCH_M ? 'near' : 'far';
       if (!st[which]) {
         next = { st, which };
         nextDist = dist;
@@ -1239,11 +1240,11 @@ export class BlocksLayer {
     let shown = 0;
     for (const st of this.stretches) {
       const dist = Math.hypot(st.cx - cameraX, st.cz - cameraZ) - st.radius;
-      const wantNear = dist < NEAR_M && st.near !== null;
+      const wantNear = dist < nearM && st.near !== null;
       const wantFar = !wantNear && dist < BLOCKS_DRAW_M && st.far !== null;
       // Until a stretch's near mesh is built, its far one stands in (and the other way round).
       const showNear = wantNear || (dist < BLOCKS_DRAW_M && !st.far && st.near !== null);
-      const showFar = wantFar || (dist < NEAR_M && !st.near && st.far !== null);
+      const showFar = wantFar || (dist < nearM && !st.near && st.far !== null);
       if (st.near) st.near.visible = showNear && !st.near.userData['empty'];
       if (st.far) st.far.visible = showFar && !showNear && !st.far.userData['empty'];
       for (const m of [st.near, st.far]) {
@@ -1254,7 +1255,7 @@ export class BlocksLayer {
         }
       }
       if (dist > KEEP_M) this.free(st);
-      else if (dist > NEAR_M + PREFETCH_M + 60 && st.near) this.freeOne(st, 'near');
+      else if (dist > nearM + PREFETCH_M + 60 && st.near) this.freeOne(st, 'near');
     }
     if (this.tower && this.plan.tower) {
       const d = Math.hypot(this.plan.tower.x - cameraX, this.plan.tower.z - cameraZ);
