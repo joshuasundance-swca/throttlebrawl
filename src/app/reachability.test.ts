@@ -137,6 +137,7 @@ const ACTION_FIELDS = Object.keys({
   kickStraight: false,
   cycleCamera: false,
   wheelie: false,
+  pause: false,
 }) as (keyof ActionState)[];
 
 /** The action-state fields a sample changed from the empty state. */
@@ -226,7 +227,8 @@ describe('reachability: every key binding has a handler and a legend row', () =>
   it('each bound key changes the action state, and the change reaches the sim or a reader', () => {
     const problems: string[] = [];
     let keys = 0;
-    for (const action of KEY_ACTIONS)
+    // The pause keys are ui/'s own (its keydown handler reads the key map's pause row; checked below).
+    for (const action of KEY_ACTIONS.filter((a) => a !== 'pause'))
       for (const code of DEFAULT_KEY_MAP[action]) {
         keys++;
         const p = handlerProblem(() => pressKey(code), SOURCES);
@@ -235,8 +237,18 @@ describe('reachability: every key binding has a handler and a legend row', () =>
     console.log(
       `[examined] ${keys} keys over ${KEY_ACTIONS.length} key actions; ${SOURCES.length} src files for readers`,
     );
-    expect(keys).toBeGreaterThanOrEqual(KEY_ACTIONS.length);
+    expect(keys).toBeGreaterThanOrEqual(KEY_ACTIONS.length - 1);
     expect(problems).toEqual([]);
+  });
+
+  it("the pause keys are read by ui/'s key handler, from the player's own key map", () => {
+    const ui = SOURCES.filter(
+      (f) =>
+        f.file.startsWith('src/ui/') &&
+        /keyMapFromBindings\([^)]*\)\.pause\.includes\(e\.code\)/.test(f.text),
+    );
+    expect(ui.map((f) => f.file)).toEqual(['src/ui/index.ts']);
+    expect(DEFAULT_KEY_MAP.pause).toContain('Escape');
   });
 
   it("each key action has a row in the pause screen's keyboard legend, and ui/ draws that legend", () => {
@@ -246,7 +258,7 @@ describe('reachability: every key binding has a handler and a legend row', () =>
   });
 
   it('fires on a key whose press changes nothing, and on a presentation field nobody reads', () => {
-    expect(handlerProblem(() => pressKey('KeyQ'), SOURCES)).toBe('pressing it changes nothing');
+    expect(handlerProblem(() => pressKey('KeyZ'), SOURCES)).toBe('pressing it changes nothing');
     // The camera's view key before the integration round wired it (skeptic-hs: "C does nothing"):
     // with app/'s reader taken away, the check names the field.
     const unwired = SOURCES.map((f) => ({ ...f, text: f.text.replaceAll('.cycleCamera', '.view') }));

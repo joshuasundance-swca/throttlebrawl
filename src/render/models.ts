@@ -63,8 +63,9 @@ export const MODEL_ASSETS = {
   // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
   duvalKit: 'models/scenery/duval-kit',
   // Playtest 4 (P4-19, Codex CX5): the Keys' identity props. Old Town draws its banyan, poinciana,
-  // frangipani and two open bars from it (roadside.ts KEYS_KIT); the Key deer and the mile post wait for
-  // their roads.
+  // frangipani and two open bars from it (roadside.ts KEYS_KIT), and the shores of open water the osprey
+  // post (CX6); the Key deer wait for their roads, and the mile post is a landmark of the same file
+  // (`LANDMARK_ROOTS`).
   keysIdentity: 'models/scenery/keys-identity',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
   sevenMileKit: 'models/scenery/seven-mile-kit',
@@ -209,8 +210,8 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_flamingo',
   ],
   // Variants 0 and 1 the Key deer (a buck and a doe), 2 a mile post, 3 a banyan, 4 a royal poinciana, 5 a
-  // frangipani, 6 and 7 two open-fronted bars (tools/blender/props/keys_identity.py). The bars' blank
-  // name boards are text surfaces.
+  // frangipani, 6 and 7 two open-fronted bars, 8 an osprey's nesting post (tools/blender/props/keys_identity.py).
+  // The bars' blank name boards are text surfaces.
   keysIdentity: [
     'key_deer_buck',
     'key_deer_doe',
@@ -220,6 +221,7 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_frangipani',
     'duval_open_bar_a',
     'duval_open_bar_b',
+    'keys_osprey_post',
   ],
   // Its variants: 0 to 2 balconied shopfronts, 3 and 4 conch houses, 5 the corner bar, 6 a scooter
   // rack, 7 a palm in a planter (roadside.ts KEYS_KIT, the `oldtown` rules).
@@ -294,6 +296,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
       out.add('duvalKit');
       out.add('keysIdentity');
     }
+    // Playtest 4 (P4-19, CX6): the osprey's nesting post stands on the shores of open water (roadside.ts).
+    if (n.tags.has('water-open')) out.add('keysIdentity');
     // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
     if (n.tags.has('old-bridge')) out.add('sevenMileKit');
   } else {
@@ -361,6 +365,9 @@ export const ROLE_PALETTE: Readonly<Partial<Record<ModelKind, Readonly<Record<st
  */
 const LANDMARK_ROOTS: Readonly<Partial<Record<ModelKind, readonly string[]>>> = {
   sevenMileKit: ['pigeon_key_cottage_a', 'pigeon_key_cottage_b', 'pigeon_key_dock'],
+  // The Overseas Highway's mile posts (playtest 4, P4-19): the kit is the roadside's too, since the osprey
+  // post, so the one decode serves both.
+  keysIdentity: ['keys_mile_marker'],
 };
 
 /** The truck's ramp, measured on the model (the `ramp_surface` node and its extras). */
@@ -763,8 +770,8 @@ const LANDMARK_PREFIX = 'models/landmarks/';
 /**
  * Landmark kits that live under `models/scenery/` (playtest 4, P4-19): a scenery kit whose file also
  * holds landmark nodes. `seven-mile-kit` is the bays' file (Pigeon Key's cottages and dock are in it)
- * and shares its decode (`LANDMARK_ROOTS`); `keys-identity` is read by the landmark layer alone for
- * now (the mile post), so when a scenery kind is registered for it, it must take the same shared
+ * and shares its decode (`LANDMARK_ROOTS`); so does `keys-identity` (the mile post is its landmark node,
+ * the roadside's trees, bars and osprey post its variants): a file with two views takes the one shared
  * decode, or whichever loads second gets the first's value.
  */
 const SCENERY_LANDMARK_KITS: Readonly<Partial<Record<LandmarkKitId, string>>> = {

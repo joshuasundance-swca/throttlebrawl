@@ -44,6 +44,7 @@ import { ChunkedStrips, mergeBoxes, openBox, type BoxPart, type Point3 } from '.
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
+import { SeaBands, seaPlanFor } from './sea-bands';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
@@ -2534,14 +2535,36 @@ export function buildRoadScene(
     meshes += bayMerged.count;
   }
 
-  // The sea, at world y = 0 (sea level in the network frame).
-  const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
-  water.rotation.x = -Math.PI / 2;
-  water.position.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
-  water.name = 'road-water';
-  group.add(water);
+  // The sea, at world y = 0 (sea level in the network frame). A tropical network with water beside its
+  // roads (the Keys) draws it in colour bands (sea-bands.ts, playtest 4, P4-19); any other is one plane.
+  const seaPlan = tropical ? seaPlanFor(road, (e) => dressingOf(e, dressing).tags) : null;
+  let sea: SeaBands | null = null;
+  if (seaPlan) {
+    const first = road.edges[0];
+    const at = first ? road.toWorld(first.index, 0, 0, 0) : { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 };
+    sea = new SeaBands(
+      seaPlan,
+      look,
+      seed,
+      {
+        x: (minX + maxX) / 2,
+        z: (minZ + maxZ) / 2,
+        halfX: (maxX - minX + 3000) / 2,
+        halfZ: (maxZ - minZ + 3000) / 2,
+      },
+      at,
+    );
+    group.add(sea.mesh);
+    triangles += sea.triangles;
+  } else {
+    const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
+    water.rotation.x = -Math.PI / 2;
+    water.position.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    water.name = 'road-water';
+    group.add(water);
+    triangles += 2;
+  }
   meshes++;
-  triangles += 2;
 
   return {
     group,
@@ -2575,6 +2598,7 @@ export function buildRoadScene(
       return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
     },
     update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1) {
+      sea?.update(cameraX, cameraZ);
       for (const [key, fine] of fineByChunk) {
         const near = chunkDistance(key, cameraX, cameraZ) < ROAD_FINE_DRAW_M;
         for (const mesh of fine) mesh.visible = near;
