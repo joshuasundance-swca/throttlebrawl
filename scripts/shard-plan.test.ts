@@ -410,6 +410,13 @@ describe('whole sim file times (tests/file-times.ts)', () => {
     // Logs from before tests/file-times.ts: Vitest's lines, as before.
     expect(simRuns([old, old])).toEqual([old, old]);
   });
+
+  it('the checked-in table times no sim file at 0 s', () => {
+    const zeros = Object.entries(timings.sim ?? {})
+      .filter(([, s]) => !(s > 0))
+      .map(([f]) => f);
+    expect(zeros).toEqual([]);
+  });
 });
 
 // A job is more than its test files: a browser slice spent 40 to 70 s on checkout, npm ci, the
