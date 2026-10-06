@@ -5,9 +5,15 @@
 // list of every file the build wrote but the worker (the public/ files too), so the worker caches
 // the whole build after the first load. changelog.json is written after the build
 // (scripts/changelog-build.mjs), so the worker keeps it the first time the page reads it instead.
+//
+// It also writes a gzip copy (`<file>.gz`) beside every JavaScript, JSON and model file under
+// assets/ (playtest 4 run B's live check, punch item 8): the game's host sends every file as stored,
+// with no Content-Encoding whatever the browser accepts, so the worker downloads the copy and
+// unpacks it itself (offline-worker.ts). The page's own first load still gets the plain files.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 /** The worker's file name; src/platform/index.ts registers the same one (SERVICE_WORKER_FILE). */
 export const SW_FILE = 'sw.js';
@@ -19,6 +25,30 @@ const CACHE_PREFIX = 'offline-';
 const HASHED_DIR = 'assets/';
 /** A page's entry script: Vite's `<script type="module" ... src="./assets/index-<hash>.js">`. */
 const ENTRY_SCRIPT = /<script\b[^>]*\btype="module"[^>]*\bsrc="(?:\.\/)?([^"]+)"/;
+/**
+ * The files under assets/ that get a gzip copy, by extension, in name order. Audio and images are
+ * compressed already (gzip saves under 10% on the build's Ogg files). [default]
+ */
+export const GZIP_EXTENSIONS = ['.glb', '.js', '.json'];
+/** A gzip copy's suffix. */
+const GZIP_SUFFIX = '.gz';
+
+/** Page-relative posix paths. */
+const posix = (/** @type {string} */ p) => p.split('\\').join('/');
+/** Whether the build writes a gzip copy of this page-relative posix path. */
+const gzipped = (/** @type {string} */ rel) =>
+  rel.startsWith(HASHED_DIR) && GZIP_EXTENSIONS.some((ext) => rel.endsWith(ext));
+
+/**
+ * The gzip copy of every file that gets one, at its path plus `.gz`.
+ * @param {readonly { path: string, bytes: Uint8Array }[]} files
+ * @returns {{ path: string, bytes: Uint8Array }[]}
+ */
+export function gzipCopies(files) {
+  return files
+    .filter((f) => gzipped(posix(f.path)))
+    .map((f) => ({ path: `${f.path}${GZIP_SUFFIX}`, bytes: gzipSync(f.bytes, { level: 9 }) }));
+}
 
 /**
  * How the worker's install tells that a file without a content hash in its name is this build's
@@ -38,16 +68,19 @@ function fileCheck(f) {
 
 /**
  * The worker's config for one build: its cache name (the build id and a hash of every file's path
- * and bytes, so any change in the build names a new cache), every file but the worker, as
- * page-relative posix paths in name order, and the check of each file outside assets/.
+ * and bytes, so any change in the build names a new cache), every file but the worker and the gzip
+ * copies, as page-relative posix paths in name order, the check of each file outside assets/, and
+ * the extensions whose files under assets/ have a gzip copy.
  * @param {string} buildId
  * @param {readonly { path: string, bytes: Uint8Array }[]} files every file the build wrote
- * @returns {{ cache: string, files: string[], checks: Record<string, { contains: string } | { sha256: string }> }}
+ * @returns {{ cache: string, files: string[], checks: Record<string, { contains: string } | { sha256: string }>, gzip: string[] }}
  */
 export function workerConfig(buildId, files) {
-  const listed = files
-    .map((f) => ({ path: f.path.split('\\').join('/'), bytes: f.bytes }))
+  const all = files.map((f) => ({ path: posix(f.path), bytes: f.bytes }));
+  const names = new Set(all.map((f) => f.path));
+  const listed = all
     .filter((f) => f.path !== SW_FILE)
+    .filter((f) => !(f.path.endsWith(GZIP_SUFFIX) && names.has(f.path.slice(0, -GZIP_SUFFIX.length))))
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const hash = createHash('sha256');
   for (const f of listed) {
@@ -60,12 +93,13 @@ export function workerConfig(buildId, files) {
     checks: Object.fromEntries(
       listed.filter((f) => !f.path.startsWith(HASHED_DIR)).map((f) => [f.path, fileCheck(f)]),
     ),
+    gzip: [...GZIP_EXTENSIONS],
   };
 }
 
 /**
  * The worker's file: its config as `self.__OFFLINE__`, then its built code.
- * @param {{ cache: string, files: readonly string[], checks: Record<string, unknown> }} config
+ * @param {{ cache: string, files: readonly string[], checks: Record<string, unknown>, gzip?: readonly string[] }} config
  * @param {string} code
  */
 export function workerSource(config, code) {
@@ -100,8 +134,10 @@ export function serviceWorkerPlugin({ root, buildId }) {
       handler(options) {
         const dir = options.dir ?? path.join(root, 'dist');
         const file = path.join(dir, SW_FILE);
-        const config = workerConfig(buildId, filesIn(dir));
+        const files = filesIn(dir);
+        const config = workerConfig(buildId, files);
         writeFileSync(file, workerSource(config, readFileSync(file, 'utf8')));
+        for (const copy of gzipCopies(files)) writeFileSync(path.join(dir, copy.path), copy.bytes);
       },
     },
   };
