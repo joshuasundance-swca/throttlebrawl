@@ -36,6 +36,7 @@ import {
 } from 'three';
 import { landmarkParams, type BakedFeature, type LandmarkParams, type RoadNetwork } from '../road';
 import { fredSoup, FRED, type Soup } from './fred';
+import { anchorageSoup, ANCHORAGE_PIECE_R_M } from './gg-anchorage';
 import type { LookStyle } from './look';
 import { islandSoup, pigeonKeyPlan, PIGEON_KEY } from './pigeon-key';
 import {
@@ -623,20 +624,26 @@ function suspensionBridge(c: Compose): Piece[] | null {
   }
 
   // The anchorages: the origin is where the cable enters, on the centreline at deck-top height, the
-  // block behind it (-Z) and the span ahead (+Z); the far end is turned round to face the span.
+  // housings behind it (-Z) and the span ahead (+Z); the far end is turned round to face the span. The
+  // kit's node says whether there is one and where the cable enters; the housings are code-made
+  // (gg-anchorage.ts), low and in the bridge's paint, not the kit's two blank concrete blocks.
+  const top = tower0.extras['top_m'];
+  const saddleX = tower0.extras['cable_saddle_x_m'];
   const anchor = kit.nodes.get('gg_anchorage');
+  const entry = anchor?.extras['cable_entry_m'] ?? SUSPENSION.entryM;
   const anchorM = [f.s0, f.s1].map((s, i) => {
     const p = at2(s, 0);
     return matrixAt(p.x, p.y, p.z, yawAt(s) + (i === 0 ? 0 : Math.PI));
   });
-  if (anchor) {
+  if (anchor && finite(saddleX)) {
+    const housing = anchorageSoup(saddleX, entry, `#${paintColour.getHexString()}`);
     anchorM.forEach((m, i) => {
       const p = at2(i === 0 ? f.s0 : f.s1, 0);
       pieces.push({
         x: p.x,
         z: p.z,
-        r: radiusOf(anchor, 1),
-        tiers: tiersOf(builder, m, paint, anchor, undefined, LANDMARK_NEAR_M),
+        r: ANCHORAGE_PIECE_R_M,
+        tiers: [{ maxM: LANDMARK_MID_M, ...builder.addSoup(housing, m) }],
       });
     });
   }
@@ -644,8 +651,6 @@ function suspensionBridge(c: Compose): Piece[] | null {
   // The main cables: two, each hung from a saddle on each tower's top, down to an anchorage at each end.
   // Each is three parabolas: the side span from its anchorage entry to a saddle, the main span between
   // the saddles, and the other side span down to its entry.
-  const top = tower0.extras['top_m'];
-  const saddleX = tower0.extras['cable_saddle_x_m'];
   interface CableSpan {
     a: Vector3;
     b: Vector3;
@@ -653,7 +658,6 @@ function suspensionBridge(c: Compose): Piece[] | null {
   }
   const cables: { sigma: number; spans: [CableSpan, CableSpan, CableSpan] }[] = [];
   if (finite(top) && finite(saddleX)) {
-    const entry = anchor?.extras['cable_entry_m'] ?? SUSPENSION.entryM;
     const deckMid = at2((sT[0] + sT[1]) / 2, 0).y;
     for (const sigma of [-1, 1]) {
       const saddle = towerM.map((m) => new Vector3(sigma * saddleX, top, 0).applyMatrix4(m));

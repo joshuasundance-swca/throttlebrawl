@@ -226,6 +226,8 @@ interface World {
   look: Box;
   bike: Box;
   zone: Box;
+  /** The wheelie button as core settles it (a touch screen's right thumb rests on it). */
+  wheelie: Box;
   buttons: Box[];
   text: Box[];
 }
@@ -240,6 +242,9 @@ function world(w: number, h: number, mirror: boolean): World {
     r ? [{ left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h }] : [],
   );
   expect(buttons).toHaveLength(3);
+  const wb = placed.wheelie;
+  if (!wb) throw new Error('the Classic preset has no wheelie button');
+  const wheelie: Box = { left: wb.x, top: wb.y, right: wb.x + wb.w, bottom: wb.y + wb.h };
   const speed = placedBox(element('speedometer'), w, h, mirror, HUD_SIZE.speed);
   const self = placedBox(element('health-self'), w, h, mirror, HUD_SIZE.health);
   const lifts = settleLifts(
@@ -269,12 +274,14 @@ function world(w: number, h: number, mirror: boolean): World {
       right: zoneRect.x + zoneRect.w,
       bottom: zoneRect.y + zoneRect.h,
     },
+    wheelie,
     buttons,
     text,
   };
 }
 
-const place = (wd: World, base: { x: number; y: number }) =>
+/** Where the gauge stands: by the stick for a keyboard or gamepad rider, by the wheelie button on touch. */
+const place = (wd: World, base: { x: number; y: number }, byButton = false) =>
   placeGauge({
     w: wd.w,
     h: wd.h,
@@ -283,7 +290,12 @@ const place = (wd: World, base: { x: number; y: number }) =>
     blockers: wd.blockers,
     look: wd.look,
     bike: wd.bike,
+    ...(byButton ? { button: wd.wheelie } : {}),
   });
+
+/** The air between two boxes, CSS px: the gap across plus the gap down (0 where they touch or overlap). */
+const boxGap = (a: Box, b: Box) =>
+  Math.max(0, a.left - b.right, b.left - a.right) + Math.max(0, a.top - b.bottom, b.top - a.bottom);
 
 describe('placing the wheelie gauge beside the stick (rule 6, the settle rule)', () => {
   it('at rest (no thumb down), clear of every piece and the road ahead, on every screen, both hands', () => {
@@ -370,6 +382,83 @@ describe('placing the wheelie gauge beside the stick (rule 6, the settle rule)',
     const wd = world(844, 390, false);
     const a = place(wd, { x: 130, y: 200 });
     const b = place(wd, { x: 130, y: 200 });
+    expect(a).toEqual(b);
+  });
+});
+
+// ---- Placing the gauge by the wheelie button (playtest 4, HUD punch items 2, 6, 9: item 6) ---------------
+//
+// Playtest 4 run A's live check: "The wheelie gauge stands by the left stick (x 238-250), while the
+// button is under the right thumb (x 717-775)." The maintainer's phone is his main platform and the
+// wheelie is its skill move: the gauge is what the right thumb watches while it holds the button.
+
+/**
+ * "By the button": the gauge's air to the button, CSS px (across plus down; the settle rule keeps 6 px
+ * between boxes). Most screens get it within 24 px. On the three tight landscape phones the button
+ * is boxed in (HIT on its right, the road ahead on its left and above it the heat badge and the
+ * objective), so the gauge stands level with it at the first gap, left of BRAKE: 43 to 57 px away.
+ */
+const BY_BUTTON_MAX_PX = 24;
+const TIGHT_SCREENS = ['740x360', '640x360', '568x320'];
+const TIGHT_MAX_PX = 60;
+const reachOf = (s: { w: number; h: number }) =>
+  TIGHT_SCREENS.includes(`${s.w}x${s.h}`) ? TIGHT_MAX_PX : BY_BUTTON_MAX_PX;
+
+describe('the wheelie gauge by the wheelie button on touch', () => {
+  it('stands within reach of the button, clear of every piece, HIT, BRAKE, the road ahead and the bike, on every screen, both hands', () => {
+    for (const mirror of [false, true])
+      for (const s of SCREENS) {
+        const wd = world(s.w, s.h, mirror);
+        const where = `${s.w}x${s.h}${mirror ? ' mirrored' : ''}`;
+        const spot = place(wd, restBase(wd.zone, mirror), true);
+        expect(spot, `${where}: a place`).not.toBeNull();
+        if (!spot) continue;
+        expect(spot.tier, `${where}: clear of everything, the road ahead too`).toBe('all');
+        for (const b of wd.blockers.all)
+          expect(overlap(spot.box, b), `${where}: overlaps a piece`).toBe(false);
+        expect(overlap(spot.box, wd.look), `${where}: in the road ahead`).toBe(false);
+        expect(overlap(spot.box, wd.bike), `${where}: on the player's bike`).toBe(false);
+        expect(boxGap(spot.box, wd.wheelie), `${where}: how far from the button`).toBeLessThanOrEqual(
+          reachOf(s),
+        );
+        expect(spot.box.left, where).toBeGreaterThanOrEqual(0);
+        expect(spot.box.top, where).toBeGreaterThanOrEqual(0);
+        expect(spot.box.right, where).toBeLessThanOrEqual(s.w);
+        expect(spot.box.bottom, where).toBeLessThanOrEqual(s.h);
+      }
+  });
+
+  it('is on the button side of the screen, not the stick side (the defect: the gauge stood by the left stick)', () => {
+    for (const mirror of [false, true])
+      for (const s of SCREENS) {
+        const wd = world(s.w, s.h, mirror);
+        const spot = place(wd, restBase(wd.zone, mirror), true);
+        const mid = s.w / 2;
+        const gx = spot ? (spot.box.left + spot.box.right) / 2 : mid;
+        const bx = (wd.wheelie.left + wd.wheelie.right) / 2;
+        expect(Math.sign(gx - mid), `${s.w}x${s.h}${mirror ? ' mirrored' : ''}`).toBe(Math.sign(bx - mid));
+      }
+  });
+
+  it('measures what it claims: the stick-side spot is flagged as far from the button (negative control)', () => {
+    // The same distance check over where the gauge stood before, beside the stick's resting spot. On
+    // every landscape screen it is farther than the loosest bound; if it were not, the check above would be vacuous.
+    for (const mirror of [false, true])
+      for (const s of SCREENS.filter((x) => x.w > x.h)) {
+        const wd = world(s.w, s.h, mirror);
+        const old = place(wd, restBase(wd.zone, mirror));
+        expect(old, `${s.w}x${s.h}`).not.toBeNull();
+        expect(
+          old ? boxGap(old.box, wd.wheelie) : 0,
+          `${s.w}x${s.h}${mirror ? ' mirrored' : ''}`,
+        ).toBeGreaterThan(TIGHT_MAX_PX);
+      }
+  });
+
+  it('lets a thumb on the stick change nothing: the button is where the gauge stands', () => {
+    const wd = world(915, 412, false);
+    const a = place(wd, { x: 100, y: 240 }, true);
+    const b = place(wd, { x: 160, y: 330 }, true);
     expect(a).toEqual(b);
   });
 });

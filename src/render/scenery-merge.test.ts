@@ -71,6 +71,7 @@ const STILL_MODELS: readonly ModelKind[] = [
   'powerPole',
   'conifers',
   'rowHouses',
+  'sfApartments',
   'sawmill',
   'keysIslets',
 ];

@@ -17,6 +17,8 @@
 //                                      auto-merge" on a PR that only waits on its author
 //   node scripts/train.mjs report      train.yml: post the results, wait for the landing, and
 //                                      send the next train
+//   node scripts/train.mjs failures    ci.yml's gate, when it is red: name the red suite jobs and
+//                                      their failing tests (fail fast leaves the red job cancelled)
 //
 // THE LANDING INVARIANT. A set of PRs gets `gate` = success only if exactly (main when the train
 // departed + that set, merged in that order) passed the full suite, AND main has not moved since,
@@ -650,6 +652,147 @@ export function fenceSafe(/** @type {string[]} */ lines, max = 25) {
   return shown.join('\n');
 }
 
+/**
+ * A workflow command line (`::error title=...::message`), escaped the runner's way, so a message
+ * read from a log is always one line and can never end the command early.
+ * @param {string} cmd
+ * @param {Record<string, string>} props
+ * @param {string} message
+ */
+export function workflowCommand(cmd, props, message) {
+  const data = (/** @type {string} */ s) =>
+    s.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+  const prop = (/** @type {string} */ s) => data(s).replaceAll(':', '%3A').replaceAll(',', '%2C');
+  const p = Object.entries(props)
+    .map(([k, v]) => `${k}=${prop(v)}`)
+    .join(',');
+  return `::${cmd}${p ? ` ${p}` : ''}::${data(message)}`;
+}
+
+/**
+ * @typedef {{ id?: unknown, name?: unknown, conclusion?: unknown, completed_at?: unknown,
+ *   steps?: { name?: unknown, status?: unknown, conclusion?: unknown, completed_at?: unknown }[] }} ApiJob
+ */
+
+/**
+ * The suite jobs of a run that went red, first red first: a step failed, or the job itself
+ * failed. Fail fast (a PR run) cancels the red job's own run, so the red job ends `cancelled`
+ * like its siblings and only its failed step tells it apart. Only the suite's own jobs
+ * (`suite / ...`), never a train's control suite.
+ * @param {ApiJob[]} jobs the run's jobs, as the API lists them
+ */
+export function redSuiteJobs(jobs) {
+  return jobs
+    .flatMap((job) => {
+      const name = String(job.name ?? '');
+      if (!/^suite \/ /.test(name)) return [];
+      const step = (job.steps ?? []).find((s) => s.conclusion === 'failure');
+      if (!step && job.conclusion !== 'failure') return [];
+      return [
+        {
+          at: String(step?.completed_at ?? job.completed_at ?? ''),
+          job: {
+            id: Number(job.id),
+            name,
+            step: step ? String(step.name ?? '') : '',
+            cancelled: job.conclusion === 'cancelled',
+          },
+        },
+      ];
+    })
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .map((r) => r.job);
+}
+
+/**
+ * The suite jobs a cancel cut short: they ended `cancelled` while a step was running. With no red
+ * job, that is a job that hit its timeout-minutes (GitHub ends it cancelled), or every job when a
+ * newer push replaced the run.
+ * @param {ApiJob[]} jobs
+ */
+export function cutShort(jobs) {
+  return jobs
+    .filter(
+      (j) =>
+        /^suite \/ /.test(String(j.name ?? '')) &&
+        j.conclusion === 'cancelled' &&
+        (j.steps ?? []).some((s) => s.conclusion === 'cancelled'),
+    )
+    .map((j) => String(j.name));
+}
+
+/**
+ * What a red run's gate says: each red suite job, its failed step and its failing tests, for the
+ * gate's log (what `gh run view --log-failed` prints), its job summary and its annotations (one per
+ * red job, at most five, each at most ten tests; GitHub keeps ten error annotations per step).
+ * Test names come from PR code's logs: each is put on one line, and every printed line starts with
+ * text, never with "::", so none can be read as a workflow command.
+ * @param {{ id: number, name: string, step: string, cancelled: boolean, tests: string[], note?: string }[]} red
+ * @param {string[]} cut the jobs a cancel cut short (cutShort). Beside a red job that fail fast
+ *   left cancelled they are its siblings, which it cancelled, and are left out; otherwise (a push
+ *   to main, a train, a fork) each one is news: a timeout, or a matrix's own fail-fast.
+ */
+export function failureReport(red, cut) {
+  const oneLine = (/** @type {string} */ s) => clip(s.replace(/[\r\n]+/g, ' ').trim(), 300);
+  /** @type {string[]} */
+  const lines = [];
+  /** @type {string[]} */
+  const md = [];
+  /** @type {string[]} */
+  const annotations = [];
+  if (red.length === 0) {
+    const why =
+      'A job that hits its timeout-minutes ends cancelled, with no failed step, and so does every job when a newer push replaces the run.';
+    lines.push('No suite job of this run failed a step.');
+    if (cut.length) lines.push(`Cancelled while running: ${cut.join(', ')}.`);
+    lines.push(why);
+    md.push('**No suite job of this run failed a step.**', '');
+    if (cut.length) md.push(`Cancelled while running: ${cut.map((c) => `\`${c}\``).join(', ')}.`, '');
+    md.push(why);
+    annotations.push(
+      workflowCommand(
+        'error',
+        { title: 'no red suite job' },
+        `${cut.length ? `Cancelled while running: ${cut.join(', ')}. ` : ''}${why}`,
+      ),
+    );
+    return { lines, summary: md.join('\n'), annotations };
+  }
+  for (const [i, job] of red.entries()) {
+    const tests = job.tests.map(oneLine);
+    const what = job.step ? `"${job.step}" failed` : 'failed';
+    const shown = job.cancelled
+      ? ' (the job shows as cancelled: fail fast cancelled this PR run, the red job included, to free its runners)'
+      : '';
+    lines.push(`${job.name}: ${what}${shown}`);
+    for (const t of tests) lines.push(`  - ${t}`);
+    if (!tests.length) lines.push(`  - no test names in its log${job.note ? ` (${oneLine(job.note)})` : ''}`);
+    lines.push(`  - its log: gh run view --job ${job.id} --log`);
+    md.push(`**${job.name}**: ${what}${shown}.`, '');
+    if (tests.length) md.push('```text', fenceSafe(tests, 25), '```', '');
+    md.push(`Its log: \`gh run view --job ${job.id} --log\``, '');
+    if (i < 5) {
+      const listed = tests.slice(0, 10);
+      if (tests.length > 10) listed.push(`... and ${tests.length - 10} more`);
+      annotations.push(
+        workflowCommand(
+          'error',
+          { title: `red job: ${job.name}` },
+          [`${what}.`, ...listed].join('\n') || what,
+        ),
+      );
+    }
+  }
+  const alsoCut = red.some((j) => j.cancelled) ? [] : cut;
+  if (alsoCut.length) {
+    const also = `Also cancelled while running, with no failed step: ${alsoCut.join(', ')}. A job that hits its timeout-minutes ends that way, and so do a red job's siblings when its matrix fails fast.`;
+    lines.push(also);
+    md.push(also);
+    annotations.push(workflowCommand('error', { title: 'cancelled while running' }, also));
+  }
+  return { lines, summary: md.join('\n'), annotations };
+}
+
 /** The squash commits' PR numbers, from their titles ("... (#123)"). */
 export function prNumbersFromTitles(/** @type {string[]} */ titles) {
   return titles.flatMap((t) => {
@@ -945,6 +1088,40 @@ async function failingFromRun(jobs, timedOut) {
     }
   }
   return [...new Set(out)];
+}
+
+/** This run attempt's jobs (a PR run has about 22, a train with its control about 40). */
+async function runJobs() {
+  /** @type {ApiJob[]} */
+  const jobs = [];
+  for (let page = 1; page <= 5; page++) {
+    /** @type {any} */
+    const res = await api(
+      'GET',
+      `/repos/${repo()}/actions/runs/${env.GITHUB_RUN_ID}/attempts/${env.GITHUB_RUN_ATTEMPT ?? 1}/jobs?per_page=100&page=${page}`,
+    );
+    jobs.push(...(res.jobs ?? []));
+    if (jobs.length >= Number(res.total_count ?? 0) || !(res.jobs ?? []).length) break;
+  }
+  return jobs;
+}
+
+/** The red suite jobs among a run's jobs, each with the failing tests its log names. */
+async function redFromRun(/** @type {ApiJob[]} */ jobs) {
+  /** @type {Parameters<typeof failureReport>[0]} */
+  const out = [];
+  for (const job of redSuiteJobs(jobs)) {
+    try {
+      const log = /** @type {string} */ (
+        await api('GET', `/repos/${repo()}/actions/jobs/${job.id}/logs`, undefined, { raw: true })
+      );
+      out.push({ ...job, tests: failingTests(log) });
+    } catch (err) {
+      const note = `its log could not be read: ${err instanceof Error ? err.message.slice(0, 80) : err}`;
+      out.push({ ...job, tests: [], note });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1362,6 +1539,20 @@ async function awaitLanding(
   }
 }
 
+/**
+ * ci.yml's gate, when its verdict is red: name the red suite jobs, their failed steps and their
+ * failing tests in the gate's own log, its job summary and its annotations. Under fail fast the red
+ * job ends cancelled like its siblings, and `gh run view --log-failed` prints only the gate's log.
+ */
+async function cmdFailures() {
+  const jobs = await runJobs();
+  const red = await redFromRun(jobs);
+  const r = failureReport(red, cutShort(jobs));
+  for (const line of r.lines) console.log(line);
+  summary(r.summary);
+  for (const a of r.annotations) console.log(a);
+}
+
 async function main() {
   const cmd = process.argv[2];
   if (cmd === 'route') return cmdRoute();
@@ -1369,7 +1560,8 @@ async function main() {
   if (cmd === 'assemble') return cmdAssemble();
   if (cmd === 'announce') return cmdAnnounce();
   if (cmd === 'report') return cmdReport(loadConfig());
-  console.error('usage: node scripts/train.mjs route | plan | assemble | announce | report');
+  if (cmd === 'failures') return cmdFailures();
+  console.error('usage: node scripts/train.mjs route | plan | assemble | announce | report | failures');
   process.exit(1);
 }
 

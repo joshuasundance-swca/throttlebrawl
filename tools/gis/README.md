@@ -400,6 +400,13 @@ frame origin. Two more switches, both off by default, so every earlier bake is u
   `uv run python -m tbgis.drops configs/osm-pnw-gorge.json <road id> ...` samples the USGS 3DEP ground
   14 m and 30 m to each side every 10 m (once; cached under `.cache/usgs`) and prints where each side
   falls away (5 m below the road at 14 m, 12 m at 30 m, runs of 30 m or more, 40 m gaps joined).
+- Since C4 (playtest 4, P4-19) a network bake writes `sideRuns` too, the same way (a run off its road is
+  refused), and a branch's connector, dressed like the road beside it, never takes that road's side runs.
+  Three more are land tags: Chuckanut's `bluff` (inside its `bay-bluff` runs, where the ground falls 15 m
+  within 30 m and 30 m within 60 m: a cliff, not a slope) and `rock-cut` (its uphill side, where the ground
+  rises 6 m within 15 m and 15 m within 30 m), from the same kind of 3DEP probe at 15, 30 and 60 m, and
+  Lake Samish's `lake` (East Shore Drive, where the OSM outline of the lake lies within 30 m of the baked
+  road). Both bakes were redone from fresh fetches; nothing else changed but the provenance.
 
 | Network | Route (picker name) | What it is | Numbers (from the bake) |
 |---|---|---|---|

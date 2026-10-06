@@ -2,8 +2,8 @@
 // and make it so that bumping into a rival while attacking doesn't negate the attack"; the kick's
 // wait, [decided] "No wait"). The feel audit's probes (scratch pt4-audit-combat-report, sections 2
 // and 4) as rules, by sim ticks:
-// - a press in the last PRESS_BUFFER_TICKS of a player's recovery is kept and starts on the first
-//   legal tick, and a buffered kick stays a kick;
+// - a press late in a player's recovery is kept and starts on the first legal tick, and a buffered
+//   kick stays a kick (run A's check widened the buffer to the whole recovery: press-flow.test.ts);
 // - a player's kick waits for nothing but the leg's return;
 // - an auto-sided attack re-aims every tick of its wind-up until it has a target, so a press made
 //   before the rider is in the acquisition box never defaults to the right;
@@ -23,7 +23,7 @@ import {
 import kickPack from '../../../packs/base/weapons/kick.json';
 import punchPack from '../../../packs/base/weapons/punch.json';
 import { secondsToTicks } from '../../core';
-import { BUMP_AFTER_TICKS, PRESS_BUFFER_TICKS } from './index';
+import { BUMP_AFTER_TICKS } from './index';
 import { F, flags, KICK, makeHarness, ofType, PUNCH, scriptOf, type Placement } from './harness.test-util';
 
 const KICK_PRESS = F.attack | F.kick;
@@ -43,6 +43,8 @@ function alone(press: (t: number) => number | undefined) {
 
 /** The tick an attack pressed on tick 0 ends (idle again), with nobody in reach. */
 const cycle = (w: typeof PUNCH) => w.windupTicks + w.activeTicks + w.recoveryTicks;
+/** The old buffer's length (#513); press-flow.test.ts covers the whole recovery. */
+const PRESS_BUFFER_TICKS = 10;
 
 describe('P4-6: a press near the end of the recovery is buffered, never dropped', () => {
   for (const [name, first, second] of [
@@ -79,11 +81,11 @@ describe('P4-6: a press near the end of the recovery is buffered, never dropped'
     ]);
   });
 
-  it('a press before the buffer opens is dropped, as before', () => {
+  it('run A: a press before the old buffer opened is kept too (it was dropped before)', () => {
     const end = cycle(PUNCH);
     const h = alone((t) => (t === 0 ? F.attack : t === end - PRESS_BUFFER_TICKS - 1 ? F.attack : undefined));
     h.run(end + 20);
-    expect(ofType(h.events, 'attackStart')).toHaveLength(1);
+    expect(ofType(h.events, 'attackStart').map((e) => e.tick)).toEqual([0, end]);
   });
 
   it('a rival’s press is never buffered (the AI presses again when it wants to)', () => {

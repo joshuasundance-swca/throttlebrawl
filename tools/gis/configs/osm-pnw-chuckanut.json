@@ -142,7 +142,12 @@
       "tags": ["forest"],
       "sideRuns": [
         { "tag": "bay-bluff", "side": "right", "s0": 180, "s1": 280 },
-        { "tag": "bay-bluff", "side": "right", "s0": 370, "s1": 2410 }
+        { "tag": "bay-bluff", "side": "right", "s0": 370, "s1": 2410 },
+        { "tag": "bluff", "side": "right", "s0": 370, "s1": 2410 },
+        { "tag": "rock-cut", "side": "left", "s0": 195, "s1": 295 },
+        { "tag": "rock-cut", "side": "left", "s0": 645, "s1": 845 },
+        { "tag": "rock-cut", "side": "left", "s0": 885, "s1": 1645 },
+        { "tag": "rock-cut", "side": "left", "s0": 1725, "s1": 2405 }
       ],
       "features": [
         {
@@ -202,7 +207,15 @@
         { "tag": "bay-bluff", "side": "right", "s0": 510, "s1": 600 },
         { "tag": "bay-bluff", "side": "right", "s0": 740, "s1": 1490 },
         { "tag": "bay-bluff", "side": "right", "s0": 1600, "s1": 1820 },
-        { "tag": "bay-bluff", "side": "right", "s0": 2250, "s1": 2540 }
+        { "tag": "bay-bluff", "side": "right", "s0": 2250, "s1": 2540 },
+        { "tag": "bluff", "side": "right", "s0": 195, "s1": 285 },
+        { "tag": "bluff", "side": "right", "s0": 775, "s1": 1485 },
+        { "tag": "bluff", "side": "right", "s0": 1600, "s1": 1805 },
+        { "tag": "bluff", "side": "right", "s0": 2315, "s1": 2425 },
+        { "tag": "rock-cut", "side": "left", "s0": 445, "s1": 505 },
+        { "tag": "rock-cut", "side": "left", "s0": 745, "s1": 935 },
+        { "tag": "rock-cut", "side": "left", "s0": 1155, "s1": 1475 },
+        { "tag": "rock-cut", "side": "left", "s0": 1575, "s1": 1825 }
       ],
       "features": [
         {

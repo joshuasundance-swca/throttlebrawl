@@ -56,7 +56,7 @@
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
-      "createdAt": "2026-10-03",
+      "createdAt": "2026-10-06",
       "tool": {
         "name": "tools/gis/src/tbgis/network.py",
         "version": "0.1.0",
@@ -69,8 +69,8 @@
           "attribution": "© OpenStreetMap contributors",
           "url": "https://www.openstreetmap.org/copyright",
           "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
-          "retrievedAt": "2026-10-03T03:18:37Z",
-          "sha256": "22f78576cad535d60ca5abafdc52856222c5e981bb0bdd7c7ea244def55fc6be"
+          "retrievedAt": "2026-10-06T03:35:56Z",
+          "sha256": "2ace48bb4d9513d82afbab21e8450ed969946426693765363fa618574697f2a7"
         },
         {
           "name": "USGS 3DEP elevation",
@@ -78,8 +78,8 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
-          "retrievedAt": "2026-10-03T03:37:48Z",
-          "sha256": "97504d8a047c50144ba1f4e2b446cf7f802b15b8bbf13f6b830a5fde6134e918"
+          "retrievedAt": "2026-10-06T03:36:02Z",
+          "sha256": "baaa62875f41a7519250c0ca490ca9de911ad289fe104488cbf88250060628be"
         },
         {
           "name": "USGS 3DEP elevation",
@@ -87,8 +87,8 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
-          "retrievedAt": "2026-10-03T03:37:56Z",
-          "sha256": "4803c76e65c6ebed78d5c848a92c46f2240ea920f1463e71cf00e0554d2e8419"
+          "retrievedAt": "2026-10-06T03:36:05Z",
+          "sha256": "e09ab342b8d9046d8001ec645b6def265c06e00b1e5700a5f46ed99064f568fb"
         }
       ]
     }

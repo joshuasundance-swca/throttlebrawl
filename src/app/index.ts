@@ -1115,7 +1115,7 @@ export function createApp(opts: AppOptions): AppHandle {
   });
   // Offline play (roadmap M5): a production build's worker caches the whole build once the page
   // has loaded, so a loaded game plays with the network off.
-  startOffline();
+  startOffline(build.id);
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());

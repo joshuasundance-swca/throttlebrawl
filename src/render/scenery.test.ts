@@ -104,7 +104,7 @@ function under(objs: Object3D[], x: number, z: number, top = 60): string | null 
   return ray.intersectObjects(objs, false)[0]?.object.name ?? null;
 }
 
-const LAND_KINDS = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill']);
+const LAND_KINDS = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'apartment', 'sawmill']);
 
 describe('scenery tags to themes (docs/content-packs.md, scenery tags)', () => {
   it('reads water over land, no land on a bridge alone, and palm land when a road has no tags', () => {
@@ -346,10 +346,14 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // playtest 4 (P4-19, CX5): the Presidio's cypress and eucalyptus, and the Gorge's two deck arches
       sfIdentity: 2,
       gorgeArches: 2,
+      // playtest 4 (P4-19): CX6's two flats, two apartment blocks and two corner buildings
+      sfApartments: 6,
       // playtest 4 (P4-19, CX6): the headlands' battery, coyote brush and chert outcrop
       sfHeadlands: 3,
       // playtest 4 (P4-19, CX5, B9): two madrones and a section of the Gorge's masonry guard wall
       pnwIdentity: 3,
+      // playtest 4 (P4-19, C4): CX6's Chuckanut cuts, parapet, bluff and boulders, Lake Samish's cabin and dock
+      pnwShore: 8,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
@@ -360,9 +364,9 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         const box = g.boundingBox!;
         // Each variant sits on its own anchor: the ground (or the waterline) at y = 0, centred in x.
         // (A bridge bay's deck top is y = 0 and its pier reaches down, 19.8 m for the tall one; the
-        // Gorge's 46 m arch, 28 m.)
+        // Gorge's 46 m arch, 28 m. Chuckanut's bluff hangs 40 m down from its lip, CX6's `drop_m`.)
         expect(box.min.y, kind).toBeGreaterThan(
-          kind === 'sevenMileKit' ? -20 : kind === 'gorgeArches' ? -28.5 : -0.7,
+          kind === 'sevenMileKit' ? -20 : kind === 'gorgeArches' ? -28.5 : kind === 'pnwShore' ? -40.5 : -0.7,
         );
         expect(box.min.y, kind).toBeLessThan(0.05);
         // (The downtown signal's mast arm reaches 9 m out over the lanes from its pole, run W-R.)
