@@ -33,6 +33,15 @@
 //   cache misses (a newer build's chunk, played online) is answered the same way. A copy that is
 //   missing, not gzip or does not unpack falls back to the plain file, so nothing worse than today's
 //   download can happen. The page's own first load, before the worker, still gets the plain files.
+// - A first visit (playtest 4 run B fix check, punch item 1): the host answers `Vary: Origin`, and
+//   a page's module scripts and `crossorigin` preloads carry an Origin header where the worker's
+//   fetch() carries none, so the HTTP cache will not hand the worker what the page loaded from
+//   `only-if-cached`, and the install downloaded each first-load file a second time. When no older
+//   build's cache exists (the page loaded straight from the network, not through a worker), the
+//   files index.html itself loads (the config's `firstLoad`) are asked for normally instead: the
+//   browser revalidates its stored copy with its ETag, the host answers 304, and the body comes from
+//   the HTTP cache. A hashed name never changes its bytes, and a file the host no longer has still
+//   answers 404 and fails the install, so this never mixes builds.
 //
 // It must import nothing at run time: sw.ts is built as its own classic script, and a module the
 // page shares would become a shared chunk the worker cannot load.
@@ -79,6 +88,11 @@ export interface OfflineConfig {
   checks: Readonly<Record<string, FileCheck>>;
   /** The extensions whose files under assets/ have a gzip copy; none when absent (older builds). */
   gzip?: readonly string[];
+  /**
+   * The files under assets/ that index.html itself loads (its entry script, module preloads and
+   * preloads), which a first visit's page has in the browser's HTTP cache; none when absent.
+   */
+  firstLoad?: readonly string[];
 }
 
 /** The part of a fetch event's request the policy reads; the real `Request` is passed through. */
@@ -199,8 +213,14 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
       .then((res) => fromGzipCopy(res, rel))
       .catch(() => null);
 
-  /** A content-hashed file for the install: the HTTP cache's copy, its gzip copy, else the file. */
-  const downloadHashed = async (rel: string): Promise<Response> => {
+  const firstLoad = new Set(config.firstLoad ?? []);
+
+  /**
+   * A content-hashed file for the install: the HTTP cache's copy, its gzip copy, else the file.
+   * `pageFromNetwork`: the open page loaded this build's files straight from the network (no older
+   * build's worker answered it), so the HTTP cache holds the files index.html loads.
+   */
+  const downloadHashed = async (rel: string, pageFromNetwork: boolean): Promise<Response> => {
     if (hasCopy(rel)) {
       // The page loaded most first-load files already: take them from the HTTP cache, stale or not
       // (a hashed name never changes its bytes), instead of downloading them again.
@@ -208,6 +228,10 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
         .fetch(abs(rel), { cache: 'only-if-cached', mode: 'same-origin' })
         .catch(() => null);
       if (held && keepable(held)) return held;
+      // The page's module scripts and preloads were stored under its Origin header, which the
+      // lookup above cannot match: a normal request revalidates them (a 304) and takes the body
+      // from the HTTP cache.
+      if (pageFromNetwork && firstLoad.has(rel)) return download(rel, {});
       const unpacked = await viaCopy(rel);
       if (unpacked) return unpacked;
     }
@@ -215,12 +239,12 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
     return download(rel, {});
   };
 
-  const cacheFile = async (rel: string) => {
+  const cacheFile = async (rel: string, pageFromNetwork: boolean) => {
     const url = abs(rel);
     const store = await cache();
     if (rel.startsWith(HASHED_DIR)) {
       const old = await env.caches.match(url);
-      return store.put(url, old ?? (await downloadHashed(rel)));
+      return store.put(url, old ?? (await downloadHashed(rel, pageFromNetwork)));
     }
     // The rest are checked with the server, then against the build's own check.
     const check = config.checks[rel];
@@ -266,13 +290,17 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
 
   return {
     async install() {
+      // No older build's cache: no worker answered the open page, which loaded from the network.
+      const pageFromNetwork = !(await env.caches.keys()).some(
+        (name) => name.startsWith(CACHE_PREFIX) && name !== config.cache,
+      );
       const queue = [...config.files];
       /** Each failure's reason; the lanes stop taking files once there is one. */
       const failed: string[] = [];
       const lane = async () => {
         for (let rel = queue.shift(); rel !== undefined && failed.length === 0; rel = queue.shift()) {
           const file = rel;
-          await cacheFile(file).catch((err: unknown) =>
+          await cacheFile(file, pageFromNetwork).catch((err: unknown) =>
             failed.push(err instanceof Error ? err.message : `${file}: failed`),
           );
         }
