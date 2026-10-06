@@ -32,7 +32,7 @@ import { sRateFactor, type FurnitureShape } from '../../road';
 import type { RideLimits } from '../ground';
 // Types only: sim/traffic and sim/tumble import this module, so their state is read, never imported.
 import type { TrafficState } from '../traffic';
-import { GRAZE_M, trafficContactCrashes } from '../traffic/contact-rule';
+import { trafficContactCrashes } from '../traffic/contact-rule';
 import type { TumbleState } from '../tumble';
 import type {
   MovesSnapshot,
@@ -79,6 +79,7 @@ import {
   piecesNear,
   pileUpsOn,
   slideAlong,
+  SOLID_GRAZE_M,
   spineAt,
   spineGap,
   type FurnitureHit,
@@ -585,6 +586,20 @@ export function movesOf(world: World, config: SimConfig): MovesSnapshot | null {
  */
 export function maxYawAt(steerRateMps: number, speed: number, steerScale: number): number {
   return clamp(steerRateMps / (speed < 6 ? 6 : speed), 0.05, MAX_YAW) * steerScale;
+}
+
+/**
+ * The fastest a bike holds a bend of curvature `kappa` (1/m) on its line, m/s: where the turn its
+ * steering can ask for (maxYawAt, reached at YAW_RESPONSE) still matches the road turning under it
+ * (`kappa` × speed). Faster, the bend carries it wide. Infinity on a straight.
+ */
+export function holdSpeedMps(steerRateMps: number, kappa: number, steerScale: number): number {
+  const k = Math.abs(kappa);
+  if (k < 1e-6) return Infinity;
+  return Math.min(
+    Math.sqrt((YAW_RESPONSE * steerRateMps * steerScale) / k),
+    (YAW_RESPONSE * MAX_YAW * steerScale) / k,
+  );
 }
 
 /** Top speed after the tuning panel's speed scale and the lower-overall-speed multiplier. */
@@ -1128,7 +1143,7 @@ interface SolidMet {
  * hazard, or a solid piece of street furniture), classed and decided exactly as a rider meeting a vehicle
  * is (sim/traffic, #552's one rule): the contact is the first moment the bike's capsule touches it along
  * the tick's move (sim/riders/furniture.ts); it is **end on** when the two were not side by side as the
- * move began (the bike's front met it), unless they overlap sideways by less than `GRAZE_M` (a **graze**:
+ * move began (the bike's front met it), unless they overlap sideways by less than `SOLID_GRAZE_M` (a **graze**:
  * the corner); otherwise it is a **side** contact. End on, the closing speed is the bike's speed along the
  * road; a graze or a side contact, its speed across it. At `traffic.solidHitMps` or more it is a crash;
  * under it a wobble. Either way the rider is kept off it along that axis and slides on (a square hit
@@ -1178,7 +1193,7 @@ function meetSolid(
 /**
  * How a contact met (`meetSolid`): `alongside` when the two were side by side as the move began (the
  * piece beside the straight of the bike's capsule, not ahead of its round front), `endOn` when the bike's
- * front met it squarely (not alongside, and overlapping sideways by `GRAZE_M` or more), and the axis its
+ * front met it squarely (not alongside, and overlapping sideways by `SOLID_GRAZE_M` or more), and the axis its
  * closing speed is taken along, pointing from the piece to the bike.
  */
 function contactAxis(
@@ -1190,7 +1205,7 @@ function contactAxis(
   const d = hit.held ? move.d1 : move.d0 + (move.d1 - move.d0) * hit.t;
   const alongside = Math.abs(move.s0 - c.s) < c.reachS + BIKE_SPINE_HALF_M;
   const overD = c.reachD + RIDER_CONTACT_HALF_WIDTH_M - Math.abs(d - c.d);
-  const endOn = !alongside && overD >= GRAZE_M;
+  const endOn = !alongside && overD >= SOLID_GRAZE_M;
   return { endOn, alongside, ns: endOn ? (s >= c.s ? 1 : -1) : 0, nd: endOn ? 0 : d >= c.d ? 1 : -1 };
 }
 

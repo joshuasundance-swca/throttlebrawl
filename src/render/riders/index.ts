@@ -28,6 +28,7 @@ import {
   BufferGeometry,
   Color,
   Float32BufferAttribute,
+  Frustum,
   Group,
   InstancedMesh,
   Matrix4,
@@ -36,6 +37,7 @@ import {
   Object3D,
   Quaternion,
   Skeleton,
+  Sphere,
   SkinnedMesh,
   Uint16BufferAttribute,
   Vector3,
@@ -76,6 +78,13 @@ export { bakePart } from './bake';
 
 /** Beyond this distance from the camera a rider draws without its detail parts (faces, prints). */
 export const RIDER_LOD_M = 60;
+/**
+ * How far a rig reaches from the rider's and the bike's places, m [default]: the sphere the camera's view must touch
+ * for the rig to be drawn (RiderRigs.setView). A rig's skinned mesh keeps `frustumCulled = false` (its bounds are the
+ * bind pose's, which a posed rider leaves), so this is its own, wider than any posture: a bike is 2.2 m long, a rider
+ * 1.8 m tall, a wheelie, a backflip or a flung limb stays inside 4 m, and a rig at the very edge of the frame stays.
+ */
+export const RIG_CULL_RADIUS_M = 4;
 /**
  * A rider sheds its prop below this share of its health, and its bike smokes at or under
  * `SMOKE_HEALTH` (the sim's: a smoking bike is also a little slower, playtest 4's P4-14).
@@ -144,6 +153,7 @@ const Z = new Vector3(0, 0, 1);
 const qa = new Quaternion();
 const qb = new Quaternion();
 const qc = new Quaternion();
+const sphere = new Sphere();
 const va = new Vector3();
 const vb = new Vector3();
 const m4 = new Matrix4();
@@ -473,6 +483,7 @@ class Rig {
     f: RigFrame,
     cam: Vector3,
     world: Group,
+    view: Frustum | null = null,
   ): void {
     const t = f.time;
     const dt = f.dt;
@@ -648,7 +659,20 @@ class Rig {
     va.setFromMatrixPosition(this.riderGroup.matrix);
     const far = va.distanceTo(cam) > RIDER_LOD_M;
     this.mesh.geometry.setDrawRange(0, far ? this.farCount : this.fullCount);
-    this.setVisible(true);
+    this.setVisible(view === null || this.inView(view));
+  }
+
+  /**
+   * Whether the rider's place or the bike's (they part when a rider is thrown or walks) is within RIG_CULL_RADIUS_M
+   * of the view: a rig nobody can see costs a draw call (and its weapon, glint and flame ride with it).
+   */
+  private inView(view: Frustum): boolean {
+    sphere.radius = RIG_CULL_RADIUS_M;
+    for (const group of [this.riderGroup, this.bikeGroup]) {
+      sphere.center.setFromMatrixPosition(group.matrix);
+      if (view.intersectsSphere(sphere)) return true;
+    }
+    return false;
   }
 
   setVisible(on: boolean): void {
@@ -1254,6 +1278,8 @@ export class RiderRigs {
   private readonly loading = new Set<string>();
   private readonly rigs = new Map<number, Rig>();
   private readonly cam = new Vector3();
+  /** What the camera sees through this frame (setView); null draws every rig. */
+  private view: Frustum | null = null;
   private readonly puffs: Puff[] = [];
   /** Dial-Up's Bad Connection ghost, by rider (run W-U). */
   private readonly ghosts = new Ghosts();
@@ -1326,6 +1352,15 @@ export class RiderRigs {
     this.cam.set(x, y, z);
   }
 
+  /**
+   * The frustum the camera sees through this frame, set before the riders are placed (render/index.ts): a rig
+   * whose rider and bike are all farther than RIG_CULL_RADIUS_M outside it is not drawn. Null (the start, and
+   * every test that sets no camera) draws every rig, as before.
+   */
+  setView(view: Frustum | null): void {
+    this.view = view;
+  }
+
   pushEvents(events: readonly SimEvent[]): void {
     this.ghosts.push(events, this.now);
     for (const ev of events) {
@@ -1381,7 +1416,7 @@ export class RiderRigs {
     if (!rig) return false;
     rig.ghost = this.ghosts.opacity(e, f.time);
     rig.fade = respawnOpacity(e, f.time);
-    rig.update(e, prev, curr, f, this.cam, this.root);
+    rig.update(e, prev, curr, f, this.cam, this.root, this.view);
     const rubber = rig.tyreMark(e, this.markAt);
     this.skids.lay(e.id, rubber > 0 ? this.markAt : null, rubber, f.dt);
     rig.smoke(e, f.time, (at, vel) => {

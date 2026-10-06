@@ -53,10 +53,26 @@ const CRUISING: SimTrafficTypeDef = {
   cruiseMps: 24.6,
   hazard: 'normal',
 };
-const TYPES = [SEDAN, TRUCK, CRUISING];
+/**
+ * A light kerb rider (the e-scooter rider's file: `dodges`, a kerb rider, drawn 1.65 m tall), standing
+ * still where it is put. Light kerb riders are never a crash, from any direction or height
+ * (docs/content-packs.md, "Contact outcomes: one rule", rule 3).
+ */
+const SCOOTER_RIDER: SimTrafficTypeDef = {
+  contentId: 'test:e-scooter-rider',
+  category: 'car',
+  lengthM: 1.1,
+  widthM: 0.55,
+  heightM: 1.65,
+  cruiseMps: 0,
+  hazard: 'normal',
+  behaviour: { roadside: 'dodges', kerb: true },
+};
+const TYPES = [SEDAN, TRUCK, CRUISING, SCOOTER_RIDER];
 const T_SEDAN = 0;
 const T_TRUCK = 1;
 const T_CRUISING = 2;
+const T_SCOOTER_RIDER = 3;
 
 const PLAYER: SimRiderDef = {
   contentId: 'base:player',
@@ -300,6 +316,47 @@ describe('landing on a roof, and an air hit into a side: the closing-speed rule'
     const sc = intoSide(12, 2.0);
     sc.step(20);
     expect(sc.events.filter(isTraffic)).toEqual([]);
+  });
+});
+
+describe('a light kerb rider is never a crash, from above either (the live check of #619, mustFix 1)', () => {
+  // The live check's repro: coming down from the air onto an e-scooter rider, at 8 m/s along the road,
+  // just above its top. It was met as a car's roof: a crash from 10 m/s falling, and a slower drop left
+  // the bike riding on top of the scooter rider.
+  const dropOnto = (type: number, top: number, vy: number) =>
+    scene({ s: 299.6, dOff: 0, speed: 8, air: { h: top + 0.1, vy } }, { type, u: 300 });
+
+  for (const vy of [-12, -3]) {
+    it(`a drop at ${-vy} m/s onto the scooter rider: never a crash, never held on its top; the bike lands`, () => {
+      const sc = dropOnto(T_SCOOTER_RIDER, SCOOTER_RIDER.heightM ?? 0, vy);
+      let heldOnTop = 0;
+      for (let t = 0; t < 240; t++) {
+        const out = sc.step();
+        const over = Math.abs(sc.rider.pos.s - 300) < (SCOOTER_RIDER.lengthM + 2) / 2;
+        if (
+          over &&
+          sc.rider.mode === 'Airborne' &&
+          Math.abs(sc.rider.h - (SCOOTER_RIDER.heightM ?? 0)) < 1e-6
+        )
+          heldOnTop++;
+        if (out.some((e) => e.type === 'land' || e.type === 'crash')) break;
+      }
+      const contacts = sc.events.filter(isTraffic);
+      console.log(
+        `[examined] drop ${-vy} m/s onto the scooter rider: ${JSON.stringify(contacts.map((e) => [e.type, e.data]))}; ticks held on its top ${heldOnTop}; ends ${sc.rider.mode} h ${sc.rider.h.toFixed(2)}`,
+      );
+      expect(sc.events.filter((e) => e.type === 'crash')).toEqual([]);
+      for (const e of contacts) expect(e.data).toMatchObject({ kerb: true });
+      expect(heldOnTop).toBe(0);
+      expect(sc.events.find((e) => e.type === 'land')).toBeDefined();
+    });
+  }
+
+  it('control: the same 12 m/s drop onto a sedan is a crash on its roof', () => {
+    const sc = dropOnto(T_SEDAN, SEDAN.heightM ?? 0, -12);
+    const hit = untilDown(sc).find(isTraffic);
+    expect(hit?.type).toBe('crash');
+    expect(hit?.data).toMatchObject({ hit: 'top', air: true });
   });
 });
 

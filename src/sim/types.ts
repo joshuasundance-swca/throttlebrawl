@@ -765,7 +765,9 @@ export type LawEventKind = (typeof LAW_EVENT_KINDS)[number];
  * (playtest 2, 2026-10-02: "I love the idea of doing flips"), a trick landed, with `data.trick` its
  * `TrickId` and `data.flips` the full turns for a flip, and playtest 3's `wheelie` (a clean wheelie,
  * by the second) and `drift` (a drift chain banked). The product spec's style sources include
- * "maybe other stuff" `[decided]`.
+ * "maybe other stuff" `[decided]`. `roofRide` (the maintainer, 2026-10-06: "land on it and ride on it
+ * with real physics"): a ride on top of a vehicle, paid by the second when the rider leaves it
+ * (`data.seconds`).
  */
 export const STYLE_KINDS = [
   'nearMiss',
@@ -776,6 +778,7 @@ export const STYLE_KINDS = [
   'trick',
   'wheelie',
   'drift',
+  'roofRide',
 ] as const;
 export type StyleKind = (typeof STYLE_KINDS)[number];
 

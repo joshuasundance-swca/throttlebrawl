@@ -283,7 +283,7 @@
         {
           "id": "osm-samish-east-shore",
           "name": "East Shore Drive",
-          "tags": ["forest"],
+          "tags": ["forest", "thin-haze"],
           "sideRuns": [
             { "tag": "lake", "side": "right", "s0": 890, "s1": 1595 },
             { "tag": "lake", "side": "right", "s0": 2590, "s1": 2940 }

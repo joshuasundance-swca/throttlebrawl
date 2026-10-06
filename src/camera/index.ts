@@ -116,6 +116,13 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   // shortens on a bend tighter than this radius (radius over this, down to the floor); 0 is off.
   decl('tightBendRadiusM', 'Tight bends: shorten look-ahead under radius (0 off)', 30, 0, 100, 1, 'm'),
   decl('tightBendMinShare', 'Tight bends: shortest look-ahead share', 0.3, 0.1, 1, 0.05, ''),
+  // The solid-world check, punch item 2 [default]: "the camera ends up inside buildings after a Duval
+  // sidewalk crash". The camera is held clear of a street's building fronts (fronts.ts): never past the
+  // sidewalk's outer edge less this margin, and on Old Town's Duval Street further in by the reach of its
+  // deepest front (the open bars' 3.1 m, measured on the kit; tests/sim/camera-fronts.test.ts holds it).
+  decl('keepClearOfFronts', 'Keep the camera out of building fronts (0 off)', 1, 0, 1, 1, ''),
+  decl('frontMarginM', 'Building fronts: margin', 0.5, 0, 2, 0.1, 'm'),
+  decl('frontReachM', 'Old Town fronts: deepest reach over the sidewalk', 3.2, 0, 6, 0.1, 'm'),
   // camera-3 (docs/milestones/M3.md) [default]: the far chase and helmet views. Until ui adds a
   // settings row, the view is this slider (0 low chase, 1 far chase, 2 helmet) and the view key.
   decl('mode', 'View: 0 chase, 1 far, 2 helmet', 0, 0, VIEW_MODES.length - 1, 1, ''),

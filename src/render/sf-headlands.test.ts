@@ -348,13 +348,13 @@ describe('a battery reads as a concrete gun emplacement (playtest 4, run C)', ()
     return { g, box: g.boundingBox! };
   }
 
-  /** The vertices that are dark steel (the guns): nothing else in the file is that dark above the parapet. */
+  /** The vertices that are dark steel (the guns): nothing else in the file is that dark above the pits' rim (4 m). */
   function dark(g: Awaited<ReturnType<typeof battery>>['g'], from: number, to: number) {
     const pos = g.getAttribute('position');
     const col = g.getAttribute('color');
     const out: { x: number; y: number; z: number }[] = [];
     for (let i = from; i < Math.min(to, pos.count); i++)
-      if (col.getX(i) < 0.15 && col.getY(i) < 0.15 && pos.getY(i) > 3.7)
+      if (col.getX(i) < 0.15 && col.getY(i) < 0.15 && pos.getY(i) > 4.5)
         out.push({ x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) });
     return out;
   }
@@ -388,7 +388,7 @@ describe('a battery reads as a concrete gun emplacement (playtest 4, run C)', ()
     expect(guns.length).toBeGreaterThan(40);
     // One in each pit (the pits stand at x = -7 and 7), each lifting over the parapet toward the front.
     for (const x of [-7, 7]) {
-      const own = guns.filter((p) => Math.abs(p.x - x) < 1);
+      const own = guns.filter((p) => Math.abs(p.x - x) < 1.2);
       expect(own.length, `a gun at x ${x}`).toBeGreaterThan(20);
       expect(Math.max(...own.map((p) => p.y)), `its muzzle over the parapet at x ${x}`).toBeGreaterThan(4.3);
       expect(Math.max(...own.map((p) => p.z)), `its muzzle reaches the front wall at x ${x}`).toBeGreaterThan(

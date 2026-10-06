@@ -15,12 +15,21 @@
 // flats), or an island of a landmark's own (Pigeon Key). The bands are tints that multiply the look's own
 // water colour (a palette still recolours the sea), so the shallows are that colour untouched.
 //
+// A `salt-pond` span of a side (Smathers Beach's inland ponds, playtest 4 run B's fix check, punch item 5: "the
+// road reads as water on both sides") is painted brackish, pale sage-green and not turquoise, with a shaded olive
+// edge by the road and at its ends and far side, so the sea on one side of the road and the pond on the other read as
+// two waters. The span's `water-shallow` stays under it (the land is not drawn there, the sim reads the water's edge).
+// A pond's colour is the colour drawn, in every look (polish J3: the pale olive of #630, a tint over the CLASSIC water,
+// came out rust-brown in the ink looks, whose water has almost no red to multiply: 40 times the classic red is
+// 0.5 of the red of a 0.013 base, and the sea read as mud flats): the tint is the look's own water colour divided out,
+// and the sea re-lays itself when a look or a palette changes that colour (`water`, `syncWater`).
+//
 // Drawing: one mesh, one draw call, a fixed number of triangles however long the route is. The mesh is a
 // grid of fine squares around the camera (snapped to the grid, so a colour never swims) inside one ring of
 // large squares out to where the old plane ended; it re-lays itself, in 1,200 or so vertices, when
 // the camera crosses a square. Numbers are [default].
-import { BufferAttribute, BufferGeometry, Color, Mesh } from 'three';
-import type { RoadNetwork } from '../road';
+import { BufferAttribute, BufferGeometry, Color, Mesh, type MeshLambertMaterial } from 'three';
+import { onSide, type RoadNetwork } from '../road';
 import type { LookStyle } from './look';
 import { CLASSIC_PALETTE } from './look';
 import { islandBoxes, themeAt, type SideTag } from './scenery';
@@ -41,24 +50,50 @@ export const SEA_BANDS = {
   landStepM: 150,
   deckStepM: 30,
   /**
-   * The patches of seagrass and sand (run C's live check, lane J3: "the flats look one turquoise"): the size
-   * of a patch, m; the second, finer octave's share of that size; and the noise value where a patch starts
-   * and where its tint is full. A patch is two squares of the fine grid and a little more, so it is a shape
-   * and not a vertex, and a view of the flats holds several (tests/sim/keys-places-sight).
+   * The patches of seagrass and sand (run C's live check, lane J3: "the flats look one turquoise"; its fix
+   * check, punch item 1: "no seagrass or sand patch in 9 frames", for the patches were there and too faint to
+   * see): the size of a patch, m; the second, finer octave's share of that size; and the noise value where a
+   * patch starts and where its tint is full. A patch is two squares of the fine grid and a little more, so it
+   * is a shape and not a vertex. Its edge is short (7 hundredths of the noise, not a third), so most of a
+   * patch is at its full tint and its edge is a line you can see. The open sea gives way to the deep before
+   * the patches do (`patchGiveWay`). What a rider sees of it, after the water's light, the haze and the grade,
+   * is asked by tests/sim/keys-flats-show.
    */
-  patchM: 60,
+  patchM: 90,
   octaveShare: 0.55,
-  patchFrom: 0.04,
-  patchTo: 0.36,
+  patchFrom: 0.02,
+  patchTo: 0.09,
+  /** The sea's depth at which the patches start to give way, and where they are gone (0 the flats, 1 the channel). */
+  patchGiveWay: [0.05, 0.3],
   /** How many lattice points' tints are kept between re-lays (the camera's trail), before the memory is dropped. */
   memoryMax: 20000,
   /** The fine grid round the camera: squares each side and the side of one, m. */
   cells: 32,
   cellM: 28,
-  /** The colours of the deep channel (display sRGB), and the tints of a sand patch and a seagrass patch. */
+  /**
+   * The colours of the deep channel (display sRGB), and the tints of a sand patch and a seagrass patch. The
+   * water has almost no red, so a sand patch needs a large multiple of it to read pale aqua (the default
+   * look's water, #1e8e98, goes to about #57beaf under it) and a seagrass patch goes to a dark green-teal
+   * (about #177364).
+   */
   deep: '#16639f',
-  sand: [1.3, 1.2, 0.95],
-  seagrass: [0.5, 0.72, 0.62],
+  sand: [6, 1.6, 1.25],
+  seagrass: [0.45, 0.5, 0.4],
+  /**
+   * A salt pond (display sRGB, the albedo drawn in any look): pale sage-green, and its shaded edge (an olive: it
+   * stays a darker shade of the pond's water and never a brown mud, which the ink looks' warm grade and the golden
+   * hour turn orange); how far inland it reaches from the road's edge, the width of the edge by the road, on its far
+   * side and at each end, and how far apart the road samples its spans are, m. A pond is 3 squares of the fine grid
+   * deep, so its middle holds a vertex or two of its own colour. [default] Polish J3: the lit colour of both, in every
+   * look and at every time of day, is held in sea-ponds-lit.test.ts.
+   */
+  pond: '#c4dca8',
+  mud: '#84906a',
+  pondDepthM: 90,
+  pondMudRoadM: 16,
+  pondMudFarM: 26,
+  pondMudEndM: 40,
+  pondStepM: 15,
 } as const;
 
 type Tint = readonly [number, number, number];
@@ -80,6 +115,20 @@ export interface SeaPlan {
   land: readonly Anchor[];
   /** The high stretches of deck. */
   deck: readonly DeckSample[];
+  /** The salt ponds, sampled along the road's edge (`SEA_BANDS.pondStepM` apart). */
+  ponds: readonly PondSample[];
+}
+
+/**
+ * A metre of the road's edge beside a salt pond: where it is, which way the road runs, which way is inland (away from
+ * the road, unit), and how far the sample is from the nearer end of its span.
+ */
+interface PondSample extends Anchor {
+  tx: number;
+  tz: number;
+  nx: number;
+  nz: number;
+  endM: number;
 }
 
 const smooth = (a: number, b: number, v: number): number => {
@@ -97,9 +146,32 @@ export function seaPlanFor(
 ): SeaPlan | null {
   const land: Anchor[] = [];
   const deck: DeckSample[] = [];
+  const ponds: PondSample[] = [];
   let water = false;
   for (const e of road.edges) {
     const tags = tagsOf(e);
+    for (const t of tags ?? []) {
+      if (t.tag !== 'salt-pond') continue;
+      for (const side of [-1, 1] as const) {
+        if (!onSide(t, side < 0 ? 'left' : 'right')) continue;
+        const near = Math.max(-e.dMin, e.dMax) + 0.6;
+        for (let s = t.s0; s <= t.s1 + 1e-6; s += SEA_BANDS.pondStepM) {
+          const u = Math.min(s, t.s1);
+          const edge = road.toWorld(e.index, u, side * near, 0);
+          const out = road.toWorld(e.index, u, side * (near + 1), 0);
+          const f = road.frameAt(e.index, u);
+          ponds.push({
+            x: edge.x,
+            z: edge.z,
+            tx: f.tx,
+            tz: f.tz,
+            nx: (out.x - edge.x) / Math.hypot(out.x - edge.x, out.z - edge.z),
+            nz: (out.z - edge.z) / Math.hypot(out.x - edge.x, out.z - edge.z),
+            endM: Math.min(u - t.s0, t.s1 - u),
+          });
+        }
+      }
+    }
     if (!tags?.some((t) => t.tag.startsWith('water'))) {
       // A road with no water at all is land from end to end.
       for (let s = 0; s <= e.length; s += SEA_BANDS.landStepM) {
@@ -123,7 +195,7 @@ export function seaPlanFor(
   }
   if (!water) return null;
   for (const b of islandBoxes(road)) land.push({ x: b.x, z: b.z });
-  return { land, deck };
+  return { land, deck, ponds };
 }
 
 /** How deep the sea is at a point, 0 (the flats) to 1 (the channel). */
@@ -189,15 +261,69 @@ function deepTint(): Tint {
 }
 const DEEP: Tint = deepTint();
 
+/** The classic water colour, linear: what a tint multiplies unless a look's own is given (`seaTintAt`'s `water`). */
+const CLASSIC_WATER: Tint = (() => {
+  const c = new Color(CLASSIC_PALETTE.water);
+  return [c.r, c.g, c.b];
+})();
+const POND_COLOUR = new Color(SEA_BANDS.pond);
+const MUD_COLOUR = new Color(SEA_BANDS.mud);
+
+/**
+ * The tint that turns `water` (a look's own water colour, linear) into the display colour `colour`: what a vertex
+ * colour must multiply to draw exactly that albedo. A channel the water has next to none of (the ink looks' red)
+ * needs a large tint, which a vertex colour carries as a float.
+ */
+function tintTo(colour: Color, water: Tint): Tint {
+  return [
+    colour.r / Math.max(1e-4, water[0]),
+    colour.g / Math.max(1e-4, water[1]),
+    colour.b / Math.max(1e-4, water[2]),
+  ];
+}
+
+/**
+ * How far a point is inside a salt pond, and how muddy it is there: `cover` is 1 inside the pond and 0 outside
+ * (a few metres of soft edge), `mud` is 1 on the mud edge by the road, on the far side and at the ends.
+ */
+function pondAt(plan: SeaPlan, x: number, z: number): { cover: number; mud: number } {
+  let best = { cover: 0, mud: 0 };
+  const reach = SEA_BANDS.pondStepM * 0.75;
+  const D = SEA_BANDS.pondDepthM;
+  for (const p of plan.ponds) {
+    const dx = x - p.x;
+    const dz = z - p.z;
+    if (Math.abs(dx * p.tx + dz * p.tz) > reach) continue;
+    const c = dx * p.nx + dz * p.nz;
+    if (c < -8 || c > D + 8) continue;
+    const cover = smooth(-8, 2, c) * (1 - smooth(D - 2, D + 8, c));
+    if (cover <= best.cover) continue;
+    const mud = Math.max(
+      1 - smooth(0, SEA_BANDS.pondMudRoadM, c),
+      smooth(D - SEA_BANDS.pondMudFarM, D, c),
+      1 - smooth(0, SEA_BANDS.pondMudEndM, p.endM),
+    );
+    best = { cover, mud };
+  }
+  return best;
+}
+
 /**
  * The tint of the sea at a point: what its vertex colour multiplies the water colour by. 1, 1, 1 is the
  * shallows untouched; a patch of sand lifts it, a patch of seagrass darkens it, a channel turns it deep blue.
  */
-export function seaTintAt(plan: SeaPlan, x: number, z: number, seed: number): Tint {
+export function seaTintAt(
+  plan: SeaPlan,
+  x: number,
+  z: number,
+  seed: number,
+  /** The look's own water colour (linear) that the tint multiplies; the classic water's when none is given. */
+  water: Tint = CLASSIC_WATER,
+): Tint {
   const depth = seaDepthAt(plan, x, z);
   const n = patchNoise(x, z, seed);
   // The patches live on the flats and give way to the deep before it is dark.
-  const flat = 1 - smooth(0, 0.5, depth);
+  const flat = 1 - smooth(SEA_BANDS.patchGiveWay[0], SEA_BANDS.patchGiveWay[1], depth);
   const sand = smooth(SEA_BANDS.patchFrom, SEA_BANDS.patchTo, n) * flat;
   const grass = smooth(SEA_BANDS.patchFrom, SEA_BANDS.patchTo, -n) * flat;
   const deep = smooth(0, 1, depth);
@@ -205,6 +331,16 @@ export function seaTintAt(plan: SeaPlan, x: number, z: number, seed: number): Ti
   for (let k = 0; k < 3; k++) {
     const patched = 1 + ((SEA_BANDS.sand[k] ?? 1) - 1) * sand + ((SEA_BANDS.seagrass[k] ?? 1) - 1) * grass;
     out[k] = patched + ((DEEP[k] ?? 1) - patched) * deep;
+  }
+  // A salt pond: brackish, with a mud edge, over whatever the sea would be there.
+  const pond = plan.ponds.length ? pondAt(plan, x, z) : null;
+  if (pond && pond.cover > 0) {
+    const open = tintTo(POND_COLOUR, water);
+    const edge = tintTo(MUD_COLOUR, water);
+    for (let k = 0; k < 3; k++) {
+      const brackish = (open[k] ?? 1) + ((edge[k] ?? 1) - (open[k] ?? 1)) * pond.mud;
+      out[k] = (out[k] ?? 1) + (brackish - (out[k] ?? 1)) * pond.cover;
+    }
   }
   return out;
 }
@@ -224,6 +360,10 @@ export class SeaBands {
   private readonly tints = new Map<string, Tint>();
   private cellX = NaN;
   private cellZ = NaN;
+  /** The sea's material, whose colour (the look's water, as a palette and a look set it) the pond tints divide out. */
+  private readonly material: MeshLambertMaterial;
+  /** The water colour (linear) the remembered tints were made for. */
+  private water: Tint = CLASSIC_WATER;
 
   constructor(
     private readonly plan: SeaPlan,
@@ -259,11 +399,26 @@ export class SeaBands {
     this.geometry.setAttribute('color', new BufferAttribute(this.colour, 3));
     this.geometry.setIndex(index);
     // `paletteBase`: the vertex colours multiply the region's water colour, they do not replace it.
-    this.mesh = new Mesh(this.geometry, look.material('water', { vertexColors: true, paletteBase: true }));
+    this.material = look.material('water', { vertexColors: true, paletteBase: true }) as MeshLambertMaterial;
+    this.mesh = new Mesh(this.geometry, this.material);
     this.mesh.name = 'road-water';
     // The grid moves with the camera, and the bounds with it: it is never culled whole.
     this.mesh.frustumCulled = false;
     this.update(start.x, start.z);
+  }
+
+  /**
+   * Reads the material's water colour, and when a look or a palette has changed it since the last frame, forgets the
+   * remembered tints and lays the squares again (a pond's tint is made for the colour it multiplies).
+   */
+  private syncWater(): void {
+    const c = (this.material as { color?: Color }).color;
+    if (!c) return;
+    if (c.r === this.water[0] && c.g === this.water[1] && c.b === this.water[2]) return;
+    this.water = [c.r, c.g, c.b];
+    this.tints.clear();
+    this.cellX = NaN;
+    this.cellZ = NaN;
   }
 
   /**
@@ -277,7 +432,7 @@ export class SeaBands {
     let t = this.tints.get(key);
     if (!t) {
       if (this.tints.size > SEA_BANDS.memoryMax) this.tints.clear();
-      t = seaTintAt(this.plan, x, z, this.seed);
+      t = seaTintAt(this.plan, x, z, this.seed, this.water);
       this.tints.set(key, t);
     }
     return t;
@@ -285,6 +440,7 @@ export class SeaBands {
 
   /** Re-lays the fine squares about the camera (snapped to the square it stands in). */
   update(cameraX: number, cameraZ: number): void {
+    this.syncWater();
     const { cells, cellM } = SEA_BANDS;
     const cx = Math.round(cameraX / cellM);
     const cz = Math.round(cameraZ / cellM);

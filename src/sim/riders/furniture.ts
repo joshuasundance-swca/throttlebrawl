@@ -84,6 +84,18 @@ export const BIKE_RADIUS_M = RIDER_CONTACT_HALF_WIDTH_M;
 export const BIKE_SPINE_HALF_M = RIDER_HALF_LENGTH_M - RIDER_CONTACT_HALF_WIDTH_M;
 
 /**
+ * An end-on contact with a heavy fixed thing (a solid piece of street furniture, a solid road hazard)
+ * overlapping sideways by less than this is a graze, m [default]: square on is the thing in the bike's
+ * own line (its centre line meets the footprint, an overlap of the bike's half width or more); off that,
+ * the bike's shoulder or bar meets it, and its speed across the road closes, so it wobbles and slides
+ * past (the maintainer, 2026-10-05: street furniture is "solid but maybe forgiving to sides, brushes,
+ * etc"). It was traffic's GRAZE_M (0.3 m), and in the live check of #619 a sidewalk contact crashed 55 to
+ * 59 % of the time on Duval and Russian Hill, a lamp met 0.18 m off its line among them. Traffic keeps
+ * GRAZE_M: a moving car's corner is a different meeting.
+ */
+export const SOLID_GRAZE_M = BIKE_RADIUS_M;
+
+/**
  * A light piece ridden through (a meter, a bin, a board, a scooter): the parking meter's ride-through
  * from sim/smash (`KIND_SPEC['parking-meter']`: the speed kept and the heading kick, radians), so a
  * light piece costs what a smashable of its kind does. furniture.test.ts holds the two equal.

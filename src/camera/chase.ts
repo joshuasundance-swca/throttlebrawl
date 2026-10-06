@@ -55,6 +55,7 @@
 // The camera never writes sim state and never reads anything but the target, the entities it is
 // handed and the road handle.
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
+import { createFrontKeeper } from './fronts';
 import { createJolt } from './jolt';
 import { createShake } from './shake';
 import { spring, stepAngleSpring, stepSpring, wrapAngle } from './spring';
@@ -196,6 +197,9 @@ export interface ChaseParams {
   wheelieFovDeg: number;
   tightBendRadiusM: number;
   tightBendMinShare: number;
+  keepClearOfFronts: number;
+  frontMarginM: number;
+  frontReachM: number;
 }
 
 export interface ChaseRig {
@@ -319,6 +323,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   const shake = createShake();
   const jolt = createJolt();
   const takedown = createTakedownTracker();
+  const fronts = createFrontKeeper(() => road, params);
   let shakeAmount = 1;
   let motionAmount = 1;
   let lookingBack = false;
@@ -706,6 +711,13 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     for (const sp of [focus.x, focus.y, focus.z]) sp.x = sp.v = 0;
   };
 
+  /**
+   * Holds the eye clear of the building fronts on the sidewalk (fronts.ts). The helmet eye rides in the
+   * rider's head and is not moved: the rider's own box is what keeps it out of a building.
+   */
+  const clearOfFronts = (pose: CameraPose, dt: number, eye: boolean): CameraPose =>
+    eye ? pose : fronts.apply(pose, dt, hintEdge);
+
   const snap = (t: CameraTarget, ctx?: CameraContext): CameraPose => {
     clearModes();
     lookingBack = ctx?.lookBack === true;
@@ -713,7 +725,12 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     shown = viewFor(t);
     wasOnBike = onBike(t.mode);
     settle(goalFor(t, ctx, shown));
-    last = finish(lookingBack ? lookBackPlacement(t) : basePlacement(t, shown), 0, 0, 0);
+    fronts.reset();
+    last = clearOfFronts(
+      finish(lookingBack ? lookBackPlacement(t) : basePlacement(t, shown), 0, 0, 0),
+      0,
+      shown === 'helmet' && !lookingBack,
+    );
     return last;
   };
 
@@ -808,12 +825,17 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
             ? takedownPlacement(t)
             : lerpPlacement(base, takedownPlacement(t), weight)
           : base;
-      const pose = finish(placement, k.side + j.side * amount, k.up + j.up * amount, k.roll);
+      const pose = clearOfFronts(
+        finish(placement, k.side + j.side * amount, k.up + j.up * amount, k.roll),
+        dt,
+        view === 'helmet' && !lookingBack && weight <= 0,
+      );
       if (!valid(pose)) {
         // Never hand render a NaN: start over from the ideal framing.
         clearModes();
         settle(goalFor(t, ctx, view));
-        last = finish(basePlacement(t, view), 0, 0, 0);
+        fronts.reset();
+        last = clearOfFronts(finish(basePlacement(t, view), 0, 0, 0), 0, view === 'helmet');
         return last;
       }
       last = pose;
@@ -825,6 +847,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     setRoad(next) {
       road = next && next.edges.length > 0 ? next : null;
       hintEdge = undefined;
+      fronts.reset();
     },
     setShakeAmount(amount) {
       shakeAmount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;

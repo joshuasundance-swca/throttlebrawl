@@ -30,6 +30,7 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  CINEMATIC_CAMERA,
   cameraParams,
   checkRoute,
   legsOf,
@@ -124,5 +125,49 @@ describe('the sweep finds a peak the old checkpoints could not (negative control
     expect(before.tris.total.tris).toBeLessThanOrEqual(STILL_TRIS_MAX);
     expect(after.tris.total.tris).toBeGreaterThan(STILL_TRIS_MAX);
     expect(after.tris.parts.has('control/heavy')).toBe(true);
+  }, 300_000);
+});
+
+describe('the sweep sees the takedown framing, which no chase view faces (negative control)', () => {
+  it('sees a heavy block standing beside the road, which only a takedown aimed across the road shows', async () => {
+    const c = await cameraParams();
+    const full = ROUTES.find((r) => r.id === 'osm-seven-mile-run') ?? ROUTES[0]!;
+    const first = full.mainPath[0]!;
+    const route = { ...full, mainPath: [first], allowedRoads: [first] };
+    const { road, scene } = await stillSceneOf(route.network, 1);
+    // A 150,000-triangle block 70 m to the side of the road and 30 m behind its start, level with the rider: every
+    // chase, helmet and look-back view looks along the road and the takedown views look at the rider, so it stands
+    // outside their frames; a takedown aimed behind and across the road faces it.
+    const e = road.edgeIndex(first);
+    const p = road.toWorld(e, 0, 0, 0);
+    const f = road.frameAt(e, 0);
+    const heavy = new Group();
+    heavy.name = 'control';
+    const box = new BoxGeometry(4, 4, 4, 250, 150, 1);
+    const mesh = new Mesh(box, new MeshBasicMaterial());
+    mesh.name = 'heavy';
+    mesh.position.set(p.x - f.tx * 30 - f.tz * 70, p.y + 2, p.z - f.tz * 30 + f.tx * 70);
+    mesh.lookAt(p.x, p.y + 2, p.z);
+    heavy.add(mesh);
+    const boxTris = (box.index?.count ?? 0) / 3;
+    // From the start line only (a step past the road's length), forward: from further along, the look-back views
+    // see the block down the road, as any camera that looks along a road sees what stands near it.
+    const without = sweep(road, scene, route, c, { step: 1e6, bothWays: false, extra: heavy });
+    const withShots = sweep(road, scene, route, c, {
+      step: 1e6,
+      bothWays: false,
+      cinematic: true,
+      extra: heavy,
+    });
+    print(
+      `[examined] control: a ${boxTris}-triangle block 70 m beside and 30 m behind ${first}@0; ` +
+        `at the start line the chase, helmet, look-back and takedown views peak ${Math.round(without.tris.total.tris)} at ${without.tris.at}; ` +
+        `with the takedown aimed anywhere round the rider the sweep peaks ${Math.round(withShots.tris.total.tris)} at ${withShots.tris.at}`,
+    );
+    expect(boxTris).toBeGreaterThan(STILL_TRIS_MAX);
+    expect(without.tris.total.tris).toBeLessThanOrEqual(STILL_TRIS_MAX);
+    expect(withShots.tris.total.tris).toBeGreaterThan(STILL_TRIS_MAX);
+    expect(withShots.tris.at).toContain(CINEMATIC_CAMERA);
+    expect(withShots.tris.parts.has('control/heavy')).toBe(true);
   }, 300_000);
 });

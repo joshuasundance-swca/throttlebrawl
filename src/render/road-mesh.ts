@@ -154,6 +154,16 @@ export function chunkKey(x: number, z: number): string {
  * then draws its surfaces alone: two to five fewer draw calls each, and fewer triangles.
  */
 export const ROAD_FINE_DRAW_M = 300;
+/**
+ * The thin posts (a highway's delineators, a rail's posts) are left out of a chunk wholly farther than this from the
+ * camera, metres [default]: sooner than the lines, which run as long as the road and so stay to ROAD_FINE_DRAW_M. A
+ * 0.15 m post 200 m away is a sliver 0.27 px wide and 1.9 px tall on the phone's 412 px-tall view; past it the posts are
+ * dots. Polish J3: the busiest Bridge City frame (112 of 120 draw calls, the takedown framing aimed down a side street)
+ * drew the posts of chunks 244 and 281 m away, three calls.
+ */
+export const ROAD_POST_DRAW_M = 200;
+/** The fine meshes that leave at ROAD_POST_DRAW_M instead of ROAD_FINE_DRAW_M. */
+const THIN_MESHES = new Set(['road-posts', 'road-rail-posts']);
 /** The chunk layers and instanced meshes that are fine detail (see ROAD_FINE_DRAW_M). */
 const FINE_MESHES = new Set([
   'road-marking',
@@ -2928,9 +2938,11 @@ export function buildRoadScene(
     update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1, detail = {}) {
       sea?.update(cameraX, cameraZ);
       const fineM = ROAD_FINE_DRAW_M * (detail.propDetail ?? 1);
+      const postM = ROAD_POST_DRAW_M * (detail.propDetail ?? 1);
       for (const [key, fine] of fineByChunk) {
-        const near = chunkDistance(key, cameraX, cameraZ) < fineM;
-        for (const mesh of fine) mesh.visible = near;
+        const away = chunkDistance(key, cameraX, cameraZ);
+        for (const mesh of fine)
+          mesh.visible = away < (THIN_MESHES.has(mesh.name) ? Math.min(postM, fineM) : fineM);
       }
       let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds, detail.treeShare ?? 1);
       if (bayMerged) shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), lodM, builds);

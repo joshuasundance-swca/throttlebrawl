@@ -26,6 +26,14 @@ const REGIONS: Record<string, readonly string[]> = {
 };
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const TICKS = 4500;
+/**
+ * The rides leave the street furniture out (`riders.furniture` 0): this is the dodge rule, not the furniture's.
+ * With Old Town's planters and frangipanis in a row by the kerb (sim: solid fixes), the scripted rider's
+ * kerb-side line ran into them, crashing 13 to 18 times a Duval ride against 0 to 2 before, and met 7
+ * sidewalk things over the Keys' 16 rides instead of 15 or more. The furniture's own rule is
+ * tests/sim/furniture-sidewalk.test.ts.
+ */
+const NO_FURNITURE = { 'riders.furniture': 0 } as const;
 const BRAKE_SEEDS = [1];
 const BAND = 0.85;
 const REGION_BAND = 0.75;
@@ -49,7 +57,7 @@ describe("sidewalk things get out of a fast rider's way", () => {
       const old: Thing[] = [];
       for (const eventId of events)
         for (const seed of SEEDS) {
-          const r = ride({ seed, eventId, maxTicks: TICKS });
+          const r = ride({ seed, eventId, maxTicks: TICKS, tuning: NO_FURNITURE });
           rows.push(...r.things);
           for (const h of r.thingHits) {
             const t = r.config.trafficTypes.find((x) => x.contentId === h.thing);
@@ -58,7 +66,10 @@ describe("sidewalk things get out of a fast rider's way", () => {
               hits.push(`${region} ${eventId} seed ${seed} ${h.type} ${h.thing}`);
           }
           if (before)
-            old.push(...ride({ seed, eventId, maxTicks: TICKS, tuning: { 'traffic.kerbDeep': 0 } }).things);
+            old.push(
+              ...ride({ seed, eventId, maxTicks: TICKS, tuning: { ...NO_FURNITURE, 'traffic.kerbDeep': 0 } })
+                .things,
+            );
         }
       byRegion.set(region, rows);
       const a = share(rows);
@@ -108,7 +119,7 @@ describe("sidewalk things get out of a fast rider's way", () => {
     for (const events of Object.values(REGIONS))
       for (const eventId of events)
         for (const seed of BRAKE_SEEDS) {
-          const r = ride({ seed, eventId, maxTicks: TICKS, brakeAtM: 25 });
+          const r = ride({ seed, eventId, maxTicks: TICKS, brakeAtM: 25, tuning: NO_FURNITURE });
           rides++;
           // Nothing hit the braking rider, and nothing touched it once it was still.
           for (const h of r.thingHits) {

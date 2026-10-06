@@ -34,6 +34,7 @@ import {
   withStagingLegs,
 } from './bridge-bays';
 import { withBatteryGuns } from './battery-guns';
+import { deerCoat } from './key-deer';
 import { finishShore } from './shore-fixes';
 import { readGlb } from './glb';
 import { markAtlasUv } from './scenery-merge';
@@ -674,6 +675,13 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     roles.splice(0, roles.length, ...finished.roles);
     while (tiles.length < variants.length) tiles.push([]);
     while (surfaces.length < variants.length) surfaces.push([]);
+  }
+  if (kind === 'keysIdentity') {
+    // The Key deer's coat (the buck and the doe, variants 0 and 1), deepened so it reads against the sand.
+    for (const i of [0, 1]) {
+      const deer = variants[i];
+      if (deer) variants[i] = deerCoat(deer);
+    }
   }
   const landmarkNodes = new Map<string, LandmarkNode>();
   let landmarkTwoSided = false;

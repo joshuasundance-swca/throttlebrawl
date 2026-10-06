@@ -29,7 +29,7 @@
 // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys") adds San Francisco's
 // mural district (mission.ts, a lazy chunk): shopfronts, painted alleys, and the streaming outfit's
 // mascot on two corner walls, painted over by a crew as the race's leader goes round.
-import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
+import { Fog, Frustum, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, backdropFilesFor, loadNetworkWater, type BackdropStats } from './backdrop';
 import type {
@@ -71,6 +71,7 @@ import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PartyLights, PartyLightsCounts } from './party-lights';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import type { Rain } from './rain';
+import { easeHaze, hazeFarAt, thinHazeSpans, type ThinHazeSpans } from './haze';
 import { roofCover, roofSpans, type RoofSpan } from './roofs';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
@@ -83,6 +84,7 @@ import {
 } from './road-mesh';
 import type { SpeedLineCounts, SpeedLines } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
+import { frustumOf } from './view-frustum';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
 
 export type { LookEnv, LookStyle, MaterialKind, MaterialParams } from './look';
@@ -383,9 +385,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let sceneSeed = 1;
   /** Whether the race's region names a fog colour: its haze then closes in (render.regionFogFarM). */
   let regionFog = false;
+  // Playtest 4 answers (the maintainer, 2026-10-06: "Thin it on Chuckanut"): the haze per stretch (haze.ts). The
+  // race road's `thin-haze` runs, and where the fog's end is now, easing toward the player's stretch's reach.
+  let thinHaze: ThinHazeSpans = new Map();
+  let hazeFar = params.regionFogFarM;
+  /** The next frame with a player takes its stretch's reach at once (a new road, a new slider value). */
+  let hazeSnap = true;
   const applyRegionFog = () => {
-    if (regionFog && scene.fog instanceof Fog)
-      scene.fog.far = Math.max(scene.fog.near + 10, params.regionFogFarM);
+    if (regionFog && scene.fog instanceof Fog) scene.fog.far = Math.max(scene.fog.near + 10, hazeFar);
   };
   /** The models as loaded, and as the race's palette repaints them (what the road scene draws). */
   const loadedModels: SceneryModels = {};
@@ -412,6 +419,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let lastFrameAt = -1;
   // Run W-R: the rider rigs, a lazy chunk that loads with the first race's looks.
   let rigs: RiderRigs | null = null;
+  /** What the camera sees through this frame, handed to the rigs (render). */
+  const viewFrustum = new Frustum();
   let rigsLoading = false;
   let riderLooks: readonly RiderLook[] = [];
   let playerPaint: string | null = null;
@@ -905,6 +914,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       for (const child of [...scene.children]) if (!persistent.has(child)) scene.remove(child);
       look.setupScene(scene, env);
       regionFog = env.palette?.['fog'] !== undefined;
+      thinHaze = thinHazeSpans(road);
+      hazeFar = params.regionFogFarM;
+      hazeSnap = true;
       applyRegionFog();
       rainEnv = env;
       race?.rain.set(race.rainColourOf(env));
@@ -975,16 +987,27 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     render(prev, curr, alpha, pose) {
       if (lost) return;
-      rigs?.setCamera(pose.x, pose.y, pose.z);
-      if (curr) views.sync(prev, curr, alpha, now(), pose);
       camera.fov = pose.fov;
       camera.updateProjectionMatrix();
       camera.position.set(pose.x, pose.y, pose.z);
       camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
       if (pose.roll) camera.rotateZ(pose.roll);
+      // The riders are placed through the view the camera has this frame: a rig it cannot see is not drawn (polish J3).
+      rigs?.setCamera(pose.x, pose.y, pose.z);
+      rigs?.setView(frustumOf(camera, viewFrustum));
+      if (curr) views.sync(prev, curr, alpha, now(), pose);
       race?.effects.fitTint(camera);
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
       const t = now();
+      const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
+      // The haze reaches as far as the player's stretch says (haze.ts), before the backdrop reads the fog's end.
+      const lead = regionFog ? curr?.entities.find((e) => e.slot === 0) : undefined;
+      if (lead) {
+        const target = hazeFarAt(thinHaze, lead.road.edge, lead.road.s, params);
+        hazeFar = hazeSnap ? target : easeHaze(hazeFar, target, dt);
+        hazeSnap = false;
+        applyRegionFog();
+      }
       backdrop.update(camera.position, scene, t);
       if (race) {
         race.eventProps.calm = params.reduceMotion === true;
@@ -1007,7 +1030,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
-      const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       if (downtown) {
         // The cross traffic moves with the race: it stands still while the race does (paused).
         const tick = curr?.tick ?? -1;
@@ -1091,7 +1113,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     setParam(id, value) {
       applyRenderParam(params, id, value);
-      if (id === 'render.regionFogFarM') applyRegionFog();
+      if (id === 'render.regionFogFarM' || id === 'render.thinHazeFarM') {
+        hazeFar = params.regionFogFarM;
+        hazeSnap = true;
+        applyRegionFog();
+      }
       // The scenery is part of the road scene: a new density rebuilds it.
       if (roadArgs && params.roadsideDensity !== roadArgs.density) {
         roadArgs.density = params.roadsideDensity;
