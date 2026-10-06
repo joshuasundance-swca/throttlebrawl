@@ -47,11 +47,14 @@ function findOverflow(page: Page) {
       r.left >= -0.5 && r.top >= -0.5 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5;
     // The nearest ancestor that scrolls up and down and has more than it shows (the pause screen's
     // cards scroll on a short phone, playtest 1c item 8; the "recently seen" list fills with signs
-    // since the visibleContent poll, T8.2).
-    const scrollerOf = (e: HTMLElement) => {
+    // since the visibleContent poll, T8.2), or side to side (the menu's route chips, a row that
+    // scrolls sideways on a narrow phone, ui/routes.ts).
+    const scrollerOf = (e: HTMLElement, axis: 'x' | 'y') => {
       for (let p = e.parentElement; p; p = p.parentElement) {
-        const y = getComputedStyle(p).overflowY;
-        if ((y === 'auto' || y === 'scroll') && p.scrollHeight > p.clientHeight + 1) return p;
+        const style = getComputedStyle(p);
+        const o = axis === 'y' ? style.overflowY : style.overflowX;
+        const more = axis === 'y' ? p.scrollHeight > p.clientHeight + 1 : p.scrollWidth > p.clientWidth + 1;
+        if ((o === 'auto' || o === 'scroll') && more) return p;
       }
       return null;
     };
@@ -66,10 +69,11 @@ function findOverflow(page: Page) {
       const r = e.getBoundingClientRect();
       const name = `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''} "${(e.textContent ?? '').trim().slice(0, 30)}"`;
       if (!onScreen(r)) {
-        // Text scrolled out of an on-screen scroller, and inside it side to side, is reachable.
-        const s = scrollerOf(e);
-        const sb = s?.getBoundingClientRect();
+        // Text scrolled out of an on-screen scroller, and inside it across the scrolling, is reachable.
+        const sb = scrollerOf(e, 'y')?.getBoundingClientRect();
+        const sx = scrollerOf(e, 'x')?.getBoundingClientRect();
         if (sb && onScreen(sb) && r.left >= sb.left - 0.5 && r.right <= sb.right + 0.5) scrolledAway++;
+        else if (sx && onScreen(sx) && r.top >= sx.top - 0.5 && r.bottom <= sx.bottom + 0.5) scrolledAway++;
         else out.push(`${name} leaves the screen: ${JSON.stringify(r)}`);
       }
       if (getComputedStyle(e).display !== 'inline') {
