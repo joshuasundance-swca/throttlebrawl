@@ -40,10 +40,12 @@ are in [AGENTS.md](AGENTS.md).
 ## How a pull request lands
 
 Most PRs from a branch of this repo land on their own once you have opened them and armed auto-merge.
-That is the train path, and the numbered steps below describe it. Some PRs skip steps 2 to 6: a PR from
-a fork, a Dependabot PR, a docs-only change, a change under `.github/` and a PR marked `[full-gate]`
-take other paths, set out under "Which path your PR takes" further down. A fork author cannot arm
-auto-merge, so a maintainer merges a fork PR. In order:
+That is the train path, and the numbered steps below describe it. Some PRs never ride a train (steps 4
+to 6): a docs-only change, whose quick check is its whole gate, and a Dependabot PR, a change under
+`.github/` or a PR marked `[full-gate]`, which run the full suite on their own instead of the quick
+check. All are set out under "Which path your PR takes" further down. Every PR from a branch of this
+repo arms auto-merge all the same (step 3), because auto-merge is what merges it. A PR from a fork takes
+the full path too, but a fork author cannot arm auto-merge, so a maintainer merges a fork PR. In order:
 
 1. **Open the PR.** CI starts at once. It first reads what you changed and who opened the PR, and picks a
    path for it (see "Which path your PR takes", below). An ordinary change from a branch of this repo
@@ -147,8 +149,10 @@ that keeps failing ends up riding alone. It is the train's own bookkeeping; you 
 - **When to use `[full-gate]`.** Rarely. Use it for the PR that fixes a red `main` (the train does not
   depart while `main` is red, so that fix cannot wait for one; the keeper, who looks after `main`, does
   this), or when the maintainer asks for a change to land alone. Every other PR leaves it out, even
-  while `main` is red: it waits, and rides once `main` is green again, with nothing for you to do. The
-  marker is read when CI runs: add it before you open the PR, or push again after adding it.
+  while `main` is red: it waits, and rides once `main` is green again. If your PR's own `quick` (or
+  `gate`) went red only because `main` was red, run `gh pr update-branch <n>` or push again once `main`
+  is green: a re-run reuses the old merge, and a train only takes a PR whose `quick` is green on its
+  head. The marker is read when CI runs: add it before you open the PR, or push again after adding it.
 - **Forks.** Your PR runs the full suite on its own, whatever it changes. It gets no `quick` check and no
   `train` line: its CI result is named `gate`. GitHub may hold the first run of a new contributor until
   a maintainer approves it. You cannot arm auto-merge without write access to the repo, so steps 2 to 6

@@ -261,6 +261,20 @@ describe('CONTRIBUTING.md: how a PR lands', () => {
     expect(text).toMatch(/no per-PR lines/);
   });
 
+  it('keeps step 3 for every PR from a branch of this repo: only a fork is merged by a maintainer', () => {
+    // Auto-merge is the only thing that merges a same-repo PR (gate is the only required check and only
+    // Dependabot's own workflow arms for anyone), so a page that lets a docs-only, .github/ or [full-gate]
+    // PR skip arming leaves it green and unmerged for ever.
+    const intro = (landing.split('\n1. ')[0] ?? '').replace(/\s+/g, ' ');
+    expect(intro).not.toMatch(/skip steps 2 to 6/);
+    expect(intro).toMatch(/every PR from a branch of this repo arms auto-merge/i);
+    const useIt = (
+      /\*\*When to use `\[full-gate\]`\.\*\*([^]*?)(?=- \*\*Forks)/.exec(contributing)?.[1] ?? ''
+    ).replace(/\s+/g, ' ');
+    expect(useIt).not.toMatch(/nothing for you to do/);
+    expect(useIt).toMatch(/gh pr update-branch/);
+  });
+
   it('has a row for every `gate` text the script can post', () => {
     const posted = postedGateTexts(trainSource);
     expect(posted.length).toBeGreaterThanOrEqual(12);
