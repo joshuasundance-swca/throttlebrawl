@@ -1211,16 +1211,19 @@ describe('the workflows', () => {
     expect(agg).not.toMatch(/: write$/m);
     const steps = agg.split(/\n {6}- /);
     const verdict = steps.findIndex((s) => s.startsWith('name: Every gate job passed'));
-    const names = steps.findIndex((s) => s.includes('run: node scripts/train.mjs failures'));
+    const names = steps.findIndex((s) => s.includes('node scripts/train.mjs failures'));
     expect(verdict, 'the verdict step').toBeGreaterThan(0);
     expect(steps[verdict]).toMatch(/\n {8}id: verdict\n/);
     expect(names, 'the naming step follows the verdict').toBe(verdict + 1);
     const step = steps[names] ?? '';
-    // Only when the verdict itself is red (not on a green gate, not when the checkout failed),
-    // and it can never hold the gate up or change its colour.
+    // Only when the verdict itself is red (not on a green gate, not when the checkout failed), so
+    // it can never change the gate's colour, and it is short. It fails on purpose, whatever the
+    // command does: `gh run view --log-failed` prints only failed steps (a passing naming step was
+    // missing from it on #589's own red run, 37421258699).
     expect(step).toContain("\n        if: failure() && steps.verdict.outcome == 'failure'\n");
-    expect(step).toContain('\n        continue-on-error: true\n');
+    expect(step).not.toContain('continue-on-error');
     expect(step).toMatch(/\n {8}timeout-minutes: [12]\n/);
+    expect(step).toMatch(/\n {8}run: \|\n {10}node scripts\/train\.mjs failures \|\| true\n {10}exit 1\n/);
     expect(step).toContain('\n          GH_TOKEN: ${{ github.token }}\n');
     // The tree record after it still needs a green verdict: no status function in its if:.
     const record = steps.find((s) => s.startsWith('name: Record the tree this PR run tested')) ?? '';

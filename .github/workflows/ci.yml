@@ -231,13 +231,16 @@ jobs:
         run: |
           echo "path: ${ROUTE:-push to main}"
           node scripts/tested-tree.mjs gate
+      # It fails on purpose, whatever the naming does (the gate is red already): `gh run view
+      # --log-failed` prints only failed steps.
       - name: Red, so name the red jobs and their failing tests
         if: failure() && steps.verdict.outcome == 'failure'
-        continue-on-error: true
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/train.mjs failures
+        run: |
+          node scripts/train.mjs failures || true
+          exit 1
       # The checkout is the commit this run tested: on a PR, GitHub's merge of the head into main.
       - name: Record the tree this PR run tested
         id: record
