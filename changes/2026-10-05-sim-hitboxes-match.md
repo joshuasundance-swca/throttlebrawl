@@ -29,3 +29,5 @@ Not covered:
 - Heights: traffic contact is the same 1.2 m for every vehicle, and tumbling bodies use 1.5 m or 3.2 m boxes, whatever is drawn. A per-type height is a pack-schema change.
 - The rider models on the bikes were not measured (they live in the dataset).
 - Not phone-verified.
+
+Keeper fix (after main's slow-bumps-wobble change, #552): `tests/sim/traffic-drawn-contact.test.ts` measured each contact only at the snapshots before and after its tick. A fast rider grazing an oncoming log truck's corner now wobbles and is pushed clear, so neither snapshot held the touch (0.89 m before, 0.23 m after, on seed 1). The test now also measures the pose the sim tests a contact at: the rider moved on one tick by its speed and heading, before the push. It passes (89 contacts, 27 with big vehicles, none over 0.2 m) and still fails with the corridor boxes put back (3 contacts in the air).

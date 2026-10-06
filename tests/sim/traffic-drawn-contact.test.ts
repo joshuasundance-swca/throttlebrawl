@@ -13,7 +13,10 @@
 //
 // The bot rides the Gorge. Every traffic crash or wobble is measured in the world, on the drawn
 // shapes: the rider's 2.0 x 0.8 box and the vehicle's type box at their snapshot poses (the
-// drawn sizes: scripts/hitboxes.test.ts), the smaller gap of the poses before and after the tick.
+// drawn sizes: scripts/hitboxes.test.ts), the smallest gap of the poses before and after the tick
+// and of the pose the sim tests the contact at: the rider moved on by its speed along its heading,
+// before a wobble's push sets it clear (after a slow bump wobbles, the after-pose is already pushed
+// apart, and a fast rider closes a metre or more in a tick, so neither snapshot holds the touch).
 // The negative control: the same races do hold moments where the old corridor boxes overlapped
 // a big vehicle while the drawn shapes stood well apart, so the check can see the bug class.
 import { describe, expect, it } from 'vitest';
@@ -21,7 +24,7 @@ import { createHeadlessRace } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import type { EntitySnapshot, SimTrafficTypeDef } from '../../src/sim/api';
+import { SIM_HZ, type EntitySnapshot, type SimTrafficTypeDef } from '../../src/sim/api';
 import { TRAFFIC } from '../../src/sim/traffic';
 import { NO_ROAD_EVENTS } from './batch';
 
@@ -38,6 +41,12 @@ const AIR_M = 0.15;
 
 const L = TRAFFIC.riderLengthM;
 const W = TRAFFIC.riderWidthM;
+
+/** The rider's pose one tick on from `e` by its own speed and heading, before any contact moves it. */
+function movedOn(e: EntitySnapshot): EntitySnapshot {
+  const step = e.speed / SIM_HZ;
+  return { ...e, x: e.x - Math.sin(e.heading) * step, z: e.z - Math.cos(e.heading) * step };
+}
 
 /** The gap between two drawn boxes on the ground (negative: overlapping), by separating axes. */
 function drawnGap(
@@ -98,6 +107,7 @@ describe('traffic contacts happen where the vehicles are drawn (playtest 4)', ()
           const gap = Math.min(
             drawnGap(r[0], L, W, v[0], t.lengthM, t.widthM),
             drawnGap(r[1], L, W, v[1], t.lengthM, t.widthM),
+            drawnGap(movedOn(r[0]), L, W, v[1], t.lengthM, t.widthM),
           );
           contacts++;
           if (t.lengthM >= BIG_M) bigContacts++;
