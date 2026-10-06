@@ -4,7 +4,7 @@
 // after an invented deer-crossing sign, and nowhere else in the Keys. The checks build the real Keys networks
 // from their road files and scatter the real kit with the real model, each rule with a control:
 // - the deer kit loads for the network whose road carries the `key-deer` tag, and for no other Keys network but
-//   Old Town's, which draws its trees and bars from the same kit (`key-oldtown`);
+//   Old Town's and those with open water, which draw their trees, bars and osprey posts from the same kit;
 // - the deer stand on Big Pine Bend only, on both sides, past the sign, off the road, a few to a dozen a race;
 // - with the tag taken off the road, or the model not loaded, or on another Keys network, none stand;
 // - the sign is a board slot on that road, its words an invented deadpan sign in the region file, before them;
@@ -89,7 +89,7 @@ const sign = (dressing: RoadDressing) =>
   (bend(dressing).features ?? []).find((f) => f.kind === 'billboard' && f.item === SIGN);
 
 describe('the Key deer kit', () => {
-  it("loads for the network whose road carries the key-deer tag, and for no other Keys network but Old Town's", () => {
+  it("loads for the network whose road carries the key-deer tag, and otherwise only for Old Town's and open water's", () => {
     const wants: string[] = [];
     for (const id of KEYS_NETWORKS) {
       const { road, dressing } = track(id);
@@ -97,9 +97,10 @@ describe('the Key deer kit', () => {
       const kinds = modelKindsFor({ tropical, tags, palette: new Set(), traffic: [] });
       if (kinds.includes('keysIdentity')) wants.push(id);
       expect(tags.has('key-deer'), id).toBe(id === BAHIA);
-      // The same kit holds Old Town's trees and open bars (Duval, P4-16): a network with Old Town loads it
-      // for them, never for deer.
-      if (kinds.includes('keysIdentity') && id !== BAHIA) expect(tags.has('key-oldtown'), id).toBe(true);
+      // The same kit holds Old Town's trees and open bars (Duval, P4-16) and the osprey's nesting post
+      // (CX6, on the shores of open water): a network with either loads it for them, never for deer.
+      if (kinds.includes('keysIdentity') && id !== BAHIA)
+        expect(tags.has('key-oldtown') || tags.has('water-open'), id).toBe(true);
     }
     print(
       `[examined] the identity kit loads for ${wants.join(', ')} of ${KEYS_NETWORKS.length} Keys networks`,
