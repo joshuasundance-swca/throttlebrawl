@@ -858,6 +858,54 @@ describe('the workflows', () => {
     expect([...jobs(suite).keys()]).toEqual(['static', 'unit', 'sim', 'browser']);
   });
 
+  // The landing invariant and the off switch also hang on these call sites: with `full: false`, or
+  // with no heads to assemble, a gate or a train would go green on less than the whole suite on
+  // exactly the bundle.
+  it('the full path, main, every train and its control run the whole suite, on what the plan assembled', () => {
+    expect(jobs(ci).get('suite')).toContain(
+      "\n      full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}\n",
+    );
+    const t = jobs(train);
+    const ride = t.get('suite') ?? '';
+    expect(ride).toMatch(/^ {4}needs: plan\n {4}if: needs\.plan\.outputs\.depart == 'true'\n/m);
+    for (const line of [
+      'full: true',
+      'base: ${{ needs.plan.outputs.base }}',
+      'heads: ${{ needs.plan.outputs.heads }}',
+      'tree: ${{ needs.plan.outputs.tree }}',
+    ])
+      expect(ride, line).toContain(`\n      ${line}\n`);
+    const control = t.get('control') ?? '';
+    expect(control).toMatch(
+      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && needs\.plan\.outputs\.single != '' && needs\.suite\.result == 'failure'\n/m,
+    );
+    expect(control).toContain('\n      full: true\n');
+    expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
+    expect(control).not.toMatch(/^ {6}heads:/m);
+    // Every suite job checks out base, then rebuilds the planned tree before anything installs.
+    for (const [id, block] of jobs(suite)) {
+      const steps = block.split(/\n {6}- /);
+      expect(steps[1], id).toMatch(
+        /^uses: actions\/checkout@\S+\n {8}with:\n {10}ref: \$\{\{ inputs\.base \}\}\n/,
+      );
+      expect(steps[2], id).toMatch(/^name: Assemble the train's tree\n {8}if: inputs\.heads != ''\n/);
+      expect(steps[2], id).toContain(
+        'run: node scripts/train.mjs assemble --base "$BASE" --heads "$HEADS" --tree "$TREE"',
+      );
+    }
+  });
+
+  it("the report runs after every departed train, red or green, and reads the suite's own result", () => {
+    const report = jobs(train).get('report') ?? '';
+    expect(report).toMatch(
+      /^ {4}needs: \[plan, suite, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
+    );
+    expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
+    expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
+    expect(report).toContain('\n          TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}\n');
+    expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
+  });
+
   it('the quick check is static (with the build and size budget) plus the unit slices, at most 3 jobs', () => {
     const j = jobs(suite);
     for (const id of ['sim', 'browser']) expect(j.get(id), id).toMatch(/^ {4}if: inputs\.full$/m);
