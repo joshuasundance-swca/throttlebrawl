@@ -63,6 +63,8 @@ export const SCAFFOLD_M = 1.6;
 const PAINT_OFF = [0.04, 0.08, 0.12] as const;
 /** Buildings reach this far below the road, so a slope never shows a gap under them, m. */
 const SINK_M = 1.5;
+/** The walls stop this far short of a landmark's footprint along the alley, m. */
+const LANDMARK_GAP_M = 1;
 /** A building's depth back from its front, m. */
 const DEPTH_M: Readonly<Record<MissionKind, number>> = { shopfronts: 14, murals: 12, mascot: 14 };
 /** Building widths along the front, m: [least, spread]. */
@@ -787,9 +789,21 @@ function wallLines(road: RoadNetwork, dressing: RoadDressing | undefined): WallL
     const dress = dressing?.[e.id];
     const tags = (dress?.tags ?? e.tags) as readonly { s0: number; s1: number; side?: string; tag: string }[];
     if (!tags?.some((t) => KIND_OF[t.tag])) continue;
+    // A landmark beside the alley (playtest 4, P4-19, M3: the mission chapel) stands in the wall's place: the
+    // walls on its side stop short of its footprint, a few metres each way.
+    const landmarks = (dress?.features ?? e.features).filter((f) => f.kind === 'landmark');
     for (const side of [-1, 1] as const) {
       const name = side < 0 ? 'left' : 'right';
       const kindAt = (s: number): MissionKind | null => {
+        if (
+          landmarks.some(
+            (f) =>
+              Math.min(f.d0, f.d1) * side > 0 &&
+              s > Math.min(f.s0, f.s1) - LANDMARK_GAP_M &&
+              s < Math.max(f.s0, f.s1) + LANDMARK_GAP_M,
+          )
+        )
+          return null;
         let best: MissionKind | null = null;
         for (const t of tags) {
           if (s < t.s0 || s > t.s1 || (t.side !== undefined && t.side !== 'both' && t.side !== name))

@@ -627,12 +627,19 @@ const HIGHER_LAND_M = 40;
 const LAND_STRIP_M = 24;
 const SKIRT_RUN_PER_M = 2.2;
 const VERGE_M = 0.6;
+/** A terrace's plot along the road, m (scenery.ts: row houses 7 m apart). */
+const APARTMENT_PLOT_M = 7;
 /**
  * The scenery's own footprints, as discs back from each anchor: a row house is two (front and back
- * of its 6.4 m by 11.5 m body), so a prop fits in a terrace's gap but never in a house.
+ * of its 6.4 m by 11.5 m body), so a prop fits in a terrace's gap but never in a house. An apartment
+ * stands in a row house's plots (scenery.ts `upgradeTerrace`), so each of its plots takes a house's discs.
  */
 const SPOT_REACH: Partial<Record<ScenerySpot['kind'], readonly { r: number; back: number }[]>> = {
   house: [
+    { r: 3.3, back: 2.8 },
+    { r: 3.3, back: 8.4 },
+  ],
+  apartment: [
     { r: 3.3, back: 2.8 },
     { r: 3.3, back: 8.4 },
   ],
@@ -829,10 +836,17 @@ export class RoadsideScatter {
       const e = road.edges[sp.edge];
       if (!e) continue;
       const tree = sp.kind === 'conifer' || sp.kind === 'palm' || sp.kind === 'mangrove';
-      for (const disc of SPOT_REACH[sp.kind] ?? []) {
-        const c = disc.back > 0 ? road.toWorld(e.index, sp.s, sp.d + Math.sign(sp.d) * disc.back, 0) : sp.p;
-        this.taken.add(c.x, c.z, disc.r * sp.size, tree);
-      }
+      // An apartment of two plots is centred between them: its discs stand at each plot's middle.
+      const plots =
+        sp.kind === 'apartment' && sp.plots === 2 ? [-APARTMENT_PLOT_M / 2, APARTMENT_PLOT_M / 2] : [0];
+      for (const u of plots)
+        for (const disc of SPOT_REACH[sp.kind] ?? []) {
+          const c =
+            disc.back > 0 || u !== 0
+              ? road.toWorld(e.index, sp.s + u, sp.d + Math.sign(sp.d) * disc.back, 0)
+              : sp.p;
+          this.taken.add(c.x, c.z, disc.r * sp.size, tree);
+        }
     }
     // The staged scenes' ground (run W-T, scenes/): nothing of the kit stands in a scene, ferns included.
     for (const q of input.reserved ?? []) this.taken.add(q.x, q.z, q.r, false);

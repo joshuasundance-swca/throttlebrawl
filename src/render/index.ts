@@ -558,7 +558,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // Playtest 4 (P4-16): the Old Town's shop names, once the street fronts are placed.
       ...(roadside?.ready ? roadside.surfaces() : []),
     ];
-    if (placed.length === 0) return;
+    // Playtest 4 (P4-19, R3): the shop signs of the corner buildings the scatter stood in the terraces.
+    const apartments = models.sfApartments;
+    const corners =
+      !!roadScene &&
+      !!apartments?.surfaces &&
+      roadScene.spots.some(
+        (s) => s.kind === 'apartment' && (apartments.surfaces?.[s.variant]?.length ?? 0) > 0,
+      );
+    if (placed.length === 0 && !corners) return;
     const m = textSurfacesModule;
     if (!m) {
       void import('./text-surfaces').then((loaded) => {
@@ -567,6 +575,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       });
       return;
     }
+    if (corners && roadScene) placed.push(...m.apartmentSurfaces(roadScene.spots, apartments, sceneSeed));
     textSurfaces = new m.TextSurfaceLayer(look, placed, {
       catalog: roadCatalog,
       hidden: hiddenRefs,
@@ -772,6 +781,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildBlocks();
     buildMission();
     buildParty();
+    buildTextSurfaces();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {

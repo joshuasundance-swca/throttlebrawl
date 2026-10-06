@@ -3,7 +3,7 @@
 // M3, G2, T1, D6, S5, H1, H2 and I3, as the CX6 brief sets them: San Francisco's apartment and corner
 // buildings, the flatiron and the mission church, the headlands' battery and scrub, Twin Peaks' chert,
 // a docked cruise ship, an osprey post, Chuckanut's sandstone and Lake Samish's shore. Models only:
-// no route places them yet.
+// the routes place them in later runs (the apartments, the flatiron and the mission chapel in C1).
 import { readFileSync, statSync } from 'node:fs';
 import { Box3, Vector3, type Mesh, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';

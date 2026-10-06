@@ -15,7 +15,7 @@ import type { RoadNetwork } from '../../src/road';
 import { modelKindsFor } from '../../src/render/models';
 import { buildRoadScene, networkTags } from '../../src/render/road-mesh';
 import { KITS, scatterRoadside, type RoadsideItem, type RoadsideKit } from '../../src/render/roadside';
-import { DEPTH_M, HALF_ALONG_M, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
+import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 import {
   against,
   DownIndex,
@@ -36,6 +36,7 @@ const LAND = new Set<ScenerySpot['kind']>([
   'pole',
   'conifer',
   'house',
+  'apartment',
   'sawmill',
   // playtest 4 (P4-19, C2): the headlands' battery (a house-like footprint), brush and chert
   'battery',
@@ -53,8 +54,8 @@ export const FLOAT_M = 0.35;
 export function footprint(s: ScenerySpot, road: RoadNetwork): { x: number; z: number }[] {
   const pts = [{ x: s.p.x, z: s.p.z }];
   const depth = DEPTH_M[s.kind];
-  const along = HALF_ALONG_M[s.kind];
-  if (depth !== undefined && along !== undefined) {
+  const along = halfAlongOf(s);
+  if (depth !== undefined && along > 0) {
     const out = Math.sign(s.d);
     for (const u of [-along + 0.3, along - 0.3])
       for (const back of [0.3, depth - 0.3]) {

@@ -2,7 +2,8 @@
 // roads in question"), baked as the game bakes them: each kit is found through the asset manifest the
 // build ships, and each new node resolves the way the landmark layer looks it up (`<node>`, else
 // `<node>_lod0`, with `<node>_lod1` past a feature's `farM`; landmarks.ts `single()`). The cruise ship is placed on Duval's finish
-// road (cruise-ship.test.ts); the others wait for a later run, so this proves only that the shipped kits answer for them.
+// road (cruise-ship.test.ts), the flatiron on Kearny and the mission chapel on the Mission's last alley (sf-city-kit.test.ts);
+// this proves only that the shipped kits answer for them, with no words of their own.
 import { describe, expect, it } from 'vitest';
 import { assetIndex, createPackLibrary } from '../content';
 import { readGlb } from './glb';

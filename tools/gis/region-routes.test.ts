@@ -26,7 +26,7 @@ import {
 import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene, ROAD_CHUNK_M, type RoadDressing } from '../../src/render/road-mesh';
-import { DEPTH_M, HALF_ALONG_M, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
+import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 
 // The real roads landed in the region packs as routes (the maintainer, 2026-10-01: "Yes, add as
 // routes"; the landing steps of the gis head-start run): each region pack carries base's ODbL
@@ -151,7 +151,17 @@ const look = createFlatLook();
 /** The fixed test seeds and the seeds the skeptics named (scenery-sweep.test.ts's NAMED). */
 const SEEDS = [1, 2, 3, 7, 11, 2447605036, 3230531489, 4052564335, 1783423519, 2901547813];
 // Every land kind, the region scenery included (conifers, row houses, the sawmill: #234).
-const LAND = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill', 'coastTree']);
+const LAND = new Set([
+  'palm',
+  'mangrove',
+  'shack',
+  'pole',
+  'conifer',
+  'house',
+  'apartment',
+  'sawmill',
+  'coastTree',
+]);
 const WIDE = new Set(['shack', 'mangrove', 'house', 'sawmill']);
 const RING = 0.6;
 
@@ -311,8 +321,8 @@ function gridLookup(group: Object3D, keep: RegExp): GroundLookup | null {
 function footprint(s: ScenerySpot, road: RoadNetwork): { x: number; z: number }[] {
   const pts = [{ x: s.p.x, z: s.p.z }];
   const depth = DEPTH_M[s.kind];
-  const along = HALF_ALONG_M[s.kind];
-  if (depth !== undefined && along !== undefined) {
+  const along = halfAlongOf(s);
+  if (depth !== undefined && along > 0) {
     // A house or the sawmill: the four corners of its real footprint, back from its front wall, so
     // the whole building stands on the land, not only the ring around its front (run W-P).
     const out = Math.sign(s.d);
