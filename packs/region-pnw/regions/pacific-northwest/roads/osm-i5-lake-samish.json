@@ -71,6 +71,12 @@
       "tag": "bridge"
     },
     {
+      "s0": 5160.173,
+      "s1": 5238.1756,
+      "side": "both",
+      "tag": "interstate"
+    },
+    {
       "s0": 0.0,
       "s1": 5160.173,
       "side": "both",
@@ -81,6 +87,18 @@
       "s1": 5390.1832,
       "side": "both",
       "tag": "forest"
+    },
+    {
+      "s0": 0.0,
+      "s1": 5160.173,
+      "side": "both",
+      "tag": "interstate"
+    },
+    {
+      "s0": 5238.1756,
+      "s1": 5390.1832,
+      "side": "both",
+      "tag": "interstate"
     }
   ],
   "features": [
@@ -89,10 +107,10 @@
       "id": "sign-lake-samish-grade",
       "s0": 400.0,
       "s1": 410.0,
-      "d0": 12.5,
-      "d1": 15.0,
-      "pool": "signs",
-      "params": { "style": "guide" }
+      "d0": 15.5,
+      "d1": 20.5,
+      "params": { "style": "guide" },
+      "item": "i5-seattle-canada"
     },
     {
       "kind": "boostPad",
@@ -112,8 +130,8 @@
       "id": "bb-lake-samish-grade",
       "s0": 2200.0,
       "s1": 2240.0,
-      "d0": -21.0,
-      "d1": -13.0,
+      "d0": -27.0,
+      "d1": -19.0,
       "pool": "billboards"
     },
     {
@@ -134,10 +152,10 @@
       "id": "sign-nulle-road",
       "s0": 4600.0,
       "s1": 4610.0,
-      "d0": 12.5,
-      "d1": 15.0,
-      "pool": "signs",
-      "params": { "style": "guide" }
+      "d0": 15.5,
+      "d1": 20.5,
+      "params": { "style": "guide" },
+      "item": "i5-exit-242"
     }
   ],
   "barriers": [
@@ -145,8 +163,9 @@
       "s0": 5160.173,
       "s1": 5238.1756,
       "side": "both",
-      "kind": "rail",
-      "heightM": 1.0
+      "kind": "wall",
+      "heightM": 0.81,
+      "look": "concrete"
     }
   ],
   "samples": {

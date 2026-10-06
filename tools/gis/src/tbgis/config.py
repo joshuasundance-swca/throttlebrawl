@@ -23,7 +23,7 @@ FeatureKind = Literal[
     "landmark",
 ]
 FEATURE_KINDS: tuple[str, ...] = get_args(FeatureKind)
-BarrierLook = Literal["railing"]
+BarrierLook = Literal["railing", "concrete", "guardrail"]
 BARRIER_LOOKS: tuple[str, ...] = get_args(BarrierLook)
 GapRespawn = Literal["far", "main"]
 GAP_RESPAWNS: tuple[str, ...] = get_args(GapRespawn)

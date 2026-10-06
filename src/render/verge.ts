@@ -12,9 +12,13 @@
 // - a hedge (playtest 3, Lombard's crooked block): a road tagged `gardens` whose band ends in brush
 //   ends in a low clipped hedge instead of fern clumps, in panels that run along the band's edge and
 //   follow it round a hairpin, so nothing stands up or piles inside a bend;
-// - a bridge railing (playtest 3: a barrier with `look: "railing"`, the Golden Gate's): a kerb, posts
-//   and three rails, see-through, in panels along the barrier within RAILING_DRAW_M (the road leaves
-//   such a barrier's solid band out); it stops a tumble body like any wall, because the sim says so;
+// - a barrier look (playtest 3: a barrier with `look: "railing"`, the Golden Gate's; playtest 4, run C5:
+//   `concrete` and `guardrail`, the interstate's; src/render/barrier-looks.ts): its panel (a kerb, posts
+//   and rails; a concrete profile; a W-beam on posts) in copies along the barrier within the look's draw
+//   distance (the road leaves such a barrier's solid band out). A barrier with no look of its own on a
+//   road whose tag names one (`interstate`) gets that. A band that ends in a hard edge, on a side whose
+//   tag names an `edge` look (the interstate's shoulder), draws it along that edge, except where a
+//   branch leaves. It stops a tumble body or a rider like any wall, because the sim says so;
 // - the feel: dust, sand spray, gravel and grass flung up behind a bike on loose ground, a splash at
 //   the water's edge, leaves at the ferns, and boards flying when a fence goes.
 // Presentation only: it reads the road, the snapshot and the events, and may use Math.random and
@@ -29,13 +33,31 @@ import {
   Mesh,
   Quaternion,
   Vector3,
+  type Material,
   type Object3D,
 } from 'three';
 import type { BakedVerge, RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
+import {
+  type BarrierLook,
+  BARRIER_LOOK_BY_TAG,
+  BARRIER_LOOK_STYLES,
+  RAILING_DRAW_M,
+  RAILING_OUT_M,
+  RAILING_PAINT,
+  RAILING_SEG_M,
+  barrierLookAt,
+  tagLook,
+} from './barrier-looks';
 import { mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
 import { SEAWALL_LAND_M, themeAt } from './scenery';
+
+/**
+ * A shoulder's rail panel stands no nearer than this to the line of a ramp (a connector road of a branch,
+ * which crosses the shoulder), m: half a 6 m shortcut lane, half a panel, and some room.
+ */
+export const LOOK_RAMP_CLEAR_M = 6;
 
 type Surface = BakedVerge['surface'];
 type Side = -1 | 1;
@@ -63,20 +85,9 @@ const HEDGE_TURN_RAD = 0.45;
 const HEDGE_MIN_M = 0.25;
 /** The road's own tags that make a brush edge a hedge. */
 const HEDGE_TAG = 'gardens';
-/** One railing panel's length along the road, m. [default] */
-export const RAILING_SEG_M = 2;
-/** A railing panel's own height, m: the barrier's `heightM` scales it. The Golden Gate's is 1.3. */
-const RAILING_H_M = 1.3;
-/**
- * The railing's middle stands this far past the road's outermost lane edge, m: its kerb's inner face
- * (0.17 m in from the middle) is then just past the edge, where the sim stops a rider and a tumbling
- * body (playtest 4 hitbox audit: it stood 0.55 m out, so a rider "hugging" it never reached it).
- */
-export const RAILING_OUT_M = 0.2;
-/** Railings are drawn out to this far from the camera, m. [default] */
-export const RAILING_DRAW_M = 120;
-/** The railing's paint when the region's palette has no `bridgePaint`: International Orange. [default] */
-const RAILING_PAINT = '#c0452f';
+// The railing's numbers (a panel's length, its stand-off from the lane edge, its draw distance) live with
+// its look in barrier-looks.ts; these re-exports are what the railing's tests read.
+export { RAILING_DRAW_M, RAILING_OUT_M, RAILING_SEG_M };
 /** Fences and ferns are drawn out to this far from the camera (the band always), m. [default] */
 export const VERGE_DRAW_M = 150;
 /** Past this fences and ferns draw without their thinnest faces (run W-S), m. [default] */
@@ -163,23 +174,6 @@ function fenceParts(style: FenceStyle, lod: 'near' | 'far' = 'near'): BoxPart[] 
     parts.push({ size: [0.06, 1.15, 0.06], at: [-half + 0.2 + i * 0.4, 0.58, 0], color: green, omit: post });
   }
   return parts;
-}
-
-/** One bridge-railing panel (local x along the road, y up, centred): a kerb, a post and three rails. */
-function railingParts(paint: string): BoxPart[] {
-  const half = RAILING_SEG_M / 2;
-  return [
-    { size: [RAILING_SEG_M, 0.3, 0.34], at: [0, 0.15, 0], color: '#a8a39a', omit: RAIL_OMIT },
-    {
-      size: [0.18, RAILING_H_M, 0.18],
-      at: [-half + 0.09, RAILING_H_M / 2, 0],
-      color: paint,
-      omit: POST_OMIT.near,
-    },
-    { size: [RAILING_SEG_M, 0.16, 0.22], at: [0, RAILING_H_M - 0.08, 0], color: paint, omit: RAIL_OMIT },
-    { size: [RAILING_SEG_M, 0.08, 0.12], at: [0, 0.92, 0], color: paint, omit: RAIL_OMIT },
-    { size: [RAILING_SEG_M, 0.08, 0.12], at: [0, 0.62, 0], color: paint, omit: RAIL_OMIT },
-  ];
 }
 
 /** A clump of ferns: fronds fanned out from the middle (the sim's `brush` edge). */
@@ -292,11 +286,17 @@ interface FencePanel {
   broken: boolean;
 }
 
-/** One railing panel as built: its world midpoint and pose. */
-interface RailingPanel {
+/** One barrier-look panel as built: its world midpoint and pose. */
+interface LookPanel {
   x: number;
   z: number;
   m: Matrix4;
+}
+
+/** The panels of one barrier look and the instanced mesh that draws them (built only for a look in use). */
+interface LookSet {
+  panels: LookPanel[];
+  mesh: InstancedMesh;
 }
 
 /** A fern clump as built. */
@@ -329,6 +329,8 @@ export interface VergeCounts {
   /** Bridge-railing panels built, and drawn in the last refill (inside RAILING_DRAW_M). */
   railingPanels: number;
   nearRailing: number;
+  /** Panels built and drawn in the last refill, by barrier look (a look nothing uses is absent). */
+  looks: Readonly<Partial<Record<BarrierLook, { panels: number; near: number }>>>;
   /** Hedge panels built, and drawn in the last refill (inside VERGE_DRAW_M). */
   hedgePanels: number;
   nearHedge: number;
@@ -339,8 +341,8 @@ const NEAR_PANELS = 480;
 const NEAR_CLUMPS = 420;
 /** The most hedge panels drawn at once: both sides of the road, inside VERGE_DRAW_M. */
 const NEAR_HEDGE = 420;
-/** The most railing panels drawn at once: both sides of a straight bridge, RAILING_DRAW_M ahead. */
-const NEAR_RAILING = 400;
+/** The most panels of one barrier look drawn at once: both sides of a straight road, the look's draw distance ahead. */
+const NEAR_LOOK = 400;
 /** The near sets refill when the camera has moved this far, m. */
 const REFILL_M = 12;
 /**
@@ -475,8 +477,10 @@ export class VergeLayer {
   private readonly panelsByEdge = new Map<number, FencePanel[]>();
   private readonly clumps: Clump[] = [];
   private readonly hedges: Clump[] = [];
-  private readonly railing: RailingPanel[] = [];
-  private readonly railingMesh: InstancedMesh;
+  /** The barrier looks in use on this road, each with its panels and mesh; built after the constructor. */
+  private readonly lookSets = new Map<BarrierLook, LookSet>();
+  private readonly railingPaint: string;
+  private readonly propMat: Material;
   /** The fences and ferns near the camera, and (past VERGE_LOD_M) their lighter far forms. */
   private readonly fenceMesh: InstancedMesh;
   private readonly fenceFar: InstancedMesh;
@@ -561,18 +565,16 @@ export class VergeLayer {
     this.hedgeMesh.name = 'verge-hedge';
     this.hedgeFar = new InstancedMesh(hedgeFarGeo, propMat, NEAR_HEDGE);
     this.hedgeFar.name = 'verge-hedge-far';
-    const railingGeo = mergeBoxes(railingParts(opts.railingColour ?? RAILING_PAINT));
-    this.geometries.push(railingGeo);
-    this.railingMesh = new InstancedMesh(railingGeo, propMat, NEAR_RAILING);
-    this.railingMesh.name = 'verge-railing';
+    this.railingPaint = opts.railingColour ?? RAILING_PAINT;
+    this.propMat = propMat;
     for (const m of this.instanced()) {
       m.count = 0;
       m.visible = false;
       // Only what is near the camera is in them, so they are never culled whole.
       m.frustumCulled = false;
     }
-    // A road with no railing look, no hedge or no leaf burst has none of those meshes in the scene.
-    const later = new Set<Object3D>([this.railingMesh, this.hedgeMesh, this.hedgeFar]);
+    // A road with no barrier look, no hedge or no leaf burst has none of those meshes in the scene.
+    const later = new Set<Object3D>([this.hedgeMesh, this.hedgeFar]);
     this.group.add(this.dust.mesh, this.boards.mesh, ...this.instanced().filter((m) => !later.has(m)));
 
     // The band and the shallows share one strip set (one mesh per chunk).
@@ -655,9 +657,9 @@ export class VergeLayer {
         this.buildHedge(e, side);
       }
     }
-    this.buildRailing();
-    // A road with no railing look has no railing mesh in the scene at all.
-    if (this.railing.length > 0) this.group.add(this.railingMesh);
+    this.buildLooks();
+    // A road with no barrier look has no look mesh in the scene at all.
+    for (const set of this.lookSets.values()) this.group.add(set.mesh);
     if (this.hedges.length > 0) this.group.add(this.hedgeMesh, this.hedgeFar);
     for (const key of strips.chunks.keys()) {
       const g = strips.build(key);
@@ -729,41 +731,125 @@ export class VergeLayer {
     }
   }
 
+  /** The set of a barrier look, made on its first panel: its geometry and its instanced mesh. */
+  private lookSet(look: BarrierLook): LookSet {
+    let set = this.lookSets.get(look);
+    if (set) return set;
+    const geo = mergeBoxes(BARRIER_LOOK_STYLES[look].parts(this.railingPaint));
+    this.geometries.push(geo);
+    const mesh = new InstancedMesh(geo, this.propMat, NEAR_LOOK);
+    mesh.name = `verge-${look}`;
+    mesh.count = 0;
+    mesh.visible = false;
+    mesh.frustumCulled = false;
+    set = { panels: [], mesh };
+    this.lookSets.set(look, set);
+    return set;
+  }
+
   /**
-   * The bridge railing: every barrier with `look: "railing"` (the road's own record of it, on the
-   * edge) in panels of RAILING_SEG_M along its side, at the road's outer lane edge, tilted with the
-   * deck's grade.
+   * The barrier looks (barrier-looks.ts), in panels along their side. Two sources:
+   * - every barrier of the road that has a look, its own or its road tag's, at the road's outer lane
+   *   edge, tilted with the deck's grade (the railing is this, as it always was);
+   * - every stretch whose verge band ends in a hard edge, on a side whose tag names an `edge` look
+   *   (the interstate's shoulder ends in a guard rail), at the band's outer edge, left out where a
+   *   branch's ramp crosses it (LOOK_RAMP_CLEAR_M), so a ramp never runs through a rail.
    */
-  private buildRailing(): void {
+  private buildLooks(): void {
     const up = new Vector3(0, 1, 0);
     const along = new Vector3(0, 0, 1);
     const yaw = new Quaternion();
     const pitch = new Quaternion();
+    // The ramps: connector roads that name no edge look (a branch's `in` and `out`), which cross a shoulder.
+    const ramps = this.road.edges.filter(
+      (e) => e.isConnector && !e.tags.some((t) => BARRIER_LOOK_BY_TAG[t.tag]?.edge !== undefined),
+    );
+    const nearRamp = (x: number, z: number): boolean =>
+      ramps.some((r) => {
+        for (let i = 0; i < r.count; i++) {
+          if (Math.hypot((r.x[i] ?? 0) - x, (r.z[i] ?? 0) - z) < LOOK_RAMP_CLEAR_M) return true;
+        }
+        return false;
+      });
+    /**
+     * One panel from s0 to s1, its inner face at d0 then d1 along the road, as the look's own copy;
+     * `keepOffRamps` leaves it out where a ramp crosses (the shoulder's rail, not a bridge's parapet).
+     */
+    const place = (
+      e: RoadNetwork['edges'][number],
+      look: BarrierLook,
+      s0: number,
+      s1: number,
+      d0: number,
+      d1: number,
+      heightM: number,
+      keepOffRamps = false,
+    ) => {
+      const style = BARRIER_LOOK_STYLES[look];
+      const a = this.road.toWorld(e.index, s0, d0, 0);
+      const c = this.road.toWorld(e.index, s1, d1, 0);
+      const flat = Math.hypot(c.x - a.x, c.z - a.z);
+      if (flat < 1e-3) return;
+      if (keepOffRamps && nearRamp((a.x + c.x) / 2, (a.z + c.z) / 2)) return;
+      yaw.setFromAxisAngle(up, Math.atan2(-(c.z - a.z), c.x - a.x));
+      pitch.setFromAxisAngle(along, Math.atan2(c.y - a.y, flat));
+      const x = (a.x + c.x) / 2;
+      const z = (a.z + c.z) / 2;
+      const m = new Matrix4().compose(
+        new Vector3(x, (a.y + c.y) / 2, z),
+        yaw.clone().multiply(pitch),
+        new Vector3(flat / style.segM, heightM / style.heightM, 1),
+      );
+      this.lookSet(look).panels.push({ x, z, m });
+    };
     for (const e of this.road.edges) {
-      for (const b of e.barriers) {
-        if (b.look !== 'railing') continue;
-        const s0 = Math.max(0, b.s0);
-        const s1 = Math.min(e.length, b.s1);
-        for (const side of [-1, 1] as const) {
-          if (b.side !== 'both' && b.side !== (side < 0 ? 'left' : 'right')) continue;
-          const d = side < 0 ? e.dMin - RAILING_OUT_M : e.dMax + RAILING_OUT_M;
-          for (let s = s0; s < s1 - 1e-6; s += RAILING_SEG_M) {
-            const end = Math.min(s1, s + RAILING_SEG_M);
-            const a = this.road.toWorld(e.index, s, d, 0);
-            const c = this.road.toWorld(e.index, end, d, 0);
-            const flat = Math.hypot(c.x - a.x, c.z - a.z);
-            if (flat < 1e-3) continue;
-            yaw.setFromAxisAngle(up, Math.atan2(-(c.z - a.z), c.x - a.x));
-            pitch.setFromAxisAngle(along, Math.atan2(c.y - a.y, flat));
-            const x = (a.x + c.x) / 2;
-            const z = (a.z + c.z) / 2;
-            const m = new Matrix4().compose(
-              new Vector3(x, (a.y + c.y) / 2, z),
-              yaw.clone().multiply(pitch),
-              new Vector3(flat / RAILING_SEG_M, b.heightM / RAILING_H_M, 1),
-            );
-            this.railing.push({ x, z, m });
+      for (const side of [-1, 1] as const) {
+        const name = side < 0 ? 'left' : 'right';
+        const lane = side < 0 ? e.dMin : e.dMax;
+        for (const b of e.barriers) {
+          if (b.side !== 'both' && b.side !== name) continue;
+          const s0 = Math.max(0, b.s0);
+          const s1 = Math.min(e.length, b.s1);
+          for (let s = s0; s < s1 - 1e-6;) {
+            const look = barrierLookAt(b, e.tags, name, s);
+            if (!look) {
+              s += RAILING_SEG_M;
+              continue;
+            }
+            const style = BARRIER_LOOK_STYLES[look];
+            const d = lane + side * style.outM;
+            place(e, look, s, Math.min(s1, s + style.segM), d, d, b.heightM);
+            s += style.segM;
           }
+        }
+        // The shoulder's wall: only a road with a tag that names an edge look pays for the walk.
+        const edgeTagged = e.tags.some((t) => tagLook([t], name, t.s0, 'edge') !== undefined);
+        if (!edgeTagged) continue;
+        for (let s = 0; s < e.length - 1e-6;) {
+          const mid = s + RAILING_SEG_M / 2;
+          const look = tagLook(e.tags, name, mid, 'edge');
+          const style = look ? BARRIER_LOOK_STYLES[look] : undefined;
+          const end = Math.min(e.length, s + (style?.segM ?? RAILING_SEG_M));
+          const v = this.road.vergeAt(e.index, mid, name);
+          const walled = e.barriers.some(
+            (b) => s < b.s1 && end > b.s0 && (b.side === 'both' || b.side === name),
+          );
+          if (look && style && v.widthM >= MIN_BAND_M && v.edge === 'hard' && !walled) {
+            const a = this.road.vergeAt(e.index, s, name);
+            const c = this.road.vergeAt(e.index, end, name);
+            // The panel runs along the band's outer edge (it narrows into a bridge), its inner face on it.
+            place(
+              e,
+              look,
+              s,
+              end,
+              a.dOuter + side * style.outM,
+              c.dOuter + side * style.outM,
+              style.heightM,
+              true,
+            );
+          }
+          s = end;
         }
       }
     }
@@ -853,18 +939,20 @@ export class VergeLayer {
     ]);
     fill(this.clumps, NEAR_CLUMPS, (c) => c, [this.brushMesh, this.brushFar]);
     fill(this.hedges, NEAR_HEDGE, (c) => c, [this.hedgeMesh, this.hedgeFar]);
-    let nRailing = 0;
-    for (const p of this.railing) {
-      if (nRailing >= NEAR_RAILING) break;
-      const dx = p.x - cameraX;
-      const dz = p.z - cameraZ;
-      if (dx * dx + dz * dz > RAILING_DRAW_M * RAILING_DRAW_M || dx * fx + dz * fz < -VERGE_BEHIND_M)
-        continue;
-      this.railingMesh.setMatrixAt(nRailing++, p.m);
+    for (const [look, set] of this.lookSets) {
+      const drawM = BARRIER_LOOK_STYLES[look].drawM;
+      let n = 0;
+      for (const p of set.panels) {
+        if (n >= NEAR_LOOK) break;
+        const dx = p.x - cameraX;
+        const dz = p.z - cameraZ;
+        if (dx * dx + dz * dz > drawM * drawM || dx * fx + dz * fz < -VERGE_BEHIND_M) continue;
+        set.mesh.setMatrixAt(n++, p.m);
+      }
+      set.mesh.count = n;
+      set.mesh.visible = n > 0;
+      set.mesh.instanceMatrix.needsUpdate = true;
     }
-    this.railingMesh.count = nRailing;
-    this.railingMesh.visible = nRailing > 0;
-    this.railingMesh.instanceMatrix.needsUpdate = true;
     this.filledX = cameraX;
     this.filledZ = cameraZ;
     this.filledFx = fx;
@@ -995,14 +1083,22 @@ export class VergeLayer {
       boards: this.boards.count,
       bursts: { ...this.bursts },
       fenceStyle: this.fenceStyle,
-      railingPanels: this.railing.length,
-      nearRailing: this.railingMesh.count,
+      railingPanels: this.lookSets.get('railing')?.panels.length ?? 0,
+      nearRailing: this.lookSets.get('railing')?.mesh.count ?? 0,
+      looks: Object.fromEntries(
+        [...this.lookSets].map(([look, set]) => [look, { panels: set.panels.length, near: set.mesh.count }]),
+      ),
       hedgePanels: this.hedges.length,
       nearHedge: this.hedgeMesh.count + this.hedgeFar.count,
     };
   }
 
-  /** The instanced sets: near and far fences, ferns and hedges, and the bridge railing. */
+  /** Where each panel of a barrier look stands (world x and z), for the tests that walk a whole road. */
+  lookPanelPoints(look: BarrierLook): readonly { x: number; z: number }[] {
+    return this.lookSets.get(look)?.panels ?? [];
+  }
+
+  /** The instanced sets: near and far fences, ferns and hedges, and the barrier looks in use. */
   private instanced(): InstancedMesh[] {
     return [
       this.fenceMesh,
@@ -1011,7 +1107,7 @@ export class VergeLayer {
       this.brushFar,
       this.hedgeMesh,
       this.hedgeFar,
-      this.railingMesh,
+      ...[...this.lookSets.values()].map((s) => s.mesh),
     ];
   }
 

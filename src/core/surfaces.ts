@@ -38,9 +38,11 @@ export type VergeEdge = (typeof VERGE_EDGES)[number];
 /**
  * How a road file's barrier draws (its optional `look`; playtest 3, "Golden Gate"): render only,
  * the barrier's `kind` still decides what it stops. `railing`: a bridge railing, which on a `wall`
- * looks open but stops tumble bodies like any wall.
+ * looks open but stops tumble bodies like any wall. Playtest 4 (run C5, the I-5 interstate): `concrete`
+ * is a concrete barrier (the "New Jersey" profile, 0.81 m) and `guardrail` a W-beam guard rail; a road
+ * tagged `interstate` brings both by default (src/render/barrier-looks.ts, where every look is a row).
  */
-export const BARRIER_LOOKS = ['railing'] as const;
+export const BARRIER_LOOKS = ['railing', 'concrete', 'guardrail'] as const;
 export type BarrierLook = (typeof BARRIER_LOOKS)[number];
 
 /** What divides the two directions of a road with a median: paint, a kerbed island, grass or a barrier. */
