@@ -744,6 +744,19 @@ def test_mileposts_stand_a_mile_apart_with_the_numbers_falling() -> None:
     assert lint_network(nb.network, nb.roads, nb.routes) == []
 
 
+def test_a_milepost_can_say_its_scale_and_says_nothing_at_one() -> None:
+    # Run B's live check: the Seven Mile's boards are drawn twice the model's size to read from the chase cam.
+    big = posts_of(bake_network(mile_config(scale=2.0), OSM, NET_WAYS, flat, "2026-10-04"))
+    assert big
+    assert all(list(f["params"]) == ["model", "yawDeg", "scale", "number"] for _, f in big)
+    assert all(f["params"]["scale"] == 2.0 for _, f in big)
+    plain = posts_of(bake_network(mile_config(), OSM, NET_WAYS, flat, "2026-10-04"))
+    assert plain
+    assert all("scale" not in f["params"] for _, f in plain)
+    with pytest.raises(ValidationError):
+        mile_config(scale=5)
+
+
 def test_a_milepost_stands_on_its_side_of_the_road_and_the_numbers_can_rise() -> None:
     right = posts_of(bake_network(mile_config(offsetM=5.85), OSM, NET_WAYS, flat, "2026-10-04"))
     for _, f in right:

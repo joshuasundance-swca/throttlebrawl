@@ -625,14 +625,27 @@ export const KEYS_KIT: RoadsideKit = {
       tier: 0,
     }),
     // Playtest 4 (P4-19, B5; the identity sheets' B2): Big Pine's Key deer, CX5's buck and doe (models.ts
-    // `keysIdentity`, variant 0 the buck and 1 the doe, mostly does), grazing the verges of the road tagged
-    // `key-deer`, past the sign that warns of them (`fromS`), each facing its own way. Last in the list, so
-    // adding it moves no other rule's seeded placements.
-    rule('key-deer', [0, 1, 1], KEYS_LAND, 38, 0.65, [1.4, 3.5], 0.9, {
+    // `keysIdentity`, variant 0 the buck and 1 the doe), on the verges of the road tagged `key-deer`, past the
+    // sign that warns of them (`fromS`). These are the last two rules, so adding them moves no other rule's
+    // seeded placements. Run B's live check (punch item 2: "no Key deer was visible on Big Pine", three frames
+    // at 40 to 87 mph): a doe is 0.7 m, seven pixels tall from the chase camera, so they are drawn half as big
+    // again, 1.5 to 1.7 times (a doe 1.1 m, a buck with antlers 2 m; the sign's joke is "hip high"), and they
+    // stand where the ridable verge ends, 0.6 to 1.4 m past it. [default]
+    // The herd the camera meets: a run of 3 to 5 deer along the verge, 3.4 m apart (one kind to a run, each
+    // turned its own way), a candidate every 130 m of each side, first of the two so no grazer stands in its way.
+    rule('key-deer-herd', [0, 1, 1, 1], KEYS_LAND, 150, 1, [3, 0.8], 0.5, {
       model: 'keysIdentity',
       district: ['key-deer'],
       fromS: 40,
-      size: [0.95, 1.1],
+      size: [1.5, 1.7],
+      run: [4, 6, 3.4],
+    }),
+    // And a lone grazer now and then between the herds.
+    rule('key-deer', [0, 1, 1], KEYS_LAND, 70, 0.6, [3, 0.8], 0.6, {
+      model: 'keysIdentity',
+      district: ['key-deer'],
+      fromS: 40,
+      size: [1.5, 1.7],
     }),
   ],
 };

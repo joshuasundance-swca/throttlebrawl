@@ -67,10 +67,17 @@ const HIGHWAY: SurfaceStyle = { bg: '#0f5a3a', fg: '#f6f6ee', glow: null };
 const CHALK: SurfaceStyle = { bg: '#2a2f2d', fg: '#f2e9d2', glow: null };
 /** Gold on dark green, a gate's plaque (the Dragon Gate's, playtest 4, P4-19). */
 const GATE_PLAQUE: SurfaceStyle = { bg: '#173f33', fg: '#ecd079', glow: null };
+/**
+ * White on the Keys' mile-marker green (playtest 4, P4-19, run B's live check: the posts' boards painted in the
+ * dark chalk read as a dark stub). The green is the model's own `sign_face` (#276548), lifted a little so the board
+ * keeps its colour at 36 m against the sea and the sky. [default]
+ */
+const MILE_MARKER: SurfaceStyle = { bg: '#2d7d56', fg: '#ffffff', glow: null };
 const STYLES: Readonly<Record<string, SurfaceStyle>> = {
   pdx_roof_sign_words: NEON,
   toll_gantry_sign: HIGHWAY,
   sf_dragon_gate_plaque: GATE_PLAQUE,
+  keys_mile_marker_face: MILE_MARKER,
 };
 
 /**
