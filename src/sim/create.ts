@@ -14,6 +14,7 @@ import {
   riderState,
   ridersSystem,
   RIDERS_TUNING,
+  floorOf,
   touchdownOf,
   trickOf,
   wheelieOf,
@@ -32,7 +33,7 @@ import type {
   TumbleBodySnapshot,
   TumbleSnapshot,
 } from './types';
-import { addMover, createWorld, orderSystems, stepWorld, worldHash, type World } from './world';
+import { addMover, createWorld, orderSystems, stepWorld, worldHash, type Mover, type World } from './world';
 
 /**
  * Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. The difficulty
@@ -66,6 +67,12 @@ const SYSTEMS = orderSystems([
   raceSystem,
   modifiersSystem,
 ]);
+
+/** `floorY` for a rider in the air (sim/riders `floorOf`); nothing for anyone else (the field is absent). */
+function floorField(world: World, config: SimConfig, m: Mover): { floorY?: number } {
+  const y = floorOf(world, config, m);
+  return y === null ? {} : { floorY: y };
+}
 
 function snapshotOf(world: World, config: SimConfig): SimSnapshot {
   const riders = riderState(world);
@@ -153,6 +160,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       trick: m.kind === 'rider' && m.mode === 'Airborne' ? trickOf(riders.trick[m.id]) : null,
       // Air that pays (the pitch deck's #13): where a player in the air will touch down.
       touchdown: touchdownOf(world, config, m),
+      ...floorField(world, config, m),
       signature: m.kind === 'rider' ? signatureView(world, m.id) : null,
       // W-Q contracts: the ground under a rider, its heading sign on the route, and its branch.
       ground: m.kind === 'rider' ? groundUnder(road, m.pos.edge, m.pos.s, m.pos.d, m.h) : null,
