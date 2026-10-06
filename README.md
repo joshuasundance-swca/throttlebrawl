@@ -5,9 +5,13 @@ speed, weave through traffic coming both ways, and try not to go down anywhere n
 built for phones first, with a keyboard that is just as good. `throttlebrawl` is a codename; the
 real name comes later.
 
-It is a work in progress, and it is playable: you can race a field of rivals on a road with traffic,
-fight from the saddle, and play a career, on the page below. What is built and what is planned is in
-the [roadmap](docs/roadmap.md).
+**Where it stands.** It is a work in progress, it has not been launched yet, and it is playable now, on
+the page below. You can race a field of rivals on roads with traffic coming both ways (the Florida Keys,
+the Pacific Northwest and San Francisco), fight from the saddle with punches and kicks, and play a
+career: earn cash, buy better bikes, and make rivals who hold a grudge. One maintainer plays it on
+a phone and steers, and AI coding agents write most of the code, so expect rough edges: some places and
+the music are still being built out. What is built and what is planned is in the
+[roadmap](docs/roadmap.md), and the bar for a public launch is in the [product spec](docs/product-spec.md).
 
 ## Play
 
@@ -37,7 +41,8 @@ and `npm run phone`.
 - [Architecture](docs/architecture.md): the module map, the simulation and its determinism rules.
 - [Engineering](docs/engineering.md): the gate, CI, deploys and how parallel agents work.
 - [Content packs](docs/content-packs.md) and the [tone guide](docs/tone-guide.md).
-- Want to change something? Read [CONTRIBUTING.md](CONTRIBUTING.md): how a pull request gets checked and merged.
+- Want to change something? Read [CONTRIBUTING.md](CONTRIBUTING.md): where to start, and how a pull
+  request gets checked and merged.
 - AI coding agents follow [AGENTS.md](AGENTS.md).
 - What changed, in plain words: [changes/](changes/).
 
