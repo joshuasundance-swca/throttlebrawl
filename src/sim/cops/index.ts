@@ -1007,6 +1007,9 @@ function trafficSeen(world: World, config: SimConfig, cop: Mover): Obstacle[] {
  * - with no clear side he follows it, or (an oncoming one) gets out of its way on his own side,
  *   behind whatever is there;
  * - last, he never steers into a vehicle alongside.
+ * The solid street furniture counts as traffic that stands still (sim/ai/sense `furnitureSeen`; the live
+ * check of #619), except on the way across to a line; on a street lined with it he also keeps to the
+ * speed that holds its bends (`bendSpeed`), and off the road among it to a crawl (`offRoadAmongFixed`).
  * `dodging` asks for a brisker swerve.
  */
 function trafficGuard(
