@@ -533,7 +533,8 @@ ${REDUCE_MOTION_CSS}
    (placeCards), never as a layer over it (polish batch D's mustFix 1: the did-not-load card, a top-centre
    layer, hid the career's Map and Garage tabs and, at 568x320, the title and the region buttons). Each
    takes the touches on itself, so a tap on its words never lands on what lies behind. */
-#ui .transient-card { pointer-events: auto; margin-bottom: 6px; }
+#ui .transient-card { pointer-events: auto; }
+#ui #reload-offer, #ui #load-retry, #ui #ui-notice { margin-bottom: 6px; }
 #ui #load-retry, #ui #ui-notice { flex-shrink: 0; width: max-content; max-width: min(560px, 100%);
   box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   background: rgb(10 5 20 / 92%); }
@@ -784,6 +785,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     onOpenChangelog: () => show('changelog'),
     onHide: () => menu.classList.remove('with-news'),
   });
+  // A transient card too (transient-cards.ts): in the menu's flow, and it takes the touches on itself.
+  whatsNewCard.root.classList.add('transient-card');
   // The first run's first tap (playtest 4, P4-5): "Start career" until the career has started.
   const careerButton = button('menu-career', 'big', careerButtonText(false), () => cb.onCareer?.());
   const syncCareerButton = () => {

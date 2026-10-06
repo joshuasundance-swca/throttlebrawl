@@ -85,6 +85,26 @@ async function paint(
       const ownerOf = (e: Element) => ids.find((_, i) => cardEls[i]?.contains(e) ?? false) ?? null;
       const nameOf = (e: Element) =>
         `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''} "${(e.textContent ?? '').trim().slice(0, 24)}"`;
+      type B = ReturnType<typeof boxOf>;
+      // Only what is painted counts: a box is cut to every clipping box around it up to the screen (a
+      // road chip scrolled out of its row, a blurb's clamped lines, the screen's own scroll).
+      const painted = (b: B, from: Element | null): B | null => {
+        let out = b;
+        for (let p = from; p; p = p.parentElement) {
+          const cs = getComputedStyle(p);
+          if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+            const r = p.getBoundingClientRect();
+            out = {
+              left: Math.max(out.left, r.left),
+              top: Math.max(out.top, r.top),
+              right: Math.min(out.right, r.right),
+              bottom: Math.min(out.bottom, r.bottom),
+            };
+          }
+          if (p === screen) break;
+        }
+        return out.right - out.left > 0.5 && out.bottom - out.top > 0.5 ? out : null;
+      };
       const insideCard = (card: HTMLElement, x: number, y: number) => {
         if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return true; // off screen: not judged here
         const top = document.elementFromPoint(x, y);
@@ -148,24 +168,20 @@ async function paint(
       for (const e of screen.querySelectorAll<HTMLElement>('*')) {
         if (!seen(e)) continue;
         const owner = ownerOf(e);
-        if (e.matches('button, input, select, textarea, a, summary')) {
+        const own = painted(boxOf(e.getBoundingClientRect()), e.parentElement);
+        if (own && e.matches('button, input, select, textarea, a, summary')) {
           controls++;
-          things.push({
-            name: `the control ${nameOf(e)}`,
-            kind: 'control',
-            box: boxOf(e.getBoundingClientRect()),
-            owner,
-          });
+          things.push({ name: `the control ${nameOf(e)}`, kind: 'control', box: own, owner });
         }
         // A title's box and each card's box: a rotated, shadowed title or a dashed card under a card is
         // covered even where the box has no text of its own.
-        if (e.matches('.title, h1, h2, h3, .card, .career-tally, .career-news')) {
+        if (own && e.matches('.title, h1, h2, h3, .card, .career-tally, .career-news')) {
           boxes++;
           const kind = e.matches('.card') ? 'card' : 'heading';
           things.push({
             name: `${kind === 'card' ? 'the card' : 'the title'} ${nameOf(e)}`,
             kind,
-            box: boxOf(e.getBoundingClientRect()),
+            box: own,
             owner,
           });
         }
@@ -174,9 +190,10 @@ async function paint(
           const range = document.createRange();
           range.selectNodeContents(n);
           for (const r of range.getClientRects()) {
-            if (r.width < 0.5 || r.height < 0.5) continue;
+            const line = painted(boxOf(r), e);
+            if (!line) continue;
             words++;
-            things.push({ name: `the words of ${nameOf(e)}`, kind: 'words', box: boxOf(r), owner });
+            things.push({ name: `the words of ${nameOf(e)}`, kind: 'words', box: line, owner });
           }
         }
       }
@@ -239,8 +256,9 @@ async function expectReachable(
       if (!ok) bad.push(`${sel} #${i}`);
     }
   }
-  if (required.length > 0) expect(examined, `${where}: controls were examined for a tap`).toBeGreaterThan(0);
-  expect(bad, `${where}: every control can be hit where it is drawn`).toEqual([]);
+  if (required.length > 0)
+    expect.soft(examined, `${where}: controls were examined for a tap`).toBeGreaterThan(0);
+  expect.soft(bad, `${where}: every control can be hit where it is drawn`).toEqual([]);
 }
 
 async function leaveFullscreen(page: Page) {
@@ -275,9 +293,10 @@ async function checkScreen(
       console.log(
         `${where}: cards ${cardIds.join(', ')}; ${p.words} words, ${p.controls} controls, ${p.boxes} boxes; findings ${JSON.stringify(found)}`,
       );
-      expect(p.words, `${where}: words were examined`).toBeGreaterThan(0);
-      expect(p.controls + p.boxes, `${where}: controls and boxes were examined`).toBeGreaterThan(0);
-      expect(found, where).toEqual([]);
+      // Soft, so one run names every screen and size that is wrong, not only the first.
+      expect.soft(p.words, `${where}: words were examined`).toBeGreaterThan(0);
+      expect.soft(p.controls + p.boxes, `${where}: controls and boxes were examined`).toBeGreaterThan(0);
+      expect.soft(found, where).toEqual([]);
     }
     await scrollTo(page, screenSel, 0);
     const cardButtons = cardIds.map((id) => `#${id} button`);
@@ -295,8 +314,8 @@ async function checkRace(page: Page, label: string) {
     const p = await paint(page, '#hud', ['look-offer'], true);
     const found = judge(p, size);
     console.log(`${where}: ${p.controls} HUD pieces; findings ${JSON.stringify(found)}`);
-    expect(p.controls, `${where}: HUD pieces were examined`).toBeGreaterThan(0);
-    expect(found, where).toEqual([]);
+    expect.soft(p.controls, `${where}: HUD pieces were examined`).toBeGreaterThan(0);
+    expect.soft(found, where).toEqual([]);
   }
 }
 
