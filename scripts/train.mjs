@@ -13,8 +13,8 @@
 //   node scripts/train.mjs plan        train.yml: who rides, and the tree they make together
 //   node scripts/train.mjs assemble --base <sha> --heads "<sha> ..." [--tree <sha>]
 //                                      every job of a train's suite: rebuild exactly that tree
-//   node scripts/train.mjs announce    train.yml: "riding" statuses, conflicts, and "arm
-//                                      auto-merge" on a PR that only waits on its author
+//   node scripts/train.mjs announce    train.yml: "riding" statuses, conflicts, and the `train`
+//                                      notes (why a ready PR waits), which no rule requires
 //   node scripts/train.mjs report      train.yml: post the results, wait for the landing, and
 //                                      send the next train
 //   node scripts/train.mjs failures    ci.yml's gate, when it is red: name the red suite jobs and
@@ -26,13 +26,18 @@
 // with auto-merge armed). Anything else posts no success, and a new train departs.
 //
 // STATE. A PR's place in the train lives in the `gate` commit status on its head commit, the one
-// check branch protection requires: no status = new; pending = waiting, riding, or told to arm
-// auto-merge (NUDGE), and its description ends with "[cap N]", the biggest bundle it may ride in
+// check branch protection requires, and only once it has ridden: no status = new; pending =
+// riding or waiting, and its description ends with "[cap N]", the biggest bundle it may ride in
 // next; success = passed (auto-merge lands it); failure = failed, timed out or conflicts (a new
-// push rides again). A new push is a new
-// head commit with no status, so it simply waits for a later train. Nothing else is stored: every
-// train run plans from scratch, so a waiting run that GitHub's concurrency group replaces with a
-// newer one loses nothing.
+// push rides again). A new push is a new head commit with no status, so it simply waits for a
+// later train. Nothing else is stored: every train run plans from scratch, so a waiting run that
+// GitHub's concurrency group replaces with a newer one loses nothing.
+//
+// NOTES. Why a ready PR waits ("arm auto-merge", "armed, in line") is a commit status on its own
+// context, `train` (NOTE_CONTEXT), which no rule requires. Never on `gate`: a pending `gate` status
+// on a PR that has not ridden could outlive its reason (a head reopened on the full path keeps it
+// beside its passing `gate` check run, and GitHub then waits for both) and block a merge. A note
+// is cleared (success) once the PR rides, leaves the train path or merges.
 //
 // RED. A red bundle of n PRs drops each of them to cap ceil(n/2), so the next trains test the
 // older half first, on the then-current main, and whatever passes lands. A PR that fails alone on
@@ -41,7 +46,9 @@
 // composition failure). Each red strictly lowers a head commit's cap (8, 4, 2, 1), so a commit
 // rides at most four red trains before it lands or fails. A suite job that runs past its time limit
 // is red too (GitHub reports it, and the suite, as cancelled; see Timeouts), and so is main's own
-// run when one of its jobs does: then nobody is blamed, as for any red main.
+// run when one of its jobs does: then nobody is blamed, as for any red main. A timeout is blamed on
+// a PR only when it rode alone at cap 1, its diff can reach the job, and main's own run of that job
+// passed; otherwise it waits for a newer main (decide, canReach).
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -51,9 +58,13 @@ import { parseArgs, stripVTControlCharacters } from 'node:util';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export const CONTEXT = 'gate';
+/** The context of the train's notes: no branch rule requires it, so a note can never block a merge. */
+export const NOTE_CONTEXT = 'train';
 export const QUICK = 'quick';
 export const CONFIG_FILE = '.github/train.json';
 export const MARKER = /\[full-gate\]/i;
+/** The marker alone on a line of the body (spaces around it allowed; \r for CRLF bodies). */
+const MARKER_LINE = /^[ \t]*\[full-gate\][ \t]*\r?$/im;
 const SHA = /^[0-9a-f]{40}$/;
 /** Conclusions of main's own ci run that mean main is red. A cancelled run was superseded. */
 const RED = new Set(['failure', 'timed_out', 'startup_failure']);
@@ -88,9 +99,18 @@ export function loadConfig(dir = root) {
   return readConfig(existsSync(file) ? readFileSync(file, 'utf8') : '{}');
 }
 
-/** The escape hatch: "[full-gate]" in the PR's title or body asks for the full per-PR gate. */
+/**
+ * The escape hatch: "[full-gate]" anywhere in the PR's title, or alone on a line of its body, asks
+ * for the full per-PR gate. A sentence in the body that names the marker does not (#591 took the
+ * full path by accident from "would need a `[full-gate]` change to `suite.yml`").
+ */
 export function hasMarker(title = '', body = '') {
-  return MARKER.test(title ?? '') || MARKER.test(body ?? '');
+  return MARKER.test(title ?? '') || MARKER_LINE.test(body ?? '');
+}
+
+/** Dependabot, as the pull_request event names it ("dependabot[bot]") or the GraphQL listing does ("dependabot"). */
+export function isDependabot(/** @type {string} */ login) {
+  return login === 'dependabot[bot]' || login === 'dependabot';
 }
 
 const DOCS = [/^docs\//, /^changes\//, /\.md$/];
@@ -128,9 +148,12 @@ export function isDocsOnly(/** @type {string[]} */ files) {
  */
 export function route({ live, fork, author, title, body, files }) {
   if (fork) return { path: 'full', reason: 'a PR from a fork runs the full gate itself' };
-  if (author === 'dependabot[bot]')
-    return { path: 'full', reason: 'a Dependabot PR runs the full gate itself' };
-  if (hasMarker(title, body)) return { path: 'full', reason: 'the PR asks for the full gate ([full-gate])' };
+  if (isDependabot(author)) return { path: 'full', reason: 'a Dependabot PR runs the full gate itself' };
+  if (hasMarker(title, body))
+    return {
+      path: 'full',
+      reason: 'the PR asks for the full gate ([full-gate] in its title, or alone on a line of its body)',
+    };
   const ci = files.filter((f) => f.startsWith('.github/'));
   if (ci.length)
     return {
@@ -175,6 +198,23 @@ export function withCap(/** @type {string} */ text, /** @type {number} */ cap) {
 export function capOf(/** @type {string | undefined} */ description) {
   const m = CAP_TOKEN.exec(description ?? '');
   return m ? Number(m[1]) : null;
+}
+
+const PARK_TOKEN = /; rides once main is past ([0-9a-f]{7}) \[cap \d+\]$/;
+
+/**
+ * A pending description (cap 1) for a head that waits for a newer main: it timed out alone and was
+ * not blamed, and on this main the same suite would time out the same way. The park sits beside
+ * the cap, so clipping a long text never drops it.
+ */
+export function withPark(/** @type {string} */ text, /** @type {string} */ base) {
+  const tail = `; rides once main is past ${base.slice(0, 7)} [cap 1]`;
+  return clip(text, MAX_DESCRIPTION - tail.length) + tail;
+}
+
+/** The main commit (7 hex) a pending head waits to see main move past, or null. */
+export function parkedOn(/** @type {string | undefined} */ description) {
+  return PARK_TOKEN.exec(description ?? '')?.[1] ?? null;
 }
 
 /**
@@ -228,9 +268,12 @@ export function normalizePr(node) {
         String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')),
       )[0];
   const quick = latest(QUICK);
-  const status = contexts.find(
-    (/** @type {any} */ c) => c.__typename === 'StatusContext' && c.context === CONTEXT,
-  );
+  const statusOf = (/** @type {string} */ context) => {
+    const s = contexts.find(
+      (/** @type {any} */ c) => c.__typename === 'StatusContext' && c.context === context,
+    );
+    return s ? { state: String(s.state).toLowerCase(), description: String(s.description ?? '') } : null;
+  };
   return {
     number: /** @type {number} */ (node.number),
     draft: Boolean(node.isDraft),
@@ -247,21 +290,22 @@ export function normalizePr(node) {
       : 'none',
     gateCheck: Boolean(latest(CONTEXT)),
     truncated,
-    gateStatus: status
-      ? { state: String(status.state).toLowerCase(), description: String(status.description ?? '') }
-      : null,
+    gateStatus: statusOf(CONTEXT),
+    /** The train's note (NOTE_CONTEXT), never read for eligibility. */
+    noteStatus: statusOf(NOTE_CONTEXT),
   };
 }
 
 /**
  * Can this PR ride the next train? Same repo, not a draft, auto-merge armed, no escape-hatch
  * marker, a green quick check on its head commit, no `gate` check run there (one source of `gate`
- * per head commit), and its `gate` status absent or pending.
+ * per head commit), its `gate` status absent or pending, and not parked on this main (`main`, when
+ * given: a head that timed out alone without blame waits for a newer main).
  * @param {ReturnType<typeof normalizePr>} pr
- * @param {{ repo: string, cap: number }} o
+ * @param {{ repo: string, cap: number, main?: string }} o
  * @returns {{ ok: true, cap: number, reason: string } | { ok: false, reason: string }}
  */
-export function eligibility(pr, { repo, cap }) {
+export function eligibility(pr, { repo, cap, main }) {
   const no = (/** @type {string} */ reason) => ({ ok: /** @type {const} */ (false), reason });
   if (pr.headRepo !== repo) return no('from a fork (it runs the full gate itself)');
   if (pr.draft) return no('a draft');
@@ -273,35 +317,121 @@ export function eligibility(pr, { repo, cap }) {
   const s = stateOf(pr.gateStatus, cap);
   if (s.kind === 'success') return no('passed a train (landing)');
   if (s.kind === 'failure') return no('failed a train or conflicts (a new push rides again)');
+  const parked = parkedOn(pr.gateStatus?.description);
+  if (s.kind === 'pending' && parked && main?.startsWith(parked))
+    return no(`timed out alone on main ${parked} without blame; rides once main moves`);
   return { ok: true, cap: s.cap, reason: s.kind === 'pending' ? `waiting, cap ${s.cap}` : 'new' };
 }
 
-/** What a PR that only waits on its author is told, in its pending `gate` status. */
-export const NUDGE = 'quick check green: arm auto-merge to ride the next train';
-export const NUDGE_DRAFT =
-  'quick check green: mark it ready for review, then arm auto-merge to ride the next train';
+// ---------------------------------------------------------------------------------------------
+// Notes: why a ready PR waits, on the `train` context (NOTE_CONTEXT), which no rule requires
+
+/** What a PR whose quick check is green, but that cannot ride yet, is told. */
+export const NOTE_UNARMED = 'waiting: arm auto-merge (gh pr merge --auto --squash) to ride the next train';
+export const NOTE_DRAFT =
+  'waiting: mark it ready for review, then arm auto-merge (gh pr merge --auto --squash)';
+export const NOTE_ARMED = 'waiting: armed and in line for a train (one runs at a time, oldest PRs first)';
+export const NOTE_MERGED = 'merged: no train to wait for';
 
 /**
- * A train-path PR that would ride but for a step its author has not taken: its quick check is
- * green, but auto-merge is not armed, or it is a draft. Without this, nothing on the PR said why it
- * waited (only the plan's log did). Returns the pending `gate` status to post on its head commit, or
- * null: never on a fork, Dependabot, [full-gate], the docs or full path (their `gate` is a check
- * run), a PR that can ride, or a head commit that already has a verdict or already says so. The cap
- * a red train gave it goes with the new text, so turning auto-merge off and on again never resets
- * the cap ladder.
+ * The `train` note a PR should carry now, or null to leave its head commit as it is. Without it, a
+ * ready PR whose auto-merge was not armed waited for ever with "Expected: waiting for status
+ * gate", and the reason was only in the plan's log.
+ * - Pending "waiting: ..." on a PR that would ride if its author armed auto-merge (or marked the
+ *   draft ready), or that is armed and in line but not in this train (only when it has a note
+ *   already or has never ridden: once it has ridden, its `gate` status says where it is).
+ * - Success, clearing a pending note, once the PR is picked for a train (its `gate` status says
+ *   "riding" or "conflicts"), or can no longer ride for any reason arming would not fix: the full
+ *   or docs path (a `gate` check run), "[full-gate]", a red quick check, a verdict, a park.
+ * - Never on a fork (the train never writes to a fork's head) or a Dependabot PR, and never twice
+ *   with the same words. Never on `gate`.
  * @param {ReturnType<typeof normalizePr>} pr
- * @param {{ repo: string, cap: number }} o
- * @returns {{ number: number, headSha: string, description: string } | null}
+ * @param {{ repo: string, cap: number, main?: string, picked: number[], run: number }} o
+ * @returns {{ state: 'pending' | 'success', description: string } | null}
  */
-export function nudge(pr, { repo, cap }) {
-  if (pr.headRepo !== repo || pr.author === 'dependabot[bot]' || hasMarker(pr.title, pr.body)) return null;
-  if (pr.truncated || pr.gateCheck || pr.quick !== 'success') return null;
-  if (!pr.draft && pr.autoMerge) return null; // it can ride
-  const s = stateOf(pr.gateStatus, cap);
-  if (s.kind === 'success' || s.kind === 'failure') return null;
-  const text = pr.draft ? NUDGE_DRAFT : NUDGE;
-  if (s.kind === 'pending' && pr.gateStatus?.description.startsWith(text)) return null;
-  return { number: pr.number, headSha: pr.headSha, description: withCap(text, s.cap) };
+export function noteFor(pr, { repo, cap, main, picked, run }) {
+  if (pr.headRepo !== repo || isDependabot(pr.author)) return null;
+  const cur = pr.noteStatus;
+  const told = cur?.state === 'pending';
+  /** @type {{ state: 'pending' | 'success', description: string } | null} */
+  let want = null;
+  if (picked.includes(pr.number)) {
+    if (told)
+      want = { state: 'success', description: `picked up by train ${run}: its gate status says where it is` };
+  } else {
+    // Would it ride if its author did what the note says?
+    const ready = eligibility({ ...pr, draft: false, autoMerge: true }, { repo, cap, main });
+    if (!ready.ok) {
+      if (told) want = { state: 'success', description: clip(`not waiting for a train: ${ready.reason}`) };
+    } else if (pr.draft) want = { state: 'pending', description: NOTE_DRAFT };
+    else if (!pr.autoMerge) want = { state: 'pending', description: NOTE_UNARMED };
+    else if (cur || stateOf(pr.gateStatus, cap).kind === 'none')
+      want = { state: 'pending', description: NOTE_ARMED };
+  }
+  if (!want || (cur?.state === want.state && cur.description === want.description)) return null;
+  return want;
+}
+
+/**
+ * The notes to post on the open PRs (see noteFor).
+ * @param {ReturnType<typeof normalizePr>[]} prs
+ * @param {Parameters<typeof noteFor>[1]} o
+ */
+export function waitingNotes(prs, o) {
+  return prs.flatMap((pr) => {
+    const n = noteFor(pr, o);
+    return n ? [{ number: pr.number, headSha: pr.headSha, ...n }] : [];
+  });
+}
+
+/**
+ * One recently merged PR from MERGED_QUERY, flattened.
+ * @param {any} node
+ */
+export function normalizeMerged(node) {
+  const commit = node.commits?.nodes?.[0]?.commit;
+  const s = commit?.oid === node.headRefOid ? commit?.status?.context : null;
+  return {
+    number: /** @type {number} */ (node.number),
+    headSha: String(node.headRefOid),
+    headRepo: String(node.headRepository?.nameWithOwner ?? ''),
+    noteStatus: s ? { state: String(s.state).toLowerCase(), description: String(s.description ?? '') } : null,
+  };
+}
+
+/**
+ * Clears the pending note of a PR that merged without riding (the full path, after it was told to
+ * arm), so a merged PR never shows a note still waiting.
+ * @param {ReturnType<typeof normalizeMerged>[]} merged
+ * @param {{ repo: string }} o
+ */
+export function mergedNotes(merged, { repo }) {
+  return merged.flatMap((m) =>
+    m.headRepo === repo && m.noteStatus?.state === 'pending'
+      ? [{ number: m.number, headSha: m.headSha, state: 'success', description: NOTE_MERGED }]
+      : [],
+  );
+}
+
+/**
+ * Posts the notes. A note is a courtesy: one that fails to post is logged and never stops the
+ * others or the train.
+ * @param {{ number: number, headSha: string, state: string, description: string }[]} notes
+ * @param {(sha: string, state: string, description: string) => Promise<void>} post
+ * @returns {Promise<number[]>} the PRs whose note did not post
+ */
+export async function postNotes(notes, post) {
+  /** @type {number[]} */
+  const failed = [];
+  for (const n of notes) {
+    try {
+      await post(n.headSha, n.state, n.description);
+    } catch (err) {
+      failed.push(n.number);
+      console.log(`announce: no note on #${n.number}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  return failed;
 }
 
 /**
@@ -463,6 +593,38 @@ export function ciState(r) {
   return r.conclusion === 'cancelled' && (r.timedOut ?? []).length > 0 ? 'failure' : 'none';
 }
 
+/** The test tier a suite job runs, from its name ("suite / browser (5/7)"). */
+const TIER = /^suite \/ (static|unit|sim|browser)\b/;
+/**
+ * Files no sim or browser job reads, so a change to them cannot make one slower:
+ * - .github/: a train runs main's workflow files, never the PR's;
+ * - the unit project's test files (vitest.config.ts: src/, scripts/ and tools/ *.test.ts; the sim
+ *   project is tests/sim/), which nothing imports;
+ * - scripts/train.mjs and scripts/tested-tree.mjs: run by the workflows' own steps (route, plan,
+ *   assemble from main's checkout, the gate), never by a test tier.
+ * scripts/train.test.ts checks these against the Vitest config and every tracked source file.
+ */
+const NOT_SIM_OR_BROWSER = [
+  /^\.github\//,
+  /^(?:src|scripts|tools)\/.+\.test\.ts$/,
+  /^scripts\/(?:train|tested-tree)\.mjs$/,
+];
+
+/**
+ * Can a diff of these files make this suite job slower? Docs (isDocsOnly) reach no job; the files in
+ * NOT_SIM_OR_BROWSER reach no sim or browser job; anything else reaches every job, and so does
+ * anything for a job this does not know (when unsure, it can).
+ * @param {string[]} files the PR's changed files (a rename's old name included)
+ * @param {string} job the suite job's name
+ */
+export function canReach(files, job) {
+  const tier = TIER.exec(job)?.[1];
+  if (!tier) return true;
+  const code = files.filter((f) => !isDocsOnly([f]));
+  if (tier !== 'sim' && tier !== 'browser') return code.length > 0;
+  return code.some((f) => !NOT_SIM_OR_BROWSER.some((re) => re.test(f)));
+}
+
 // ---------------------------------------------------------------------------------------------
 // What a finished train posts
 
@@ -472,22 +634,28 @@ export function ciState(r) {
  * @param {string} o.result the suite's result ('success', 'failure', 'cancelled', ...), as suiteResult judges it
  * @param {string} [o.control] a lone PR's own-branch suite result, when it ran
  * @param {string[]} [o.timedOut] the suite's jobs that ran past their time limit
+ * @param {string[]} [o.failed] the suite's jobs that failed (a timeout beside one is a plain failure)
  * @param {{ number: number, headSha: string, cap: number }[]} o.bundle the PRs that rode, in order
  * @param {string} o.base main when the train departed
  * @param {string} o.mainNow main now
  * @param {Map<number, { headSha: string, draft: boolean, autoMerge: boolean }>} o.now the bundle's PRs that are open now
  * @param {'success' | 'failure' | 'pending' | 'none'} [o.mainCi] main's own ci run on base (read only for a lone PR that failed)
+ * @param {Record<string, string>} [o.mainJobs] main's own ci run on base: each job's conclusion by name (read only for a lone PR that timed out at cap 1)
+ * @param {string[] | null} [o.files] that lone PR's changed files, or null when they could not be read
  * @param {number} o.run the train's run number
  */
 export function decide({
   result,
   control = 'skipped',
   timedOut = [],
+  failed = [],
   bundle,
   base,
   mainNow,
   now,
   mainCi = 'none',
+  mainJobs = {},
+  files = null,
   run,
 }) {
   const b7 = base.slice(0, 7);
@@ -595,6 +763,52 @@ export function decide({
       dispatch: false,
       why: `#${p.number} failed alone, but main ${b7} is red on its own, so nothing is blamed; the train waits for main`,
     };
+  }
+  // A pure timeout (no job failed) is blamed only when the PR rode alone at cap 1, its diff can
+  // reach a job that timed out, and main's own run of that job on base passed. A job close to its
+  // limit on main can run past it on a slower runner, whatever the PR changed (#590's own run:
+  // browser 5/7 timed out on a diff of workflows and docs; main ran that job in 347 s).
+  const short = (/** @type {string} */ job) => job.replace(/^suite \/ /, '');
+  const jobs = timedOut.map(short).join(', ');
+  if (late && failed.length === 0 && p.cap > 1) {
+    statuses.push({
+      number: p.number,
+      sha: p.headSha,
+      state: 'pending',
+      description: withCap(`train ${run}: ${jobs} timed out; rides once more alone`, 1),
+    });
+    return {
+      ...base_,
+      verdict: 'timed-out',
+      dispatch: true,
+      why: `#${p.number} rode alone at cap ${p.cap} and ${timedOut.join(', ')} timed out, so it rides once more alone (cap 1) before anything is blamed`,
+    };
+  }
+  if (late && failed.length === 0) {
+    const why = (/** @type {string} */ job) =>
+      files === null
+        ? 'its changed files could not be read'
+        : !canReach(files, job)
+          ? `its diff cannot reach ${short(job)}`
+          : mainJobs[job] !== 'success'
+            ? `main's own ${short(job)} on ${b7} did not pass`
+            : null;
+    const reasons = timedOut.map(why);
+    if (reasons.every((r) => r !== null)) {
+      const reason = /** @type {string} */ (reasons[0]);
+      statuses.push({
+        number: p.number,
+        sha: p.headSha,
+        state: 'pending',
+        description: withPark(`train ${run}: ${jobs} timed out alone, not blamed (${reason})`, base),
+      });
+      return {
+        ...base_,
+        verdict: 'timed-out-unblamed',
+        dispatch: true,
+        why: `#${p.number} timed out alone (${timedOut.join(', ')}), but ${reasons.join('; ')}, so nothing is blamed; it rides again once main moves past ${b7}`,
+      };
+    }
   }
   const kind = control === 'success' ? 'composition' : control === 'failure' ? 'own' : 'unknown';
   const red = late ? 'timed out' : 'fails';
@@ -805,10 +1019,21 @@ export const COMMENT_TAG = '<!-- bundle-train -->';
 
 /**
  * The comment on a PR that failed alone, or timed out alone (`timedOut` names the suite jobs that
- * ran past their time limit).
- * @param {{ kind: 'own' | 'composition' | 'unknown', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, timedOut?: string[] }} o
+ * ran past their time limit; `reached`, those of them its diff can reach and main's own run passed).
+ * @param {{ kind: 'own' | 'composition' | 'unknown', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, timedOut?: string[], reached?: string[] }} o
  */
-export function blameComment({ kind, sha, base, run, url, failing, lacks, mainCi, timedOut = [] }) {
+export function blameComment({
+  kind,
+  sha,
+  base,
+  run,
+  url,
+  failing,
+  lacks,
+  mainCi,
+  timedOut = [],
+  reached = [],
+}) {
   const late = timedOut.length > 0;
   const red = late ? 'timed out' : 'fails';
   const head =
@@ -824,6 +1049,10 @@ export function blameComment({ kind, sha, base, run, url, failing, lacks, mainCi
   if (late)
     lines.push(
       `- Timed out: ${timedOut.join(', ')}. A job that runs past its time limit is cancelled, so the tests it had not reached did not finish.`,
+    );
+  if (reached.length)
+    lines.push(
+      `- It timed out riding alone, main's own run of ${reached.join(', ')} on \`${base.slice(0, 7)}\` passed, and this PR changes files that job runs.`,
     );
   lines.push(
     kind === 'own'
@@ -957,6 +1186,51 @@ async function openPrs() {
   throw new Error('more than 1000 open PRs');
 }
 
+/** The recently merged PRs, with their head commit's `train` note (shape checked live on 2026-10-06). */
+export const MERGED_QUERY = `query ($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: MERGED, baseRefName: "main", last: 20, orderBy: { field: UPDATED_AT, direction: ASC }) {
+      nodes {
+        number headRefOid
+        headRepository { nameWithOwner }
+        commits(last: 1) { nodes { commit { oid status { context(name: "${NOTE_CONTEXT}") { state description } } } } }
+      }
+    }
+  }
+}`;
+
+async function mergedPrs() {
+  const [owner, name] = repo().split('/');
+  /** @type {any} */
+  const res = await api(
+    'POST',
+    '/graphql',
+    { query: MERGED_QUERY, variables: { owner, name } },
+    { retry: true },
+  );
+  if (res.errors?.length) throw new Error(`GraphQL: ${JSON.stringify(res.errors).slice(0, 300)}`);
+  return (res.data.repository.pullRequests.nodes ?? []).map(normalizeMerged);
+}
+
+/**
+ * A PR's changed files, a rename's old name included, or null when there are too many to list
+ * (the API lists at most 3000; over 1000 is read as unknown).
+ */
+async function prFiles(/** @type {number} */ number) {
+  /** @type {string[]} */
+  const files = [];
+  for (let page = 1; page <= 10; page++) {
+    /** @type {any[]} */
+    const res = await api('GET', `/repos/${repo()}/pulls/${number}/files?per_page=100&page=${page}`);
+    for (const f of res ?? []) {
+      files.push(String(f.filename));
+      if (f.previous_filename) files.push(String(f.previous_filename));
+    }
+    if ((res ?? []).length < 100) return files;
+  }
+  return null;
+}
+
 async function mainSha() {
   /** @type {any} */
   const ref = await api('GET', `/repos/${repo()}/git/ref/heads/main`);
@@ -1018,15 +1292,23 @@ export async function postStatus(
   /** @type {string} */ sha,
   /** @type {string} */ state,
   /** @type {string} */ description,
+  context = CONTEXT,
 ) {
   if (!SHA.test(sha)) throw new Error(`not a commit id: ${sha}`);
   await api(
     'POST',
     `/repos/${repo()}/statuses/${sha}`,
-    { state, context: CONTEXT, description: clip(description), target_url: runUrl() },
+    { state, context, description: clip(description), target_url: runUrl() },
     { retry: true },
   );
 }
+
+/** A note on the `train` context (NOTE_CONTEXT), never `gate`. */
+const postNote = (
+  /** @type {string} */ sha,
+  /** @type {string} */ state,
+  /** @type {string} */ description,
+) => postStatus(sha, state, description, NOTE_CONTEXT);
 
 async function comment(/** @type {number} */ number, /** @type {string} */ body) {
   await api('POST', `/repos/${repo()}/issues/${number}/comments`, { body });
@@ -1150,6 +1432,15 @@ const summary = (/** @type {string} */ md) => {
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${md}\n`);
 };
 
+/**
+ * Text that holds PR-log lines (a failing test's name, a FAIL row), quoted for a job's log: every
+ * line starts with the prefix, so none can start with "::" and be read as a workflow command in a
+ * job that holds write tokens. The runner splits lines at \n, \r\n and \r.
+ */
+export function quoteLines(/** @type {string} */ text, prefix = 'report |   ') {
+  return text.split(/\r\n|\r|\n|\u2028|\u2029/).map((l) => `${prefix}${l}`);
+}
+
 function fetchCommits(/** @type {string[]} */ shas) {
   for (const s of shas) if (!SHA.test(s)) throw new Error(`not a commit id: ${s}`);
   const r = gitRun(['fetch', '--no-tags', '--quiet', 'origin', ...shas]);
@@ -1176,8 +1467,9 @@ function cmdRoute() {
 }
 
 /**
- * train.yml's plan job (read only): who rides, the tree they make, and which PRs announce tells to
- * arm auto-merge.
+ * train.yml's plan job (read only): who rides, the tree they make, and the `train` notes announce
+ * posts (why a ready PR waits, and clearing the notes of PRs that rode, left the train path or
+ * merged).
  */
 export async function cmdPlan(cfg = loadConfig()) {
   const dry = env.TRAIN_DRY_RUN === 'true';
@@ -1190,7 +1482,7 @@ export async function cmdPlan(cfg = loadConfig()) {
     commit: '',
     bundle: '[]',
     conflicts: '[]',
-    nudges: '[]',
+    notes: '[]',
     single: '',
     wait_main: '',
   };
@@ -1217,8 +1509,8 @@ export async function cmdPlan(cfg = loadConfig()) {
   const prs = await openPrs();
   /** @type {{ number: number, headSha: string, cap: number }[]} */
   let bundle;
-  /** @type {{ number: number, headSha: string, description: string }[]} */
-  let nudges = [];
+  /** @type {{ number: number, headSha: string, state: string, description: string }[]} */
+  let notes = [];
   if (dry && (env.TRAIN_PRS ?? '').trim()) {
     const wanted = (env.TRAIN_PRS ?? '')
       .split(/[\s,]+/)
@@ -1231,7 +1523,8 @@ export async function cmdPlan(cfg = loadConfig()) {
     });
     say(`Dry run with the PRs asked for, in that order: ${prList(wanted, 400)}.`);
   } else {
-    const rows = prs.map((pr) => ({ pr, e: eligibility(pr, { repo: repo(), cap: cfg.cap }) }));
+    const o = { repo: repo(), cap: cfg.cap, main: base };
+    const rows = prs.map((pr) => ({ pr, e: eligibility(pr, o) }));
     for (const { pr, e } of rows)
       console.log(
         `plan: #${pr.number} ${pr.headSha.slice(0, 7)}: ${e.ok ? 'eligible' : 'not eligible'}, ${e.reason}`,
@@ -1241,26 +1534,30 @@ export async function cmdPlan(cfg = loadConfig()) {
     );
     bundle = selectBundle(eligible).bundle;
     console.log(`plan: ${eligible.length} of ${prs.length} open PRs are eligible`);
-    nudges = prs.flatMap((pr) => {
-      const n = nudge(pr, { repo: repo(), cap: cfg.cap });
-      return n ? [n] : [];
-    });
-    for (const n of nudges)
+    // Every PR of the bundle rides or conflicts, and its `gate` status says which.
+    notes = waitingNotes(prs, { ...o, picked: bundle.map((p) => p.number), run: runNumber() });
+    try {
+      notes.push(...mergedNotes(await mergedPrs(), o));
+    } catch (err) {
+      console.log(`plan: could not list the merged PRs' notes: ${err instanceof Error ? err.message : err}`);
+    }
+    for (const n of notes)
       console.log(
-        `plan: #${n.number} ${n.headSha.slice(0, 7)}: announce ${dry ? 'would post' : 'posts'} gate=pending: ${n.description}`,
+        `plan: #${n.number} ${n.headSha.slice(0, 7)}: announce ${dry ? 'would post' : 'posts'} ${NOTE_CONTEXT}=${n.state}: ${n.description}`,
       );
-    if (nudges.length)
+    const told = notes.filter((n) => n.state === 'pending');
+    if (told.length)
       say(
-        `Quick check green but waiting on their authors (told so in their \`gate\` status): ${prList(
-          nudges.map((n) => n.number),
+        `Ready but not riding, told why in their \`${NOTE_CONTEXT}\` status: ${prList(
+          told.map((n) => n.number),
           400,
         )}.`,
       );
   }
-  // announce posts the nudges whether or not a train departs (a dry run posts nothing).
+  // announce posts the notes whether or not a train departs (a dry run posts nothing).
   Object.assign(out, {
-    nudges: JSON.stringify(nudges),
-    post: !dry && nudges.length ? 'true' : 'false',
+    notes: JSON.stringify(notes),
+    post: !dry && notes.length ? 'true' : 'false',
   });
   if (!bundle.length) {
     say('Nobody is waiting for the train.');
@@ -1288,7 +1585,7 @@ export async function cmdPlan(cfg = loadConfig()) {
     );
   Object.assign(out, {
     depart: rode.length ? 'true' : 'false',
-    post: !dry && (rode.length || conflicts.length || nudges.length) ? 'true' : 'false',
+    post: !dry && (rode.length || conflicts.length || notes.length) ? 'true' : 'false',
     base,
     heads: rode.map((p) => p.headSha).join(' '),
     tree: asm.tree,
@@ -1337,18 +1634,17 @@ const readBundle = (/** @type {string | undefined} */ s) => JSON.parse(s || '[]'
 
 /**
  * train.yml's announce job (statuses and PR comments; main's own scripts only): "riding" statuses,
- * conflicts, and plan's nudges, the pending "arm auto-merge" status on a PR that only waits on its
- * author.
+ * conflicts, then plan's notes on the `train` context (best effort: a note that fails to post never
+ * stops the train).
  */
 export async function cmdAnnounce() {
   const bundle = readBundle(env.TRAIN_BUNDLE);
   /** @type {{ number: number, headSha: string, cap: number, with: string, earlier: number[] }[]} */
   const conflicts = JSON.parse(env.TRAIN_CONFLICTS || '[]');
-  /** @type {{ number: number, headSha: string, description: string }[]} */
-  const nudges = JSON.parse(env.TRAIN_NUDGES || '[]');
+  /** @type {{ number: number, headSha: string, state: string, description: string }[]} */
+  const notes = JSON.parse(env.TRAIN_NOTES || '[]');
   const base = env.TRAIN_BASE ?? '';
   const run = runNumber();
-  for (const n of nudges) await postStatus(n.headSha, 'pending', n.description);
   for (const p of bundle)
     await postStatus(
       p.headSha,
@@ -1377,8 +1673,9 @@ export async function cmdAnnounce() {
       );
     }
   }
+  const failed = await postNotes(notes, postNote);
   console.log(
-    `announce: ${bundle.length} riding, ${conflicts.length} conflicting, ${nudges.length} told to arm auto-merge`,
+    `announce: ${bundle.length} riding, ${conflicts.length} conflicting, ${notes.length - failed.length} of ${notes.length} ${NOTE_CONTEXT} notes posted`,
   );
 }
 
@@ -1425,17 +1722,59 @@ export async function cmdReport(cfg = loadConfig()) {
     console.log(`report: the suite reads ${reported}, but a job in it is red, so the bundle is red`);
   /** @type {'success' | 'failure' | 'pending' | 'none'} */
   let mainCi = 'none';
-  if (result === 'failure' && bundle.length === 1 && mainNow === base) {
+  /** @type {Record<string, string>} */
+  let mainJobs = {};
+  /** @type {string[] | null} */
+  let files = null;
+  const lone = /** @type {{ number: number, headSha: string, cap: number } | undefined} */ (bundle[0]);
+  if (result === 'failure' && bundle.length === 1 && lone && mainNow === base) {
     // Blame needs main itself green: wait for main's own run on base if it is still going.
     const deadline = Date.now() + cfg.mainWaitMinutes * 60_000;
-    for (;;) {
-      mainCi = /** @type {typeof mainCi} */ (ciState(await mainCiRun(base)));
-      if (mainCi !== 'pending' || Date.now() > deadline || dry) break;
+    let mainRun = await mainCiRun(base);
+    mainCi = ciState(mainRun);
+    while (mainCi === 'pending' && Date.now() <= deadline && !dry) {
       console.log(`report: main's own ci run on ${base.slice(0, 7)} is still running; waiting`);
       await sleep(30_000);
+      mainRun = await mainCiRun(base);
+      mainCi = ciState(mainRun);
+    }
+    // A pure timeout at cap 1 is blamed only if the PR's diff can reach the job and main's own run
+    // of that job passed (decide): read both. Either one unread means nobody is blamed.
+    if (timedOut.length && !failedJobs.length && lone.cap === 1 && mainCi !== 'failure') {
+      try {
+        if (mainRun)
+          mainJobs = Object.fromEntries(
+            (await jobsOf(mainRun.id, mainRun.attempt)).map((j) => [
+              String(j.name),
+              String(j.conclusion ?? ''),
+            ]),
+          );
+      } catch (err) {
+        console.log(`report: could not read main's own jobs: ${err instanceof Error ? err.message : err}`);
+      }
+      try {
+        files = await prFiles(lone.number);
+      } catch (err) {
+        console.log(
+          `report: could not list #${lone.number}'s files: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
   }
-  const d = decide({ result, control, timedOut, bundle, base, mainNow, now, mainCi, run });
+  const d = decide({
+    result,
+    control,
+    timedOut,
+    failed: failedJobs,
+    bundle,
+    base,
+    mainNow,
+    now,
+    mainCi,
+    mainJobs,
+    files,
+    run,
+  });
   say(`**${d.verdict}**: ${d.why}.`);
   const failing = result === 'failure' ? await failingFromRun(suiteJobs, timedOut) : [];
   if (failing.length) summary(['Failing:', '```text', fenceSafe(failing, 40), '```'].join('\n'));
@@ -1464,14 +1803,18 @@ export async function cmdReport(cfg = loadConfig()) {
       lacks,
       mainCi,
       timedOut,
+      reached: timedOut.filter((j) => files !== null && canReach(files, j) && mainJobs[j] === 'success'),
     });
   }
   for (const s of d.statuses)
     console.log(
       `report: ${dry ? 'would post' : 'posts'} gate=${s.state} on #${s.number} ${s.sha.slice(0, 7)}: ${s.description}`,
     );
-  if (blameBody)
-    console.log(`report: ${dry ? 'would comment' : 'comments'} on #${d.blame?.number}:\n${blameBody}`);
+  // The comment holds PR-log text: each of its lines is quoted, never printed at a line's start.
+  if (blameBody) {
+    console.log(`report: ${dry ? 'would comment' : 'comments'} on #${d.blame?.number}:`);
+    for (const line of quoteLines(blameBody)) console.log(line);
+  }
   if (dry) {
     say(`Dry run: posted nothing${d.dispatch ? ' (a live train would send the next train now)' : ''}.`);
     return;

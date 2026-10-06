@@ -18,11 +18,16 @@ import {
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  NUDGE,
-  NUDGE_DRAFT,
+  CONTEXT,
+  NOTE_ARMED,
+  NOTE_CONTEXT,
+  NOTE_DRAFT,
+  NOTE_MERGED,
+  NOTE_UNARMED,
   TRAIN_IDENT,
   assemble,
   blameComment,
+  canReach,
   capOf,
   ciState,
   clip,
@@ -42,19 +47,25 @@ import {
   loadConfig,
   mainGate,
   mayHaveTimedOut,
+  mergedNotes,
+  normalizeMerged,
   normalizePr,
-  nudge,
+  noteFor,
+  parkedOn,
   postInOrder,
   postStatus,
   prList,
   prNumbersFromTitles,
+  quoteLines,
   readConfig,
   redSuiteJobs,
   route,
   selectBundle,
   stateOf,
   suiteResult,
+  waitingNotes,
   withCap,
+  withPark,
   workflowCommand,
 } from './train.mjs';
 
@@ -77,11 +88,28 @@ describe('config and routing', () => {
     });
   });
 
-  it('finds the escape hatch in the title or the body, in any case', () => {
+  it('finds the escape hatch anywhere in the title, or alone on a line of the body, in any case', () => {
     expect(hasMarker('infra: x [full-gate]', '')).toBe(true);
-    expect(hasMarker('x', 'please run the [FULL-GATE] here')).toBe(true);
+    expect(hasMarker('x', '[FULL-GATE]')).toBe(true);
+    expect(hasMarker('x', 'What this does.\n\n[full-gate]\n\nWhy.')).toBe(true);
+    expect(hasMarker('x', 'What this does.\r\n  [Full-Gate]  \r\nWhy.')).toBe(true);
     expect(hasMarker('full-gate', 'full gate')).toBe(false);
     expect(hasMarker(undefined, undefined)).toBe(false);
+  });
+
+  // #591 (2026-10-06) took the full path by accident: its body named the marker in a sentence. The
+  // line below is that body's own, from the PR's edit history.
+  it('never reads the marker from a sentence in the body (#591)', () => {
+    const pr591 =
+      "**Watch.** Sim slices plan at 436 s, and jobs run about 50 to 150 s over their plan (setup plus slow runners). Train 30's sim 3/6 took 584 s. A 7th sim slice or an 8th browser slice would need a `[full-gate]` change to `suite.yml`, which is not in this PR.";
+    expect(hasMarker('test: refresh the browser and unit times', pr591)).toBe(false);
+    for (const body of [
+      'please run the [full-gate] here',
+      '- [full-gate]',
+      '`[full-gate]`',
+      '[full-gate] please',
+    ])
+      expect(hasMarker('x', body), body).toBe(false);
   });
 
   it('counts docs/, changes/ and .md files as docs-only, but never a file the build or a deploy reads', () => {
@@ -121,7 +149,8 @@ describe('config and routing', () => {
     expect(route({ ...pr, live: false }).path).toBe('full');
     expect(route({ ...pr, fork: true }).path).toBe('full');
     expect(route({ ...pr, author: 'dependabot[bot]' }).path).toBe('full');
-    expect(route({ ...pr, body: 'x [full-gate]' }).path).toBe('full');
+    expect(route({ ...pr, body: 'x\n[full-gate]' }).path).toBe('full');
+    expect(route({ ...pr, body: 'x [full-gate] in a sentence' }).path).toBe('train');
     const ci = route({ ...pr, files: ['src/a.ts', '.github/workflows/ci.yml', '.github/train.json'] });
     expect(ci.path).toBe('full');
     expect(ci.reason).toContain('.github/workflows/ci.yml and 1 more');
@@ -192,10 +221,13 @@ function node(o: {
   quick?: { conclusion: string; status?: string; startedAt?: string; app?: string }[];
   gateRun?: boolean;
   gate?: { state: string; description: string };
+  /** The train's note: a commit status on its own context, `train`, which no rule requires. */
+  note?: { state: string; description: string };
   draft?: boolean;
   auto?: boolean;
   repo?: string;
   title?: string;
+  body?: string;
   oid?: string;
   totalCount?: number;
   author?: string;
@@ -248,12 +280,22 @@ function node(o: {
           },
         ]
       : []),
+    ...(o.note
+      ? [
+          {
+            __typename: 'StatusContext',
+            context: 'train',
+            state: o.note.state.toUpperCase(),
+            description: o.note.description,
+          },
+        ]
+      : []),
   ];
   return {
     number: o.number,
     isDraft: o.draft ?? false,
     title: o.title ?? 'render: rails only on bridges',
-    body: '',
+    body: o.body ?? '',
     author: { login: o.author ?? 'maintainer' },
     headRefOid: o.head,
     headRepository: { nameWithOwner: o.repo ?? REPO },
@@ -330,6 +372,37 @@ describe('eligibility', () => {
     expect(cut.reason).toContain('over 100');
   });
 
+  // A lone PR whose suite timed out at cap 1 but is not blamed (its diff cannot reach the job, or
+  // main's own run of that job did not pass) waits for a newer main: on the same main the same
+  // suite would time out the same way.
+  it('a head parked after an unblamed timeout rides again only once main has moved', () => {
+    const parked = node({
+      number: 1,
+      head: sha('a'),
+      quick: [ok],
+      gate: {
+        state: 'pending',
+        description: withPark('train 9: browser (5/7) timed out alone, not blamed', sha('0')),
+      },
+    });
+    expect(parkedOn(normalizePr(parked).gateStatus?.description)).toBe(sha('0').slice(0, 7));
+    const here = eligibility(normalizePr(parked), { repo: REPO, cap: 8, main: sha('0') });
+    expect(here.ok).toBe(false);
+    expect(here.reason).toContain('timed out');
+    // The negative control: a newer main lets it ride, alone (cap 1).
+    expect(eligibility(normalizePr(parked), { repo: REPO, cap: 8, main: sha('1') })).toEqual({
+      ok: true,
+      cap: 1,
+      reason: 'waiting, cap 1',
+    });
+    expect(parkedOn(withCap('train 9 was red with 2 PRs; splits', 1))).toBeNull();
+    // The park survives a long text: it sits beside the cap, never clipped away.
+    const long = withPark(`train 9: ${'x'.repeat(200)}`, sha('0'));
+    expect(long.length).toBeLessThanOrEqual(140);
+    expect(parkedOn(long)).toBe(sha('0').slice(0, 7));
+    expect(capOf(long)).toBe(1);
+  });
+
   it('leaves out heads that passed (landing) or failed a train', () => {
     expect(
       elig(
@@ -355,35 +428,57 @@ describe('eligibility', () => {
 });
 
 // A PR on the train path whose quick check is green but that cannot ride yet: before this, nothing on
-// the PR said why it waited (the reason was only in the plan's log).
-describe('the "arm auto-merge" status', () => {
+// the PR said why it waited (the reason was only in the plan's log). The note is a commit status on a
+// context of its own, `train`, which no rule requires: a note on `gate` (the one required check)
+// could outlive its reason and block a merge. On a head that is closed and reopened on the full
+// path, its `gate` check run passes, and a pending `gate` status beside it waits for ever (the #590
+// review, from GitHub's docs: "If a check and a commit status have the same name, both must pass").
+describe('the train note (why a ready PR waits, on a status no rule requires)', () => {
   const ok = { conclusion: 'SUCCESS' };
-  const nudgeOf = (n: ReturnType<typeof node>) => nudge(normalizePr(n), { repo: REPO, cap: 8 });
+  const o = { repo: REPO, cap: 8, main: sha('0'), picked: [] as number[], run: 31 };
+  const noteOf = (n: ReturnType<typeof node>, extra: Partial<typeof o> = {}) =>
+    noteFor(normalizePr(n), { ...o, ...extra });
+  const pending = (description: string) => ({ state: 'pending', description });
 
-  it('tells an unarmed PR, or a draft, what to do, as a pending gate status', () => {
-    expect(nudgeOf(node({ number: 4, head: sha('a'), quick: [ok], auto: false }))).toEqual({
-      number: 4,
-      headSha: sha('a'),
-      description: withCap(NUDGE, 8),
-    });
-    expect(NUDGE).toBe('quick check green: arm auto-merge to ride the next train');
-    const draft = nudgeOf(node({ number: 4, head: sha('a'), quick: [ok], auto: false, draft: true }));
-    expect(draft?.description).toBe(withCap(NUDGE_DRAFT, 8));
-    expect(draft?.description).toContain('ready for review');
-    for (const n of [NUDGE, NUDGE_DRAFT]) expect(withCap(n, 8).length).toBeLessThanOrEqual(140);
+  it('tells an unarmed PR, a draft, or an armed PR waiting for its first train what is going on', () => {
+    expect(NOTE_CONTEXT).toBe('train');
+    expect(NOTE_CONTEXT).not.toBe(CONTEXT);
+    expect(noteOf(node({ number: 4, head: sha('a'), quick: [ok], auto: false }))).toEqual(
+      pending(NOTE_UNARMED),
+    );
+    expect(NOTE_UNARMED).toContain('gh pr merge --auto --squash');
+    expect(noteOf(node({ number: 4, head: sha('a'), quick: [ok], auto: false, draft: true }))).toEqual(
+      pending(NOTE_DRAFT),
+    );
+    expect(NOTE_DRAFT).toContain('ready for review');
+    // Armed and ready, but this train is full (or a smaller cap goes first): in line.
+    expect(noteOf(node({ number: 4, head: sha('a'), quick: [ok] }))).toEqual(pending(NOTE_ARMED));
+    for (const t of [NOTE_UNARMED, NOTE_DRAFT, NOTE_ARMED]) {
+      expect(t.startsWith('waiting: '), t).toBe(true);
+      expect(t.length, t).toBeLessThanOrEqual(140);
+    }
   });
 
-  it('says nothing to a PR that can ride, or is not on the train path, or has no green quick check', () => {
-    // The negative control: armed and ready, so it rides instead.
-    expect(nudgeOf(node({ number: 4, head: sha('a'), quick: [ok] }))).toBeNull();
+  it('says nothing to a PR the train already speaks for, or that never had a note and need not wait', () => {
+    // Picked for this train: its gate status says "riding" (or conflicts).
+    expect(noteOf(node({ number: 4, head: sha('a'), quick: [ok] }), { picked: [4] })).toBeNull();
+    // Rode before (a split, main moved): its gate status says where it is.
+    const rode = { state: 'pending', description: withCap('train 3 was red with 4 PRs; splits', 2) };
+    expect(noteOf(node({ number: 4, head: sha('a'), quick: [ok], gate: rode }))).toBeNull();
     for (const [why, n] of [
       ['fork', node({ number: 4, head: sha('a'), quick: [ok], auto: false, repo: 'fork/game' })],
+      // The live listing names the bot "dependabot" (GraphQL, checked on #569); the event, "dependabot[bot]".
+      ['Dependabot', node({ number: 4, head: sha('a'), quick: [ok], auto: false, author: 'dependabot' })],
       [
-        'Dependabot',
+        'Dependabot (event)',
         node({ number: 4, head: sha('a'), quick: [ok], auto: false, author: 'dependabot[bot]' }),
       ],
       ['[full-gate]', node({ number: 4, head: sha('a'), quick: [ok], auto: false, title: 'x [full-gate]' })],
-      // The docs and full paths: their gate is the aggregate check run, and there is no quick check.
+      [
+        '[full-gate] line',
+        node({ number: 4, head: sha('a'), quick: [ok], auto: false, body: 'x\n[full-gate]\n' }),
+      ],
+      // The docs and full paths: their gate is the aggregate check run.
       ['docs or full path', node({ number: 4, head: sha('a'), auto: false, gateRun: true })],
       ['gate check and quick', node({ number: 4, head: sha('a'), quick: [ok], auto: false, gateRun: true })],
       ['no quick check', node({ number: 4, head: sha('a'), auto: false })],
@@ -391,46 +486,135 @@ describe('the "arm auto-merge" status', () => {
         'quick check red',
         node({ number: 4, head: sha('a'), quick: [{ conclusion: 'FAILURE' }], auto: false }),
       ],
-      [
-        'quick check running',
-        node({ number: 4, head: sha('a'), quick: [{ conclusion: '', status: 'IN_PROGRESS' }], auto: false }),
-      ],
       ['checks cut short', node({ number: 4, head: sha('a'), quick: [ok], auto: false, totalCount: 140 })],
+      [
+        'passed',
+        node({
+          number: 4,
+          head: sha('a'),
+          quick: [ok],
+          gate: { state: 'success', description: 'passed train 3' },
+        }),
+      ],
     ] as const)
-      expect(nudgeOf(n), why).toBeNull();
+      expect(noteOf(n), why).toBeNull();
+    // A fork never gets a note, even one to clear (the train never writes to a fork's head).
+    expect(
+      noteOf(
+        node({
+          number: 4,
+          head: sha('a'),
+          quick: [ok],
+          auto: false,
+          repo: 'fork/game',
+          note: pending(NOTE_UNARMED),
+        }),
+      ),
+    ).toBeNull();
   });
 
-  it('never overwrites a verdict, never repeats itself, and keeps a lowered cap (the ladder stays bounded)', () => {
-    const at = (gate: { state: string; description: string }) =>
-      nudgeOf(node({ number: 4, head: sha('a'), quick: [ok], auto: false, gate }));
-    expect(at({ state: 'success', description: 'passed train 3' })).toBeNull();
-    expect(at({ state: 'failure', description: 'train 3: fails alone on main' })).toBeNull();
-    expect(at({ state: 'pending', description: withCap(NUDGE, 8) })).toBeNull();
-    // Rode a red train (cap 2), then auto-merge was turned off: the cap goes with the new text.
-    expect(at({ state: 'pending', description: withCap('train 3 was red with 4 PRs; splits', 2) })).toEqual({
-      number: 4,
-      headSha: sha('a'),
-      description: withCap(NUDGE, 2),
+  it('updates or clears its note when the PR is armed, rides, leaves the train path or cannot ride', () => {
+    const at = (n: Parameters<typeof node>[0], extra: Partial<typeof o> = {}) =>
+      noteOf(node({ note: pending(NOTE_UNARMED), ...n }), extra);
+    // Armed since: in line now, or picked up by this train.
+    expect(at({ number: 4, head: sha('a'), quick: [ok] })).toEqual(pending(NOTE_ARMED));
+    expect(at({ number: 4, head: sha('a'), quick: [ok] }, { picked: [4] })).toEqual({
+      state: 'success',
+      description: 'picked up by train 31: its gate status says where it is',
     });
+    // Armed after it rode before: the note it already has moves on too.
+    expect(
+      at({
+        number: 4,
+        head: sha('a'),
+        quick: [ok],
+        gate: { state: 'pending', description: withCap('train 3: main moved; waits for the next train', 8) },
+      }),
+    ).toEqual(pending(NOTE_ARMED));
+    // On the full path now (reopened with [full-gate], or the train switched off): cleared.
+    const full = at({ number: 4, head: sha('a'), quick: [ok], auto: false, gateRun: true });
+    expect(full?.state).toBe('success');
+    expect(full?.description).toMatch(/^not waiting for a train: .*gate check/);
+    for (const n of [
+      { number: 4, head: sha('a'), quick: [ok], auto: false, title: 'x [full-gate]' },
+      { number: 4, head: sha('a'), quick: [{ conclusion: 'FAILURE' }], auto: false },
+      {
+        number: 4,
+        head: sha('a'),
+        quick: [ok],
+        auto: false,
+        gate: { state: 'failure', description: 'train 3: fails alone on main' },
+      },
+    ])
+      expect(at(n)?.state, JSON.stringify(n)).toBe('success');
+    // Never repeats itself, and a cleared note stays cleared.
+    expect(at({ number: 4, head: sha('a'), quick: [ok], auto: false })).toBeNull();
+    expect(
+      noteOf(
+        node({
+          number: 4,
+          head: sha('a'),
+          quick: [ok],
+          auto: false,
+          gateRun: true,
+          note: { state: 'success', description: 'not waiting for a train: x' },
+        }),
+      ),
+    ).toBeNull();
     // A draft marked ready but still unarmed gets the plain text in place of the draft one.
-    expect(at({ state: 'pending', description: withCap(NUDGE_DRAFT, 8) })?.description).toBe(
-      withCap(NUDGE, 8),
-    );
+    expect(
+      noteOf(node({ number: 4, head: sha('a'), quick: [ok], auto: false, note: pending(NOTE_DRAFT) })),
+    ).toEqual(pending(NOTE_UNARMED));
   });
 
-  it('once armed, the PR rides from the nudge like any waiting PR', () => {
-    const armed = node({
-      number: 4,
-      head: sha('a'),
-      quick: [ok],
-      gate: { state: 'pending', description: withCap(NUDGE, 8) },
-    });
-    expect(eligibility(normalizePr(armed), { repo: REPO, cap: 8 })).toEqual({
+  it('never touches gate: a told PR has no gate status, and once armed it rides as a new PR', () => {
+    const told = normalizePr(node({ number: 4, head: sha('a'), quick: [ok], note: pending(NOTE_UNARMED) }));
+    expect(told.gateStatus).toBeNull();
+    expect(told.noteStatus).toEqual(pending(NOTE_UNARMED));
+    expect(eligibility(told, { repo: REPO, cap: 8, main: sha('0') })).toEqual({
       ok: true,
       cap: 8,
-      reason: 'waiting, cap 8',
+      reason: 'new',
     });
-    expect(nudge(normalizePr(armed), { repo: REPO, cap: 8 })).toBeNull();
+  });
+
+  it("lists the notes for the open PRs, and clears a merged PR's pending note", () => {
+    const prs = [
+      node({ number: 4, head: sha('a'), quick: [ok], auto: false }),
+      node({ number: 5, head: sha('b'), quick: [ok] }),
+      node({ number: 6, head: sha('c'), quick: [ok], note: pending(NOTE_ARMED) }),
+    ].map(normalizePr);
+    expect(waitingNotes(prs, { ...o, picked: [5, 6] })).toEqual([
+      { number: 4, headSha: sha('a'), ...pending(NOTE_UNARMED) },
+      {
+        number: 6,
+        headSha: sha('c'),
+        state: 'success',
+        description: 'picked up by train 31: its gate status says where it is',
+      },
+    ]);
+    // A merged PR, as the merged listing returns it (shape copied from this repo's GraphQL answer
+    // for #594, 2026-10-06, with the train's context in place of gate's).
+    const merged = (n: number, head: string, note: { state: string; description: string } | null) => ({
+      number: n,
+      headRefOid: head,
+      headRepository: { nameWithOwner: REPO },
+      commits: { nodes: [{ commit: { oid: head, status: note ? { context: note } : null } }] },
+    });
+    const list = [
+      merged(7, sha('d'), { state: 'PENDING', description: NOTE_UNARMED }),
+      merged(8, sha('e'), null),
+      merged(9, sha('f'), { state: 'SUCCESS', description: 'picked up by train 30: x' }),
+    ].map(normalizeMerged);
+    expect(list[0]).toEqual({
+      number: 7,
+      headSha: sha('d'),
+      headRepo: REPO,
+      noteStatus: pending(NOTE_UNARMED),
+    });
+    expect(mergedNotes(list, { repo: REPO })).toEqual([
+      { number: 7, headSha: sha('d'), state: 'success', description: NOTE_MERGED },
+    ]);
   });
 });
 
@@ -535,6 +719,44 @@ describe('a job that hits its timeout', () => {
     expect(suiteResult('failure', { failed: [], timedOut: [] })).toBe('failure');
     expect(suiteResult('success', { failed: [], timedOut: [] })).toBe('success');
     expect(suiteResult('skipped', { failed: [], timedOut: [] })).toBe('skipped');
+  });
+
+  // #590's own full-path run (37421608480) timed out in browser 5/7 on a diff of workflows, the train
+  // script, its unit test and docs: nothing the browser tier runs. These are that PR's files.
+  it('knows which suite jobs a diff can reach: a timeout in a job the diff cannot reach is not its doing', () => {
+    const pr590 = [
+      '.github/workflows/ci.yml',
+      '.github/workflows/rerun-main.yml',
+      '.github/workflows/train.yml',
+      'changes/2026-10-06-infra-train-followups.md',
+      'docs/engineering.md',
+      'scripts/train.mjs',
+      'scripts/train.test.ts',
+    ];
+    for (const job of ['suite / browser (5/7)', 'suite / sim (3/6)'])
+      expect(canReach(pr590, job), job).toBe(false);
+    // The unit tier runs scripts/train.test.ts, which imports scripts/train.mjs.
+    expect(canReach(pr590, 'suite / unit (1/2)')).toBe(true);
+    expect(canReach(pr590, 'suite / static')).toBe(true);
+    // The negative controls: anything the build or a test tier reads reaches the browser and sim jobs.
+    for (const f of [
+      'src/render/road.ts',
+      'packs/base/pack.json',
+      'tests/e2e/ui-screens.spec.ts',
+      'tests/timings.json',
+      'package-lock.json',
+      'vite.config.ts',
+      'scripts/check.mjs',
+      'scripts/shard-plan.mjs',
+      'README.md',
+      'THIRD_PARTY_ASSETS.md',
+      'public/icon.png',
+    ])
+      for (const job of ['suite / browser (5/7)', 'suite / sim (3/6)'])
+        expect(canReach([...pr590, f], job), `${f} -> ${job}`).toBe(true);
+    // Docs alone reach nothing; a job name it does not know is reachable (when unsure, it can).
+    expect(canReach(['docs/a.md', 'changes/2026-10-06-a.md'], 'suite / unit (1/2)')).toBe(false);
+    expect(canReach(['scripts/train.mjs'], 'some / new job')).toBe(true);
   });
 
   it("main's own run with a timed-out job is red: the train waits for main's re-run, as for a failure", () => {
@@ -816,58 +1038,124 @@ describe('the landing invariant (decide)', () => {
     expect(d.why).toContain('timed out');
   });
 
-  it('a lone PR that timed out on a green main is blamed, saying "timed out"; on a main whose own run timed out, nobody is', () => {
-    const one = [bundle[0]!];
-    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), timedOut: late };
-    const d = decide({ ...at, mainCi: 'success' });
+  // A lone PR that timed out: blamed only at cap 1, with a diff that can reach the job, on a main
+  // whose own run of that job passed. #590's own run is the case this guards: browser 5/7 timed out
+  // on a diff that cannot reach it, on a tree whose base ran that job in 347 s on main.
+  const lone = (cap: number) => [{ ...bundle[0]!, cap }];
+  const reaching = ['src/render/road.ts', 'changes/2026-10-06-a.md'];
+  const green = { 'suite / browser (5/7)': 'success', 'suite / sim (3/6)': 'success' };
+  const timedOutAlone = (cap: number) => ({
+    ...input,
+    result: 'failure',
+    bundle: lone(cap),
+    now: nowOf(lone(cap)),
+    timedOut: late,
+    mainCi: 'success' as const,
+    files: reaching,
+    mainJobs: green,
+  });
+
+  it('a lone PR that timed out above cap 1 rides once more alone (cap 1) before anything is blamed', () => {
+    for (const cap of [8, 4, 2]) {
+      const d = decide(timedOutAlone(cap));
+      expect(d.verdict).toBe('timed-out');
+      expect(d.blame).toBeNull();
+      expect(d.dispatch).toBe(true);
+      expect(d.statuses).toEqual([expect.objectContaining({ number: 11, state: 'pending' })]);
+      expect(capOf(d.statuses[0]!.description)).toBe(1);
+      expect(d.statuses[0]!.description).toContain('browser (5/7) timed out; rides once more alone');
+    }
+    // A job that failed beside the timeout is a failure like any other: blamed as before.
+    const both = decide({ ...timedOutAlone(8), failed: ['suite / sim (3/6)'] });
+    expect(both.verdict).toBe('culprit');
+  });
+
+  it('a lone PR that timed out at cap 1 is blamed only if its diff reaches the job and main ran that job green', () => {
+    const d = decide(timedOutAlone(1));
     expect(d.verdict).toBe('culprit');
     expect(d.blame).toEqual({ number: 11, sha: sha('a'), kind: 'unknown' });
     expect(d.statuses).toEqual([expect.objectContaining({ state: 'failure' })]);
     expect(d.statuses[0]!.description).toContain('timed out alone on main');
     // A plain failure keeps its old words (the negative control).
-    expect(decide({ ...at, timedOut: [], mainCi: 'success' }).statuses[0]!.description).toContain(
+    expect(decide({ ...timedOutAlone(1), timedOut: [] }).statuses[0]!.description).toContain(
       'fails alone on main',
     );
+    const pr590 = ['.github/workflows/train.yml', 'scripts/train.mjs', 'scripts/train.test.ts', 'docs/x.md'];
+    for (const [why, extra] of [
+      ['its diff cannot reach the job', { files: pr590 }],
+      ["main's own run of the job was skipped (the tree was tested on a PR)", { mainJobs: {} }],
+      ["main's own run of the job is still going", { mainJobs: { 'suite / browser (5/7)': 'in_progress' } }],
+      ['its changed files could not be read', { files: null }],
+    ] as const) {
+      const n = decide({ ...timedOutAlone(1), ...extra });
+      expect(n.verdict, why).toBe('timed-out-unblamed');
+      expect(n.blame, why).toBeNull();
+      expect(n.dispatch, why).toBe(true);
+      expect(n.statuses, why).toEqual([expect.objectContaining({ state: 'pending' })]);
+      // It waits for a newer main: on this one the same suite would time out the same way.
+      expect(parkedOn(n.statuses[0]!.description), why).toBe(base.slice(0, 7));
+      expect(capOf(n.statuses[0]!.description), why).toBe(1);
+      expect(n.statuses[0]!.description, why).toContain('not blamed');
+    }
+    expect(decide({ ...timedOutAlone(1), files: pr590 }).why).toContain('cannot reach');
     // Main's own ci run on that commit timed out too (GitHub: cancelled): main is red, nobody is blamed.
     const red = ciState({ status: 'completed', conclusion: 'cancelled', timedOut: ['sim (3/3)'] });
-    const m = decide({ ...at, mainCi: red });
-    expect(m.verdict).toBe('main-red');
-    expect(m.blame).toBeNull();
-    expect(m.dispatch).toBe(false);
+    for (const cap of [8, 1]) {
+      const m = decide({ ...timedOutAlone(cap), mainCi: red });
+      expect(m.verdict).toBe('main-red');
+      expect(m.blame).toBeNull();
+      expect(m.dispatch).toBe(false);
+    }
   });
 });
 
-// Trains in a row, as the workflow runs them: select from the statuses, run a fake suite on
-// (main + bundle), judge its result as the report does, decide, apply the statuses, land the passed
-// set. `timeout` makes a red suite a timed-out one: GitHub then reports the suite as `cancelled`,
-// and train.yml's control job (which runs only on `failure`) does not run.
+// Trains in a row, as the workflow runs them: select from the statuses (eligibility itself, on the
+// main of that moment), run a fake suite on (main + bundle), judge its result as the report does,
+// decide, apply the statuses, land the passed set. `timeout` makes a red suite a timed-out one:
+// GitHub then reports the suite as `cancelled`, and train.yml's control job (which runs only on
+// `failure`) does not run. `reaches` and `mainGreen` say whether each PR's diff can reach the job
+// that timed out, and whether main's own run of that job passed.
 function simulate(o: {
   prs: number;
   fails: (tree: number[]) => boolean;
   maxTrains?: number;
   timeout?: boolean;
+  reaches?: boolean;
+  mainGreen?: boolean;
   judge?: typeof suiteResult;
 }) {
   const judge = o.judge ?? suiteResult;
+  const JOB = 'suite / browser (5/7)';
   const status = new Map<number, { state: string; description: string } | null>();
   for (let n = 1; n <= o.prs; n++) status.set(n, null);
   const main: number[] = [];
   const tested: { main: number[]; set: number[] }[] = [];
   const rides = new Map<number, number>();
+  /** The main each PR rode alone at cap 1 on. */
+  const aloneOn = new Map<number, string[]>();
   let trains = 0;
   for (; trains < (o.maxTrains ?? 50); trains++) {
+    const base = main.length.toString(16).padStart(40, '0');
     const eligible = [...status].flatMap(([number, s]) => {
-      const st = stateOf(s, 8);
-      return st.kind === 'none' || st.kind === 'pending'
-        ? [{ number, headSha: sha(String(number % 10)), cap: st.cap }]
-        : [];
+      const pr = normalizePr(
+        node({
+          number,
+          head: sha(String(number % 10)),
+          quick: [{ conclusion: 'SUCCESS' }],
+          ...(s ? { gate: s } : {}),
+        }),
+      );
+      const e = eligibility(pr, { repo: REPO, cap: 8, main: base });
+      return e.ok ? [{ number, headSha: pr.headSha, cap: e.cap }] : [];
     });
     const { bundle } = selectBundle(eligible);
     if (!bundle.length) break;
     for (const b of bundle) rides.set(b.number, (rides.get(b.number) ?? 0) + 1);
+    if (bundle.length === 1 && bundle[0]!.cap === 1)
+      aloneOn.set(bundle[0]!.number, [...(aloneOn.get(bundle[0]!.number) ?? []), base]);
     const tree = [...main, ...bundle.map((b) => b.number)];
     const red = o.fails(tree);
-    const timedOut = red && o.timeout ? ['suite / browser (5/7)'] : [];
+    const timedOut = red && o.timeout ? [JOB] : [];
     const raw = !red ? 'success' : o.timeout ? 'cancelled' : 'failure';
     const result = judge(raw, { failed: [], timedOut });
     const control =
@@ -882,10 +1170,12 @@ function simulate(o: {
       control,
       timedOut,
       bundle,
-      base: sha('0'),
-      mainNow: sha('0'),
+      base,
+      mainNow: base,
       now,
       mainCi: 'success',
+      mainJobs: { [JOB]: o.mainGreen === false ? 'skipped' : 'success' },
+      files: o.reaches === false ? ['scripts/train.mjs', 'docs/x.md'] : ['src/a.ts'],
       run: trains + 1,
     });
     for (const s of d.statuses) status.set(s.number, { state: s.state, description: s.description });
@@ -895,7 +1185,7 @@ function simulate(o: {
     }
   }
   const failed = [...status].filter(([, s]) => s?.state === 'failure').map(([n]) => n);
-  return { main, failed, trains, tested, rides, status };
+  return { main, failed, trains, tested, rides, status, aloneOn };
 }
 
 describe('the split plan, simulated', () => {
@@ -953,6 +1243,43 @@ describe('the split plan, simulated', () => {
     const one = simulate({ prs: 8, fails: (t) => t.includes(5), timeout: true });
     expect(one.failed).toEqual([5]);
     expect(one.main.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 6, 7, 8]);
+  });
+
+  it('a lone PR that times out at cap 8 rides once more alone, and is blamed only after that', () => {
+    const r = simulate({ prs: 1, fails: () => true, timeout: true });
+    expect(r.rides.get(1)).toBe(2);
+    expect(r.failed).toEqual([1]);
+    expect(r.aloneOn.get(1)).toHaveLength(1);
+    // A one-off timeout (the runner was slow once) lands on the second ride instead of failing.
+    let calls = 0;
+    const once = simulate({ prs: 1, fails: () => ++calls === 1, timeout: true });
+    expect(once.failed).toEqual([]);
+    expect(once.main).toEqual([1]);
+  });
+
+  it('a timeout in a job the diff cannot reach, or that main itself did not pass, blames nobody and rides once per main', () => {
+    for (const o of [{ reaches: false }, { mainGreen: false }]) {
+      const r = simulate({ prs: 8, fails: () => true, timeout: true, maxTrains: 100, ...o });
+      expect(r.failed, JSON.stringify(o)).toEqual([]);
+      expect(r.main).toEqual([]);
+      // Bounded: on an unmoving main each head rides at most 4 trains, then waits for a newer main.
+      expect(Math.max(...r.rides.values())).toBeLessThanOrEqual(4);
+      for (const [n, s] of r.status) expect(parkedOn(s?.description), `#${n}`).toBe('0'.repeat(7));
+    }
+    // One slow job among 8 whose diffs cannot reach it: the other 7 land; #5 rides alone at cap 1
+    // at most once on each main, and is never blamed.
+    const one = simulate({
+      prs: 8,
+      fails: (t) => t.includes(5),
+      timeout: true,
+      reaches: false,
+      maxTrains: 100,
+    });
+    expect(one.failed).toEqual([]);
+    expect(one.main.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 6, 7, 8]);
+    const mains = one.aloneOn.get(5) ?? [];
+    expect(mains.length).toBeGreaterThan(0);
+    expect(new Set(mains).size).toBe(mains.length);
   });
 
   it('the planted bug: a timeout read as plain "cancelled" (the train before this fix) never concludes', () => {
@@ -1044,6 +1371,9 @@ describe('status posting', () => {
 // report decides. Each answer's shape follows this repo's real API answers (2026-10-06); a request
 // with no fake answer gets a 404, so a call nobody expected fails the test.
 describe('the commands, against a fake GitHub', () => {
+  /** What the scripts send: a GraphQL query, or a commit status. */
+  type Sent = { query?: string; state?: string; context?: string; description?: string; target_url?: string };
+  type Call = { method: string; path: string; body: Sent | undefined };
   const CFG = { live: true, cap: 8, landingMinutes: 10, mainWaitMinutes: 15 };
   const ok = { conclusion: 'SUCCESS' };
   const base = sha('0');
@@ -1086,19 +1416,16 @@ describe('the commands, against a fake GitHub', () => {
       );
     return { lines, outputs };
   };
-  const fakeGitHub = (routes: [RegExp, () => unknown][]) => {
-    const calls: { method: string; path: string; body: unknown }[] = [];
+  const fakeGitHub = (routes: [RegExp, (body: Sent | undefined) => unknown][]) => {
+    const calls: Call[] = [];
     vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
       const method = init.method ?? 'GET';
       const p = url.replace('https://api.github.com', '');
-      calls.push({
-        method,
-        path: p,
-        body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined,
-      });
+      const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Sent) : undefined;
+      calls.push({ method, path: p, body });
       const hit = routes.find(([re]) => re.test(`${method} ${p}`));
       if (!hit) return Promise.resolve(new Response(`no fake for ${method} ${p}`, { status: 404 }));
-      const v = hit[1]();
+      const v = hit[1](body);
       return Promise.resolve(
         typeof v === 'string'
           ? new Response(v, { status: 200 })
@@ -1110,6 +1437,17 @@ describe('the commands, against a fake GitHub', () => {
   const listing = (...nodes: ReturnType<typeof node>[]) => ({
     data: { repository: { pullRequests: { pageInfo: { hasNextPage: false, endCursor: null }, nodes } } },
   });
+  /** The two GraphQL listings plan reads: the open PRs, and the recently merged ones. */
+  const graphql = (
+    open: ReturnType<typeof node>[],
+    merged: unknown[] = [],
+  ): [RegExp, (b: Sent | undefined) => unknown] => [
+    /^POST \/graphql$/,
+    (b) =>
+      /states: MERGED/.test(b?.query ?? '')
+        ? { data: { repository: { pullRequests: { nodes: merged } } } }
+        : listing(...open),
+  ];
   const MAIN: [RegExp, () => unknown] = [
     /^GET \/repos\/owner\/game\/git\/ref\/heads\/main$/,
     () => ({ object: { sha: base } }),
@@ -1122,30 +1460,31 @@ describe('the commands, against a fake GitHub', () => {
       ],
     }),
   ];
+  const statusPosts = (calls: Call[]) =>
+    calls
+      .filter((c) => c.method === 'POST' && c.path.includes('/statuses/'))
+      .map((c) => ({ sha: c.path.slice(c.path.lastIndexOf('/') + 1), ...c.body }));
 
-  it('plan: an unarmed PR with a green quick check gets a nudge for announce to post; plan itself writes nothing', async () => {
+  it('plan: an unarmed PR with a green quick check gets a train note for announce to post; plan itself writes nothing', async () => {
     ghEnv();
     const { outputs } = capture();
     const calls = fakeGitHub([
       MAIN,
       mainRun('success'),
-      [
-        /^POST \/graphql$/,
-        () =>
-          listing(
-            node({ number: 4, head: sha('a'), quick: [ok], auto: false }),
-            node({ number: 5, head: sha('b'), quick: [ok], auto: false, repo: 'fork/game' }),
-            node({ number: 6, head: sha('c'), auto: false, gateRun: true }),
-          ),
-      ],
+      graphql([
+        node({ number: 4, head: sha('a'), quick: [ok], auto: false }),
+        node({ number: 5, head: sha('b'), quick: [ok], auto: false, repo: 'fork/game' }),
+        node({ number: 6, head: sha('c'), auto: false, gateRun: true }),
+      ]),
     ]);
     await cmdPlan(CFG);
     const out = outputs();
     expect(out.depart).toBe('false');
     expect(out.post).toBe('true');
-    expect(JSON.parse(out.nudges ?? '')).toEqual([
-      { number: 4, headSha: sha('a'), description: withCap(NUDGE, 8) },
+    expect(JSON.parse(out.notes ?? '')).toEqual([
+      { number: 4, headSha: sha('a'), state: 'pending', description: NOTE_UNARMED },
     ]);
+    expect(out.nudges).toBeUndefined();
     expect(calls.filter((c) => c.method !== 'GET' && c.path !== '/graphql')).toEqual([]);
     // A dry run lists it but hands announce nothing to post.
     vi.stubEnv('TRAIN_DRY_RUN', 'true');
@@ -1154,28 +1493,72 @@ describe('the commands, against a fake GitHub', () => {
     expect(dry.outputs().post).toBe('false');
   });
 
-  it('announce: posts each nudge as a pending gate status, linked to the train run', async () => {
-    const description = withCap(NUDGE, 8);
+  it('announce: posts each note on the train context, never gate, after the riding statuses; one that fails stops nothing', async () => {
+    const notes = [
+      { number: 4, headSha: sha('a'), state: 'pending', description: NOTE_UNARMED },
+      { number: 6, headSha: sha('c'), state: 'success', description: NOTE_MERGED },
+    ];
     ghEnv({
-      TRAIN_BUNDLE: '[]',
+      TRAIN_BUNDLE: JSON.stringify([{ number: 5, headSha: sha('b'), cap: 8 }]),
       TRAIN_CONFLICTS: '[]',
       TRAIN_BASE: base,
-      TRAIN_NUDGES: JSON.stringify([{ number: 4, headSha: sha('a'), description }]),
+      TRAIN_NOTES: JSON.stringify(notes),
     });
-    capture();
-    const calls = fakeGitHub([[/^POST \/repos\/owner\/game\/statuses\//, () => ({})]]);
+    const { lines } = capture();
+    const calls = fakeGitHub([
+      [new RegExp(`^POST /repos/owner/game/statuses/${sha('a')}$`), () => ({})],
+      [new RegExp(`^POST /repos/owner/game/statuses/${sha('b')}$`), () => ({})],
+    ]);
     await cmdAnnounce();
-    expect(calls).toEqual([
-      {
-        method: 'POST',
-        path: `/repos/${REPO}/statuses/${sha('a')}`,
-        body: {
-          state: 'pending',
-          context: 'gate',
-          description,
-          target_url: `https://github.com/${REPO}/actions/runs/37414740605`,
-        },
-      },
+    const posts = statusPosts(calls);
+    expect(posts.map((p) => [p.sha, p.context, p.state])).toEqual([
+      [sha('b'), 'gate', 'pending'], // riding first: the train needs it
+      [sha('a'), 'train', 'pending'],
+      [sha('c'), 'train', 'success'], // its post fails (404 here); the rest went out, and announce ends
+    ]);
+    expect(posts[1]).toMatchObject({
+      description: NOTE_UNARMED,
+      target_url: `https://github.com/${REPO}/actions/runs/37414740605`,
+    });
+    expect(lines).toContainEqual(expect.stringMatching(/^announce: no note on #6: /));
+  });
+
+  // The #590 review's counterexample, end to end: an unarmed train-path PR is told to arm, then is
+  // closed and reopened on the full path on the same head (its gate check run passes), then merges.
+  // Its required `gate` is never written by the note, so nothing pending is left beside the check run.
+  it('a told PR that goes full path or merges gets its note cleared, and gate is never written for it', async () => {
+    ghEnv();
+    const runs: Call[][] = [];
+    const told = { state: 'pending', description: NOTE_UNARMED };
+    for (const [open, merged] of [
+      [[node({ number: 4, head: sha('a'), quick: [ok], auto: false })], []],
+      [[node({ number: 4, head: sha('a'), quick: [ok], auto: false, gateRun: true, note: told })], []],
+      [
+        [],
+        [
+          {
+            number: 4,
+            headRefOid: sha('a'),
+            headRepository: { nameWithOwner: REPO },
+            commits: { nodes: [{ commit: { oid: sha('a'), status: { context: told } } }] },
+          },
+        ],
+      ],
+    ] as const) {
+      const { outputs } = capture();
+      runs.push(fakeGitHub([MAIN, mainRun('success'), graphql([...open], [...merged])]));
+      await cmdPlan(CFG);
+      vi.stubEnv('TRAIN_BUNDLE', outputs().bundle ?? '[]');
+      vi.stubEnv('TRAIN_CONFLICTS', outputs().conflicts ?? '[]');
+      vi.stubEnv('TRAIN_NOTES', outputs().notes ?? '[]');
+      vi.stubEnv('TRAIN_BASE', base);
+      runs.push(fakeGitHub([[/^POST \/repos\/owner\/game\/statuses\//, () => ({})]]));
+      await cmdAnnounce();
+    }
+    expect(statusPosts(runs.flat()).map((p) => [p.context, p.state, p.description])).toEqual([
+      ['train', 'pending', NOTE_UNARMED],
+      ['train', 'success', expect.stringMatching(/^not waiting for a train: .*gate check/)],
+      ['train', 'success', NOTE_MERGED],
     ]);
   });
 
@@ -1268,8 +1651,41 @@ describe('the commands, against a fake GitHub', () => {
     expect(cancelled.lines).toContainEqual(expect.stringMatching(/^report: \*\*unfinished\*\*/));
   });
 
-  it('report: a lone PR that timed out is blamed with "timed out" on a green main, and nobody is while main\'s own run timed out', async () => {
-    const one = riders(1);
+  // Main's own ci run on base (id 5), as its jobs API answers: every suite job green.
+  const MAIN_JOBS: [RegExp, () => unknown] = [
+    /^GET \/repos\/owner\/game\/actions\/runs\/5\/attempts\/1\/jobs\?per_page=100$/,
+    () => ({
+      total_count: 2,
+      jobs: [
+        { id: 1, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'success' },
+        { id: 2, name: 'suite / sim (3/6)', status: 'completed', conclusion: 'success' },
+      ],
+    }),
+  ];
+  /** The PR's changed files, as the pulls API lists them (a rename lists its old name too). */
+  const prFiles = (n: number, files: string[]): [RegExp, () => unknown] => [
+    new RegExp(`^GET /repos/owner/game/pulls/${n}/files\\?per_page=100&page=1$`),
+    () => files.map((filename) => ({ filename, status: 'modified' })),
+  ];
+  const lone = (cap: number) => riders(1).map((r) => ({ ...r, cap }));
+
+  it('report: a lone PR that timed out above cap 1 rides once more alone; nothing is blamed yet', async () => {
+    const one = lone(8);
+    reportEnv(one);
+    const { lines } = capture();
+    const calls = fakeGitHub([MAIN, open(one), OWN_JOBS, notes(true), LOG, mainRun('success')]);
+    await cmdReport(CFG);
+    expect(lines).toContainEqual(expect.stringMatching(/^report: \*\*timed-out\*\*/));
+    expect(lines).toContain(
+      `report: would post gate=pending on #11 ${sha('a').slice(0, 7)}: ${withCap('train 29: browser (5/7) timed out; rides once more alone', 1)}`,
+    );
+    expect(lines.some((l) => l.includes('would comment'))).toBe(false);
+    // It did not need the PR's files or main's jobs to decide that.
+    expect(calls.some((c) => /\/pulls\/11\/files|\/runs\/5\/attempts/.test(c.path))).toBe(false);
+  });
+
+  it('report: a lone PR that timed out at cap 1 is blamed only when its diff reaches the job and main ran it green', async () => {
+    const one = lone(1);
     reportEnv(one);
     const blamed = capture();
     fakeGitHub([
@@ -1279,6 +1695,8 @@ describe('the commands, against a fake GitHub', () => {
       notes(true),
       LOG,
       mainRun('success'),
+      MAIN_JOBS,
+      prFiles(11, ['src/render/road.ts', 'changes/2026-10-06-a.md']),
       [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
     ]);
     await cmdReport(CFG);
@@ -1289,6 +1707,102 @@ describe('the commands, against a fake GitHub', () => {
       ),
     );
     expect(blamed.lines).toContainEqual(expect.stringContaining('- Timed out: suite / browser (5/7).'));
+    expect(blamed.lines).toContainEqual(expect.stringContaining("main's own run of suite / browser (5/7)"));
+    // #590's own diff (workflows, the train script, its unit test, docs) cannot reach a browser job.
+    const unreached = capture();
+    fakeGitHub([
+      MAIN,
+      open(one),
+      OWN_JOBS,
+      notes(true),
+      LOG,
+      mainRun('success'),
+      MAIN_JOBS,
+      prFiles(11, [
+        '.github/workflows/train.yml',
+        'scripts/train.mjs',
+        'scripts/train.test.ts',
+        'docs/engineering.md',
+      ]),
+    ]);
+    await cmdReport(CFG);
+    expect(unreached.lines).toContainEqual(
+      expect.stringMatching(/^report: \*\*timed-out-unblamed\*\*: .*cannot reach/),
+    );
+    expect(unreached.lines).toContainEqual(
+      expect.stringMatching(
+        /would post gate=pending on #11 .*not blamed.*rides once main is past 0000000 \[cap 1\]$/,
+      ),
+    );
+    expect(unreached.lines.some((l) => l.includes('would comment'))).toBe(false);
+    // Main's own run of that job did not run (the skip path): nobody is blamed either.
+    const skipped = capture();
+    fakeGitHub([
+      MAIN,
+      open(one),
+      OWN_JOBS,
+      notes(true),
+      LOG,
+      mainRun('success'),
+      [MAIN_JOBS[0], () => ({ total_count: 0, jobs: [] })],
+      prFiles(11, ['src/render/road.ts']),
+    ]);
+    await cmdReport(CFG);
+    expect(skipped.lines).toContainEqual(expect.stringMatching(/^report: \*\*timed-out-unblamed\*\*/));
+  });
+
+  // A FAIL row's text comes from a PR's own log, and the report job holds write tokens: a line it
+  // prints that starts with "::" would be read as a workflow command (the fail-fast review, 5).
+  it('report: no line it prints from a PR log can start a workflow command', async () => {
+    const one = lone(1);
+    reportEnv(one);
+    vi.stubEnv('TRAIN_RESULT', 'failure');
+    vi.stubEnv('TRAIN_CONTROL', 'failure');
+    const evil = [
+      '2026-10-06T04:49:00Z ::add-mask::secret  FAIL  0 tests passed',
+      '2026-10-06T04:49:01Z ::stop-commands::tok  FAIL  x',
+    ].join('\n');
+    const { lines } = capture();
+    fakeGitHub([
+      MAIN,
+      open(one),
+      [
+        OWN_JOBS[0],
+        () => ({
+          total_count: 1,
+          jobs: [
+            {
+              id: 112110821845,
+              name: 'suite / browser (5/7)',
+              status: 'completed',
+              conclusion: 'failure',
+              started_at: '2026-10-06T04:39:52Z',
+              completed_at: '2026-10-06T04:50:02Z',
+            },
+          ],
+        }),
+      ],
+      [LOG[0], () => evil],
+      mainRun('success'),
+      [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+    ]);
+    await cmdReport(CFG);
+    expect(lines).toContainEqual(expect.stringMatching(/^report: \*\*culprit\*\*/));
+    const printed = lines.flatMap((l) => l.split(/\r\n|\r|\n/));
+    // The payload did reach the comment: the check can find it.
+    expect(printed.some((l) => l.includes('::add-mask::secret: FAIL'))).toBe(true);
+    for (const l of printed) expect(l.trimStart(), l).not.toMatch(/^::/);
+    expect(quoteLines('a\n::x::y\r\nb\rc')).toEqual([
+      'report |   a',
+      'report |   ::x::y',
+      'report |   b',
+      'report |   c',
+    ]);
+  });
+
+  it("report: nobody is blamed for a timeout while main's own run timed out", async () => {
+    const one = riders(1);
+    reportEnv(one);
     // Main's own ci run on base had sim 3/3 time out (GitHub concluded it cancelled): main is red.
     const red = capture();
     fakeGitHub([
@@ -1412,9 +1926,13 @@ describe('what a red train says', () => {
       lacks: [],
       mainCi: 'success',
       timedOut: ['suite / browser (5/7)'],
+      reached: ['suite / browser (5/7)'],
     });
     expect(c).toContain('**Bundle train 29: this PR timed out alone on main.**');
     expect(c).toContain('- Timed out: suite / browser (5/7).');
+    expect(c).toContain(
+      "- It timed out riding alone, main's own run of suite / browser (5/7) on `bbbbbbb` passed, and this PR changes files that job runs.",
+    );
     expect(c).toContain('did not finish');
     expect(c).toContain('slower');
     // Without a timeout the comment keeps its old words (the negative control).
@@ -1779,16 +2297,54 @@ describe('the workflows', () => {
     expect(train).toContain('workflows: [ci, train-kick]');
   });
 
-  it("plan stays read-only and hands its nudges to announce, which posts them with main's own script", () => {
+  it("plan stays read-only and hands its notes to announce, which posts them with main's own script", () => {
     const t = jobs(train);
     const plan = t.get('plan') ?? '';
     expect(plan).not.toMatch(/: write$/m);
-    expect(plan).toContain('\n      nudges: ${{ steps.plan.outputs.nudges }}\n');
+    expect(plan).toContain('\n      notes: ${{ steps.plan.outputs.notes }}\n');
     const announce = t.get('announce') ?? '';
     expect(announce).toMatch(/^ {4}needs: plan\n {4}if: needs\.plan\.outputs\.post == 'true'\n/m);
     expect(announce).toMatch(/permissions:\n {6}contents: read\n {6}statuses: write\n/);
-    expect(announce).toContain('\n          TRAIN_NUDGES: ${{ needs.plan.outputs.nudges }}\n');
+    expect(announce).toContain('\n          TRAIN_NOTES: ${{ needs.plan.outputs.notes }}\n');
     expect(announce).toContain('\n        run: node scripts/train.mjs announce\n');
+    expect(train).not.toMatch(/nudge/i);
+  });
+
+  // canReach says a diff of only these files cannot make a sim or browser job slower, so a timeout
+  // there is never blamed on it. That holds only while nothing those jobs run reads them.
+  it('the files canReach exempts are read by no sim or browser job (the Vitest projects, imports, scripts)', () => {
+    const repoRoot = path.join(import.meta.dirname, '..');
+    const read = (f: string) => readFileSync(path.join(repoRoot, f), 'utf8');
+    // The unit project is exactly src/, scripts/ and tools/ *.test.ts; the sim project is tests/sim/.
+    const vitest = read('vitest.config.ts');
+    expect(vitest).toContain("include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'tools/**/*.test.ts'],");
+    expect(vitest).toContain("include: ['tests/sim/**/*.test.ts'],");
+    for (const f of ['src/ui/x.test.ts', 'scripts/x.test.ts', 'tools/gis/x.test.ts'])
+      expect(canReach([f], 'suite / sim (1/6)'), f).toBe(false);
+    for (const f of ['tests/sim/x.test.ts', 'tests/e2e/x.spec.ts', 'src/ui/x.ts'])
+      expect(canReach([f], 'suite / sim (1/6)'), f).toBe(true);
+    // Nothing imports a test file, and only the workflows and their own tests name the two scripts.
+    const tracked = spawnSync('git', ['ls-files', '-z', 'src', 'tests', 'scripts', 'tools'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 1 << 26,
+    }).stdout.split('\0');
+    const code = /\.(?:[cm]?[jt]s|json)$/;
+    const files = [
+      ...tracked.filter((f) => code.test(f)),
+      ...readdirSync(repoRoot).filter((f) => code.test(f)),
+    ];
+    expect(files.length).toBeGreaterThan(400);
+    const importsTest = /(?:from\s*|import\(\s*|require\(\s*)['"][^'"]*\.test(?:\.[cm]?[jt]s)?['"]/;
+    const namesScript = /(?:train|tested-tree)\.mjs/;
+    // The checks can find what they look for.
+    expect(importsTest.test('import { x } from ' + "'./a" + ".test.ts';")).toBe(true);
+    expect(read('scripts/train.test.ts')).toMatch(namesScript);
+    for (const f of files) {
+      expect(importsTest.test(read(f)), f).toBe(false);
+      if (!/^scripts\/(?:train|tested-tree)\.(?:mjs|test\.ts)$/.test(f))
+        expect(namesScript.test(read(f)), f).toBe(false);
+    }
   });
 
   it("plan and report can read a run's jobs and their annotations, to tell a timeout from a cancel", () => {
