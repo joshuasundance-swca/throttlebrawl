@@ -19,12 +19,23 @@ test.describe('offline', () => {
     test.setTimeout(240_000);
     const problems: string[] = [];
     page.on('pageerror', (err) => problems.push(err.message));
+    // Playtest 4 run A, punch item 11: once the worker had the page, Chrome logged 5 warnings for each
+    // of the 37 preloaded files ("not used because it is a cross-world service worker resource
+    // mismatch"). The worker's page leaves the preload hints out.
+    const preloadWarnings: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'warning' && /preload/i.test(m.text())) preloadWarnings.push(m.text());
+    });
+    const preloadLinks = () => page.evaluate(() => document.querySelectorAll('link[rel="preload"]').length);
     await page.addInitScript(() => {
       (window as TestWindow).__GAME_TEST__ = true;
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
     await expect(page.locator('#menu-race')).toBeVisible();
+    // The control: the first load, before the worker, has the build's preload hints.
+    const firstLoadPreloads = await preloadLinks();
+    expect(firstLoadPreloads).toBeGreaterThan(0);
 
     // The worker caches the whole build, then takes the page.
     await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
@@ -72,9 +83,15 @@ test.describe('offline', () => {
     );
     expect(probe).toBe('failed');
 
+    preloadWarnings.length = 0;
     await page.reload();
     await page.locator('#start-screen').click();
     await expect(page.locator('#menu-race')).toBeVisible();
+    const workerPreloads = await preloadLinks();
+    console.log(
+      `[print] preload hints: ${firstLoadPreloads} on the first load, ${workerPreloads} from the worker`,
+    );
+    expect(workerPreloads).toBe(0);
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120, null, {
@@ -83,6 +100,7 @@ test.describe('offline', () => {
     const tick = await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? 0);
     console.log(`[print] offline race reached tick ${tick}`);
     expect(problems).toEqual([]);
+    expect(preloadWarnings).toEqual([]);
   });
 });
 
