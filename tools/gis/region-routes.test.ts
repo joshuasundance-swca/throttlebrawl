@@ -23,7 +23,13 @@ import {
   type BakedRoute,
   type RoadNetwork,
 } from '../../src/road';
-import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
+import {
+  GroundTris,
+  openLandEnds,
+  openSeams,
+  type OpenLandEnd,
+  type OpenSeam,
+} from '../../src/render/land-probe.test-util';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene, ROAD_CHUNK_M, type RoadDressing } from '../../src/render/road-mesh';
 import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
@@ -449,6 +455,8 @@ function landScene(id: string) {
 
 const fmtEnd = (o: OpenLandEnd) =>
   `${o.edge} s ${o.s.toFixed(0)} ${o.side < 0 ? 'left' : 'right'} ${o.across} m out, drop ${o.drop.toFixed(1)} m`;
+const fmtSeam = (o: OpenSeam) =>
+  `${o.edge} s ${o.s.toFixed(1)} ${o.side < 0 ? 'left' : 'right'}: ${o.under} ${o.drop.toFixed(2)} m below`;
 
 // Run W-S's I-5 by Lake Samish is the hardest case yet: East Lake Samish Drive runs within 7 m of
 // the interstate's edge for 800 m at about its height, and the exit 246 off-ramp runs beside it. The
@@ -461,9 +469,11 @@ describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', 
     const { road, built } = landScene(id);
     const ground = new GroundTris(built.group);
     const { probes, drops, open, joins } = openLandEnds(road, ground);
+    const seams = openSeams(road, ground);
     process.stdout.write(
       `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked beside the road, ` +
-        `${joins} steps across junctions, ${drops} drops of over 2 m looked under, ${open.length} open\n`,
+        `${joins} steps across junctions, ${drops} drops of over 2 m looked under, ${open.length} open; ` +
+        `${seams.probes} shoulder-to-land seam points, ${seams.open.length} open\n`,
     );
     built.dispose();
     // High country has drops to look under; the Keys' land shelves straight into the sea, flat, so
@@ -477,6 +487,10 @@ describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', 
     // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
     expect(joins).toBeGreaterThan(0);
     expect(open.slice(0, 12).map(fmtEnd)).toEqual([]);
+    // No crack between the shoulder and the land beside it (PR #609's fix lane), on every network with land
+    // beside its roads.
+    expect(seams.probes).toBeGreaterThan(100);
+    expect(seams.open.slice(0, 12).map(fmtSeam)).toEqual([]);
   }, 240_000);
 });
 
