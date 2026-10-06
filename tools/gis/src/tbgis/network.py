@@ -137,6 +137,8 @@ class Landmark(Strict):
     yawDeg: float | None = Field(None, ge=-180, le=180)  # noqa: N815
     scale: float | None = Field(None, gt=0, le=4)
     farM: float | None = Field(None, gt=0)  # noqa: N815
+    # A landmark by a finish line that the finish shot frames whole (camera/finish-shot.ts): its height, m.
+    frameHeightM: float | None = Field(None, gt=0)  # noqa: N815
     overRoad: bool = False  # noqa: N815 (a structure the road passes through or under)
     # An island of its own in open water (playtest 4, Pigeon Key): boats and islets keep off its box.
     island: bool = False
@@ -151,7 +153,7 @@ class Landmark(Strict):
 
     def params(self) -> dict[str, object]:
         out: dict[str, object] = {"model": self.model}
-        for k in ("yawDeg", "scale", "farM"):
+        for k in ("yawDeg", "scale", "farM", "frameHeightM"):
             v = getattr(self, k)
             if v is not None:
                 out[k] = float(v)

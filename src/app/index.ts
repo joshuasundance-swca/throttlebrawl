@@ -21,7 +21,19 @@ import type {
   RivalText,
 } from '../career';
 import { createAudio, type EngineSoundSpec } from '../audio';
-import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
+import {
+  createFollowCamera,
+  nearestFocus,
+  shotFociOf,
+  shotPose,
+  SHOT_EASE_TICKS,
+  SHOT_REACH_M,
+  VIEW_MODES,
+  type CameraMode,
+  type CameraPose,
+  type ShotFocus,
+  type ViewMode,
+} from '../camera';
 import {
   assetIndex,
   contentHashes,
@@ -513,6 +525,13 @@ export function createApp(opts: AppOptions): AppHandle {
   const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
   const camera = createFollowCamera({ road: stream.road });
   let attractPose: CameraPose | null = null;
+  /**
+   * The finish shot (playtest 4, run C: a landmark by the line is too tall for the chase view): the landmarks of
+   * the road that ask for it, and, once the player has finished within reach of one, the chase pose the camera
+   * holds and the tick it began. Render only; the sim and the replay never read it.
+   */
+  let shotFoci: ShotFocus[] = [];
+  let finishShot: { held: CameraPose; focus: ShotFocus; from: number } | null = null;
   /** The network the renderer and camera show, so a race in the same region rebuilds nothing. */
   let shownRoad: unknown = null;
   /** The time of day shown: the event's on the menu, the race's own in a free-play race (W-Q). */
@@ -598,6 +617,9 @@ export function createApp(opts: AppOptions): AppHandle {
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road, sky.wet);
     attractPose = null;
+    // The landmarks of this road that ask for the finish shot (the camera's, never the sim's).
+    shotFoci = shotFociOf(stream.road);
+    finishShot = null;
     tuneRadio();
   };
   /** Makes `id` (a qualified event) the race's event; its pack's road data must be loaded. */
@@ -1087,6 +1109,20 @@ export function createApp(opts: AppOptions): AppHandle {
               aspect: viewAspect(),
             },
           );
+          // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
+          if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
+            if (!finishShot) {
+              const focus = nearestFocus(shotFoci, me.x, me.z, SHOT_REACH_M);
+              if (focus) finishShot = { held: pose, focus, from: outcome.doneTick };
+            }
+            if (finishShot)
+              pose = shotPose(
+                finishShot.held,
+                finishShot.focus,
+                viewAspect(),
+                (race.tick - finishShot.from) / SHOT_EASE_TICKS,
+              );
+          }
         } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
@@ -1281,6 +1317,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // menu race's picks beside it (playtest 4, P4-12).
     recorder.beginRace(race, replayKey, options ? { ...options } : undefined);
     outcome = createOutcome();
+    finishShot = null;
     lookWatch.reset();
     seenPoll.reset();
     lastLandingRef = null;

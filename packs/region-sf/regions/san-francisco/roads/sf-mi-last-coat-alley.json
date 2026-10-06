@@ -37,7 +37,8 @@
       "params": {
         "model": "sf-landmarks#sf_mission_church",
         "yawDeg": 180.0,
-        "frontM": 18.0
+        "frontM": 18.0,
+        "sightM": 80.0
       }
     }
   ],
