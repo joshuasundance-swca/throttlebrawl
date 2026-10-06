@@ -91,21 +91,11 @@ const EXCEPTIONS: Readonly<Record<string, { upToM: number; why: string }>> = {
   },
 };
 /**
- * The known height exceptions, each with its reason and the most it may miss by, m. The sim already
- * reads a solid hazard's `heightM` (sim/riders `hazardTop`), so correcting these two is a sim change
- * (a rider flying 2.05 to 2.4 m up clears the bear and the pile): the sim lane makes it with the
- * contact work, and takes them off this list.
+ * The known height exceptions, each with its reason and the most it may miss by, m. None now: the
+ * carved bear (2.3 m in its file, drawn 2.03 m) and the log pile (2.4 m, drawn 2.05 m) were the two,
+ * and the sim lane that adopted the heights set both files to 2.05 m (tools/road/tracks/pnw-c1.ts).
  */
-const HEIGHT_EXCEPTIONS: Readonly<Record<string, { upToM: number; why: string }>> = {
-  'solid road hazards: bear (pnw-espresso-row, 1.10 x 1.10 m)': {
-    upToM: 0.3,
-    why: 'the file says 2.3 m, the carved bear stands 2.03 m (pnw-places.ts)',
-  },
-  'solid road hazards: log-pile (pnw-logging-spur, 28.00 x 3.80 m)': {
-    upToM: 0.4,
-    why: 'the file says 2.4 m, the pile is drawn 2.05 m high (pnw-places.ts)',
-  },
-};
+const HEIGHT_EXCEPTIONS: Readonly<Record<string, { upToM: number; why: string }>> = {};
 const heightLimit = (r: Pick<Row, 'group' | 'thing'>): number =>
   HEIGHT_EXCEPTIONS[keyOf(r)]?.upToM ?? HEIGHT_TOLERANCE_M;
 /** How far a sim height is from the drawn one, m. */
@@ -1029,13 +1019,11 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
 
   it('the height rule fails a height that is not what is drawn (negative controls)', async () => {
     const rows = (await allRows()).filter((r) => r.group === 'traffic' && r.heights);
-    // The rule the sim has today: every vehicle is touched below one height (TRAFFIC.maxContactH).
-    const flat = rows.filter(
-      (r) => Math.abs(TRAFFIC.maxContactH - (r.heights?.drawn ?? 0)) > HEIGHT_TOLERANCE_M,
-    );
+    // The rule the sim had before it read the heights: every vehicle touched below one flat 1.2 m.
+    const flat = rows.filter((r) => Math.abs(1.2 - (r.heights?.drawn ?? 0)) > HEIGHT_TOLERANCE_M);
     expect(flat.map((r) => r.thing)).toContain('base:box-truck');
     expect(flat.map((r) => r.thing)).toContain('region-pnw:log-truck');
-    // The tumble's boxes: 1.5 m for a car and 3.2 m for a big hazard (sim/tumble CAR_HEIGHT_M, BIG_HEIGHT_M).
+    // The tumble's old boxes: 1.5 m for a car and 3.2 m for a big hazard (now each type's height).
     const tumble = rows.filter((r) => {
       const big = packTypes().find((t) => t.contentId === r.thing)?.hazard === 'big';
       return Math.abs((big ? 3.2 : 1.5) - (r.heights?.drawn ?? 0)) > HEIGHT_TOLERANCE_M;

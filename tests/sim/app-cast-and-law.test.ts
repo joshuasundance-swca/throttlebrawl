@@ -14,7 +14,7 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimEvent, SimSnapshot } from '../../src/sim/api';
 import { resultText } from '../../src/ui/format';
-import { firstSeed, ISOLATED, NO_ROAD_EVENTS, seedRange } from './batch';
+import { FIRST_SEED_MAX, firstSeed, ISOLATED, NO_ROAD_EVENTS, seedRange } from './batch';
 
 const print = (line: string) => process.stdout.write(`[app-cast-and-law] ${line}\n`);
 /**
@@ -41,9 +41,17 @@ interface LawRun {
 /**
  * The 2026-10-02 interview made a bust need a cop's knock-off (cops.bustKnockdownOnly), which the
  * bot hardly ever suffers, so the fine's path to the results screen is checked under the M1
- * proximity rule (the switch at 0); the default rule is checked by the guard below.
+ * proximity rule (the switch at 0); the default rule is checked by the guard below. The fine's path,
+ * not the radius, is under test, so the radius is at its widest (3x) and the search may try every seed
+ * firstSeed allows: with the height contract (#619) the bot went down near a cop in none of seeds 1 to
+ * 64 at the default radius (main's first was seed 4); at 3x the first bust came at seed 30.
  */
-const PROXIMITY_BUST: Readonly<Record<string, number>> = { ...NO_ROAD_EVENTS, 'cops.bustKnockdownOnly': 0 };
+const PROXIMITY_BUST: Readonly<Record<string, number>> = {
+  ...NO_ROAD_EVENTS,
+  'cops.bustKnockdownOnly': 0,
+  'cops.bustRadiusScale': 3,
+};
+const BUST_SEEDS = seedRange(1, FIRST_SEED_MAX);
 
 /**
  * The dev bot rides; on top of it, a steal-timer: on the tick after a cop's `stealWindow` cue the
@@ -120,7 +128,7 @@ describe('the law in a real race (release content, the app config path)', () => 
   const runs: LawRun[] = stealSearch.tried.map((t) => t.result);
   const bustSearch = firstSeed(
     'a bust under the proximity rule',
-    SEEDS,
+    BUST_SEEDS,
     (seed) => lawRace(seed, PROXIMITY_BUST),
     (r) => r.bust !== null,
   );

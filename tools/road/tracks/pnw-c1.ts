@@ -133,8 +133,11 @@ function clearCut(): BakedFeature[] {
   }
   // The log deck: a stack of logs each side of the jump, the ramp built between them.
   const pile: [number, number] = [3.0, 6.8];
-  out.push(solid('log-deck-pile-r', 'log-pile', LOG_DECK.s0 - 4, 28, pile, 2.4));
-  out.push(solid('log-deck-pile-l', 'log-pile', LOG_DECK.s0 - 4, 28, left(pile), 2.4));
+  // 2.1 m: the pile as drawn (playtest 4's hitbox audit; it was 2.4). Render stacks the logs from
+  // this height (render/pnw-places.ts `logPile`): from 2.08 to 2.53 m on this 3.8 m wide box it
+  // draws the same five-log bottom row, 2.05 m high as scripts/hitboxes.test.ts measures it.
+  out.push(solid('log-deck-pile-r', 'log-pile', LOG_DECK.s0 - 4, 28, pile, 2.1));
+  out.push(solid('log-deck-pile-l', 'log-pile', LOG_DECK.s0 - 4, 28, left(pile), 2.1));
   return out;
 }
 
@@ -152,8 +155,9 @@ function stumpSocial(): BakedFeature[] {
   for (const c of FESTIVAL.sideStreets) {
     const half = FESTIVAL.streetM / 2;
     for (const [k, s0] of [c - half - 1.1, c + half].entries()) {
-      out.push(solid(`bear-${c}-r${k}`, 'bear', s0, 1.1, bear, 2.3));
-      out.push(solid(`bear-${c}-l${k}`, 'bear', s0, 1.1, left(bear), 2.3));
+      // 2.05 m: the carved bear as drawn, 2.03 m (playtest 4's hitbox audit; it was 2.3).
+      out.push(solid(`bear-${c}-r${k}`, 'bear', s0, 1.1, bear, 2.05));
+      out.push(solid(`bear-${c}-l${k}`, 'bear', s0, 1.1, left(bear), 2.05));
     }
   }
   const barricade: [number, number] = [6.2, 9.4];

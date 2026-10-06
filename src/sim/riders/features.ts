@@ -22,6 +22,7 @@
 //   the position it moves to. A rider then rides up a deck exactly as it rides up a parked ramp, but
 //   its climb is the RELATIVE speed times the slope (the deck under it moves too), so the faster it
 //   catches the truck the bigger its air, and a rider barely faster than the truck meets its body.
+import { HAZARD_FALLBACK_HEIGHT_M, hazardHeightM } from '../../core';
 import {
   chooseSetPieces,
   RAMP_TRUCK_DEFAULTS,
@@ -308,14 +309,15 @@ export function truckClosingMps(f: BakedFeature, speed: number, dir: 1 | -1): nu
  * Solid road hazards (the pitch deck's #12, run W-U: the ferry deck's parked pickups and coffee cart,
  * the clear-cut's stumps and log piles, the festival's chainsaw bears). A `hazard` feature whose
  * `params.solid` is true is a box a riding rider cannot pass through: from s0 to s1 and d0 to d1,
- * `params.heightM` tall (HAZARD_DEFAULT_HEIGHT_M when absent). The bike meets it with its own capsule
+ * `params.heightM` tall (when absent, its object's drawn height, core HAZARD_OBJECT_HEIGHT_M, else
+ * HAZARD_DEFAULT_HEIGHT_M; the hitbox audit's contract). The bike meets it with its own capsule
  * (sim/riders/furniture.ts; playtest 4: the same contact, and the same closing-speed rule, as the
  * street furniture). `params.object` names what it is (a `pickup`, a `stump`...) for the events and for
  * render, which draws it. Hazards belong off the lanes (the verge bands): traffic, the rival AI and the
  * tumble do not see them, and the road lint refuses one over a lane. A hazard with no `solid` is what it
  * was before: data nothing in the sim reads.
  */
-export const HAZARD_DEFAULT_HEIGHT_M = 1.5;
+export const HAZARD_DEFAULT_HEIGHT_M = HAZARD_FALLBACK_HEIGHT_M;
 /** The bike's reach beside a ramp truck: half its width across, m (riders' `truckSideContact`). */
 export const HAZARD_REACH_D_M = 0.5;
 
@@ -338,7 +340,8 @@ export function isLightHazard(f: BakedFeature): boolean {
 
 /** A solid hazard's height above the road, m. */
 export function hazardTop(f: BakedFeature): number {
-  return num(f, 'heightM', HAZARD_DEFAULT_HEIGHT_M);
+  const o = f.params?.['object'];
+  return num(f, 'heightM', hazardHeightM(typeof o === 'string' && o ? o : undefined, undefined));
 }
 
 /** What a solid hazard is (its `params.object`), or `hazard`. */

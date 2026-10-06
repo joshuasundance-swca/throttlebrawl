@@ -4,7 +4,7 @@
 import { cos, sin, type EntityId } from '../../core';
 import { vehicleInfo } from '../traffic';
 import type { SimConfig } from '../types';
-import type { World } from '../world';
+import { riderHitbox, type World } from '../world';
 import type { Cluster } from './rig';
 
 /** An upright box: centre, heading (unit forward in x/z), half extents, and its velocity. */
@@ -26,10 +26,12 @@ export interface Box {
   contentId: string;
 }
 
-/** Box heights, m: a car, and anything big (trucks, RVs). Riders: a rider on a bike. */
-const CAR_HEIGHT_M = 1.5;
-const BIG_HEIGHT_M = 3.2;
-const RIDER_BOX = { lengthM: 2.0, widthM: 0.8, heightM: 1.6 };
+/**
+ * A rider on a bike stands this tall, m. Its length and width are its own box (riderHitbox); a
+ * vehicle's box is its type's size and height (vehicleHeightM; the hitbox audit's contract, which
+ * replaced 1.5 m for a car and 3.2 m for anything big).
+ */
+const RIDER_HEIGHT_M = 1.6;
 /** Boxes further than this from a crash's centre are not built (m). */
 const NEAR_M = 25;
 const RESTITUTION = 0.3;
@@ -58,17 +60,15 @@ export function nearbyBoxes(
     const dx = w.x - x;
     const dz = w.z - z;
     if (dx * dx + dz * dz > NEAR_M * NEAR_M) continue;
-    let size = RIDER_BOX;
+    let size: { lengthM: number; widthM: number; heightM: number };
     let contentId = '';
     if (m.kind === 'vehicle') {
       const info = vehicleInfo(world, config, m.id);
       if (!info) continue;
-      size = {
-        lengthM: info.lengthM,
-        widthM: info.widthM,
-        heightM: info.hazard === 'big' ? BIG_HEIGHT_M : CAR_HEIGHT_M,
-      };
+      size = { lengthM: info.lengthM, widthM: info.widthM, heightM: info.heightM };
       contentId = info.contentId;
+    } else {
+      size = { ...riderHitbox(config, m.riderIndex), heightM: RIDER_HEIGHT_M };
     }
     // Heading: the road tangent in the travel direction, turned by yaw toward the right.
     const f = road.frameAt(m.pos.edge, m.pos.s);

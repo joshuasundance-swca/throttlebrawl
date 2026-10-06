@@ -82,6 +82,14 @@ describe('solid road hazards (run W-U)', () => {
     expect(hazardTop(PICKUP)).toBe(1.9);
   });
 
+  it('a hazard with no heightM is as tall as its object is drawn (core HAZARD_OBJECT_HEIGHT_M), else 1.5 m', () => {
+    const bare = (object: string): BakedFeature => ({ ...PICKUP, params: { solid: true, object } });
+    expect(hazardTop(bare('stair-tower'))).toBe(6.4);
+    expect(hazardTop(bare('stump'))).toBe(0.8);
+    expect(hazardTop(bare('something-new'))).toBe(1.5);
+    expect(hazardTop({ ...PICKUP, params: { solid: true, object: 'stump', heightM: 1.1 } })).toBe(1.1);
+  });
+
   it('head on at speed (20 m/s) is a crash, with what it was and its id; the rider never gets inside', () => {
     const r = rideInto(withHazards([PICKUP]), 20);
     const crash = r.events.find((e) => e.type === 'crash');

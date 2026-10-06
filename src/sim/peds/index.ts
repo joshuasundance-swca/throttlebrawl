@@ -70,7 +70,16 @@ import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { roadsideClass } from '../roadside';
 import { vehicleInfo } from '../traffic';
 import { GRAZE_M, trafficContactCrashes } from '../traffic/contact-rule';
-import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
+import {
+  addMover,
+  emit,
+  riderHitbox,
+  systemState,
+  vehicleHeightM,
+  type Mover,
+  type SimSystem,
+  type World,
+} from '../world';
 
 export const PEDS_TUNING: readonly TuningParamDecl[] = [
   {
@@ -161,10 +170,15 @@ export const PEDS = {
   diveHeightM: 0.8,
   /** Time lying down after a dive, s. */
   downS: 1.2,
-  /** The rider's contact box. */
+  /** The default rider contact box; a rider whose file or bike gives one uses its own (riderHitbox). */
   riderLengthM: 2.0,
   riderWidthM: 0.8,
-  /** Riders higher than this above a pedestrian pass over, m. */
+  /**
+   * A pedestrian this far above a rider (mid-dive over it) passes over it, m. The other way round, a
+   * rider passes over a pedestrian or an animal only above that one's height (its type's `heightM`,
+   * vehicleHeightM; the hitbox audit's contract): it was this flat 1.5 m, over a 0.6 m alligator
+   * and a 1.7 m tourist alike.
+   */
   maxContactH: 1.5,
   /** A walker waits rather than step within this of a rider's box, m. */
   walkClearM: 0.4,
@@ -430,8 +444,8 @@ function nearThreats(world: World, config: SimConfig): Near[] {
         m,
         vehicle: false,
         kerb: false,
-        lengthM: PEDS.riderLengthM,
-        widthM: PEDS.riderWidthM,
+        lengthM: riderHitbox(config, m.riderIndex).lengthM,
+        widthM: riderHitbox(config, m.riderIndex).widthM,
         nb: nb(m, riderRange),
       });
     } else if (m.kind === 'vehicle') {
@@ -805,7 +819,7 @@ function sideGap(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number
   const rel = relate(r, p, 10);
   if (!rel) return null;
   if (Math.abs(rel.ahead) >= (r.lengthM + t.lengthM) / 2 + pad) return null;
-  if (Math.abs(r.m.h - p.h) >= PEDS.maxContactH) return null;
+  if (r.m.h - p.h >= vehicleHeightM(t) || p.h - r.m.h >= PEDS.maxContactH) return null;
   const dd = rel.dd + rel.sign * (d - p.pos.d);
   return Math.abs(dd) - (r.widthM + t.widthM) / 2;
 }
@@ -896,7 +910,7 @@ function pressingRider(
   for (const near of threats) {
     if (near.vehicle) continue;
     const r = near.m;
-    if (r.speed < PEDS.threatMinMps || r.h - p.h >= PEDS.maxContactH) continue;
+    if (r.speed < PEDS.threatMinMps || r.h - p.h >= vehicleHeightM(t)) continue;
     const rel = relate(near, p, PEDS.gapLookM);
     if (!rel) continue;
     const half = (near.lengthM + t.lengthM) / 2;
@@ -1226,7 +1240,7 @@ function closePass(
     const r = near.m;
     if (near.vehicle && !near.kerb) continue;
     const minMps = near.kerb ? PEDS.threatMinMps : dog ? PEDS.chaseMinMps : PEDS.reactMinMps;
-    if (r.speed < minMps || r.h - p.h >= PEDS.maxContactH) continue;
+    if (r.speed < minMps || r.h - p.h >= vehicleHeightM(t)) continue;
     const rel = relate(near, p, 30);
     if (!rel) continue;
     // Beside it now: their boxes overlap along the road (plus a metre).
@@ -1458,7 +1472,7 @@ function react(
   for (const near of threats) {
     const r = near.m;
     if (near.kerb && verge) continue;
-    if (r.speed < PEDS.threatMinMps || r.h - p.h >= PEDS.maxContactH) continue;
+    if (r.speed < PEDS.threatMinMps || r.h - p.h >= vehicleHeightM(t)) continue;
     const rel = relate(near, p, kindThreatRangeM(world, t, r.speed));
     const band = (near.widthM + t.widthM) / 2 + PEDS.lateralM;
     // A crash can throw a tumbling body backward along the road, against its travel direction (a

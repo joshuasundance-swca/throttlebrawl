@@ -889,7 +889,8 @@ export interface SimRiderDef {
    * The rider's contact box on its bike, m, where the rider's file or its bike's gives one (the
    * lawnmower, the mobility scooter, the parking trike): the rider's `hitbox`, else the bike's.
    * Absent is the default 2.0 x 0.8 box (core `DEFAULT_HITBOX`, sim/traffic's `riderLengthM` and
-   * `riderWidthM`). Nothing in the sim reads it yet (docs/content-packs.md, "Heights and hitboxes").
+   * `riderWidthM`). Traffic, smash, set pieces, peds and the tumble meet the rider with it, read
+   * through sim/world `riderHitbox` (docs/content-packs.md, "Heights and hitboxes").
    */
   hitbox?: Hitbox;
   massKg: number;
@@ -964,10 +965,10 @@ export interface SimTrafficTypeDef {
   hazard: 'normal' | 'big';
   /**
    * How tall it is drawn, m: the type file's `heightM`, else its category's default
-   * (`TRAFFIC_HEIGHT_DEFAULT_M`; docs/content-packs.md, "Heights and hitboxes"). Nothing in the sim
-   * reads it yet: the contact rules measure every vehicle at one height until the sim lane adopts
-   * this. Absent in hand-built configs, which means the category default (core `trafficHeightM`);
-   * buildSimConfig always writes it.
+   * (`TRAFFIC_HEIGHT_DEFAULT_M`; docs/content-packs.md, "Heights and hitboxes"). A rider, in the air
+   * or not, meets the vehicle (or the pedestrian, or the animal) only below it, and the tumble's box
+   * is this tall; read through sim/world `vehicleHeightM`. Absent in hand-built configs, which means
+   * the category default (core `trafficHeightM`); buildSimConfig always writes it.
    */
   heightM?: number;
   /**
@@ -1251,8 +1252,9 @@ export interface SimSmashableDef {
   /** The takedown name ('CATCH OF THE DAY'). */
   name: string;
   /**
-   * How tall it is, m: the item's `heightM`, else its kind's (`SMASHABLE_HEIGHT_M`). Nothing in the
-   * sim reads it yet. Absent in hand-built configs; buildSimConfig always writes it.
+   * How tall it is, m: the item's `heightM`, else its kind's (`SMASHABLE_HEIGHT_M`). A rider (or a
+   * tumbling body) above it clears it (sim/smash). Absent in hand-built configs; buildSimConfig
+   * always writes it.
    */
   heightM?: number;
   /** How often it is picked against the region's others (1 when the file leaves it out). */

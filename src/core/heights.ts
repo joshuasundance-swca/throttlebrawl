@@ -1,9 +1,10 @@
 // How tall things are, and how big a rider's box is (playtest 4, the hitbox audit, 2026-10-06:
 // "heights do not follow the drawing"). The sim measured every contact at one height; a rider in the
 // air passed through a 3.3 m truck, and a tumble box was 1.5 or 3.2 m by hazard class. This file is
-// the contract the sim reads next: each collidable thing has a height in metres, written in its pack
+// the contract the sim reads: each collidable thing has a height in metres, written in its pack
 // file where it has one, else the default below, and scripts/hitboxes.test.ts holds every height
-// within `HEIGHT_TOLERANCE_M` of what is drawn. Nothing in the sim reads them yet (docs/content-packs.md,
+// within `HEIGHT_TOLERANCE_M` of what is drawn. The sim meets a thing only below its height, and a
+// rider with its own box (sim/world `vehicleHeightM` and `riderHitbox`; docs/content-packs.md,
 // "Heights and hitboxes"). A contract: changes land in a small contract PR (docs/architecture.md).
 import type { SmashableKind } from './smashables';
 

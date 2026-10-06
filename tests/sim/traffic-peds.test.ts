@@ -21,7 +21,7 @@
 //     rider on the pedestrian's half of the road at the gate's minimum speed.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PEDS, pedThreatRangeM } from '../../src/sim/peds';
-import type { EntitySnapshot, RoadNetwork, SimConfig } from '../../src/sim/api';
+import { trafficHeightM, type EntitySnapshot, type RoadNetwork, type SimConfig } from '../../src/sim/api';
 import {
   BATCH_TIMEOUT_MS,
   createBatchRace,
@@ -122,6 +122,10 @@ function perTickRace(seed: number): TickCheck {
   const bigLength = Math.max(...kinds.map((t) => t.lengthM));
   const bigWidth = Math.max(...kinds.map((t) => t.widthM));
   const smallWidth = Math.min(...kinds.map((t) => t.widthM));
+  // A rider clears a pedestrian or an animal only above its type's height (the hitbox audit's
+  // contract; sim/peds), so each is judged by its own: a snapshot names its type (contentId).
+  const tops = new Map(kinds.map((t) => [t.contentId, trafficHeightM(t)]));
+  const topOf = (p: EntitySnapshot) => tops.get(p.contentId) ?? PEDS.maxContactH;
   const band = (PEDS.riderWidthM + smallWidth) / 2 + PEDS.lateralM;
   const diveTicks = Math.ceil(PEDS.diveS * 60) + 1;
   // Dive ages count scaled ticks (the sum of timeScale), as the sim's dive timer does: a hit-stop
@@ -176,7 +180,8 @@ function perTickRace(seed: number): TickCheck {
           if (!rel || rel.along < 0) continue;
           const arrival = (rel.along - (PEDS.riderLengthM + bigLength) / 2) / r.speed;
           const sameHalf = Math.sign(r.road.d) === Math.sign(p.road.d) || Math.abs(r.road.d) <= 1;
-          if (arrival < PEDS.gapMarginS / 2 && sameHalf && Math.abs(r.road.h - p.road.h) < PEDS.maxContactH) {
+          const level = r.road.h - p.road.h < topOf(p) && p.road.h - r.road.h < PEDS.maxContactH;
+          if (arrival < PEDS.gapMarginS / 2 && sameHalf && level) {
             out.stepIns.push(
               `seed ${seed} tick ${snap.tick} rider ${r.id} ped ${p.id} arrival ${arrival.toFixed(2)} s`,
             );
@@ -194,7 +199,8 @@ function perTickRace(seed: number): TickCheck {
             rel !== null &&
             Math.abs(rel.along) < (PEDS.riderLengthM + bigLength) / 2 &&
             Math.abs(rel.side) < (PEDS.riderWidthM + bigWidth) / 2 &&
-            Math.abs(r.road.h - p.road.h) < PEDS.maxContactH;
+            r.road.h - p.road.h < topOf(p) &&
+            p.road.h - r.road.h < PEDS.maxContactH;
           if (overlap && !touching.has(key)) {
             touching.add(key);
             out.contacts.push(`seed ${seed} tick ${snap.tick} rider ${r.id} (${r.mode}) ped ${p.id}`);
@@ -213,7 +219,7 @@ function perTickRace(seed: number): TickCheck {
           // the sim judged last tick's height (seed 5 once #353's Keys traffic reshuffled the race:
           // a rival falling 0.16 m a tick read 1.36 m here and 1.52 m to the sim, over its 1.5).
           const seenH = r.mode === 'Tumble' ? Math.max(r.road.h, prevH.get(r.id) ?? r.road.h) : r.road.h;
-          if (seenH - p.road.h >= PEDS.maxContactH - 0.1) continue;
+          if (seenH - p.road.h >= topOf(p) - 0.1) continue;
           if (rel.along < -PEDS.threatBehindM + slack || rel.along > pedThreatRangeM(r.speed) - slack)
             continue;
           if (Math.abs(rel.side) >= band - 0.1) continue;
