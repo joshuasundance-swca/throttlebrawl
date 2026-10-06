@@ -720,6 +720,9 @@ async function rideToPaidLanding(page: Page, where: string): Promise<void> {
           g
             .events()
             .some((e) => e.type === 'land' && e.data?.['surge'] === true && e.actor === me && e.tick > from),
+        // 1200 ticks a drawn frame (seed 4 rides about 8,700 ticks to it): the run still stops on the
+        // step the landing lands on, then hands back to 4 ticks a frame for the measured settle.
+        { perFrame: 1200 },
       );
     });
     await fastForwardDone(page, `${where}: a landing that pays (seed ${seed})`);
