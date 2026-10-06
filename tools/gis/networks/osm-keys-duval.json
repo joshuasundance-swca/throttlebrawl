@@ -287,15 +287,16 @@
             {
               "kind": "landmark",
               "id": "cruise-ship",
-              "s0": 1489,
-              "s1": 1779,
-              "d0": -76,
-              "d1": -40,
+              "s0": 1417,
+              "s1": 1779.5,
+              "d0": -82,
+              "d1": -37,
               "params": {
                 "model": "models/landmarks/keys-landmarks#cruise_ship",
                 "yawDeg": 0,
                 "baseY": 0,
-                "farM": 300
+                "scale": 1.25,
+                "farM": 450
               }
             },
             {

@@ -35,6 +35,7 @@ import {
   Vector3,
 } from 'three';
 import { landmarkParams, type BakedFeature, type LandmarkParams, type RoadNetwork } from '../road';
+import { CRUISE_SHIP_TOP, CRUISE_SLIDES, cruiseShipTopSoup } from './cruise-ship-top';
 import { fredSoup, FRED, type Soup } from './fred';
 import { anchorageSoup, ANCHORAGE_PIECE_R_M } from './gg-anchorage';
 import type { LookStyle } from './look';
@@ -862,6 +863,35 @@ function pigeonKey(c: Compose): Piece[] | null {
   ];
 }
 
+/**
+ * The cruise ship's top deck (playtest 4, P4-19, lane J3; cruise-ship-top.ts): the funnel, the mast, the
+ * lifeboats and the water slides, code-made in the model's own frame and set on the ship by its placement,
+ * at its scale. One piece, one level, drawn out to LANDMARK_MID_M, beside the ship's own pieces.
+ */
+function cruiseShipTop(b: MeshBuilder, at: LandmarkPlacement): Piece {
+  const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
+  const v0 = b.vertices;
+  b.addSoup(cruiseShipTopSoup(), m);
+  for (const slide of CRUISE_SLIDES)
+    b.addTube(
+      slide.points.map((p) => new Vector3(p[0], p[1], p[2]).applyMatrix4(m)),
+      slide.radius * at.scale,
+      6,
+      new Color(slide.hex),
+    );
+  return {
+    x: at.x,
+    z: at.z,
+    r: CRUISE_SHIP_TOP.radiusM * at.scale,
+    tiers: [{ maxM: LANDMARK_MID_M, v0, n: b.vertices - v0 }],
+  };
+}
+
+/** Pieces a kit node gets besides its own model, by `<kit>#<node>`: code-made parts set on it. */
+const EXTRAS: Readonly<Record<string, (b: MeshBuilder, at: LandmarkPlacement) => Piece>> = {
+  'keys-landmarks#cruise_ship': cruiseShipTop,
+};
+
 /** Virtual nodes composed in code, by `<kit>#<node>`. */
 const COMPOSITES: Readonly<Record<string, (c: Compose) => Piece[] | null>> = {
   'golden-gate#gg_bridge': suspensionBridge,
@@ -938,6 +968,8 @@ export class LandmarkLayer {
       const made = composite
         ? composite({ road: opts.road, at, kit, builder, paint, paintColour })
         : this.single(builder, paint, kit, at);
+      const extra = EXTRAS[`${at.kit}#${at.node}`];
+      if (extra && made && made.length > 0) made.push(extra(builder, at));
       if (!made || made.length === 0) {
         this.skipped++;
         continue;
