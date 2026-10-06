@@ -19,6 +19,8 @@ import {
   type BakedNetwork,
   type BakedRoad,
   type RoadNetwork,
+  loadPnwPlacesLayout,
+  loadWaterfrontLayout,
 } from '../road';
 import { planBlocks } from './chinatown-northbeach';
 import { planDowntown, planPortland } from './downtown';
@@ -154,7 +156,10 @@ describe('nothing drawn on a ridable band is a ghost (playtest 4)', () => {
         for (const i of planDowntown({ road, dressing, seed: SEED }).items)
           props.push({ src: 'downtown', rule: i.rule, edge: i.edge, s: i.s, d: i.d });
       if (['promenade', 'wharf', 'ferry-plaza', 'wharf-lot'].some((t) => tags.has(t)))
-        for (const i of planWaterfront({ road, dressing, seed: SEED }, loaded).items)
+        for (const i of planWaterfront(
+          { road, seed: SEED, layout: (await loadWaterfrontLayout()).waterfrontLayout(road, SEED) },
+          loaded,
+        ).items)
           props.push({ src: 'waterfront', rule: i.rule, edge: i.edge, s: i.s, d: i.d });
       if (['shopfronts', 'murals', 'mascot-mural'].some((t) => tags.has(t)))
         for (const i of planMission({ road, dressing, seed: SEED }).items)
@@ -173,7 +178,8 @@ describe('nothing drawn on a ridable band is a ghost (playtest 4)', () => {
           props.push({ src: 'portland', rule: i.rule, edge: i.edge, s: i.s, d: i.d });
       }
       // The Pacific Northwest's places: its hazards' props are the sim's solid hazards (`threat`).
-      for (const i of placeItems(road, SEED, (e, side, s) => built.landReach(e, side, s)))
+      const places = (await loadPnwPlacesLayout()).pnwPlacesLayout(road, SEED);
+      for (const i of placeItems(road, SEED, places, (e, side, s) => built.landReach(e, side, s)))
         if (!i.threat) props.push({ src: 'places', rule: i.kind, edge: i.edge, s: i.s, d: i.d });
       const scenesKey = Object.keys(sceneFiles).find((k) =>
         k.endsWith(`/scenes/${/regions\/([^/]+)\//.exec(path)?.[1] ?? ''}.json`),

@@ -61,11 +61,38 @@ describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]sim[\\/]/.test(id))).toBe(true);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]/.test(id))).toBe(true);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]core[\\/]/.test(id))).toBe(true);
-    expect(sim?.moduleIds.every((id) => /[\\/]src[\\/](sim|road|core)[\\/]/.test(id))).toBe(true);
+    // (and Vite's preload helper, which the road's lazy structure planners' `import()` is wrapped in)
+    expect(
+      sim?.moduleIds.every(
+        (id) => /[\\/]src[\\/](sim|road|core)[\\/]/.test(id) || id === '\0vite/preload-helper.js',
+      ),
+    ).toBe(true);
 
     // The app carries the hash, and no placeholder is left anywhere.
     const all = base.chunks.map((c) => c.code).join('\n');
     expect(all.includes(SIM_CODE_HASH_PLACEHOLDER)).toBe(false);
     expect(base.chunks.some((c) => c.name !== SIM_CHUNK_NAME && c.code.includes(base.hash))).toBe(true);
+  });
+
+  it('keeps the structure planners out of the sim chunk, and a change to one still moves the code hash', async () => {
+    // The planners (src/road/structures/, the physical world) are lazy chunks: they load with the region, never with
+    // the first screen. The sim chunk names each in its dynamic import, so its code, and its hash, follow them.
+    const base = await buildOnce();
+    const planner = await buildOnce([tweak(/\/src\/road\/structures\/waterfront\.ts$/, '__plannerTweak')]);
+    const sim = base.chunks.find((c) => c.name === SIM_CHUNK_NAME);
+    expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures[\\/]/.test(id))).toBe(false);
+    expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures\.ts$/.test(id))).toBe(true);
+    const lazy = base.chunks.filter((c) =>
+      c.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures[\\/](waterfront|pnw-places)\.ts$/.test(id)),
+    );
+    console.log(
+      `[examined] simCodeHash base ${base.hash}, a change to a planner ${planner.hash}; planner chunks ${lazy.map((c) => c.fileName).join(', ')}`,
+    );
+    expect(lazy).toHaveLength(2);
+    for (const c of lazy) expect(c.name).not.toBe(SIM_CHUNK_NAME);
+    expect(planner.chunks.some((c) => c.name !== SIM_CHUNK_NAME && c.code.includes('__plannerTweak'))).toBe(
+      true,
+    );
+    expect(planner.hash).not.toBe(base.hash);
   });
 });

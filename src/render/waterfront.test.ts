@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
+  loadWaterfrontLayout,
   planStreetFurniture,
   type BakedNetwork,
   type BakedRoad,
@@ -19,13 +20,11 @@ import { bakeModel, MODEL_ASSETS, modelKindsFor, type SceneryModels } from './mo
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { ridableBandPast, SEAWALL_LAND_M, themeAt } from './scenery';
 import { VergeLayer } from './verge';
+import golden from './golden/waterfront-before-the-port.json';
 import {
-  BLOCK_WIDTH,
   CLOCK_TIMES,
-  EVEN_PIERS,
   fontCovers,
   hasWaterfront,
-  ODD_PIERS,
   planWaterfront,
   TOWER_TOP_M,
   WATERFRONT_DRAW_M,
@@ -64,6 +63,9 @@ async function readRepoFile(rel: string): Promise<ArrayBuffer> {
 }
 
 const wf = track('sf-waterfront');
+// Where the buildings stand is road/structures/waterfront.ts's plan, a lazy chunk of its own.
+const { waterfrontLayout, BLOCK_WIDTH, EVEN_PIERS, ODD_PIERS } = await loadWaterfrontLayout();
+const inputOf = (seed: number) => ({ road: wf.road, seed, layout: waterfrontLayout(wf.road, seed) });
 const needs = (id: string) => {
   const { road, dressing } = track(id);
   const { tropical, tags } = networkTags(road, dressing);
@@ -72,7 +74,7 @@ const needs = (id: string) => {
 const MODELS: SceneryModels = {};
 for (const k of needs('sf-waterfront'))
   MODELS[k] = bakeModel(k, readGlb(await readRepoFile(`packs/base/assets/${MODEL_ASSETS[k]}.glb`)));
-const plan: WaterfrontPlan = planWaterfront({ road: wf.road, dressing: wf.dressing, seed: 7 }, MODELS);
+const plan: WaterfrontPlan = planWaterfront(inputOf(7), MODELS);
 const byRule = (rule: string) => plan.items.filter((i) => i.rule === rule);
 const tagsOf = (edge: number) => wf.road.edges[edge]?.tags ?? [];
 const has = (edge: number, side: 'left' | 'right', s: number, tag: string) =>
@@ -256,11 +258,11 @@ describe('San Francisco waterfront: what stands along the bay', () => {
   });
 
   it('the same seed plans the same waterfront; another seed moves the palms and the blocks', () => {
-    const again = planWaterfront({ road: wf.road, dressing: wf.dressing, seed: 7 }, MODELS);
+    const again = planWaterfront(inputOf(7), MODELS);
     const key = (p: WaterfrontPlan) =>
       p.items.map((i) => `${i.rule}@${i.s.toFixed(2)}/${i.d.toFixed(2)}`).join(',');
     expect(key(again)).toBe(key(plan));
-    const other = planWaterfront({ road: wf.road, dressing: wf.dressing, seed: 8 }, MODELS);
+    const other = planWaterfront(inputOf(8), MODELS);
     expect(key(other)).not.toBe(key(plan));
     // The piers and their numbers are the network's, not the seed's.
     expect(other.frontages.map((f) => f.pier)).toEqual(plan.frontages.map((f) => f.pier));
@@ -290,7 +292,7 @@ describe('San Francisco waterfront: what stands along the bay', () => {
   });
 
   it('draws a few meshes near the camera, inside the still scene budget, and frees them when it has gone', () => {
-    const layer = new WaterfrontLayer(MODELS, look, { road: wf.road, dressing: wf.dressing, seed: 7 });
+    const layer = new WaterfrontLayer(MODELS, look, inputOf(7));
     let maxMeshes = 0;
     let maxTris = 0;
     let views = 0;
@@ -314,5 +316,142 @@ describe('San Francisco waterfront: what stands along the bay', () => {
     layer.update(1e7, 1e7, 200, WATERFRONT_DRAW_M, 1000);
     expect(layer.counts().meshes).toBe(0);
     layer.dispose();
+  });
+});
+
+describe('the waterfront after the port (the physical world, 2026-10-06): placed by the road, drawn as before', () => {
+  // `golden` is what origin/main (00d41c9f) drew for the moved rules: each row is [rule, edge, s, d, x, y, z, turn,
+  // size, then its geometry's bounding box min xyz, max xyz], at seeds 7 and 8 (the seeds the tests here use),
+  // rounded to a millimetre. The port changed the math the placement uses (road/ has core's sin, cos and atan2, and
+  // no hypot), and nothing else: the picture is the same within the tolerances below.
+  const POSITION_TOL_M = 0.01;
+  const TURN_TOL = 0.001;
+  const BOX_TOL_M = 0.01;
+  const MOVED = (r: string) =>
+    r === 'pier-shed' ||
+    r === 'ferry-hall' ||
+    r.startsWith('block-') ||
+    r === 'back-tower' ||
+    r === 'street-block';
+
+  type Row = readonly [string, number, number, number, number, number, number, number, number, ...number[]];
+  const rowsOf = (seed: number): Row[] =>
+    planWaterfront(inputOf(seed), MODELS)
+      .items.filter((i) => MOVED(i.rule))
+      .map((it) => {
+        it.geometry.computeBoundingBox();
+        const b = it.geometry.boundingBox;
+        if (!b) throw new Error('no box');
+        return [
+          it.rule,
+          it.edge,
+          it.s,
+          it.d,
+          it.p.x,
+          it.p.y,
+          it.p.z,
+          it.turn,
+          it.size,
+          b.min.x,
+          b.min.y,
+          b.min.z,
+          b.max.x,
+          b.max.y,
+          b.max.z,
+        ];
+      });
+  /** How a field of a row is held: its tolerance. */
+  const tolOf = (k: number) => (k === 7 ? TURN_TOL : k === 8 ? 0.001 : k <= 6 ? POSITION_TOL_M : BOX_TOL_M);
+  /** The worst gap between two lists of rows as a share of its tolerance (1 is the line), and where. */
+  function compare(now: readonly Row[], was: readonly Row[]): { worst: number; why: string } {
+    if (now.length !== was.length) return { worst: Infinity, why: `${now.length} rows, was ${was.length}` };
+    const key = (r: Row) => `${r[0]}:${r[1]}:${r[2].toFixed(2)}:${r[3].toFixed(2)}`;
+    const byKey = (rows: readonly Row[]) =>
+      [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+    const a = byKey(now);
+    const b = byKey(was);
+    let worst = 0;
+    let why = '';
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i]!;
+      const y = b[i]!;
+      if (x[0] !== y[0] || x[1] !== y[1]) return { worst: Infinity, why: `row ${i}: ${x[0]} vs ${y[0]}` };
+      for (let k = 2; k < x.length; k++) {
+        const ratio = Math.abs((x[k] as number) - (y[k] as number)) / tolOf(k);
+        if (ratio > worst) {
+          worst = ratio;
+          why = `${key(x)} field ${k}`;
+        }
+      }
+    }
+    return { worst, why };
+  }
+
+  it('draws every pier shed, the hall, block, tower and street block where and as tall as main drew it', () => {
+    let rows = 0;
+    for (const seed of [7, 8]) {
+      const was = (golden as unknown as Record<string, { rows: Row[] }>)[`seed${seed}`]!.rows;
+      const now = rowsOf(seed);
+      const { worst, why } = compare(now, was);
+      rows += now.length;
+      expect(worst, `seed ${seed}: ${why}`).toBeLessThanOrEqual(1);
+    }
+    print(
+      `[examined] ${rows} moved items (sheds, hall, blocks, towers, street blocks) at seeds 7 and 8 against main's drawing: position, size and geometry bounds within a centimetre, turns within a milliradian`,
+    );
+    expect(rows).toBeGreaterThan(500);
+  });
+
+  it('control: a block moved a metre, or a tower a metre taller, is found', () => {
+    const was = (golden as unknown as Record<string, { rows: Row[] }>)['seed7']!.rows;
+    const now = rowsOf(7);
+    const moved = now.map((r, i): Row =>
+      i === 3 ? ([r[0], r[1], r[2], r[3], r[4] + 1, ...r.slice(5)] as unknown as Row) : r,
+    );
+    expect(compare(moved, was).worst).toBeGreaterThan(1);
+    const tall = now.map((r, i): Row =>
+      r[0] === 'back-tower' && i === now.findIndex((q) => q[0] === 'back-tower')
+        ? ([...r.slice(0, 13), r[13]! + 1, r[14]!] as unknown as Row)
+        : r,
+    );
+    expect(compare(tall, was).worst).toBeGreaterThan(1);
+  });
+
+  it('the other items (palms, lamps, benches, cars, floats, boats) are as many as main drew', () => {
+    for (const seed of [7, 8]) {
+      const was = (golden as unknown as Record<string, { others: Record<string, number> }>)[`seed${seed}`]!
+        .others;
+      const counts: Record<string, number> = {};
+      for (const i of planWaterfront(inputOf(seed), MODELS).items)
+        if (!MOVED(i.rule)) counts[i.rule] = (counts[i.rule] ?? 0) + 1;
+      expect(counts).toEqual(was);
+    }
+  });
+
+  it('plans the same before and after any model loads: the layout reads the network and the seed only', () => {
+    const bare = planWaterfront(inputOf(7), {});
+    const key = (p: WaterfrontPlan) =>
+      p.items
+        .filter((i) => MOVED(i.rule))
+        .map((i) => `${i.rule}@${i.s.toFixed(3)}/${i.d.toFixed(3)}/${i.p.y.toFixed(3)}`)
+        .join(',');
+    expect(key(bare)).toBe(key(plan));
+    expect(bare.frontages).toEqual(plan.frontages);
+  });
+
+  it("reads the road files' own tags and features: render's `dressing` was the network's, field for field", () => {
+    let edges = 0;
+    for (const e of wf.road.edges) {
+      const baked = wf.dressing?.[e.id];
+      if (!baked) throw new Error(`no road file for ${e.id}`);
+      expect(baked.tags ?? [], e.id).toEqual(e.tags);
+      // The network sorts an edge's features by s0; the plan only asks whether one lies somewhere, never in what order.
+      const byId = (list: readonly { id?: string | undefined }[]) =>
+        [...list].sort((a, b) => ((a.id ?? '') < (b.id ?? '') ? -1 : 1));
+      expect(byId(baked.features ?? []), e.id).toEqual(byId(e.features));
+      edges++;
+    }
+    print(`[examined] ${edges} waterfront edges: the road files' tags and features equal the network's`);
+    expect(edges).toBeGreaterThanOrEqual(5);
   });
 });

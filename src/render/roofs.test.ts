@@ -5,7 +5,13 @@
 // roof module and the drizzle what they say; the roof is checked against the ferry as it is drawn.
 import { Box3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import {
+  createRoadNetwork,
+  loadPnwPlacesLayout,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../road';
 import { createFlatLook } from './look';
 import { FERRY_DIM, placeItems } from './pnw-places';
 import { MAX_DROPS, Rain } from './rain';
@@ -42,8 +48,9 @@ describe('the roofs the scene stands over the road', () => {
     expect(roofSpans(roadOf('keys-m1'))).toEqual([]);
   });
 
-  it('covers exactly the stretches where the ferry is built with its passenger deck', () => {
-    const items = placeItems(pnw, 7, () => 24).filter((i) => i.kind === 'ferry-hull');
+  it('covers exactly the stretches where the ferry is built with its passenger deck', async () => {
+    const layout = (await loadPnwPlacesLayout()).pnwPlacesLayout(pnw, 7);
+    const items = placeItems(pnw, 7, layout, () => 24).filter((i) => i.kind === 'ferry-hull');
     expect(items.length).toBeGreaterThan(4);
     const roofed: boolean[] = [];
     for (const it of items) {

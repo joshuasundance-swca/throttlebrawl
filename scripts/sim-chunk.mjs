@@ -12,8 +12,14 @@ export const SIM_CHUNK_NAME = 'sim';
 export const SIM_CODE_HASH_PLACEHOLDER = 'SIMCODE_NONE';
 const HASH_LENGTH = SIM_CODE_HASH_PLACEHOLDER.length;
 
-/** Modules that belong in the sim chunk: the sim, the road model and core. */
-export const SIM_CHUNK_TEST = /[\\/]src[\\/](sim|road|core)[\\/]/;
+/**
+ * Modules that belong in the sim chunk: the sim, the road model and core. Not the structure planners under
+ * `src/road/structures/` (the physical world, 2026-10-06; docs/architecture.md, "Physical world"): each is a lazy
+ * chunk that loads with its region's road data, never with the first screen. They still move the code hash: the
+ * sim chunk names each planner's chunk file in its dynamic `import()`, and that name carries the chunk's content
+ * hash, so a change to a planner changes the sim chunk's code and so `simCodeHash` (scripts/sim-chunk.test.ts).
+ */
+export const SIM_CHUNK_TEST = /[\\/]src[\\/](?:(?:sim|core)[\\/]|road[\\/](?!structures[\\/]))/;
 
 /** The code hash of a chunk: the first 12 hex digits of the SHA-256 of its code. */
 export function simCodeHashOf(code) {
@@ -25,26 +31,33 @@ export function simChunkGroup() {
   return { name: SIM_CHUNK_NAME, test: SIM_CHUNK_TEST };
 }
 
-/** Hashes the sim chunk and writes the hash over the placeholder in the other chunks. */
+/**
+ * Hashes the sim chunk and writes the hash over the placeholder in the other chunks. It runs after the other
+ * plugins' `generateBundle` (`order: 'post'`): the sim chunk holds the structure planners' dynamic `import()`s,
+ * and Vite fills in each one's preload list in its own `generateBundle`, so the hash must be of the code as shipped.
+ */
 export function simCodeHashPlugin() {
   return {
     name: 'throttlebrawl:sim-code-hash',
     apply: 'build',
-    generateBundle(_options, bundle) {
-      const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
-      const sims = chunks.filter((c) => c.name === SIM_CHUNK_NAME);
-      if (sims.length !== 1) {
-        this.error(`expected one "${SIM_CHUNK_NAME}" chunk, found ${sims.length}`);
-        return;
-      }
-      const sim = sims[0];
-      if (sim.code.includes(SIM_CODE_HASH_PLACEHOLDER))
-        this.error('the sim chunk must not read __SIM_CODE_HASH__ (its hash would depend on itself)');
-      const hash = simCodeHashOf(sim.code);
-      for (const c of chunks) {
-        if (c !== sim && c.code.includes(SIM_CODE_HASH_PLACEHOLDER))
-          c.code = c.code.split(SIM_CODE_HASH_PLACEHOLDER).join(hash);
-      }
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
+        const sims = chunks.filter((c) => c.name === SIM_CHUNK_NAME);
+        if (sims.length !== 1) {
+          this.error(`expected one "${SIM_CHUNK_NAME}" chunk, found ${sims.length}`);
+          return;
+        }
+        const sim = sims[0];
+        if (sim.code.includes(SIM_CODE_HASH_PLACEHOLDER))
+          this.error('the sim chunk must not read __SIM_CODE_HASH__ (its hash would depend on itself)');
+        const hash = simCodeHashOf(sim.code);
+        for (const c of chunks) {
+          if (c !== sim && c.code.includes(SIM_CODE_HASH_PLACEHOLDER))
+            c.code = c.code.split(SIM_CODE_HASH_PLACEHOLDER).join(hash);
+        }
+      },
     },
   };
 }
