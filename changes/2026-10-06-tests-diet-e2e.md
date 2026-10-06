@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+Six browser test files ride their races faster without checking less. The career's first race is now fast-forwarded to its results, the tuning panel's seeded races fast-forward to the tick they are compared at (the steering change still goes in through the real panel, in real time), the look test's hash race rides 8 ticks a drawn frame with every frame still drawn, the backdrop races fast-forward to tick 300 and then ride the last stretch at 4 ticks a frame, the settings probes fast-forward into each race to tick 61, and the landing hunt in the ticker layout test jumps 1200 ticks a frame. The race is the same tick for tick at any of these speeds, so every assertion stays as it was. The backdrop test now checks "no other region's backdrop was fetched" after the frame's wait instead of before it, which gives a wrong fetch longer to show up. tests/timings.json had these six files at 1,631 seconds of CI test time together; the PR's own run measures the new times, and the file is refreshed from it. Not phone-verified (no game change).

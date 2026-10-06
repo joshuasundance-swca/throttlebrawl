@@ -4,7 +4,7 @@ import { tiltAngleFromEuler } from '../../src/input/devices/tilt.ts';
 import { inputDefaults } from '../../src/input/tuning.ts';
 import type { SimEvent, SimInput } from '../../src/sim/types.ts';
 import { grainShare } from './pixels';
-import { frames } from './lockstep';
+import { fastForwardDone, frames } from './lockstep';
 
 // ui-2's browser tests (docs/milestones/M2.md, ui-2): the pause menu lists exactly the decided
 // entries, the tuning entry is hidden by default and shown when enabled, "Controls and HUD" opens
@@ -24,6 +24,10 @@ interface Handle {
   playerId(): number;
   /** The debug file's text: its replay line carries the race's SimConfig header. */
   debugFileText(): string;
+  fastForward(
+    until: (snap: { tick: number }) => boolean,
+    opts?: { perFrame?: number; then?: number | null },
+  ): void;
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
@@ -258,10 +262,14 @@ type Probe = (page: Page) => Promise<void>;
  */
 // Each "into a race" wait checks the app's state too: until the new race starts (a region's road
 // files load first), the snapshot is still the quit race's, past tick 60 already (skeptic-pol F4).
-async function raceHeaderHas(page: Page, needle: string, region?: string) {
-  await page.locator('#settings-back').click();
-  if (region) await page.locator(region).click();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
+/**
+ * Menu > Race, and on into the new race past tick 60. The first 61 ticks fast-forward (the handle's
+ * fastForward over the loop's lockstep, started before the tap: nothing steps on the menu, so its
+ * first step is the new race's) and then the race runs in real time again for the probe's checks.
+ * The race is the same tick for tick at any lockstep. The timeout is a hang guard.
+ */
+async function rideIntoRace(page: Page) {
+  await page.evaluate(() => (window as TestWindow).__game?.fastForward((s) => s.tick > 60, { then: null }));
   await page.locator('#menu-race').click();
   await page.waitForFunction(
     () =>
@@ -272,6 +280,14 @@ async function raceHeaderHas(page: Page, needle: string, region?: string) {
       timeout: 60_000,
     },
   );
+  await fastForwardDone(page, 'into the race, past tick 60');
+}
+
+async function raceHeaderHas(page: Page, needle: string, region?: string) {
+  await page.locator('#settings-back').click();
+  if (region) await page.locator(region).click();
+  await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
+  await rideIntoRace(page);
   const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');
   expect(text, `the race's header carries ${needle}`).toContain(needle);
   await quitRace(page);
@@ -305,12 +321,7 @@ async function raceAlone(page: Page) {
     (window as TestWindow).__game?.setBot(false);
     window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: 0, gamma: 0 }));
   });
-  await page.locator('#menu-race').click();
-  await page.waitForFunction(
-    () =>
-      (window as TestWindow).__game?.state() === 'race' &&
-      ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60,
-  );
+  await rideIntoRace(page);
 }
 /**
  * The mean luminance change between two canvas screenshots over the rider's own box in the chase
@@ -424,12 +435,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
     effect: async (page) => {
       await page.locator('#settings-back').click();
-      await page.locator('#menu-race').click();
-      await page.waitForFunction(
-        () =>
-          (window as TestWindow).__game?.state() === 'race' &&
-          ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60,
-      );
+      await rideIntoRace(page);
       await expect(page.locator('#hud-speed')).toHaveText(/^\d+ km\/h$/);
       await page.keyboard.press('Escape');
       await page.locator('#pause-quit').click();

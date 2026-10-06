@@ -5,6 +5,7 @@ import { tuningPresetSchema } from '../../src/content/schema';
 import { parseDebugFile } from '../../src/dev/report/summary';
 import { decodeReplay, HASH_EVERY_TICKS } from '../../src/replay';
 import type { SimEvent } from '../../src/sim/api';
+import { fastForwardDone } from './lockstep';
 
 // tuning-1 browser acceptance (docs/milestones/M1.md): the backquote opens the panel; the panel
 // has one control per declaration; a mid-race change reaches the seeded race (compared with two
@@ -18,6 +19,10 @@ interface Handle {
   setSeed(seed: number): void;
   debugFileText(): string;
   events(): readonly SimEvent[];
+  fastForward(
+    until: (snap: { tick: number }) => boolean,
+    opts?: { perFrame?: number; then?: number | null },
+  ): void;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 
@@ -61,6 +66,20 @@ const waitTick = (page: Page, tick: number) =>
   page.waitForFunction((t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) >= t, tick, {
     timeout: 120_000,
   });
+/**
+ * Fast-forwards the race to `tick` (the handle's fastForward over the loop's lockstep: many ticks a
+ * drawn frame, stopping on the step that reaches it), then hands back to `then` ticks a frame (null:
+ * real time). The race is the same tick for tick at any lockstep, so the recordings compared below
+ * are the ones a real-time ride makes; only the wall time between the checks shrinks.
+ */
+async function fastForwardTo(page: Page, tick: number, then: number | null = 4): Promise<void> {
+  await page.evaluate(
+    ([t, n]) => (window as TestWindow).__game?.fastForward((s) => s.tick >= t, { then: n }),
+    [tick, then] as const,
+  );
+  await fastForwardDone(page, `to tick ${tick}`);
+  await waitTick(page, tick);
+}
 
 /**
  * The race as the sim stepped it, read after the run: the recording from the debug file that "save
@@ -279,7 +298,8 @@ test('a mid-race steering change through the panel reaches the seeded race, comp
     const problems = await boot(page);
     await startSeededRace(page);
     if (opts.change) {
-      await waitTick(page, 90);
+      // To tick 90 fast, then real time for the panel: the change goes in through the real control.
+      await fastForwardTo(page, 90, null);
       await page.keyboard.press('Backquote');
       await page.locator(`#tuning-panel input[data-param="${STEER}"]`).fill('2');
       await expect(page.locator(`#tuning-panel output[data-param-value="${STEER}"]`)).toHaveText('2.00×');
@@ -288,7 +308,7 @@ test('a mid-race steering change through the panel reaches the seeded race, comp
       await expect(page.locator('#tuning-panel')).toBeVisible();
     }
     const end = await opts.end(page);
-    await waitTick(page, end + 1);
+    await fastForwardTo(page, end + 1);
     const race = await raceRun(page);
     await page.close();
     expect(problems).toEqual([]);
@@ -367,7 +387,7 @@ test('changing knockback changes the outcome of a seeded fight, compared with a 
     await page.keyboard.press('Backquote');
     await expect(page.locator('#tuning-panel')).toBeHidden();
     await startSeededRace(page);
-    await waitTick(page, END + 1);
+    await fastForwardTo(page, END + 1);
     const race = await raceRun(page);
     await page.close();
     expect(problems).toEqual([]);

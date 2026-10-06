@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { frames } from './lockstep';
+import { fastForwardDone, frames } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // The backdrop (W-P "fill the world", the maintainer, 2026-10-01b: "distance and skyline: hills,
@@ -16,6 +16,10 @@ interface Handle {
   setBot(on: boolean): void;
   setSeed(seed: number): void;
   rendererStats(): { drawCalls: number; triangles: number; renderer: string };
+  fastForward(
+    until: (snap: { tick: number }) => boolean,
+    opts?: { perFrame?: number; then?: number | null },
+  ): void;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 
@@ -60,6 +64,27 @@ const LOOKS = ['kodak', 'classic'] as const;
  */
 const arrived = (res: Response): boolean => res.ok() || res.status() === 304;
 
+/** The tick the races fast-forward to before they ride on at 4 ticks a frame. */
+const FAST_TO = 300;
+
+/**
+ * Rides the race on to past tick `to`: fast to FAST_TO (the handle's fastForward over the loop's
+ * lockstep), then 4 ticks a drawn frame, the loop's real-time cap, so the last stretch (30 frames
+ * to tick 420, 100 to tick 700) is drawn as a slow runner draws it in real time and the camera and
+ * the backdrop's streaming settle over those frames. The race is the same tick for tick at any
+ * lockstep: the frame shot past `to` is the one a real-time ride shows there. The timeouts are hang
+ * guards.
+ */
+async function rideTo(page: Page, to: number): Promise<void> {
+  await page.evaluate((t) => {
+    (window as TestWindow).__game?.fastForward((s) => s.tick >= t, { then: 4 });
+  }, FAST_TO);
+  await fastForwardDone(page, `to tick ${FAST_TO}, then 4 ticks a frame to ${to}`);
+  await page.waitForFunction((t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t, to, {
+    timeout: 120_000,
+  });
+}
+
 async function race(page: Page, c: (typeof CASES)[number], look: string): Promise<Set<string>> {
   const fetched = new Set<string>();
   page.on('response', (res) => {
@@ -93,9 +118,7 @@ async function race(page: Page, c: (typeof CASES)[number], look: string): Promis
   });
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
-  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 420, null, {
-    timeout: 120_000,
-  });
+  await rideTo(page, 420);
   return fetched;
 }
 
@@ -112,16 +135,6 @@ for (const c of CASES) {
     for (const look of LOOKS) {
       const fetched = await race(page, c, look);
       await expect.poll(() => fetched.has(c.network), { timeout: 30_000 }).toBe(true);
-      const region = c.slug.split('-')[0] as keyof typeof NETWORK_CHUNKS;
-      // The menu shows the Keys road behind it, so the Keys backdrop may load before a pick; the
-      // other regions' must not.
-      const others = Object.entries(NETWORK_CHUNKS)
-        .filter(([k]) => k !== region && k !== 'keys')
-        .flatMap(([, ids]) => ids);
-      expect(
-        others.filter((id) => fetched.has(id)),
-        "another region's backdrop was fetched",
-      ).toEqual([]);
       // The backdrop's own chunks arrive, then build in one go: give it a few frames.
       // eslint-disable-next-line no-restricted-syntax -- debt: the backdrop's chunks fetch and build asynchronously with no ready signal yet; wait on one once render exposes it
       await page.waitForTimeout(1500);
@@ -135,6 +148,17 @@ for (const c of CASES) {
       expect(variance, 'the frame is not blank').toBeGreaterThan(NOT_BLANK_VARIANCE);
       expect(stats?.drawCalls ?? Infinity).toBeLessThanOrEqual(budget.drawCallsMax);
       expect(stats?.triangles ?? Infinity).toBeLessThanOrEqual(budget.trianglesMax);
+      const region = c.slug.split('-')[0] as keyof typeof NETWORK_CHUNKS;
+      // The menu shows the Keys road behind it, so the Keys backdrop may load before a pick; the
+      // other regions' must not. Checked last, after the frame's wait, so a wrong fetch started
+      // with the race (which fast-forwards to its frame) has had as long as it can to show.
+      const others = Object.entries(NETWORK_CHUNKS)
+        .filter(([k]) => k !== region && k !== 'keys')
+        .flatMap(([, ids]) => ids);
+      expect(
+        others.filter((id) => fetched.has(id)),
+        "another region's backdrop was fetched",
+      ).toEqual([]);
     }
     expect(problems).toEqual([]);
   });
@@ -201,9 +225,7 @@ test("San Francisco's far ground leaves the bay beside the road as sea (seed 3, 
   });
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
-  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 700, null, {
-    timeout: 180_000,
-  });
+  await rideTo(page, 700);
   await page.locator('#hud-pause').click();
   // Hide the pause screen so the frame itself is shot.
   await page.addStyleTag({
