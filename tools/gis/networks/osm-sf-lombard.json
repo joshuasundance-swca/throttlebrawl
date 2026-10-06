@@ -78,7 +78,7 @@
               "s1": 280,
               "d0": 5.6,
               "d1": 12.6,
-              "params": { "spawns": "pedestrians" }
+              "params": { "spawns": "pedestrians", "kinds": ["e-scooter-commuter", "dog-walker-sf"] }
             },
             {
               "kind": "roadsideZone",
@@ -228,7 +228,7 @@
               "s1": 80,
               "d0": 5.6,
               "d1": 12.6,
-              "params": { "spawns": "pedestrians" }
+              "params": { "spawns": "pedestrians", "kinds": ["e-scooter-commuter", "dog-walker-sf"] }
             },
             {
               "kind": "roadsideZone",
