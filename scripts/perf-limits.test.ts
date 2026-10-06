@@ -27,6 +27,7 @@ const frames = (n: number) => Math.round(n * FRAME * 10) / 10;
 interface Times {
   frameMs: { p50: number; p95: number };
   stepMs?: { p95: number };
+  startTapMs?: number;
 }
 const baselineFile = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/baseline.json'), 'utf8')) as {
   soft: Times;
@@ -112,6 +113,49 @@ describe('the soft tier: a trend plus a 3x guard', () => {
     expect(md).toContain('| classic | frame p95 | 150 | 1.13 | 133.3 | 408.2 |');
     expect(md).toContain('- first-load JavaScript 1 KB');
     expect(summaryMarkdown({ size: [], probes: [] })).toContain('No probe results were written');
+  });
+});
+
+describe("the start tap's main-thread work: a trend with the same 3x guard (polish F, punch item 2)", () => {
+  const base: Times = { frameMs: { p50: frames(4), p95: frames(8) }, startTapMs: 120 };
+  const at = (startTapMs: number | undefined) =>
+    judgeSoft(
+      { frameMs: { p50: frames(4), p95: frames(8) }, ...(startTapMs === undefined ? {} : { startTapMs }) },
+      base,
+    );
+
+  it('is a row of the trend with its ratio and a 3x guard, with no frame slack (it is not in whole frames)', () => {
+    expect(guardLimits(base).startTap).toBe(360);
+    const row = at(150).rows.find((r) => r.metric === 'start tap');
+    expect(row).toEqual({
+      metric: 'start tap',
+      value: 150,
+      baseline: 120,
+      ratio: 1.25,
+      limit: 360,
+      over: false,
+    });
+    expect(trendLine('classic', at(150).rows)).toContain(
+      'start tap 150 ms (1.25x the baseline 120, guard 360)',
+    );
+  });
+
+  it('fails only above 3x the baseline (it fires), and a missing reading fails rather than passing', () => {
+    expect(at(360).failures).toEqual([]);
+    expect(at(360.1).failures).toEqual([
+      'start tap 360.1 ms is over the 3x guard 360 ms (baseline 120 ms): a catastrophic slowdown, not runner noise',
+    ]);
+    expect(at(Number.NaN).failures).toHaveLength(1);
+  });
+
+  it('is not judged until both the probe and the baseline have it (the negative control)', () => {
+    expect(at(undefined).rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    const noBase = judgeSoft(
+      { frameMs: { p50: frames(4), p95: frames(8) }, startTapMs: 9999 },
+      { frameMs: base.frameMs },
+    );
+    expect(noBase.rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    expect(noBase.failures).toEqual([]);
   });
 });
 

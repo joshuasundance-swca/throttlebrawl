@@ -1,7 +1,7 @@
 // The perf check's rules for the numbers it prints (docs/engineering.md, "Perf check"), kept in
 // one place so the Playwright probes, scripts/perf.mjs and a unit test (perf-limits.test.ts) agree.
 //
-// - Soft tier: frame time p50 and p95 and sim step p95 are a TREND. CI prints them on every run
+// - Soft tier: frame time p50 and p95, sim step p95 and the start tap's main-thread work are a TREND. CI prints them on every run
 //   with their ratio to the stored baseline (tests/perf/baseline.json). They fail the gate only
 //   above GUARD_FACTOR times the baseline, a catastrophe guard that runner noise cannot reach (the
 //   maintainer, 2026-10-02: "Trend plus 3x guard"). On 2026-10-02 the same game code printed a
@@ -37,30 +37,36 @@ export const PR_FLOOR_KB = 10;
 const round1 = (x) => Math.round(x * 10) / 10;
 
 /**
- * @typedef {{ frameMs: { p50: number, p95: number }, stepMs?: { p95: number } }} SoftTimes
+ * `startTapMs` is the start tap's main-thread work (tests/perf/perf.spec.ts): the tap's click handlers
+ * plus the next frame's work up to the probe's own frame callback, in ms. Judged once both the probe
+ * and the baseline have it (polish F's live check, punch item 2: the menu came 215 ms after the tap,
+ * then 461 ms, and nothing on CI measured it).
+ * @typedef {{ frameMs: { p50: number, p95: number }, stepMs?: { p95: number }, startTapMs?: number }} SoftTimes
  * @typedef {{ metric: string, value: number, baseline: number, ratio: number, limit: number, over: boolean }} TrendRow
  */
 
 /**
- * The guard's limits for a baseline, rounded to 0.1 ms.
+ * The guard's limits for a baseline, rounded to 0.1 ms. The start tap's work is not counted in whole
+ * frames, so like the sim step it gets no slack.
  * @param {SoftTimes} baseline
  * @param {number} [factor]
- * @returns {{ frameP50: number, frameP95: number, stepP95?: number }}
+ * @returns {{ frameP50: number, frameP95: number, stepP95?: number, startTap?: number }}
  */
 export function guardLimits(baseline, factor = GUARD_FACTOR) {
-  /** @type {{ frameP50: number, frameP95: number, stepP95?: number }} */
+  /** @type {{ frameP50: number, frameP95: number, stepP95?: number, startTap?: number }} */
   const out = {
     frameP50: round1(baseline.frameMs.p50 * factor + FRAME_SLACK_MS),
     frameP95: round1(baseline.frameMs.p95 * factor + FRAME_SLACK_MS),
   };
   if (baseline.stepMs) out.stepP95 = round1(baseline.stepMs.p95 * factor);
+  if (baseline.startTapMs !== undefined) out.startTap = round1(baseline.startTapMs * factor);
   return out;
 }
 
 /**
  * Judges a probe's times against its baseline. Every metric becomes a trend row (the value, its
  * ratio to the baseline, the guard's limit); only a value above its guard is a failure. Sim step
- * p95 is judged when both the baseline and the probe have it.
+ * p95 and the start tap are judged when both the baseline and the probe have them.
  * @param {SoftTimes} measured
  * @param {SoftTimes} baseline
  * @param {number} [factor]
@@ -75,6 +81,8 @@ export function judgeSoft(measured, baseline, factor = GUARD_FACTOR) {
   ];
   if (measured.stepMs && baseline.stepMs)
     metrics.push(['sim step p95', measured.stepMs.p95, baseline.stepMs.p95, limits.stepP95]);
+  if (measured.startTapMs !== undefined && baseline.startTapMs !== undefined)
+    metrics.push(['start tap', measured.startTapMs, baseline.startTapMs, limits.startTap]);
   /** @type {TrendRow[]} */
   const rows = [];
   /** @type {string[]} */
@@ -176,7 +184,7 @@ export function summaryMarkdown({ size, probes }) {
   const out = ['### perf', '', ...size.map((s) => `- ${s}`), ''];
   if (probes.length) {
     out.push(
-      `Frame and sim step times are a trend; the gate fails only above ${GUARD_FACTOR}x the baseline.`,
+      `Frame times, the sim step and the start tap are a trend; the gate fails only above ${GUARD_FACTOR}x the baseline.`,
       '',
       '| probe | metric | ms | x baseline | baseline | guard |',
       '|---|---|---|---|---|---|',

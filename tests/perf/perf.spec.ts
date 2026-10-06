@@ -12,6 +12,13 @@ import { GUARD_FACTOR, guardLimits, judgeSoft, trendLine } from '../../scripts/p
 //   them in CI's step summary. They fail only above 3x the baseline, a catastrophe guard that
 //   runner noise cannot reach (scripts/perf-limits.mjs; the maintainer, 2026-10-02: "Trend plus
 //   3x guard"). On 2026-10-02 the same code printed p95 100.1 ms, then 150 ms, against a 2x limit.
+// - The start tap's main-thread work, in the same trend and guard (polish F's live check, punch item
+//   2: the menu came a median 215 ms after the tap on the build before 2026-10-06's render and
+//   content PRs, then 461 ms, and nothing on CI measured it). The page times the tap's click
+//   handlers (a capture listener on window before them, a bubble listener after) and the next
+//   frame's work up to a frame callback the tap queued, which runs after the game loop's own (that
+//   one was queued a frame earlier): from the frame's start to that callback. Nothing waits on a
+//   duration: the spec waits for the menu and for that callback. Unthrottled, like a first tap.
 // - Slow-motion pile-up checkpoint (M2 dev-4): the first frame the sim's takedown slow motion is
 //   active during the run is a checkpoint too, held to the same draw-call and triangle budget. It
 //   prints NOT ACTIVE while no slow motion happens in the run: combat-4's slow motion needs a
@@ -50,7 +57,17 @@ interface Checkpoint {
   triangles: number;
   movers: number;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __slowmoCheckpoint?: Checkpoint };
+/** The start tap's main-thread work, ms: its click handlers, then the next frame's up to the probe's callback. */
+interface StartTap {
+  handlerMs: number;
+  frameMs: number;
+}
+type TestWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __game?: Handle;
+  __slowmoCheckpoint?: Checkpoint;
+  __startTap?: StartTap;
+};
 
 interface Budget {
   drawCallsMax: number;
@@ -61,6 +78,7 @@ interface SoftBaseline {
   seconds: number;
   frameMs: { p50: number; p95: number };
   stepMs: { p95: number };
+  startTapMs?: number;
 }
 
 const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as Budget;
@@ -89,8 +107,31 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     localStorage.setItem('mbrawl:settings', JSON.stringify(record));
   });
   await page.goto('./');
-  await page.locator('#start-screen').click();
+  const startScreen = page.locator('#start-screen');
+  await startScreen.waitFor({ state: 'visible' });
+  // The start tap's main-thread work (the soft tier's `start tap`): see the header.
+  await page.evaluate(() => {
+    const w = window as TestWindow;
+    let at = 0;
+    window.addEventListener('click', () => (at = performance.now()), { capture: true, once: true });
+    window.addEventListener(
+      'click',
+      () => {
+        const handlerMs = performance.now() - at;
+        requestAnimationFrame((frameAt) => {
+          w.__startTap = { handlerMs, frameMs: Math.max(0, performance.now() - frameAt) };
+        });
+      },
+      { once: true },
+    );
+  });
+  await startScreen.click();
   await expect(page.locator('#menu-race')).toBeVisible();
+  await page.waitForFunction(() => (window as TestWindow).__startTap !== undefined, null, {
+    timeout: 30_000,
+  });
+  const startTap = (await page.evaluate(() => (window as TestWindow).__startTap)) as StartTap;
+  const startTapMs = Math.round((startTap.handlerMs + startTap.frameMs) * 10) / 10;
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   const cdp = await page.context().newCDPSession(page);
   await page.locator('#menu-race').click();
@@ -147,7 +188,7 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
   const soft = baseline.soft;
-  const judged = soft ? judgeSoft(report, soft) : null;
+  const judged = soft ? judgeSoft({ ...report, startTapMs }, soft) : null;
   // The hard tier's headroom, printed every run so a scene creeping toward its budget shows early.
   const scenes = slowmo ? [...checkpoints, slowmo] : checkpoints;
   const headroom = {
@@ -165,6 +206,12 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     frameMs: report.frameMs,
     fps: Math.round(report.fps * 10) / 10,
     stepMs: report.stepMs,
+    startTap: {
+      ms: startTapMs,
+      handlerMs: Math.round(startTap.handlerMs * 10) / 10,
+      frameMs: Math.round(startTap.frameMs * 10) / 10,
+      judged: soft?.startTapMs !== undefined,
+    },
     refreshHz: report.refreshHz,
     heapMB: report.heapMB === null ? null : Math.round(report.heapMB),
     budget: { drawCallsMax: budget.drawCallsMax, trianglesMax: budget.trianglesMax },
@@ -174,6 +221,10 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   console.log(`renderer: ${report.renderer}`);
   console.log(`perf probe: ${JSON.stringify(printed)}`);
   if (judged) console.log(trendLine('classic', judged.rows));
+  console.log(
+    `perf start tap (classic): ${startTapMs} ms of main-thread work (click handlers ${printed.startTap.handlerMs} ms, ` +
+      `next frame ${printed.startTap.frameMs} ms)${soft?.startTapMs === undefined ? '; no baseline yet, so not judged' : ''}`,
+  );
   console.log(
     `perf headroom (classic): ${headroom.drawCalls} draw calls under ${budget.drawCallsMax}, ` +
       `${headroom.triangles} triangles under ${budget.trianglesMax}, at the busiest checkpoint`,
