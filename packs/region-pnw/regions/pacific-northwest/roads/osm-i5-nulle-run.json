@@ -71,6 +71,12 @@
       "tag": "bridge"
     },
     {
+      "s0": 539.015,
+      "s1": 589.0167,
+      "side": "both",
+      "tag": "interstate"
+    },
+    {
       "s0": 0.0,
       "s1": 539.015,
       "side": "both",
@@ -81,6 +87,18 @@
       "s1": 732.0214,
       "side": "both",
       "tag": "forest"
+    },
+    {
+      "s0": 0.0,
+      "s1": 539.015,
+      "side": "both",
+      "tag": "interstate"
+    },
+    {
+      "s0": 589.0167,
+      "s1": 732.0214,
+      "side": "both",
+      "tag": "interstate"
     }
   ],
   "features": [
@@ -89,9 +107,19 @@
       "id": "bb-nulle-run",
       "s0": 200.0,
       "s1": 240.0,
-      "d0": -21.0,
-      "d1": -13.0,
+      "d0": -27.0,
+      "d1": -19.0,
       "pool": "billboards"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-weigh-station",
+      "s0": 330.0,
+      "s1": 340.0,
+      "d0": 15.5,
+      "d1": 20.5,
+      "item": "i5-weigh-station",
+      "params": { "style": "guide" }
     }
   ],
   "barriers": [
@@ -99,8 +127,9 @@
       "s0": 539.015,
       "s1": 589.0167,
       "side": "both",
-      "kind": "rail",
-      "heightM": 1.0
+      "kind": "wall",
+      "heightM": 0.81,
+      "look": "concrete"
     }
   ],
   "samples": {

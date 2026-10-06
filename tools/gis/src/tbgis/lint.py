@@ -84,6 +84,9 @@ TAGS = {
     "headlands",
     # Playtest 4 (P4-19): the Presidio's trees, and a deck's own supports (src/render/bridge-bays.ts).
     "presidio",
+    # An interstate (playtest 4, P4-19, run C5; sheet I1): a district tag, like the Keys'. It says nothing
+    # about the ground; the verge (src/road/cross-section.ts), the barrier looks and the traffic area read it.
+    "interstate",
     "arch-bridge",
     "trestle",
     # Playtest 4 (P4-19, C4): Chuckanut's bay side where the ground drops to the water and its uphill

@@ -346,6 +346,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // playtest 4 (P4-19, CX5): the Presidio's cypress and eucalyptus, and the Gorge's two deck arches
       sfIdentity: 2,
       gorgeArches: 2,
+      // playtest 4 (P4-19, CX6): the headlands' battery, coyote brush and chert outcrop
+      sfHeadlands: 3,
       // playtest 4 (P4-19, CX5, B9): two madrones and a section of the Gorge's masonry guard wall
       pnwIdentity: 3,
       // playtest 4 (P4-19, C4): CX6's Chuckanut cuts, parapet, bluff and boulders, Lake Samish's cabin and dock

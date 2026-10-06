@@ -123,3 +123,42 @@ describe('sign faces by style', () => {
     expect(built(catalogOf('neon-pink'), [slot('y', 100)]).map((o) => o.style)).toEqual(['default']);
   });
 });
+
+describe('an interstate guide sign is a bigger board than a town sign (playtest 4, P4-19, run C5; sheet I1)', () => {
+  /** The printed face's size and how high its lower edge stands, from the built board. */
+  function dims(catalog: BoardCatalog, extra: Partial<BoardSlot>) {
+    const boards = new Boards(createFlatLook());
+    boards.build(road, () => [slot('s', 100, extra)], catalog);
+    const v = boards.all()[0];
+    if (!v) throw new Error('no board');
+    v.panel.geometry.computeBoundingBox();
+    const box = v.panel.geometry.boundingBox;
+    return {
+      w: (box?.max.x ?? 0) - (box?.min.x ?? 0),
+      h: (box?.max.y ?? 0) - (box?.min.y ?? 0),
+      bottom: v.panel.position.y,
+      radius: v.radius,
+    };
+  }
+
+  it('is wider and taller than the default sign in the same slot, and stands higher above the road', () => {
+    const plain = dims(catalogOf(), {});
+    const guide = dims(catalogOf(), { params: { style: 'guide' } });
+    expect(guide.w).toBeGreaterThan(plain.w);
+    expect(guide.h).toBeGreaterThan(plain.h);
+    expect(guide.bottom).toBeGreaterThan(plain.bottom);
+    // The footprint a slot reserves is the board's own width: the radius follows it.
+    expect(guide.radius).toBeCloseTo(guide.w / 2, 3);
+    // Only the sign's style does it: a region style does too, a billboard in a guide-style region does not.
+    expect(dims(catalogOf('guide'), {}).w).toBeCloseTo(guide.w, 3);
+    expect(dims(catalogOf('guide'), { item: 'bb' }).w).toBeCloseTo(dims(catalogOf(), { item: 'bb' }).w, 3);
+  });
+
+  it('keeps every other style the size it always was', () => {
+    const plain = dims(catalogOf(), {});
+    for (const style of SIGN_STYLES.filter((s) => s !== 'guide')) {
+      const d = dims(catalogOf(), { params: { style } });
+      expect([d.w, d.h, d.bottom], style).toEqual([plain.w, plain.h, plain.bottom]);
+    }
+  });
+});

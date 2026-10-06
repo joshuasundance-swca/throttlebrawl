@@ -19,7 +19,7 @@ import {
   type ModelKind,
   type SceneryModels,
 } from './models';
-import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
+import { buildRoadScene, MODEL_OF, networkTags, type RoadDressing } from './road-mesh';
 import { formsOf, SCENERY_BLOCK_M, SCENERY_LOD_M } from './scenery-merge';
 
 const look = createFlatLook();
@@ -145,19 +145,10 @@ describe('the still scenery, merged per block', () => {
         expect(m.geometry.drawRange.start).toBe(0);
         drawnVerts += m.geometry.drawRange.count;
       }
-      const ofModel: Record<string, ModelKind> = {
-        palm: 'palms',
-        mangrove: 'mangroves',
-        shack: 'baitShack',
-        pole: 'powerPole',
-        conifer: 'conifers',
-        house: 'rowHouses',
-        sawmill: 'sawmill',
-        islet: 'keysIslets',
-      };
       let placedVerts = 0;
       for (const s of still) {
-        const variants = models[ofModel[s.kind]!]?.variants;
+        // The renderer's own kind-to-model table, so a new scenery kind needs no entry here.
+        const variants = models[MODEL_OF[s.kind]]?.variants;
         expect(variants, s.kind).toBeDefined();
         const g = variants![Math.min(variants!.length - 1, s.variant)]!;
         placedVerts += g.getAttribute('position').count;

@@ -200,3 +200,31 @@ describe('the Pacific Northwest places (run W-U)', () => {
     expect(both.widthM).toBe(16);
   });
 });
+
+describe('an interstate has a wide paved shoulder that ends in a wall (playtest 4, P4-19, run C5)', () => {
+  const tagged = (...names: string[]) => names.map((tag) => ({ s0: 0, s1: 500, side: 'both' as const, tag }));
+
+  it('is 3 m of shoulder past the lanes, ending hard, and beats the forest beside it', () => {
+    const alone = deriveVerge({ tags: tagged('forest', 'interstate') }, 'right', 100);
+    expect(alone).toEqual({ widthM: 3, surface: 'shoulder', edge: 'hard' });
+    // The control: the same road without the tag has the forest's 6 m of dirt and ferns, so the check can see a change.
+    expect(deriveVerge({ tags: tagged('forest') }, 'right', 100)).toEqual({
+      widthM: 6,
+      surface: 'dirt',
+      edge: 'brush',
+    });
+    // Either order of the tags, either side.
+    expect(deriveVerge({ tags: tagged('interstate', 'forest') }, 'left', 100)).toEqual(alone);
+  });
+
+  it('is wider than the lanes own shoulder, and a barrier on the side still wins over it', () => {
+    const lane = 1.5;
+    expect(deriveVerge({ tags: tagged('interstate') }, 'left', 10).widthM).toBeGreaterThan(lane);
+    const wall = [{ s0: 0, s1: 500, side: 'both' as const, kind: 'wall' as const, heightM: 0.9 }];
+    expect(deriveVerge({ tags: tagged('interstate'), barriers: wall }, 'right', 100)).toEqual({
+      widthM: 0,
+      surface: 'kerb',
+      edge: 'hard',
+    });
+  });
+});

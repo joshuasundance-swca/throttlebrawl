@@ -69,6 +69,12 @@
       "s1": 39.9999,
       "side": "both",
       "tag": "forest"
+    },
+    {
+      "s0": 0.0,
+      "s1": 39.9999,
+      "side": "both",
+      "tag": "interstate"
     }
   ],
   "features": [],

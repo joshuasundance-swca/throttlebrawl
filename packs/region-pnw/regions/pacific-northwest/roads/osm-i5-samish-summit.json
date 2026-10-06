@@ -69,6 +69,12 @@
       "s1": 1102.0338,
       "side": "both",
       "tag": "forest"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1102.0338,
+      "side": "both",
+      "tag": "interstate"
     }
   ],
   "features": [
@@ -98,8 +104,8 @@
       "id": "bb-samish-summit",
       "s0": 300.0,
       "s1": 340.0,
-      "d0": -21.0,
-      "d1": -13.0,
+      "d0": -27.0,
+      "d1": -19.0,
       "pool": "billboards"
     },
     {
@@ -120,19 +126,29 @@
       "id": "samish-summit-pullout",
       "s0": 520.0,
       "s1": 600.0,
-      "d0": 12.0,
-      "d1": 19.0,
+      "d0": 16.0,
+      "d1": 22.0,
       "params": {
         "spawns": "pedestrians"
       }
     },
     {
       "kind": "billboard",
+      "id": "sign-exit-246",
+      "s0": 640.0,
+      "s1": 650.0,
+      "d0": 15.5,
+      "d1": 20.5,
+      "item": "i5-exit-246",
+      "params": { "style": "guide" }
+    },
+    {
+      "kind": "billboard",
       "id": "sign-lake-samish-keep-right",
       "s0": 760.0,
       "s1": 770.0,
-      "d0": 12.5,
-      "d1": 15.0,
+      "d0": 15.5,
+      "d1": 20.5,
       "item": "lake-samish-keep-right",
       "params": { "style": "guide" }
     }

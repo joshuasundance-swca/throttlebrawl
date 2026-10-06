@@ -1,6 +1,6 @@
 {
   "$comment": "The bundle train (docs/engineering.md, 'The bundle train'). live: false keeps every PR on the full per-PR gate and lets the train run only as a dry run; turning it on (or off) is a PR that changes this file, which takes the full gate itself. cap: the most PRs a train carries. landingMinutes: how long a passed bundle may take to merge before its successes are taken back. mainWaitMinutes: how long the report waits for main's own CI before blaming a lone PR.",
-  "live": false,
+  "live": true,
   "cap": 8,
   "landingMinutes": 10,
   "mainWaitMinutes": 15

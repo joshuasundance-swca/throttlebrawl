@@ -75,6 +75,10 @@ export const MODEL_ASSETS = {
   // Playtest 4 (P4-19, Codex CX5): the Presidio's Monterey cypress and blue gum eucalyptus, in
   // region-sf's pack (scenery.ts, the `coastTree` kind on a `presidio` side)
   sfIdentity: 'models/scenery/sf-identity',
+  // Playtest 4 (P4-19, Codex CX6; run C, task C2): the Marin Headlands' low concrete gun battery, coyote
+  // brush and the Twin Peaks summit's red chert outcrop, in region-sf's pack (scenery.ts, the `battery`,
+  // `brush` and `outcrop` kinds on a `headlands` side)
+  sfHeadlands: 'models/scenery/sf-headlands',
   // Playtest 4 (P4-19, Codex CX5): the Columbia River Highway's concrete deck arches, two nodes of the
   // Gorge's landmark kit (bridge-bays.ts `planArches`, under an `arch-bridge` deck). The file is a
   // landmark kit, so it loads with the kit's own decoder (`KIT_MODELS`).
@@ -187,6 +191,9 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'pdx_bike_rack',
   ],
   sfIdentity: ['sf_cypress', 'sf_eucalyptus'],
+  // Variant 0 the battery (30 m along the road, its doors and stair toward it), 1 a brush clump and 2 a
+  // chert outcrop of four tilted beds (tools/blender/props/sf_headlands.py; scenery.ts `HEADLANDS_VARIANT`).
+  sfHeadlands: ['gg_battery', 'coyote_brush', 'sf_chert_outcrop'],
   gorgeArches: ARCH_ROOTS,
   // Variants 0 and 1 the 6 m sandstone cuts (4.2 and 8 m high), 2 the 6 m parapet, 3 the 20 m bluff (its lip
   // at the root, falling 40 m on its -Z side), 4 and 5 the boulders, 6 the lake cabin (its porch +Z, its deck
@@ -334,6 +341,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('sawmill')) out.add('sawmill');
     // Playtest 4 (P4-19): the Presidio's trees, on the Golden Gate's toll plaza.
     if (n.tags.has('presidio')) out.add('sfIdentity');
+    // Playtest 4 (P4-19, C2): the headlands' batteries, brush and chert.
+    if (n.tags.has('headlands')) out.add('sfHeadlands');
     // Playtest 4 (P4-19, B9): the Gorge's masonry guard walls and Chuckanut's bay-side madrones.
     if (n.tags.has('guard-wall') || n.tags.has('bay-bluff')) out.add('pnwIdentity');
     // Playtest 4 (P4-19, C4): Chuckanut's bluff and cuts, Lake Samish's cabins and docks.
