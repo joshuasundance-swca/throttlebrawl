@@ -390,7 +390,7 @@ for (const [where, width, height, finePointer] of [
       const go = await measureCountdown(page, 'GO');
       // Noticed at first glance (the maintainer, 2026-10-05: "hard to see at first without knowing
       // where to look"): each beat arrives bigger and fully bright, then settles small and
-      // translucent; the first beat (the 3) arrives bigger than the others.
+      // a little translucent; the first beat (the 3) arrives bigger than the others.
       const tall = (b: Box) => b.bottom - b.top;
       for (const [label, peakM, restM] of [
         ['3', threePeak, three],
@@ -400,7 +400,10 @@ for (const [where, width, height, finePointer] of [
           `${where}, ${label}: entrance peak ${Math.round(tall(peakM.count))} px at opacity ${peakM.opacity}, rest ${Math.round(tall(restM.count))} px at opacity ${restM.opacity} (${peakM.classes})`,
         );
         expect(peakM.opacity, `${where}, ${label}: full bright as it arrives`).toBeGreaterThan(0.95);
-        expect(restM.opacity, `${where}, ${label}: translucent at rest`).toBeLessThan(0.7);
+        // Still a little translucent (the veto), but not faint: at 0.6 it was low contrast over a pale building
+        // (HUD punch item 9); countdown-view.test.ts holds the contrast ratio itself.
+        expect(restM.opacity, `${where}, ${label}: a little translucent at rest`).toBeLessThan(1);
+        expect(restM.opacity, `${where}, ${label}: not faint at rest`).toBeGreaterThanOrEqual(0.85);
         expect(tall(peakM.count), `${where}, ${label}: bigger as it arrives`).toBeGreaterThan(
           1.3 * tall(restM.count),
         );

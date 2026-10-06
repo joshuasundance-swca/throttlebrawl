@@ -373,6 +373,111 @@ describe('ticker: a paid chip takes the strip within a second (the flip behind i
   });
 });
 
+describe("ticker: a flip's cash chip is not held behind its own landing's AIRTIME chip (HUD punch item 2)", () => {
+  // Playtest 4 run A's live check (out/launch-1.json): the landing's AIRTIME chip took the strip first,
+  // and the flip's chip, the big payout, showed 1.1 s (twice) and 1.6 s after the landing. Real event
+  // shapes through the feed (race-feed.ts), pushed in the order the sim's events arrive.
+  const airtime = (landed: boolean) =>
+    popItem(
+      stylePop({ tick: 453, type: 'style', actor: 0, data: { kind: 'airtime', points: 40, seconds: 1.3 } })!,
+      landed,
+      1600,
+    );
+  const doubleFlip = () =>
+    popItem(
+      stylePop({
+        tick: 453,
+        type: 'style',
+        actor: 0,
+        data: { kind: 'trick', trick: 'backflip', flips: 2, points: 240 },
+      })!,
+    );
+  const order = (t: ReturnType<typeof createTicker>, from: number, to: number): string[] => {
+    const out: string[] = [];
+    for (let now = from; now <= to; now += 10) {
+      const item = shown(t, now);
+      const label = item ? `${item.text} ${tickerCash(item)}`.trim() : '';
+      if (label && out[out.length - 1] !== label) out.push(label);
+    }
+    return out;
+  };
+  /** When (ms after the landing) the flip's chip first shows, or null. */
+  const flipAt = (t: ReturnType<typeof createTicker>): number | null => {
+    for (let now = 0; now <= 6000; now += 10) if (shown(t, now)?.text === 'DOUBLE BACKFLIP') return now;
+    return null;
+  };
+
+  it('shows the flip within a frame of the landing, whether the AIRTIME chip landed on the meter or not', () => {
+    for (const landed of [true, false]) {
+      const t = createTicker();
+      t.push(airtime(landed), 0);
+      t.push(doubleFlip(), 0);
+      expect(flipAt(t), `landed ${landed}`).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('shows the flip first and the AIRTIME chip right after, with both cashes, the AIRTIME for its remaining time', () => {
+    const t = createTicker();
+    t.push(airtime(true), 0);
+    t.push(doubleFlip(), 20);
+    expect(order(t, 20, 6000)).toEqual(['DOUBLE BACKFLIP +$240', 'AIRTIME +$40']);
+    // The flip had its whole 1.1 s, and the chip it took the strip from kept the rest of its 1.6 s.
+    const t2 = createTicker();
+    t2.push(airtime(true), 0);
+    t2.push(doubleFlip(), 20);
+    expect(shown(t2, 20)?.endsAt).toBe(20 + 1100);
+    expect(shown(t2, 1120)?.text).toBe('AIRTIME');
+    expect(shown(t2, 1120)?.endsAt).toBe(1120 + 1580);
+  });
+
+  it('shows the flip first when both wait behind something else, whichever arrived first', () => {
+    for (const flipFirst of [false, true]) {
+      const t = createTicker();
+      t.push({ cls: 'name', text: 'CATCH OF THE DAY', dwellMs: 900 }, 0);
+      if (flipFirst) t.push(doubleFlip(), 10);
+      t.push(airtime(false), 20);
+      if (!flipFirst) t.push(doubleFlip(), 30);
+      expect(order(t, 0, 6000), `flip first: ${flipFirst}`).toEqual([
+        'CATCH OF THE DAY',
+        'DOUBLE BACKFLIP +$240',
+        'AIRTIME +$40',
+      ]);
+    }
+  });
+
+  it('never drops the AIRTIME chip it froze: it is paid, so it shows after the flip however long that takes', () => {
+    const t = createTicker();
+    t.push(airtime(false), 0);
+    t.push(doubleFlip(), 100);
+    t.push({ cls: 'ask', text: 'ASK', dwellMs: 6000 }, 200);
+    expect(order(t, 200, 9000)).toEqual(['ASK', 'DOUBLE BACKFLIP +$240', 'AIRTIME +$40']);
+  });
+
+  it('keeps the rest as before: a cash-less chip showing is not cut short, and a flip behind a flip merges', () => {
+    const t = createTicker();
+    t.push({ cls: 'style', text: 'FOUND IT', kind: 'found', cash: null }, 0);
+    t.push(doubleFlip(), 10);
+    expect(shown(t, 10)?.text).toBe('FOUND IT');
+    expect(order(t, 10, 3000)).toEqual(['FOUND IT', 'DOUBLE BACKFLIP +$240']);
+    const m = createTicker();
+    m.push(doubleFlip(), 0);
+    m.push(doubleFlip(), 100);
+    expect(shown(m, 100)?.count).toBe(2);
+  });
+
+  it('measures what it claims: the chip waits behind the AIRTIME chip when only the AIRTIME is on the strip (negative control)', () => {
+    // The same measure on a flip that never arrives reports null, and a NEAR MISS chip that is not a flip
+    // does not jump the AIRTIME chip (only a flip is first).
+    const none = createTicker();
+    none.push(airtime(true), 0);
+    expect(flipAt(none)).toBeNull();
+    const other = createTicker();
+    other.push(airtime(true), 0);
+    other.push(near(25), 10);
+    expect(shown(other, 10)?.text).toBe('AIRTIME');
+  });
+});
+
 describe('ticker: voice, hold and cut', () => {
   it('extends a bark to its voice plus a tail', () => {
     const t = createTicker();
