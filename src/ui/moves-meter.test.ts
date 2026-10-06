@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import classicPreset from '../../packs/base/hud/classic.json';
 import { placeElement, placeTouchButtons, type LayoutElement, type MovesSnapshot } from '../sim/api';
 import {
+  chainLossShown,
   createDriftMeter,
   driftOutcome,
   driftRun,
@@ -25,7 +26,7 @@ import {
 } from './hud-layout';
 
 // T6.3 (playtest 3, the critic's C7): the drift chain is the ticker's meter line and empties
-// visibly on a wipeout; the wheelie gauge beside the stick is the one new widget, and the layout's
+// visibly on a crash (only a crash, playtest 4); the wheelie gauge beside the stick is the one new widget, and the layout's
 // settle rule places it. The browser spec (tests/e2e/ui-style-popups.spec.ts) measures the real one.
 
 const moves = (over: Partial<MovesSnapshot> = {}): MovesSnapshot => ({
@@ -70,7 +71,7 @@ describe('the drift meter: shown, banked, emptied', () => {
     expect(up.drifting).toBe(true);
     const later = m.update(moves({ driftS: 1.5, driftChain: 1, driftCash: 130 }));
     expect(later.shown?.cash).toBe(130);
-    // The window lapses and the chain banks (or a wipeout empties it): the cash is gone from the
+    // The window lapses and the chain banks (or a crash empties it): the cash is gone from the
     // snapshot, and the last value shown comes back as `ended` for the caller to land or empty.
     const gone = m.update(moves());
     expect(gone.shown).toBeNull();
@@ -117,18 +118,36 @@ describe('what becomes of a chain that left the snapshot', () => {
   };
 
   it('lands on its award when the banking pop arrives with it', () => {
-    expect(driftOutcome(ending(moves()), [{ kind: 'drift' }])).toBe('banked');
+    expect(driftOutcome(ending(moves()), [{ kind: 'drift' }], false)).toBe('banked');
+    expect(driftOutcome(ending(moves()), [{ kind: 'drift' }], true)).toBe('banked');
   });
 
-  it('is lost on a live race when no banking pop arrived: a crash, a wobble or a hit emptied it', () => {
-    expect(driftOutcome(ending(moves()), [{ kind: 'nearMiss' }])).toBe('lost');
-    expect(driftOutcome(ending(moves()), [])).toBe('lost');
+  it('is lost on a live race when no banking pop arrived and the rider is down: a crash emptied it', () => {
+    expect(driftOutcome(ending(moves()), [{ kind: 'nearMiss' }], true)).toBe('lost');
+    expect(driftOutcome(ending(moves()), [], true)).toBe('lost');
+  });
+
+  it('is not lost while the rider is still riding: only a crash says DRIFT LOST (playtest 4)', () => {
+    // A chain gone with no pop and no crash behind it is no loss the strip names. A wobble, a bump
+    // or a stagger never takes the cash at all, so there is nothing to show.
+    expect(driftOutcome(ending(moves()), [], false)).toBe('none');
+    expect(driftOutcome(ending(moves()), [{ kind: 'nearMiss' }], false)).toBe('none');
   });
 
   it('is neither when nothing ended, or when the race itself went away', () => {
     const meter = createDriftMeter();
-    expect(driftOutcome(meter.update(live), [])).toBe('none');
-    expect(driftOutcome(ending(null), [])).toBe('none');
+    expect(driftOutcome(meter.update(live), [], true)).toBe('none');
+    expect(driftOutcome(ending(null), [], true)).toBe('none');
+  });
+
+  it('a chain can be lost only while the rider is down (a crash), never while he rides or has finished', () => {
+    const at = (mode: string) => chainLossShown({ mode });
+    expect([at('Tumble'), at('OnFoot')]).toEqual([true, true]);
+    expect([at('Road'), at('Airborne'), at('Free')]).toEqual([false, false, false]);
+    // A chain open at the finish line is paid by the sim (a drift pop), so a finisher riding on is no loss.
+    const finisher = { mode: 'Road', finished: true };
+    expect(chainLossShown(finisher)).toBe(false);
+    expect([chainLossShown(null), chainLossShown(undefined)]).toEqual([false, false]);
   });
 
   it('shows one line: a drift under the rider, else a live run, else the open chain', () => {

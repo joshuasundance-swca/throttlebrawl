@@ -13,7 +13,7 @@ import {
   diskManifest,
   entitiesFor,
   modelDrawDelta,
-  readRepoFile,
+  readModel,
   realSets,
   regionPools,
   snapshotOf,
@@ -33,6 +33,31 @@ const MAPPING_FILES = import.meta.glob<unknown>('/packs/*/assets/traffic-models.
 const rows: ReadonlyMap<string, VehicleRow> = trafficModelRows(MAPPING_FILES);
 const modelAssets = [...new Set([...rows.values()].flatMap((r) => r.models))].sort();
 
+/** Every committed vehicle model of every pack (only the paths are read). */
+const MODEL_FILES = import.meta.glob<string>('/packs/*/assets/models/traffic/*.glb', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+
+/**
+ * The built vehicle models no traffic type draws yet, each with why. A type's model must fit it
+ * within a factor of two on both axes (the next describe), and a type's size is the sim's, so a
+ * model with no type of its size, or no type at all, waits for content, not for a row.
+ */
+const MODELS_NO_TYPE_TAKES: Readonly<Record<string, string>> = {
+  'models/traffic/keys-tour-tram':
+    'the island tram is 7.5 m (the rival AI sizes by the largest vehicle, so it cannot grow, #500); this model is 18 m',
+  'models/traffic/city-bus':
+    'the startup shuttle now draws its own model; no city-bus type is in a traffic mix yet',
+  'models/traffic/semi': 'no semi type exists yet (sheet I2); it is new traffic, a sim content change',
+  'models/traffic/suv': 'no SUV type exists yet; a second sedan model would add a draw call per pool',
+  'models/traffic/sf-streetcar': 'no vintage-streetcar type exists yet (sheet W1)',
+  'models/traffic/sf-trolleybus': 'no trolleybus type exists yet (sheet R2)',
+  'models/traffic/island-tram':
+    "built for base:island-tram's 7.5 m (CX7, models only); its row in the base traffic-models.json is sheet D5, with the Keys' draw headroom",
+};
+
 /** A model's size: its baked geometry's box. */
 function boxOf(g: BufferGeometry): Box3 {
   g.computeBoundingBox();
@@ -50,11 +75,11 @@ describe('the traffic model rows', () => {
     }
   });
 
-  it("name models that are committed, and a pack file only lists its own types or the base pack's models", async () => {
+  it('name models that are committed in some pack, and a pack file lists only its own types', async () => {
     expect(modelAssets.length).toBeGreaterThan(5);
     for (const asset of modelAssets) {
       expect(asset, asset).toMatch(/^models\/traffic\/[a-z0-9-]+$/);
-      const bytes = await readRepoFile(`packs/base/assets/${asset}.glb`);
+      const bytes = await readModel(asset);
       expect(bytes.byteLength, asset).toBeGreaterThan(1000);
     }
     for (const path of Object.keys(MAPPING_FILES)) {
@@ -70,6 +95,28 @@ describe('the traffic model rows', () => {
     for (const [id, row] of rows) {
       const own = types.get(id)?.look?.paintOptions ?? [];
       expect(row.paint, id).toEqual(own);
+    }
+  });
+
+  it('leave no built vehicle model unused (playtest 4, run B: eight built models drew nothing)', () => {
+    // Every committed vehicle model, in any pack, is the model of some type's row, unless it is
+    // waived here with the reason no type can take it yet. A waiver goes the day its model is
+    // wired (the next test), so this list only ever shrinks.
+    const built = Object.keys(MODEL_FILES)
+      .map((p) => /\/assets\/(models\/traffic\/[a-z0-9-]+)\.glb$/.exec(p)?.[1] ?? '')
+      .sort();
+    expect(built.length, 'the glob finds the models').toBeGreaterThan(10);
+    const unexplained = built.filter((a) => !modelAssets.includes(a) && !(a in MODELS_NO_TYPE_TAKES));
+    expect(unexplained, 'built models that no row draws and no waiver explains').toEqual([]);
+  });
+
+  it('keep no waiver for a model that a row now draws, or for a model that is gone', () => {
+    const built = new Set(
+      Object.keys(MODEL_FILES).map((p) => /\/assets\/(models\/traffic\/[a-z0-9-]+)\.glb$/.exec(p)?.[1] ?? ''),
+    );
+    for (const asset of Object.keys(MODELS_NO_TYPE_TAKES)) {
+      expect(built.has(asset), `${asset} is committed`).toBe(true);
+      expect(modelAssets, `${asset} is waived but a row draws it`).not.toContain(asset);
     }
   });
 
@@ -94,7 +141,7 @@ describe('a baked vehicle model', () => {
   it.each(modelAssets)(
     '%s stands on the ground, centred, front toward -z, true to its own numbers',
     async (asset) => {
-      const scene = readGlb(await readRepoFile(`packs/base/assets/${asset}.glb`));
+      const scene = readGlb(await readModel(asset));
       const baked = bakeVehicle(asset, scene);
       const extras = scene.getObjectByName('vehicle')?.userData as Record<string, number>;
       const box = boxOf(baked.geometry);

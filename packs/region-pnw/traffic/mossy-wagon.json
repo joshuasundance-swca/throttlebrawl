@@ -8,7 +8,7 @@
   "widthM": 1.8,
   "cruiseMps": 24.0,
   "hazard": "normal",
-  "behaviour": { "carFollowing": true, "laneChanges": true, "dives": false },
+  "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": true, "dives": false },
   "look": {
     "procedural": { "preset": "sedan" },
     "paintOptions": ["#5d6b4f", "#8a8f86", "#6e4b3a"]

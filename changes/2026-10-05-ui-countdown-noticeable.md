@@ -1,0 +1,9 @@
+---
+kind: changed
+audience: player
+---
+The 3, 2, 1, GO countdown is easy to spot again without covering the road. Each number now slams in bigger and fully bright with a warm glow, then shrinks back to the small see-through number beside the road in about half a second. The first one, the 3, comes in bigger and slower, because that is the one you are not looking for yet. A movement at the edge of your view catches the eye even when you are watching the road. It stays in the same strip left of the road ahead, and even at its biggest it is cut off at that strip's edge, so it never reaches the road. The beeps and the timing are unchanged. With reduced motion on, the number just appears, as before.
+
+For devs: `src/ui/countdown-view.ts` adds two entrance animations: `tb-count-in` (1.45x at full opacity to 1x at 0.6, 0.5 s) and `tb-count-first` (1.8x, 0.8 s, on the first number after the grid appears, via `countClasses`). `#countdown` clips across (`overflow-x: clip`) instead of `overflow: hidden`, so the number can grow up and down but never sideways out of the strip. `src/ui/countdown-view.test.ts` (new) checks the classes and the keyframes. `tests/e2e/ui-menu-first.spec.ts` still measures the 3 and GO at rest at 568x320, 640x360, 915x412, 412x915 and 1366x768, and now also at the entrance's first frame (the animation held at 0). At both points the number must be clear of the road ahead, inside its strip, inside the screen and off every other HUD piece. At the peak it must also be fully bright and over 1.3 times its rest height, and the 3 must grow more than GO. Browser specs were not run on the dev machine (CI runs them). Not phone-verified.
+
+Keeper fix: the browser check restarts the entrance before holding its first frame, because on a slow CI browser the 0.8 s entrance of the 3 could be over before the check ran (it then read the resting 0.6 opacity); the check no longer depends on the wall clock.

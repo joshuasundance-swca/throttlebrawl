@@ -73,7 +73,8 @@
       "s1": 130.0,
       "d0": 6.5,
       "d1": 9.0,
-      "pool": "signs"
+      "pool": "signs",
+      "params": { "style": "historic" }
     },
     {
       "kind": "boostPad",
@@ -96,6 +97,20 @@
       "d0": -16.0,
       "d1": -7.0,
       "pool": "billboards"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "latourell-creek-falls",
+      "s0": 1150.0,
+      "s1": 1220.0,
+      "d0": 5.6,
+      "d1": 12.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:rain-shell-hiker"],
+        "maxPeds": 2,
+        "sound": "falls"
+      }
     },
     {
       "kind": "rampTruck",

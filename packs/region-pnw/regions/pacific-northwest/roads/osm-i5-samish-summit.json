@@ -133,7 +133,8 @@
       "s1": 770.0,
       "d0": 12.5,
       "d1": 15.0,
-      "item": "lake-samish-keep-right"
+      "item": "lake-samish-keep-right",
+      "params": { "style": "guide" }
     }
   ],
   "barriers": [],

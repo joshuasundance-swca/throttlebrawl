@@ -8,7 +8,7 @@
   "widthM": 2.2,
   "cruiseMps": 22.0,
   "hazard": "big",
-  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },
   "look": {
     "procedural": { "preset": "box-truck", "params": { "cargoHeightM": 2.6 } },
     "paintOptions": ["#e8e2c8", "#9fb6a8", "#d9a441"]

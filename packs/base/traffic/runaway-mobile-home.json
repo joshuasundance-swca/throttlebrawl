@@ -8,7 +8,7 @@
   "widthM": 2.4,
   "cruiseMps": 9.0,
   "hazard": "big",
-  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },
   "look": { "procedural": { "preset": "mobile-home" }, "paintOptions": ["#e8e2c8", "#9fc5b8", "#d98c5f"] },
   "meta": {
     "status": "live",

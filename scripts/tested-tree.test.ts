@@ -251,6 +251,69 @@ describe('ci.yml wiring', () => {
     }
   });
 
+  // Fail fast on a PR (docs/engineering.md, "Fail fast on a PR"): the first red suite job cancels
+  // the rest of its PR run, so a red PR stops holding runner slots other PRs need. A push to main
+  // keeps running every job (a red slice never hides another's result there, and rerun-main
+  // re-runs only the failed ones). The gate still reads a cancelled job as red. The suite's jobs
+  // live in suite.yml, shared with the bundle train, which must never cancel its own run (its
+  // control and report jobs come after the suite): so fail fast is an input only ci.yml sets.
+  const wf = (name: string) =>
+    readFileSync(path.join(import.meta.dirname, '..', '.github', 'workflows', name), 'utf8');
+  const suite = wf('suite.yml');
+  const train = wf('train.yml');
+  const blockIn = (text: string, job: string) =>
+    new RegExp(`\\n {2}${job}:\\n((?:(?: {4}.*)?\\n)*)`).exec(text)?.[1] ?? '';
+  const jobBlock = (job: string) => blockIn(ci, job);
+  const SUITE_JOBS = ['static', 'unit', 'sim', 'browser'];
+
+  it('on a PR, a red suite job cancels the rest of its run, as its last step', () => {
+    for (const job of SUITE_JOBS) {
+      const block = blockIn(suite, job);
+      expect(block, job).not.toBe('');
+      // No permissions of its own: the job gets its caller's token (ci.yml grants actions: write).
+      expect(block, `${job} permissions`).not.toMatch(/^ {4}permissions:/m);
+      const steps = block.split(/\n {6}- /);
+      const last = steps[steps.length - 1] ?? '';
+      expect(last, `${job} last step`).toContain(
+        "if: failure() && inputs.fail-fast && github.event_name == 'pull_request'",
+      );
+      expect(last, `${job} last step`).toContain('GH_TOKEN: ${{ github.token }}');
+      expect(last, `${job} last step`).toMatch(
+        /gh run cancel "\$GITHUB_RUN_ID" --repo "\$GITHUB_REPOSITORY" \|\| /,
+      );
+    }
+    // A called workflow's own permissions could only lower its caller's token, and the cancel
+    // needs the caller's actions: write.
+    expect(suite).not.toMatch(/^permissions:/m);
+  });
+
+  it('every matrix fails fast only when the caller asks, and only ci.yml asks, on a PR', () => {
+    const matrices = SUITE_JOBS.filter((job) => /^ {4}strategy:$/m.test(blockIn(suite, job)));
+    expect(matrices.sort()).toEqual(['browser', 'sim', 'unit']);
+    for (const job of matrices)
+      expect(blockIn(suite, job), job).toContain('      fail-fast: ${{ inputs.fail-fast }}\n');
+    expect(suite).not.toMatch(/fail-fast: (?:false|true)/);
+    expect(suite).toMatch(/\n {6}fail-fast:\n(?: {8}.*\n)*? {8}type: boolean\n {8}default: false\n/);
+    expect(jobBlock('suite')).toContain("      fail-fast: ${{ github.event_name == 'pull_request' }}\n");
+    expect(train).not.toContain('fail-fast');
+    expect(ci).not.toMatch(/fail-fast: (?:false|true)/);
+  });
+
+  it("only ci.yml's suite call gets an actions token, and the workflow default stays read-only", () => {
+    expect(ci).toMatch(/\npermissions:\n {2}contents: read\n\n/);
+    // Job-level permissions replace the workflow's, so contents: read must be restated.
+    expect(jobBlock('suite')).toMatch(/^ {4}permissions:\n {6}actions: write\n {6}contents: read\n(?! {6})/m);
+    for (const { name } of jobs()) {
+      if (SUITE.includes(name)) continue;
+      const block = jobBlock(name);
+      expect(block, name).not.toContain('actions: write');
+      expect(block, name).not.toContain('gh run cancel');
+    }
+    // The train's suite runs PR code, so it gets no write token (scripts/train.test.ts checks more).
+    for (const job of ['suite', 'control'])
+      expect(blockIn(train, job), job).toMatch(/^ {4}permissions:\n {6}contents: read\n {4}uses:/m);
+  });
+
   it('deploy-prod and release check their own upstream result, not only the status function', () => {
     const byName = new Map(jobs().map((j) => [j.name, j.cond ?? '']));
     expect(byName.get('deploy-prod')).toContain("needs.aggregate.result == 'success'");

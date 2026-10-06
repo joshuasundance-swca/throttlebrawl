@@ -104,13 +104,20 @@ jobs:
 
   # The suite (suite.yml, shared with the train): every tier on a push to main and on a PR's full
   # path, the quick check (3 jobs) on the train and docs paths. Skipped on main's skip path. Its
-  # jobs show as `suite / static`, `suite / unit (1/2)` and so on.
+  # jobs show as `suite / static`, `suite / unit (1/2)` and so on. On a PR it fails fast
+  # (docs/engineering.md, "Fail fast on a PR"): the first red suite job cancels the rest of this
+  # run. Every suite job gets this job's token, so actions: write here is what the cancel needs
+  # (contents: read restated: job permissions replace the workflow's). No other job gets it.
   suite:
     needs: [plan, route]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) && (needs.route.result == 'skipped' || needs.route.result == 'success') }}
+    permissions:
+      actions: write
+      contents: read
     uses: ./.github/workflows/suite.yml
     with:
       full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}
+      fail-fast: ${{ github.event_name == 'pull_request' }}
       save-caches: true
       upload-dist: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       build-id: ${{ github.event.pull_request.head.sha || github.sha }}

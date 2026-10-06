@@ -70,6 +70,19 @@
       "params": {
         "spawns": "pedestrians"
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "mile-40",
+      "s0": 21.5313,
+      "s1": 22.1313,
+      "d0": 9.7,
+      "d1": 10.3,
+      "params": {
+        "model": "keys-identity#keys_mile_marker",
+        "yawDeg": 180.0,
+        "number": 40
+      }
     }
   ],
   "barriers": [],

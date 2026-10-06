@@ -197,6 +197,13 @@ export interface EntitySnapshot {
    * bike at yaw + drift. Optional for hand-built snapshots; the sim fills it for every entity.
    */
   drift?: number;
+  /**
+   * A rider back on the bike moments ago, riding through traffic (playtest 4; sim/traffic,
+   * startTrafficGhost): traffic and it pass through each other until it is clear. Render shows it
+   * subtly on the player's own bike. False for other kinds. Optional for hand-built snapshots; the
+   * sim fills it for every entity.
+   */
+  ghost?: boolean;
 }
 
 /**
@@ -212,7 +219,7 @@ export interface MovesSnapshot {
   driftS: number;
   /** The chain's length so far (1 for a lone drift), 0 when no chain is open. */
   driftChain: number;
-  /** Unbanked drift style cash: banked by a `driftEnd` with points, emptied by a crash or wobble. */
+  /** Unbanked drift style cash: banked by a `driftEnd` with points, emptied only by a crash. */
   driftCash: number;
   /** The drift's side, 1 right or -1 left, 0 when not drifting. */
   driftSide: -1 | 0 | 1;
@@ -987,6 +994,11 @@ export interface SimTrafficBehaviour {
   strolls?: boolean;
   /** An animal that runs after a passing rider a short way along the verge (dogs). */
   chases?: boolean;
+  /**
+   * The roadside class (playtest 4): `dodges`, `yields` or `solid` (src/sim/roadside.ts). Absent: the
+   * class the rules gave before the field existed.
+   */
+  roadside?: 'dodges' | 'yields' | 'solid';
 }
 
 export interface SimEventDef {

@@ -5,7 +5,7 @@
 // the second for every file in this folder). The helmet cam softens roll and the FOV kick under
 // the reduce-shake setting. The 125 m oncoming-car sight check for the new views is in
 // reaction-range.test.ts.
-import { Euler, Matrix4, Vector3 } from 'three';
+import { Euler, Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, fixtureNetwork, type RoadNetwork } from '../road';
 import type { SimEvent } from '../sim/api';
@@ -96,6 +96,19 @@ function depth(pose: CameraPose, p: Vector3): number {
   return new Vector3(p.x - pose.x, p.y - pose.y, p.z - pose.z).dot(v);
 }
 const NEAR = 0.3;
+
+/** Whether a point shows in the view on the maintainer's phone (1248 x 576), the widest screen. */
+function inPhoneView(pose: CameraPose, p: Vector3): boolean {
+  const cam = new PerspectiveCamera(pose.fov, 1248 / 576, NEAR, 760);
+  cam.position.set(pose.x, pose.y, pose.z);
+  cam.lookAt(pose.lookX, pose.lookY, pose.lookZ);
+  if (pose.roll) cam.rotateZ(pose.roll);
+  cam.updateMatrixWorld(true);
+  cam.updateProjectionMatrix();
+  if (p.clone().applyMatrix4(cam.matrixWorldInverse).z >= -NEAR) return false;
+  const n = p.clone().project(cam);
+  return Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1;
+}
 
 describe('camera-3: choosing the view', () => {
   it('starts on the low chase cam; the slider and cycleView pick far chase and helmet', () => {
@@ -205,10 +218,10 @@ describe('camera-3: the far chase cam', () => {
 });
 
 describe('camera-3: the helmet cam', () => {
-  it("sits inside the rider's own helmet (render's near plane hides it), leaning and weaving", () => {
+  it("sits at the rider's own helmet (render's near plane hides it), leaning and weaving", () => {
     const road = straightRoad();
     let examined = 0;
-    for (const lean of [0, 0.5, -0.5, 0.3])
+    for (const lean of [0, 0.1, 0.5, -0.5, 0.3])
       for (const weave of [0, 0.2, -0.2]) {
         const base = riderOn(road, 300, 1.7, { lean });
         const t = { ...base, heading: base.heading + weave };
@@ -216,22 +229,34 @@ describe('camera-3: the helmet cam', () => {
         let p = cam.snap(t);
         for (let n = 0; n < 120; n++) p = cam.update(t, DT);
         for (const c of ownHelmet(t)) {
-          expect(depth(p, c), `lean ${lean}, weave ${weave}`).toBeLessThan(NEAR);
+          // Behind the near plane, or (leaned past the reach, the head beside the eye) outside the
+          // view on the widest screen, the phone's.
+          const hidden = depth(p, c) < NEAR || !inPhoneView(p, c);
+          expect(hidden, `lean ${lean}, weave ${weave}`).toBe(true);
           examined++;
         }
-        // And it is the head it rides in, not a point beside it: within a few cm of the helmet's
-        // centre, which render places at (0, 1.76, -0.08) in the leaning, turning model.
-        const centre = new Vector3(0, 1.76, -0.08)
-          .applyMatrix4(new Matrix4().makeRotationFromEuler(new Euler(0, t.heading, -(t.lean ?? 0))))
+        // And it is the head it rides in: within a few cm of the helmet's centre, which render
+        // places at (0, 1.76, -0.08) in the leaning, turning model, except that the head's swing
+        // sideways is held to `helmetReachM` (2026-10-05: at a hard lean the head is over a car
+        // the sim lets the bike pass; tests/sim/helmet-traffic.test.ts).
+        const lean3 = new Matrix4().makeRotationFromEuler(new Euler(0, t.heading, -(t.lean ?? 0)));
+        const centre = new Vector3(0, 1.76, -0.08).applyMatrix4(lean3);
+        const right = new Vector3(Math.cos(t.heading), 0, -Math.sin(t.heading));
+        const out = centre.dot(right);
+        const reach = def('helmetReachM');
+        centre
+          .addScaledVector(right, Math.max(-reach, Math.min(reach, out)) - out)
           .add(new Vector3(t.x, t.y, t.z));
         expect(centre.distanceTo(new Vector3(p.x, p.y, p.z)), `lean ${lean}, weave ${weave}`).toBeLessThan(
           0.05,
         );
+        // Never further out to the side than the reach, whatever the lean.
+        expect(Math.abs((p.x - t.x) * right.x + (p.z - t.z) * right.z)).toBeLessThanOrEqual(reach + 1e-9);
         // Looking forward along the road, not at the rider.
         expect(behind(p, base)).toBeLessThan(0.5);
       }
     console.log(`[examined] ${examined} helmet corners against the near plane`);
-    expect(examined).toBe(4 * 3 * 16);
+    expect(examined).toBe(5 * 3 * 16);
   });
 
   it('cuts straight in and straight out: nothing flies through the rider', () => {

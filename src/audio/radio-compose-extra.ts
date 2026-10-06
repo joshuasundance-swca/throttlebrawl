@@ -65,7 +65,7 @@ function walk(scale: readonly number[], key: number, from: number, n: number, lo
  * A phrase over one bar of `stepsPerBar` steps: chord tones on the strong steps (`strong`), scale
  * steps between; negative lengths are rests. Returns its notes and the last pitch.
  */
-function phrase(
+export function phrase(
   r: Rand,
   at: number,
   rhythm: readonly number[],

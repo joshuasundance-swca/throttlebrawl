@@ -170,7 +170,8 @@ const kits = [
     name: 'sf_landmarks',
     pack: 'region-sf',
     asset: 'landmarks/sf-landmarks',
-    bytes: 45000,
+    // CX6 appends the flatiron and the mission church to this kit; its cap moved with them (cx6.test.ts)
+    bytes: 60000,
     caps: { sf_dragon_gate: 600, sf_twin_spire_lod0: 700, sf_twin_spire_lod1: 210 },
   },
   {

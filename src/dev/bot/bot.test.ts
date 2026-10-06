@@ -384,3 +384,56 @@ describe('bot: fighting a rival down (dev-4 part 2)', () => {
     expect(bot.stats().engagements).toBe(0);
   });
 });
+
+describe('bot: a split zone across the oncoming lanes, and a remount', () => {
+  // Bridge City's cut leaves from the oncoming side: the zone's line (d -3.3) is in the lane that
+  // runs the other way. A bot back on the bike (it went down in the approach, and got up at the
+  // spot it fell) keeps its own side: it rode into those lanes at a walking pace, in front of
+  // cars closing at 25 m/s, again and again in one race (playtest 4, the respawn lane's finding).
+  const zone = { edge: 0, s0: 260, s1: 300, d0: -4.9, d1: -2.4, toEdge: 6, gainM: 54 };
+  const zoned = (): RouteQueries => ({ ...route(), shortcuts: [zone] }) as RouteQueries;
+  /** The bot goes down at `downS`, then rides again from `upS` at a pace of 8 m/s. */
+  function remounted(downS: number, upS: number) {
+    const bot = createBot();
+    bot.drive(snapshot(1, [mover(ME, { mode: 'Tumble', s: downS, d: 0.5, speed: 0 })]), ME, zoned(), blank());
+    bot.drive(snapshot(2, [mover(ME, { mode: 'OnFoot', s: downS, d: 0.5, speed: 0 })]), ME, zoned(), blank());
+    const a = blank();
+    bot.drive(snapshot(3, [mover(ME, { s: upS, d: 0.5, speed: 8 })]), ME, zoned(), a);
+    return { bot, a };
+  }
+
+  it('a bot that has not been down heads for the zone across the oncoming lanes (the check can see it)', () => {
+    const a = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 30 })]), ME, zoned(), a);
+    expect(a.steer).toBeLessThan(-0.3);
+  });
+
+  it('a remount inside the approach keeps to its own side, and does not go back for the zone', () => {
+    const { bot, a } = remounted(245, 245);
+    expect(a.steer).toBeGreaterThan(0); // toward its own lane (d 1.7), not the oncoming one
+    // Later, still short of the zone and up to speed: it has given the zone up.
+    const later = blank();
+    bot.drive(snapshot(40, [mover(ME, { s: 255, d: 1.7, speed: 30 })]), ME, zoned(), later);
+    expect(Math.abs(later.steer)).toBeLessThan(0.05);
+    expect(bot.stats().shortcutApproachTicks).toBe(0);
+  });
+
+  it('a fall well before the approach does not cost it the zone', () => {
+    const { bot, a } = remounted(20, 20);
+    expect(a.steer).toBeGreaterThan(0); // far from the zone: just back to its own lane
+    const near = blank();
+    bot.drive(snapshot(40, [mover(ME, { s: 200, d: 1.7, speed: 30 })]), ME, zoned(), near);
+    expect(near.steer).toBeLessThan(-0.3);
+    expect(bot.stats().shortcutApproachTicks).toBe(1);
+  });
+
+  it('a zone on its own side is still taken after a remount (the road-2 ramp)', () => {
+    const own = { ...zone, d0: 2.4, d1: 4.9 };
+    const ownRoute = { ...route(), shortcuts: [own] } as RouteQueries;
+    const bot = createBot();
+    bot.drive(snapshot(1, [mover(ME, { mode: 'Tumble', s: 245, d: 1.7, speed: 0 })]), ME, ownRoute, blank());
+    const a = blank();
+    bot.drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 8 })]), ME, ownRoute, a);
+    expect(a.steer).toBeGreaterThan(0.3);
+  });
+});

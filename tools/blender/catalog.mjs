@@ -101,6 +101,12 @@ export const ROLES = [
   'falls_water',
   // CX5: copper-green and glazed roof tiles.
   'tile_green',
+  // CX6: terracotta roof tile.
+  'tile_red',
+  // CX6: Twin Peaks red-brown chert.
+  'chert',
+  // CX6: Chuckanut buff-tan sandstone.
+  'sandstone',
 ];
 
 /** Roles allowed to export doubleSided (single-sided leaf geometry). Everything else is culled. */

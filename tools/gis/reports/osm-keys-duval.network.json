@@ -48,7 +48,7 @@
       "line": "oldtown",
       "road": "osm-duval-whitehead",
       "s": 1579.6456,
-      "d": 8.7946,
+      "d": 10.7,
       "placementErrorM": 5.27
     },
     {
@@ -56,7 +56,7 @@
       "line": "oldtown",
       "road": "osm-duval-whitehead",
       "s": 411.5933,
-      "d": 7.6154,
+      "d": 10.0,
       "placementErrorM": 0.24
     },
     {
@@ -64,7 +64,7 @@
       "line": "oldtown",
       "road": "osm-duval-street",
       "s": 1745.0,
-      "d": -21.0,
+      "d": -22.0,
       "placementErrorM": 7.89
     }
   ]
