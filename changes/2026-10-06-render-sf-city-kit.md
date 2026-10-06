@@ -20,3 +20,5 @@ Not covered: how any of it looks on the phone (done, not phone-verified); no bro
 Keeper fix: the mission chapel was added to the baked `sf-mi-last-coat-alley.json` only, so `tools/road/sf-mission.test.ts` (the baked files equal a new compile of `tools/road/tracks/sf-mission.ts`) failed. The same landmark is now in the track source too.
 
 Keeper merge of main: kept both new model kinds (this change's `sfApartments` and main's `pnwIdentity`) in the model list and the model-count test.
+
+Keeper merge of main after #573 (the headlands kinds): `SceneryKind` and every per-kind table hold both `apartment` and `battery`, `brush` and `outcrop`; `DEPTH_M` and `HALF_ALONG_M` hold both footprints; the scatter both names the headlands variant and records the houses for `upgradeTerrace`; the merge test reads main's `MODEL_OF` instead of its own list. Checked alone: the scenery, scenery-merge, sf-city-kit, sf-headlands and mission unit files (90 tests) and the named scenery sweep (19 networks, 0 places wrong).

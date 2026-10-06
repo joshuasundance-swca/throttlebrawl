@@ -60,6 +60,11 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // An interstate (playtest 4, P4-19, run C5; sheet I1): a wide paved shoulder past the lanes' own 1.5 m
+  // one, so 4.5 m in all (the real right shoulder is 10 ft and more), ending in a guard rail the sim holds a
+  // rider at (`hard`: a wall; render draws it, src/render/barrier-looks.ts `interstate`). First in the
+  // list: the shoulder is the same whatever land lies beside it.
+  ['interstate', band(3, 'shoulder', 'hard')],
   // San Francisco's Chinatown and North Beach (run W-U; pitch deck #8): a side street's mouth is
   // open asphalt (presentation only, like downtown's cross streets); the hill's park is grass; the
   // Chinatown shopfronts stand behind a 4 m pavement; North Beach's pavement ends at the low rail of

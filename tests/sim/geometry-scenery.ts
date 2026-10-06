@@ -38,6 +38,10 @@ const LAND = new Set<ScenerySpot['kind']>([
   'house',
   'apartment',
   'sawmill',
+  // playtest 4 (P4-19, C2): the headlands' battery (a house-like footprint), brush and chert
+  'battery',
+  'brush',
+  'outcrop',
 ]);
 const BOATS = new Set<ScenerySpot['kind']>(['skiff', 'boat']);
 /** The share of its clearance radius a wide spot's footprint ring must stand on land. */

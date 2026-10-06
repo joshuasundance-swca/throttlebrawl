@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "notes": "Render-only (playtest 3, T12.2; playtest 4 run B): see the base pack's traffic-models.json. The Pacific Northwest's own types that draw from a model: the muddy pickup from the shared pickup, and the log truck, the camper van, the kayak wagon and the Portland streetcar from this pack's own models (models/traffic/<name> in this pack's assets). Its other types keep their figures.",
+  "notes": "Render-only (playtest 3, T12.2; playtest 4 run B): see the base pack's traffic-models.json. The Pacific Northwest's own types that draw from a model: the muddy pickup from the shared pickup, and the log truck, the camper van, the kayak wagon and the Portland streetcar from this pack's own models (models/traffic/<name> in this pack's assets), and the interstate's semi from the base pack's shared semi. Its other types keep their figures.",
   "types": {
     "region-pnw:muddy-pickup": {
       "models": ["models/traffic/pickup"],
@@ -25,6 +25,10 @@
     "region-pnw:pdx-streetcar": {
       "models": ["models/traffic/pdx-streetcar"],
       "paint": ["#b8433a", "#2f6f73", "#d8d2c4"]
+    },
+    "region-pnw:semi": {
+      "models": ["models/traffic/semi"],
+      "paint": ["#d9d9d9", "#3d4a5c", "#8a8f86"]
     }
   }
 }
