@@ -405,7 +405,7 @@ class RoadGrid {
 
 /** Whether nothing kept clear lies over s0..s1 and |d| a0..a1 on a side, with `margin` round it. */
 function featuresClear(
-  features: readonly BakedFeature[],
+  features: readonly Pick<BakedFeature, 's0' | 's1' | 'd0' | 'd1'>[],
   side: -1 | 1,
   s0: number,
   s1: number,
@@ -773,6 +773,12 @@ function placeDowntown(road: RoadNetwork, out: Collector, seed: number): void {
     const tags = tagsOf(road, e.index);
     if (!tags.some((t) => ['towers', 'plaza', 'cross-street', 'cable-crossing'].includes(t.tag))) continue;
     const features = e.features.filter((f) => KEEP_CLEAR.has(f.kind));
+    // A branch's split zone is kept clear too, as the kit's rules keep it (placeKitRules): it is where a rider
+    // leaves the road, and the Plaza Cut's flight off its ramp truck crosses it (a lamp stood in it at s 660).
+    const zones = road
+      .splitZones()
+      .filter((z) => z.edge === e.index)
+      .map((z) => ({ s0: z.s0, s1: z.s1, d0: z.d0, d1: z.d1 }));
     const h = (k: number, side: number, salt: number) =>
       scatterHash(seed, 4111 + e.index * 977, k, side * 37 + salt);
     const outerOf = (side: -1 | 1) => (side < 0 ? -e.dMin : e.dMax) + DRAWN_VERGE_M;
@@ -783,7 +789,8 @@ function placeDowntown(road: RoadNetwork, out: Collector, seed: number): void {
       a0: number,
       a1: number,
       margin = DT_FEATURE_CLEAR_M,
-    ) => featuresClear(features, side, s0, s1, a0, a1, margin);
+    ) =>
+      featuresClear(features, side, s0, s1, a0, a1, margin) && featuresClear(zones, side, s0, s1, a0, a1, 0);
     const runs = (side: -1 | 1, want: string) =>
       runsOf(e.length, (s) => themeAt(tags, side < 0 ? 'left' : 'right', s) === want);
     const seen = new Set<string>();
