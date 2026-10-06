@@ -739,6 +739,7 @@ export function trafficBehaviour(b: TrafficType['behaviour']): { behaviour?: Sim
   if (b.convoy !== undefined) out.convoy = b.convoy;
   if (b.strolls !== undefined) out.strolls = b.strolls;
   if (b.chases !== undefined) out.chases = b.chases;
+  if (b.roadside !== undefined) out.roadside = b.roadside;
   return Object.keys(out).length > 0 ? { behaviour: out } : {};
 }
 

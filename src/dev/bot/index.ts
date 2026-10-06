@@ -137,6 +137,20 @@ function zoneLine(z: ShortcutZone): number {
   return inner + Math.sign(outer - inner) * Math.min(SHORTCUT_LINE_IN_M, Math.abs(outer - inner) / 2);
 }
 
+/**
+ * Does a zone's line run through lanes that go the other way (a cut that leaves from the oncoming
+ * side, Bridge City's)? The lanes are those at the zone's start.
+ */
+function crossesOncoming(z: ShortcutZone, route: RouteQueries, dir: 1 | -1): boolean {
+  const line = zoneLine(z);
+  const lane = route
+    .lanesAt(z.edge, z.s0)
+    .find(
+      (l) => (l.kind === 'drive' || l.kind === 'shoulder') && Math.abs(line - l.dCenterM) <= l.widthM / 2,
+    );
+  return lane !== undefined && lane.direction === -dir;
+}
+
 /** What the bot has done so far this race (the browser test and the batch print these). */
 export interface BotStats {
   attackPresses: number;
@@ -198,6 +212,8 @@ export function createBot(): BotController {
   let shortcutDone = false;
   let onShortcut = false;
   let dodging = false;
+  /** Was the bot down (tumbling or on foot) on its last tick? */
+  let wasDown = false;
 
   /** Is a stretch of road clear of vehicles around lateral `d`, from s0 to s1 ahead? */
   function clearAt(snap: SimSnapshot, me: EntitySnapshot, d: number, s0: number, s1: number): boolean {
@@ -323,7 +339,17 @@ export function createBot(): BotController {
         a.skipRunBack = true;
         stats.skipTicks++;
         targetId = -1;
+        wasDown = true;
         return;
+      }
+      if (wasDown) {
+        // Back on the bike, at the spot it fell. A cut that leaves across the oncoming lanes, and
+        // that it fell in the approach to, is given up: it would ride into those lanes from a
+        // walking pace, in front of traffic closing at 25 m/s (the head-on crashes after each
+        // remount in playtest 4's respawn lane). A cut on its own side, or one further on, stays on.
+        wasDown = false;
+        const near = zonesOf(route).find((z) => approaching(z, me.road.edge, me.road.s, me.road.dir));
+        if (near && crossesOncoming(near, route, me.road.dir)) shortcutDone = true;
       }
       if (me.mode === 'Airborne' || !me.grounded) {
         a.throttle = 1;
