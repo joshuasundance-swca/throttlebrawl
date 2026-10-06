@@ -91,9 +91,20 @@ export interface StructureLayerSpec {
 
 /**
  * The layers, by name. Each port adds its row with its planner, `{ tags, load: () => import(...) }`, so a
- * network asks only for the planners that exist. Empty until the first port lands.
+ * network asks only for the planners that exist.
  */
-export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {};
+export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
+  // San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws the layout).
+  'chinatown-northbeach': {
+    tags: ['lanterns', 'cafes', 'side-street', 'hill-park'],
+    load: () => import('./structures/chinatown-northbeach').then((m) => m.blocksPlanner),
+  },
+  // San Francisco's Mission (render/mission.ts draws the layout).
+  mission: {
+    tags: ['mascot-mural', 'murals', 'shopfronts'],
+    load: () => import('./structures/mission').then((m) => m.missionPlanner),
+  },
+};
 
 /** The plan: every structure, numbered, and a grid of the world for finding them. */
 export interface StructurePlan {

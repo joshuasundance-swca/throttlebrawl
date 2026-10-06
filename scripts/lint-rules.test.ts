@@ -94,6 +94,12 @@ describe('lint rules fire', () => {
       'modules/boundaries',
     ],
     [
+      "render reaching into road past its index and the structures' planners",
+      'src/render/probe.ts',
+      "export * from '../road/furniture';",
+      'modules/boundaries',
+    ],
+    [
       'ui importing dev (composition root rule)',
       'src/ui/probe.ts',
       "export * from '../dev';",
@@ -182,6 +188,11 @@ describe('lint rules stay quiet on allowed code', () => {
       "export * from '../../app';\nexport * from '../../sim/api';",
     ],
     ['a sim unit test using Math.random', 'src/sim/probe.test.ts', 'export const r = Math.random();'],
+    [
+      "render importing a structures planner directly (a lazy layer reads the road's layout)",
+      'src/render/probe.ts',
+      "export * from '../road/structures/mission';",
+    ],
     [
       'a short poll in a browser spec',
       'tests/e2e/probe.spec.ts',
