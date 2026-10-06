@@ -627,6 +627,37 @@ For a quick look without a dev machine, open the game Space's `*.hf.space` URL o
 - **Feel-critical tuning** (camera, steering, hit response) stays in one tight loop `[default]`, rather than being split across lanes. The loop is driven by the maintainer's playtests (play, then tell in chat `[decided]`) and the in-game tuning panel with presets from M1 `[decided]`.
 - **No autonomous work between sessions.** `[decided]` Agents do not schedule or run unattended weekly or overnight work (usage limits). Auto-progress stays on the idea shelf ("maybe later").
 
+### Lanes that build on another lane
+
+`[decided]` (the maintainer, 2026-10-06, asked "did we consider stacked PRs" and, after the coordinator's comparison, decided: "Proceed as recommended without gh stack at this time."). The rule is in [AGENTS.md](../AGENTS.md#runs-lanes-one-keeper-one-live-check); this section gives the mechanics and the reasons.
+
+**The problem.** A lane whose work needs another lane's unmerged work used to sit idle until the parent merged, then branch from a fresh `origin/main`. Every merge goes through the [train](#the-bundle-train), so those chains ran for hours with a lane doing nothing.
+
+**The rule.** The dependent lane builds while the parent is still in flight:
+
+1. `git fetch`, then `git switch --no-track -c <your branch> origin/<parent>` (the parent's `lane/<lane-id>/<topic>` branch). Build and run your own tests there. Push the branch with `git push -u origin HEAD` when they pass: a branch with no PR starts no CI, so this costs nothing, and a lane that builds on yours can fetch it. `--no-track` matters: a branch made from `origin/<parent>` without it tracks the parent's branch, and a bare `git push` would then fail, or with `push.default=upstream` push your commits onto the parent's PR.
+2. Open your PR against `main` only after the parent's PR is MERGED (`gh pr view --json state,mergedAt`, polled synchronously, under 9 minutes per call, as [AGENTS.md](../AGENTS.md#the-dev-machine-what-runs-locally) says). Then `git merge origin/main` into your branch, re-run your tests, push, open the PR and arm auto-merge as usual. Never a rebase and never a force-push, so the never-rewrite-published-history rule holds.
+3. The parent's squash commit holds the same changes as the parent's branch, so the merge usually brings little or no conflict. Where you changed a line the parent wrote, or one next to it, git reports a conflict: resolve it keeping your version of that line and the parent's intent.
+4. If the parent changes after you branched (a fix on its branch, a keeper's push), merge its branch into yours again. If the parent's PR is CLOSED unmerged, rebuild on `main` without the parent's work, or say what is missing. If it is still open after 8 hours (red, or stuck), push your branch, report it blocked and end: an unbounded wait holds the run's pool slot and the run never reaches its live check.
+5. Never open a PR against another lane's branch.
+
+**Why the PR waits for `main`.** Each of these was read from the repo on 2026-10-06:
+
+- `ci.yml` runs on `pull_request` with `branches: [main]` and the default activity types, so a PR whose base is another branch gets no CI, and changing a PR's base (the "edited" event) starts none.
+- The train lists only PRs with `baseRefName: "main"` (`openPrs()` in `scripts/train.mjs`), so it never takes a PR aimed at another branch.
+- Branch protection, with `gate` as the required check, is on `main` only. Auto-merge armed on a PR aimed at a lane branch would merge it at once, with no checks.
+- The repo deletes a merged PR's branch ([Branch protection and auto-merge](#branch-protection-and-auto-merge)), and GitHub then retargets PRs based on it to `main`. Even a PR opened against a parent would be retargeted on its merge, but only after it had gone unchecked or merged unchecked.
+
+**Why not real stacked PRs, and why not `gh stack`.** True stacked PRs need CI and train changes, and add CI load, which is the bottleneck, for no gain an agent lane needs: an agent loses nothing by opening its PR a little later than it finished building. GitHub's official `gh stack` extension (github/gh-stack) was considered and deferred `[decided]`:
+
+- its cascade rebase and force-with-lease push conflict with the never-rebase and never-force-push rules;
+- CI and the train only see PRs into `main`, not a stack's inner PRs;
+- its merge lands the whole stack at once, directly or through GitHub's merge queue, never through the train (this repo has no merge queue: it is a personal account's; see [Branch protection and auto-merge](#branch-protection-and-auto-merge)).
+
+These points are the coordinator's comparison of 2026-10-06; they were not re-measured here. Revisit if the repo ever adopts the merge queue.
+
+**In the lane template.** In [`.claude/workflows/lane-run.js`](../.claude/workflows/lane-run.js) a lane may name a `needs` lane. It starts when that lane has finished (its PR is open), is told to build on the parent's branch, and waits for the parent's merge only before it opens its own PR. `scripts/stack-lite-docs.test.ts` pins the rule's sentences in AGENTS.md, here and in the template.
+
 ## Dev-time AI spend
 
 `[decided]` Up to about $25 per batch and $75 per month; "prove before scaling, and do so intentionally"; local GPU or Hugging Face runs preferred; a plain cost note after each run.
