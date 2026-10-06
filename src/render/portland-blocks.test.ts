@@ -26,6 +26,7 @@ import {
   type Rect,
 } from './downtown';
 import { readGlb } from './glb';
+import { EdgeLocator } from './overlap';
 import { ATLAS_WHITE_UV } from './scenery-merge';
 import { landmarkPlacements, LandmarkLayer } from './landmarks';
 import { createFlatLook } from './look';
@@ -218,26 +219,39 @@ describe("Bridge City's blocks", () => {
         pairs++;
         expect(rectsOverlap(rects[a] as Rect, rects[b] as Rect), `${a} and ${b}`).toBe(false);
       }
-    // Every corner, edge middle and centre of a building is off the road beside it: projected onto the
-    // road, it lies past the verge by more than a sidewalk less a corner's give.
+    // Every point of a building, on a grid of 2 m over its footprint, is off every road of the network (a
+    // branch, a shortcut's connector, a junction's other road; playtest 4's phone play, 2026-10-06: the old
+    // check projected nine points onto the building's own road and its neighbours only, and passed while
+    // fronts stood on the Morrison shortcut's connectors): on each road whose line the point projects onto,
+    // it lies past the lanes by more than a sidewalk less a corner's give.
+    const locator = new EdgeLocator(road);
+    let points = 0;
     for (const [i, r] of rects.entries()) {
-      for (const a of [-1, 0, 1])
-        for (const b of [-1, 0, 1]) {
-          const x = r.cx + r.ux * a * r.hw + r.vx * b * r.hd;
-          const z = r.cz + r.uz * a * r.hw + r.vz * b * r.hd;
-          const pos = road.project(
-            x,
-            z,
-            plan.items.filter((q) => isBuilding(q) || q.rule === 'pdx-cart')[i]?.edge,
-          );
-          const e2 = road.edges[pos.edge];
-          const lim = (pos.d < 0 ? -(e2?.dMin ?? 0) : (e2?.dMax ?? 0)) + 0.6;
-          expect(Math.abs(pos.d), `item ${i} point ${a},${b} on ${e2?.id}`).toBeGreaterThanOrEqual(
-            lim + SIDEWALK_M - 1.2 - 1e-6,
-          );
+      const nu = Math.ceil((2 * r.hw) / 2);
+      const nv = Math.ceil((2 * r.hd) / 2);
+      for (let a = 0; a <= nu; a++)
+        for (let b = 0; b <= nv; b++) {
+          const ou = -r.hw + (2 * r.hw * a) / nu;
+          const ov = -r.hd + (2 * r.hd * b) / nv;
+          const x = r.cx + r.ux * ou + r.vx * ov;
+          const z = r.cz + r.uz * ou + r.vz * ov;
+          points++;
+          for (const h of locator.at(x, z, -1)) {
+            let lo = 0;
+            let hi = 0;
+            for (const lane of road.lanesAt(h.edge, h.s)) {
+              lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+              hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+            }
+            const clear = 0.6 + SIDEWALK_M - 1.2 - 1e-6;
+            expect(
+              h.d <= lo - clear || h.d >= hi + clear,
+              `item ${i} point ${ou.toFixed(1)},${ov.toFixed(1)} on ${idOf(h.edge)} s ${h.s.toFixed(0)} d ${h.d.toFixed(1)}`,
+            ).toBe(true);
+          }
         }
     }
-    stdout.write(`[examined] ${rects.length} footprints, ${pairs} pairs: none overlap; every point is off the road
+    stdout.write(`[examined] ${rects.length} footprints, ${pairs} pairs: none overlap; ${points} points, each off every road
 `);
   });
 
