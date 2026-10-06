@@ -20,6 +20,7 @@ import {
   type BarkParams,
   type BarkSelector,
 } from './selector';
+import type { Schedule } from './long-press';
 import type { BarkSurface } from './surface';
 import { createSeenLog, seenItemOf, type SeenItem, type SeenKind, type VetoFlag } from './veto';
 import { createCutMenu, mountRecentlySeen, watchBubblePresses, type CutMenu } from './veto-ui';
@@ -76,6 +77,8 @@ export interface NarrativeOptions {
   onVeto?: (flag: VetoFlag) => void;
   /** True where a press belongs to steering or attacking; without it, touches mid-race never cut. */
   inControlZone?: (x: number, y: number) => boolean;
+  /** The long-press timer; wall time by default, a manual clock in the browser specs (ui's `__uiLongPress`). */
+  longPressSchedule?: Schedule | undefined;
   /** Where a radio station's own line is listened for (`RADIO_BARK_EVENT`); the window by default, null for none. */
   radioLines?: EventTarget | null;
 }
@@ -136,6 +139,7 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
       watchBubblePresses(b, {
         inControlZone: options.inControlZone,
         racing: () => racing,
+        schedule: options.longPressSchedule,
         onLongPress: (bark) => offer(seenItemOf(bark)),
       });
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { basePackFiles } from '../../content';
-import { createLongPress, LONG_PRESS_SLOP_PX, type Schedule } from './long-press';
+import { createLongPress, createManualClock, LONG_PRESS_SLOP_PX } from './long-press';
 import {
   createSeenLog,
   isContentRef,
@@ -11,26 +11,7 @@ import {
   type SeenItem,
 } from './veto';
 
-function fakeClock() {
-  let now = 0;
-  let timers: { at: number; fn: () => void; live: boolean }[] = [];
-  const schedule: Schedule = (fn, ms) => {
-    const t = { at: now + ms, fn, live: true };
-    timers.push(t);
-    return () => {
-      t.live = false;
-    };
-  };
-  const advance = (ms: number) => {
-    now += ms;
-    for (const t of timers.filter((x) => x.live && x.at <= now)) {
-      t.live = false;
-      t.fn();
-    }
-    timers = timers.filter((x) => x.live);
-  };
-  return { schedule, advance };
-}
+const fakeClock = createManualClock;
 
 const item = (n: number, kind: SeenItem['kind'] = 'bark'): SeenItem => ({
   contentRef: `base:bark-set/kevin-core#line-${n}`,

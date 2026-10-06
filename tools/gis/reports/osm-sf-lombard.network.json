@@ -46,10 +46,10 @@
     {
       "id": "coit-tower",
       "line": "lombard",
-      "road": "osm-sf-lombard-flats",
-      "s": 962.0,
-      "d": -30.0,
-      "placementErrorM": 0.0
+      "road": "osm-sf-lombard-telegraph-hill",
+      "s": 392.0,
+      "d": -19.0,
+      "placementErrorM": 5.4
     }
   ]
 }

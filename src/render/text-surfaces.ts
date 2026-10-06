@@ -21,6 +21,7 @@ import {
   Group,
   Matrix4,
   Mesh,
+  Quaternion,
   Ray,
   SRGBColorSpace,
   Vector2,
@@ -38,7 +39,8 @@ import {
   type VisibleContent,
 } from './boards';
 import type { LookStyle } from './look';
-import { textSurfaceItemId, type TextSurface } from './models';
+import { textSurfaceItemId, type SceneryModel, type TextSurface } from './models';
+import { scatterHash, type ScenerySpot } from './scenery';
 
 /** How far in front of the blank panel the painted quad stands, m (clear of the depth buffer's noise). */
 export const SURFACE_LIFT_M = 0.06;
@@ -163,6 +165,41 @@ export function placeSurface(surface: TextSurface, matrix: Matrix4): PlacedSurfa
     centre,
     normal,
   };
+}
+
+/**
+ * The shop signs of the corner buildings the scatter stood in a terrace (playtest 4, P4-19, R3: CX6's
+ * `sf_corner_l` and `sf_corner_r`, each with a blank board), in the world, for the words of their pack signs to
+ * be painted over. Each carries a `pick` from its place, so neighbouring corners show different names. The
+ * blank board stays in the scenery's mesh: a name that is cut leaves a blank board.
+ */
+export function apartmentSurfaces(
+  spots: readonly ScenerySpot[],
+  model: SceneryModel | undefined,
+  seed: number,
+): PlacedSurface[] {
+  const out: PlacedSurface[] = [];
+  const panelsOf = model?.surfaces;
+  if (!panelsOf) return out;
+  const q = new Quaternion();
+  const up = new Vector3(0, 1, 0);
+  const at = new Vector3();
+  const one = new Vector3(1, 1, 1);
+  for (const spot of spots) {
+    if (spot.kind !== 'apartment') continue;
+    const panels = panelsOf[spot.variant];
+    if (!panels?.length) continue;
+    const m = new Matrix4().compose(
+      at.set(spot.p.x, spot.p.y, spot.p.z),
+      q.setFromAxisAngle(up, spot.turn),
+      one,
+    );
+    const pick = Math.floor(
+      scatterHash(seed, 9101 + spot.edge, Math.round(spot.s), spot.d < 0 ? 1 : 2) * 1024,
+    );
+    for (const panel of panels) out.push({ ...placeSurface(panel, m), pick });
+  }
+  return out;
 }
 
 /** The canvas's drawing calls this module uses (a 2D context, or a test's recorder). */
