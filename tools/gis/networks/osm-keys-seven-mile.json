@@ -42,7 +42,8 @@
           "lon": -81.12432
         },
         "offsetM": 5.85,
-        "landOffsetM": 10
+        "landOffsetM": 10,
+        "scale": 2
       },
       "smoothing": {
         "headingSigmaM": 30

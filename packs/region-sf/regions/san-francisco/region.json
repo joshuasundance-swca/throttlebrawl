@@ -105,10 +105,7 @@
       { "kind": "e-scooter-commuter", "weight": 1 },
       { "kind": "dog-walker-sf", "weight": 1 }
     ],
-    "animals": [
-      { "kind": "sea-lion", "weight": 1, "big": false },
-      { "kind": "doodle", "weight": 1, "big": false }
-    ]
+    "animals": [{ "kind": "doodle", "weight": 1, "big": false }]
   },
   "signs": [
     { "id": "park-cut", "text": "PARK CUT. Flatter. Muddier. Unfunded.", "status": "live" },

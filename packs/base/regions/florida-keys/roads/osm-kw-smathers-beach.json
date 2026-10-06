@@ -75,18 +75,6 @@
     {
       "s0": 0.0,
       "s1": 579.0308,
-      "side": "both",
-      "tag": "key-resort"
-    },
-    {
-      "s0": 639.0339,
-      "s1": 4667.2419,
-      "side": "both",
-      "tag": "key-resort"
-    },
-    {
-      "s0": 0.0,
-      "s1": 579.0308,
       "side": "left",
       "tag": "beach"
     },
@@ -107,6 +95,36 @@
       "s1": 4667.2419,
       "side": "right",
       "tag": "palms"
+    },
+    {
+      "s0": 0.0,
+      "s1": 579.0308,
+      "side": "right",
+      "tag": "key-resort"
+    },
+    {
+      "s0": 639.0339,
+      "s1": 4667.2419,
+      "side": "right",
+      "tag": "key-resort"
+    },
+    {
+      "s0": 700.0,
+      "s1": 1250.0,
+      "side": "right",
+      "tag": "water-shallow"
+    },
+    {
+      "s0": 1700.0,
+      "s1": 2350.0,
+      "side": "right",
+      "tag": "water-shallow"
+    },
+    {
+      "s0": 3000.0,
+      "s1": 3600.0,
+      "side": "right",
+      "tag": "water-shallow"
     }
   ],
   "features": [

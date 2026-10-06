@@ -15,7 +15,8 @@
 // the cord is drawn now, a dark cord of `CORD_W_M` through every bulb and up to the posts; each bulb is
 // a bright-cored diamond of `BULB_SIZE_M` with a soft additive glow round it (`GLOW_R_M`, a second mesh
 // and so a second draw call: bright at the bulb, black at the rim, so it fades with no texture). And
-// the crowd (balcony-crowd.ts, `setFronts`): the street's balconies are full of revellers, by day too.
+// the crowd (balcony-crowd.ts, `setFronts`): the street's balconies are full of revellers, by day too, and
+// (run B's check, item 4) its pavements have people standing on them.
 import {
   AdditiveBlending,
   BufferGeometry,
@@ -453,7 +454,8 @@ export class PartyLights {
         (r) => r.edge === p.edge && p.s >= r.s0 - 4 && p.s <= r.s1 + 4 && Math.sign(p.d) === r.side,
       );
     };
-    const crowd = new BalconyCrowd(this.look, { surfaces, seed, accept });
+    // Run B's check, item 4: and the people on the pavement of every party block, with or without a balcony shop.
+    const crowd = new BalconyCrowd(this.look, { surfaces, seed, accept, walkers: { road, runs } });
     if (crowd.counts().figures === 0) {
       crowd.dispose();
       return;
@@ -503,6 +505,11 @@ export class PartyLights {
   /** Every reveller on a balcony (tests). */
   revellers(): readonly { x: number; y: number; z: number }[] {
     return this.crowd?.revellers() ?? [];
+  }
+
+  /** Every person standing on a party block's pavement (tests). */
+  walkers(): readonly { x: number; y: number; z: number }[] {
+    return this.crowd?.walkers() ?? [];
   }
 
   counts(): PartyLightsCounts {

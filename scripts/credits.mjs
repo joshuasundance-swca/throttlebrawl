@@ -93,14 +93,45 @@ export function provenanceSources(json) {
 }
 
 /**
+ * A licence rule's path pattern as a regular expression: `*` stays inside one folder or file name,
+ * `**` crosses folders, and everything else is literal (the patterns packs write in `licenseRules`).
+ * @param {string} glob
+ */
+export function globToRegExp(glob) {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob.charAt(i);
+    if (c === '*' && glob[i + 1] === '*') {
+      re += '.*';
+      i++;
+    } else if (c === '*') re += '[^/]*';
+    else re += c.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/**
+ * Whether a pack ships a file that a licence rule covers. A rule nothing in the pack matches (the
+ * base pack's TIGER rule, while no road is baked from TIGER data) credits nothing: the page names
+ * the data the game uses, not the data a rule is ready for.
+ * @param {{ paths: string[] }} rule
+ * @param {string[]} files pack-relative paths, with forward slashes
+ */
+export function ruleIsUsed(rule, files) {
+  const res = rule.paths.map(globToRegExp);
+  return files.some((f) => res.some((r) => r.test(f)));
+}
+
+/**
  * Puts the credits together from what the repo holds.
  * @param {{
  *   ledger: string,
- *   packs: { id: string, manifest: { license?: string, licenseRules?: { spdx: string, attribution: string, licenseFile?: string }[] },
- *            files: Record<string, string>, sources: { name: string, attribution: string, spdx: string, url: string | null }[] }[],
+ *   packs: { id: string, manifest: { license?: string, licenseRules?: { paths: string[], spdx: string, attribution: string, licenseFile?: string }[] },
+ *            files: Record<string, string>, paths: string[], sources: { name: string, attribution: string, spdx: string, url: string | null }[] }[],
  *   repoLicense: string,
  *   software: { name: string, version: string, license: string, text: string }[],
- * }} input `files` maps a pack-relative path to its text (the licence files).
+ * }} input `files` maps a pack-relative path to its text (the licence files); `paths` lists the pack's
+ * baked road files (pack-relative), which say which licence rules are in use.
  */
 export function assembleCredits({ ledger, packs, repoLicense, software }) {
   const { entries, notices } = parseLedger(ledger);
@@ -121,17 +152,21 @@ export function assembleCredits({ ledger, packs, repoLicense, software }) {
   };
   for (const pack of packs) {
     for (const rule of pack.manifest.licenseRules ?? []) {
+      // A named licence file must exist whether or not the rule is in use (a manifest error).
+      let licenceText = null;
+      if (rule.licenseFile) {
+        licenceText = pack.files[rule.licenseFile];
+        if (licenceText === undefined)
+          throw new Error(`pack ${pack.id}: licenseFile ${rule.licenseFile} is missing`);
+      }
+      // The page credits what the pack ships: a rule that covers no baked file stays off it.
+      if (!ruleIsUsed({ paths: rule.paths ?? [] }, pack.paths)) continue;
       addAttribution({
         text: rule.attribution.trim(),
         url: LICENCE_LINKS[rule.spdx] ?? null,
         licence: rule.spdx,
       });
-      if (rule.licenseFile) {
-        const text = pack.files[rule.licenseFile];
-        if (text === undefined)
-          throw new Error(`pack ${pack.id}: licenseFile ${rule.licenseFile} is missing`);
-        addLicence(rule.spdx, text.trim());
-      }
+      if (licenceText !== null) addLicence(rule.spdx, licenceText.trim());
     }
   }
   for (const pack of packs) {
@@ -169,6 +204,16 @@ function regionFiles(dir) {
     .filter((f) => /[\\/](networks|roads|routes)[\\/]/.test(f));
 }
 
+/** Every file under a pack's baked region folders, pack-relative with forward slashes. */
+function regionPaths(dir) {
+  const regions = path.join(dir, 'regions');
+  if (!existsSync(regions)) return [];
+  return readdirSync(regions, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(dir, path.join(e.parentPath, e.name)).split(path.sep).join('/'))
+    .filter((f) => /\/(networks|roads|routes)\//.test(f));
+}
+
 const read = (file) => readFileSync(file, 'utf8');
 
 /**
@@ -193,7 +238,7 @@ export function collectCredits(root) {
       const sources = regionFiles(path.join(dir, 'regions')).flatMap((f) =>
         provenanceSources(JSON.parse(read(f))),
       );
-      return { id, manifest, files, sources };
+      return { id, manifest, files, paths: regionPaths(dir), sources };
     });
   const pkg = JSON.parse(read(path.join(root, 'package.json')));
   const software = Object.keys(pkg.dependencies ?? {})

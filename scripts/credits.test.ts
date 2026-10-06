@@ -2,7 +2,14 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AI_LABEL, creditsView, entryTitle, inline, parseCredits, plain, viewText } from '../src/ui/credits';
-import { assembleCredits, collectCredits, parseLedger, provenanceSources } from './credits.mjs';
+import {
+  assembleCredits,
+  collectCredits,
+  globToRegExp,
+  parseLedger,
+  provenanceSources,
+  ruleIsUsed,
+} from './credits.mjs';
 import { repoRoot } from './lib.mjs';
 
 // The credits rule (roadmap M5, "check the credits"): everything the ledger (THIRD_PARTY_ASSETS.md)
@@ -20,6 +27,12 @@ const TABLE = (rows: string[]) =>
     '| ----- | ------ | ------- | ------------ | ------- |',
     ...rows,
   ].join('\n');
+interface Rule {
+  paths: string[];
+  spdx: string;
+  attribution: string;
+  licenseFile?: string;
+}
 const row = (asset: string, ai = 'No') => `| ${asset} | a source | MIT | ${ai} | somewhere |`;
 
 describe('the ledger reader', () => {
@@ -53,9 +66,10 @@ describe('the credits data', () => {
     id: 'p',
     manifest: {
       license: 'MIT',
-      licenseRules: [] as { spdx: string; attribution: string; licenseFile?: string }[],
+      licenseRules: [] as Rule[],
     },
     files: {} as Record<string, string>,
+    paths: [] as string[],
     sources: [] as ReturnType<typeof provenanceSources>,
     ...over,
   });
@@ -67,7 +81,7 @@ describe('the credits data', () => {
   });
 
   it('refuses a licence file the pack names but does not have', () => {
-    const rule = { spdx: 'ODbL-1.0', attribution: '(c) Them', licenseFile: 'LICENSES/x.txt' };
+    const rule = { paths: [], spdx: 'ODbL-1.0', attribution: '(c) Them', licenseFile: 'LICENSES/x.txt' };
     expect(() => assembleCredits({ ...base, packs: [pack({ manifest: { licenseRules: [rule] } })] })).toThrow(
       /missing/,
     );
@@ -80,6 +94,50 @@ describe('the credits data', () => {
     expect(assembleCredits({ ...base, packs: [pack({ sources })] }).attributions.map((a) => a.text)).toEqual([
       'Gov: Data by Gov.',
     ]);
+  });
+});
+
+describe('which licence rules the page credits', () => {
+  const rule = (prefix: string, attribution: string): Rule => ({
+    paths: [`regions/*/roads/${prefix}-*.json`, `regions/*/roads/${prefix}-*.bin`],
+    spdx: 'LicenseRef-US-Public-Domain',
+    attribution,
+  });
+  const packWith = (paths: string[]) => ({
+    id: 'p',
+    manifest: {
+      license: 'MIT',
+      licenseRules: [rule('osm', 'Roads: OSM people.'), rule('tiger', 'Roads: TIGER people.')],
+    },
+    files: {},
+    paths,
+    sources: [],
+  });
+  const base = { ledger: TABLE([row('One')]), repoLicense: 'MIT text', software: [] };
+  const credited = (paths: string[]) =>
+    assembleCredits({ ...base, packs: [packWith(paths)] }).attributions.map((a) => a.text);
+
+  it('leaves out a rule that no baked file of the pack matches', () => {
+    expect(credited(['regions/k/roads/osm-a.json', 'regions/k/roads/m1-b.json'])).toEqual([
+      'Roads: OSM people.',
+    ]);
+    expect(credited([])).toEqual([]);
+  });
+
+  it('credits a rule as soon as one baked file matches it', () => {
+    expect(credited(['regions/k/roads/osm-a.json', 'regions/k/roads/tiger-c.bin'])).toEqual([
+      'Roads: OSM people.',
+      'Roads: TIGER people.',
+    ]);
+  });
+
+  it('matches a pattern one folder at a time, with every other character as written', () => {
+    expect(globToRegExp('regions/*/roads/osm-*.json').test('regions/k/roads/osm-a.json')).toBe(true);
+    expect(globToRegExp('regions/*/roads/osm-*.json').test('regions/k/x/roads/osm-a.json')).toBe(false);
+    expect(globToRegExp('regions/*/roads/osm-*.json').test('regions/k/roads/osm-a.jsonx')).toBe(false);
+    expect(globToRegExp('a.b/**').test('a.b/c/d')).toBe(true);
+    expect(globToRegExp('a.b/**').test('aXb/c')).toBe(false);
+    expect(ruleIsUsed({ paths: [] }, ['regions/k/roads/osm-a.json'])).toBe(false);
   });
 });
 
@@ -142,7 +200,7 @@ const packs = readdirSync(path.join(tree, 'packs'), { withFileTypes: true })
   .map((e) => ({
     id: e.name,
     manifest: JSON.parse(readFileSync(path.join(tree, 'packs', e.name, 'pack.json'), 'utf8')) as {
-      licenseRules?: { spdx: string; attribution: string; licenseFile?: string }[];
+      licenseRules?: Rule[];
     },
   }));
 
@@ -204,11 +262,28 @@ describe('the credits of this repo', () => {
     for (const line of afterTable) expect(shown).toContain(plain(inline(line)));
   });
 
-  it('shows every attribution the packs ask for, and every credit their road files carry', () => {
+  it('shows the attribution of every rule a baked file falls under, and of no other rule', () => {
+    // A rule's paths are read here on their own (a plain pattern match over every file of the pack),
+    // so a rule the builder wrongly drops or wrongly keeps shows. The base pack's TIGER rule has no
+    // file, so TIGER is not credited until a road is baked from it.
+    const globRe = (g: string) =>
+      new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`);
+    let used = 0;
     for (const pack of packs) {
-      for (const r of pack.manifest.licenseRules ?? [])
-        expect(shown, `${pack.id}: ${r.attribution}`).toContain(r.attribution);
+      const files = readdirSync(path.join(tree, 'packs', pack.id), { recursive: true, withFileTypes: true })
+        .filter((e) => e.isFile())
+        .map((e) => path.relative(path.join(tree, 'packs', pack.id), path.join(e.parentPath, e.name)))
+        .map((f) => f.split(path.sep).join('/'));
+      for (const r of pack.manifest.licenseRules ?? []) {
+        const covers = files.some((f) => r.paths.some((g) => globRe(g).test(f)));
+        if (covers) used++;
+        expect(shown.includes(r.attribution), `${pack.id}: ${r.attribution}`).toBe(covers);
+      }
     }
+    expect(used, 'a rule is in use').toBeGreaterThan(0);
+  });
+
+  it('shows every credit the road files carry', () => {
     const credited = new Set<string>();
     for (const file of regionJsonFiles()) {
       const sources = (JSON.parse(readFileSync(file, 'utf8')) as ProvenanceFile).provenance?.sources ?? [];
@@ -216,6 +291,11 @@ describe('the credits of this repo', () => {
     }
     expect(credited.size, 'the road files carry credits to check').toBeGreaterThan(0);
     for (const attribution of credited) expect(shown, attribution).toContain(attribution);
+  });
+
+  it('names no census data while no road is baked from it', () => {
+    const tigerFiles = regionJsonFiles().filter((f) => /tiger/i.test(path.basename(f)));
+    if (tigerFiles.length === 0) expect(shown).not.toMatch(/TIGER|Census/i);
   });
 
   it('puts every licence file a pack names on the page, byte for byte', () => {
