@@ -346,6 +346,17 @@ function countdownOn(): boolean {
 }
 
 /**
+ * The newer-build offer on a result screen (ui `offerReload`): under the test flag, `window.__reloadOffer
+ * = true` makes the result screen show it as if a deploy had landed mid-race, so a spec can measure
+ * where the card sits on every result screen without a service worker or a simulated deploy. Its
+ * Reload now does nothing. Never true in production (the flag needs `__GAME_TEST__`).
+ */
+function testReloadOffer(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __reloadOffer?: unknown };
+  return w.__GAME_TEST__ === true && w.__reloadOffer === true;
+}
+
+/**
  * Quality tiers and dynamic resolution (roadmap M5; render/quality.ts) run in production always; under
  * the test flag only when a spec asks (`window.__dynamicResolution = true`), so the browser specs and
  * the perf check draw the `high` tier at full resolution whatever the runner's speed, and their draw
@@ -733,7 +744,16 @@ export function createApp(opts: AppOptions): AppHandle {
   let staleBuild: StaleBuild | null = null;
   const offerUpdate = () => {
     const watch = staleBuild;
-    ui.offerReload(state === 'results' && watch?.waiting() ? () => void watch.reloadNow() : null);
+    const forced = testReloadOffer();
+    ui.offerReload(
+      state !== 'results'
+        ? null
+        : forced
+          ? () => undefined
+          : watch?.waiting()
+            ? () => void watch.reloadNow()
+            : null,
+    );
   };
   const go = (e: AppEvent) => {
     const next = transition(state, e);
