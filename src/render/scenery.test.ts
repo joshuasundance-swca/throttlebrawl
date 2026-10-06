@@ -13,6 +13,7 @@ import {
   type BakedRoad,
   type RoadNetwork,
 } from '../road';
+import { BARE_BAYS } from './bridge-bays';
 import { createFlatLook } from './look';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createAssetManifest } from '../assets';
@@ -336,8 +337,9 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // playtest 4 (P4-19): CX5's deer, mile post, three trees and two bars, and CX6's osprey post
       keysIdentity: 9,
       // playtest 3, T12.3: the Seven Mile's bays (bridge-bays.ts): the new span's two, the old
-      // bridge's two, a gap end and a repair platform
-      sevenMileKit: 6,
+      // bridge's two, a gap end and a repair platform; then the bare variants of the bays with parts
+      // above their deck (polish J2, bridge-bays.ts `BARE_BAYS`): the new span's two and the platform
+      sevenMileKit: 6 + Object.keys(BARE_BAYS).length,
       // playtest 3 (T12.4): San Francisco's stackable towers, CX3: five styles of base, mid and crown
       sfTowerModules: 15,
       // playtest 3 (T12.6): downtown Portland's three street fronts, the pink tower's base, mid and

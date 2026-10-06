@@ -136,6 +136,8 @@ export interface ScenerySpot {
    * its +Z, so its deck follows the road's and its piers stay upright. Absent: 0.
    */
   slope?: number | undefined;
+  /** A bridge bay placed without what stands above its deck, where another road's lanes lie under it (bridge-bays.ts `BARE_BAYS`). */
+  bare?: boolean | undefined;
   /**
    * How far the model reaches from its origin, m, when a prop is longer than the merged blocks'
    * default room (a 41 m bay): the block's culling counts it. Absent: the default.
