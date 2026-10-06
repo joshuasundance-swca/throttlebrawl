@@ -5,8 +5,9 @@ speed, weave through traffic coming both ways, and try not to go down anywhere n
 built for phones first, with a keyboard that is just as good. `throttlebrawl` is a codename; the
 real name comes later.
 
-It is an early work in progress. Right now the build is a coloured test screen with a build stamp,
-which proves the whole pipeline from commit to phone.
+It is a work in progress, and it is playable: you can race a field of rivals on a road with traffic,
+fight from the saddle, and play a career, on the page below. What is built and what is planned is in
+the [roadmap](docs/roadmap.md).
 
 ## Play
 
@@ -36,6 +37,7 @@ and `npm run phone`.
 - [Architecture](docs/architecture.md): the module map, the simulation and its determinism rules.
 - [Engineering](docs/engineering.md): the gate, CI, deploys and how parallel agents work.
 - [Content packs](docs/content-packs.md) and the [tone guide](docs/tone-guide.md).
+- Want to change something? Read [CONTRIBUTING.md](CONTRIBUTING.md): how a pull request gets checked and merged.
 - AI coding agents follow [AGENTS.md](AGENTS.md).
 - What changed, in plain words: [changes/](changes/).
 
