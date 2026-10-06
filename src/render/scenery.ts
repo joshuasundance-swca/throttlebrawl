@@ -359,6 +359,12 @@ export const HEADLANDS_VARIANT: Readonly<Partial<Record<SceneryKind, number>>> =
 export const SUMMIT_REACH_M = 450;
 /** Land a house or the sawmill keeps past each of its ends, m. [default] */
 const LAND_LIP_M = 3;
+/**
+ * Playtest 4 run B (item 3): a house stands this far behind a pedestrian zone's or a board's far edge, m
+ * [default], and one this near its ends along the road counts (the room features keep round them, road-mesh.ts).
+ */
+const ZONE_SETBACK_M = 0.3;
+const ZONE_ROOM_M = 3;
 const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   palm: 3,
   mangrove: 2,
@@ -565,8 +571,16 @@ export interface ScatterEdge {
   sameBatch?: ((a: Point3, b: Point3) => boolean) | undefined;
   /** Metres of drawn land past the verge at s on that side (0 = none: a bridge, a rail, the sea). */
   landReach(side: -1 | 1, s: number): number;
-  /** Whether a spot of this radius is free of roads, features and roadside zones. */
-  clear(s: number, d: number, radius: number): boolean;
+  /**
+   * Whether a spot of this radius is free of roads, features and roadside zones (`zones` false: of roads
+   * and the other features alone, for a building that stands behind the zones and boards, `zoneEdge`).
+   */
+  clear(s: number, d: number, radius: number, zones?: boolean): boolean;
+  /**
+   * The far edge of the pedestrian zones and boards on that side of the road between s0 and s1, m from the
+   * centre line (0: none there). Playtest 4 run B: a house stands behind them. Absent: none anywhere.
+   */
+  zoneEdge?: ((side: -1 | 1, s0: number, s1: number) => number) | undefined;
   /** Whether a boat may float here: open water, clear of every road and its land. */
   openWater(s: number, d: number): boolean;
   world(s: number, d: number, h: number): Point3;
@@ -700,7 +714,14 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       );
       if (across + depth > reach) return null;
       const back = side * (outer + across + depth);
-      if (!e.clear(s, back, radius) || !e.clear(s - half, d, radius) || !e.clear(s + half, d, radius))
+      // A building whose plots stand behind a pedestrian zone or a board stands behind it too (playtest 4 run B, item 3).
+      const zoneFar = e.zoneEdge?.(side, s - half - ZONE_ROOM_M, s + half + ZONE_ROOM_M) ?? 0;
+      const zones = !(zoneFar > 0 && Math.abs(d) + 1e-6 >= zoneFar + ZONE_SETBACK_M);
+      if (
+        !e.clear(s, back, radius, zones) ||
+        !e.clear(s - half, d, radius, zones) ||
+        !e.clear(s + half, d, radius, zones)
+      )
         return null;
       const here = e.world(s, d, 0).y;
       const low = Math.min(here, e.world(s + half, d, 0).y, e.world(s - half, d, 0).y);
@@ -808,10 +829,22 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         // Off-road (run W-R): its footprint past the ridable band (a house or the sawmill by its front).
         const solid = DEPTH_M[kind] !== undefined ? (FRONT_M[kind] ?? 0) : (TRUNK_M[kind] ?? radius);
         const clearOf = e.band ? e.band(side, s) + solid : 0;
-        const wanted = near + spread * h(ki, k, side, 2);
-        const across = Math.max(wanted, clearOf);
         const depth = DEPTH_M[kind] ?? radius;
         const along = Math.max(radius, HALF_ALONG_M[kind] ?? 0);
+        const own = near + spread * h(ki, k, side, 2);
+        // Playtest 4 run B (item 3: "one side of California Street and part of Hyde Street as open lawn"):
+        // a pedestrian zone or a board on a city street's sidewalk covers the house fronts' line, and
+        // cleared the terrace for 40 to 100 m. A house there now stands behind it, the people or the board
+        // in front.
+        const zoneFar =
+          kind === 'house' && e.zoneEdge
+            ? e.zoneEdge(side, s - along - ZONE_ROOM_M, s + along + ZONE_ROOM_M)
+            : 0;
+        const behindZone = zoneFar > 0 && zoneFar + ZONE_SETBACK_M - outer > own;
+        const wanted = behindZone ? zoneFar + ZONE_SETBACK_M - outer : own;
+        /** Whether pedestrian zones and boards keep this spot clear (not when it stands behind them). */
+        const zones = !behindZone;
+        const across = Math.max(wanted, clearOf);
         // On the drawn land, with room for the model across and along (the land ends where a tag
         // or a rail does, and at the road's ends, where the next road's land may not meet it), and
         // clear of everything else.
@@ -826,19 +859,23 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         );
         if (across + depth > reach) continue;
         const d = side * (outer + across);
-        if (!e.clear(s, d, radius)) continue;
+        if (!e.clear(s, d, radius, zones)) continue;
         // Moved out past the band, it is still the spot it was: one that was blocked where it wanted
         // to stand (a sign, a pad, a pedestrian zone) stays out, so the band only moves scenery, and
         // one the move would carry into the next instanced batch is dropped (no draw call is added).
         if (across !== wanted) {
           const was = side * (outer + wanted);
-          if (!e.clear(s, was, radius)) continue;
+          if (!e.clear(s, was, radius, zones)) continue;
           if (e.sameBatch && !e.sameBatch(e.world(s, was, 0), e.world(s, d, 0))) continue;
         }
         if (DEPTH_M[kind] !== undefined) {
           // A house or the sawmill reaches back from its front and along the road: all of it clear.
           const back = side * (outer + across + depth);
-          if (!e.clear(s, back, radius) || !e.clear(s - along, d, radius) || !e.clear(s + along, d, radius))
+          if (
+            !e.clear(s, back, radius, zones) ||
+            !e.clear(s - along, d, radius, zones) ||
+            !e.clear(s + along, d, radius, zones)
+          )
             continue;
         }
         if (kind === 'conifer') {

@@ -117,6 +117,59 @@ export class GroundTris {
   }
 }
 
+/** Seam probes stand this far apart along a road, m. */
+const SEAM_STEP_M = 1;
+/**
+ * A seam probe stands this far inside the land's road-side edge, m: off the edge itself, and inside
+ * the crack a shoulder drawn on fewer samples than the land opened there (up to its 1 cm tolerance).
+ */
+const SEAM_IN_M = 0.002;
+/** Land counts as beside the shoulder where it lies this far past the verge, m. */
+const SEAM_LAND_M = 0.5;
+/** Ground within this of the road's own height closes a seam (the shoulder at -0.02, the land at -0.09), m. */
+const SEAM_DROP_M = 0.3;
+
+export interface OpenSeam {
+  edge: string;
+  s: number;
+  side: -1 | 1;
+  /** What a ray straight down met instead of the shoulder or the land, and how far below the road. */
+  under: string;
+  drop: number;
+}
+
+/**
+ * Cracks between a road's shoulder and the land beside it (playtest 4 run B's fix lane: the shoulder
+ * drawn on fewer samples than the land kept every one, so on the outside of a bend its straight outer
+ * edge stood up to 1 cm inside the land's, with the lake 136 m below on I-5 by Lake Samish; the land
+ * walk found one only because a probe of a neighbouring road happened to land on that seam). Every
+ * metre of each side where land lies beside the verge, a ray straight down just inside the land's
+ * edge must meet the shoulder or the land at about the road's height.
+ */
+export function openSeams(road: RoadNetwork, ground: GroundTris): { probes: number; open: OpenSeam[] } {
+  let probes = 0;
+  const open: OpenSeam[] = [];
+  for (const e of road.edges) {
+    const n = Math.max(1, Math.round(e.length / SEAM_STEP_M));
+    for (const side of [-1, 1] as const) {
+      const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
+      for (let i = 0; i < n; i++) {
+        const s = (e.length * (i + 0.5)) / n;
+        const land = road.toWorld(e.index, s, side * (outer + SEAM_LAND_M), 0);
+        // The highest ground under 1 m over the road: an overpass above is not this road's land.
+        const l = ground.heightAt(land.x, land.z, land.y + 1);
+        if (!l?.name.startsWith('road-land') || Math.abs(l.y - land.y) > SEAM_DROP_M) continue;
+        probes++;
+        const p = road.toWorld(e.index, s, side * (outer - SEAM_IN_M), 0);
+        const h = ground.heightAt(p.x, p.z, p.y + 1);
+        if (!h || h.y < p.y - SEAM_DROP_M)
+          open.push({ edge: e.id, s, side, under: h?.name ?? 'nothing', drop: p.y - (h?.y ?? 0) });
+      }
+    }
+  }
+  return { probes, open };
+}
+
 export interface OpenLandEnd {
   edge: string;
   /** The last s with the high ground, and the side and the distance past the verge walked. */
