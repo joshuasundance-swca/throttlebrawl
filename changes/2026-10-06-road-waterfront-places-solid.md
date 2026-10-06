@@ -21,4 +21,4 @@ Held by tests (each written first, each with a control):
 - `src/road/structures/*.test.ts` plan the real tracks: the layers are asked for by the right tags only, plans are kept per seed, heights are as drawn (facade 10 m, its raised middle 13, the hall tower 70.5, the passenger deck 6.6 m over the road), no solid stands on a road's lanes (control: one planted there is found).
 - `scripts/sim-chunk.test.ts` and `first-load.test.ts` hold the planners out of the first load and in the sim code hash.
 
-Budgets: first-load JavaScript 461.0 KB gzip (39.0 KB under the 500 KB budget); the two planners are 3.5 KB and 2.2 KB gzip in lazy chunks. The drawn geometry is the same (the golden tests above), and the scene-cost tests for both regions pass. Not phone-verified (no visible change).
+Budgets: first-load JavaScript 461.0 KB gzip, 314 B under main's 461.3 KB (39.0 KB under the 500 KB budget; no first-load module grew by 0.5 KB); the two planners are 3.5 KB and 2.2 KB gzip in lazy chunks. The drawn geometry is the same (the golden tests above), and the scene-cost tests for both regions pass. Not phone-verified (no visible change).
