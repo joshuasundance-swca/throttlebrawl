@@ -105,7 +105,7 @@ import {
   REGISTRY_PRESET_ID,
   resolvePreset,
 } from '../tuning';
-import { createUi } from '../ui';
+import { createUi, finishShotHudOn } from '../ui';
 import {
   buildSimConfig,
   DEFAULT_EVENT,
@@ -1145,6 +1145,8 @@ export function createApp(opts: AppOptions): AppHandle {
               );
           }
         } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
+        // While the shot frames the landmark the HUD and the touch buttons are hidden (the results bring the screen back).
+        ui.setFinishShot(finishShotHudOn(state, finishShot));
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
         audio.frame(state === 'race' ? curr : null, playerId);
