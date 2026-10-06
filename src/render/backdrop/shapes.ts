@@ -7,6 +7,7 @@
 // (clear-cut patches, waterfalls, islands, boats, clouds) comes from the race's seed.
 import {
   FLOOR_UNDER_M,
+  NEAR_WATER_FLOOR,
   type BlocksPiece,
   type BridgePiece,
   type CloudsPiece,
@@ -1199,7 +1200,8 @@ export function buildFloor(
   if (!tris.length) return 0;
   const s = ctx.soup;
   s.begin(p.haze ?? 0);
-  s.floor = 1;
+  // A water floor above the sea (a lake) has no near sea over it: its own flag (data.ts NEAR_WATER_FLOOR).
+  s.floor = p.surface === 'water' && (p.y ?? 0) > 0 ? NEAR_WATER_FLOOR : 1;
   // Floors lie a hair under the sea (y = 0), so the near sea and ground always cover them; past the
   // fog's end, water wins over land and land over the far ring by a depth bias.
   s.bias = p.surface === 'water' ? 2 : 1;
