@@ -223,3 +223,56 @@ describe("Lombard's crowd of phone photographers", () => {
     expect(roads.has('osm-sf-lombard-crooked'), 'on the crooked block').toBe(true);
   });
 });
+
+// The Twin Peaks summit's tourists (playtest 4, run C's live check, the sheets' T2: "a dense zone of tourists"):
+// the climb's one zone stands on the summit lot, at its rail, and a seeded race spawns its people there, each
+// inside the zone; the control is a race on a road with no such zone.
+describe("the Twin Peaks summit's tourists", () => {
+  const PEAKS_EVENT = 'region-sf:sf-t3-twin-peaks';
+  const PHOTOGRAPHER = 'region-sf:lombard-photographer';
+  interface Zone {
+    s0: number;
+    s1: number;
+    d0: number;
+    d1: number;
+  }
+  const climb = REG.roads['region-sf:osm-sf-twin-peaks-climb'] as unknown as {
+    features: ({ kind: string; id: string } & Zone)[];
+  };
+  const zone = climb.features.find((f) => f.kind === 'roadsideZone' && f.id === 'summit-lookout');
+
+  it('spawns a few phone photographers at the start of a seeded race, each inside the summit zone', () => {
+    expect(zone, 'the climb has its summit zone').toBeDefined();
+    if (!zone) return;
+    const config = configOf(PEAKS_EVENT, 1);
+    const sim = createSim(config);
+    sim.step([toSimInput(emptyActions())]);
+    const snap = sim.snapshot();
+    const people = snap.entities.filter((e) => e.kind === 'ped' && e.contentId === PHOTOGRAPHER);
+    let outside = 0;
+    for (const e of people) {
+      const onClimb = config.road.edges[e.road.edge]?.id === 'osm-sf-twin-peaks-climb';
+      const inZone =
+        onClimb &&
+        e.road.s >= zone.s0 - 1 &&
+        e.road.s <= zone.s1 + 1 &&
+        e.road.d >= Math.min(zone.d0, zone.d1) - 1 &&
+        e.road.d <= Math.max(zone.d0, zone.d1) + 1;
+      if (!inZone) outside++;
+    }
+    stdout.write(
+      `[examined] Twin Peaks, seed 1: ${people.length} phone photographers, ${outside} outside the summit zone\n`,
+    );
+    expect(people.length, 'a few tourists at the summit').toBeGreaterThanOrEqual(3);
+    expect(people.length).toBeLessThanOrEqual(8);
+    expect(outside).toBe(0);
+  });
+
+  it('control: the Golden Gate event, with no such zone, has no phone photographers', () => {
+    const config = configOf('region-sf:sf-t4-golden-gate', 1);
+    const sim = createSim(config);
+    sim.step([toSimInput(emptyActions())]);
+    const people = sim.snapshot().entities.filter((e) => e.kind === 'ped' && e.contentId === PHOTOGRAPHER);
+    expect(people).toHaveLength(0);
+  });
+});

@@ -793,12 +793,17 @@ function wallLines(road: RoadNetwork, dressing: RoadDressing | undefined): WallL
       const name = side < 0 ? 'left' : 'right';
       const kindAt = (s: number): MissionKind | null => {
         if (
-          landmarks.some(
-            (f) =>
+          landmarks.some((f) => {
+            // Playtest 4, run C: a landmark that says `params.sightM` also opens its side of the alley that far
+            // before it (the downtown's rule), so its front is seen down the street and not only from beside it.
+            const sight = Number(f.params?.['sightM']);
+            const before = Math.max(LANDMARK_GAP_M, Number.isFinite(sight) ? sight : 0);
+            return (
               Math.min(f.d0, f.d1) * side > 0 &&
-              s > Math.min(f.s0, f.s1) - LANDMARK_GAP_M &&
-              s < Math.max(f.s0, f.s1) + LANDMARK_GAP_M,
-          )
+              s > Math.min(f.s0, f.s1) - before &&
+              s < Math.max(f.s0, f.s1) + LANDMARK_GAP_M
+            );
+          })
         )
           return null;
         let best: MissionKind | null = null;

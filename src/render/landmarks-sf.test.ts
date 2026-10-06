@@ -11,7 +11,7 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork 
 import { buildSoup, roadPointsOf } from './backdrop/builder';
 import type { BackdropNetworkFile, BackdropRegionFile } from './backdrop/data';
 import { readGlb } from './glb';
-import { LandmarkLayer, landmarkKitsFor, landmarkPlacements, SUSPENSION } from './landmarks';
+import { isComposite, LandmarkLayer, landmarkKitsFor, landmarkPlacements, SUSPENSION } from './landmarks';
 import { createFlatLook } from './look';
 import { paintSurface, styleOfSurface, type SurfaceContext } from './text-surfaces';
 import { bakeLandmarkKit, landmarkKitAsset, type LandmarkKit, type LandmarkKitId } from './models';
@@ -207,6 +207,20 @@ describe('Coit Tower on Telegraph Hill', () => {
     expect(layer.counts().drawCalls).toBe(1);
     expect(layer.counts().nearPieces).toBeGreaterThan(0);
   });
+
+  // Playtest 4, run C: the finish shot (src/camera/finish-shot.ts) frames the tower by the height its feature
+  // names; that number is the model's own, so a changed model or scale cannot leave the shot framing a wrong tower.
+  it("names the model's own height for the finish shot", async () => {
+    const road = track('osm-sf-lombard');
+    const kits = await kitsFor(road);
+    const coit = landmarkPlacements(road).find((p) => p.node === 'coit_tower');
+    const node = kits.get('sf-landmarks')?.nodes.get('coit_tower');
+    expect(coit && node).toBeTruthy();
+    if (!coit || !node) return;
+    node.geometry.computeBoundingBox();
+    const heightM = (node.geometry.boundingBox?.max.y ?? 0) * coit.scale;
+    expect(coit.feature.params?.['frameHeightM']).toBeCloseTo(heightM, 0);
+  });
 });
 
 // The far bridge's own list (gate G2, made explicit): the `golden-gate-bridge` piece names the networks
@@ -322,7 +336,10 @@ describe('every San Francisco landmark resolves and draws within the landmark ca
       for (const p of placements) {
         const nodes = kits.get(p.kit)?.nodes;
         expect(
-          nodes?.has(p.node) || nodes?.has(`${p.node}_lod0`) || p.node === 'gg_bridge',
+          nodes?.has(p.node) ||
+            nodes?.has(`${p.node}_lod0`) ||
+            p.node === 'gg_bridge' ||
+            isComposite(p.kit, p.node),
           `${p.feature.id}: ${p.kit}#${p.node}`,
         ).toBe(true);
       }

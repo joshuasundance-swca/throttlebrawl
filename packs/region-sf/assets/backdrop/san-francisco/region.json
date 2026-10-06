@@ -168,6 +168,16 @@
     {
       "id": "radio-mast",
       "kind": "mast",
+      "networks": [
+        "osm-sf-golden-gate",
+        "osm-sf-lombard",
+        "osm-sf-russian-hill",
+        "sf-chinatown-northbeach",
+        "sf-downtown",
+        "sf-hills",
+        "sf-mission",
+        "sf-waterfront"
+      ],
       "at": [37.7552, -122.4528],
       "baseM": 254,
       "heightM": 298,

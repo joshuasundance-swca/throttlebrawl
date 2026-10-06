@@ -194,6 +194,10 @@ def lint_playtest3(road: Json) -> list[str]:
                 errs.append(f"{rid}: landmark {f['id']}: scale {scale!r} is not in (0, 4]")
             if "farM" in p and _positive(f, "farM", -1.0) < 0:
                 errs.append(f"{rid}: landmark {f['id']}: farM {p['farM']!r} is not a number above 0")
+            if "frameHeightM" in p and _positive(f, "frameHeightM", -1.0) < 0:
+                errs.append(
+                    f"{rid}: landmark {f['id']}: frameHeightM {p['frameHeightM']!r} is not a number above 0"
+                )
     for b in road.get("barriers", []):
         if b.get("jumpable") is True and b["kind"] != "wall":
             errs.append(f"{rid}: a {b['kind']} cannot be jumpable: only a wall may be")
