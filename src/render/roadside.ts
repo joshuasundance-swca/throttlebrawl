@@ -116,9 +116,16 @@ export interface RoadsideRule {
   /**
    * A street front that fills the gaps of another (playtest 4, run B's check: the second row of Old Town's houses):
    * a building stands only where the rules named here leave more than half of its length open, on this side of
-   * this road. So the row behind is seen through the gaps of the one in front and costs a third of a full row.
+   * this road (or `behindOpenM` of it, when that is given). So the row behind is seen through the gaps of the one in
+   * front and costs a third of a full row.
    */
   behind?: readonly string[];
+  /**
+   * With `behind`: the length of a building that must be open, m, in place of half of it (playtest 4, run B's fix
+   * check, punch item 8: a rider's eye 3 m up sees past the front row's gaps along a slant, to the row behind where
+   * the front is closed, so the second row has to be whole to close the street; 0 stands it everywhere). [default]
+   */
+  behindOpenM?: number;
   /**
    * Runs before the kit's other rules, so it claims its ground first, without moving any rule's place in
    * the list: a rule's random stream follows its index, so a rule added at the end leaves every other
@@ -164,7 +171,25 @@ export interface RoadsideRule {
    * rule keeps its place in the kit's list, so every other rule keeps its seeded stream.
    */
   planned?: boolean;
+  /**
+   * A prop that must be seen from the road (playtest 4, run B's fix check, punch item 6: the Key deer stood half
+   * hidden behind sea grape): a lane from the road's edge, this many metres back along the road, to the prop
+   * stays clear of everything placed before it (trees, other props, the scenery), and the lane is kept clear
+   * of everything placed after it. So it runs with `first`: it is placed before the bushes, which then grow
+   * round the lane and not in it.
+   */
+  sight?: number;
+  /**
+   * With `run`: each section stands this many metres nearer the road than the one before, down to the ridable
+   * band (a diagonal, not a line: a row of deer along the verge hides one behind the next from the road).
+   */
+  lean?: number;
 }
+
+/** The width of a `sight` lane's discs, m: a bush's half-width and a little. [default] */
+const SIGHT_LANE_R = 0.8;
+/** The gap between a `sight` lane's discs, m (closer than the discs are wide, so the lane has no gap). */
+const SIGHT_LANE_STEP_M = 1.4;
 
 /** A `waterline` prop stands no more than this far below the land at its anchor, m (a dock under a low bank). [default] */
 export const BANK_MAX_M = 6;
@@ -414,6 +439,8 @@ export const SF_KIT: RoadsideKit = {
 const KEYS_TOWN: readonly LandTheme[] = ['commercial'];
 const SHORE: readonly LandTheme[] = ['palms', 'beach'];
 const KEYS_LAND: readonly LandTheme[] = ['palms', 'beach', 'mangrove', 'commercial'];
+/** How far back along the road a Key deer's lane to the road stays clear of sea grape and trees, m. [default] */
+export const DEER_SIGHT_M = 14;
 
 /**
  * The Florida Keys ("likewise local"): sea grape crowding the verge and gone to tree among the
@@ -679,12 +706,15 @@ export const KEYS_KIT: RoadsideKit = {
     // stand where the ridable verge ends, 0.6 to 1.4 m past it. [default]
     // The herd the camera meets: a run of 3 to 5 deer along the verge, 3.4 m apart (one kind to a run, each
     // turned its own way), a candidate every 130 m of each side, first of the two so no grazer stands in its way.
-    rule('key-deer-herd', [0, 1, 1, 1], KEYS_LAND, 150, 1, [3, 0.8], 0.5, {
+    rule('key-deer-herd', [0, 1, 1, 1], KEYS_LAND, 150, 1, [4, 0.8], 0.5, {
       model: 'keysIdentity',
       district: ['key-deer'],
       fromS: 40,
       size: [1.5, 1.7],
       run: [4, 6, 3.4],
+      lean: 1.1,
+      sight: DEER_SIGHT_M,
+      first: true,
     }),
     // And a lone grazer now and then between the herds.
     rule('key-deer', [0, 1, 1], KEYS_LAND, 70, 0.6, [3, 0.8], 0.6, {
@@ -692,17 +722,26 @@ export const KEYS_KIT: RoadsideKit = {
       district: ['key-deer'],
       fromS: 40,
       size: [1.5, 1.7],
+      sight: DEER_SIGHT_M,
+      first: true,
     }),
     // Playtest 4 (run B's check, punch item 4: "mid-street the sea shows behind both fronts"): Old Town's second
     // row. The Duval kit's conch houses (variants 3 and 4: no shop boards, so no balcony crowd up there) stand end
     // to end behind the front row, their facades OLDTOWN_BACK_M past the sidewalk, over the city floor
     // (`WIDE_LAND_M`), so a gap between two shopfronts shows a house, not the sea. Last in the list, so no other
     // rule's seeded placements move; it only takes the ground the rules before it left (the trees' discs, the
-    // bars, the front itself).
+    // bars, the front itself). Run B's fix check (punch item 8: "a sliver of sea still shows at the right edge,
+    // behind the second row"): the rider's eye is 3 m up, so a ray slants through a gap in the front and comes
+    // out past the second row's own gaps (where the front stands closed, there was no house behind it), and a
+    // lot, a slit between two houses or a front building's cover each opened one. The row is whole now: a house
+    // wherever the ground and the yards leave room (`behindOpenM: 0`), touching its neighbour or overlapping it
+    // by up to 0.6 m (these houses stand 22 m behind the sidewalk and are seen from the street at a slant), and
+    // no empty lot (tests/sim/duval-sight.test.ts casts the rays).
     rule('oldtown-back', [3, 4], OLDTOWN_LAND, 0, 1, [OLDTOWN_BACK_M, 0], 0, {
       model: 'duvalKit',
-      frontage: { gap: [0.3, 1.2], lotRate: 0.03, lotM: 6 },
+      frontage: { gap: [-0.6, 0], lotRate: 0, lotM: 0 },
       behind: ['oldtown-front', 'oldtown-bar'],
+      behindOpenM: 0,
       district: OLDTOWN,
       face: true,
       tier: 0,
@@ -832,13 +871,22 @@ export interface RoadsideInput {
 }
 
 /** A grid of discs, for keeping props apart. Discs over 8 m (the sawmill) are kept in a list. */
+interface Disc {
+  x: number;
+  z: number;
+  r: number;
+  under: boolean;
+  /** A `sight` prop's disc or lane: it keeps other props out, but another `sight` prop's lane may cross it. */
+  lane: boolean;
+}
+
 class Discs {
-  private readonly cells = new Map<string, { x: number; z: number; r: number; under: boolean }[]>();
-  private readonly big: { x: number; z: number; r: number; under: boolean }[] = [];
+  private readonly cells = new Map<string, Disc[]>();
+  private readonly big: Disc[] = [];
   private static readonly CELL = 8;
 
-  add(x: number, z: number, r: number, under = false) {
-    const disc = { x, z, r, under };
+  add(x: number, z: number, r: number, under = false, lane = false) {
+    const disc = { x, z, r, under, lane };
     if (r > Discs.CELL) {
       this.big.push(disc);
       return;
@@ -849,10 +897,13 @@ class Discs {
     else this.cells.set(k, [disc]);
   }
 
-  /** Whether a disc of radius r at (x, z) overlaps any (understory props ignore trees' discs). */
-  hits(x: number, z: number, r: number, understory: boolean): boolean {
-    const hit = (d: { x: number; z: number; r: number; under: boolean }) =>
-      !(understory && d.under) && (d.x - x) ** 2 + (d.z - z) ** 2 < (d.r + r) ** 2;
+  /**
+   * Whether a disc of radius r at (x, z) overlaps any (understory props ignore trees' discs; a sight lane
+   * ignores other lanes').
+   */
+  hits(x: number, z: number, r: number, understory: boolean, lane = false): boolean {
+    const hit = (d: Disc) =>
+      !(understory && d.under) && !(lane && d.lane) && (d.x - x) ** 2 + (d.z - z) ** 2 < (d.r + r) ** 2;
     if (this.big.some(hit)) return true;
     const reach = Math.ceil((r + Discs.CELL) / Discs.CELL);
     const ci = Math.floor(x / Discs.CELL);
@@ -1198,7 +1249,7 @@ export class RoadsideScatter {
             covered += (b ?? 0) - Math.max(a ?? 0, upto);
             upto = b ?? 0;
           }
-          fits = covered < half;
+          fits = rule.behindOpenM === undefined ? covered < half : 2 * half - covered >= rule.behindOpenM;
         }
         // Its ground as discs along its body (facade to back): clear of the scenery, the scenes and
         // the landmarks.
@@ -1259,7 +1310,7 @@ export class RoadsideScatter {
       const [near, spread] = rule.across;
       // Off-road (run W-R): a solid prop stands clear of the ridable band; the understory may grow on it.
       const clearOf = rule.understory ? 0 : ridableBandPast(road, e.index, side, s0, outer) + rule.r;
-      const across = Math.max(near + spread * h(k, side, 2), clearOf);
+      const across0 = Math.max(near + spread * h(k, side, 2), clearOf);
       const along = rule.along ?? rule.r;
       const back = rule.back ?? rule.r;
       const sections = rule.run
@@ -1285,8 +1336,11 @@ export class RoadsideScatter {
         if (rule.notDistrict && inDistrict(tags, sideName, s, rule.notDistrict)) break;
         // A run's later section clear of the ridable band too (it widens where a trestle's taper or a side
         // street's mouth does; playtest 4: a fence there stood on the band with nothing in the sim behind it).
-        if (j > 0 && !rule.understory && across < ridableBandPast(road, e.index, side, s, outer) + rule.r)
-          break;
+        const clearHere =
+          j > 0 && !rule.understory ? ridableBandPast(road, e.index, side, s, outer) + rule.r : clearOf;
+        // A leaning run steps toward the road, down to the band, section by section.
+        const across = rule.lean ? Math.max(across0 - j * rule.lean, clearHere) : across0;
+        if (j > 0 && !rule.understory && across < clearHere) break;
         // On the drawn land, all of it: across its depth and along its length.
         const land = Math.min(
           input.landReach(e.index, side, s),
@@ -1324,6 +1378,19 @@ export class RoadsideScatter {
           if (rule.run) break;
           continue;
         }
+        // A prop that must be seen keeps a lane to the road clear (`sight`): the lane's discs run from just
+        // before it to the road's edge `sight` m back, and none may touch anything already placed.
+        const lane: { x: number; z: number }[] = [];
+        if (rule.sight) {
+          for (let u = SIGHT_LANE_STEP_M; u <= rule.sight; u += SIGHT_LANE_STEP_M)
+            lane.push(
+              road.toWorld(e.index, Math.max(0, s - u), side * (outer + across * (1 - u / rule.sight)), 0),
+            );
+          if (lane.some((q) => taken.hits(q.x, q.z, SIGHT_LANE_R, false, true))) {
+            if (rule.run) break;
+            continue;
+          }
+        }
         if (otherRoad(s, c.x, c.z, r) || underHigher(p.x, p.z, shore === null ? p.y : roadY, s)) break;
         // A long prop (a fence section, a hut) must be clear of higher ground at its ends too.
         if (
@@ -1349,7 +1416,7 @@ export class RoadsideScatter {
         const size = rule.size ? rule.size[0] + (rule.size[1] - rule.size[0]) * h(k * 31 + j, side, 6) : 1;
         // A section's own disc covers its length; the next one along may touch it.
         if (rule.run) {
-          taken.add(p.x, p.z, 0.3);
+          taken.add(p.x, p.z, 0.3, false, !!rule.sight);
           // A solid section's body too (playtest 4, P4-19, C4: the sandstone cut): two discs along it, at
           // half its depth, so nothing later stands inside the rock.
           if (rule.body) {
@@ -1360,7 +1427,8 @@ export class RoadsideScatter {
             }
           }
         } else if (rule.canopy) taken.add(p.x, p.z, r, true);
-        else taken.add(c.x, c.z, rule.understory ? r * 0.6 : r);
+        else taken.add(c.x, c.z, rule.understory ? r * 0.6 : r, false, !!rule.sight);
+        for (const q of lane) taken.add(q.x, q.z, SIGHT_LANE_R, false, true);
         this.items.push({
           rule: rule.id,
           variant,
