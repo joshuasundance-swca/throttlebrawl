@@ -97,7 +97,17 @@ import {
   truckClosingMps,
   type MovingDecks,
 } from './features';
-import { airWallSkip, gapFall, gapUnder, GAP_TUNING, newGapState, type GapState } from './gap';
+import {
+  clearOver,
+  gapFall,
+  gapUnder,
+  GAP_TUNING,
+  newGapState,
+  overBarrier,
+  overFall,
+  overMarkOf,
+  type GapState,
+} from './gap';
 import { uturnForget, uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
   behindFence,
@@ -132,6 +142,7 @@ import {
 
 export { trickOf } from './air';
 export { driftOf } from './drift';
+export { HIGH_DROP_KEY, highDrop } from './gap';
 export { wheelieOf } from './wheelie';
 export { LOOSE_GROUND, offRoadOf, vergeState, type BrokenFence } from './verge';
 
@@ -551,6 +562,25 @@ export function riderState(world: World): RiderState {
     ...newDriftState(),
     ...newGapState(),
   }));
+}
+
+/**
+ * Whether a rider is out past its road's edge in the air (over the barrier, sim/riders/gap.ts): no
+ * edge holds it there, so combat's shove does not snap it back onto the road.
+ */
+export function outPastEdge(world: World, id: number): boolean {
+  const st = world.systems['riders'] as RiderState | undefined;
+  return st !== undefined && overMarkOf(st, id) !== null;
+}
+
+/**
+ * Whether a rider was handed over through the air onto another road past its edge this tick (over
+ * the barrier, sim/riders/gap.ts): sim/race's shortcut stamp gives up a run that leaves that way.
+ * Reads the state without creating it.
+ */
+export function hoppedRoads(world: World, id: number): boolean {
+  const st = world.systems['riders'] as RiderState | undefined;
+  return st?.hop?.[id] === world.tick;
 }
 
 /**
@@ -1670,8 +1700,11 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.vy[m.id] = vy - gravity * dt;
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   crossToBranch(config, m);
-  // High enough over a `jumpable` wall (playtest 3, sim/riders/gap.ts), the rider flies over it.
-  if (!airWallSkip(world, config, st, m, y)) barrierContact(world, config, st, m, dt);
+  // Over the barrier (2026-10-06, sim/riders/gap.ts): higher than what stands at the edge, the rider
+  // flies over it, and what lies past decides; below its top the barrier rule holds it as ever.
+  const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d);
+  const over = overBarrier(world, config, st, m, y, limits, BIKE_HALF_WIDTH_M);
+  if (over === 'barrier') barrierContact(world, config, st, m, dt);
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
@@ -1708,13 +1741,16 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const airS = (st.airTicks[m.id] ?? 0) / 60;
   const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt, tGround, airS);
   // Over a gap (playtest 3, sim/riders/gap.ts) there is nothing to land on: the rider falls on, and
-  // past the gap's kill depth it goes overboard.
+  // past the gap's kill depth it goes overboard. So out past the road's edge (over the barrier): its
+  // road's plane does not go on out there, and the gap's own rule wins over one (its respawn).
   const overGap = gapUnder(world, config, m);
-  if (!overGap && y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
+  const pastEdge = over !== 'barrier' && overMarkOf(st, m.id) !== null;
+  if (!overGap && !pastEdge && y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
     st.yAbs[m.id] = y;
     if (overGap) gapFall(world, config, st, m, y - (surface + deck));
+    else if (over === 'past') overFall(world, config, st, m, y);
   }
   settle(world, st, m, m.mode === 'Airborne' ? leanTarget : 0, dt);
   st.throttle[m.id] = throttle;
@@ -1983,6 +2019,8 @@ export const ridersSystem: SimSystem = {
         // Not riding: a crash last tick loses the drift chain now (it is stepped only on the road).
         driftDown(world, st, m);
       }
+      // Out of the air (down in a crash, back on a road), it is no longer out past an edge.
+      if (m.mode !== 'Airborne') clearOver(st, m.id);
     }
     // Bumps stop where riding does (the verge's edge with off-road on), never back on the road.
     riderContacts(world, config, st, {
