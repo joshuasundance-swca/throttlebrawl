@@ -979,6 +979,39 @@ describe('what a red PR run says', () => {
     expect(r.annotations[0]).toContain('names every built rule%0Aunit tests');
   });
 
+  // Main's run 37418801318 (2026-10-06, no fail fast on a push): browser 2/7 failed its build
+  // (a download reset), and browser 5/7 hit its 10-minute timeout, which GitHub ends as cancelled
+  // with no failed step. Both are news.
+  it('beside a red job that did not fail fast, also names a job cut short (a timeout)', () => {
+    const main = [
+      {
+        id: 112126240559,
+        name: 'suite / browser (2/7)',
+        status: 'completed',
+        conclusion: 'failure',
+        completed_at: '2026-10-06T05:43:25Z',
+        steps: [step('Build, browser tests (one slice)', 'failure', '2026-10-06T05:43:24Z')],
+      },
+      {
+        id: 112126240600,
+        name: 'suite / browser (5/7)',
+        status: 'completed',
+        conclusion: 'cancelled',
+        completed_at: '2026-10-06T05:52:14Z',
+        steps: [step('Build, browser tests (one slice)', 'cancelled', '2026-10-06T05:52:13Z')],
+      },
+    ];
+    const red = redSuiteJobs(main).map((j) => ({ ...j, tests: ['build: FAIL no dist/ (4.1s)'] }));
+    expect(red.map((j) => j.name)).toEqual(['suite / browser (2/7)']);
+    const r = failureReport(red, cutShort(main));
+    const text = r.lines.join('\n');
+    expect(text).toContain('suite / browser (2/7): "Build, browser tests (one slice)" failed\n');
+    expect(text).toContain('Also cancelled while running, with no failed step: suite / browser (5/7).');
+    expect(text).toContain('timeout');
+    expect(r.annotations).toHaveLength(2);
+    expect(r.annotations[1]).toMatch(/^::error title=cancelled while running::/);
+  });
+
   it('says so when no suite job failed a step, and names the jobs a cancel cut short', () => {
     const r = failureReport([], ['suite / browser (5/7)']);
     expect(r.lines.join('\n')).toContain('No suite job of this run failed a step');

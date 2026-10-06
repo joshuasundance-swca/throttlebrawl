@@ -598,7 +598,9 @@ export function cutShort(jobs) {
  * Test names come from PR code's logs: each is put on one line, and every printed line starts with
  * text, never with "::", so none can be read as a workflow command.
  * @param {{ id: number, name: string, step: string, cancelled: boolean, tests: string[], note?: string }[]} red
- * @param {string[]} cut the jobs a cancel cut short (cutShort)
+ * @param {string[]} cut the jobs a cancel cut short (cutShort). Beside a red job that fail fast
+ *   left cancelled they are its siblings, which it cancelled, and are left out; otherwise (a push
+ *   to main, a train, a fork) each one is news: a timeout, or a matrix's own fail-fast.
  */
 export function failureReport(red, cut) {
   const oneLine = (/** @type {string} */ s) => clip(s.replace(/[\r\n]+/g, ' ').trim(), 300);
@@ -650,6 +652,13 @@ export function failureReport(red, cut) {
         ),
       );
     }
+  }
+  const alsoCut = red.some((j) => j.cancelled) ? [] : cut;
+  if (alsoCut.length) {
+    const also = `Also cancelled while running, with no failed step: ${alsoCut.join(', ')}. A job that hits its timeout-minutes ends that way, and so do a red job's siblings when its matrix fails fast.`;
+    lines.push(also);
+    md.push(also);
+    annotations.push(workflowCommand('error', { title: 'cancelled while running' }, also));
   }
   return { lines, summary: md.join('\n'), annotations };
 }
@@ -1296,7 +1305,7 @@ async function awaitLanding(
 async function cmdFailures() {
   const jobs = await runJobs();
   const red = await redFromRun(jobs);
-  const r = failureReport(red, red.length ? [] : cutShort(jobs));
+  const r = failureReport(red, cutShort(jobs));
   for (const line of r.lines) console.log(line);
   summary(r.summary);
   for (const a of r.annotations) console.log(a);
