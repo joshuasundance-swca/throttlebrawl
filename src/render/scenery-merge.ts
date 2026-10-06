@@ -290,6 +290,42 @@ interface Block {
   /** Triangles of the near models and of the far stand-ins (for the counts). */
   nearTris: number;
   farTris: number;
+  /**
+   * The thinnable trees (`THINNABLE_KINDS`) lead `spots`, by their rank (`thinRank`) from the highest
+   * down: their ranks, and the near and far vertices of the first i spots (i = 0 to their count). The
+   * near pass is laid out in `spots` order and the far pass in reverse, so the trees a share leaves
+   * out sit at the near run's start and the far run's end: a share is still one draw range (`update`).
+   */
+  thinRanks: number[];
+  nearPre: number[];
+  farPre: number[];
+}
+
+/**
+ * The scatter's kinds a quality tier may thin (quality.ts `treeShare`): the trees and brush, which
+ * stand in groves and woods that still read as such with fewer of them. Never a building (a terrace
+ * with gaps reads as a different street), a landmark-like prop (a gun battery, an outcrop), a bridge
+ * bay or anything else a place is known by. [default]
+ */
+export const THINNABLE_KINDS: ReadonlySet<ScenerySpot['kind']> = new Set([
+  'palm',
+  'mangrove',
+  'conifer',
+  'coastTree',
+  'brush',
+]);
+
+/**
+ * A still prop's rank in [0, 1), from where it stands: a tier drawing a share k of the thinnable trees
+ * draws those ranked under k, so each tier's trees are a subset of the next tier's, and the same trees
+ * stay out on every visit. Render only: it reads no random stream.
+ */
+export function thinRank(x: number, z: number): number {
+  let h = Math.imul(Math.round(x * 16) | 0, 0x9e3779b1) ^ Math.imul(Math.round(z * 16) | 0, 0x85ebca77);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+  h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
 }
 
 /** One still prop to merge: its spot, the geometry it draws with and the material it needs. */
@@ -332,7 +368,21 @@ export class MergedScenery {
       if (list) list.push(it);
       else byKey.set(key, [it]);
     }
-    for (const list of byKey.values()) {
+    for (const unordered of byKey.values()) {
+      // The thinnable trees first, highest rank first, then the rest in the order they came.
+      const ranked = unordered.map((it) => ({
+        it,
+        rank: THINNABLE_KINDS.has(it.spot.kind) ? thinRank(it.spot.p.x, it.spot.p.z) : -1,
+      }));
+      const thin = ranked.filter((r) => r.rank >= 0).sort((a, b) => b.rank - a.rank);
+      const list = [...thin.map((r) => r.it), ...ranked.filter((r) => r.rank < 0).map((r) => r.it)];
+      const nearPre = [0];
+      const farPre = [0];
+      for (const { it } of thin) {
+        const f = formsOf(it.geometry);
+        nearPre.push(nearPre.at(-1)! + f.near.n);
+        farPre.push(farPre.at(-1)! + f.far.n);
+      }
       const cx = list.reduce((a, it) => a + it.spot.p.x, 0) / list.length;
       const cz = list.reduce((a, it) => a + it.spot.p.z, 0) / list.length;
       // A prop longer than the usual room (a 41 m bridge bay) says how far it reaches from its origin.
@@ -362,6 +412,9 @@ export class MergedScenery {
         farN,
         nearTris: nearN / 3,
         farTris: farN / 3,
+        thinRanks: thin.map((r) => r.rank),
+        nearPre,
+        farPre,
       });
     }
   }
@@ -378,9 +431,18 @@ export class MergedScenery {
   /**
    * Builds, shows, switches and frees blocks by their distance from the camera. A block is
    * built a little before it comes into range, at most `builds` of them per call (the renderer:
-   * one a frame, so no frame pays for many). Returns the props drawn.
+   * one a frame, so no frame pays for many). `treeShare` (quality.ts): the share of the thinnable
+   * trees drawn, those ranked under it (1, every one, is the game as it drew before tiers). Returns the
+   * props drawn.
    */
-  update(cameraX: number, cameraZ: number, drawM: number, lodM = SCENERY_LOD_M, builds = 1): number {
+  update(
+    cameraX: number,
+    cameraZ: number,
+    drawM: number,
+    lodM = SCENERY_LOD_M,
+    builds = 1,
+    treeShare = 1,
+  ): number {
     const wanted: { s: Block; dist: number }[] = [];
     for (const s of this.blocks) {
       const dist = Math.hypot(s.cx - cameraX, s.cz - cameraZ) - s.radius;
@@ -401,11 +463,18 @@ export class MergedScenery {
         // props are then about lodM away, as the stand-ins were meant to start. Measured from its nearest
         // edge, a 160 m block of terraces drew every house at full detail out to about 330 m (Russian Hill).
         const far = Math.hypot(s.cx - cameraX, s.cz - cameraZ) - Math.min(s.radius, this.blockM / 2) > lodM;
-        mesh.geometry.setDrawRange(far ? s.nearN : 0, far ? s.farN : s.nearN);
-        mesh.visible = true;
-        props += s.spots.length;
-        shown.meshes++;
-        shown.triangles += far ? s.farTris : s.nearTris;
+        // The trees left out: the first `out` spots (ranked at or over the share).
+        let out = 0;
+        while (out < s.thinRanks.length && s.thinRanks[out]! >= treeShare) out++;
+        const nearCut = s.nearPre[out]!;
+        const farCut = s.farPre[out]!;
+        const start = far ? s.nearN : nearCut;
+        const count = far ? s.farN - farCut : s.nearN - nearCut;
+        mesh.geometry.setDrawRange(start, count);
+        mesh.visible = count > 0;
+        props += s.spots.length - out;
+        shown.meshes += count > 0 ? 1 : 0;
+        shown.triangles += count / 3;
         if (far) shown.far++;
       } else {
         mesh.visible = false;
@@ -444,8 +513,11 @@ export class MergedScenery {
     // A block holding an atlas model carries UVs for all of it (the others on the white tile).
     const uv = s.geos.some(hasAtlasUv) ? new Float32Array(total * 2) : null;
     let o = 0;
+    // The near pass in `spots` order, the far pass in reverse (`Block.thinRanks`).
+    const order = s.spots.map((_, i) => i);
     for (const pass of ['near', 'far'] as const) {
-      s.spots.forEach((spot, i) => {
+      (pass === 'near' ? order : [...order].reverse()).forEach((i) => {
+        const spot = s.spots[i]!;
         const f = formsOf(s.geos[i]!)[pass];
         if (uv) writeUv(uv, o, f);
         // Turned about the vertical and scaled: x' = x cos + z sin, z' = z cos - x sin.

@@ -361,6 +361,31 @@ describe('the roadside kits', () => {
     expect(thinned).toBeGreaterThan(0);
     layer.dispose();
   });
+
+  // Roadmap M5 (playtest 4 run C, punch item 9): a lower quality tier's levels of detail start nearer
+  // (quality.ts `propDetail`); a detail of 1 is the default, the game as before tiers.
+  it("a lower tier's levels of detail start nearer: fewer triangles, the same at a detail of 1", () => {
+    const pnw = REGIONS[0]!;
+    const { road, input } = scene('pnw-c1', 7, pnw.kit);
+    const layer = new RoadsideLayer(pnw.model, look, input);
+    while (!layer.ready) layer.update(0, 0, 360);
+    const e = road.edges.find((x) => x.id === 'pnw-cedar-hollow')!;
+    const p = road.toWorld(e.index, 600, 0, 0);
+    const at = (detail?: number) => {
+      for (let k = 0; k < 16; k++) layer.update(p.x, p.z, 360, detail);
+      return layer.counts();
+    };
+    const before = at();
+    const top = at(1);
+    const low = at(0.4);
+    print(
+      `[examined] pnw-c1 at cedar hollow s 600: ${before.triangles} roadside triangles in ${before.meshes} stretches; ${low.triangles} at a detail of 0.4`,
+    );
+    expect(top.triangles).toBe(before.triangles);
+    expect(low.meshes).toBeLessThanOrEqual(before.meshes);
+    expect(low.triangles).toBeLessThan(before.triangles * 0.85);
+    layer.dispose();
+  });
 });
 
 describe("the kits' sidewalk pieces are road/furniture.ts's plan (playtest 4, solid but forgiving)", () => {

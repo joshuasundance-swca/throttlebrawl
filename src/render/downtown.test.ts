@@ -21,6 +21,7 @@ import {
 import {
   crossingClear,
   crossingNeed,
+  DOWNTOWN_DRAW_M,
   DT,
   DowntownLayer,
   MODULE_M,
@@ -329,6 +330,37 @@ describe('San Francisco downtown: the layer as drawn', () => {
     expect(names).toContain('road-downtown-cross-traffic');
     layer.dispose();
     expect(layer.group.parent).toBeNull();
+  });
+
+  // Roadmap M5 (playtest 4 run C, punch item 9): a lower quality tier draws the stretches past its
+  // share of the draw distance as their models' far stand-ins (quality.ts `cityDetail`); the top tier
+  // draws every stretch in full, as before tiers.
+  it("a lower tier's far stretches draw their stand-ins: fewer triangles, the same meshes", () => {
+    const layer = new DowntownLayer(
+      KIT,
+      PROPS,
+      CABLE,
+      look,
+      { road: dt.road, dressing: dt.dressing, seed: 7 },
+      MODULES,
+    );
+    const cam = dt.road.toWorld(0, 40, 0, 0);
+    const at = (nearM?: number) => {
+      for (let k = 0; k < 12; k++) layer.update(cam.x, cam.z, 0, [], nearM);
+      return layer.counts();
+    };
+    const before = at();
+    const top = at(DOWNTOWN_DRAW_M);
+    const low = at(DOWNTOWN_DRAW_M * 0.3);
+    print(
+      `[examined] downtown from s 40: ${before.meshes} meshes, ${before.triangles} triangles in full; ` +
+        `${top.triangles} at the top tier; ${low.triangles} with stand-ins past ${DOWNTOWN_DRAW_M * 0.3} m`,
+    );
+    expect(top.triangles).toBe(before.triangles);
+    expect(top.meshes).toBe(before.meshes);
+    expect(low.meshes).toBe(before.meshes);
+    expect(low.triangles).toBeLessThan(before.triangles * 0.95);
+    layer.dispose();
   });
 });
 

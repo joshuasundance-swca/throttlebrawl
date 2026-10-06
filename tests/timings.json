@@ -200,6 +200,7 @@
     "src/render/pnw-places.test.ts": 0.1,
     "src/render/pnw-shore.test.ts": 6.8,
     "src/render/portland-blocks.test.ts": 4.8,
+    "src/render/quality-cost.test.ts": 42,
     "src/render/quality.test.ts": 0,
     "src/render/quick-wins.test.ts": 0.1,
     "src/render/reduce-motion.test.ts": 0.1,

@@ -260,10 +260,19 @@ export interface RoadScene {
   /**
    * Per frame: hides scenery farther than `drawM` from the camera, draws the merged blocks past
    * `lodM` as their far stand-ins, builds up to `builds` blocks coming into range (default one),
-   * bobs the boats, and leaves the road's fine detail out of chunks past ROAD_FINE_DRAW_M. Returns
-   * the scenery props left visible.
+   * bobs the boats, and leaves the road's fine detail out of chunks past ROAD_FINE_DRAW_M. `detail` is a
+   * quality tier's (quality.ts): the share of the scatter's trees drawn, and the share of
+   * ROAD_FINE_DRAW_M the fine detail reaches (by default 1 and 1). Returns the scenery props left visible.
    */
-  update(cameraX: number, cameraZ: number, t: number, drawM: number, lodM?: number, builds?: number): number;
+  update(
+    cameraX: number,
+    cameraZ: number,
+    t: number,
+    drawM: number,
+    lodM?: number,
+    builds?: number,
+    detail?: { treeShare?: number; propDetail?: number },
+  ): number;
   /** The merged still scenery as the last update drew it (run W-S). */
   merged(): MergedSceneryCounts;
   /**
@@ -2916,13 +2925,14 @@ export function buildRoadScene(
       const i = Math.max(0, Math.min(n - 1, Math.floor(s / l.step)));
       return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
     },
-    update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1) {
+    update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1, detail = {}) {
       sea?.update(cameraX, cameraZ);
+      const fineM = ROAD_FINE_DRAW_M * (detail.propDetail ?? 1);
       for (const [key, fine] of fineByChunk) {
-        const near = chunkDistance(key, cameraX, cameraZ) < ROAD_FINE_DRAW_M;
+        const near = chunkDistance(key, cameraX, cameraZ) < fineM;
         for (const mesh of fine) mesh.visible = near;
       }
-      let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds);
+      let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds, detail.treeShare ?? 1);
       if (bayMerged) shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), lodM, builds);
       for (const b of batches) {
         const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
