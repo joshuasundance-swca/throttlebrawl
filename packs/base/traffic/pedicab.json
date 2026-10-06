@@ -6,6 +6,7 @@
   "tags": ["local", "cyclist", "key-oldtown"],
   "lengthM": 2.6,
   "widthM": 1.2,
+  "heightM": 1.9,
   "cruiseMps": 4.5,
   "hazard": "normal",
   "behaviour": {

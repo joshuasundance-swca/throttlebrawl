@@ -6,6 +6,7 @@
   "tags": ["oddity", "wasteland"],
   "lengthM": 7.5,
   "widthM": 2.4,
+  "heightM": 2.95,
   "cruiseMps": 9.0,
   "hazard": "big",
   "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },

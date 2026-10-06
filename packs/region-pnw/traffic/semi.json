@@ -6,6 +6,7 @@
   "tags": ["commercial", "interstate"],
   "lengthM": 16.0,
   "widthM": 2.6,
+  "heightM": 4,
   "cruiseMps": 25.0,
   "hazard": "big",
   "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },

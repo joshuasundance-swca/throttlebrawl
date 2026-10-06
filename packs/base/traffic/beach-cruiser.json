@@ -6,6 +6,7 @@
   "tags": ["local", "cyclist"],
   "lengthM": 1.8,
   "widthM": 0.6,
+  "heightM": 1.8,
   "cruiseMps": 5.5,
   "hazard": "normal",
   "behaviour": {

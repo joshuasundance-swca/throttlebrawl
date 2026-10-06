@@ -6,6 +6,7 @@
   "tags": ["local", "tourist", "key-oldtown"],
   "lengthM": 7.5,
   "widthM": 2.2,
+  "heightM": 2.15,
   "cruiseMps": 4.0,
   "hazard": "big",
   "behaviour": {

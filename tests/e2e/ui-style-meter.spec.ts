@@ -305,10 +305,19 @@ test('the style pop-ups setting turns the chips off mid-race and is kept after a
     page.evaluate(async () => {
       // The strip cleared first: the race's own bark at its start would otherwise hold it.
       (window as SeamWindow).__uiTicker?.([]);
+      const game = (window as TestWindow).__game;
+      const before = game?.snapshot()?.tick ?? 0;
       (window as FeedWindow).__uiStyleFeed?.([{ kind: 'nearMiss', points: 25 }]);
-      for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
+      // The chip goes up (or is dropped) in the next frame that draws the HUD. Waited on by a sim
+      // step, which the loop follows with that frame's HUD update in the same callback, not by a
+      // count of frames or a deadline.
+      while ((game?.snapshot()?.tick ?? 0) <= before) await new Promise((r) => requestAnimationFrame(r));
+      // `up` is the strip's own "an item is showing", set and cleared in the same update. `hidden`
+      // and `data-cls` are not: the strip leaves its box in the layout, with the last item's class,
+      // for a 160 ms fade-out timer after the strip is cleared, so reading them saw a ghost chip
+      // whenever frames came fast (this spec went red once, "chips with the setting off", on that).
       const root = document.getElementById('hud-ticker');
-      return root && !root.hidden && root.dataset['cls'] === 'style' ? 1 : 0;
+      return root?.classList.contains('up') && root.dataset['cls'] === 'style' ? 1 : 0;
     });
   // On (the default): the chip shows. This is the control for the "off" check below.
   expect(await feed(), 'chips with the setting on').toBe(1);
