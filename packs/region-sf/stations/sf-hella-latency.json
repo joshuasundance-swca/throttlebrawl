@@ -1,0 +1,57 @@
+{
+  "type": "station",
+  "id": "sf-hella-latency",
+  "name": "Hella Latency 96.1",
+  "genre": "beats",
+  "regions": ["san-francisco"],
+  "tracks": [
+    {
+      "id": "muni-delay-loop",
+      "title": "Muni Delay Loop",
+      "procedural": { "preset": "beat-band", "params": { "bpm": 90, "key": "C", "progression": "bart" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "hill-start-clutch-held",
+      "title": "Hill Start, Clutch Held",
+      "procedural": { "preset": "beat-band", "params": { "bpm": 86, "key": "F#", "progression": "sunset" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "slow-roll-down-valencia",
+      "title": "Slow Roll Down Valencia",
+      "procedural": { "preset": "beat-band", "params": { "bpm": 94, "key": "G", "progression": "hyphy" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "cable-car-bell-slowed",
+      "title": "Cable Car Bell, Slowed",
+      "procedural": { "preset": "beat-band", "params": { "bpm": 88, "key": "A", "progression": "bayview" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "latency-spike",
+      "title": "Latency Spike",
+      "procedural": { "preset": "beat-band", "params": { "bpm": 98, "key": "E", "progression": "bart" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "sourdough-starter-loop",
+      "title": "Sourdough Starter Loop",
+      "procedural": { "preset": "beat-band", "params": { "bpm": 92, "key": "Bb", "progression": "sunset" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco's Bay Area instrumental hip hop (run C, task C8; the maintainer: \"feel free to make more for all regions\", San Francisco his favourite). A boom-bap kick, a snare with a clap on two and four, bouncing hats, an 808 that glides into its notes, a Rhodes chopping seventh chords and a whistling lead that glides between its notes over the hook, at 84-100 bpm (src/audio/radio-compose-trio.ts, preset beat-band). Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

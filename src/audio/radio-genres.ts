@@ -14,7 +14,12 @@ export type ExtraGenre = Extract<RadioGenre, 'garage' | 'darkwave' | 'swamp' | '
 /** Playtest 4's four bands (radio-rigs-extra.ts plays them). */
 export const EXTRA_GENRES: readonly ExtraGenre[] = ['garage', 'darkwave', 'swamp', 'jazz'];
 
+export type TrioGenre = Extract<RadioGenre, 'son' | 'dream' | 'beats'>;
+/** Run C's three bands, one for each region (radio-rigs-trio.ts plays them). */
+export const TRIO_GENRES: readonly TrioGenre[] = ['son', 'dream', 'beats'];
+
 export const isRegional = (g: string): g is RegionalGenre =>
   (REGIONAL_GENRES as readonly string[]).includes(g);
 export const isMore = (g: string): g is MoreGenre => (MORE_GENRES as readonly string[]).includes(g);
 export const isExtra = (g: string): g is ExtraGenre => (EXTRA_GENRES as readonly string[]).includes(g);
+export const isTrio = (g: string): g is TrioGenre => (TRIO_GENRES as readonly string[]).includes(g);

@@ -1,6 +1,6 @@
 // Pivot FM's songs (run W-U, the pitch deck's #5: "When Pivot rides, Pivot FM appears and changes
 // genre every eight bars"). A `pivot-medley` track is a medley: every eight bars it pivots to another
-// of the radio's bands (sixteen since playtest 4), each part a real song of that band cut to its first eight bars (a
+// of the radio's bands (nineteen since playtest 4's run C), each part a real song of that band cut to its first eight bars (a
 // shorter song repeats to fill them). No two parts in a row share a band, and each band plays at
 // its own tempo, so every pivot is a hard cut. Pure and seeded like every composer: the same track
 // always plays the same medley. It lives in the radio's lazy chunk (radio-band.ts).
@@ -29,6 +29,10 @@ export const PIVOT_BANDS: readonly { preset: string; genre: RadioGenre }[] = [
   { preset: 'darkwave-band', genre: 'darkwave' },
   { preset: 'swamp-band', genre: 'swamp' },
   { preset: 'jazz-band', genre: 'jazz' },
+  // Playtest 4, run C (task C8): one more band for each region.
+  { preset: 'son-band', genre: 'son' },
+  { preset: 'dream-band', genre: 'dream' },
+  { preset: 'beat-band', genre: 'beats' },
 ];
 
 /** Bars per part [default]: "changes genre every eight bars". */

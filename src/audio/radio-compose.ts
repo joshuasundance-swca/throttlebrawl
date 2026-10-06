@@ -32,6 +32,7 @@ import { composeExtra, EXTRA_PRESETS } from './radio-compose-extra';
 import { composeMore, MORE_PRESETS } from './radio-compose-more';
 import { composePnw } from './radio-compose-pnw';
 import { composeRegional, REGIONAL_PRESETS } from './radio-compose-regional';
+import { composeTrio, TRIO_PRESETS } from './radio-compose-trio';
 import type { RadioGenre } from './radio-synth';
 import {
   finish,
@@ -53,6 +54,7 @@ export const RADIO_PRESETS = [
   ...REGIONAL_PRESETS,
   ...MORE_PRESETS,
   ...EXTRA_PRESETS,
+  ...TRIO_PRESETS,
 ] as const;
 export type RadioPreset = (typeof RADIO_PRESETS)[number];
 
@@ -87,7 +89,10 @@ export type RadioLayer =
   | 'rain'
   | 'ep'
   | 'harp'
-  | 'scrape';
+  | 'scrape'
+  // Run C's bands' parts (radio-compose-trio.ts): a clave's wood and a cowbell.
+  | 'clave'
+  | 'bell';
 
 export interface RadioNote {
   /** Grid step in the loop (sixteenths for surf, triplet eighths for rockabilly). */
@@ -151,7 +156,8 @@ export function composeTrack(spec: ProceduralSpec, seed: number): Composition | 
     composePnw(spec.preset, params, seed >>> 0) ??
     composeRegional(spec.preset, params, seed >>> 0) ??
     composeMore(spec.preset, params, seed >>> 0) ??
-    composeExtra(spec.preset, params, seed >>> 0)
+    composeExtra(spec.preset, params, seed >>> 0) ??
+    composeTrio(spec.preset, params, seed >>> 0)
   );
 }
 
