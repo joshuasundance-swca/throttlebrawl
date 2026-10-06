@@ -17,7 +17,7 @@ import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KEYS_KIT, RoadsideLayer, scatterRoadside, type RoadsideInput, type RoadsideItem } from './roadside';
-import type { SideTag } from './scenery';
+import { ridableBandPast, type SideTag } from './scenery';
 
 const look = createFlatLook();
 const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
@@ -82,7 +82,8 @@ function scene(
   return { road, dressing, built, input };
 }
 
-const deerOf = (items: readonly RoadsideItem[]) => items.filter((it) => it.rule === 'key-deer');
+/** Every deer of the kit: the grazers along the verge (`key-deer`) and the herds (`key-deer-herd`). */
+const deerOf = (items: readonly RoadsideItem[]) => items.filter((it) => it.rule.startsWith('key-deer'));
 const SEEDS = [1, 7, 42, 99];
 const bend = (dressing: RoadDressing) => dressing[BEND] as unknown as BakedRoad;
 const sign = (dressing: RoadDressing) =>
@@ -136,8 +137,8 @@ describe.each(SEEDS)('Big Pine Bend, seed %i', (seed) => {
     print(
       `[examined] ${BAHIA} seed ${seed}: ${deer.length} deer (s ${deer.map((d) => d.s.toFixed(0)).join(', ')}); sign at s ${slot.s0} to ${slot.s1}; road ${e.length.toFixed(0)} m, half-width ${half.toFixed(1)} m`,
     );
-    expect(deer.length).toBeGreaterThanOrEqual(4);
-    expect(deer.length).toBeLessThanOrEqual(14);
+    expect(deer.length).toBeGreaterThanOrEqual(6);
+    expect(deer.length).toBeLessThanOrEqual(30);
     for (const d of deer) {
       expect(road.edges[d.edge]!.id, 'the deer stand on Big Pine Bend only').toBe(BEND);
       expect(d.s, 'after the sign').toBeGreaterThan(slot.s1);
@@ -148,8 +149,98 @@ describe.each(SEEDS)('Big Pine Bend, seed %i', (seed) => {
   });
 
   it('is only the one rule: everything else of the kit is where it was', () => {
-    const others = items.filter((it) => it.rule !== 'key-deer');
+    const others = items.filter((it) => !it.rule.startsWith('key-deer'));
     expect(others.length).toBeGreaterThan(50);
+  });
+});
+
+// Playtest 4, run B's live check (punch item 2): "No Key deer was visible on Big Pine. None showed in 3 frames on
+// seed 3 (at 40 to 87 mph), although the keys-identity kit loaded". A doe is 0.7 m tall, which is seven pixels on
+// the phone's screen from the chase camera. What is asked here: every deer stands at the verge's edge, not metres
+// beyond it, and never on the loose ground a rider can leave the road onto; no deer is the size it was; and
+// every race has a herd (3 or more deer within a few metres of each other along one side) for the camera to
+// meet. What the chase camera shows of them, in pixels, is `tests/sim/keys-readability.test.ts`'s.
+/** Runs of 3 or more deer, each within 5 m of the last along one side, in s order. */
+function herdsOf(deer: readonly RoadsideItem[]): RoadsideItem[][] {
+  const herds: RoadsideItem[][] = [];
+  for (const side of [-1, 1]) {
+    const row = deer.filter((d) => Math.sign(d.d) === side).sort((a, b) => a.s - b.s);
+    let run: RoadsideItem[] = [];
+    for (const d of row) {
+      if (run.length && d.s - run[run.length - 1]!.s > 5) {
+        if (run.length >= 3) herds.push(run);
+        run = [];
+      }
+      run.push(d);
+    }
+    if (run.length >= 3) herds.push(run);
+  }
+  return herds.sort((a, b) => a[0]!.s - b[0]!.s);
+}
+
+describe.each(SEEDS)('the Key deer read at speed, seed %i', (seed) => {
+  const { road, input } = scene(BAHIA, seed);
+  const edge = road.edges[road.edgeIndex(BEND)]!;
+  const deer = deerOf(scatterRoadside(input));
+  const height = (variant: number): number => {
+    const g = keysIdentity.variants[variant]!;
+    g.computeBoundingBox();
+    return g.boundingBox!.max.y - g.boundingBox!.min.y;
+  };
+
+  it('are drawn well over their true size: a doe is over a metre, a buck over 1.8 m (the old 0.95 to 1.1 would fail)', () => {
+    expect(deer.length).toBeGreaterThan(0);
+    for (const d of deer) {
+      expect(d.size, `deer at s ${d.s.toFixed(0)}`).toBeGreaterThanOrEqual(1.5);
+      expect(d.size * height(d.variant), `deer at s ${d.s.toFixed(0)}, variant ${d.variant}`).toBeGreaterThan(
+        d.variant === 0 ? 1.8 : 1,
+      );
+    }
+    // Control: at the size they were drawn at (up to 1.1) neither clears the line.
+    expect(1.1 * height(1)).toBeLessThan(1);
+    expect(1.1 * height(0)).toBeLessThan(1.8);
+  });
+
+  it('stand at the verge`s outer edge: within 1.5 m of the ridable ground, and never on it or the lanes', () => {
+    const half = Math.max(-edge.dMin, edge.dMax);
+    for (const d of deer) {
+      const side = Math.sign(d.d) as -1 | 1;
+      const reach = half + ridableBandPast(road, edge.index, side, d.s, half);
+      expect(Math.abs(d.d), `deer at s ${d.s.toFixed(0)}: past the ridable ground`).toBeGreaterThanOrEqual(
+        reach,
+      );
+      expect(Math.abs(d.d) - reach, `deer at s ${d.s.toFixed(0)}: close to the verge`).toBeLessThanOrEqual(
+        1.5,
+      );
+    }
+  });
+
+  it('has a herd for the camera to meet: three or more deer within 5 m of one another along one side', () => {
+    const herds = herdsOf(deer);
+    print(
+      `[examined] seed ${seed}: ${deer.length} deer, ${herds.length} herd(s), of ${herds.map((h) => h.length).join(', ')} deer, at s ${herds.map((h) => h[0]!.s.toFixed(0)).join(', ')}`,
+    );
+    expect(herds.length).toBeGreaterThanOrEqual(1);
+    // A herd is the herd rule's: the grazers alone (the old rule) never made one on these seeds' sides.
+    expect(herds[0]!.every((d) => d.rule === 'key-deer-herd' || d.rule === 'key-deer')).toBe(true);
+    const grazersOnly = deer.filter((d) => d.rule === 'key-deer');
+    print(`[examined] seed ${seed}: the grazers alone make ${herdsOf(grazersOnly).length} herd(s)`);
+    expect(herdsOf(grazersOnly).length).toBeLessThan(herds.length);
+  });
+
+  it('moves nothing else: the other props stand where they did without the deer (control: the tag taken off)', () => {
+    const { dressing } = track(BAHIA);
+    const stripped = {
+      ...dressing,
+      [BEND]: {
+        ...bend(dressing),
+        tags: (bend(dressing).tags as readonly SideTag[]).filter((t) => t.tag !== 'key-deer'),
+      },
+    } as unknown as RoadDressing;
+    const rest = (items: readonly RoadsideItem[]) => items.filter((it) => !it.rule.startsWith('key-deer'));
+    const without = scatterRoadside(scene(BAHIA, seed, { dressing: stripped }).input);
+    expect(deerOf(without)).toEqual([]);
+    expect(rest(scatterRoadside(input))).toEqual(rest(without));
   });
 });
 
