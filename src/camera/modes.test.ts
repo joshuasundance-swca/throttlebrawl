@@ -482,7 +482,11 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
   /** A scripted minute of camera work that exercises every mode, as one flat trace of numbers. */
   function script(cam: FollowCamera): number[] {
     // A tight bend (R 8 m, playtest 4's tight-bend look: it only moves the camera on a bend under its radius).
-    const road = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0.12 }]));
+    const bundle = fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0.12 }]);
+    // Old Town's street (the solid-world check): the front sliders act only on a street's sidewalk, where
+    // the rider rides the outer side for a stretch (below).
+    for (const r of bundle.roads) r.tags = [{ s0: 0, s1: r.lengthM, side: 'both', tag: 'key-oldtown' }];
+    const road = createRoadNetwork(bundle);
     const out: number[] = [];
     let s = 100;
     const rival = (at: number) => {
@@ -490,12 +494,14 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
       return { id: VICTIM, x: w.x, y: w.y, z: w.z };
     };
     const t0 = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 };
+    // The back of the outer sidewalk, between the first takedown and the second (frames 160 to 199).
+    const laneAt = (n: number) => (n >= 160 && n < 200 ? -8.5 : 1.7);
     // The road handle, so the air tip (run W-T, the pitch deck's #13) can see the bike's height.
     cam.setRoad(road);
     cam.snap(t0, { entities: [rival(s)] });
     for (let n = 0; n < 300; n++) {
       s += 30 * DT;
-      const ridden = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 * Math.sin(n / 20) };
+      const ridden = { ...riderOn(road, s, laneAt(n), 30), targetId: VICTIM, lean: 0.3 * Math.sin(n / 20) };
       // A jump: 1 m up in the air for half a second.
       const air = n >= 225 && n < 255;
       // Playtest 3's moves, in the stretches no takedown framing covers: a drift early on, and a
