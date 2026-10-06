@@ -24,6 +24,15 @@
 //   `rel=preload` hints: Chrome will not use a preload a worker answered ("cross-world service
 //   worker resource mismatch") and fetches the file again. Other sites, other folders and anything
 //   but a GET are left to the browser.
+// - Gzip copies (playtest 4 run B's live check, punch item 8): the game's host sends every file as
+//   stored, with no Content-Encoding whatever the browser accepts, so a phone downloaded each script
+//   whole. The build stores `<file>.gz` beside each file under assets/ whose extension the config's
+//   `gzip` lists (scripts/service-worker.mjs). For those files the install takes the copy the
+//   browser's HTTP cache already holds (the page loaded it), else downloads the gzip copy and
+//   unpacks it (DecompressionStream), and caches the file itself under its own name; a request the
+//   cache misses (a newer build's chunk, played online) is answered the same way. A copy that is
+//   missing, not gzip or does not unpack falls back to the plain file, so nothing worse than today's
+//   download can happen. The page's own first load, before the worker, still gets the plain files.
 //
 // It must import nothing at run time: sw.ts is built as its own classic script, and a module the
 // page shares would become a shared chunk the worker cannot load.
@@ -42,6 +51,16 @@ const PAGE = 'index.html';
 const INSTALL_LANES = 4;
 /** A `<link rel=preload>` tag (not `modulepreload`) and the white space after it. */
 const PRELOAD_LINK = /<link\b[^>]*\brel=["']?preload\b[^>]*>\s*/gi;
+/** A gzip copy's suffix (scripts/service-worker.mjs). */
+const GZIP_SUFFIX = '.gz';
+/** The header on a file the worker unpacked from its gzip copy (a live check reads it). */
+export const GZIP_MARK = 'x-offline-from';
+/** The type a file unpacked from its copy is served with, by extension. */
+const TYPES: Readonly<Record<string, string>> = {
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.glb': 'model/gltf-binary',
+};
 
 /**
  * How the install tells that a file without a content hash in its name is this build's: the SHA-256
@@ -58,6 +77,8 @@ export interface OfflineConfig {
   files: readonly string[];
   /** The check of every file in `files` outside assets/. */
   checks: Readonly<Record<string, FileCheck>>;
+  /** The extensions whose files under assets/ have a gzip copy; none when absent (older builds). */
+  gzip?: readonly string[];
 }
 
 /** The part of a fetch event's request the policy reads; the real `Request` is passed through. */
@@ -113,6 +134,28 @@ async function passes(res: Response, check: FileCheck): Promise<boolean> {
     : (await res.text()).includes(check.contains);
 }
 
+/**
+ * The file `rel` from the host's answer for its gzip copy, served as that file; null when the copy
+ * is not usable (missing, not gzip, does not unpack). The game's host sends the copy's raw bytes; a
+ * host that labels it `Content-Encoding: gzip` (Vite's preview server) has the browser unpack it.
+ */
+async function fromGzipCopy(res: Response, rel: string): Promise<Response | null> {
+  if (!res.ok) return null;
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let body: ArrayBuffer;
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    const unpacked = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    body = await new Response(unpacked).arrayBuffer();
+  } else if (/\bgzip\b/i.test(res.headers.get('content-encoding') ?? '')) {
+    body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  } else return null;
+  const ext = rel.slice(rel.lastIndexOf('.'));
+  return new Response(body, {
+    status: 200,
+    headers: { 'content-type': TYPES[ext] ?? 'application/octet-stream', [GZIP_MARK]: 'gzip' },
+  });
+}
+
 /** The page without its `rel=preload` hints; any other answer as it is. */
 async function withoutPreloads(res: Response): Promise<Response> {
   if (!res.ok) return res;
@@ -143,13 +186,41 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
     return res;
   };
 
+  /** Whether `rel` has a gzip copy this worker can unpack. */
+  const hasCopy = (rel: string) =>
+    typeof DecompressionStream === 'function' &&
+    rel.startsWith(HASHED_DIR) &&
+    (config.gzip ?? []).some((ext) => rel.endsWith(ext));
+
+  /** The file `rel` from its gzip copy, or null when that fails in any way (one try). */
+  const viaCopy = (rel: string): Promise<Response | null> =>
+    env
+      .fetch(`${abs(rel)}${GZIP_SUFFIX}`)
+      .then((res) => fromGzipCopy(res, rel))
+      .catch(() => null);
+
+  /** A content-hashed file for the install: the HTTP cache's copy, its gzip copy, else the file. */
+  const downloadHashed = async (rel: string): Promise<Response> => {
+    if (hasCopy(rel)) {
+      // The page loaded most first-load files already: take them from the HTTP cache, stale or not
+      // (a hashed name never changes its bytes), instead of downloading them again.
+      const held = await env
+        .fetch(abs(rel), { cache: 'only-if-cached', mode: 'same-origin' })
+        .catch(() => null);
+      if (held && keepable(held)) return held;
+      const unpacked = await viaCopy(rel);
+      if (unpacked) return unpacked;
+    }
+    // Without a copy, hashed files may still come from the HTTP cache (revalidated).
+    return download(rel, {});
+  };
+
   const cacheFile = async (rel: string) => {
     const url = abs(rel);
     const store = await cache();
     if (rel.startsWith(HASHED_DIR)) {
       const old = await env.caches.match(url);
-      // Hashed files may come from the HTTP cache (the page fetched most of them already).
-      return store.put(url, old ?? (await download(rel, {})));
+      return store.put(url, old ?? (await downloadHashed(rel)));
     }
     // The rest are checked with the server, then against the build's own check.
     const check = config.checks[rel];
@@ -174,10 +245,15 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
     return cached ?? net;
   };
 
-  /** This build's copy, else the network's answer, passed on without keeping it. */
-  const cacheFirst = async (req: WorkerRequest, key: string): Promise<Response> => {
+  /**
+   * This build's copy, else the network's answer (from the file's gzip copy when it has one),
+   * passed on without keeping it.
+   */
+  const cacheFirst = async (req: WorkerRequest, key: string, rel: string): Promise<Response> => {
     const hit = await (await cache()).match(key);
     if (hit) return hit;
+    const unpacked = hasCopy(rel) ? await viaCopy(rel) : null;
+    if (unpacked) return unpacked;
     try {
       return await env.fetch(req);
     } catch (err) {
@@ -217,7 +293,7 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
       if (req.mode === 'navigate') return networkFirst(req, PAGE).then(withoutPreloads);
       const url = new URL(req.url);
       const rel = url.href.slice(env.scope.length).split(/[?#]/)[0] ?? '';
-      return NETWORK_FIRST.has(rel) ? networkFirst(req, rel || PAGE) : cacheFirst(req, url.href);
+      return NETWORK_FIRST.has(rel) ? networkFirst(req, rel || PAGE) : cacheFirst(req, url.href, rel);
     },
   };
 }

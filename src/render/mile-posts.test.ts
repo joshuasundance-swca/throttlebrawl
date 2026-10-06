@@ -16,7 +16,13 @@ import { createFlatLook } from './look';
 import { bakeLandmarkKit, type TextSurface } from './models';
 import { readAsset } from './model-files.test-util';
 import type { BoardCatalog } from './boards';
-import { placeSurface, TextSurfaceLayer, type PlacedSurface, type SurfaceContext } from './text-surfaces';
+import {
+  placeSurface,
+  styleOfSurface,
+  TextSurfaceLayer,
+  type PlacedSurface,
+  type SurfaceContext,
+} from './text-surfaces';
 
 const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
 const print = (line: string) => stdout.write(`[examined] ${line}\n`);
@@ -215,5 +221,132 @@ describe('the number seam of the text surfaces', () => {
     expect(sign?.text).toContain('{n}');
     expect(sign?.status ?? 'live').toBe('live');
     expect(sign?.tags).toEqual(expect.arrayContaining(['site', 'surface']));
+  });
+});
+
+// Playtest 4, run B's live check (the maintainer's punch item 1): "the Seven Mile Bridge's mile posts do not
+// read from the race's direction. A zoomed frame 28 m before mile 41 shows only a dark stub at the rail". The
+// board already stands the right way round (the layer test above), so what the rider saw was a board painted
+// in the default dark chalk colour, 0.4 by 0.7 m, 36 m off: a few pixels of dark grey on a phone. What is
+// asked: the board looks back up the road at the rider on EVERY Keys road that has posts, going the way the
+// race goes (the routes' own order, not an assumption); and its paint is green with a light number. What the
+// chase camera shows of the board, in pixels, is `tests/sim/keys-readability.test.ts`'s.
+const routeFiles = import.meta.glob<{
+  network: string;
+  mainPath: string[];
+  start: { road: string; dir: number };
+}>('../../packs/base/regions/florida-keys/routes/*.json', { eager: true, import: 'default' });
+
+/** Relative luminance of a `#rrggbb` colour (WCAG). */
+function luminance(hex: string): number {
+  const c = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * (c[0] ?? 0) + 0.7152 * (c[1] ?? 0) + 0.0722 * (c[2] ?? 0);
+}
+const contrast = (a: string, b: string): number => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+};
+const isMilePost = (f: { params?: Readonly<Record<string, unknown>> | undefined }): boolean =>
+  typeof f.params?.['model'] === 'string' && f.params['model'].endsWith('#keys_mile_marker');
+
+describe('the mile posts read from the race`s direction (run B live check, punch item 1)', () => {
+  /** Every Keys network with a post, as built, and its roads. */
+  const withPosts = Object.values(networkFiles)
+    .filter((n) =>
+      Object.values(roadFiles).some((r) => n.roads.includes(r.id) && (r.features ?? []).some(isMilePost)),
+    )
+    .map((network) => {
+      const roads = Object.values(roadFiles).filter((r) => network.roads.includes(r.id));
+      return { network, roads, road: createRoadNetwork({ network, roads }) };
+    });
+
+  /** The race's direction along a road is +s when a route of its network runs it from its `from` to its `to`. */
+  function runsForward(networkId: string, roadId: string, roads: readonly BakedRoad[]): boolean {
+    for (const route of Object.values(routeFiles)) {
+      if (route.network !== networkId) continue;
+      const i = route.mainPath.indexOf(roadId);
+      if (i < 0) continue;
+      const here = roads.find((r) => r.id === roadId);
+      const prev = roads.find((r) => r.id === route.mainPath[i - 1]);
+      const next = roads.find((r) => r.id === route.mainPath[i + 1]);
+      if (route.start.dir !== 1) return false;
+      return (prev ? prev.to === here?.from : true) && (next ? next.from === here?.to : true);
+    }
+    return false;
+  }
+
+  const nearest = (surfaces: ReturnType<LandmarkLayer['surfaces']>, p: { x: number; z: number }) =>
+    surfaces.reduce((a, b) =>
+      Math.hypot(b.centre.x - p.x, b.centre.z - p.z) < Math.hypot(a.centre.x - p.x, a.centre.z - p.z) ? b : a,
+    );
+
+  it('finds the posts on every Keys road that has them, each run from its start to its end by a route', () => {
+    expect(withPosts.map((w) => w.network.id)).toContain('osm-keys-seven-mile');
+    let n = 0;
+    for (const w of withPosts)
+      for (const p of landmarkPlacements(w.road).filter((x) => x.node === 'keys_mile_marker')) {
+        const id = w.road.edges[p.edge]?.id ?? '';
+        expect(runsForward(w.network.id, id, w.roads), `${w.network.id}: a route runs ${id} forward`).toBe(
+          true,
+        );
+        n++;
+      }
+    print(`${n} posts on ${withPosts.length} network(s), every one on a road a route runs forward`);
+    expect(n).toBeGreaterThanOrEqual(7);
+  });
+
+  it('every post looks back up the road at the rider who comes to it; a post turned the other way does not (control)', () => {
+    let seen = 0;
+    for (const w of withPosts) {
+      const turned = createRoadNetwork({
+        network: w.network,
+        roads: w.roads.map((r) => ({
+          ...r,
+          features: (r.features ?? []).map((f) =>
+            isMilePost(f) ? { ...f, params: { ...f.params, yawDeg: 0 } } : f,
+          ),
+        })),
+      });
+      for (const [net, backToRider] of [
+        [w.road, false],
+        [turned, true],
+      ] as const) {
+        const layer = new LandmarkLayer(new Map([['keys-identity', kit]]), look, { road: net });
+        for (const p of landmarkPlacements(net).filter((x) => x.node === 'keys_mile_marker')) {
+          const f = net.frameAt(p.edge, (p.feature.s0 + p.feature.s1) / 2);
+          const s = nearest(layer.surfaces(), p);
+          // The rider's travel is (tx, tz): the face is seen from the front when its normal opposes it.
+          const toRider = -(s.normal.x * f.tx + s.normal.z * f.tz);
+          if (backToRider) expect(toRider, `mile ${p.params.number} turned round`).toBeLessThan(-0.9);
+          else {
+            expect(toRider, `mile ${p.params.number}`).toBeGreaterThan(0.95);
+            seen++;
+          }
+        }
+        layer.dispose();
+      }
+    }
+    expect(seen).toBeGreaterThanOrEqual(7);
+  });
+
+  it('is painted as a green board with a light number, not the default dark chalk', () => {
+    const style = styleOfSurface('keys_mile_marker_face');
+    const chalk = styleOfSurface('some_other_board');
+    const green = (hex: string) => {
+      const [r = 0, g = 0, b = 0] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      return g > r + 30 && g > b + 15;
+    };
+    print(
+      `mile board paint ${style.bg} / ${style.fg}: luminance ${luminance(style.bg).toFixed(3)}, number contrast ${contrast(style.fg, style.bg).toFixed(1)}; the default board ${chalk.bg} luminance ${luminance(chalk.bg).toFixed(3)}`,
+    );
+    expect(green(style.bg), 'a green board').toBe(true);
+    expect(luminance(style.bg), 'not a dark stub').toBeGreaterThanOrEqual(0.09);
+    expect(contrast(style.fg, style.bg), 'a number that reads').toBeGreaterThanOrEqual(4.5);
+    // Control: the default chalk board is neither green nor light enough, so the measure can fail.
+    expect(green(chalk.bg)).toBe(false);
+    expect(luminance(chalk.bg)).toBeLessThan(0.09);
   });
 });
