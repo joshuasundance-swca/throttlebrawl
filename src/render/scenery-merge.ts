@@ -8,9 +8,10 @@
 //
 // Far level of detail: each model variant also gets a far stand-in, a few stacked boxes in its own
 // colours that keep its outline (a crown over a trunk, a tapering fir, a terrace's box), 20 to 30
-// triangles against a palm's 420 to 492 or a house's 132 to 182. A block farther than `lodM` draws
-// those; nearer, the real models. Both live in the block's one buffer, so switching is a draw range,
-// not a rebuild.
+// triangles against a palm's 420 to 492 or a house's 132 to 182. A block whose middle is more than
+// half a block past `lodM` draws those (its nearest props about `lodM` away; playtest 4 run B: from
+// its nearest edge, a block of terraces drew in full out to about 330 m); nearer, the real models.
+// Both live in the block's one buffer, so switching is a draw range, not a rebuild.
 //
 // Atlas models (playtest 3, T12.1; atlas.ts): a block holding one carries UVs for all of it, the
 // plain models on the atlas's white tile, and a far stand-in takes each picture's mean colour.
@@ -312,6 +313,8 @@ export class MergedScenery {
   readonly group = new Group();
   private readonly blocks: Block[] = [];
   private shown = { meshes: 0, triangles: 0, far: 0 };
+  /** The blocks' size, m: a block draws near until its middle is half of it past lodM (update). */
+  private readonly blockM: number;
 
   /**
    * `items`: the still props. `doubleSided`: the material a block draws with when its props need
@@ -320,6 +323,7 @@ export class MergedScenery {
    * W-U's places, merges bigger squares for fewer draw calls).
    */
   constructor(items: readonly MergeItem[], doubleSided?: Material, blockM = SCENERY_BLOCK_M) {
+    this.blockM = blockM;
     this.group.name = 'road-scenery-merged';
     const byKey = new Map<string, MergeItem[]>();
     for (const it of items) {
@@ -393,7 +397,10 @@ export class MergedScenery {
       if (!mesh) continue;
       const dist = Math.hypot(s.cx - cameraX, s.cz - cameraZ) - s.radius;
       if (dist < drawM) {
-        const far = dist > lodM;
+        // Far once the block's middle is half a block past lodM (playtest 4 run B, mustFix 1): its nearest
+        // props are then about lodM away, as the stand-ins were meant to start. Measured from its nearest
+        // edge, a 160 m block of terraces drew every house at full detail out to about 330 m (Russian Hill).
+        const far = Math.hypot(s.cx - cameraX, s.cz - cameraZ) - Math.min(s.radius, this.blockM / 2) > lodM;
         mesh.geometry.setDrawRange(far ? s.nearN : 0, far ? s.farN : s.nearN);
         mesh.visible = true;
         props += s.spots.length;

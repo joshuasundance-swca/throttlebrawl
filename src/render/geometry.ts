@@ -80,6 +80,61 @@ export interface Point3 {
   z: number;
 }
 
+/** Metres from p to the segment a-b, in 3D. */
+function toSegment(p: Point3, a: Point3, b: Point3): number {
+  const ux = b.x - a.x;
+  const uy = b.y - a.y;
+  const uz = b.z - a.z;
+  const len2 = ux * ux + uy * uy + uz * uz;
+  const t =
+    len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * ux + (p.y - a.y) * uy + (p.z - a.z) * uz) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + ux * t), p.y - (a.y + uy * t), p.z - (a.z + uz * t));
+}
+
+/**
+ * Playtest 4 run B (mustFix 1: two real routes drew frames over the triangle budget): which samples of a
+ * strip (each a row of points across it: a pair, or every edge of a road's surfaces) to keep so that it
+ * draws the same surface with fewer triangles. A sample is dropped when each of its points, and those of
+ * every sample dropped since the last one kept, lies within `tolM` of the straight line between the same
+ * points of the kept samples around it, and `same(i, j)` says sample j is built as sample i is (its
+ * colour, which surfaces it has). So a straight, even stretch is one long quad, and a bend, a crest, a
+ * change of width or of colour keeps every sample it needs. The first and last samples are always kept,
+ * and no kept span is longer than `maxSpanM` (along the first points). [default] numbers are the callers'.
+ */
+export function keptSamples(
+  rows: readonly (readonly Point3[])[],
+  tolM: number,
+  maxSpanM: number,
+  same: (i: number, j: number) => boolean = () => true,
+): number[] {
+  const n = rows.length;
+  if (n <= 2) return rows.map((_, i) => i);
+  const kept = [0];
+  let i = 0;
+  while (i < n - 1) {
+    let j = i + 1;
+    // Reach as far as the straight strip from sample i still passes within tolM of every sample skipped.
+    while (j + 1 < n) {
+      const k = j + 1;
+      const ri = rows[i]!;
+      const rk = rows[k]!;
+      if (!same(i, k) || ri.length !== rk.length || !ri[0] || !rk[0]) break;
+      if (Math.hypot(rk[0].x - ri[0].x, rk[0].z - ri[0].z) > maxSpanM) break;
+      let fits = true;
+      for (let m = i + 1; m < k && fits; m++) {
+        const rm = rows[m]!;
+        fits = same(i, m) && rm.length === ri.length;
+        for (let p = 0; p < rm.length && fits; p++) fits = toSegment(rm[p]!, ri[p]!, rk[p]!) <= tolM;
+      }
+      if (!fits) break;
+      j = k;
+    }
+    kept.push(j);
+    i = j;
+  }
+  return kept;
+}
+
 /**
  * Accumulates triangle strips into one geometry. A strip is a run of point pairs; `pair(a, b)`
  * adds the next pair and `breakStrip()` ends the run, so a strip can pause where a span ends.
@@ -141,19 +196,50 @@ export class StripAccumulator {
  * last pair, so the surface stays continuous and no quad is drawn twice.
  */
 export class ChunkedStrips {
-  readonly chunks = new Map<string, StripAccumulator>();
+  private readonly parts = new Map<string, StripAccumulator>();
   private last: [Point3, Point3] | null = null;
   private key = '';
+  /** With `simplify`: the open strip's pairs, held until it breaks, then drawn with keptSamples. */
+  private readonly held: [Point3, Point3][] = [];
 
-  constructor(private readonly keyOf: (x: number, z: number) => string) {}
+  /**
+   * `simplify` (playtest 4 run B, mustFix 1): draw each strip with only the pairs its shape needs
+   * (keptSamples). Only for a layer drawn over another surface and sharing no edge with one (a painted
+   * line, a cable slot): a strip that meets another vertex for vertex would open a seam.
+   */
+  constructor(
+    private readonly keyOf: (x: number, z: number) => string,
+    private readonly simplify?: { tolM: number; maxSpanM: number },
+  ) {}
+
+  pair(a: Point3, b: Point3): void {
+    if (this.simplify) this.held.push([a, b]);
+    else this.put(a, b);
+  }
+
+  breakStrip(): void {
+    if (this.held.length > 0) {
+      const pairs = this.held.splice(0);
+      for (const k of keptSamples(pairs, this.simplify!.tolM, this.simplify!.maxSpanM))
+        this.put(pairs[k]![0], pairs[k]![1]);
+    }
+    if (this.last) this.acc(this.key).breakStrip();
+    this.last = null;
+  }
+
+  /** Each chunk's strips (an open simplified strip is drawn first). */
+  get chunks(): ReadonlyMap<string, StripAccumulator> {
+    if (this.held.length > 0) this.breakStrip();
+    return this.parts;
+  }
 
   private acc(key: string): StripAccumulator {
-    let a = this.chunks.get(key);
-    if (!a) this.chunks.set(key, (a = new StripAccumulator()));
+    let a = this.parts.get(key);
+    if (!a) this.parts.set(key, (a = new StripAccumulator()));
     return a;
   }
 
-  pair(a: Point3, b: Point3): void {
+  private put(a: Point3, b: Point3): void {
     const key = this.keyOf((a.x + b.x) / 2, (a.z + b.z) / 2);
     if (!this.last) {
       const acc = this.acc(key);
@@ -170,11 +256,6 @@ export class ChunkedStrips {
     }
     this.key = key;
     this.last = [a, b];
-  }
-
-  breakStrip(): void {
-    if (this.last) this.acc(this.key).breakStrip();
-    this.last = null;
   }
 
   /** A single quad, in the chunk of its centre. */

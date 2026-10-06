@@ -49,7 +49,7 @@ import {
   barrierLookAt,
   tagLook,
 } from './barrier-looks';
-import { mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
+import { keptSamples, mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
 import { SEAWALL_LAND_M, themeAt } from './scenery';
 
@@ -94,6 +94,14 @@ export const VERGE_DRAW_M = 150;
 export const VERGE_LOD_M = 40;
 /** The shallows drawn past a `water` edge where the band ends on land, m. */
 const SHALLOWS_M = 2.5;
+/**
+ * Playtest 4 run B (mustFix 1, the triangle budget): a band sample is left out where the band through
+ * its neighbours passes within this of it, m [default]. Under the 1.5 cm between the band and the land below
+ * it (and the 2.5 cm to the road's verge strip above), so the layers never cross; a straight, even stretch is one quad.
+ */
+export const VERGE_SIMPLIFY_M = 0.01;
+/** The longest stretch of band one quad may span, m. [default] */
+const VERGE_SPAN_M = 40;
 /** Below this width a band is not drawn (a road's own edge is its edge), m. */
 const MIN_BAND_M = 0.05;
 
@@ -592,8 +600,21 @@ export class VergeLayer {
         const samples: number[] = [];
         for (let k = 0; k * step < e.length - 1e-6; k++) samples.push(k * step);
         samples.push(e.length);
-        // The band, then (a second pass, its own strip) the shallows past a water edge.
+        // The band, then (a second pass, its own strip) the shallows past a water edge. Each unbroken run
+        // is drawn with only the samples its shape needs (keptSamples: playtest 4 run B, mustFix 1).
         for (const pass of ['band', 'shallows'] as const) {
+          const run: { pair: [Point3, Point3]; colour: string }[] = [];
+          const flush = () => {
+            const kept = keptSamples(
+              run.map((r) => r.pair),
+              VERGE_SIMPLIFY_M,
+              VERGE_SPAN_M,
+              (i, j) => run[i]!.colour === run[j]!.colour,
+            );
+            for (const k of kept) strips.pair(run[k]!.pair[0], run[k]!.pair[1], c.set(run[k]!.colour));
+            strips.breakStrip();
+            run.length = 0;
+          };
           for (let i = 0; i < samples.length; i++) {
             const s = samples[i] ?? 0;
             const ds = i > 0 ? s - (samples[i - 1] ?? 0) : 0;
@@ -602,7 +623,7 @@ export class VergeLayer {
             const sheer = () =>
               SEAWALL_LAND_M[themeAt(e.tags, name, s) as keyof typeof SEAWALL_LAND_M] !== undefined;
             if (v.widthM < MIN_BAND_M || (pass === 'shallows' && (v.edge !== 'water' || sheer()))) {
-              strips.breakStrip();
+              flush();
               continue;
             }
             const lift = pass === 'band' ? VERGE_LIFT_M : VERGE_LIFT_M - 0.01;
@@ -613,15 +634,14 @@ export class VergeLayer {
               pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M,
               lift,
             );
-            c.set(pass === 'band' ? SURFACE_COLOUR[v.surface] : SHALLOWS_COLOUR);
-            if (side < 0) strips.pair(far, near, c);
-            else strips.pair(near, far, c);
+            const colour = pass === 'band' ? SURFACE_COLOUR[v.surface] : SHALLOWS_COLOUR;
+            run.push({ pair: side < 0 ? [far, near] : [near, far], colour });
             if (i > 0) {
               if (pass === 'band') this.bandM[v.surface] += ds;
               else this.shallowsM += ds;
             }
           }
-          strips.breakStrip();
+          flush();
         }
         // The edge: fence panels and fern clumps along the band's outer edge.
         const list = this.panelsByEdge.get(e.index) ?? [];

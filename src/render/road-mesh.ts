@@ -41,7 +41,7 @@ import {
   planBays,
 } from './bridge-bays';
 import { barrierLookAt } from './barrier-looks';
-import { ChunkedStrips, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
+import { ChunkedStrips, keptSamples, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
@@ -164,6 +164,23 @@ const FINE_MESHES = new Set([
   'road-posts',
   'road-rail-posts',
 ]);
+
+/**
+ * Playtest 4 run B (mustFix 1: two real routes drew frames over the 150,000-triangle budget): the layers
+ * painted over the road that share no edge with another surface (the lane and edge lines, a cable car's
+ * slot rails) are drawn with only the samples their shape needs (geometry.ts keptSamples): a straight, even
+ * line is one long quad. Within 1 cm of every sample, under the 2.8 to 3 cm they float over the road, so
+ * a line never sinks into it over a crest. [default]
+ */
+const OVERLAY_LAYERS = new Set<Layer>(['marking', 'markingCenter', 'cableSlot']);
+const OVERLAY_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
+/**
+ * The same for a plain road's own surfaces (the first SOLID_SURFACES of an edge's surfaces: its lanes, a
+ * shortcut's and the two shoulders), all on the same samples. Within 1 cm, under the 2.5 cm the shoulder
+ * stands over the ground band and the 3 cm the lines stand over the road. [default]
+ */
+const ROAD_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
+const SOLID_SURFACES = 4;
 
 /** Metres from (x, z) to the nearest point of the chunk `key` names (0 inside it). */
 export function chunkDistance(key: string, x: number, z: number): number {
@@ -706,6 +723,11 @@ const keepsClear = (f: FeatureSpan): boolean =>
 /** At least this much room between a feature and any scenery (a palm's crown spreads past its trunk), m. */
 const FEATURE_CLEAR_M = 3;
 /**
+ * Features a house may stand behind (playtest 4 run B, item 3: a pedestrian zone or a board on a city
+ * street's sidewalk cleared its terrace for 40 to 100 m, open lawn): scenery.ts `zoneEdge`.
+ */
+const SIDEWALK_FEATURES = new Set(['roadsideZone', 'billboard']);
+/**
  * Tagged land (playtest 1c): a strip at the road's height from the verge out to this many metres,
  * then a shelf down into the sea. Wide enough for a bait shack back from the road. [default]
  */
@@ -938,7 +960,8 @@ export function buildRoadScene(
   opts: RoadSceneOptions = {},
 ): RoadScene {
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
-  const strip = (kind: Layer): ChunkedStrips => (acc[kind] ??= new ChunkedStrips(chunkKey));
+  const strip = (kind: Layer): ChunkedStrips =>
+    (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   const locator = new EdgeLocator(road);
   // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
@@ -1181,18 +1204,45 @@ export function buildRoadScene(
         skip: (s, span) => inZone(s, span[1]),
       },
     ];
-    for (const surf of surfaces) {
+    const rowOf = (surf: (typeof surfaces)[number], i: number): [Point3, Point3] | null => {
+      const s = sd[i] ?? 0;
+      const c = clips[i];
+      const span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+      if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) return null;
+      return [w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift)];
+    };
+    // Playtest 4 run B (mustFix 1: two real routes drew frames over the triangle budget): the solid
+    // surfaces of a plain road (its lanes and its two shoulders) keep only the samples their shape needs,
+    // the same samples for all of them, so their shared edges still meet vertex for vertex. A road with a
+    // shortcut or a gore keeps every sample: its clipped edges lap another road's by centimetres.
+    const solidRows = surfaces.slice(0, SOLID_SURFACES).map((surf) => sd.map((_, i) => rowOf(surf, i)));
+    const keep = sd.map(() => true);
+    if (!shortcutEdge && gore === undefined) {
+      const breaks: number[] = [];
+      sd.forEach((_, i) => breaks.push((breaks[i - 1] ?? 0) + (overGap(i) ? 1 : 0)));
+      const pattern = sd.map((_, i) => solidRows.map((r) => (r[i] ? '1' : '0')).join(''));
+      const kept = keptSamples(
+        sd.map((_, i) => solidRows.flatMap((r) => r[i] ?? [])),
+        ROAD_SIMPLIFY.tolM,
+        ROAD_SIMPLIFY.maxSpanM,
+        (i, j) => pattern[i] === pattern[j] && breaks[i] === breaks[j],
+      );
+      keep.fill(false);
+      for (const k of kept) keep[k] = true;
+    }
+    for (const [n, surf] of surfaces.entries()) {
       const a = strip(surf.kind);
       a.breakStrip();
-      sd.forEach((s, i) => {
+      sd.forEach((_, i) => {
         if (overGap(i)) a.breakStrip();
-        const c = clips[i];
-        const span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
-        if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) {
+        const solid = n < SOLID_SURFACES;
+        if (solid && !keep[i]) return;
+        const row = solid ? (solidRows[n]?.[i] ?? null) : rowOf(surf, i);
+        if (!row) {
           a.breakStrip();
           return;
         }
-        a.pair(w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift));
+        a.pair(row[0], row[1]);
       });
       a.breakStrip();
     }
@@ -1818,15 +1868,27 @@ export function buildRoadScene(
           const j = Math.min(ss.length - 1, i + 1);
           return Math.min(reachOf[side][i] ?? 0, reachOf[side][j] ?? 0);
         },
-        clear: (s, d, radius) =>
+        clear: (s, d, radius, zones = true) =>
           !(dress.features ?? []).some(
             (f) =>
               keepsClear(f) &&
+              (zones || !SIDEWALK_FEATURES.has(f.kind)) &&
               s >= Math.min(f.s0, f.s1) - Math.max(radius, FEATURE_CLEAR_M) &&
               s <= Math.max(f.s0, f.s1) + Math.max(radius, FEATURE_CLEAR_M) &&
               d >= Math.min(f.d0, f.d1) - Math.max(radius, FEATURE_CLEAR_M) &&
               d <= Math.max(f.d0, f.d1) + Math.max(radius, FEATURE_CLEAR_M),
           ) && !otherRoadAt(s, d, radius),
+        // Playtest 4 run B (item 3): the far edge of the pedestrian zones and boards on a side, for the houses behind them.
+        zoneEdge: (side, s0, s1) => {
+          let far = 0;
+          for (const f of dress.features ?? []) {
+            if (!SIDEWALK_FEATURES.has(f.kind) || Math.max(f.s0, f.s1) < s0 || Math.min(f.s0, f.s1) > s1)
+              continue;
+            if (Math.sign(f.d0 + f.d1) !== side) continue;
+            far = Math.max(far, Math.abs(f.d0), Math.abs(f.d1));
+          }
+          return far;
+        },
         openWater: (s, d) => {
           const p = w(e.index, s, d, 0);
           return locator.at(p.x, p.z, e.index).length === 0 && !onIsland(islands, p.x, p.z);
