@@ -4,7 +4,7 @@
 // shoulder bands, `ridableBandPast` is 0 there), and render used to stand its hydrants, lamps, trees,
 // meters, benches and planters on it with nothing in the sim behind them: a rider rode through them.
 // This module is the one place that decides where each of them stands. Render draws them from it
-// (render/roadside.ts, downtown.ts, waterfront.ts) and the sim meets them from it
+// (render/roadside.ts, downtown.ts, waterfront.ts, mission.ts) and the sim meets them from it
 // (sim/riders/furniture.ts), so what is drawn is what is hit. Everything else render scatters keeps off
 // the ridable bands (render/scenery.ts `ridableBandPast`).
 //
@@ -16,9 +16,12 @@
 // - San Francisco's downtown (render/downtown.ts): the lamps, the planter, hydrant, scooter or board
 //   between each two, the plaza benches and planters, the orb, and the signals at the cross streets;
 // - San Francisco's waterfront (render/waterfront.ts): the promenade's palms, lamps and benches, the
-//   city side's lamps, the ferry plaza's palms and benches, and the cars in the lot by the bridge.
+//   city side's lamps, the ferry plaza's palms and benches, and the cars in the lot by the bridge;
+// - San Francisco's mural district (render/mission.ts): the shopfront sidewalks' kerb lamps and bins.
 // What render could not tell the plan (the drawn land's reach, the scenery and the staged scenes it had
-// placed first) no longer matters on a ridable band: those keep off it now.
+// placed first) no longer matters on a ridable band: those keep off it now. Two render rules the plan
+// reads and render does not: a kerb piece stands only on a paved band (the sidewalk itself), and 8 m
+// clear of a barrier's or a bridge's span (render draws no land there).
 //
 // Each piece has a contact class (docs/content-packs.md, "Contact outcomes"): `solid` (a hydrant, a
 // lamp or a signal post, a tree's trunk, a bench, a planter, the orb, a parked car: heavy and fixed, met

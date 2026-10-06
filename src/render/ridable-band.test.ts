@@ -7,9 +7,11 @@
 // rider is meant to ride through (ferns, salal, sea grape: the understory). The kits' other props and the
 // scenery stand past the band (render/scenery.ts `ridableBandPast`, every band now, not only loose ones).
 //
-// Before this change the same count found the San Francisco kit's hydrants, lamps, meters and trees, the
-// downtown and waterfront furniture, Old Town's planters, the Keys towns' mailboxes and pickets, and the
-// power poles and palms on city kerbs standing on the band with nothing in the sim behind them.
+// Before this change the same count (seed 7, every network) found 7,541 props standing on the band with
+// nothing in the sim behind them: the San Francisco kit's hydrants, lamps, meters, trees, bins, boards and
+// scooters, the downtown, waterfront and mural-alley furniture, Old Town's planters, scooter racks and
+// frangipanis, the Keys towns' mailboxes and pickets, the power poles and palms on city kerbs, Lake
+// Samish's shoulder stumps, a few staged scenes and fence runs, and Portland's bike racks (still `KNOWN`).
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -173,7 +175,9 @@ describe('nothing drawn on a ridable band is a ghost (playtest 4)', () => {
       // The Pacific Northwest's places: its hazards' props are the sim's solid hazards (`threat`).
       for (const i of placeItems(road, SEED, (e, side, s) => built.landReach(e, side, s)))
         if (!i.threat) props.push({ src: 'places', rule: i.kind, edge: i.edge, s: i.s, d: i.d });
-      const scenesKey = Object.keys(sceneFiles).find((k) => k.endsWith(`/scenes/${network.region}.json`));
+      const scenesKey = Object.keys(sceneFiles).find((k) =>
+        k.endsWith(`/scenes/${/regions\/([^/]+)\//.exec(path)?.[1] ?? ''}.json`),
+      );
       const scenes = scenesKey ? sceneFiles[scenesKey] : undefined;
       if (scenes)
         for (const sc of placeScenes({
