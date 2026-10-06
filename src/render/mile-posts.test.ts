@@ -7,7 +7,7 @@
 // the bridge's east end is mile 46.804 (the article "Overseas Highway": "40.011-46.804"); posts stand
 // on the highway's right and not on the old road; each faces the rider coming up to it; each paints its
 // own number; and one cut hides them all.
-import { Matrix4 } from 'three';
+import { Matrix4, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../road';
 import { readGlb } from './glb';
@@ -20,6 +20,7 @@ import {
   placeSurface,
   styleOfSurface,
   TextSurfaceLayer,
+  type Cell,
   type PlacedSurface,
   type SurfaceContext,
 } from './text-surfaces';
@@ -196,10 +197,29 @@ describe('the number seam of the text surfaces', () => {
 
   it('paints each post its own number from one sign, once each', () => {
     const { layer, rec } = make([at(46, 0), at(45, 30), at(44, 60), at(46, 90)], 'MILE {n}');
-    expect(rec.words.slice().sort()).toEqual(['MILE 44', 'MILE 45', 'MILE 46']);
+    // Each distinct number is painted once, as a number board: the small word, then one digit to a row.
+    expect([...layer.painted.keys()].sort()).toEqual([
+      'keys-mile-marker-face#44',
+      'keys-mile-marker-face#45',
+      'keys-mile-marker-face#46',
+    ]);
+    expect(rec.words).toEqual(['MILE', '4', '6', 'MILE', '4', '5', 'MILE', '4', '4']);
     expect(layer.counts().surfaces).toBe(4);
     layer.update(30, 0);
     expect(layer.counts()).toMatchObject({ shown: 4, drawCalls: 1 });
+  });
+
+  it('maps each board onto its own narrow cell: no board samples the empty canvas beside its cell', () => {
+    const { layer } = make([at(46, 0), at(45, 30)], 'MILE {n}');
+    const mesh = layer.group.children[0] as Mesh;
+    const uv = mesh.geometry.getAttribute('uv');
+    const cell = layer.painted.get('keys-mile-marker-face#46')?.cell as Cell;
+    let umax = 0;
+    for (let i = 0; i < uv.count; i++) umax = Math.max(umax, uv.getX(i));
+    // The canvas is 1024 wide and the cell is as wide as the board is to its height: the boards' u stops there.
+    expect(cell.w).toBeLessThan(1024);
+    expect(umax).toBeCloseTo(cell.w / 1024, 3);
+    layer.dispose();
   });
 
   it('one cut of the sign blanks every post, and a post with no number shows the sign as written', () => {

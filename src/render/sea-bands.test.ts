@@ -10,7 +10,7 @@
 import { Color, Scene, type BufferAttribute, type Mesh, type MeshLambertMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
-import { createFlatLook, type MaterialKind } from './look';
+import { CLASSIC_PALETTE, createFlatLook, type MaterialKind } from './look';
 import { createLookSet } from './looks';
 import { buildRoadScene, type RoadDressing } from './road-mesh';
 import { SEA_BANDS, SeaBands, seaDepthAt, seaPlanFor, seaTintAt, type SeaPlan } from './sea-bands';
@@ -297,5 +297,120 @@ describe('a look`s palette still recolours the banded sea', () => {
     other.setupScene(new Scene(), { timeOfDay: 'noon' });
     expect(colourOf(b2)).not.toBe('#ffffff');
     expect(new Color(colourOf(b2)).getHex()).toBe(new Color(colourOf(other.material(water))).getHex());
+  });
+});
+
+// Playtest 4, run B's fix check (punch item 5): "Smathers' inland salt ponds are the sea's colour. At s 1988 the
+// road reads as water on both sides." A pond is a `salt-pond` span of a side (over its `water-shallow`, which is why
+// nothing stands in it): the sea's mesh paints it brackish, paler and greener than any of the sea's bands, with a
+// mud edge by the road and at its ends. What is asked: at the pond the sea side and the pond side read as two
+// different colours, for any look of the sea (shallows, a sand patch, a seagrass patch, the deep); the pond's
+// edge is mud (darker, browner); and the pond is where its tag is and nowhere else (control: without the tag the
+// same spot is sea).
+const BASE_WATER = new Color(CLASSIC_PALETTE.water);
+
+/** CIE L*a*b* of a tint over the water colour (the sea's colour at a point), D65, clamped to what a screen shows. */
+function labOf(tint: readonly number[]): [number, number, number] {
+  const lin = [0, 1, 2].map((k) =>
+    Math.min(1, Math.max(0, [BASE_WATER.r, BASE_WATER.g, BASE_WATER.b][k]! * (tint[k] ?? 1))),
+  );
+  const [r, g, b] = lin as [number, number, number];
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t: number) => (t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+const deltaE = (a: readonly number[], b: readonly number[]) =>
+  Math.hypot((a[0] ?? 0) - (b[0] ?? 0), (a[1] ?? 0) - (b[1] ?? 0), (a[2] ?? 0) - (b[2] ?? 0));
+
+describe('Smathers` salt ponds are not the sea`s colour (run B fix check, punch item 5)', () => {
+  const KW = 'osm-keys-key-west';
+  const BEACH = 'osm-kw-smathers-beach';
+  const POND_S = 2025;
+  const planKW = (without = false) => {
+    const t = track(KW);
+    const dressing = without
+      ? ({
+          ...t.dressing,
+          [BEACH]: {
+            ...(t.dressing[BEACH] as unknown as BakedRoad),
+            tags: ((t.dressing[BEACH] as unknown as BakedRoad).tags as readonly SideTag[]).filter(
+              (x) => x.tag !== 'salt-pond',
+            ),
+          },
+        } as unknown as RoadDressing)
+      : t.dressing;
+    const plan = seaPlanFor(t.road, (e) => dressing[e.id]?.tags);
+    if (!plan) throw new Error('no plan');
+    const edge = t.road.edges[t.road.edgeIndex(BEACH)]!;
+    const half = Math.max(-edge.dMin, edge.dMax);
+    /** The sea's tint at a spot `across` m past the road's edge, on a side (+1 right: inland), at s. */
+    const at = (s: number, side: -1 | 1, across: number, seed = 1) => {
+      const p = t.road.toWorld(edge.index, s, side * (half + 0.6 + across), 0);
+      return seaTintAt(plan, p.x, p.z, seed);
+    };
+    return { plan, at };
+  };
+
+  /** Every colour the sea shows near and far from the Smathers road: shallows, sand and seagrass patches, open water. */
+  function seaColours(): (readonly number[])[] {
+    const { at } = planKW();
+    const out: (readonly number[])[] = [];
+    for (const seed of [1, 2, 3, 4, 5])
+      for (let s = 100; s <= 4600; s += 150)
+        for (const across of [60, 150, 300, 600, 1200]) out.push(at(s, -1, across, seed));
+    // The deep channel, from the Seven Mile's high deck.
+    const sm = planOf('osm-keys-seven-mile');
+    const e = sm.road.edges.find((x) => x.id === 'osm-sm-bridge')!;
+    for (let s = 0; s < e.length; s += 250) {
+      const p = sm.road.toWorld(e.index, s, 12, 0);
+      for (const seed of [1, 2]) out.push(seaTintAt(sm.plan, p.x, p.z, seed));
+    }
+    return out;
+  }
+
+  it('paints the pond a brackish colour no band of the sea comes near (at least 25 on the Lab scale)', () => {
+    const { at } = planKW();
+    const pond = labOf(at(POND_S, 1, 45));
+    const sea = seaColours().map(labOf);
+    const nearest = Math.min(...sea.map((c) => deltaE(c, pond)));
+    print(
+      `the pond at s ${POND_S}, 45 m in: Lab ${pond.map((v) => v.toFixed(0)).join(', ')}; the nearest of ${sea.length} sea colours is ${nearest.toFixed(0)} away`,
+    );
+    expect(nearest).toBeGreaterThanOrEqual(25);
+  });
+
+  it('the measure can tell: with the salt-pond tag taken off, the same spot is a colour of the sea (control)', () => {
+    const { at } = planKW(true);
+    const spot = labOf(at(POND_S, 1, 45));
+    const sea = seaColours().map(labOf);
+    expect(Math.min(...sea.map((c) => deltaE(c, spot)))).toBeLessThan(25);
+  });
+
+  it('has a mud edge: by the road, and at the pond`s end, darker than its middle', () => {
+    const { at } = planKW();
+    const middle = labOf(at(POND_S, 1, 45));
+    const byRoad = labOf(at(POND_S, 1, 1));
+    const atEnd = labOf(at(1700 + 2, 1, 45));
+    expect(byRoad[0], 'darker by the road').toBeLessThan(middle[0] - 5);
+    expect(atEnd[0], 'darker at the end').toBeLessThan(middle[0] - 5);
+  });
+
+  it('is on the inland side of the tagged spans only', () => {
+    const { at } = planKW();
+    const pond = labOf(at(POND_S, 1, 45));
+    const sea = seaColours().map(labOf);
+    // The sea side of the same stretch, and the inland side where no pond is tagged (s 1400, s 2600): the sea's.
+    for (const [s, side] of [
+      [POND_S, -1],
+      [1400, 1],
+      [2600, 1],
+    ] as const)
+      expect(
+        Math.min(...sea.map((c) => deltaE(c, labOf(at(s, side, 45))))),
+        `s ${s}, side ${side}`,
+      ).toBeLessThan(25);
+    expect(deltaE(labOf(at(POND_S, -1, 45)), pond)).toBeGreaterThan(25);
   });
 });

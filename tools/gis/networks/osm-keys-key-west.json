@@ -181,7 +181,10 @@
           "sideRuns": [
             { "tag": "water-shallow", "side": "right", "s0": 700, "s1": 1250 },
             { "tag": "water-shallow", "side": "right", "s0": 1700, "s1": 2350 },
-            { "tag": "water-shallow", "side": "right", "s0": 3000, "s1": 3600 }
+            { "tag": "water-shallow", "side": "right", "s0": 3000, "s1": 3600 },
+            { "tag": "salt-pond", "side": "right", "s0": 700, "s1": 1250 },
+            { "tag": "salt-pond", "side": "right", "s0": 1700, "s1": 2350 },
+            { "tag": "salt-pond", "side": "right", "s0": 3000, "s1": 3600 }
           ],
           "features": [
             {

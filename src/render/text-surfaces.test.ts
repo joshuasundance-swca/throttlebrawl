@@ -10,6 +10,7 @@ import { createFlatLook } from './look';
 import { bakeLandmarkKit, bakeModel, textSurfaceItemId, type TextSurface } from './models';
 import { readAsset } from './model-files.test-util';
 import {
+  DIGIT_CAP_EM,
   layoutRows,
   paintSurface,
   placeSurface,
@@ -352,5 +353,70 @@ describe('the layer', () => {
     stdout.write(
       '[examined] text surfaces: the roof sign listed in view, picked under a press, blank when cut\n',
     );
+  });
+});
+
+describe('a number board (the Keys` mile posts, playtest 4 run B fix check, punch item 4)', () => {
+  const style = styleOfSurface('keys_mile_marker_face');
+  // The mile post's board is 0.4 by 0.7 m: its cell is as tall as PORTRAIT_H and as narrow as that.
+  const { rows } = layoutRows([{ id: 'm', text: 'MILE 42', style, aspect: 0.4 / 0.7 }]);
+  const cell = rows[0]?.cell as Cell;
+
+  it('gives a tall board a narrow cell, so seven posts do not stack the canvas past a phone`s texture size', () => {
+    expect(cell.w).toBeLessThan(1024);
+    expect(cell.w / cell.h).toBeCloseTo(0.4 / 0.7, 2);
+    const seven = layoutRows(
+      Array.from({ length: 7 }, (_, i) => ({
+        id: `m${i}`,
+        text: `MILE ${40 + i}`,
+        style,
+        aspect: 0.4 / 0.7,
+      })),
+    );
+    // Control: a wide board keeps the whole canvas width, as before.
+    const wide = layoutRows([{ id: 'w', text: 'W', style, aspect: 5 }]);
+    expect(wide.rows[0]?.cell.w).toBe(1024);
+    stdout.write(
+      `[examined] seven mile boards: a ${seven.width} x ${seven.height} px canvas (4096 is the least a phone takes)\n`,
+    );
+    expect(seven.height).toBeLessThanOrEqual(4096);
+  });
+
+  it('sets the word small over the number, one big digit to a row, all inside the cell', () => {
+    const { ctx, calls } = recorder();
+    const fit = paintSurface(ctx, cell, style, 'MILE 42');
+    expect(calls.map((c) => c.text)).toEqual(['MILE', '4', '2']);
+    const [word, a, b] = calls;
+    expect(a?.size).toBe(b?.size);
+    expect(a?.size, 'the number is the post, the word is small').toBeGreaterThan((word?.size ?? 0) * 2.5);
+    expect(fit.size).toBe(a?.size);
+    // The word is above the digits, and the digits run top to bottom.
+    expect(word?.y).toBeLessThan(a?.y ?? 0);
+    expect(a?.y).toBeLessThan(b?.y ?? 0);
+    // Every line, glyph tops to baselines, is inside the cell; the lines are centred across it.
+    for (const c of calls) {
+      expect(c.y - c.size * DIGIT_CAP_EM).toBeGreaterThanOrEqual(cell.y);
+      expect(c.y).toBeLessThanOrEqual(cell.y + cell.h);
+      expect(c.x).toBe(cell.x + cell.w / 2);
+      expect(c.fill).toBe('#ffffff');
+    }
+    expect(fit.width).toBeLessThanOrEqual(cell.w);
+    // Control: 'MILE 42' set across the cell as one line has far smaller letters.
+    const oneLine = recorder();
+    const old = paintSurface(oneLine.ctx, cell, { ...style, stack: false }, 'MILE 42');
+    expect(a?.size).toBeGreaterThan(old.size * 4);
+  });
+
+  it('paints a board with no number at the end of its words as one line, as before', () => {
+    const { ctx, calls } = recorder();
+    paintSurface(ctx, cell, style, 'MILEPOST');
+    expect(calls.map((c) => c.text)).toEqual(['MILEPOST']);
+  });
+
+  it('keeps a long number whole: three digits shrink to their rows', () => {
+    const { ctx, calls } = recorder();
+    paintSurface(ctx, cell, style, 'MILE 108');
+    expect(calls.map((c) => c.text)).toEqual(['MILE', '1', '0', '8']);
+    for (const c of calls) expect(c.y).toBeLessThanOrEqual(cell.y + cell.h);
   });
 });

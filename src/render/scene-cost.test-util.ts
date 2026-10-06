@@ -330,6 +330,8 @@ export interface StillScene {
   update(x: number, z: number, ax: number, az: number): void;
   /** What the renderer would draw through this frustum, by part. */
   count(frustum: Frustum): Map<string, Load>;
+  /** Every still layer's root as it stands now (the backdrop's mesh last). */
+  roots(): Object3D[];
 }
 
 /** Every still layer the renderer builds for a network, as it builds them (render/index.ts). */
@@ -513,6 +515,11 @@ export async function stillSceneOf(
       // The backdrop is one mesh the renderer never culls (its vertex shader moves everything).
       if (backdrop) drawn(backdrop.mesh, frustum, parts);
       return parts;
+    },
+    roots() {
+      const out = groups().filter((g): g is Object3D => !!g);
+      if (backdrop) out.push(backdrop.mesh);
+      return out;
     },
   };
   return { road, scene };

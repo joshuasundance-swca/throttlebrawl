@@ -9,14 +9,22 @@
 // - with the tag taken off the road, or the model not loaded, or on another Keys network, none stand;
 // - the sign is a board slot on that road, its words an invented deadpan sign in the region file, before them;
 // - they draw in the road's own roadside stretches: no stretch and no mesh is added.
-import { Mesh } from 'three';
+import { BufferGeometry, Color, Float32BufferAttribute, Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
-import { createFlatLook } from './look';
-import { bakeRepoModel } from './model-files.test-util';
+import { readGlb } from './glb';
+import { CLASSIC_PALETTE, createFlatLook } from './look';
+import { bakeRepoModel, readAsset } from './model-files.test-util';
 import { modelKindsFor } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
-import { KEYS_KIT, RoadsideLayer, scatterRoadside, type RoadsideInput, type RoadsideItem } from './roadside';
+import {
+  DEER_SIGHT_M,
+  KEYS_KIT,
+  RoadsideLayer,
+  scatterRoadside,
+  type RoadsideInput,
+  type RoadsideItem,
+} from './roadside';
 import { ridableBandPast, type SideTag } from './scenery';
 
 const look = createFlatLook();
@@ -59,6 +67,8 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
 
 const keysRoadside = await bakeRepoModel('keysRoadside');
 const keysIdentity = await bakeRepoModel('keysIdentity');
+/** The file's own scene, before the game bakes and finishes it (the control for the coat). */
+const rawDeer = readGlb(await readAsset('models/scenery/keys-identity', 'glb'));
 
 /** The real kit scattered on a network, with the deer model loaded unless `models` says otherwise. */
 function scene(
@@ -201,7 +211,7 @@ describe.each(SEEDS)('the Key deer read at speed, seed %i', (seed) => {
     expect(1.1 * height(0)).toBeLessThan(1.8);
   });
 
-  it('stand at the verge`s outer edge: within 1.5 m of the ridable ground, and never on it or the lanes', () => {
+  it('stand at the verge`s outer edge: within 2.5 m of the ridable ground, and never on it or the lanes', () => {
     const half = Math.max(-edge.dMin, edge.dMax);
     for (const d of deer) {
       const side = Math.sign(d.d) as -1 | 1;
@@ -209,8 +219,10 @@ describe.each(SEEDS)('the Key deer read at speed, seed %i', (seed) => {
       expect(Math.abs(d.d), `deer at s ${d.s.toFixed(0)}: past the ridable ground`).toBeGreaterThanOrEqual(
         reach,
       );
+      // A herd leans toward the road (the first deer stands up to 2.5 m past it): a row along the verge hides
+      // one deer behind the next from the road, a diagonal does not.
       expect(Math.abs(d.d) - reach, `deer at s ${d.s.toFixed(0)}: close to the verge`).toBeLessThanOrEqual(
-        1.5,
+        2.5,
       );
     }
   });
@@ -228,7 +240,7 @@ describe.each(SEEDS)('the Key deer read at speed, seed %i', (seed) => {
     expect(herdsOf(grazersOnly).length).toBeLessThan(herds.length);
   });
 
-  it('moves nothing else: the other props stand where they did without the deer (control: the tag taken off)', () => {
+  it('moves little else: the props that differ from the scene without the deer are in the deer`s lanes (control: the tag taken off)', () => {
     const { dressing } = track(BAHIA);
     const stripped = {
       ...dressing,
@@ -240,7 +252,97 @@ describe.each(SEEDS)('the Key deer read at speed, seed %i', (seed) => {
     const rest = (items: readonly RoadsideItem[]) => items.filter((it) => !it.rule.startsWith('key-deer'));
     const without = scatterRoadside(scene(BAHIA, seed, { dressing: stripped }).input);
     expect(deerOf(without)).toEqual([]);
-    expect(rest(scatterRoadside(input))).toEqual(rest(without));
+    const key = (it: RoadsideItem) => `${it.rule}|${it.edge}|${it.s.toFixed(3)}|${it.d.toFixed(3)}`;
+    const now = new Map(rest(scatterRoadside(input)).map((it) => [key(it), it]));
+    const was = new Map(rest(without).map((it) => [key(it), it]));
+    const changed = [
+      ...[...was].filter(([k]) => !now.has(k)).map(([, it]) => it),
+      ...[...now].filter(([k]) => !was.has(k)).map(([, it]) => it),
+    ];
+    // The deer claim their ground first (their sight lanes keep sea grape out): a prop that is gone, or that took
+    // the room one left, is within a lane's reach of a deer, on its side, and nowhere else.
+    for (const it of changed)
+      expect(
+        deer.some((d) => Math.sign(d.d) === Math.sign(it.d) && Math.abs(d.s - it.s) <= DEER_SIGHT_M + 2),
+        `${it.rule} at s ${it.s.toFixed(0)} is near a deer`,
+      ).toBe(true);
+    print(
+      `[examined] seed ${seed}: ${changed.length} of ${was.size} other props differ from the scene without deer, all within ${DEER_SIGHT_M + 2} m of a deer`,
+    );
+    expect(changed.length, 'the lanes are a small share of the verge').toBeLessThan(was.size * 0.1);
+    // The measure can see a change: the lanes do take some sea grape's place.
+    expect(changed.length, 'the lanes do move some props').toBeGreaterThan(0);
+  });
+});
+
+// Run B's fix check (punch item 6): "the Key deer are small brown shapes ... brown on the sand". The coat is judged
+// against the ground it stands on: the Keys' sand (`CLASSIC_PALETTE.land`, the land colour the region's palette
+// leaves alone), by the contrast ratio of the two colours' luminance (WCAG's, linear light), over the deer's
+// surface. A coat part under 3:1 (the line for a graphic that must be told apart) melts into the sand; the file's
+// deer have a tan belly and legs of the sand's own luminance, which the game's finish deepens.
+const SAND = new Color(CLASSIC_PALETTE.land);
+const lum = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+const contrastWith = (c: Color, ground: Color) => {
+  const [hi, lo] = [lum(c), lum(ground)].sort((a, b) => b - a);
+  return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+};
+const MIN_COAT_CONTRAST = 3;
+const MIN_SHARE_READING = 0.9;
+
+/** The share of a geometry's vertices whose vertex colour reads against the sand. */
+function readingShare(g: BufferGeometry, ground: Color = SAND): number {
+  const col = g.getAttribute('color');
+  let reads = 0;
+  const c = new Color();
+  for (let i = 0; i < col.count; i++) {
+    c.setRGB(col.getX(i), col.getY(i), col.getZ(i));
+    if (contrastWith(c, ground) >= MIN_COAT_CONTRAST) reads++;
+  }
+  return reads / col.count;
+}
+
+describe('the Key deer`s coat against the sand (run B fix check, punch item 6)', () => {
+  it.each([
+    ['buck', 0, 'key_deer_buck'],
+    ['doe', 1, 'key_deer_doe'],
+  ] as const)(
+    `the %s's coat reads against the sand: at least ${MIN_SHARE_READING * 100} % of it is over ${MIN_COAT_CONTRAST}:1`,
+    (name, variant, node) => {
+      const g = keysIdentity.variants[variant]!;
+      const share = readingShare(g);
+      // Control: the file's own deer (their materials, before the game's finish) fall under the line.
+      const raw = rawDeer.getObjectByName(node)!;
+      let rawReads = 0;
+      let rawN = 0;
+      raw.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh) return;
+        const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        const n = mesh.geometry.getIndex()?.count ?? mesh.geometry.getAttribute('position').count;
+        rawN += n;
+        if (contrastWith((mat as unknown as { color: Color }).color, SAND) >= MIN_COAT_CONTRAST)
+          rawReads += n;
+      });
+      print(
+        `[examined] the ${name}: ${(share * 100).toFixed(0)} % of the finished coat is over ${MIN_COAT_CONTRAST}:1 against the sand; the file's own ${((100 * rawReads) / rawN).toFixed(0)} %`,
+      );
+      expect(share).toBeGreaterThanOrEqual(MIN_SHARE_READING);
+      expect(rawReads / rawN, 'the file`s own coat is under the line').toBeLessThan(MIN_SHARE_READING);
+    },
+  );
+
+  it('the measure can tell: a sand-coloured coat reads at 0 %, a black one at 100 %', () => {
+    const g = keysIdentity.variants[0]!.clone();
+    const n = g.getAttribute('color').count;
+    const paint = (c: Color) =>
+      g.setAttribute(
+        'color',
+        new Float32BufferAttribute(Array.from({ length: n }, () => [c.r, c.g, c.b]).flat(), 3),
+      );
+    paint(SAND);
+    expect(readingShare(g)).toBe(0);
+    paint(new Color('#101010'));
+    expect(readingShare(g)).toBe(1);
   });
 });
 

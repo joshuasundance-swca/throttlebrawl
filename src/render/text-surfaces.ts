@@ -55,6 +55,11 @@ export interface SurfaceStyle {
   fg: string;
   /** A glow round the letters (neon), px at the canvas's own scale (a share of the letter height). */
   glow: string | null;
+  /**
+   * A number board (a mile post's): the words' last token is the number, set as a column of big digits under
+   * a small word, so a tall narrow board gives the number its whole height. Without it: one line.
+   */
+  stack?: boolean;
 }
 
 /**
@@ -72,7 +77,7 @@ const GATE_PLAQUE: SurfaceStyle = { bg: '#173f33', fg: '#ecd079', glow: null };
  * dark chalk read as a dark stub). The green is the model's own `sign_face` (#276548), lifted a little so the board
  * keeps its colour at 36 m against the sea and the sky. [default]
  */
-const MILE_MARKER: SurfaceStyle = { bg: '#2d7d56', fg: '#ffffff', glow: null };
+const MILE_MARKER: SurfaceStyle = { bg: '#2d7d56', fg: '#ffffff', glow: null, stack: true };
 const STYLES: Readonly<Record<string, SurfaceStyle>> = {
   pdx_roof_sign_words: NEON,
   toll_gantry_sign: HIGHWAY,
@@ -233,9 +238,55 @@ export interface Cell {
 /** The cell's padding (a share of its height): the letters stay inside it. */
 const PAD = 0.12;
 
+/** A bold digit's height as a share of its font size (cap height; a little under a real font's, so tests are cautious). */
+export const DIGIT_CAP_EM = 0.72;
+
+/** A number board: the small word's band, the padding round the column, and how much of its row a digit fills (shares of the cell's height). */
+const STACK = { word: 0.12, pad: 0.05, fill: 0.86 } as const;
+
 /**
- * Paints `text` on one line, as large as fits the cell, in the style's colours. Returns the letters'
- * size and width in px (tests read it: the words must stay inside the cell).
+ * A number board (playtest 4, run B's fix check, punch item 4: "MILE 4x" on one line was a white smudge): the
+ * word small along the top and the number below it, one big digit to a row, so the number is as tall as the
+ * board lets it be. The cell is already filled with the board's colour. Returns the digits' size and the widest
+ * line, px.
+ */
+function paintStack(
+  ctx: SurfaceContext,
+  cell: Cell,
+  style: SurfaceStyle,
+  word: string,
+  digits: string,
+  measure: MeasureText,
+): { size: number; width: number } {
+  const pad = Math.round(cell.h * STACK.pad);
+  const wordH = word ? Math.round(cell.h * STACK.word) : 0;
+  const maxW = cell.w - pad * 2;
+  const rows = [...digits];
+  const rowH = (cell.h - pad * 2 - wordH) / rows.length;
+  // A digit is as tall as `fill` of its row, unless the board is too narrow for it.
+  let size = Math.floor((rowH * STACK.fill) / DIGIT_CAP_EM);
+  for (const d of rows) size = Math.min(size, fitLine(measure, d, maxW, size, 8).size);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = style.fg;
+  let widest = 0;
+  const line = (t: string, fontSize: number, centreY: number) => {
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.fillText(t, cell.x + cell.w / 2, centreY + (DIGIT_CAP_EM / 2) * fontSize);
+    widest = Math.max(widest, measure(t, fontSize));
+  };
+  if (word) {
+    const small = fitLine(measure, word, maxW, Math.floor((wordH * STACK.fill) / DIGIT_CAP_EM), 6).size;
+    line(word, small, cell.y + pad + wordH / 2);
+  }
+  rows.forEach((d, i) => line(d, size, cell.y + pad + wordH + rowH * (i + 0.5)));
+  return { size, width: widest };
+}
+
+/**
+ * Paints `text` on one line, as large as fits the cell, in the style's colours; a `stack` style with a number
+ * at the end of its words paints them as a number board instead. Returns the letters' size and width in px
+ * (tests read it: the words must stay inside the cell).
  */
 export function paintSurface(
   ctx: SurfaceContext,
@@ -249,6 +300,8 @@ export function paintSurface(
 ): { size: number; width: number } {
   ctx.fillStyle = style.bg;
   ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+  const numbered = style.stack ? /^(.*?)\s*(\d+)$/.exec(text.trim()) : null;
+  if (numbered) return paintStack(ctx, cell, style, numbered[1] ?? '', numbered[2] ?? '', measure);
   const pad = Math.round(cell.h * PAD);
   const fit = fitLine(measure, text, cell.w - pad * 2, Math.round(cell.h - pad * 2), 8);
   ctx.textAlign = 'center';
@@ -269,6 +322,8 @@ const ALTERNATES: readonly number[] = [2, 3, 4, 5];
 
 /** The shared canvas's width, px. */
 const CANVAS_W = 1024;
+/** A tall board's cell height, px (a digit is a third of it: 170 px, far more than the screen shows of a post). */
+const PORTRAIT_H = 512;
 /** The gap between two cells, px (so a mipmap does not bleed one text into the next). */
 const GAP = 8;
 
@@ -290,8 +345,13 @@ export function layoutRows(
   const rows: Row[] = [];
   let y = GAP;
   for (const it of items) {
-    const h = Math.max(48, Math.round(CANVAS_W / Math.max(1, it.aspect)));
-    rows.push({ id: it.id, text: it.text, style: it.style, cell: { x: 0, y, w: CANVAS_W, h } });
+    // A tall board (a mile post's) gets a cell as tall as PORTRAIT_H and as narrow as its proportions: the
+    // full-width cell the wide boards take would run 1,800 px down the canvas, a post's worth each, and
+    // seven posts would stack the canvas past what a phone's GPU takes as a texture.
+    const tall = it.aspect < 1;
+    const h = tall ? PORTRAIT_H : Math.max(48, Math.round(CANVAS_W / it.aspect));
+    const w = tall ? Math.max(48, Math.round(PORTRAIT_H * it.aspect)) : CANVAS_W;
+    rows.push({ id: it.id, text: it.text, style: it.style, cell: { x: 0, y, w, h } });
     y += h + GAP;
   }
   return { rows, width: CANVAS_W, height: y };
@@ -401,6 +461,12 @@ export class TextSurfaceLayer {
     if (canvas) {
       for (const r of rows) {
         const fit = paintSurface(canvas.ctx, r.cell, r.style, r.text);
+        if (r.cell.w < width) {
+          // A tall board's cell is narrower than the canvas: the rest of its row is the board's colour, so a
+          // mipmap or a filtered edge reads board and not the canvas's empty black.
+          canvas.ctx.fillStyle = r.style.bg;
+          canvas.ctx.fillRect(r.cell.w, r.cell.y, width - r.cell.w, r.cell.h);
+        }
         this.painted.set(r.id, { ...fit, cell: r.cell });
       }
       this.texture = canvas.texture;
@@ -416,7 +482,10 @@ export class TextSurfaceLayer {
       const v0 = pos.length / 3;
       pos.push(...s.positions);
       for (let i = 0; i < s.uvs.length; i += 2) {
-        uv.push(s.uvs[i] ?? 0, (row.cell.y + (s.uvs[i + 1] ?? 0) * row.cell.h) / height);
+        uv.push(
+          (row.cell.x + (s.uvs[i] ?? 0) * row.cell.w) / width,
+          (row.cell.y + (s.uvs[i + 1] ?? 0) * row.cell.h) / height,
+        );
       }
       this.shown.push({ surface: s, ref: item.ref, text, v0, n: s.positions.length / 3 });
     }
