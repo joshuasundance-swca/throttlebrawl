@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { screenFitFindings } from '../../src/ui/screen-fit';
 import {
   cardFindings,
+  inViewFindings,
   TRANSIENT_CARDS,
   type PaintedCard,
   type PaintedThing,
@@ -24,6 +26,18 @@ import { fastForwardDone, frames } from './lockstep';
 // negative controls put a card back where it used to be and the same check must name what it covers.
 // A last test fails a region's map file for real and checks the did-not-load card's words, its Retry
 // wait, and that it goes with its screen and with a busy "Loading ..." line.
+//
+// Polish batch E's check added three things. A raised card is IN VIEW, not only clear of what is
+// under it: each card is raised again with its screen scrolled to the end and to the top, and
+// `inViewFindings` must find it on the screen (mustFix 1: a failed career ride raised the card 420 to
+// 590 px above the top of a career scrolled down to the event); a negative control scrolls it away and
+// the judge must say so, and a real failed ride on a scrolled career is checked too. Each screen
+// fits: `screenFitFindings` names a control, title or line of words that leaves the screen sideways,
+// and the menu's footer drawn over anything (punch item 5: at 568x320, largest Text, the lower row was
+// cut at both edges, and the scrolled menu's footer lay over Start career and Race), with a negative
+// control for each. And the real-failure tests check the wait the loader keeps (punch item 2), a 404's
+// Reload (punch item 3), the word in the route row's place (punch item 1) and the boot notice carried
+// to the menu (punch item 4).
 // `window.__reloadOffer = true` (src/app/index.ts, `testReloadOffer`) stands in for a deploy.
 
 type TestWindow = Window & {
@@ -52,12 +66,19 @@ type ScreenName = (typeof TRANSIENT_CARDS)[number]['screens'][number];
 const flowCardsOn = (screen: ScreenName): string[] =>
   TRANSIENT_CARDS.filter((c) => c.place === 'flow' && c.screens.includes(screen)).map((c) => c.id);
 
-/** A painted thing, and the transient card it belongs to (null when none): a card is never judged against itself. */
-type Measured = PaintedThing & { owner: string | null };
+/**
+ * A painted thing, the transient card it belongs to (null when none: a card is never judged against
+ * itself), and whether it is the footer's (the footer is never judged against its own words).
+ */
+type Measured = PaintedThing & { owner: string | null; inFooter: boolean };
 
 interface Painted {
   cards: Omit<PaintedCard, 'place'>[];
   things: Measured[];
+  /** The same things cut only by the clipping boxes inside the screen, not by the screen itself. */
+  wide: PaintedThing[];
+  /** The footer's lines of words as painted now. */
+  footer: PaintedThing['box'][];
   words: number;
   controls: number;
   boxes: number;
@@ -87,10 +108,12 @@ async function paint(
         `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''} "${(e.textContent ?? '').trim().slice(0, 24)}"`;
       type B = ReturnType<typeof boxOf>;
       // Only what is painted counts: a box is cut to every clipping box around it up to the screen (a
-      // road chip scrolled out of its row, a blurb's clamped lines, the screen's own scroll).
-      const painted = (b: B, from: Element | null): B | null => {
+      // road chip scrolled out of its row, a blurb's clamped lines, the screen's own scroll). `inside`
+      // stops below the screen: what the screen cuts off at its sides is what the fit check looks for.
+      const painted = (b: B, from: Element | null, inside = false): B | null => {
         let out = b;
         for (let p = from; p; p = p.parentElement) {
+          if (inside && p === screen) break;
           const cs = getComputedStyle(p);
           if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
             const r = p.getBoundingClientRect();
@@ -143,8 +166,11 @@ async function paint(
         kind: 'control' | 'heading' | 'card' | 'words' | 'hud';
         box: ReturnType<typeof boxOf>;
         owner: string | null;
+        inFooter: boolean;
       };
       const things: Thing[] = [];
+      const wide: Omit<Thing, 'owner' | 'inFooter'>[] = [];
+      const footer: B[] = [];
       let words = 0;
       let controls = 0;
       let boxes = 0;
@@ -160,44 +186,55 @@ async function paint(
             kind: 'hud',
             box: boxOf(e.getBoundingClientRect()),
             owner: null,
+            inFooter: false,
           });
         }
-        return { cards, things, words, controls, boxes };
+        return { cards, things, wide, footer, words, controls, boxes };
       }
-      if (!screen) return { cards, things, words, controls, boxes };
+      if (!screen) return { cards, things, wide, footer, words, controls, boxes };
       for (const e of screen.querySelectorAll<HTMLElement>('*')) {
         if (!seen(e)) continue;
         const owner = ownerOf(e);
-        const own = painted(boxOf(e.getBoundingClientRect()), e.parentElement);
-        if (own && e.matches('button, input, select, textarea, a, summary')) {
-          controls++;
-          things.push({ name: `the control ${nameOf(e)}`, kind: 'control', box: own, owner });
+        const inFooter = !!e.closest('.footer');
+        const rect = boxOf(e.getBoundingClientRect());
+        const own = painted(rect, e.parentElement);
+        const across = painted(rect, e.parentElement, true);
+        if (e.matches('button, input, select, textarea, a, summary')) {
+          const name = `the control ${nameOf(e)}`;
+          if (across) wide.push({ name, kind: 'control', box: across });
+          if (own) {
+            controls++;
+            things.push({ name, kind: 'control', box: own, owner, inFooter });
+          }
         }
         // A title's box and each card's box: a rotated, shadowed title or a dashed card under a card is
         // covered even where the box has no text of its own.
-        if (own && e.matches('.title, h1, h2, h3, .card, .career-tally, .career-news')) {
-          boxes++;
+        if (e.matches('.title, h1, h2, h3, .card, .career-tally, .career-news')) {
           const kind = e.matches('.card') ? 'card' : 'heading';
-          things.push({
-            name: `${kind === 'card' ? 'the card' : 'the title'} ${nameOf(e)}`,
-            kind,
-            box: own,
-            owner,
-          });
+          const name = `${kind === 'card' ? 'the card' : 'the title'} ${nameOf(e)}`;
+          if (across) wide.push({ name, kind, box: across });
+          if (own) {
+            boxes++;
+            things.push({ name, kind, box: own, owner, inFooter });
+          }
         }
         for (const n of e.childNodes) {
           if (n.nodeType !== Node.TEXT_NODE || (n.textContent ?? '').trim() === '') continue;
           const range = document.createRange();
           range.selectNodeContents(n);
           for (const r of range.getClientRects()) {
+            const name = `the words of ${nameOf(e)}`;
+            const lineAcross = painted(boxOf(r), e, true);
+            if (lineAcross) wide.push({ name, kind: 'words', box: lineAcross });
             const line = painted(boxOf(r), e);
             if (!line) continue;
             words++;
-            things.push({ name: `the words of ${nameOf(e)}`, kind: 'words', box: line, owner });
+            things.push({ name, kind: 'words', box: line, owner, inFooter });
+            if (inFooter) footer.push(line);
           }
         }
       }
-      return { cards, things, words, controls, boxes };
+      return { cards, things, wide, footer, words, controls, boxes };
     },
     { sel: screenSel, ids: [...cardIds], race },
   );
@@ -210,6 +247,12 @@ function judge(p: Painted, viewport: { width: number; height: number }): string[
     const others: PaintedThing[] = p.things.filter((t) => t.owner !== c.id);
     return cardFindings({ ...c, place }, others, viewport);
   });
+}
+
+/** What does not fit the screen painted now: a thing off its sides, the footer over anything. */
+function fit(p: Painted, viewport: { width: number; height: number }): string[] {
+  const painted: PaintedThing[] = p.things.filter((t) => !t.inFooter);
+  return screenFitFindings({ wide: p.wide, painted, footer: p.footer }, viewport);
 }
 
 /** The scroll room a screen has (0 where it all fits). */
@@ -273,6 +316,53 @@ async function raise(page: Page, ids: readonly string[]) {
   }
 }
 
+/**
+ * Each card, raised again with its screen scrolled to the end and to the top, comes up in view: the
+ * screen brings it there (polish batch E's check, mustFix 1).
+ */
+async function checkInView(
+  page: Page,
+  screenSel: string,
+  cardIds: readonly string[],
+  size: { name: string; width: number; height: number },
+  label: string,
+) {
+  const room = await scrollRoom(page, screenSel);
+  for (const id of cardIds) {
+    for (const at of room > 0 ? [1, 0] : [0]) {
+      await scrollTo(page, screenSel, room * at);
+      await raise(page, [id]);
+      const p = await paint(page, screenSel, [id]);
+      const card = p.cards[0];
+      const found = card ? inViewFindings(id, card.box, size) : [`${id} was not measured`];
+      const where = `${label} at ${size.name}: ${id} raised with the screen scrolled ${at * 100}% of ${Math.round(room)} px`;
+      console.log(`${where}: box ${JSON.stringify(card?.box)}; findings ${JSON.stringify(found)}`);
+      expect.soft(found, where).toEqual([]);
+    }
+  }
+}
+
+/** Every thing on `screenSel` fits the screen at every size and scroll position (no transient card needed). */
+async function checkFit(page: Page, screenSel: string, label: string) {
+  for (const size of SIZES) {
+    await leaveFullscreen(page);
+    await page.setViewportSize({ width: size.width, height: size.height });
+    const room = await scrollRoom(page, screenSel);
+    for (const at of room > 0 ? [0, 0.5, 1] : [0]) {
+      await scrollTo(page, screenSel, room * at);
+      const where = `${label} at ${size.name}, scrolled ${at * 100}% of ${Math.round(room)} px`;
+      const p = await paint(page, screenSel, []);
+      const found = fit(p, size);
+      console.log(
+        `${where}: ${p.wide.length} things across, ${p.footer.length} footer lines; findings ${JSON.stringify(found)}`,
+      );
+      expect.soft(p.wide.length, `${where}: things on the screen were examined`).toBeGreaterThan(0);
+      expect.soft(found, where).toEqual([]);
+    }
+    await scrollTo(page, screenSel, 0);
+  }
+}
+
 /** Every card in `cardIds` is clear of everything on `screenSel` at every size and scroll position. */
 async function checkScreen(
   page: Page,
@@ -289,9 +379,9 @@ async function checkScreen(
       await scrollTo(page, screenSel, room * at);
       const where = `${label} at ${size.name}, scrolled ${at * 100}% of ${Math.round(room)} px`;
       const p = await paint(page, screenSel, cardIds);
-      const found = judge(p, size);
+      const found = [...judge(p, size), ...fit(p, size)];
       console.log(
-        `${where}: cards ${cardIds.join(', ')}; ${p.words} words, ${p.controls} controls, ${p.boxes} boxes; findings ${JSON.stringify(found)}`,
+        `${where}: cards ${cardIds.join(', ')}; ${p.words} words, ${p.controls} controls, ${p.boxes} boxes, ${p.wide.length} across; findings ${JSON.stringify(found)}`,
       );
       // Soft, so one run names every screen and size that is wrong, not only the first.
       // Only what is painted is examined, so scrolled to the middle of a long result it may be words alone.
@@ -309,6 +399,8 @@ async function checkScreen(
     }
     const cardButtons = cardIds.map((id) => `#${id} button`);
     await expectReachable(page, reachable, cardButtons, `${label} at ${size.name}`);
+    await checkInView(page, screenSel, cardIds, size, label);
+    await scrollTo(page, screenSel, 0);
   }
 }
 
@@ -372,7 +464,14 @@ for (const textSize of TEXT_SIZES) {
     await page.setViewportSize({ width: 915, height: 412 });
     await page.locator('#start-screen .title').click();
     await expect(page.locator('#menu-race')).toBeVisible();
-    await expect(page.locator('#ui-notice'), 'the notice went with the start screen').toBeHidden();
+    // A notice on the start screen is carried to the menu the tap opens (polish batch E, punch 4), and
+    // sits first in the menu's column.
+    await expect(page.locator('#ui-notice'), 'the notice is carried to the menu').toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        document.querySelector('#menu .menu-main')?.contains(document.getElementById('ui-notice')),
+      ),
+    ).toBe(true);
 
     // The menu: what's new, the did-not-load card and a notice together.
     await raise(page, flowCardsOn('menu'));
@@ -408,6 +507,42 @@ for (const textSize of TEXT_SIZES) {
       expect(old).toContain('load-retry is fixed, so it can stay over content that scrolls');
       expect(old.filter((f) => f.startsWith('load-retry covers'))).not.toEqual([]);
       await oldPlace.evaluate((e) => (e as HTMLElement).remove());
+
+      // Negative control 3: a menu column wider than the screen (as the did-not-load card's one-line
+      // width made it at 568x320 and the largest Text size): the fit check names what it cuts off.
+      expect(fit(await paint(page, '#menu', []), { width: 568, height: 320 }), 'the menu fits').toEqual([]);
+      const wideMenu = await page.addStyleTag({
+        content: '#ui #menu .menu-main { min-width: 130vw !important; max-width: none !important; }',
+      });
+      const cut = fit(await paint(page, '#menu', []), { width: 568, height: 320 });
+      console.log(`negative control 3: ${JSON.stringify(cut)}`);
+      expect(cut.filter((f) => f.endsWith('leaves the screen sideways'))).not.toEqual([]);
+      await wideMenu.evaluate((e) => (e as HTMLElement).remove());
+
+      // Negative control 4: the footer drawn over Race, as the scrolled menu drew it over Start career
+      // and Race: the fit check names it.
+      const raceAt = await page.evaluate(() => {
+        const menu = document.getElementById('menu')!;
+        const m = menu.getBoundingClientRect();
+        const race = document.getElementById('menu-race')!.getBoundingClientRect();
+        return {
+          top: race.top - m.top + menu.scrollTop + race.height / 2 - 8,
+          left: race.left - m.left + menu.scrollLeft,
+          width: race.width,
+        };
+      });
+      const overRace = await page.addStyleTag({
+        content:
+          `#ui #menu #menu-build { display: block !important; visibility: visible !important; ` +
+          `top: ${raceAt.top}px !important; bottom: auto !important; left: ${raceAt.left}px !important; ` +
+          `right: auto !important; width: ${raceAt.width}px !important; }`,
+      });
+      const covered = fit(await paint(page, '#menu', []), { width: 568, height: 320 });
+      console.log(`negative control 4: ${JSON.stringify(covered)}`);
+      expect(
+        covered.filter((f) => f.startsWith('the footer covers the control button#menu-race')),
+      ).not.toEqual([]);
+      await overRace.evaluate((e) => (e as HTMLElement).remove());
     }
 
     // The race options: the cards raised there sit in its flow; Back takes them down.
@@ -428,6 +563,10 @@ for (const textSize of TEXT_SIZES) {
     await expect(page.locator('#menu-race')).toBeVisible();
     await expect(page.locator('#load-retry')).toBeHidden();
     await expect(page.locator('#ui-notice')).toBeHidden();
+    // The menu as the player comes back to it fits every phone size: no row off its sides, and the
+    // footer over nothing, at every scroll.
+    await checkFit(page, '#menu', `menu, ${textSize}`);
+    await page.setViewportSize({ width: 915, height: 412 });
 
     // The career: the K2 card hid its Map and Garage tabs.
     await page.locator('#menu-career').click();
@@ -440,6 +579,27 @@ for (const textSize of TEXT_SIZES) {
       ['#career-back', '#career-tab-map', '#career-tab-garage'],
       `career, ${textSize}`,
     );
+    if (textSize === 'normal') {
+      // Negative control 5: a raised card scrolled out of view. Raised, it is in view; with the career
+      // scrolled away from it, the same judge says it is not.
+      await leaveFullscreen(page);
+      await page.setViewportSize({ width: 915, height: 412 });
+      // The suggested event's card under the map gives the career its scroll room (the live check's case).
+      await page.locator('.career-node.suggested').click();
+      await expect(page.locator('#career-ride')).toBeVisible();
+      await raise(page, ['load-retry']);
+      const view = { width: 915, height: 412 };
+      const shown = (await paint(page, '#career', ['load-retry'])).cards[0];
+      expect(shown && inViewFindings('load-retry', shown.box, view), 'raised: in view').toEqual([]);
+      const room = await scrollRoom(page, '#career');
+      expect(room, 'the career scrolls at 915x412 (the control needs room)').toBeGreaterThan(100);
+      await scrollTo(page, '#career', room);
+      const away = (await paint(page, '#career', ['load-retry'])).cards[0];
+      const found = away ? inViewFindings('load-retry', away.box, view) : [];
+      console.log(`negative control 5: ${JSON.stringify(found)}`);
+      expect(found.filter((f) => f.startsWith('load-retry is out of view'))).not.toEqual([]);
+      await scrollTo(page, '#career', 0);
+    }
     await page.setViewportSize({ width: 915, height: 412 });
     await page.locator('#career-back').click();
     await expect(page.locator('#menu-race')).toBeVisible();
@@ -520,24 +680,101 @@ for (const textSize of TEXT_SIZES) {
   });
 }
 
-test('the did-not-load card says what failed, waits out the host, and goes with its screen and a busy line', async ({
-  page,
-}) => {
-  test.setTimeout(180_000);
+/** A region chip on the menu, by its name. */
+const regionChip = (page: Page, name: string) =>
+  page.locator('#region-picker button.region', { hasText: name });
+const SF_MAPS = /\/assets\/osm-sf-[^/]*\.json(\?.*)?$/;
+const KEYS_MAPS = /\/assets\/osm-keys-[^/]*\.json(\?.*)?$/;
+
+async function toMenu(page: Page) {
   await page.goto('./');
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
-  const sf = page.locator('#region-picker button.region', { hasText: 'San Francisco' });
-  const keys = page.locator('#region-picker button.region', { hasText: 'Keys' });
+}
+
+test('the did-not-load card says what failed, goes with its screen and a busy line, and the menu still says why', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await toMenu(page);
+  const sf = regionChip(page, 'San Francisco');
+  const keys = regionChip(page, 'Keys');
   const card = page.locator('#load-retry');
   const words = page.locator('#load-retry .reload-offer-text');
   const retry = page.locator('#load-retry-button');
-  const sfMaps = /\/assets\/osm-sf-[^/]*\.json(\?.*)?$/;
+  const note = page.locator('#route-note');
+
+  // A dropped connection says to check the connection, and Retry is on. While the roads load, the
+  // route row's place says so.
+  await page.route(SF_MAPS, (route) => route.abort('internetdisconnected'));
+  await sf.click();
+  await expect(note).toHaveText('Loading San Francisco…');
+  await expect(card).toBeVisible({ timeout: 60_000 });
+  await expect(words).toHaveText('San Francisco did not load. Check the connection, then tap Retry.');
+  await expect(retry).toBeEnabled();
+  await expect(retry).toHaveText('Retry');
+  // It sits first in the menu's column, above the title, not over it; the card says it, so the
+  // route row's word steps aside.
+  const first = await page.evaluate(
+    () => document.querySelector('#menu .menu-main')?.firstElementChild?.id ?? '',
+  );
+  expect(first).toBe('load-retry');
+  await expect(note).toBeHidden();
+
+  // Race runs the load again under a busy "Loading San Francisco" line: the card is not left beside it,
+  // and comes back when the load fails again.
+  await page.locator('#menu-race').click();
+  await expect(page.locator('#busy')).toBeVisible();
+  await expect(card).toBeHidden();
+  await expect(page.locator('#busy')).toBeHidden({ timeout: 60_000 });
+  await expect(card).toBeVisible();
+
+  // The card belongs to the menu: the career does not carry it, and coming back does not bring it
+  // back. The menu still says why there is no route row (polish batch E's check, punch item 1).
+  await page.locator('#menu-career').click();
+  await expect(page.locator('#career')).toBeVisible();
+  await expect(card).toBeHidden();
+  await expect(page.locator('#career-tab-map')).toBeVisible();
+  await page.locator('#career-back').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(card).toBeHidden();
+  await expect(sf).toHaveAttribute('aria-checked', 'true');
+  await expect(note).toBeVisible();
+  await expect(note).toHaveText(
+    'San Francisco did not load. Check the connection, then tap Race to try again.',
+  );
+  // The same after the settings and the race options.
+  for (const [open, back] of [
+    ['#menu-settings', '#settings-back'],
+    ['#menu-options', '#race-options-back'],
+  ] as const) {
+    await page.locator(open).click();
+    await page.locator(back).click();
+    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(note, `back from ${open}`).toBeVisible();
+  }
+  // Control: a region whose roads are in has its route row and no word.
+  await keys.click();
+  await expect(note).toBeHidden();
+  await expect(card, 'a new pick takes the card down').toBeHidden();
+  await page.unroute(SF_MAPS);
+});
+
+test('the host asked for a wait: every load path waits it out, with the same countdown, and never asks', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await toMenu(page);
+  const sf = regionChip(page, 'San Francisco');
+  const keys = regionChip(page, 'Keys');
+  const card = page.locator('#load-retry');
+  const words = page.locator('#load-retry .reload-offer-text');
+  const retry = page.locator('#load-retry-button');
 
   // The host answers 429 and asks for 30 s, over the loader's 8 s cap: the loader gives up at once,
   // and the card says the game server had a problem, with Retry off and showing the wait.
   let asked = 0;
-  await page.route(sfMaps, (route) => {
+  await page.route(SF_MAPS, (route) => {
     asked++;
     return route.fulfill({ status: 429, headers: { 'Retry-After': '30' }, body: 'busy' });
   });
@@ -549,41 +786,136 @@ test('the did-not-load card says what failed, waits out the host, and goes with 
   await expect(retry).toBeDisabled();
   await expect(retry).toHaveText(/^Retry in (30|29|28|27|26|25) s$/);
   const askedAtCard = asked;
+  expect(askedAtCard, 'the pick asked the host').toBeGreaterThan(0);
   await retry.click({ force: true });
   await frames(page, 4);
   expect(asked, 'a tap on Retry during the wait asks the host nothing').toBe(askedAtCard);
-  // It sits first in the menu's column, above the title, not over it.
-  const first = await page.evaluate(
-    () => document.querySelector('#menu .menu-main')?.firstElementChild?.id ?? '',
-  );
-  expect(first).toBe('load-retry');
 
-  // A dropped connection says to check the connection, and Retry is on.
-  await page.unroute(sfMaps);
-  await page.route(sfMaps, (route) => route.abort('internetdisconnected'));
+  // Polish batch E's check, punch item 2: a new pick and a Race tap asked for every file at once. Now
+  // the wait is the loader's: each says the same wait at once, and the host is not asked.
   await keys.click();
   await expect(card, 'a new pick takes the card down').toBeHidden();
   await sf.click();
-  await expect(card).toBeVisible({ timeout: 60_000 });
-  await expect(words).toHaveText('San Francisco did not load. Check the connection, then tap Retry.');
-  await expect(retry).toBeEnabled();
-  await expect(retry).toHaveText('Retry');
-
-  // Race runs the load again under a busy "Loading San Francisco" line: the card is not left beside it,
-  // and comes back when the load fails again.
-  await page.locator('#menu-race').click();
-  await expect(page.locator('#busy')).toBeVisible();
-  await expect(card).toBeHidden();
-  await expect(page.locator('#busy')).toBeHidden({ timeout: 60_000 });
   await expect(card).toBeVisible();
+  await expect(retry).toBeDisabled();
+  await expect(retry).toHaveText(/^Retry in (30|29|28|27|26|25|24|23|22|21|20) s$/);
+  expect(asked, 'a new pick during the wait asks the host nothing').toBe(askedAtCard);
+  await page.locator('#menu-race').click();
+  await expect(page.locator('#busy')).toBeHidden({ timeout: 30_000 });
+  await expect(card).toBeVisible();
+  await expect(retry).toBeDisabled();
+  await expect(retry).toHaveText(/^Retry in \d+ s$/);
+  expect(asked, 'a Race tap during the wait asks the host nothing').toBe(askedAtCard);
+  await page.unroute(SF_MAPS);
+});
 
-  // The card belongs to the menu: the career does not carry it, and coming back does not bring it back.
+test("a 404 says this build's files are gone and offers Reload, not Retry", async ({ page }) => {
+  test.setTimeout(120_000);
+  await toMenu(page);
+  const card = page.locator('#load-retry');
+  const button = page.locator('#load-retry-button');
+  let asked = 0;
+  await page.route(SF_MAPS, (route) => {
+    asked++;
+    return route.fulfill({ status: 404, body: 'gone' });
+  });
+  await regionChip(page, 'San Francisco').click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('#load-retry .reload-offer-text')).toHaveText(
+    "San Francisco did not load: this build's files are gone, most likely because a newer build replaced them. Reload for the newest build.",
+  );
+  await expect(button).toHaveText('Reload');
+  await expect(button).toBeEnabled();
+  // Off the menu and back, the route row's place says the same.
+  await page.locator('#menu-settings').click();
+  await page.locator('#settings-back').click();
+  await expect(page.locator('#route-note')).toHaveText(
+    "San Francisco did not load: this build's files are gone. Reload the game for the newest build.",
+  );
+  // Race asks again and brings the card back; its Reload reloads the page.
+  await page.locator('#menu-race').click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  expect(asked, 'the host was asked (the pick, then Race)').toBeGreaterThan(0);
+  await Promise.all([page.waitForEvent('load'), button.click()]);
+  await expect(page.locator('#start-screen')).toBeVisible();
+  await page.unroute(SF_MAPS);
+});
+
+test('a failed career ride raises the did-not-load card in view, on a career scrolled down to the event', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  // Polish batch E's check, mustFix 1, step for step: the Keys' real roads fail from the first load,
+  // Start career, the suggested event, Ride. The card came up 420 to 590 px above the screen's top.
+  await page.route(KEYS_MAPS, (route) => route.fulfill({ status: 503, body: 'down' }));
+  await toMenu(page);
+  const card = page.locator('#load-retry');
+  // The boot load's card is on the menu first (it waits for the menu); the career does not carry it.
+  await expect(card).toBeVisible({ timeout: 60_000 });
   await page.locator('#menu-career').click();
   await expect(page.locator('#career')).toBeVisible();
   await expect(card).toBeHidden();
-  await expect(page.locator('#career-tab-map')).toBeVisible();
-  await page.locator('#career-back').click();
+  for (const size of [
+    { width: 915, height: 412 },
+    { width: 568, height: 320 },
+  ]) {
+    await leaveFullscreen(page);
+    await page.setViewportSize(size);
+    await page.locator('.career-node.suggested').click();
+    await expect(page.locator('#career-ride')).toBeEnabled();
+    const room = await scrollRoom(page, '#career');
+    await scrollTo(page, '#career', room);
+    const scrolled = await page.evaluate(() => document.getElementById('career')?.scrollTop ?? 0);
+    // The precondition the check needs: the screen is scrolled down when the ride fails.
+    expect(
+      scrolled,
+      `${size.width}x${size.height}: the career is scrolled down to the event`,
+    ).toBeGreaterThan(100);
+    await page.locator('#career-ride').click();
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('#load-retry .reload-offer-text')).toHaveText(
+      'The Keys did not load: the game server had a problem. Try again shortly.',
+    );
+    const p = await paint(page, '#career', ['load-retry']);
+    const box = p.cards[0]?.box ?? { left: 0, top: 0, right: 0, bottom: 0 };
+    const found = inViewFindings('load-retry', box, size);
+    console.log(
+      `career ride at ${size.width}x${size.height}: from scrollTop ${scrolled}, card ${JSON.stringify(box)}; findings ${JSON.stringify(found)}`,
+    );
+    expect(found, `${size.width}x${size.height}: the card is in view`).toEqual([]);
+    // Retry is there to tap, where it is drawn.
+    await expectReachable(page, [], ['#load-retry button'], `career ride at ${size.width}x${size.height}`);
+  }
+  await page.unroute(KEYS_MAPS);
+});
+
+test('the boot notice (settings from a newer build) is carried to the menu a quick start tap opens', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const record = {
+      format: 'settings',
+      version: 99,
+      build: 'later',
+      savedAt: '2026-10-06T00:00:00.000Z',
+      data: {},
+    };
+    localStorage.setItem('mbrawl:settings', JSON.stringify(record));
+  });
+  await page.goto('./');
+  const notice = page.locator('#ui-notice');
+  const words = 'Settings come from a newer build; using defaults and keeping them untouched.';
+  await expect(notice).toHaveText(words);
+  // The tap at once, well inside the notice's 4 s: the menu says it (polish batch E's check, punch
+  // item 4: it went with the start screen and was never said again).
+  await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
-  await expect(card).toBeHidden();
-  await page.unroute(sfMaps);
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveText(words);
+  expect(
+    await page.evaluate(() =>
+      document.querySelector('#menu .menu-main')?.contains(document.getElementById('ui-notice')),
+    ),
+    'first in the menu column',
+  ).toBe(true);
 });

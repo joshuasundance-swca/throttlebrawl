@@ -262,10 +262,15 @@ export interface GameUi {
    * button, so the menu never sits with an empty list and no word. `onRetry` shows it with `text`;
    * null hides it. It is a transient card (transient-cards.ts): first in the flow of the screen that
    * raised it (the menu for one raised before the start tap or on a page with no slot), gone when that
-   * screen changes or a busy "Loading ..." line goes up. `waitMs` keeps Retry off for the host's
-   * Retry-After, counting it down on the button.
+   * screen changes or a busy "Loading ..." line goes up, and brought into view when it comes up.
+   * `waitMs` keeps Retry off for the host's Retry-After, counting it down on the button. `action`
+   * 'reload' makes the button Reload (a build whose files are gone: polish batch E, punch item 3).
    */
-  offerRetry(text: string | null, onRetry: (() => void) | null, opts?: { waitMs?: number }): void;
+  offerRetry(
+    text: string | null,
+    onRetry: (() => void) | null,
+    opts?: { waitMs?: number; action?: 'retry' | 'reload' },
+  ): void;
   /**
    * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
    * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
@@ -297,6 +302,13 @@ export interface GameUi {
    * picker hides while there is one road or none.
    */
   setRoutes(routes: readonly RouteOption[], picked?: string | null): void;
+  /**
+   * The word in the route row's place while the picked region's roads are not in: loading, or why
+   * they did not load (polish batch E's check, punch item 1: the menu never shows a pick without its
+   * route row or a word saying why). Null takes it away. It steps aside while the did-not-load card
+   * is up on the menu, which says the same with its button.
+   */
+  setRoutesNote(text: string | null): void;
   /** The picked route's id, or null for the region's own road. */
   readonly route: string | null;
   /**
@@ -425,7 +437,8 @@ const CSS = `
   #ui #menu > * { flex-shrink: 0; }
   #ui #menu.with-news { flex-direction: column; gap: 6px; }
   #ui #menu.with-news .footer { display: none; }
-  #ui #menu .menu-main { gap: 3px; }
+  /* The column is never wider than the screen, so its rows wrap (polish batch E's check, punch item 5). */
+  #ui #menu .menu-main { gap: 3px; max-width: 100%; }
   #ui #menu .title { font-size: 1.25rem; padding: 1px 12px; }
   #ui #menu .big { font-size: 1.25rem; min-height: 42px; padding: 4px 28px; }
   #ui #menu .small { font-size: 0.8125rem; min-height: 40px; padding: 2px 12px; }
@@ -544,10 +557,18 @@ ${REDUCE_MOTION_CSS}
    (train 246). */
 @media (min-height: 381px), (orientation: portrait) {
   #ui #menu.with-news { align-items: safe center; }
+  /* Alone, the menu's column is never wider than the screen either (beside the card it takes the room
+     the card leaves: changelog-screen.ts). */
+  #ui #menu:not(.with-news) .menu-main { max-width: 100%; }
 }
-#ui #load-retry, #ui #ui-notice { flex-shrink: 0; width: max-content; max-width: min(560px, 100%);
+/* Fit-content, not max-content (polish batch E's check, punch item 5): a card's one-line width counted as
+   the least room the menu's column needed, so at 568x320 and the largest Text size the column grew past
+   the screen and its lower row was cut at both edges. It wraps to its column now. */
+#ui #load-retry, #ui #ui-notice { flex-shrink: 0; width: fit-content; max-width: min(560px, 100%);
   box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   background: rgb(10 5 20 / 92%); }
+/* A card raised on a scrolled screen is brought into view (reveal) with a little room above it. */
+#ui .transient-card { scroll-margin: 8px; }
 #ui #load-retry .reload-offer-text, #ui #ui-notice { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui #load-retry .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
 #ui #load-retry .small:disabled { background: #f2ead8; opacity: 0.7; cursor: default; }
@@ -570,6 +591,9 @@ ${REDUCE_MOTION_CSS}
 #ui #look-offer .look-offer-text, #ui #look-offer .small { font-size: 13px; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 #ui[data-top='stacked']:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
+/* The menu's build id gives way (keepFooterClear) where it would lie over the menu: hidden, not taken out,
+   so it can be measured again (polish batch E's check, punch item 5). */
+#ui #menu .footer.yield { visibility: hidden; }
 #build-stamp.in-race { display: none; }
 #build-stamp { pointer-events: none; font-size: 0.6875rem; line-height: 1.2; padding: 2px 6px; box-sizing: border-box;
   max-width: calc(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
@@ -837,12 +861,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       ...(install ? [installButton] : []),
     ),
   );
+  // The build id under the menu: a label out of the flow, which gives way when the menu scrolls or
+  // anything of it lies under the label (keepStampClear).
+  const menuFooter = el('div', { id: 'menu-build', className: 'footer', textContent: `build ${buildId}` });
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
     menuMain,
     whatsNewCard.root,
-    el('div', { id: 'menu-build', className: 'footer', textContent: `build ${buildId}` }),
+    menuFooter,
   );
 
   // ---- Settings ----------------------------------------------------------------------------
@@ -1516,9 +1543,33 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // (placeCards, below), never over it. The notice and the did-not-load card come and go through the
   // slot model, which drops them when their screen changes.
   const cardSlots = createCardSlots();
+  /**
+   * Brings a card that just came up into view (polish batch E's check, mustFix 1: a failed career ride
+   * raised the did-not-load card first in the career's flow while the screen was scrolled down to the
+   * event, so it sat out of sight above the screen's top and the player saw no word). Its screen
+   * scrolls the least that shows all of it, or its top when it is taller than the screen.
+   */
+  const reveal = (card: HTMLElement) => {
+    // Node-run unit tests' stand-in DOM has no scrolling.
+    if (card.hidden || !('scrollIntoView' in card)) return;
+    card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
+
   const noticeBox = el('div', { id: 'ui-notice', className: 'card transient-card', hidden: true });
   noticeBox.setAttribute('role', 'status');
   let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The browser spec's seam holds its notice up until the screen changes. */
+  let noticeHeld = false;
+  /**
+   * Starts the notice's time: when it is raised, and again when it is carried to the menu. On the
+   * start screen it has none: it stays until the start tap, then has its time on the menu (polish batch
+   * E's check, punch item 4: a tap inside its 4 s lost the boot notice).
+   */
+  const timeNotice = () => {
+    if (noticeTimer !== null) clearTimeout(noticeTimer);
+    noticeTimer =
+      noticeHeld || current === 'start' ? null : setTimeout(() => dropCard('ui-notice'), NOTICE_MS);
+  };
   // The newer-build offer (offerReload): plain words and one button. It lives inside the result
   // screen that is showing (placeCards, below), never over it.
   let reloadNow: (() => void) | null = null;
@@ -1532,9 +1583,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
   reloadOffer.setAttribute('role', 'status');
   // The load-failed card (offerRetry): the message and a Retry button, kept until it is answered or
-  // its screen changes. While the host's Retry-After runs, Retry is off and counts the wait down.
+  // its screen changes. While the host's Retry-After runs, Retry is off and counts the wait down. For a
+  // build whose files are gone the button is Reload (polish batch E's check, punch item 3).
   let retryLoad: (() => void) | null = null;
   let retryWaitUntil: number | null = null;
+  let retryLabel = 'Retry';
   let retryTimer: ReturnType<typeof setInterval> | null = null;
   const loadRetryText = el('div', { className: 'reload-offer-text' });
   const loadRetryButton = button('load-retry-button', 'small', 'Retry', () => {
@@ -1548,7 +1601,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
   loadRetry.setAttribute('role', 'alert');
   const syncRetryButton = () => {
-    const state = retryButton(retryWaitUntil, performance.now());
+    const state = retryButton(retryWaitUntil, performance.now(), retryLabel);
     loadRetryButton.textContent = state.label;
     loadRetryButton.disabled = state.disabled;
     if (!state.disabled && retryTimer !== null) {
@@ -1633,6 +1686,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (!pendingNews || current !== 'menu') return;
     whatsNewCard.show(pendingNews);
     menu.classList.add('with-news');
+    reveal(whatsNewCard.root);
     pendingNews = null;
     markSeen(); // seen once it is on screen
   };
@@ -2008,10 +2062,44 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     '#career-teaser:not([hidden]) *',
   ].join(', ');
   let stampQueued = false;
+  /**
+   * The menu's footer never lies over a control or a line of words (polish batch E's check, punch
+   * item 5: with the menu scrolled, the label, placed for the unscrolled screen, was drawn over Start
+   * career and Race). It is out of the flow, so hiding it moves nothing: it gives way (hidden, still
+   * laid out, so it can be measured again) while the menu scrolls or while anything of the menu is
+   * under its words, and the corner stamp carries the build id. The class changes only when the
+   * answer does, so its own change starts no new check.
+   */
+  const footerInTheWay = (): boolean => {
+    if (current !== 'menu' || menuFooter.getClientRects().length === 0) return false;
+    if (menu.scrollHeight > menu.clientHeight + 1) return true;
+    const words = document.createRange();
+    words.selectNodeContents(menuFooter);
+    const label = boxOf(words.getBoundingClientRect());
+    const under = (b: Box) =>
+      label.left < b.right && b.left < label.right && label.top < b.bottom && b.top < label.bottom;
+    for (const e of menu.querySelectorAll<HTMLElement>('*')) {
+      if (menuFooter.contains(e) || e.getClientRects().length === 0) continue;
+      if (getComputedStyle(e).visibility === 'hidden') continue;
+      if (e.matches(STAMP_AVOIDS) && under(boxOf(e.getBoundingClientRect()))) return true;
+      for (const n of e.childNodes) {
+        if (n.nodeType !== Node.TEXT_NODE || (n.textContent ?? '').trim() === '') continue;
+        const line = document.createRange();
+        line.selectNodeContents(n);
+        for (const r of line.getClientRects()) if (under(boxOf(r))) return true;
+      }
+    }
+    return false;
+  };
+  const keepFooterClear = () => {
+    const yieldIt = footerInTheWay();
+    if (menuFooter.classList.contains('yield') !== yieldIt) menuFooter.classList.toggle('yield', yieldIt);
+  };
   const keepStampClear = () => {
     stampQueued = false;
     stamp.classList.remove('at-right', 'yield');
     if (current === 'race') return;
+    keepFooterClear();
     const leftBox = boxOf(stamp.getBoundingClientRect());
     stamp.classList.add('at-right');
     const rightBox = boxOf(stamp.getBoundingClientRect());
@@ -2098,9 +2186,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       if (id !== 'load-retry' || busy.hidden) wanted.push(slotCards[id]);
     for (const card of [reloadOffer, loadRetry, noticeBox])
       if (!host || !wanted.includes(card)) card.hidden = true;
+    // The did-not-load card steps in for the menu's word about the picked region's roads.
+    routePicker.quiet(current === 'menu' && wanted.includes(loadRetry));
     if (!host) return;
     if (wanted.some((card, i) => host.children[i] !== card)) host.prepend(...wanted);
+    // A card coming up (raised, back after a busy line, or on the screen it belongs to) is brought
+    // into view, the first of them last so it is the one surely seen.
+    const arriving = wanted.filter((card) => card.hidden);
     for (const card of wanted) card.hidden = false;
+    for (const card of arriving.reverse()) reveal(card);
   };
   const dropCard = (id: SlotCardId) => {
     cardSlots.drop(id);
@@ -2116,8 +2210,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
 
   function show(screen: Screen) {
     current = screen;
-    // A transient card shown on the screen being left goes with it (transient-cards.ts).
-    cardSlots.screenChanged(screen);
+    // A transient card shown on the screen being left goes with it (transient-cards.ts); a notice on
+    // the start screen is carried to the menu, where its time starts again.
+    if (cardSlots.screenChanged(screen).includes('ui-notice')) timeNotice();
     syncTextScale(window.innerHeight);
     for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
     if (paused) closePause();
@@ -2166,19 +2261,22 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       return;
     }
     noticeBox.textContent = text;
-    if (noticeTimer !== null) clearTimeout(noticeTimer);
-    noticeTimer = hold ? null : setTimeout(() => dropCard('ui-notice'), NOTICE_MS);
+    noticeHeld = hold;
+    timeNotice();
     cardSlots.raise('ui-notice', current);
     placeCards();
+    reveal(noticeBox);
   }
   installCardSeam((id) => {
     switch (id) {
       case 'load-retry':
         retryLoad = () => undefined;
         loadRetryText.textContent = 'Test Region did not load. Check the connection, then tap Retry.';
+        retryLabel = 'Retry';
         stopRetryWait();
         cardSlots.raise('load-retry', current);
         placeCards();
+        reveal(loadRetry);
         return !loadRetry.hidden;
       case 'ui-notice':
         showNotice('A test notice: the saved settings could not be read, so the defaults are back.', true);
@@ -2187,11 +2285,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         reloadNow = () => undefined;
         reloadWanted = true;
         placeCards();
+        reveal(reloadOffer);
         return !reloadOffer.hidden;
       case 'whats-new':
         if (current !== 'menu') return false;
         whatsNewCard.show({ kind: 'welcome' });
         menu.classList.add('with-news');
+        reveal(whatsNewCard.root);
         return true;
       case 'look-offer': {
         const up = offerClassicLook();
@@ -2277,12 +2377,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       }
       retryLoad = onRetry;
       loadRetryText.textContent = text;
+      retryLabel = opts?.action === 'reload' ? 'Reload' : 'Retry';
       const waitMs = opts?.waitMs ?? 0;
       retryWaitUntil = waitMs > 0 ? performance.now() + waitMs : null;
       if (retryWaitUntil !== null) retryTimer ??= setInterval(syncRetryButton, 250);
       syncRetryButton();
       cardSlots.raise('load-retry', current);
       placeCards();
+      reveal(loadRetry);
     },
     setReduceMotion(on) {
       root.dataset['motion'] = on ? 'reduced' : 'full';
@@ -2311,6 +2413,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       return region;
     },
     setRoutes: (routes, picked) => routePicker.set(routes, picked),
+    setRoutesNote: (text) => routePicker.setNote(text),
     get route() {
       return routePicker.route;
     },

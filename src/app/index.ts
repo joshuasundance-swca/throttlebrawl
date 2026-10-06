@@ -117,7 +117,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
-import { clearLoadRetry, failureOf, offerLoadRetry } from './load-retry';
+import { clearLoadRetry, failureOf, offerLoadRetry, routesNote, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -1219,12 +1219,28 @@ export function createApp(opts: AppOptions): AppHandle {
   const roadsArrived = (reg: ContentRegistry) => {
     registry = reg;
     clearLoadRetry(ui);
+    sayPickedRoads();
     // A race keeps the key it started under (its packs' roads were all in before it started).
     if (state === 'race') return;
     hashes = raceHashes(eventId);
     replayKey = appReplayKey(build, hashes.sim);
     offerRoutes();
   };
+  /**
+   * The word in the route row's place while the picked region's roads are not in (polish batch E's
+   * check, punch item 1: once the did-not-load card had gone with its screen, the menu showed the pick
+   * with no route row and no word). It follows the picked region's last load: loading, or why it did
+   * not load; gone once its roads are in.
+   */
+  let pickLoad: { id: string; state: LoadFailure | 'loading' } | null = null;
+  const sayPickedRoads = (choice?: RegionChoice, state?: LoadFailure | 'loading') => {
+    if (choice && state) pickLoad = { id: choice.id, state };
+    const picked = pickedChoice();
+    if (!picked || library.hasRoads(picked.packId)) pickLoad = null;
+    ui.setRoutesNote(picked && pickLoad?.id === picked.id ? routesNote(picked.name, pickLoad.state) : null);
+  };
+  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
+  const reloadPage = () => window.location.reload();
   /** The packs a race in this region reads (its pack and base) whose road data is not in yet. */
   const roadsMissing = (choice: RegionChoice): string[] =>
     packClosure(registry, choice.packId).filter((id) => !library.hasRoads(id));
@@ -1236,14 +1252,17 @@ export function createApp(opts: AppOptions): AppHandle {
   const loadRegion = async (choice: RegionChoice): Promise<boolean> => {
     loadingRoads = true;
     ui.setBusy(`Loading ${choice.name}`);
+    if (!library.hasRoads(choice.packId)) sayPickedRoads(choice, 'loading');
     try {
       await Promise.all(roadsMissing(choice).map((id) => library.loadRoads(id)));
       roadsArrived(library.registry());
       return true;
     } catch (err) {
       console.warn('region road data did not load', err);
+      const failure = failureOf(err, Date.now());
       // Retry goes on to the race the player asked for (the picked region, fetched again).
-      offerLoadRetry(ui, choice.name, () => handle.startRace(), failureOf(err, Date.now()));
+      offerLoadRetry(ui, choice.name, () => handle.startRace(), failure, reloadPage);
+      sayPickedRoads(choice, failure);
       return false;
     } finally {
       loadingRoads = false;
@@ -1272,15 +1291,18 @@ export function createApp(opts: AppOptions): AppHandle {
       (err: unknown) => {
         console.warn('region road data did not load', err);
         // Only for the region still picked: a pick made since has its own load and its own say.
-        if (pickedChoice()?.id === choice.id)
-          offerLoadRetry(
-            ui,
-            choice.name,
-            () => {
-              if (pickedChoice()?.id === choice.id) loadPicked(choice);
-            },
-            failureOf(err, Date.now()),
-          );
+        if (pickedChoice()?.id !== choice.id) return;
+        const failure = failureOf(err, Date.now());
+        offerLoadRetry(
+          ui,
+          choice.name,
+          () => {
+            if (pickedChoice()?.id === choice.id) loadPicked(choice);
+          },
+          failure,
+          reloadPage,
+        );
+        sayPickedRoads(choice, failure);
       },
     );
   const pickRegion = (id: string) => {
@@ -1289,8 +1311,13 @@ export function createApp(opts: AppOptions): AppHandle {
     clearLoadRetry(ui);
     // The routes on offer are the new region's, once its road data is in.
     if (choice.eventId !== eventId) ui.setRoutes([], null);
-    if (library.hasRoads(choice.packId)) showPicked();
-    else loadPicked(choice);
+    if (library.hasRoads(choice.packId)) {
+      sayPickedRoads();
+      showPicked();
+    } else {
+      sayPickedRoads(choice, 'loading');
+      loadPicked(choice);
+    }
   };
   /**
    * The route picker (the maintainer, 2026-10-01: "Yes, add as routes"): a real road, or null for
@@ -1309,12 +1336,18 @@ export function createApp(opts: AppOptions): AppHandle {
   // its road data is in). The Keys' real roads are not in the first-load bundle (run W-P): they are
   // fetched now, in the background, so the picker offers them and a race starts without a wait.
   offerRoutes();
-  const loadKeysRoads = () =>
+  // The Keys' own region (base's), whose route row waits on these roads too.
+  const keysChoice = regions.find((r) => r.packId === 'base');
+  const loadKeysRoads = () => {
+    sayPickedRoads(keysChoice, 'loading');
     void library.loadRoads('base').then(roadsArrived, (err: unknown) => {
       // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
       console.warn('the Keys real-road data did not load', err);
-      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads, failureOf(err, Date.now()));
+      const failure = failureOf(err, Date.now());
+      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads, failure, reloadPage);
+      sayPickedRoads(keysChoice, failure);
     });
+  };
   if (!library.hasRoads('base')) loadKeysRoads();
 
   // ---- The career flow (run W-R) ----------------------------------------------------------------
@@ -1401,7 +1434,13 @@ export function createApp(opts: AppOptions): AppHandle {
           },
           (err: unknown) => {
             console.warn('career road data did not load', err);
-            offerLoadRetry(ui, def.regionName, () => startCareerRace(def, node), failureOf(err, Date.now()));
+            offerLoadRetry(
+              ui,
+              def.regionName,
+              () => startCareerRace(def, node),
+              failureOf(err, Date.now()),
+              reloadPage,
+            );
             return false;
           },
         )
