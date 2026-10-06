@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reloadLosesNothing, transition, type AppState } from './states';
+import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 
 // A reload to the build the host serves now (platform/stale-build.ts) waits for a moment it loses
 // nothing (playtest 4 run A fix check, punch item 1: the stale-build reload threw a player off a race
@@ -16,5 +16,17 @@ describe('when a reload to a newer build may happen', () => {
     expect(reloadLosesNothing(transition('results', 'back') ?? 'results')).toBe(true);
     expect(reloadLosesNothing(transition('race', 'finished') ?? 'menu')).toBe(false);
     expect(reloadLosesNothing(transition('results', 'race') ?? 'menu')).toBe(false);
+  });
+
+  // The result screen's update card says when the reload comes (ui/format.ts, reloadOfferText): the
+  // words are only true while this holds. From a result the only way out that loses nothing is
+  // back to the menu (the career's Map is the same event); Race again, Next and Retry go into a race.
+  it('from a result, the only event that reloads is the way back to the menu', () => {
+    const events: AppEvent[] = ['booted', 'tapped', 'race', 'finished', 'back'];
+    const out = events.flatMap((e) => {
+      const next = transition('results', e);
+      return next && reloadLosesNothing(next) ? [`${e} -> ${next}`] : [];
+    });
+    expect(out).toEqual(['back -> menu']);
   });
 });
