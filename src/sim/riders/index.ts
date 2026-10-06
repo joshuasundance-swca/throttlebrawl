@@ -573,6 +573,20 @@ export function maxYawAt(steerRateMps: number, speed: number, steerScale: number
   return clamp(steerRateMps / (speed < 6 ? 6 : speed), 0.05, MAX_YAW) * steerScale;
 }
 
+/**
+ * The fastest a bike holds a bend of curvature `kappa` (1/m) on its line, m/s: where the turn its
+ * steering can ask for (maxYawAt, reached at YAW_RESPONSE) still matches the road turning under it
+ * (`kappa` × speed). Faster, the bend carries it wide. Infinity on a straight.
+ */
+export function holdSpeedMps(steerRateMps: number, kappa: number, steerScale: number): number {
+  const k = Math.abs(kappa);
+  if (k < 1e-6) return Infinity;
+  return Math.min(
+    Math.sqrt((YAW_RESPONSE * steerRateMps * steerScale) / k),
+    (YAW_RESPONSE * MAX_YAW * steerScale) / k,
+  );
+}
+
 /** Top speed after the tuning panel's speed scale and the lower-overall-speed multiplier. */
 export function topSpeedOf(world: World, config: SimConfig, bikeTopMps: number): number {
   return bikeTopMps * (world.params['riders.speedScale'] ?? 1) * speedMultiplierOf(config);
