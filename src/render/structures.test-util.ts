@@ -52,14 +52,14 @@ export interface DrawnPoint {
 }
 
 /**
- * Points over every triangle of a geometry, no more than about `step` m apart, each through `place` (the
- * drawn transform): the drawn surface, not only its corners (a hipped roof's slope has no vertex in it).
+ * Each point over every triangle of a geometry, no more than about `step` m apart, to `each`: the drawn surface,
+ * not only its corners (a hipped roof's slope has no vertex in it). No list: a big landmark has millions.
  */
-export function surfacePoints(
+export function eachSurfacePoint(
   g: BufferGeometry,
   step: number,
-  place: (x: number, y: number, z: number) => DrawnPoint = (x, y, z) => ({ x, y, z }),
-): DrawnPoint[] {
+  each: (x: number, y: number, z: number) => void,
+): void {
   const p = g.getAttribute('position');
   const idx = g.getIndex();
   const tris = idx ? idx.count / 3 : p.count / 3;
@@ -67,7 +67,6 @@ export function surfacePoints(
     const j = idx ? idx.getX(i) : i;
     return [p.getX(j), p.getY(j), p.getZ(j)];
   };
-  const out: DrawnPoint[] = [];
   for (let t = 0; t < tris; t++) {
     const a = at(t * 3);
     const b = at(t * 3 + 1);
@@ -82,20 +81,31 @@ export function surfacePoints(
       for (let j = 0; j <= n - i; j++) {
         const u = i / n;
         const v = j / n;
-        out.push(
-          place(
-            a[0] + (b[0] - a[0]) * u + (c[0] - a[0]) * v,
-            a[1] + (b[1] - a[1]) * u + (c[1] - a[1]) * v,
-            a[2] + (b[2] - a[2]) * u + (c[2] - a[2]) * v,
-          ),
+        each(
+          a[0] + (b[0] - a[0]) * u + (c[0] - a[0]) * v,
+          a[1] + (b[1] - a[1]) * u + (c[1] - a[1]) * v,
+          a[2] + (b[2] - a[2]) * u + (c[2] - a[2]) * v,
         );
       }
   }
+}
+
+/** The points of `eachSurfacePoint`, each through `place` (the drawn transform), as a list (a model's worth). */
+export function surfacePoints(
+  g: BufferGeometry,
+  step: number,
+  place: (x: number, y: number, z: number) => DrawnPoint = (x, y, z) => ({ x, y, z }),
+): DrawnPoint[] {
+  const out: DrawnPoint[] = [];
+  eachSurfacePoint(g, step, (x, y, z) => out.push(place(x, y, z)));
   return out;
 }
 
-/** A solid as the structure contract has it: a footprint, a base and a roof (road/structures.ts). */
-export type Solid = Pick<StructureSpec, 'foot' | 'baseY' | 'roof'> & { name?: string };
+/**
+ * A solid as the structure contract has it: a footprint, a base and a roof (road/structures.ts). `freeBase` says
+ * its base is not where the drawing ends (a building solid from its ground under a roof drawn high up).
+ */
+export type Solid = Pick<StructureSpec, 'foot' | 'baseY' | 'roof'> & { name?: string; freeBase?: boolean };
 
 /** A point in a solid's frame: along its u and v axes from its middle, and its height over its base. */
 function local(s: Solid, q: DrawnPoint): { u: number; v: number; h: number } {
@@ -120,8 +130,10 @@ export function outside(s: Solid, q: DrawnPoint): number {
 }
 
 export interface Holding {
-  /** Points farther than the tolerance from every solid: [the point, how far]. */
+  /** Points farther than the tolerance from every solid (the first thousand): [the point, how far]. */
   loose: [DrawnPoint, number][];
+  /** How many points lie farther than the tolerance from every solid. */
+  looseCount: number;
   /** The farthest any drawn point lies from every solid, m. */
   worst: number;
   /** Solids a face of which no drawn point inside it comes near: [name, the face, the gap], m. */
@@ -129,35 +141,62 @@ export interface Holding {
 }
 
 /**
- * Whether solids hold a drawn shape: every point within `tol` of some solid (none of the drawing stands outside
- * them), and every face of every solid touched, within `slack`, by the drawn points inside it (no solid is bigger
- * than what it stands for, nor moved off it). A pitched roof's top face is its ridge.
+ * Whether solids hold a drawn shape, a point at a time (`add`, then `result`): every point within `tol` of some
+ * solid (none of the drawing stands outside them), and every face of every solid touched, within `slack`, by the
+ * drawn points in it or within `slack` of it (no solid is bigger than what it stands for, nor moved off it). A
+ * pitched roof's top face is its ridge.
  */
-export function holds(
-  solids: readonly Solid[],
-  points: readonly DrawnPoint[],
-  tol: number,
-  slack: number,
-): Holding {
-  const loose: [DrawnPoint, number][] = [];
-  let worst = 0;
-  const bounds = solids.map(() => ({
-    u0: Infinity,
-    u1: -Infinity,
-    v0: Infinity,
-    v1: -Infinity,
-    h0: Infinity,
-    h1: -Infinity,
-  }));
-  for (const q of points) {
-    let best = Infinity;
+export class Hold {
+  private readonly loose: [DrawnPoint, number][] = [];
+  private looseCount = 0;
+  private worst = 0;
+  private readonly bounds: { u0: number; u1: number; v0: number; v1: number; h0: number; h1: number }[];
+  /** A grid of the solids' ground bounds (each grown by the tolerance), so a point asks only those near it. */
+  private readonly grid = new Map<string, number[]>();
+  private static readonly CELL = 8;
+
+  constructor(
+    private readonly solids: readonly Solid[],
+    private readonly tol: number,
+    private readonly slack: number,
+  ) {
+    this.bounds = solids.map(() => ({
+      u0: Infinity,
+      u1: -Infinity,
+      v0: Infinity,
+      v1: -Infinity,
+      h0: Infinity,
+      h1: -Infinity,
+    }));
+    const C = Hold.CELL;
+    const grow = Math.max(tol, slack);
     solids.forEach((s, i) => {
+      const f = s.foot;
+      const ex = f.hu * Math.abs(f.ux) + f.hv * Math.abs(f.uz) + grow;
+      const ez = f.hu * Math.abs(f.uz) + f.hv * Math.abs(f.ux) + grow;
+      for (let a = Math.floor((f.x - ex) / C); a <= Math.floor((f.x + ex) / C); a++)
+        for (let b = Math.floor((f.z - ez) / C); b <= Math.floor((f.z + ez) / C); b++) {
+          const k = `${a},${b}`;
+          const list = this.grid.get(k);
+          if (list) list.push(i);
+          else this.grid.set(k, [i]);
+        }
+    });
+  }
+
+  add(x: number, y: number, z: number): void {
+    const q = { x, y, z };
+    let best = Infinity;
+    for (const i of this.grid.get(`${Math.floor(x / Hold.CELL)},${Math.floor(z / Hold.CELL)}`) ?? []) {
+      const s = this.solids[i];
+      if (!s) continue;
       const off = outside(s, q);
       if (off < best) best = off;
-      if (off <= 1e-6) {
+      // The drawing in it, or at its faces within the slack: what its faces must come near.
+      if (off <= this.slack) {
         const { u, v, h } = local(s, q);
-        const b = bounds[i];
-        if (!b) return;
+        const b = this.bounds[i];
+        if (!b) continue;
         b.u0 = Math.min(b.u0, u);
         b.u1 = Math.max(b.u1, u);
         b.v0 = Math.min(b.v0, v);
@@ -165,26 +204,44 @@ export function holds(
         b.h0 = Math.min(b.h0, h);
         b.h1 = Math.max(b.h1, h);
       }
-    });
-    if (best > tol) loose.push([q, best]);
-    if (best > worst) worst = best;
+    }
+    if (best > this.tol) {
+      this.looseCount++;
+      if (this.loose.length < 1000) this.loose.push([q, best]);
+    }
+    if (best > this.worst) this.worst = best;
   }
-  const out: [string, string, number][] = [];
-  solids.forEach((s, i) => {
-    const b = bounds[i];
-    if (!b) return;
-    const top = s.roof.kind === 'flat' ? s.roof.topM : s.roof.ridgeM;
-    const gaps: [string, number][] = [
-      ['-u', b.u0 + s.foot.hu],
-      ['+u', s.foot.hu - b.u1],
-      ['-v', b.v0 + s.foot.hv],
-      ['+v', s.foot.hv - b.v1],
-      ['base', b.h0],
-      ['top', top - b.h1],
-    ];
-    for (const [face, gap] of gaps) if (!(gap <= slack)) out.push([s.name ?? `#${i}`, face, gap]);
-  });
-  return { loose, worst, slack: out };
+
+  result(): Holding {
+    const out: [string, string, number][] = [];
+    this.solids.forEach((s, i) => {
+      const b = this.bounds[i];
+      if (!b) return;
+      const top = s.roof.kind === 'flat' ? s.roof.topM : s.roof.ridgeM;
+      const gaps: [string, number][] = [
+        ['-u', b.u0 + s.foot.hu],
+        ['+u', s.foot.hu - b.u1],
+        ['-v', b.v0 + s.foot.hv],
+        ['+v', s.foot.hv - b.v1],
+        ['base', s.freeBase ? 0 : b.h0],
+        ['top', top - b.h1],
+      ];
+      for (const [face, gap] of gaps) if (!(gap <= this.slack)) out.push([s.name ?? `#${i}`, face, gap]);
+    });
+    return { loose: this.loose, looseCount: this.looseCount, worst: this.worst, slack: out };
+  }
+}
+
+/** `Hold` over a list of points. */
+export function holds(
+  solids: readonly Solid[],
+  points: readonly DrawnPoint[],
+  tol: number,
+  slack: number,
+): Holding {
+  const hold = new Hold(solids, tol, slack);
+  for (const q of points) hold.add(q.x, q.y, q.z);
+  return hold.result();
 }
 
 /** A landmark kit baked from its committed file, as the game bakes it (models.ts `bakeLandmarkKit`). */
