@@ -36,9 +36,13 @@ const withoutTag = Object.fromEntries(
 const tagsOf = (d: RoadDressing, edge: number): readonly SideTag[] => d[road.edges[edge]!.id]?.tags ?? [];
 const sideOf = (it: RoadsideItem) => (it.d < 0 ? 'left' : 'right');
 
-/** The kit's variants a person made or planted for a road that is not an interstate (the kit's own list). */
+/**
+ * The kit's variants a person made or planted for a road that is not an interstate (the kit's own list).
+ * They are variants of the kit's own model: a rule with a `model` of its own (the Gorge's walls, the madrones,
+ * Chuckanut's rock and Lake Samish's shore) numbers another file's variants.
+ */
 const BUILT = new Set([4, 5, 6, 7, 8, 9]);
-const builtRules = PNW_KIT.rules.filter((r) => r.v.every((v) => BUILT.has(v)));
+const builtRules = PNW_KIT.rules.filter((r) => r.model === undefined && r.v.every((v) => BUILT.has(v)));
 
 function scatter(d: RoadDressing, seed: number): RoadsideItem[] {
   const built = buildRoadScene(road, look, d, { seed });

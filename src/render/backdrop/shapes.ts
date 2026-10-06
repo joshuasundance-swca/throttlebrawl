@@ -5,19 +5,20 @@
 // boxes and a sail; clouds and fog banks as puffs. Flat colours only (the look grades them), no
 // crack, rust or grime. Fixed landmarks take their shape from their id; what varies between races
 // (clear-cut patches, waterfalls, islands, boats, clouds) comes from the race's seed.
-import type {
-  BlocksPiece,
-  BridgePiece,
-  CloudsPiece,
-  FloorPiece,
-  IslandsPiece,
-  LighthousePiece,
-  MastPiece,
-  PeakPiece,
-  Pt,
-  RidgePiece,
-  SkylinePiece,
-  VesselsPiece,
+import {
+  FLOOR_UNDER_M,
+  type BlocksPiece,
+  type BridgePiece,
+  type CloudsPiece,
+  type FloorPiece,
+  type IslandsPiece,
+  type LighthousePiece,
+  type MastPiece,
+  type PeakPiece,
+  type Pt,
+  type RidgePiece,
+  type SkylinePiece,
+  type VesselsPiece,
 } from './data';
 import { hashOf, mixRgb, rgb, rng, scale, SUN_H, type Rgb, type Soup, type V3 } from './soup';
 
@@ -1203,7 +1204,7 @@ export function buildFloor(
   // fog's end, water wins over land and land over the far ring by a depth bias.
   s.bias = p.surface === 'water' ? 2 : 1;
   const col = rgb(p.colour);
-  const y = (p.y ?? 0) + (p.surface === 'water' ? -0.5 : -1);
+  const y = (p.y ?? 0) - FLOOR_UNDER_M[p.surface];
   const split = (a: V3, b: V3, c: V3, depth: number) => {
     const ab = Math.hypot(a[0] - b[0], a[2] - b[2]);
     const bc = Math.hypot(b[0] - c[0], b[2] - c[2]);

@@ -6,7 +6,7 @@
 // that starts in the stick or attack zones is ignored (docs/architecture.md, "The gesture"), and so
 // is any touch mid-race while nobody has told the narrative where those zones are.
 import type { ShownBark } from './director';
-import { createLongPress } from './long-press';
+import { createLongPress, type Schedule } from './long-press';
 import type { BarkSurface } from './surface';
 import type { SeenItem, SeenLog } from './veto';
 
@@ -185,11 +185,14 @@ export interface BubblePressOptions {
   /** True while a race runs: touches are ignored then unless `inControlZone` is known. */
   racing: () => boolean;
   onLongPress(bark: ShownBark): void;
+  /** The long-press timer: wall time (setTimeout) by default; a manual clock in the browser specs. */
+  schedule?: Schedule | undefined;
 }
 
 /** Watches long-presses on the ticker's box from the window, without ever consuming a pointer. */
 export function watchBubblePresses(bubble: BarkSurface, opts: BubblePressOptions): () => void {
   const lp = createLongPress<ShownBark>({
+    ...(opts.schedule ? { schedule: opts.schedule } : {}),
     onLongPress: (bark) => {
       bubble.hold(false);
       opts.onLongPress(bark);

@@ -378,6 +378,15 @@ export const SECRET_LIFT_M = 0.04;
 /** A boardwalk's plank pitch and the dark seam between two planks, m (run W-U). [default] */
 export const BOARD_M = 1.4;
 const BOARD_SEAM_M = 0.09;
+/**
+ * A repair deck's planking and kerbs (playtest 4, run A's check, item 10: the Seven Mile's staging deck "reads
+ * as a flat orange slab"). A bridge with no drive lane, only a shortcut (the ramp trucks' repair decks), is laid
+ * with a dark seam across it every `STAGING_PLANK_M` and a kerb of `STAGING_KERB.widthM` along each edge,
+ * in the road's own and the shoulder's colours, so no draw call is added. [default]
+ */
+export const STAGING_PLANK_M = 1.6;
+const STAGING_SEAM_M = 0.1;
+export const STAGING_KERB = { widthM: 0.3 } as const;
 
 /**
  * A brick road's mortar joints (playtest 3, Lombard's crooked block): one across the lanes every
@@ -848,6 +857,11 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [0.6, 5, 0.6], at: [0, 2.5, 0], color: '#5b4a3a' },
       { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
     ],
+    // an apartment block of two plots, taller than a row house (playtest 4, R3)
+    apartment: [
+      { size: [13.2, 17, 11], at: [0, 8.5, -5.5], color: '#cfc6b8' },
+      { size: [13.4, 0.6, 0.6], at: [0, 16.8, 0.1], color: '#f4efe4' },
+    ],
     // the headlands' own, until the kit loads: a long low concrete block, a dark shrub, a red rock
     battery: [{ size: [30, 3.7, 11.5], at: [0, 1.85, -0.25], color: '#a1a497' }],
     brush: [{ size: [2, 1.2, 1.9], at: [0, 0.6, 0], color: '#505f3c' }],
@@ -875,6 +889,7 @@ export const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   bay: 'sevenMileKit',
   arch: 'gorgeArches',
   coastTree: 'sfIdentity',
+  apartment: 'sfApartments',
   battery: 'sfHeadlands',
   brush: 'sfHeadlands',
   outcrop: 'sfHeadlands',
@@ -1215,6 +1230,45 @@ export function buildRoadScene(
         boardSeams++;
       }
     }
+    // A repair deck (a bridge with no drive lane, only a shortcut) is laid like a deck: a seam across it
+    // every STAGING_PLANK_M and a kerb along each edge, never over a gap.
+    const stagingDeck =
+      (dress.tags ?? []).some((t) => t.tag === 'bridge') &&
+      (() => {
+        const l = laneSpans(road.lanesAt(e.index, e.length / 2));
+        return l.drive === null && l.shortcut !== null;
+      })();
+    if (stagingDeck) {
+      const seams = strip('road');
+      seams.breakStrip();
+      for (let s = STAGING_PLANK_M / 2; s + STAGING_SEAM_M < e.length; s += STAGING_PLANK_M) {
+        if (inGap(s) || inGap(s + STAGING_SEAM_M)) continue;
+        const span = laneSpans(road.lanesAt(e.index, s)).shortcut;
+        if (!span) continue;
+        seams.quad(
+          w(e.index, s, span[0], lift + 0.01),
+          w(e.index, s, span[1], lift + 0.01),
+          w(e.index, s + STAGING_SEAM_M, span[0], lift + 0.01),
+          w(e.index, s + STAGING_SEAM_M, span[1], lift + 0.01),
+        );
+      }
+      for (const side of [-1, 1] as const) {
+        const kerb = strip('shoulder');
+        kerb.breakStrip();
+        sd.forEach((s, i) => {
+          if (overGap(i)) kerb.breakStrip();
+          const span = laneSpans(road.lanesAt(e.index, s)).shortcut;
+          if (!span) {
+            kerb.breakStrip();
+            return;
+          }
+          const [d0, d1] =
+            side < 0 ? [span[0], span[0] + STAGING_KERB.widthM] : [span[1] - STAGING_KERB.widthM, span[1]];
+          kerb.pair(w(e.index, s, d0, lift + 0.01), w(e.index, s, d1, lift + 0.01));
+        });
+        kerb.breakStrip();
+      }
+    }
     // The gore line: where the split zone's inner edge bounds the shortcut, a solid white line.
     for (const left of [true, false]) {
       const m = strip('splitMark');
@@ -1487,7 +1541,9 @@ export function buildRoadScene(
           !railsOf[side].some((b) => s >= b.s0 - 5 && s <= b.s1 + 5) &&
           !(untagged && w(e.index, s, 0, 0).y >= ELEVATED_M);
         let r = 0;
-        // Run W-U: a seawall's land (the waterfront's promenade) is only as wide as its verge band.
+        // Run W-U: a seawall's land (the waterfront's promenade) is only as wide as its verge band. Since
+        // playtest 4 (P4-19, C4) Chuckanut's bluff and Lake Samish's bank end in a drop the same way, and on
+        // the inside of a bend too tight for the full strip they narrow to half before giving up the land.
         const seawall = land ? SEAWALL_LAND_M[th] : undefined;
         wallOf[side].push(seawall !== undefined);
         if (land) {
@@ -1499,7 +1555,7 @@ export function buildRoadScene(
           const wide = WIDE_LAND_M[th];
           const widths =
             seawall !== undefined
-              ? [seawall]
+              ? [seawall, seawall / 2]
               : wide !== undefined
                 ? [wide, (wide + SCENERY_LAND_M) / 2, SCENERY_LAND_M, 14, 6]
                 : [SCENERY_LAND_M, 14, 6];

@@ -9,11 +9,28 @@ import { mkdirSync } from 'node:fs';
 // - the pause screen's "recently seen" list cuts a line in two taps, and the report lists it too.
 // The race is ridden by the stub bot. The billboard long-press in the paused scene waits for
 // app-4's wire from render's pickContentAt.
+// The press is timed by ui's manual long-press clock (`__uiLongPressManual`, `__uiLongPress`,
+// docs/architecture.md, "Testing seams"), not by the wall: a press is held for 500 ms by
+// advancing the clock 500 ms, so a slow runner's frame rate cannot make the spec flake. The
+// 500 ms rule itself is unit-tested (src/ui/narrative/long-press.ts, bubble-press.test.ts).
 
 interface Handle {
   setBot(on: boolean): void;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __copied?: string[] };
+interface PressClock {
+  advance(ms: number): void;
+  pending(): number;
+}
+type TestWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __uiLongPressManual?: boolean;
+  __uiLongPress?: PressClock;
+  __game?: Handle;
+  __copied?: string[];
+};
+
+/** The long-press threshold (VETO_LONG_PRESS_MS, docs/architecture.md, "The gesture"). */
+const LONG_PRESS_MS = 500;
 
 interface SeenBubble {
   ref: string;
@@ -37,6 +54,7 @@ async function startRace(page: Page) {
   await page.addInitScript(() => {
     const w = window as TestWindow;
     w.__GAME_TEST__ = true;
+    w.__uiLongPressManual = true;
     w.__copied = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -75,29 +93,28 @@ async function nextBubble(page: Page, except = ''): Promise<SeenBubble> {
   });
 }
 
-/** A synthetic touch held at (x, y) for `ms` (the window-level watcher sees it like a real one). */
-async function holdTouch(page: Page, x: number, y: number, ms: number) {
-  await page.evaluate(
-    ({ x, y, ms }) => {
-      const init = {
-        pointerId: 7,
-        pointerType: 'touch',
-        isPrimary: true,
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-      };
-      window.dispatchEvent(new PointerEvent('pointerdown', init));
-      return new Promise<void>((done) =>
-        // eslint-disable-next-line no-restricted-syntax -- a long-press hold: the veto's threshold is wall time by design
-        setTimeout(() => {
-          window.dispatchEvent(new PointerEvent('pointerup', init));
-          done();
-        }, ms),
-      );
-    },
-    { x, y, ms },
-  );
+/** Moves the long-press clock on by `ms` and returns how many presses are still timing before it. */
+async function advancePress(page: Page, ms: number): Promise<number> {
+  return page.evaluate((ms) => {
+    const clock = (window as TestWindow).__uiLongPress;
+    if (!clock) throw new Error('no __uiLongPress: the manual long-press clock is not installed');
+    const pending = clock.pending();
+    clock.advance(ms);
+    return pending;
+  }, ms);
+}
+
+/**
+ * A synthetic touch held at (x, y) for `ms` of the long-press clock (the window-level watcher sees it
+ * like a real one). Returns how many presses were timing while it was held: 1 if the watcher took
+ * the touch for a possible cut, 0 if it ignored it (the stick zone).
+ */
+async function holdTouch(page: Page, x: number, y: number, ms: number): Promise<number> {
+  const init = { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true };
+  await page.evaluate((init) => window.dispatchEvent(new PointerEvent('pointerdown', init)), init);
+  const timing = await advancePress(page, ms);
+  await page.evaluate((init) => window.dispatchEvent(new PointerEvent('pointerup', init)), init);
+  return timing;
 }
 
 async function copiedReport(page: Page, button: string): Promise<string> {
@@ -124,18 +141,19 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
   const stickRight = 0.9 * Math.min(viewport.width, viewport.height);
   const first = await nextBubble(page);
   expect(first.left + 10).toBeLessThan(stickRight);
-  await holdTouch(page, first.left + 10, first.y, 600);
+  expect(await holdTouch(page, first.left + 10, first.y, 10 * LONG_PRESS_MS)).toBe(0);
   await expect(menu).toHaveCount(0);
 
-  // A mouse held still for 650 ms on a fresh bark: "cut this", with the line on the card. The
-  // bark stays up while pressed, whatever its own time says.
+  // A mouse held still for 500 ms on a fresh bark: "cut this", with the line on the card. A tick
+  // short of the threshold it is still closed.
   const seen = await nextBubble(page, first.ref);
   console.log(`bubble ${seen.ref}: "${seen.text}"`);
   expect(seen.ref).toMatch(/^base:bark-set\/[a-z0-9-]+#[a-z0-9-]+$/);
   await page.mouse.move(seen.x, seen.y);
   await page.mouse.down();
-  // eslint-disable-next-line no-restricted-syntax -- a long-press hold: the veto's threshold is wall time by design
-  await page.waitForTimeout(650);
+  expect(await advancePress(page, LONG_PRESS_MS - 1)).toBe(1);
+  await expect(menu).toHaveCount(0);
+  await advancePress(page, 1);
   await expect(menu).toBeVisible();
   await page.mouse.up();
   await expect(menu).toHaveAttribute('data-content-ref', seen.ref);
@@ -161,7 +179,7 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
   const third = await nextBubble(page, seen.ref);
   const outside = Math.max(third.x, stickRight + 10);
   expect(outside).toBeLessThan(third.right - 4);
-  await holdTouch(page, outside, third.y, 600);
+  expect(await holdTouch(page, outside, third.y, LONG_PRESS_MS)).toBe(1);
   await expect(menu).toBeVisible();
   await expect(menu).toHaveAttribute('data-content-ref', third.ref);
   await page.locator('#cut-keep').click();

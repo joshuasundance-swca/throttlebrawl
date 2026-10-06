@@ -97,6 +97,9 @@ const kindsOf = (id: string) => {
 
 const pnwRoadside = await bakeRepoModel('pnwRoadside');
 const pnwIdentity = await bakeRepoModel('pnwIdentity');
+// C4's shore kit (Chuckanut's parapet, bluff and cuts): loaded as the game loads it, so a control without the
+// identity kit still draws the stretches the shore kit fills.
+const pnwShore = await bakeRepoModel('pnwShore');
 
 /** The real kit scattered on a network with the identity model loaded unless `models` says otherwise. */
 function scene(
@@ -671,8 +674,10 @@ describe('drawing them', () => {
           mine: layer.items.filter((i) => i.rule === rule).length,
         };
       };
-      const without = run({ pnwRoadside });
-      const withIt = run({ pnwRoadside, pnwIdentity });
+      // Every other kit the network loads stays in (C4: on Chuckanut's bay side the shore kit's parapet fills the
+      // stretches the forest's ferns and fences filled before); only the identity kit comes and goes.
+      const without = run({ pnwRoadside, pnwShore });
+      const withIt = run({ pnwRoadside, pnwIdentity, pnwShore });
       print(
         `${id}: ${withIt.mine} ${rule} items; ${withIt.chunks} stretches (${without.chunks} without); at most ${withIt.peakMeshes} meshes and ${withIt.peakTris} triangles in view (${without.peakMeshes} and ${without.peakTris} without)`,
       );

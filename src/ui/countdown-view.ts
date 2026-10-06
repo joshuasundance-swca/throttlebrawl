@@ -20,8 +20,30 @@
 export const COUNT_PEAK_SCALE = 1.45;
 /** The same for the first beat after the grid appears. */
 export const COUNT_FIRST_PEAK_SCALE = 1.8;
-/** The number's opacity at rest, after the entrance (translucent: the veto). */
-export const COUNT_REST_OPACITY = 0.6;
+/**
+ * The number's opacity at rest, after the entrance: a little translucent, as the strip beside the road
+ * keeps it light (the veto), but not so faint that the outline fades with it (HUD punch item 9, run A:
+ * "a grey 37 px digit at opacity 0.6 ... low contrast over a pale building").
+ */
+export const COUNT_REST_OPACITY = 0.9;
+/** The number's fill (a warm white) and its outline. ui/countdown-view.test.ts holds their contrast to a ratio of 7. */
+export const COUNT_FILL = '#fffbe8';
+export const COUNT_OUTLINE = '#111';
+/** A 2 px outline all round (eight steps), then a soft dark halo: a pale wall never takes the glyph's edge. */
+const OUTLINE = [
+  [-2, 0],
+  [2, 0],
+  [0, -2],
+  [0, 2],
+  [-2, -2],
+  [2, -2],
+  [-2, 2],
+  [2, 2],
+]
+  .map(([x, y]) => `${x === 0 ? '0' : `${x}px`} ${y === 0 ? '0' : `${y}px`} 0 ${COUNT_OUTLINE}`)
+  .join(', ');
+const REST_SHADOW = `${OUTLINE}, 0 0 6px ${COUNT_OUTLINE}`;
+const entranceShadow = (blur: number) => `${OUTLINE}, 0 0 ${blur}px #f5c542`;
 
 export const COUNTDOWN_CSS = `
 #countdown { position: absolute; left: 0; width: 25%; top: 45%; transform: translateY(-50%); z-index: 1;
@@ -29,17 +51,17 @@ export const COUNTDOWN_CSS = `
 #countdown[hidden] { display: none; }
 #countdown .count { display: inline-block; padding: 0 0.1em; box-sizing: border-box; opacity: ${COUNT_REST_OPACITY};
   font: 900 clamp(28px, 9vmin, 56px)/1.05 ui-monospace, 'Courier New', monospace; text-transform: uppercase;
-  color: #f2ead8; text-shadow: 0 0 4px #111, 2px 2px 0 #111; transform-origin: 50% 50%;
+  color: ${COUNT_FILL}; text-shadow: ${REST_SHADOW}; transform-origin: 50% 50%;
   animation: tb-count-in 0.5s cubic-bezier(0.2, 0.7, 0.3, 1); }
 #countdown .count.first { animation: tb-count-first 0.8s cubic-bezier(0.2, 0.7, 0.3, 1); }
 #countdown .count.go { color: #f5c542; }
 @keyframes tb-count-in {
-  from { transform: scale(${COUNT_PEAK_SCALE}); opacity: 1; text-shadow: 0 0 14px #f5c542, 2px 2px 0 #111; }
-  to { transform: scale(1); opacity: ${COUNT_REST_OPACITY}; text-shadow: 0 0 4px #111, 2px 2px 0 #111; } }
+  from { transform: scale(${COUNT_PEAK_SCALE}); opacity: 1; text-shadow: ${entranceShadow(14)}; }
+  to { transform: scale(1); opacity: ${COUNT_REST_OPACITY}; text-shadow: ${REST_SHADOW}; } }
 @keyframes tb-count-first {
-  from { transform: scale(${COUNT_FIRST_PEAK_SCALE}); opacity: 1; text-shadow: 0 0 18px #f5c542, 2px 2px 0 #111; }
-  35% { transform: scale(${COUNT_PEAK_SCALE}); opacity: 1; text-shadow: 0 0 14px #f5c542, 2px 2px 0 #111; }
-  to { transform: scale(1); opacity: ${COUNT_REST_OPACITY}; text-shadow: 0 0 4px #111, 2px 2px 0 #111; } }
+  from { transform: scale(${COUNT_FIRST_PEAK_SCALE}); opacity: 1; text-shadow: ${entranceShadow(18)}; }
+  35% { transform: scale(${COUNT_PEAK_SCALE}); opacity: 1; text-shadow: ${entranceShadow(14)}; }
+  to { transform: scale(1); opacity: ${COUNT_REST_OPACITY}; text-shadow: ${REST_SHADOW}; } }
 @media (prefers-reduced-motion: reduce) { #countdown .count, #countdown .count.first { animation: none; } }
 `;
 

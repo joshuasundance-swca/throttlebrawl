@@ -31,7 +31,7 @@
 // mascot on two corner walls, painted over by a crew as the race's leader goes round.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
-import { Backdrop, backdropFilesFor, type BackdropStats } from './backdrop';
+import { Backdrop, backdropFilesFor, loadNetworkWater, type BackdropStats } from './backdrop';
 import type {
   EntitySnapshot,
   RendererStats,
@@ -432,6 +432,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // Run W-P: the region's roadside props (roadside.ts), a lazy chunk that arrives with the kit.
   let roadsideModule: typeof import('./roadside') | null = null;
   let roadside: RoadsideLayer | null = null;
+  /** The race network's own water above the sea, once its backdrop file is in (`requestWater`). */
+  let water: { road: RoadNetwork; at: (x: number, z: number) => number | null } | null = null;
   const buildRoadside = () => {
     roadside?.dispose();
     roadside = null;
@@ -467,8 +469,24 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // Playtest 3 (T12.1): rules that draw from another kit (Key West's Old Town, the Duval kit,
       // with its region atlas loaded alongside it in models.ts).
       models,
+      // Playtest 4 (P4-19, C4): the network's own water (Lake Samish), where a dock stands at its level.
+      ...(water && water.road === roadArgs.road ? { waterAt: water.at } : {}),
     });
     scene.add(roadside.group);
+  };
+  // Playtest 4 (P4-19, C4): the network's own water above the sea, from its backdrop file (Lake Samish);
+  // the roadside props are placed again once it is in, so the docks stand at the lake's level.
+  const requestWater = (road: RoadNetwork) => {
+    water = null;
+    void loadNetworkWater(road.id)
+      .then((at) => {
+        if (!at || roadArgs?.road !== road) return;
+        water = { road, at };
+        buildRoadside();
+      })
+      .catch(() => {
+        // No water floor: no docks; the race goes on.
+      });
   };
   // Run W-T: the staged roadside scenes (scenes/), a lazy chunk with the region's scenes file. They
   // are placed on the road scene's land before the roadside props, which keep off their ground.
@@ -558,7 +576,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // Playtest 4 (P4-16): the Old Town's shop names, once the street fronts are placed.
       ...(roadside?.ready ? roadside.surfaces() : []),
     ];
-    if (placed.length === 0) return;
+    // Playtest 4 (P4-19, R3): the shop signs of the corner buildings the scatter stood in the terraces.
+    const apartments = models.sfApartments;
+    const corners =
+      !!roadScene &&
+      !!apartments?.surfaces &&
+      roadScene.spots.some(
+        (s) => s.kind === 'apartment' && (apartments.surfaces?.[s.variant]?.length ?? 0) > 0,
+      );
+    if (placed.length === 0 && !corners) return;
     const m = textSurfacesModule;
     if (!m) {
       void import('./text-surfaces').then((loaded) => {
@@ -567,6 +593,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       });
       return;
     }
+    if (corners && roadScene) placed.push(...m.apartmentSurfaces(roadScene.spots, apartments, sceneSeed));
     textSurfaces = new m.TextSurfaceLayer(look, placed, {
       catalog: roadCatalog,
       hidden: hiddenRefs,
@@ -735,21 +762,23 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   };
   // Playtest 4 (P4-16): a party street's string lights (party-lights.ts), a lazy chunk loaded only for a road
   // with a party zone, and hung only at dusk and after. Built with the road scene, whose land it stands on.
+  // The crowd on its balconies (run A's check, item 7) is there by day too, once the street fronts are placed.
   let partyModule: typeof import('./party-lights') | null = null;
   let party: PartyLights | null = null;
   const buildParty = () => {
     party?.dispose();
     party = null;
     const rs = roadScene;
-    if (!partyModule || !roadArgs || !rs || !isLitTime(roadTime)) return;
+    if (!partyModule || !roadArgs || !rs) return;
     party = new partyModule.PartyLights(look, {
       road: roadArgs.road,
       dressing: roadArgs.dressing,
       seed: sceneSeed,
-      lit: true,
+      lit: isLitTime(roadTime),
       landReach: (e, side, s) => rs.landReach(e, side, s),
     });
     scene.add(party.group);
+    if (roadside?.ready) party.setFronts(roadside.surfaces());
   };
   const buildRoad = () => {
     if (!roadArgs) return;
@@ -772,6 +801,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildBlocks();
     buildMission();
     buildParty();
+    buildTextSurfaces();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -908,7 +938,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           (f) => f.kind === 'roadsideZone' && f.params?.['dressing'] === 'party',
         ),
       );
-      if (hasParty && isLitTime(env.timeOfDay)) {
+      if (hasParty) {
         if (partyModule) buildParty();
         else
           void import('./party-lights').then((m) => {
@@ -925,6 +955,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       backdrop.setRoad(road);
       requestLandmarks(road);
       requestScenes(road);
+      requestWater(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
     },
@@ -967,6 +998,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (roadside?.ready && !roadsideWords) {
         roadsideWords = true;
         buildTextSurfaces();
+        party?.setFronts(roadside.surfaces());
       }
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);

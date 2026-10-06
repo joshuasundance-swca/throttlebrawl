@@ -31,6 +31,34 @@ const defaultSchedule: Schedule = (fn, ms) => {
   return () => clearTimeout(t);
 };
 
+/**
+ * A clock that only moves when told, as a `Schedule`: the browser specs' stand-in for wall time
+ * (ui's `__uiLongPress` seam), so a press is held for "500 ms" by `advance(500)`, never by waiting
+ * on a runner that draws 7 frames a second. Timers due by the new time fire in the order set.
+ */
+export function createManualClock(): { schedule: Schedule; advance(ms: number): void; pending(): number } {
+  let now = 0;
+  let timers: { at: number; fn: () => void; live: boolean }[] = [];
+  return {
+    schedule: (fn, ms) => {
+      const t = { at: now + ms, fn, live: true };
+      timers.push(t);
+      return () => {
+        t.live = false;
+      };
+    },
+    advance(ms) {
+      now += ms;
+      for (const t of timers.filter((x) => x.live && x.at <= now)) {
+        t.live = false;
+        t.fn();
+      }
+      timers = timers.filter((x) => x.live);
+    },
+    pending: () => timers.filter((t) => t.live).length,
+  };
+}
+
 export function createLongPress<T>(opts: LongPressOptions<T>): LongPress<T> {
   const ms = opts.ms ?? VETO_LONG_PRESS_MS;
   const slop = opts.slopPx ?? LONG_PRESS_SLOP_PX;

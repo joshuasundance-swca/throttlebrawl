@@ -39,7 +39,7 @@ import {
 } from './models';
 import { readGlb } from './glb';
 import type { BoardCatalog } from './boards';
-import { TextSurfaceLayer } from './text-surfaces';
+import { apartmentSurfaces, TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { PartyLights } from './party-lights';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
@@ -227,7 +227,13 @@ describe('the still scene along every route', () => {
       const kits = await landmarkKitsOf(road);
       const lm = kits.size > 0 ? new LandmarkLayer(kits, look, { road }) : null;
       // Playtest 4 (P4-16): and the Old Town's shop names on the street fronts the roadside placed.
-      const placed = [...(lm?.surfaces() ?? []), ...(dt?.surfaces() ?? []), ...(roadside?.surfaces() ?? [])];
+      // And (P4-19, R3) the shop signs of the corner buildings the scatter stood in the terraces.
+      const placed = [
+        ...(lm?.surfaces() ?? []),
+        ...(dt?.surfaces() ?? []),
+        ...(roadside?.surfaces() ?? []),
+        ...apartmentSurfaces(rs.spots, models.sfApartments, seed),
+      ];
       const words =
         placed.length > 0
           ? new TextSurfaceLayer(look, placed, { catalog: signCatalog(), createCanvas: () => null })
@@ -240,6 +246,8 @@ describe('the still scene along every route', () => {
         lit: true,
         landReach: (e, side, s) => rs.landReach(e, side, s),
       });
+      // Playtest 4 (run A, item 7): and the revellers on the party blocks' balconies, once the fronts are placed.
+      lights.setFronts(placed);
       // Run W-U: San Francisco's waterfront.
       const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
       // Run W-U: the Pacific Northwest's places (the ferry, the clear-cut, the Stump Social).
