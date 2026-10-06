@@ -15,9 +15,11 @@ import {
   capOf,
   clip,
   conflictComment,
+  cutShort,
   decide,
   eligibility,
   failingTests,
+  failureReport,
   fenceSafe,
   hasMarker,
   isDocsOnly,
@@ -29,10 +31,12 @@ import {
   prList,
   prNumbersFromTitles,
   readConfig,
+  redSuiteJobs,
   route,
   selectBundle,
   stateOf,
   withCap,
+  workflowCommand,
 } from './train.mjs';
 
 const REPO = 'owner/game';
@@ -831,6 +835,193 @@ describe('what a red train says', () => {
   });
 });
 
+// Fail fast (docs/engineering.md, "Fail fast on a PR") cancels the red job's own run, so the red
+// job ends `cancelled` like its siblings, `gh run view --log-failed` prints only the gate's log, and
+// the gate said only "suite is cancelled". The gate now names the red job, its failed step and its
+// failing tests. The jobs below are trimmed from this repo's own API answer for PR run 37417692149
+// (2026-10-06, a quick check whose unit slice 1 failed and cancelled the run).
+describe('what a red PR run says', () => {
+  const step = (name: string, conclusion: string, completed_at: string) => ({
+    name,
+    status: 'completed',
+    conclusion,
+    completed_at,
+  });
+  const jobs = [
+    {
+      id: 112119910216,
+      name: 'suite / static',
+      status: 'completed',
+      conclusion: 'success',
+      completed_at: '2026-10-06T05:18:53Z',
+      steps: [
+        step(
+          "The quick check's static part (types, lint, format, packs, leak scan, size, notes, then the build and its size budget)",
+          'success',
+          '2026-10-06T05:18:50Z',
+        ),
+        step('Fail fast, cancel the rest of this PR run', 'skipped', '2026-10-06T05:18:50Z'),
+      ],
+    },
+    {
+      id: 112119910288,
+      name: 'suite / unit (1/2)',
+      status: 'completed',
+      conclusion: 'cancelled',
+      completed_at: '2026-10-06T05:20:13Z',
+      steps: [
+        step('Unit tests, one slice', 'failure', '2026-10-06T05:20:07Z'),
+        step('Fail fast, cancel the rest of this PR run', 'success', '2026-10-06T05:20:11Z'),
+      ],
+    },
+    {
+      id: 112119910352,
+      name: 'suite / unit (2/2)',
+      status: 'completed',
+      conclusion: 'cancelled',
+      completed_at: '2026-10-06T05:21:32Z',
+      steps: [
+        step('Unit tests, one slice', 'cancelled', '2026-10-06T05:21:30Z'),
+        step('Fail fast, cancel the rest of this PR run', 'skipped', '2026-10-06T05:21:30Z'),
+      ],
+    },
+    {
+      id: 112119911734,
+      name: 'suite / browser (${{ matrix.shard }}/${{ strategy.job-total }})',
+      status: 'completed',
+      conclusion: 'skipped',
+      completed_at: '2026-10-06T05:16:24Z',
+      steps: [],
+    },
+    {
+      id: 112121218792,
+      name: 'quick',
+      status: 'completed',
+      conclusion: 'failure',
+      completed_at: '2026-10-06T05:21:39Z',
+      steps: [
+        step('Every gate job passed, on the suite path or the skip path', 'failure', '2026-10-06T05:21:37Z'),
+      ],
+    },
+  ];
+
+  it('finds the red suite job by its failed step, though fail fast left it cancelled', () => {
+    expect(redSuiteJobs(jobs)).toEqual([
+      { id: 112119910288, name: 'suite / unit (1/2)', step: 'Unit tests, one slice', cancelled: true },
+    ]);
+    // The negative control: the job's own conclusion, the rule the train's report used, finds
+    // nothing in a fail-fast run.
+    expect(jobs.filter((j) => j.conclusion === 'failure' && /^suite \/ /.test(j.name))).toEqual([]);
+  });
+
+  it('finds a red job on a train too (no fail fast: it ends failure), first red first, never a control job', () => {
+    const train = [
+      {
+        id: 2,
+        name: 'suite / sim (3/6)',
+        conclusion: 'failure',
+        steps: [step('Seeded sim batch, one slice', 'failure', '2026-10-06T05:30:00Z')],
+      },
+      {
+        id: 1,
+        name: 'suite / browser (2/7)',
+        conclusion: 'failure',
+        steps: [step('Build, browser tests (one slice)', 'failure', '2026-10-06T05:20:00Z')],
+      },
+      {
+        id: 3,
+        name: 'control / sim (3/6)',
+        conclusion: 'failure',
+        steps: [step('Seeded sim batch, one slice', 'failure', '2026-10-06T05:10:00Z')],
+      },
+      { id: 4, name: 'suite / static', conclusion: 'failure', steps: [] },
+    ];
+    expect(redSuiteJobs(train)).toEqual([
+      { id: 4, name: 'suite / static', step: '', cancelled: false },
+      { id: 1, name: 'suite / browser (2/7)', step: 'Build, browser tests (one slice)', cancelled: false },
+      { id: 2, name: 'suite / sim (3/6)', step: 'Seeded sim batch, one slice', cancelled: false },
+    ]);
+  });
+
+  it('names the jobs a cancel cut short, for a red run with no failed step (a timeout, or a newer push)', () => {
+    expect(cutShort(jobs)).toEqual(['suite / unit (2/2)']);
+  });
+
+  it('names the red job, its failed step, why it shows as cancelled, its failing tests and its log', () => {
+    const r = failureReport(
+      [
+        {
+          id: 112119910288,
+          name: 'suite / unit (1/2)',
+          step: 'Unit tests, one slice',
+          cancelled: true,
+          tests: [
+            'src/render/interstate-roadside.test.ts > the kit > names every built rule',
+            'unit tests (slice 1/2, 314 files): FAIL 3804 tests passed, 1 failed (313 files passed) (151.1s)',
+          ],
+        },
+      ],
+      ['suite / unit (2/2)'],
+    );
+    const text = r.lines.join('\n');
+    expect(text).toContain('suite / unit (1/2)');
+    expect(text).toContain('"Unit tests, one slice" failed');
+    expect(text).toContain('fail fast');
+    expect(text).toContain('src/render/interstate-roadside.test.ts > the kit > names every built rule');
+    expect(text).toContain('gh run view --job 112119910288 --log');
+    // A sibling the cancel cut short is not news when the red job is known.
+    expect(text).not.toContain('suite / unit (2/2)');
+    expect(r.summary).toContain(
+      '```text\nsrc/render/interstate-roadside.test.ts > the kit > names every built rule\n',
+    );
+    expect(r.annotations).toHaveLength(1);
+    expect(r.annotations[0]).toMatch(/^::error title=red job%3A suite \/ unit \(1\/2\)::/);
+    expect(r.annotations[0]).toContain('names every built rule%0Aunit tests');
+  });
+
+  it('says so when no suite job failed a step, and names the jobs a cancel cut short', () => {
+    const r = failureReport([], ['suite / browser (5/7)']);
+    expect(r.lines.join('\n')).toContain('No suite job of this run failed a step');
+    expect(r.lines.join('\n')).toContain('suite / browser (5/7)');
+    expect(r.lines.join('\n')).toContain('timeout');
+    expect(r.annotations).toHaveLength(1);
+    expect(r.annotations[0]).toMatch(/^::error title=no red suite job::/);
+  });
+
+  it('a test name from a PR can never start a workflow command of its own', () => {
+    const evil = 'tests/x.test.ts > a\n::add-mask::secret\r\n::stop-commands::x';
+    const r = failureReport(
+      [{ id: 7, name: 'suite / unit (1/2)', step: 'Unit tests, one slice', cancelled: true, tests: [evil] }],
+      [],
+    );
+    // The runner reads a command at a line's start after trimming its leading spaces, so every
+    // printed line from a log starts with "- ", and a test's own line breaks become spaces; the
+    // annotation is one line.
+    for (const line of r.lines.join('\n').split(/\r?\n|\r/)) expect(line.trimStart()).not.toMatch(/^::/);
+    for (const a of r.annotations) expect(a).not.toMatch(/[\r\n]/);
+    expect(r.annotations[0]).toContain('tests/x.test.ts > a ::add-mask::secret ::stop-commands::x');
+    expect(r.summary).not.toMatch(/^\s*::/m);
+    expect(workflowCommand('error', { title: 'a: b, c%' }, '50% done\nnext')).toBe(
+      '::error title=a%3A b%2C c%25::50%25 done%0Anext',
+    );
+  });
+
+  it('bounds the annotations: one per red job, at most five, each at most ten tests', () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({
+      id: i,
+      name: `suite / sim (${i + 1}/6)`,
+      step: 'Seeded sim batch, one slice',
+      cancelled: false,
+      tests: Array.from({ length: 15 }, (_, k) => `tests/sim/t${k}.test.ts > case`),
+    }));
+    const r = failureReport(many, []);
+    expect(r.annotations).toHaveLength(5);
+    // The failed step, ten tests and "... and 5 more".
+    expect(r.annotations[0]!.split('%0A')).toHaveLength(12);
+    expect(r.annotations[0]).toContain('%0A... and 5 more');
+  });
+});
+
 // The workflows themselves, read as text (the repo has no YAML parser of its own): the suite is
 // one file both callers share, the quick check stays small, a train never writes caches or runs
 // PR code with a write token, and PR text never reaches a run: line.
@@ -975,6 +1166,59 @@ describe('the workflows', () => {
         for (const [expr] of b.matchAll(/\$\{\{[^}]*\}\}/g))
           expect(expr, `${name}: ${expr}`).toMatch(/^\$\{\{ (?:matrix\.shard|strategy\.job-total) \}\}$/);
     }
+  });
+
+  // A red PR run (docs/engineering.md, "Fail fast on a PR"): the gate's log is all that
+  // `gh run view --log-failed` prints, so the gate names the red job and its failing tests there,
+  // in its summary and in an annotation. It reads the run's jobs and logs, so it needs actions: read,
+  // and never a write token: on a PR the gate's run holds PR code's results.
+  it("a red run's gate names the red job and its failing tests, right after its verdict, with a read-only token", () => {
+    const agg = jobs(ci).get('aggregate') ?? '';
+    expect(agg).toMatch(/^ {4}permissions:\n {6}actions: read\n {6}contents: read\n {4}steps:\n/m);
+    expect(agg).not.toMatch(/: write$/m);
+    const steps = agg.split(/\n {6}- /);
+    const verdict = steps.findIndex((s) => s.startsWith('name: Every gate job passed'));
+    const names = steps.findIndex((s) => s.includes('run: node scripts/train.mjs failures'));
+    expect(verdict, 'the verdict step').toBeGreaterThan(0);
+    expect(steps[verdict]).toMatch(/\n {8}id: verdict\n/);
+    expect(names, 'the naming step follows the verdict').toBe(verdict + 1);
+    const step = steps[names] ?? '';
+    // Only when the verdict itself is red (not on a green gate, not when the checkout failed),
+    // and it can never hold the gate up or change its colour.
+    expect(step).toContain("\n        if: failure() && steps.verdict.outcome == 'failure'\n");
+    expect(step).toContain('\n        continue-on-error: true\n');
+    expect(step).toMatch(/\n {8}timeout-minutes: [12]\n/);
+    expect(step).toContain('\n          GH_TOKEN: ${{ github.token }}\n');
+    // The tree record after it still needs a green verdict: no status function in its if:.
+    const record = steps.find((s) => s.startsWith('name: Record the tree this PR run tested')) ?? '';
+    expect(record).toMatch(/\n {8}if: github\.event_name == 'pull_request' && /);
+  });
+
+  it('the fail-fast step names its own job in an annotation before it cancels the run', () => {
+    for (const [id, block] of jobs(suite)) {
+      const steps = block.split(/\n {6}- /);
+      const last = steps[steps.length - 1] ?? '';
+      expect(last, id).toMatch(/^name: Fail fast, cancel the rest of this PR run\n/);
+      // The job's display name, as its name: line gives it (the job id alone drops the slice).
+      const display = /^ {4}name: (.+)$/m.exec(block)?.[1];
+      expect(display, id).toBeDefined();
+      expect(last, id).toContain(`\n          RED_JOB: ${display}\n`);
+      const named = last.indexOf('::error title=fail-fast::$RED_JOB ');
+      expect(named, id).toBeGreaterThan(-1);
+      expect(named, id).toBeLessThan(last.indexOf('gh run cancel'));
+    }
+  });
+
+  it("train.mjs knows the gate's failures command", () => {
+    const env = { ...process.env };
+    for (const k of ['GITHUB_REPOSITORY', 'GH_TOKEN', 'GITHUB_TOKEN']) delete env[k];
+    const res = spawnSync(process.execPath, [path.join(import.meta.dirname, 'train.mjs'), 'failures'], {
+      env,
+      encoding: 'utf8',
+    });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('GITHUB_REPOSITORY is not set');
+    expect(res.stderr).not.toContain('usage');
   });
 
   it('the checked-in switch reads cleanly', () => {

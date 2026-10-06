@@ -205,23 +205,39 @@ jobs:
   # tree it tested as an artifact named `tested-tree-<tree>` (7 days), which is what `plan` looks
   # up on main; the quick check never records one, since it did not run the full suite. The record
   # step cannot turn a PR red: if it fails, main just runs the whole suite.
+  # When the verdict is red, the aggregate names the red suite jobs, their failed steps and their
+  # failing tests (from their logs) in its own log, its summary and its annotations. Fail fast leaves
+  # the red job `cancelled` like its siblings, and `gh run view --log-failed` prints only this job's
+  # log (docs/engineering.md, "Fail fast on a PR"). Reading the run's jobs and logs takes
+  # actions: read; contents: read is restated, since job permissions replace the workflow's.
   aggregate:
     name: ${{ needs.route.outputs.path == 'train' && 'quick' || 'gate' }}
     needs: [plan, route, suite, prod-build]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts
       - name: Every gate job passed, on the suite path or the skip path
+        id: verdict
         env:
           NEEDS: ${{ toJSON(needs) }}
           ROUTE: ${{ needs.route.outputs.path }}
         run: |
           echo "path: ${ROUTE:-push to main}"
           node scripts/tested-tree.mjs gate
+      - name: Red, so name the red jobs and their failing tests
+        if: failure() && steps.verdict.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/train.mjs failures
       # The checkout is the commit this run tested: on a PR, GitHub's merge of the head into main.
       - name: Record the tree this PR run tested
         id: record
