@@ -59,7 +59,11 @@ interface Outcome {
   gap: number;
 }
 
-/** Rides a race with the bot until the piece is over (or the race is). */
+/**
+ * Rides a race with the bot until the beat (or until the piece is over, or the race is). Placed,
+ * started, the beat's tick and its gap are all settled at the beat, so the ride stops there (the
+ * test-diet run, 2026-10-06: the ticks after it asserted nothing).
+ */
 function ride(cfg: SimConfig, beatName: string): Outcome {
   const { sim, world } = createSimWithWorld(cfg);
   const st = setPieceState(world);
@@ -68,7 +72,7 @@ function ride(cfg: SimConfig, beatName: string): Outcome {
   const playerId = cfg.riders.findIndex((r) => r.controller.kind === 'player');
   const bot = createBot();
   let snap = sim.snapshot();
-  while (!sim.isOver() && sim.tick < 60 * 60 * 6 && (st.pieces[0]?.phase ?? 2) !== 2) {
+  while (!sim.isOver() && sim.tick < 60 * 60 * 6 && (st.pieces[0]?.phase ?? 2) !== 2 && out.beatTick < 0) {
     const actions = emptyActions();
     bot.drive(snap, playerId, cfg.route, actions);
     sim.step([toSimInput(actions)]);

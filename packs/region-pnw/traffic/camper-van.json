@@ -6,6 +6,7 @@
   "tags": ["tourist"],
   "lengthM": 6.6,
   "widthM": 2.2,
+  "heightM": 3,
   "cruiseMps": 22.0,
   "hazard": "big",
   "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },

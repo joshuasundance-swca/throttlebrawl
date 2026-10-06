@@ -5,6 +5,7 @@
 //
 // road-2 adds junctions with connector roads (continuity per connector row, split zones, the
 // traffic rule for shortcut lanes) and the jump lint (ramps and gaps on straight enough road).
+import { MAX_HEIGHT_M } from '../core';
 import { lanesPerDirection, MAX_LANES_PER_DIRECTION, resolveVerge } from './cross-section';
 import {
   GAP_RESPAWNS,
@@ -400,6 +401,16 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
     if (!(f.d0 <= f.d1)) add('features', `/features/${i}/d0`, `d0 ${f.d0} is past d1 ${f.d1}`);
     if (!FEATURE_KINDS.includes(f.kind as FeatureKind))
       add('features', `/features/${i}/kind`, `unknown feature kind ${f.kind}`);
+    // A hazard's height, where it gives one (the height contract; core `hazardHeightM` for the rest).
+    const heightM = f.kind === 'hazard' ? f.params?.['heightM'] : undefined;
+    if (f.kind === 'hazard' && f.params && 'heightM' in f.params) {
+      if (!(typeof heightM === 'number' && heightM > 0 && heightM <= MAX_HEIGHT_M))
+        add(
+          'features',
+          `/features/${i}/params/heightM`,
+          `hazard ${f.id}: heightM must be a number above 0 and at most ${MAX_HEIGHT_M} m (got ${String(heightM)})`,
+        );
+    }
     // A solid hazard (run W-U) stands off the lanes: traffic and the rival AI never see one.
     if (f.kind === 'hazard' && f.params?.['solid'] === true) {
       for (const sec of sections) {

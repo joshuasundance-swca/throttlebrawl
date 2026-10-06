@@ -62,7 +62,8 @@ function regionPeds(c: Case): string[] {
   return (region.traffic.pedestrians ?? []).map((p) => (p.kind.includes(':') ? p.kind : `${pack}:${p.kind}`));
 }
 
-function botRace(c: Case, seed: number) {
+/** The bot races the route; `maxTicks` stops it early (the replay's other seed needs a minute). */
+function botRace(c: Case, seed: number, maxTicks: number = MAX_TICKS) {
   const config = raceConfig(c, seed);
   const sim = createSim(config);
   const route = config.route;
@@ -78,7 +79,7 @@ function botRace(c: Case, seed: number) {
   const kinds = new Set<string>();
   const boosts: string[] = [];
   let jumps = 0;
-  while (!sim.isOver() && sim.tick < MAX_TICKS) {
+  while (!sim.isOver() && sim.tick < maxTicks) {
     const actions = emptyActions();
     bot.drive(snap, playerId, route, actions);
     sim.step([toSimInput(actions)]);
@@ -101,6 +102,20 @@ function botRace(c: Case, seed: number) {
   }
   const end = `tick ${sim.tick}, player on edge ${snap.entities[playerId]?.road.edge} s ${snap.entities[playerId]?.road.s.toFixed(0)}`;
   return { config, finishTick, problem, offRoute, maxTraffic, busted, hashes, kinds, boosts, jumps, end };
+}
+
+/** San Francisco's Russian Hill (the replay check's road since run W-O), or the first real road. */
+const REPLAY_ROUTE = ROUTES.find((r) => r.route === 'region-sf:osm-sf-hills-run') ?? ROUTES[0];
+let replayFirst: ReturnType<typeof botRace> | null = null;
+/**
+ * The bot's seed-1 race. The replay route's is kept, so the replay check below compares it with a
+ * fresh seed-1 race instead of riding a seed of its own twice (the test-diet run, 2026-10-06); the
+ * two races run apart, with other routes raced between them.
+ */
+function firstRace(c: Case) {
+  if (c !== REPLAY_ROUTE) return botRace(c, 1);
+  replayFirst ??= botRace(c, 1);
+  return replayFirst;
 }
 
 describe('real roads as routes: each one races well inside its region race', () => {
@@ -200,7 +215,7 @@ describe('real roads as routes: each one races well inside its region race', () 
     });
 
     it(`${c.route}: the bot finishes the race (a DNF is a bust, never a stall), every mover valid`, () => {
-      let res = botRace(c, 1);
+      let res = firstRace(c);
       for (let seed = 2; seed <= 3 && res.finishTick < 0; seed++) {
         expect(res.busted, `a DNF is a bust, not a stall (${res.end})`).toBe(true);
         res = botRace(c, seed);
@@ -221,15 +236,16 @@ describe('real roads as routes: each one races well inside its region race', () 
   }
 
   it('a seed replays to identical state hashes on a real road; another seed differs', () => {
-    // San Francisco's Russian Hill (the replay check's road since run W-O), or the first real road.
-    const c = ROUTES.find((r) => r.route === 'region-sf:osm-sf-hills-run') ?? ROUTES[0];
+    const c = REPLAY_ROUTE;
     if (!c) throw new Error('no real-road route');
-    const a = botRace(c, 4);
-    const again = botRace(c, 4);
+    const a = firstRace(c);
+    const again = botRace(c, 1);
     expect(again.hashes).toEqual(a.hashes);
     expect(again.finishTick).toBe(a.finishTick);
-    const b = botRace(c, 5);
+    // Another seed differs within its first minute (the 60 hashes compared), so it rides only that.
+    const b = botRace(c, 5, 60 * 60);
+    expect(b.hashes).toHaveLength(60);
     expect(b.hashes.slice(0, 60)).not.toEqual(a.hashes.slice(0, 60));
-    process.stdout.write(`[real routes] replay: ${c.route} seed 4, ${a.hashes.length} hashes equal\n`);
+    process.stdout.write(`[real routes] replay: ${c.route} seed 1, ${a.hashes.length} hashes equal\n`);
   }, 300_000);
 });

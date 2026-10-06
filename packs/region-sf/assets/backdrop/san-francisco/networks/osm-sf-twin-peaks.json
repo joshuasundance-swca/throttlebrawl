@@ -2,5 +2,18 @@
   "formatVersion": 1,
   "network": "osm-sf-twin-peaks",
   "originLatDeg": 37.7749,
-  "originLonDeg": -122.4194
+  "originLonDeg": -122.4194,
+  "pieces": [
+    {
+      "id": "radio-mast-near",
+      "kind": "mast",
+      "at": [37.7552, -122.4528],
+      "baseM": 254,
+      "heightM": 298,
+      "colour": "#c8402f",
+      "bandColour": "#f1eee6",
+      "keepOutM": 250,
+      "exaggerate": 0.7
+    }
+  ]
 }

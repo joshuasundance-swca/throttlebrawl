@@ -22,6 +22,9 @@
 // with full hands (he drops his own), and since W-Q a weapon lies on your line by the bike after
 // 3 in 10 crashes (#313), so he picked one up in most San Francisco races and stopped trying:
 // steals fell from 6 races in 10 to 2 while the same player who keeps trying stole in 8.
+// Each race stops at the first steal off the cop (the test-diet run, 2026-10-06): the checks ask only
+// whether a race had one and whether it was made with full hands, and the race up to it is the same
+// seeded race either way. Wind-ups, busts and finishes are counted up to the stop.
 // The races load the way the game loads them: every carried pack, release content only (no
 // drafts), built with the app's own buildSimConfig and stream cache.
 import { describe, expect, it } from 'vitest';
@@ -99,9 +102,9 @@ interface StealRun {
 }
 
 /**
- * One seeded race of the player who tries (the file header). He tries while his hands are empty,
- * and with a road weapon in hand until his first steal off the cop (the W-O polish run: a steal
- * works with full hands, dropping what you hold).
+ * One seeded race of the player who tries (the file header), up to his first steal off the cop. He
+ * tries with empty hands or with a road weapon in hand (the W-O polish run: a steal works with full
+ * hands, dropping what you hold).
  */
 function tryToSteal(event: string, seed: number): StealRun {
   const config = raceConfig(event, seed);
@@ -121,7 +124,7 @@ function tryToSteal(event: string, seed: number): StealRun {
   let snap: SimSnapshot = sim.snapshot();
   let pressAt = -1;
   const winding = new Set<number>();
-  while (!sim.isOver() && sim.tick < MAX_TICKS) {
+  while (!sim.isOver() && sim.tick < MAX_TICKS && run.steals === 0) {
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
     const me = snap.entities[playerId];
@@ -216,7 +219,8 @@ describe("the law's weapons in a real race (release content, every region)", () 
       process.stdout.write(
         `[cops-steal] ${r.name}: a player who tries stole the ${r.weapon} in ${stole.length} of ${runs.length} races ` +
           `(${runs.reduce((n, x) => n + x.windups, 0)} wind-ups, ${runs.reduce((n, x) => n + x.steals, 0)} steals); ` +
-          `busted ${runs.filter((x) => x.busted).length}, finished ${runs.filter((x) => x.finished).length}; ` +
+          `busted ${runs.filter((x) => x.busted).length}, finished ${runs.filter((x) => x.finished).length} ` +
+          `(each race stopped at the first steal); ` +
           `per seed ${runs.map((x) => `${x.seed}:${x.windups}/${x.steals}${x.firstStealS === null ? '' : `@${x.firstStealS.toFixed(0)}s`}`).join(' ')}\n`,
       );
       expect(stole.length).toBeGreaterThanOrEqual(Math.ceil(runs.length * minShareOf(r)));

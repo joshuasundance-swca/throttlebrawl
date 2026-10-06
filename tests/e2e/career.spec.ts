@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { careerPicks, qualifyIn } from './packs-on-disk';
 import { rideFirstCareerRace } from './career-start';
+import { fastForwardDone } from './lockstep';
 
 // The career in the browser (run W-R; docs/milestones/M4.md, ui-4; since playtest 4's "Menu first"
 // a new device lands on the menu, not in a race). A new device's first tap shows the menu with
@@ -18,6 +19,10 @@ interface Handle {
   snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
+  fastForward(
+    until: (snap: { tick: number }) => boolean,
+    opts?: { perFrame?: number; then?: number | null },
+  ): void;
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
@@ -210,8 +215,16 @@ test('the first event ridden to its results: won, paid, and its roads claimed on
   await page.goto('./');
   await page.evaluate(() => (window as TestWindow).__game?.setSeed(3));
   await rideFirstCareerRace(page);
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
-  await expect(page.locator('#career-results')).toBeVisible({ timeout: 360_000 });
+  // The whole race fast-forwards to its end (the handle's fastForward over the loop's lockstep,
+  // 1200 ticks a drawn frame): the race is the same tick for tick at any lockstep, so the results
+  // below are the ones a real-time ride gives. The guard is a hang guard, not a deadline.
+  await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    g?.setBot(true);
+    g?.fastForward(() => false, { perFrame: 1200 });
+  });
+  await fastForwardDone(page, 'the first career race, to its end');
+  await expect(page.locator('#career-results')).toBeVisible({ timeout: 60_000 });
   // First place is WON; a finish below first clears the opening race (it asks only to finish).
   await expect(page.locator('#career-results-title')).toHaveText(
     /^(WON|\d+(ST|ND|RD|TH) OF \d+\. CLEARED\.)$/,

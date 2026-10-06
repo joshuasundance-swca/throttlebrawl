@@ -14,10 +14,13 @@
 //   it('...', () => { for (const race of batch.races) expect(...) });
 //
 // Vitest runs test files in separate workers, so the cache lives on disk
-// (node_modules/.cache/throttlebrawl/), keyed by a hash of src/, packs/ and this file: the first
-// worker computes it under a lock file while the others wait, and a change to any source makes a
-// new key. SIM_BATCH_CACHE=0 turns the disk cache off. For a single scenario with per-tick access,
-// call runSeededRace(seed, { onTick }) directly instead.
+// (node_modules/.cache/throttlebrawl/), keyed by a hash of src/, packs/ and this file, and a change
+// to any source makes a new key. A batch is cached in chunks of CHUNK_SEEDS seeds, each with its
+// own file and lock: every worker waiting for a batch computes whichever chunk nobody holds yet, so
+// the workers compute it side by side, and the chunks merge back in seed order (2026-10-05, the
+// test diet: one worker used to compute the whole Normal batch while the others waited).
+// SIM_BATCH_CACHE=0 turns the disk cache off. For a single scenario with per-tick access, call
+// runSeededRace(seed, { onTick }) directly instead.
 //
 // M2 (dev-4, docs/milestones/M2.md): `presetBatch('easy' | 'hard')` runs PRESET_RACES more races per
 // preset on the same seeds (no replay: the Normal batch proves determinism), cached the same way,
@@ -58,7 +61,13 @@ declare global {
 }
 
 /** Bump when the result shape or the way races are run changes, to retire old caches. */
-const BATCH_FORMAT = 2;
+const BATCH_FORMAT = 3;
+/**
+ * Seeds per cached chunk of a batch: the Normal batch is 10 chunks, Easy and Hard 4 each. A chunk is
+ * about 30 to 40 s of one worker's time on a CI runner, so the waiting workers share the work while
+ * the per-chunk file and lock overhead stays small. [default]
+ */
+const CHUNK_SEEDS = 5;
 export const BATCH_RACES = 50;
 export const BATCH_SEEDS: readonly number[] = Array.from({ length: BATCH_RACES }, (_, i) => i + 1);
 /** Races per non-default preset (Easy, Hard) in presetBatch: seeds 1..PRESET_RACES. [default] */
@@ -143,8 +152,9 @@ export interface BatchResult {
   format: number;
   key: string;
   races: RaceResult[];
-  /** Wall-clock milliseconds to compute (0 when it came from the cache). */
+  /** Wall-clock milliseconds this worker spent computing chunks (0 when it computed none). */
   ms: number;
+  /** True when this worker computed no chunk: every chunk came from the cache or another worker. */
   fromCache: boolean;
 }
 
@@ -447,14 +457,43 @@ function tryLock(lock: string): number | null {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function readCache(file: string, key: string): BatchResult | null {
+/** One cached chunk of a batch: CHUNK_SEEDS (or fewer) consecutive seeds' races. */
+interface BatchChunk {
+  format: number;
+  key: string;
+  seeds: number[];
+  races: RaceResult[];
+}
+
+/** `seeds` in runs of CHUNK_SEEDS, in order. */
+function seedChunks(seeds: readonly number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let i = 0; i < seeds.length; i += CHUNK_SEEDS) chunks.push(seeds.slice(i, i + CHUNK_SEEDS));
+  return chunks;
+}
+
+/** A chunk file of this format and key that holds exactly `seeds`' races, in order, or null. */
+function readChunk(file: string, key: string, seeds: readonly number[]): BatchChunk | null {
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as BatchResult;
-    return parsed.format === BATCH_FORMAT && parsed.key === key
-      ? { ...parsed, ms: 0, fromCache: true }
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as BatchChunk;
+    const same = (a: readonly number[]) => a.length === seeds.length && a.every((s, i) => s === seeds[i]);
+    return parsed.format === BATCH_FORMAT &&
+      parsed.key === key &&
+      same(parsed.seeds) &&
+      same(parsed.races.map((r) => r.seed))
+      ? parsed
       : null;
   } catch {
     return null;
+  }
+}
+
+/** Deletes a lock older than the timeout: its worker was killed. */
+function clearStaleLock(lock: string): void {
+  try {
+    if (Date.now() - statSync(lock).mtimeMs > BATCH_TIMEOUT_MS) rmSync(lock, { force: true });
+  } catch {
+    // The lock vanished between the two calls: the next pass reads the chunk.
   }
 }
 
@@ -466,7 +505,7 @@ const presetMemo = new Map<string, Promise<BatchResult>>();
  * Every lane's tests/sim/<lane>-*.test.ts reads this; nobody runs their own 50 races.
  */
 export function simBatch(): Promise<BatchResult> {
-  memo ??= loadOrCompute('normal', BATCH_SEEDS, () => runBatch());
+  memo ??= loadOrCompute('normal', BATCH_SEEDS, (seeds) => runBatch(seeds));
   return memo;
 }
 
@@ -477,61 +516,90 @@ export function simBatch(): Promise<BatchResult> {
 export function presetBatch(difficulty: 'easy' | 'hard'): Promise<BatchResult> {
   let p = presetMemo.get(difficulty);
   if (!p) {
-    p = loadOrCompute(difficulty, PRESET_SEEDS, () => runPresetBatch(difficulty));
+    p = loadOrCompute(difficulty, PRESET_SEEDS, (seeds) => runPresetBatch(difficulty, seeds));
     presetMemo.set(difficulty, p);
   }
   return p;
 }
 
+/**
+ * A batch from its cached chunks. Each pass takes every chunk that is cached and computes each
+ * chunk no other worker holds the lock of, yielding after each one, so a file that awaits two
+ * batches at once (riders-difficulty: Easy and Hard) works on both. It sleeps only when every
+ * missing chunk is locked by another worker. The chunks merge in seed order.
+ */
 async function loadOrCompute(
   variant: string,
   seeds: readonly number[],
-  run: () => RaceResult[],
+  run: (seeds: readonly number[]) => RaceResult[],
 ): Promise<BatchResult> {
   const key = batchKey(seeds, variant);
-  const compute = (): BatchResult => {
+  if (process.env['SIM_BATCH_CACHE'] === '0') {
     const t0 = performance.now();
-    const races = run();
+    const races = run(seeds);
     return { format: BATCH_FORMAT, key, races, ms: performance.now() - t0, fromCache: false };
-  };
-  if (process.env['SIM_BATCH_CACHE'] === '0') return compute();
+  }
 
   mkdirSync(cacheDir, { recursive: true });
-  // The Normal batch keeps its M1 file name; the presets add theirs.
+  // The Normal batch keeps its M1 stem; the presets add theirs. Chunk i is `<stem>-<key>-c<i>.json`.
   const stem = variant === 'normal' ? 'sim-batch' : `sim-batch-${variant}`;
-  const file = path.join(cacheDir, `${stem}-${key}.json`);
-  const lock = `${file}.lock`;
+  const chunks = seedChunks(seeds);
+  const done: (BatchChunk | null)[] = chunks.map(() => null);
   const deadline = Date.now() + BATCH_TIMEOUT_MS;
+  let ms = 0;
+  let computed = 0;
   for (;;) {
-    const cached = readCache(file, key);
-    if (cached) return cached;
-    const fd = tryLock(lock);
-    if (fd === null) {
-      // Another worker is computing. A lock older than the timeout is stale (a killed run).
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > BATCH_TIMEOUT_MS) rmSync(lock, { force: true });
-      } catch {
-        // The lock vanished between the two calls: loop and read the result.
+    let progressed = false;
+    for (const [i, chunkSeeds] of chunks.entries()) {
+      if (done[i]) continue;
+      const file = path.join(cacheDir, `${stem}-${key}-c${i}.json`);
+      done[i] = readChunk(file, key, chunkSeeds);
+      if (done[i]) continue;
+      const lock = `${file}.lock`;
+      const fd = tryLock(lock);
+      if (fd === null) {
+        clearStaleLock(lock);
+        continue;
       }
-      if (Date.now() > deadline) throw new Error(`sim batch: timed out waiting for ${lock}`);
-      await sleep(500);
-      continue;
+      try {
+        done[i] = readChunk(file, key, chunkSeeds);
+        if (done[i]) continue;
+        const t0 = performance.now();
+        const chunk: BatchChunk = { format: BATCH_FORMAT, key, seeds: chunkSeeds, races: run(chunkSeeds) };
+        const took = performance.now() - t0;
+        const tmp = `${file}.${process.pid}.tmp`;
+        writeFileSync(tmp, JSON.stringify(chunk));
+        renameSync(tmp, file);
+        done[i] = chunk;
+        ms += took;
+        computed++;
+        progressed = true;
+        process.stdout.write(
+          `[sim batch] ${variant} chunk ${i + 1}/${chunks.length} (seeds ${chunkSeeds[0]} to ` +
+            `${chunkSeeds[chunkSeeds.length - 1]}) computed in ${(took / 1000).toFixed(1)} s, pid ${process.pid}\n`,
+        );
+      } finally {
+        closeSync(fd);
+        rmSync(lock, { force: true });
+      }
+      // Let this worker's other batch waits take a turn before the next chunk.
+      await sleep(0);
     }
-    try {
-      const again = readCache(file, key);
-      if (again) return again;
-      const result = compute();
-      const tmp = `${file}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify(result));
-      renameSync(tmp, file);
-      // Older batches of this variant (other source trees) are dead weight now.
-      const old = new RegExp(`^${stem}-[0-9a-f]+\\.json$`);
-      for (const f of readdirSync(cacheDir))
-        if (old.test(f) && f !== path.basename(file)) rmSync(path.join(cacheDir, f), { force: true });
-      return result;
-    } finally {
-      closeSync(fd);
-      rmSync(lock, { force: true });
+    if (done.every((c) => c !== null)) break;
+    if (!progressed) {
+      if (Date.now() > deadline) throw new Error(`sim batch: timed out waiting for ${stem}-${key} chunks`);
+      await sleep(500);
     }
   }
+
+  if (computed > 0) {
+    // Chunks and whole batches of this variant from other source trees are dead weight now.
+    const old = new RegExp(`^${stem}-([0-9a-f]+)(?:-c\\d+)?\\.json$`);
+    for (const f of readdirSync(cacheDir)) {
+      const m = old.exec(f);
+      if (m && m[1] !== key) rmSync(path.join(cacheDir, f), { force: true });
+    }
+  }
+  const races = done.flatMap((c) => c?.races ?? []);
+  return { format: BATCH_FORMAT, key, races, ms, fromCache: computed === 0 };
 }

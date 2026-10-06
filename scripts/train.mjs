@@ -46,7 +46,8 @@
 // composition failure). Each red strictly lowers a head commit's cap (8, 4, 2, 1), so a commit
 // rides at most four red trains before it lands or fails. A suite job that runs past its time limit
 // is red too (GitHub reports it, and the suite, as cancelled; see Timeouts), and so is main's own
-// run when one of its jobs does: then nobody is blamed, as for any red main. A timeout is blamed on
+// run when a timeout alone cancelled it (ciState, the rule rerun-main.mjs re-runs it by): then
+// nobody is blamed, as for any red main. A timeout is blamed on
 // a PR only when it rode alone at cap 1, its diff can reach the job, and main's own run of that job
 // passed; otherwise it waits for a newer main (decide, canReach).
 import { spawnSync } from 'node:child_process';
@@ -54,6 +55,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, stripVTControlCharacters } from 'node:util';
+import { hitTimeout } from './rerun-main.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -69,7 +71,10 @@ export const MARKER = /\[full-gate\]/i;
  */
 const MARKER_LINE = /^[ \t]*\[full-gate\][ \t]*$/im;
 const SHA = /^[0-9a-f]{40}$/;
-/** Conclusions of main's own ci run that mean main is red. A cancelled run was superseded. */
+/**
+ * Conclusions of main's own ci run that mean main is red. A cancelled run is red only when a job hit
+ * its timeout-minutes (ciState); otherwise a person cancelled it or a newer push replaced it.
+ */
 const RED = new Set(['failure', 'timed_out', 'startup_failure']);
 /** The train's merge commits: a no-reply identity, so the leak scan's identity check accepts them. */
 export const TRAIN_IDENT = {
@@ -545,8 +550,6 @@ export function assemble(run, base, heads) {
 // 610 s against 600; main's ci run 37052696293: sim 3/3 timed out). Only the job's annotation tells
 // them apart, so the train reads it.
 
-/** GitHub's annotation on a job that ran past its timeout-minutes. */
-const TIMEOUT_NOTE = /exceeded the maximum execution time/i;
 /**
  * No job in these workflows has a timeout under 3 minutes, so a cancelled job that ran less than
  * this never timed out, and its annotations need not be read (a run replaced while it waited has no
@@ -554,10 +557,11 @@ const TIMEOUT_NOTE = /exceeded the maximum execution time/i;
  */
 const MIN_TIMEOUT_SECONDS = 60;
 
-/** Did this job run past its time limit, by its annotations? */
-export function hitTimeout(/** @type {{ message?: string }[]} */ annotations) {
-  return annotations.some((a) => TIMEOUT_NOTE.test(String(a.message ?? '')));
-}
+/**
+ * Did this job run past its time limit, by its annotations' messages? One rule for the train and
+ * rerun-main.yml (scripts/rerun-main.mjs), re-exported here.
+ */
+export { hitTimeout };
 
 /**
  * Could this job have hit its timeout? Only a cancelled job that ran a while; its annotations say.
@@ -579,21 +583,6 @@ export function mayHaveTimedOut(job) {
 export function suiteResult(result, { failed, timedOut }) {
   if (result === 'cancelled' && (failed.length > 0 || timedOut.length > 0)) return 'failure';
   return result;
-}
-
-/**
- * Main's own ci run as the train reads it: 'success', 'failure', 'pending' (not finished) or
- * 'none' (no run, or one cancelled without a timeout: a newer push replaced it, or someone cancelled
- * it). A run with a job that timed out is red: its gate read that job as red.
- * @param {{ status: string, conclusion: string, timedOut?: string[] } | null} r
- * @returns {'success' | 'failure' | 'pending' | 'none'}
- */
-export function ciState(r) {
-  if (!r) return 'none';
-  if (r.status !== 'completed') return 'pending';
-  if (r.conclusion === 'success') return 'success';
-  if (RED.has(r.conclusion)) return 'failure';
-  return r.conclusion === 'cancelled' && (r.timedOut ?? []).length > 0 ? 'failure' : 'none';
 }
 
 /** The test tier a suite job runs, from its name ("suite / browser (5/7)"). */
@@ -1261,12 +1250,13 @@ async function timedOutJobs(/** @type {Awaited<ReturnType<typeof jobsOf>>} */ jo
     // A job's id is its check run's id.
     /** @type {any} */
     const notes = await api('GET', `/repos/${repo()}/check-runs/${Number(job.id)}/annotations?per_page=50`);
-    if (hitTimeout(notes ?? [])) out.push(String(job.name));
+    if (hitTimeout((notes ?? []).map((/** @type {any} */ a) => String(a.message ?? ''))))
+      out.push(String(job.name));
   }
   return out;
 }
 
-/** main's own newest ci run (a push) on a commit, or null; `timedOut` names its jobs past their time limit. */
+/** main's own newest ci run (a push) on a commit, or null. */
 async function mainCiRun(/** @type {string} */ sha) {
   /** @type {any} */
   const res = await api(
@@ -1277,18 +1267,90 @@ async function mainCiRun(/** @type {string} */ sha) {
     String(b.created_at).localeCompare(String(a.created_at)),
   );
   const r = runs[0];
-  if (!r) return null;
-  const run = {
-    id: Number(r.id),
-    status: String(r.status),
-    conclusion: String(r.conclusion ?? ''),
-    attempt: Number(r.run_attempt ?? 1),
-    /** @type {string[]} */
-    timedOut: [],
+  return r
+    ? {
+        id: Number(r.id),
+        status: String(r.status),
+        conclusion: String(r.conclusion ?? ''),
+        attempt: Number(r.run_attempt ?? 1),
+      }
+    : null;
+}
+
+/**
+ * Main's own ci run as the train reads it: 'success', 'failure' (red), 'pending' (not finished) or
+ * 'none' (no run, or no verdict). A job that hits its timeout-minutes ends `cancelled`, and the run
+ * then concludes `cancelled`, not `failure` (main run 37423758824, 2026-10-06), so a cancelled run is
+ * red when its jobs say a timeout cancelled it, by the same rule rerun-main.yml re-runs it by: at
+ * least one cancelled job, and every cancelled job timed out. A run a person cancelled (a job ended
+ * cancelled with no timeout, beside a timeout or not), or a waiting run a newer push replaced (no
+ * jobs), is no verdict, as before; rerun-main.yml leaves those alone too, so a wait for its re-run
+ * would wait for nothing.
+ * @param {{ status: string, conclusion: string } | null} r the run as it is now
+ * @param {{ conclusion: string, timedOut: boolean }[]} [jobs] its latest attempt's jobs, each with
+ *   whether its annotations say it timed out (read only for a cancelled run: mainCiState)
+ * @returns {'success' | 'failure' | 'pending' | 'none'}
+ */
+export function ciState(r, jobs = []) {
+  if (!r) return 'none';
+  if (r.status !== 'completed') return 'pending';
+  if (r.conclusion === 'success') return 'success';
+  if (RED.has(r.conclusion)) return 'failure';
+  if (r.conclusion !== 'cancelled') return 'none';
+  const cancelled = jobs.filter((j) => j.conclusion === 'cancelled');
+  return cancelled.length > 0 && cancelled.every((j) => j.timedOut) ? 'failure' : 'none';
+}
+
+/**
+ * ciState of main's own run, reading a cancelled run's latest attempt's jobs and, for each cancelled
+ * one, its check run's annotations: the runner's "has exceeded the maximum execution time" tells a
+ * timeout from a cancel (hitTimeout, rerun-main.mjs). Needs `checks: read`; any other run asks
+ * nothing more.
+ * @param {Awaited<ReturnType<typeof mainCiRun>>} r
+ */
+export async function mainCiState(r) {
+  if (!r || r.status !== 'completed' || r.conclusion !== 'cancelled') return ciState(r);
+  return ciState(r, await cancelledRunJobs(r));
+}
+
+/**
+ * A cancelled run's latest attempt's jobs, each cancelled one with whether its check run's
+ * annotations say it timed out (a job's id is its check run's id).
+ * @param {NonNullable<Awaited<ReturnType<typeof mainCiRun>>>} r
+ */
+async function cancelledRunJobs(r) {
+  /** @type {any} */
+  const listed = await api(
+    'GET',
+    `/repos/${repo()}/actions/runs/${r.id}/attempts/${r.attempt}/jobs?per_page=100`,
+  );
+  const jobs = [];
+  for (const j of listed?.jobs ?? []) {
+    const conclusion = String(j.conclusion ?? '');
+    let timedOut = false;
+    if (conclusion === 'cancelled') {
+      /** @type {any} */
+      const notes = await api('GET', `/repos/${repo()}/check-runs/${j.id}/annotations?per_page=50`);
+      timedOut = hitTimeout((notes ?? []).map((/** @type {any} */ a) => String(a.message ?? '')));
+    }
+    jobs.push({ name: String(j.name ?? ''), conclusion, timedOut });
+  }
+  return jobs;
+}
+
+/**
+ * Main's own newest ci run on a commit and how the train reads it (plan's gate, report's blame), with
+ * the names of its jobs that ran past their time limit (read only for a cancelled run).
+ */
+export async function readMain(/** @type {string} */ sha) {
+  const run = await mainCiRun(sha);
+  const jobs =
+    run && run.status === 'completed' && run.conclusion === 'cancelled' ? await cancelledRunJobs(run) : [];
+  return {
+    run,
+    state: ciState(run, jobs),
+    timedOut: jobs.filter((j) => j.timedOut).map((j) => j.name),
   };
-  if (run.status === 'completed' && run.conclusion === 'cancelled')
-    run.timedOut = await timedOutJobs(await jobsOf(run.id, run.attempt));
-  return run;
 }
 
 export async function postStatus(
@@ -1498,10 +1560,9 @@ export async function cmdPlan(cfg = loadConfig()) {
     return output(out);
   }
   const base = await mainSha();
-  const main = await mainCiRun(base);
-  const mainState = ciState(main);
+  const { run: main, state: mainState, timedOut: mainTimedOut } = await readMain(base);
   console.log(
-    `plan: main is ${base}; its own ci run: ${main ? `${main.id} attempt ${main.attempt}, ${main.status} ${main.conclusion}${main.timedOut.length ? ` (timed out: ${main.timedOut.join(', ')})` : ''}` : 'none'} (${mainState})`,
+    `plan: main is ${base}; its own ci run: ${main ? `${main.id} attempt ${main.attempt}, ${main.status} ${main.conclusion}${mainTimedOut.length ? ` (timed out: ${mainTimedOut.join(', ')})` : ''}` : 'none'} (${mainState})`,
   );
   const gate = mainGate(main ? { id: main.id, state: mainState, attempt: main.attempt } : null, dry);
   if (!gate.go) {
@@ -1733,14 +1794,14 @@ export async function cmdReport(cfg = loadConfig()) {
   if (result === 'failure' && bundle.length === 1 && lone && mainNow === base) {
     // Blame needs main itself green: wait for main's own run on base if it is still going.
     const deadline = Date.now() + cfg.mainWaitMinutes * 60_000;
-    let mainRun = await mainCiRun(base);
-    mainCi = ciState(mainRun);
-    while (mainCi === 'pending' && Date.now() <= deadline && !dry) {
+    let read = await readMain(base);
+    while (read.state === 'pending' && Date.now() <= deadline && !dry) {
       console.log(`report: main's own ci run on ${base.slice(0, 7)} is still running; waiting`);
       await sleep(30_000);
-      mainRun = await mainCiRun(base);
-      mainCi = ciState(mainRun);
+      read = await readMain(base);
     }
+    mainCi = read.state;
+    const mainRun = read.run;
     // A pure timeout at cap 1 is blamed only if the PR's diff can reach the job and main's own run
     // of that job passed (decide): read both. Either one unread means nobody is blamed.
     if (timedOut.length && !failedJobs.length && lone.cap === 1 && mainCi !== 'failure') {

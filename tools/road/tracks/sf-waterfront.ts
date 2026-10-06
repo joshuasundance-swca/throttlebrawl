@@ -81,6 +81,12 @@ const billboard = (id: string, item: string, s: number) => ({
   d1: -13,
   item,
 });
+/**
+ * The waterfront's strays (playtest 4, run B's check: sea lions and doodles stood at every zone of the city): a
+ * waterfront zone names its own kinds, the sea lions the joke is for and the city's two kinds of people, no
+ * dogs (the neighbourhoods have those). The region lists the sea lion nowhere else.
+ */
+const WATERFRONT_KINDS = ['sea-lion', 'e-scooter-commuter', 'dog-walker-sf'];
 /** People walking the promenade. */
 const walkers = (id: string, s0: number, s1: number) => ({
   kind: 'roadsideZone',
@@ -89,7 +95,7 @@ const walkers = (id: string, s0: number, s1: number) => ({
   s1,
   d0: 10.4,
   d1: 17.4,
-  params: { spawns: 'pedestrians' },
+  params: { spawns: 'pedestrians', kinds: WATERFRONT_KINDS },
 });
 const pad = (id: string, s: number, slot: string) => ({
   kind: 'boostPad',
@@ -237,7 +243,7 @@ export const SF_WATERFRONT: TrackSource = {
           s1: 260,
           d0: -17.4,
           d1: -10.4,
-          params: { spawns: 'pedestrians' },
+          params: { spawns: 'pedestrians', kinds: WATERFRONT_KINDS },
         },
         billboard('bb-wf-plaza-fogcastr', 'wf-fogcastr', 250),
       ],

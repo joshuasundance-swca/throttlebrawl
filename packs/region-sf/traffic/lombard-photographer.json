@@ -6,6 +6,7 @@
   "tags": ["region-sf", "lombard"],
   "lengthM": 0.5,
   "widthM": 0.6,
+  "heightM": 1.75,
   "cruiseMps": 0.9,
   "hazard": "normal",
   "behaviour": {

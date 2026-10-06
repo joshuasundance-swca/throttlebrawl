@@ -255,6 +255,13 @@ export interface GameUi {
    */
   offerClassicLook(): boolean;
   /**
+   * The newer-build offer (playtest 4 run A fix check, punch item 1): a deploy replaced the game
+   * while the player raced, and the reload to it waited for the race to end. On the result screen a
+   * card says so and offers "Reload now"; the result stays on screen beneath it. `onReload` shows the
+   * card; null hides it.
+   */
+  offerReload(onReload: (() => void) | null): void;
+  /**
    * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
    * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
    */
@@ -347,7 +354,11 @@ export const LOOK_OFFER_MS = 12_000;
 
 /** The credits page (credits-screen.ts draws into it): a scrolling list under a Back bar, like the changelog. */
 const CREDITS_CSS = `
-#credits { justify-content: flex-start; padding-top: 8px; padding-bottom: 34px; gap: 8px; }
+/* "#ui #credits", not "#credits": "#ui .screen" (below) sets the padding and out-ranks a lone id, so the
+   room under the list that keeps it above the build stamp (a corner label: its bottom gap plus its
+   one line, 0.6875rem at 1.2 plus 4px of padding) was never applied. */
+#ui #credits { justify-content: flex-start; padding-top: 8px; gap: 8px;
+  padding-bottom: calc(max(8px, env(safe-area-inset-bottom, 0px)) + 0.9rem + 8px); }
 #credits .settings-bar { display: flex; gap: 6px; justify-content: center; }
 #credits-list { width: min(680px, 94vw); flex: 1 1 auto; min-height: 0; overflow-y: auto; text-align: left;
   pointer-events: auto; touch-action: pan-y; background: #000a; padding: 6px 12px; box-sizing: border-box;
@@ -499,6 +510,11 @@ ${REDUCE_MOTION_CSS}
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
+/* The newer-build offer on a result screen: over the screen's top edge, the result left in view. */
+#ui #reload-offer { z-index: 2; max-width: 92vw; box-sizing: border-box; display: flex; align-items: center;
+  gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
+#ui #reload-offer .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui #reload-offer .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. ui/hud-layout.ts settles where it goes and sets --hl-toast-* on #ui: on
@@ -1439,6 +1455,18 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
 
   const noticeBox = el('div', { className: 'card notice', hidden: true });
+  // The newer-build offer (offerReload): plain words and one button.
+  let reloadNow: (() => void) | null = null;
+  const reloadOffer = el(
+    'div',
+    { id: 'reload-offer', className: 'card notice', hidden: true },
+    el('div', {
+      className: 'reload-offer-text',
+      textContent: 'The game was updated while you raced. It reloads when you leave this screen.',
+    }),
+    button('reload-offer-reload', 'small', 'Reload now', () => reloadNow?.()),
+  );
+  reloadOffer.setAttribute('role', 'status');
 
   // ---- The resume card and the busy spinner --------------------------------------------------
   let resumeChoice: ((choice: 'resume' | 'startOver') => void) | null = null;
@@ -1675,6 +1703,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     resumeCard,
     busy,
     noticeBox,
+    reloadOffer,
   );
   host.append(root, stamp);
   // The tuning panel (ui/tuning) is a lazy chunk, fetched as the game boots rather than in the
@@ -2030,6 +2059,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       placeAll();
     },
     offerClassicLook,
+    offerReload(onReload) {
+      reloadNow = onReload;
+      reloadOffer.hidden = onReload === null;
+    },
     setReduceMotion(on) {
       root.dataset['motion'] = on ? 'reduced' : 'full';
     },

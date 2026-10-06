@@ -21,7 +21,19 @@ import type {
   RivalText,
 } from '../career';
 import { createAudio, type EngineSoundSpec } from '../audio';
-import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
+import {
+  createFollowCamera,
+  nearestFocus,
+  shotFociOf,
+  shotPose,
+  SHOT_EASE_TICKS,
+  SHOT_REACH_M,
+  VIEW_MODES,
+  type CameraMode,
+  type CameraPose,
+  type ShotFocus,
+  type ViewMode,
+} from '../camera';
 import {
   assetIndex,
   contentHashes,
@@ -34,7 +46,14 @@ import {
   type ContentRegistry,
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
-import { APP_ID, installOffer, runStartTap, startOffline, watchLifecycle } from '../platform';
+import {
+  APP_ID,
+  installOffer,
+  runStartTap,
+  startOffline,
+  watchLifecycle,
+  type StaleBuild,
+} from '../platform';
 import {
   createQualityGovernor,
   createRenderer,
@@ -118,7 +137,7 @@ import {
 import { boardSpots, spotOn, withIncidentSites, withReceiptBoards } from './receipt-boards';
 import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
-import { transition, type AppEvent, type AppState } from './states';
+import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
   createSeenPoll,
   landingLineFor,
@@ -506,6 +525,13 @@ export function createApp(opts: AppOptions): AppHandle {
   const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
   const camera = createFollowCamera({ road: stream.road });
   let attractPose: CameraPose | null = null;
+  /**
+   * The finish shot (playtest 4, run C: a landmark by the line is too tall for the chase view): the landmarks of
+   * the road that ask for it, and, once the player has finished within reach of one, the chase pose the camera
+   * holds and the tick it began. Render only; the sim and the replay never read it.
+   */
+  let shotFoci: ShotFocus[] = [];
+  let finishShot: { held: CameraPose; focus: ShotFocus; from: number } | null = null;
   /** The network the renderer and camera show, so a race in the same region rebuilds nothing. */
   let shownRoad: unknown = null;
   /** The time of day shown: the event's on the menu, the race's own in a free-play race (W-Q). */
@@ -591,6 +617,9 @@ export function createApp(opts: AppOptions): AppHandle {
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road, sky.wet);
     attractPose = null;
+    // The landmarks of this road that ask for the finish shot (the camera's, never the sim's).
+    shotFoci = shotFociOf(stream.road);
+    finishShot = null;
     tuneRadio();
   };
   /** Makes `id` (a qualified event) the race's event; its pack's road data must be loaded. */
@@ -719,9 +748,27 @@ export function createApp(opts: AppOptions): AppHandle {
   curr = newSim(seeds.next()).snapshot();
   showRegion();
 
+  // A build the host no longer serves (platform/stale-build.ts; playtest 4 run A fix check, new
+  // mustFix 2 and punch item 1): the page reloads to the current build only when that loses nothing.
+  // A race finishes on what it has loaded; a reload found mid-race waits, and the result screen says
+  // so and offers it, so the result stays on screen until the player leaves it or taps Reload.
+  let staleBuild: StaleBuild | null = null;
+  const offerUpdate = () => {
+    const watch = staleBuild;
+    ui.offerReload(state === 'results' && watch?.waiting() ? () => void watch.reloadNow() : null);
+  };
   const go = (e: AppEvent) => {
     const next = transition(state, e);
-    if (next) state = next;
+    if (next) {
+      state = next;
+      // After the tap's own steps: Restart and Race again pass through the menu on their way back
+      // into a race, and must not reload there.
+      if (staleBuild)
+        queueMicrotask(() => {
+          staleBuild?.settle();
+          offerUpdate();
+        });
+    }
     return next !== null;
   };
 
@@ -1062,6 +1109,20 @@ export function createApp(opts: AppOptions): AppHandle {
               aspect: viewAspect(),
             },
           );
+          // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
+          if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
+            if (!finishShot) {
+              const focus = nearestFocus(shotFoci, me.x, me.z, SHOT_REACH_M);
+              if (focus) finishShot = { held: pose, focus, from: outcome.doneTick };
+            }
+            if (finishShot)
+              pose = shotPose(
+                finishShot.held,
+                finishShot.focus,
+                viewAspect(),
+                (race.tick - finishShot.from) / SHOT_EASE_TICKS,
+              );
+          }
         } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
@@ -1114,8 +1175,10 @@ export function createApp(opts: AppOptions): AppHandle {
     onShown: () => hold('hidden', false),
   });
   // Offline play (roadmap M5): a production build's worker caches the whole build once the page
-  // has loaded, so a loaded game plays with the network off.
-  startOffline(build.id);
+  // has loaded, so a loaded game plays with the network off; and the watch for a build the host no
+  // longer serves, which reloads to the current one when that loses nothing.
+  staleBuild = startOffline(build.id, () => reloadLosesNothing(state));
+  staleBuild?.onWaiting(offerUpdate);
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());
@@ -1254,6 +1317,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // menu race's picks beside it (playtest 4, P4-12).
     recorder.beginRace(race, replayKey, options ? { ...options } : undefined);
     outcome = createOutcome();
+    finishShot = null;
     lookWatch.reset();
     seenPoll.reset();
     lastLandingRef = null;

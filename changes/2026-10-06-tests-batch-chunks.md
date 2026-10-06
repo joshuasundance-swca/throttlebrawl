@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+The shared seeded race batch that 16 sim test files read is now computed in chunks of five seeds, each with its own cache file and lock, so the test workers waiting for it share the work instead of one worker running all 50 races and their replays while the others wait. On run 37418801318 that wait set the slowest sim slice at 422 s; the Easy and Hard batches are chunked the same way. Each worker computes whichever chunk nobody holds yet and the chunks merge back in seed order. On the dev machine the chunked batch matched the batch computed in one go race for race: the same seed order, every state hash, every replay hash and every replay-mismatch index, for Normal, Easy and Hard. The difficulty test also stops running its "with the shove" encounters by default: they were only printed, never checked, and cost about 25 s. Set RIDERS5_SHOVE_TREND=1 to print them. No rule changed: the same 50 races with same-run replays, the same Easy and Hard races, and the same Hard-above-Easy checks. Not phone-verified (no game change).

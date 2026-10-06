@@ -12,6 +12,15 @@ const TRANSITIONS: Readonly<Record<AppState, Partial<Record<AppEvent, AppState>>
   results: { back: 'menu', race: 'race' },
 };
 
+/**
+ * Whether reloading the page now loses nothing the player has (playtest 4 run A fix check, punch
+ * item 1: a reload to a newer build threw a player out of a race). Never mid-race, and never while a
+ * result is on screen; the menus, the start screen and boot are fine (the career is saved).
+ */
+export function reloadLosesNothing(state: AppState): boolean {
+  return state !== 'race' && state !== 'results';
+}
+
 /** The next state, or null when the event is not legal in this state. */
 export function transition(state: AppState, event: AppEvent): AppState | null {
   return TRANSITIONS[state][event] ?? null;

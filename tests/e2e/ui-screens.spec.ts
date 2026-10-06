@@ -144,9 +144,13 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('start, menu and settings: controls card, build id, sliders, and the mirror moves the buttons', async ({
-  page,
-}) => {
+// The start, menu and settings screens, and the mirror's two races, were one test until 2026-10-06:
+// it took 25.4 s of its 30 s limit on main (run 37427759843) and ran out twice on a PR run
+// (37430031610), both times in its last screenshot, taken mid-race in a software renderer. Its CI
+// log's timestamps put the screens at about 12 s from the page load and the two races at about
+// 13 s more, so they are two tests now, each asserting what it did, and the races get their own
+// hang guard like every other race spec. [default]
+test('start, menu and settings: controls card, build id and sliders', async ({ page }) => {
   const problems = watchErrors(page);
   await page.goto('./');
   await expect(page.locator('#start-screen')).toBeVisible();
@@ -170,9 +174,24 @@ test('start, menu and settings: controls card, build id, sliders, and the mirror
   await expect(page.locator('#settings-mirror')).not.toBeChecked();
   await expectNoOverflow(page, 'settings');
   await shot(page, 'settings');
+  await page.locator('#settings-back').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+
+  expect(problems).toEqual([]);
+});
+
+test('the mirror moves the buttons: the attack button and your health bar change sides, and the HUD never overlaps', async ({
+  page,
+}) => {
+  // A hang guard, not a measurement: two race starts and a mid-race screenshot took about 13 s of
+  // the old test's 25.4 s, and the screenshot alone was still waiting after 8.6 s on a busy runner.
+  test.setTimeout(90_000);
+  const problems = watchErrors(page);
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
 
   // Without the mirror the attack button sits on the right; with it, on the left.
-  await page.locator('#settings-back').click();
   await page.locator('#menu-race').click();
   await expect(page.locator('#touch-attack')).toBeVisible();
   const vw = page.viewportSize()?.width ?? 0;
@@ -456,3 +475,128 @@ test('credits: every ledger entry is listed, AI-made ones are labelled, the lice
   await expect(page.locator('#menu-race')).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+// Playtest 4 run C's live check (punch item 11): at 915x412 the build stamp, a label in the bottom-left
+// corner, sat over the credits list's last line. The page's own bottom padding (the room that keeps
+// the list above the stamp) was written as "#credits", which "#ui .screen" out-ranks, so it never
+// applied. This measures the painted words of the list, as far as the list shows them, against the
+// stamp's painted box at the top, the middle and the end of the list (the end with a licence text
+// open, the longest block), at the phone sizes. The negative control puts the padding back to 0 and
+// the stamp at home, which is how it looked, and must find the last line under the stamp.
+const CREDITS_SIZES = [
+  { name: '915x412', width: 915, height: 412 },
+  { name: '740x360', width: 740, height: 360 },
+  { name: '640x360', width: 640, height: 360 },
+  { name: '568x320', width: 568, height: 320 },
+] as const;
+
+/** The words of the credits list that are painted inside it, and those the stamp is over. */
+function creditsUnderStamp(page: Page, forceStampHome: boolean) {
+  return page.evaluate((force) => {
+    const stamp = document.getElementById('build-stamp');
+    const list = document.getElementById('credits-list');
+    if (!stamp || !list) throw new Error('no stamp or credits list');
+    if (force) {
+      stamp.classList.remove('at-right', 'yield');
+      stamp.style.display = 'block';
+    }
+    const shown = stamp.checkVisibility();
+    const sb = shown ? stamp.getBoundingClientRect() : null;
+    const lr = list.getBoundingClientRect();
+    const under: string[] = [];
+    let words = 0;
+    const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = (n.textContent ?? '').trim();
+      const parent = n.parentElement;
+      if (!text || !parent || !parent.checkVisibility()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        // Only the part of the line the list shows: the rest is scrolled out of it.
+        const box = {
+          left: Math.max(r.left, lr.left),
+          top: Math.max(r.top, lr.top),
+          right: Math.min(r.right, lr.right),
+          bottom: Math.min(r.bottom, lr.bottom),
+        };
+        if (box.right - box.left < 1 || box.bottom - box.top < 1) continue;
+        words++;
+        if (
+          sb &&
+          sb.left < box.right - 0.5 &&
+          box.left < sb.right - 0.5 &&
+          sb.top < box.bottom - 0.5 &&
+          box.top < sb.bottom - 0.5
+        )
+          under.push(
+            `"${text.slice(0, 30)}" [${[box.left, box.top, box.right, box.bottom].map(Math.round).join(',')}]`,
+          );
+      }
+    }
+    return {
+      words,
+      shown,
+      under,
+      listBottom: Math.round(lr.bottom),
+      stampTop: sb ? Math.round(sb.top) : null,
+    };
+  }, forceStampHome);
+}
+
+for (const size of CREDITS_SIZES) {
+  test.describe(`credits and the build stamp at ${size.name}`, () => {
+    test.use({ viewport: { width: size.width, height: size.height } });
+
+    test('the build stamp covers no word of the credits list, scrolled to the top, the middle and the end', async ({
+      page,
+    }) => {
+      const problems = watchErrors(page);
+      await page.goto('./');
+      await page.locator('#start-screen').click();
+      await page.locator('#menu-credits').click();
+      const list = page.locator('#credits-list');
+      await expect(list.locator('.credit-entry').first()).toBeVisible();
+      const settle = () =>
+        page.evaluate(
+          () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+        );
+      // The last row (a package's licence text, a long block) is open for the end of the list.
+      await list.locator('details > summary').last().click();
+
+      let words = 0;
+      for (const at of [0, 0.5, 1]) {
+        await page.evaluate((frac) => {
+          const l = document.getElementById('credits-list');
+          if (l) l.scrollTop = (l.scrollHeight - l.clientHeight) * frac;
+        }, at);
+        await settle();
+        const found = await creditsUnderStamp(page, false);
+        words += found.words;
+        console.log(
+          `${size.name}, scrolled ${at * 100}%: ${found.words} words, list ends at ${found.listBottom}, stamp ${found.shown ? `from ${found.stampTop}` : 'hidden'}, under ${JSON.stringify(found.under)}`,
+        );
+        expect(found.words, `${size.name} ${at}: words were measured`).toBeGreaterThan(5);
+        expect(found.under, `${size.name} ${at}: words under the stamp`).toEqual([]);
+      }
+      expect(words).toBeGreaterThan(0);
+      await shot(page, `credits-stamp-${size.name}`);
+
+      // The check can fire: with the room under the list taken away and the stamp at home, the end of
+      // the list is under it (what the live check saw).
+      await page.evaluate(() => {
+        const c = document.getElementById('credits');
+        if (c) c.style.paddingBottom = '0px';
+        const l = document.getElementById('credits-list');
+        if (l) l.scrollTop = l.scrollHeight;
+      });
+      await settle();
+      const control = await creditsUnderStamp(page, true);
+      expect(
+        control.under.length,
+        `${size.name}: the check names words under the stamp (control)`,
+      ).toBeGreaterThan(0);
+      expect(problems).toEqual([]);
+    });
+  });
+}
