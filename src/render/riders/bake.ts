@@ -79,12 +79,32 @@ export function bikeFitScale(lengthM: number, widthM: number): number {
   if (!(lengthM > 0) || !(widthM > 0)) return 1;
   const L = RIDER_BOX_M.lengthM;
   const W = RIDER_BOX_M.widthM;
-  const k = 2 * BIKE_FIT_SLACK_M;
-  const lo = Math.max((L - k) / lengthM, (W - k) / widthM);
-  const hi = Math.min((L + k) / lengthM, (W + k) / widthM);
-  if (lo <= hi) return Math.min(hi, Math.max(lo, 1));
+  const [lo, hi] = fitRange(lengthM, widthM);
+  // Never up: the rider is not scaled, so a bigger bike's pegs leave his feet (the mobility scooter).
+  if (lo > 1) return 1;
+  if (lo <= hi) return Math.min(hi, 1);
   // Too short for its width (or too long for it): the scale where the two misses are equal.
-  return (L + W) / (lengthM + widthM);
+  return Math.min(1, (L + W) / (lengthM + widthM));
+}
+
+/** The scales that bring a bike's length and width each within the slack of the rider's box. */
+function fitRange(lengthM: number, widthM: number): [number, number] {
+  const L = RIDER_BOX_M.lengthM;
+  const W = RIDER_BOX_M.widthM;
+  const k = 2 * BIKE_FIT_SLACK_M;
+  return [Math.max((L - k) / lengthM, (W - k) / widthM), Math.min((L + k) / lengthM, (W + k) / widthM)];
+}
+
+/**
+ * Whether a bike is fitted to the rider's box, and so centred on it along its length. The ones that
+ * are not (too short to fit without growing, or too wide and short for any one scale) keep their
+ * modelled place under the rider: moving the lawnmower 0.08 m along its length leaves the riders'
+ * feet short of its pegs (tools/blender/riders/riders.test.ts). scripts/hitboxes.test.ts names them.
+ */
+export function bikeFits(lengthM: number, widthM: number): boolean {
+  if (!(lengthM > 0) || !(widthM > 0)) return true;
+  const [lo, hi] = fitRange(lengthM, widthM);
+  return lo <= hi && lo <= 1;
 }
 
 export interface BakedBone {
@@ -153,9 +173,11 @@ export function bakePart(scene: Object3D, kind: PartKind): BakedPart {
     turn.scale.setScalar(fit);
     turn.updateMatrixWorld(true);
     // And centred on it along its length: the rider's box is centred on the rider's position.
-    const fitted = new Box3().setFromObject(scene);
-    turn.position.z = -(fitted.min.z + fitted.max.z) / 2;
-    turn.updateMatrixWorld(true);
+    if (bikeFits(box.max.z - box.min.z, box.max.x - box.min.x)) {
+      const fitted = new Box3().setFromObject(scene);
+      turn.position.z = -(fitted.min.z + fitted.max.z) / 2;
+      turn.updateMatrixWorld(true);
+    }
   }
   for (const name of REQUIRED[kind]) {
     if (!scene.getObjectByName(name)) throw new Error(`${kind} model has no ${name} node`);
