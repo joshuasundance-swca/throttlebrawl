@@ -759,8 +759,14 @@ export function paintModel(
 
 export interface ModelLoadReport {
   loaded: ModelKind[];
-  /** Kinds that fell back to the code-made stand-in, with the manifest's reason. */
-  fellBack: { kind: ModelKind; error: string }[];
+  /**
+   * Kinds that fell back to the code-made stand-in, with the manifest's reason. `retryable` is set
+   * when the host caused it (its wait, a busy host, no connection): the kind is asked for again at
+   * the next `setRoad` (render/index.ts `requestModels`; polish batch L).
+   */
+  fellBack: { kind: ModelKind; error: string; retryable?: true }[];
+  /** Kinds that loaded but whose atlas the host held back: they draw plain until asked for again. */
+  atlasHeld?: ModelKind[];
 }
 
 /**
@@ -772,7 +778,7 @@ export async function loadSceneryModels(
   kinds: readonly ModelKind[] = MODEL_KINDS,
 ): Promise<{ models: SceneryModels; report: ModelLoadReport }> {
   const models: SceneryModels = {};
-  const report: ModelLoadReport = { loaded: [], fellBack: [] };
+  const report: ModelLoadReport = { loaded: [], fellBack: [], atlasHeld: [] };
   await Promise.all(
     kinds.map(async (kind) => {
       const kit = KIT_MODELS[kind];
@@ -785,12 +791,47 @@ export async function loadSceneryModels(
         // Its region atlas loads with it (the manifest loads each file once, however many ask).
         const sheet = ATLAS_SHEETS[kind];
         models[kind] =
-          sheet && res.value.tiles ? withAtlas(res.value, await loadRegionAtlas(manifest, sheet)) : res.value;
+          sheet && res.value.tiles
+            ? withAtlas(
+                res.value,
+                await loadRegionAtlas(manifest, sheet, () => {
+                  if (!report.atlasHeld?.includes(kind)) report.atlasHeld?.push(kind);
+                }),
+              )
+            : res.value;
         report.loaded.push(kind);
-      } else report.fellBack.push({ kind, error: res.error ?? 'no stand-in model' });
+      } else
+        report.fellBack.push({
+          kind,
+          error: res.error ?? 'no stand-in model',
+          ...(res.retryable ? { retryable: true as const } : {}),
+        });
     }),
   );
   return { models, report };
+}
+
+/**
+ * The kinds of a load to ask for again because of the host (polish batch L): those that fell back, and
+ * those that loaded without their atlas. Asking again is cheap for the second kind (the model is kept).
+ */
+export const retryableKinds = (report: ModelLoadReport): ModelKind[] => [
+  ...report.fellBack.filter((f) => f.retryable).map((f) => f.kind),
+  ...(report.atlasHeld ?? []),
+];
+
+/**
+ * The session's report with a later load's added: a kind the later load answers (loaded now, or failed
+ * again) replaces its earlier entry, so a model that arrived on its second ask is not also listed as
+ * fallen back.
+ */
+export function mergeModelReports(prev: ModelLoadReport | null, next: ModelLoadReport): ModelLoadReport {
+  const again = new Set<ModelKind>([...next.loaded, ...next.fellBack.map((f) => f.kind)]);
+  return {
+    loaded: [...(prev?.loaded ?? []).filter((k) => !again.has(k)), ...next.loaded],
+    fellBack: [...(prev?.fellBack ?? []).filter((f) => !again.has(f.kind)), ...next.fellBack],
+    atlasHeld: [...(prev?.atlasHeld ?? []).filter((k) => !again.has(k)), ...(next.atlasHeld ?? [])],
+  };
 }
 
 // Landmark kits (playtest 3, round 1: "real landmarks"; docs/content-packs.md, "Gaps and landmarks").
@@ -825,11 +866,11 @@ async function loadKitModel(
   manifest: AssetManifest,
   kind: ModelKind,
   id: LandmarkKitId,
-): Promise<{ value: SceneryModel | null; error?: string | undefined }> {
+): Promise<{ value: SceneryModel | null; error?: string | undefined; retryable?: true | undefined }> {
   const res = await manifest.load<LandmarkKit | null>(landmarkKitAsset(id), () => null, {
     decode: (data) => bakeLandmarkKit(id, readGlb(data)),
   });
-  if (!res.value) return { value: null, error: res.error };
+  if (!res.value) return { value: null, error: res.error, retryable: res.retryable };
   try {
     return { value: modelFromKit(kind, res.value) };
   } catch (err) {
