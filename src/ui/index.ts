@@ -465,6 +465,10 @@ ${CREDITS_CSS}
 ${TICKER_CSS}
 ${REDUCE_MOTION_CSS}
 #results-tally { font: 800 0.9375rem ui-monospace, monospace; }
+/* The race's result takes the touches over itself, as the career's result does (career-screen.ts): its words
+   and the update card inside it are what a tap there lands on, not the game canvas behind, and a swipe
+   scrolls it. */
+#ui #results { pointer-events: auto; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
    The menu (#pause-main) and the two cards (#pause-cards: the legend and the recently-seen list) are
