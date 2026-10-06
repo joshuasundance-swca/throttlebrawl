@@ -427,6 +427,14 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   brush: [3.5, 14],
   outcrop: [4, 12],
 };
+/**
+ * How big a headland battery stands, times CX6's model (30 m by 3.7 m, a 5.5 m deep front to a 9 m back).
+ * [default] (playtest 4, run C's live check: "the headland batteries read as small grey blocks or rubble on
+ * Conzelman's verge"): at 1 it was a 3.7 m wall seen from 12 m off the road. At 1.5 it is 45 m long, with a
+ * 5.6 m front wall and gun pits 13 m across, still inside the 24 m of land beside a road: the footprint numbers
+ * below (`DEPTH_M`, `HALF_ALONG_M`, `FRONT_M`, the clear radius) follow it.
+ */
+export const BATTERY_SIZE = 1.5;
 /** Clear ground each kind needs around its anchor (other roads, features), m. */
 export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   palm: 1.6,
@@ -445,7 +453,7 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   arch: 0,
   coastTree: 2.4,
   apartment: 3.4,
-  battery: 6,
+  battery: 6 * BATTERY_SIZE,
   brush: 1.2,
   // the chert's four beds lean over about 3 m to a side
   outcrop: 3.6,
@@ -471,7 +479,7 @@ export const DEPTH_M: Partial<Record<SceneryKind, number>> = {
   house: 11.5,
   apartment: 11.5,
   sawmill: 17,
-  battery: 6.2,
+  battery: 6.2 * BATTERY_SIZE,
 };
 /**
  * Half its width along the road, m (it needs land and clear ground that long). An apartment is the width of
@@ -481,7 +489,7 @@ export const HALF_ALONG_M: Partial<Record<SceneryKind, number>> = {
   house: 3.2,
   apartment: 6.8,
   sawmill: 16,
-  battery: 15.2,
+  battery: 15.2 * BATTERY_SIZE,
 };
 
 /** Half the width of a spot along the road, m: an apartment of one plot is as wide as a row house. */
@@ -510,7 +518,7 @@ export const APARTMENT_RATE = { flats: 0.08, block: 0.07, corner: 0.2 } as const
  * How far its front stands ahead of its anchor, m, for a kind that reaches back from the anchor
  * (`DEPTH_M`) but whose anchor is not at its front (default 0: a house's anchor is its front wall).
  */
-export const FRONT_M: Partial<Record<SceneryKind, number>> = { battery: 5.7 };
+export const FRONT_M: Partial<Record<SceneryKind, number>> = { battery: 5.7 * BATTERY_SIZE };
 /**
  * The file each headlands kind draws from, as the variant of `models/scenery/sf-headlands`: the roots in
  * order (models.ts `ROOTS`). The scatter sets them; they are no random pick.
@@ -1056,7 +1064,20 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
           const low = Math.min(here, e.world(s + along, d, 0).y, e.world(s - along, d, 0).y);
           y -= here - low + 0.15;
         }
-        place(kind, s, d, y, turn, k, side, HEADLANDS_VARIANT[kind]);
+        place(
+          kind,
+          s,
+          d,
+          y,
+          turn,
+          k,
+          side,
+          HEADLANDS_VARIANT[kind],
+          kind === 'battery' ? BATTERY_SIZE : undefined,
+        );
+        // A battery is longer than a merged block's default room: its culling counts all of its length.
+        if (kind === 'battery')
+          (out[out.length - 1] as ScenerySpot).reachM = Math.ceil(HALF_ALONG_M.battery ?? 0) + 1;
         if (kind === 'house') houses.set(k, out[out.length - 1] as ScenerySpot);
       }
     }

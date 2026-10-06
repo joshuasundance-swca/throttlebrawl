@@ -277,7 +277,7 @@ export const SF_MISSION: TrackSource = {
           s1: 651,
           d0: -20,
           d1: -8,
-          params: { model: 'sf-landmarks#sf_mission_church', yawDeg: 180, frontM: 18 },
+          params: { model: 'sf-landmarks#sf_mission_church', yawDeg: 180, frontM: 18, sightM: 80 },
         },
       ],
       barriers: [],

@@ -332,3 +332,72 @@ describe('the Twin Peaks summit: chert outcrops within reach of the climb end, o
     scene.dispose();
   });
 });
+
+// Playtest 4, run C's live check: "the headland batteries read as small grey blocks or rubble on Conzelman's
+// verge, not gun emplacements". The kit's battery is a 30 m by 3.7 m wall with two open gun pits behind it, which
+// from the road is a grey block with three dark slits. Two things make it read: it stands bigger (a spot's size,
+// with every footprint number that follows it), and each pit has its gun, a code-made barrel laid on the
+// parapet (`withBatteryGuns`), since the file has none and this lane has no Blender.
+describe('a battery reads as a concrete gun emplacement (playtest 4, run C)', () => {
+  const ORIGINAL_VERTS = 660; // the file's own vertices of the battery root, which the guns follow
+
+  async function battery() {
+    const m = await bakeRepoModel('sfHeadlands');
+    const g = m.variants[0]!;
+    g.computeBoundingBox();
+    return { g, box: g.boundingBox! };
+  }
+
+  /** The vertices that are dark steel (the guns): nothing else in the file is that dark above the parapet. */
+  function dark(g: Awaited<ReturnType<typeof battery>>['g'], from: number, to: number) {
+    const pos = g.getAttribute('position');
+    const col = g.getAttribute('color');
+    const out: { x: number; y: number; z: number }[] = [];
+    for (let i = from; i < Math.min(to, pos.count); i++)
+      if (col.getX(i) < 0.15 && col.getY(i) < 0.15 && pos.getY(i) > 3.7)
+        out.push({ x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) });
+    return out;
+  }
+
+  it('stands at least 45 m long and 5.5 m high on the Golden Gate, every battery the same size', async () => {
+    const t = track('osm-sf-golden-gate');
+    const models = await modelsOf(t);
+    const { box } = await battery();
+    const sizes = new Set<number>();
+    for (const seed of SEEDS) {
+      const scene = buildRoadScene(t.road, look, t.dressing, { seed, models });
+      for (const s of scene.spots) if (s.kind === 'battery') sizes.add(s.size);
+      scene.dispose();
+    }
+    expect(sizes.size, 'one size for every battery').toBe(1);
+    const size = [...sizes][0]!;
+    const length = (box.max.x - box.min.x) * size;
+    const wall = 3.7 * size;
+    print(`a battery: size ${size}, ${length.toFixed(1)} m long, ${wall.toFixed(1)} m of front wall`);
+    expect(length).toBeGreaterThanOrEqual(45);
+    expect(wall).toBeGreaterThanOrEqual(5.5);
+  });
+
+  it('has a gun in each pit: a barrel laid over the parapet, inside the footprint (control: the file has none)', async () => {
+    const { g, box } = await battery();
+    const pos = g.getAttribute('position');
+    expect(pos.count, 'guns follow the file’s own vertices').toBeGreaterThan(ORIGINAL_VERTS);
+    // The control: the file's own vertices have no dark steel over the parapet, so the finder can tell.
+    expect(dark(g, 0, ORIGINAL_VERTS)).toEqual([]);
+    const guns = dark(g, ORIGINAL_VERTS, pos.count);
+    expect(guns.length).toBeGreaterThan(40);
+    // One in each pit (the pits stand at x = -7 and 7), each lifting over the parapet toward the front.
+    for (const x of [-7, 7]) {
+      const own = guns.filter((p) => Math.abs(p.x - x) < 1);
+      expect(own.length, `a gun at x ${x}`).toBeGreaterThan(20);
+      expect(Math.max(...own.map((p) => p.y)), `its muzzle over the parapet at x ${x}`).toBeGreaterThan(4.3);
+      expect(Math.max(...own.map((p) => p.z)), `its muzzle reaches the front wall at x ${x}`).toBeGreaterThan(
+        4.4,
+      );
+    }
+    // And they add nothing past the file's footprint: the front stays where the scatter keeps it off the band.
+    expect(box.max.z).toBeLessThanOrEqual(5.6);
+    expect(box.min.x).toBeGreaterThanOrEqual(-15.01);
+    expect(box.max.x).toBeLessThanOrEqual(15.01);
+  });
+});

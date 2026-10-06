@@ -389,7 +389,7 @@ export const STAGING_LEGS = {
 } as const;
 
 /** Appends a 6-sided tube from `a` to `b` to the vertex lists, outward normals, open ends. */
-function pushTube(
+export function pushTube(
   out: { pos: number[]; nrm: number[]; col: number[] },
   a: readonly [number, number, number],
   b: readonly [number, number, number],
@@ -438,7 +438,7 @@ function pushTube(
 }
 
 /** Appends a flat cap (a fan of `sides` triangles facing up) over a post's top. */
-function pushCap(
+export function pushCap(
   out: { pos: number[]; nrm: number[]; col: number[] },
   at: readonly [number, number, number],
   radius: number,

@@ -163,6 +163,95 @@ describe('the mural district: what stands there', () => {
     expect(standing, 'without the landmark a wall stands where the chapel does').toBe(true);
   });
 
+  // Playtest 4, run C's live check: "the Mission chapel shows only in the last 40 m behind the mural walls and
+  // stands past the finish". The chapel's front stands on the alley's left past the finish, and the left wall
+  // before it hid it. A landmark's `sightM` opens the wall that far before the footprint (the downtown's rule:
+  // a landmark keeps its approach clear), so the front is seen down the alley before the line.
+  describe('the mission chapel reads before the line (run C)', () => {
+    const edge = road.edgeIndex('sf-mi-last-coat-alley');
+    const chapel = road.featuresOf(edge, 'landmark')[0]!;
+    const FRONT_S = chapel.s0; // the front's plane: the model's origin is its front (`frontM`), turned to the rider
+    /** The front's sample points: five heights (the model's front is 13 m to its gable) by three across its 12 m. */
+    const facade = (p: typeof plan, withWalls = true) => {
+      const walls = withWalls ? p.buildings : [];
+      const pts: { x: number; y: number; z: number }[] = [];
+      for (const up of [1.5, 4.5, 7.5, 10.5, 12.5])
+        for (const across of [-4.5, 0, 4.5]) {
+          const w = road.toWorld(edge, FRONT_S, (chapel.d0 + chapel.d1) / 2 + across, up);
+          pts.push(w);
+        }
+      return { walls, pts };
+    };
+    /** Whether a wall of the plan stands between the camera and the point (every 0.25 m along the sight line). */
+    const blocked = (
+      walls: readonly (typeof plan.buildings)[number][],
+      cam: { x: number; y: number; z: number },
+      to: { x: number; y: number; z: number },
+    ): boolean => {
+      const len = Math.hypot(to.x - cam.x, to.y - cam.y, to.z - cam.z);
+      for (let k = 1; k < len - 0.5; k += 0.25) {
+        const u = k / len;
+        const x = cam.x + (to.x - cam.x) * u;
+        const y = cam.y + (to.y - cam.y) * u;
+        const z = cam.z + (to.z - cam.z) * u;
+        for (const b of walls) {
+          const base = b.front[0]?.y ?? 0;
+          if (y > base + b.height + 1.5) continue;
+          for (let i = 0; i + 1 < b.front.length; i++) {
+            const quad = [b.front[i]!, b.front[i + 1]!, b.back[i + 1]!, b.back[i]!];
+            let inside = false;
+            for (let a = 0, c = 3; a < 4; c = a++) {
+              const pa = quad[a]!;
+              const pc = quad[c]!;
+              if (pa.z > z !== pc.z > z && x < ((pc.x - pa.x) * (z - pa.z)) / (pc.z - pa.z) + pa.x)
+                inside = !inside;
+            }
+            if (inside) return true;
+          }
+        }
+      }
+      return false;
+    };
+    /** The share of the front a rider sees from `backM` before the line (the chase camera: 5 m back, 2.6 m up). */
+    const seenFrom = (p: typeof plan, backM: number, withWalls = true): number => {
+      const { walls, pts } = facade(p, withWalls);
+      const s = chapel.s0 - backM - 5;
+      const cam = road.toWorld(edge, s, 1.7, 2.6);
+      return pts.filter((q) => !blocked(walls, cam, q)).length / pts.length;
+    };
+
+    it('stands in the picture and shows most of its front from 120 m before the line, and some from 245 m', () => {
+      const rows = [60, 120, 245].map((m) => ({ m, share: seenFrom(plan, m) }));
+      print(
+        `[examined] the chapel's front seen from ${rows.map((r) => `${r.m} m: ${(r.share * 100).toFixed(0)} %`).join(', ')} before its front (the finish is at s 613, the front at s ${chapel.s0}), ${plan.buildings.length} walls`,
+      );
+      expect(rows[0]!.share).toBeGreaterThanOrEqual(0.8);
+      expect(rows[1]!.share).toBeGreaterThanOrEqual(0.8);
+      expect(rows[2]!.share).toBeGreaterThanOrEqual(0.3);
+    });
+
+    it('control: the same chapel behind the walls with no opening is hidden from 120 m (the run C finding)', () => {
+      const shut = planMission({
+        road,
+        dressing: Object.fromEntries(
+          Object.entries(dressing).map(([id, d]) => [
+            id,
+            {
+              ...d,
+              features: d.features?.map((f) =>
+                f.kind === 'landmark' ? { ...f, params: { ...f.params, sightM: 0 } } : f,
+              ),
+            },
+          ]),
+        ),
+        seed: 1,
+      });
+      const share = seenFrom(shut, 120);
+      print(`[examined] control, no opening: ${(share * 100).toFixed(0)} % of the front seen from 120 m`);
+      expect(share).toBeLessThan(0.5);
+    });
+  });
+
   it('is the same for the same seed and changes with the seed', () => {
     const key = (p: typeof plan) =>
       p.buildings.map((b) => `${b.u0.toFixed(2)}:${b.height.toFixed(2)}:${b.motif}`).join('|');
