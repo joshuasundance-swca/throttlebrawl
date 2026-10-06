@@ -56,9 +56,11 @@ export const THEME_NEAR_M: Readonly<Partial<Record<LandTheme, number>>> = { cut:
  * Land that is wider than the usual strip (playtest 4, P4-20: Bridge City "as content-rich as the
  * others"): a theme listed here has a strip this wide past the verge, m, tried first (road-mesh.ts
  * falls back to the usual strip, then narrower, where another road is in the way). Downtown Portland's
- * blocks stand two deep on it: the street fronts, then a taller second row behind them.
+ * blocks stand two deep on it: the street fronts, then a taller second row behind them. Old Town's
+ * streets (playtest 4, run B's check: "mid-street the sea shows behind both fronts") have a city floor:
+ * a gap between two shopfronts shows ground and the row of houses behind, not the sea.
  */
-export const WIDE_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { blocks: 60 };
+export const WIDE_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { blocks: 60, oldtown: 72 };
 
 export type SceneryKind =
   | 'palm'

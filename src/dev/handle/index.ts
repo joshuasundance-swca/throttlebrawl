@@ -3,9 +3,9 @@
 // write access to sim state. It also keeps the per-tick checks the browser race asserts on:
 // every mover finite with a known mode and a valid road position, the player's edges in order,
 // event counts, the player's landed hits and what the bot did.
-import type { AppHandle } from '../../app';
+import type { ActionState, AppHandle } from '../../app';
 import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
-import { createBot, type BotController, type BotStats } from '../bot';
+import { blankActions, createBot, type BotController, type BotStats } from '../bot';
 import { createPerfProbe, type PerfReport } from '../perf';
 import { debugFileText, parseDebugFile, reportText } from '../report';
 import { createFastForward, type FastForwardOptions } from './lockstep';
@@ -103,6 +103,18 @@ declare global {
 // The flag itself loads with the first screen (../boot.ts); the handle is in dev/'s lazy chunk.
 export { testFlagSet } from '../boot';
 
+/** Copies the action fields the bot writes (those of blankActions) from one action state to another. */
+function copyBotActions(from: ActionState, to: ActionState): void {
+  to.throttle = from.throttle;
+  to.brake = from.brake;
+  to.steer = from.steer;
+  to.attack = from.attack;
+  to.attackSide = from.attackSide;
+  to.kick = from.kick;
+  to.lookBack = from.lookBack;
+  to.skipRunBack = from.skipRunBack;
+}
+
 function freshChecks(bot: BotController | null): RaceChecks {
   return {
     ticks: 0,
@@ -168,14 +180,32 @@ export function installTestHandle(app: AppHandle): TestHandle {
     ff.step(snap);
   });
 
+  // The bot's choices are a function of the race's snapshots from its tick 0, never of when a
+  // runner's call landed (playtest 4 run B, punch item 11: Bridge City seed 3 rode two routes when
+  // only the frame pacing differed). Three rules keep it so:
+  // - one decision per sim tick: the app hands the same snapshot until the sim steps (a countdown's
+  //   held steps sample the driver at tick 0 over and over), so a repeat gets the same actions;
+  // - a fresh bot at each race's tick 0: a snapshot that is not after the last one driven is a new
+  //   race, however it was started (the handle's startRace or the menu's Race button);
+  // - setBot(true) while the bot is on keeps it (see setBot).
+  let drove: SimSnapshot | null = null;
+  const decided = blankActions();
   const installDriver = () => {
     bot = botOn ? createBot() : null;
-    const driver = bot;
+    drove = null;
     app.setTickDriver(
-      driver
+      bot
         ? (snap, actions) => {
             const route = app.roadQueries();
-            if (route) driver.drive(snap, app.playerId(), route, actions);
+            if (!route || !bot) return;
+            if (snap === drove) {
+              copyBotActions(decided, actions);
+              return;
+            }
+            if (drove && snap.tick <= drove.tick) bot = createBot();
+            bot.drive(snap, app.playerId(), route, actions);
+            drove = snap;
+            copyBotActions(actions, decided);
           }
         : null,
     );
@@ -187,6 +217,11 @@ export function installTestHandle(app: AppHandle): TestHandle {
     events: () => app.recentEvents(),
     playerId: () => app.playerId(),
     setBot(on) {
+      // On while on keeps the bot it has. A fresh one built mid-race would start its memory (the
+      // fight clock, the shortcut taken) at whatever tick the runner's call landed on: the live
+      // check switched it on again once the race passed tick 5, and its first different input
+      // came 840 ticks later, when the first fight's time limit ran out.
+      if (on && botOn) return;
       botOn = on;
       installDriver();
     },

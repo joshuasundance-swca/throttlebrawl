@@ -161,7 +161,7 @@ export const SF_HILLS: TrackSource = {
           s1: 220,
           d0: -12.6,
           d1: -5.6,
-          params: { spawns: 'pedestrians' },
+          params: { spawns: 'pedestrians', kinds: ['sea-lion', 'e-scooter-commuter', 'dog-walker-sf'] },
         },
         {
           kind: 'billboard',

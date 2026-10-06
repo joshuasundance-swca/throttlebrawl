@@ -78,7 +78,7 @@
       "sideTags": {
         "osm-kw-smathers-beach": {
           "left": ["beach"],
-          "right": ["palms"]
+          "right": ["palms", "key-resort"]
         },
         "osm-kw-atlantic": {
           "left": ["beach"]
@@ -177,7 +177,12 @@
         {
           "id": "osm-kw-smathers-beach",
           "name": "Smathers Beach",
-          "tags": ["key-resort"],
+          "tags": [],
+          "sideRuns": [
+            { "tag": "water-shallow", "side": "right", "s0": 700, "s1": 1250 },
+            { "tag": "water-shallow", "side": "right", "s0": 1700, "s1": 2350 },
+            { "tag": "water-shallow", "side": "right", "s0": 3000, "s1": 3600 }
+          ],
           "features": [
             {
               "kind": "billboard",

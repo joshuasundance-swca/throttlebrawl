@@ -6,6 +6,7 @@
   "tags": ["event", "moving-ramp", "region-sf"],
   "lengthM": 7.5,
   "widthM": 2.4,
+  "heightM": 2.4,
   "cruiseMps": 20.0,
   "hazard": "big",
   "behaviour": {

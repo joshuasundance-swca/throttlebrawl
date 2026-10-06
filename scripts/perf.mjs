@@ -77,11 +77,18 @@ function measure(dir) {
   const first = firstLoadScripts(readFileSync(path.join(dir, 'index.html'), 'utf8'), (rel) =>
     readFileSync(path.join(dir, rel), 'utf8'),
   );
-  const out = { files: 0, raw: 0, jsGzip: 0, jsFiles: 0, lazy: [], distFiles: [] };
+  const out = { files: 0, raw: 0, jsGzip: 0, jsFiles: 0, lazy: [], distFiles: [], gzCopies: 0, gzBytes: 0 };
   for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile()) continue;
     const buf = readFileSync(path.join(entry.parentPath, entry.name));
     const rel = toPosix(path.relative(dir, path.join(entry.parentPath, entry.name)));
+    // A gzip copy (scripts/service-worker.mjs) is downloaded instead of its file, never as well, so
+    // the first load counts the plain file alone (the conservative one).
+    if (rel.endsWith('.gz') && existsSync(path.join(dir, rel.slice(0, -3)))) {
+      out.gzCopies++;
+      out.gzBytes += buf.length;
+      continue;
+    }
     out.files++;
     out.raw += buf.length;
     const source = /\.(glb|png)$/.test(entry.name) ? packFileByHash.get(sha256(buf)) : undefined;
@@ -188,7 +195,8 @@ examined(
   `${here.files} dist files: first-load JavaScript ${fmtBytes(here.jsGzip)} gzip in ${here.jsFiles} files ` +
     `(budget ${budget.jsGzipKB} KB, ${fmtBytes(Math.abs(fl.headroomBytes))} ${fl.headroomBytes >= 0 ? 'headroom' : 'over'}), ` +
     `lazy JavaScript ${fmtBytes(lazyGzip)} gzip in ${here.lazy.length} chunks, ` +
-    `first load ${fmtBytes(here.raw)} (budget ${budget.firstLoadKB} KB), models in ${models.size} groups ` +
+    `first load ${fmtBytes(here.raw)} (budget ${budget.firstLoadKB} KB; ${here.gzCopies} gzip copies, ` +
+    `${fmtBytes(here.gzBytes)}, not counted), models in ${models.size} groups ` +
     `(${fmtBytes(models.get(SHARED)?.bytes ?? 0)} shared; own: ${ownLine}; ` +
     `one race's worst ${fmtBytes(worstRaceModelBytes(models))}, ` +
     `budget ${budget.regionModelsKB} KB per region)`,

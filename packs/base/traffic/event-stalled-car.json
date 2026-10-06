@@ -6,6 +6,7 @@
   "tags": ["event", "crash-scene"],
   "lengthM": 4.6,
   "widthM": 1.9,
+  "heightM": 1.4,
   "cruiseMps": 0,
   "hazard": "normal",
   "behaviour": {

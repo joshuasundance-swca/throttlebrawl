@@ -6,6 +6,7 @@
   "tags": ["oddity", "local"],
   "lengthM": 9,
   "widthM": 2.5,
+  "heightM": 3.15,
   "cruiseMps": 19,
   "hazard": "big",
   "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },

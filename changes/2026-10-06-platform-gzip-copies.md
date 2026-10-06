@@ -1,0 +1,5 @@
+---
+kind: changed
+audience: player
+---
+The game now downloads most of its files compressed once it has loaded once. The game's host sends every file uncompressed, so a phone was downloading the whole game at full size: about 10 MB for the offline copy, and each update's new code at full size too. The build now stores a compressed copy of each script, road file and model next to it, and the game's offline helper downloads that copy and unpacks it on the phone. The offline copy drops from about 10 MB to about 5 MB, and after an update the changed code comes at about a third of its size. The very first visit still downloads its first 1.6 MB of code uncompressed; only a change of host would fix that, which is the maintainer's call. If a compressed copy is ever missing or damaged, the game takes the normal file instead. `scripts/gzip-probe.mjs` checks the live game for this. The first-load size check no longer counts the compressed copies, since a phone downloads one or the other, never both (a small change to `scripts/perf.mjs`). Not phone-verified.

@@ -2,7 +2,10 @@
 // picks a route. The region's hand-made road is the default; each real road the region carries is
 // listed by its real name. app/ hands the list in (`routeChoices`), ui draws it under the region
 // picker and reports the pick. Phone-first: chips are full-size touch targets in one row that
-// scrolls sideways when the names do not fit, so the Race button never leaves the screen.
+// scrolls sideways when the names do not fit, so the Race button never leaves the screen. A row
+// that scrolls says so (playtest 4, run B, punch item 10): a "more roads" arrow stands at each end
+// it can still go, and tapping it pages the row, so every road is reachable by a tap at every text
+// size, not only by a swipe nobody is told about.
 
 /** One route the player can pick, as plain data (app/ maps its route choices to it). */
 export interface RouteOption {
@@ -39,14 +42,99 @@ export function pickRoute(options: readonly RouteOption[], wanted?: string | nul
 export const routeChipId = (id: string | null): string =>
   id === null ? 'route-own' : `route-${id.replace(/[^a-z0-9-]/gi, '-')}`;
 
+/** A chip row's scroll state, as the browser reports it (`scrollLeft`, `clientWidth`, `scrollWidth`). */
+export interface RowMetrics {
+  scrollLeft: number;
+  clientWidth: number;
+  scrollWidth: number;
+}
+
+/** Which ends of a chip row have more chips past them. */
+export interface ScrollCue {
+  /** The row has more than it shows. */
+  scrolls: boolean;
+  /** There are chips past the left edge. */
+  before: boolean;
+  /** There are chips past the right edge. */
+  after: boolean;
+}
+
+/** Layout rounds to fractions of a pixel: less than this is not a scroll. */
+const SCROLL_SLACK_PX = 1;
+/** Without a chip edge to land on, an arrow pages the row by this share of its width. [default] */
+const PAGE_SHARE = 0.8;
+/** The room kept beside a chip that is scrolled into view, CSS px. */
+const SHOW_MARGIN_PX = 4;
+
+/** The most the row can scroll by. */
+const maxScroll = (m: RowMetrics) => Math.max(0, m.scrollWidth - m.clientWidth);
+
+/** Where the row has more chips: the arrows point at these ends, and show only when there is a row to scroll. */
+export function scrollCue(m: RowMetrics): ScrollCue {
+  const scrolls = m.scrollWidth > m.clientWidth + SCROLL_SLACK_PX;
+  return {
+    scrolls,
+    before: scrolls && m.scrollLeft > SCROLL_SLACK_PX,
+    after: scrolls && m.scrollLeft < maxScroll(m) - SCROLL_SLACK_PX,
+  };
+}
+
+/** A chip's left and right in the row's scrolled content (`offsetLeft`, `offsetLeft + offsetWidth`). */
+export interface ChipSpan {
+  left: number;
+  right: number;
+}
+
+/**
+ * The `scrollLeft` after an arrow's tap (`dir` -1 for left, 1 for right), kept inside the row. A page
+ * lands on a chip's edge: the first chip cut off at the right edge becomes the first in view (the
+ * last one cut off at the left becomes the last), so a chip no wider than the row is whole in view on
+ * some page and none is skipped. Where no chip would move in view (one wider than the row), or the
+ * row's chips are not known, it pages by most of a view.
+ */
+export function pageScrollLeft(m: RowMetrics, dir: -1 | 1, chips: readonly ChipSpan[] = []): number {
+  const end = m.scrollLeft + m.clientWidth;
+  let want = m.scrollLeft + dir * m.clientWidth * PAGE_SHARE;
+  if (dir === 1) {
+    const cut = chips.find((c) => c.right > end + SCROLL_SLACK_PX);
+    if (cut && cut.left - SHOW_MARGIN_PX > m.scrollLeft + SCROLL_SLACK_PX) want = cut.left - SHOW_MARGIN_PX;
+  } else {
+    const cut = [...chips].reverse().find((c) => c.left < m.scrollLeft - SCROLL_SLACK_PX);
+    if (cut && cut.right + SHOW_MARGIN_PX - m.clientWidth < m.scrollLeft - SCROLL_SLACK_PX)
+      want = cut.right + SHOW_MARGIN_PX - m.clientWidth;
+  }
+  return Math.min(maxScroll(m), Math.max(0, Math.round(want)));
+}
+
+/**
+ * The `scrollLeft` that brings a chip (its left and right in the row's scrolled content) into view
+ * with the least scroll: unchanged when it is in view already.
+ */
+export function scrollLeftToShow(m: RowMetrics, left: number, right: number): number {
+  const lo = left - SHOW_MARGIN_PX;
+  const hi = right + SHOW_MARGIN_PX - m.clientWidth;
+  const want = lo < m.scrollLeft ? lo : hi > m.scrollLeft ? hi : m.scrollLeft;
+  return Math.min(maxScroll(m), Math.max(0, want));
+}
+
 export const ROUTE_PICKER_CSS = `
 #route-picker { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: min(560px, 92vw); }
 #route-picker .route-label { font: 800 0.75rem ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
   text-transform: uppercase; background: #111; color: #f2ead8; padding: 1px 8px; transform: rotate(-1deg); }
-#route-picker .route-row { display: flex; gap: 10px; flex-wrap: nowrap; overflow-x: auto; max-width: 100%;
-  padding: 2px 4px 5px; box-sizing: border-box; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+/* The chips, the row and the two "more roads" arrows. The arrows take room beside the row only while
+   the row scrolls (no overlap with a chip, and the row never moves once it scrolls), and the one for
+   an end with nothing past it is dimmed and off. */
+#route-picker .route-scroll { display: flex; align-items: center; gap: 4px; max-width: 100%; }
+#route-picker .route-row { display: flex; gap: 10px; flex-wrap: nowrap; overflow-x: auto; flex: 0 1 auto; min-width: 0;
+  position: relative; padding: 2px 4px 5px; box-sizing: border-box; scrollbar-width: none;
+  overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+#ui #route-picker .route-more { flex: 0 0 auto; min-width: 44px; padding: 6px 0; font-size: 1.375rem; line-height: 1; }
+#ui #route-picker .route-more:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+#route-picker .route-scroll:not(.scrolls) .route-more { display: none; }
 #route-picker .route-row::-webkit-scrollbar { display: none; }
-#route-picker .route { font-size: 0.875rem; white-space: nowrap; flex: 0 0 auto; }
+/* A chip is one line, as wide as its name, unless the name is wider than the row (the largest text
+   on a narrow phone, with the what's-new card beside): then it wraps, so every road fits the row whole. */
+#route-picker .route { font-size: 0.875rem; white-space: normal; width: max-content; max-width: 100%; flex: 0 0 auto; }
 #route-picker .route[aria-checked='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a;
   transform: rotate(1deg); }
 #route-picker .route-blurb { font: italic 500 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
@@ -68,7 +156,8 @@ export interface RoutePicker {
  * blurb (the region's own blurb stands for its own road, so one line of blurb shows at a time and
  * the menu fits a phone held sideways). It hides while there is only one road to ride (or none).
  * `button` makes a chip in the menu's zine style; `onChange` hears each pick; `onDraw` hears every
- * redraw with whether a real road's blurb is showing.
+ * redraw with whether a real road's blurb is showing. A row too wide for its place gets a "more
+ * roads" arrow at each end (`scrollCue`), each live only while there are chips past that end.
  */
 export function createRoutePicker(
   button: (id: string, text: string, onClick: () => void) => HTMLButtonElement,
@@ -84,12 +173,41 @@ export function createRoutePicker(
   row.className = 'route-row';
   row.setAttribute('role', 'radiogroup');
   row.setAttribute('aria-label', 'Road');
+  const metrics = (): RowMetrics => ({
+    scrollLeft: row.scrollLeft,
+    clientWidth: row.clientWidth,
+    scrollWidth: row.scrollWidth,
+  });
+  const spans = (): ChipSpan[] =>
+    [...row.children].flatMap((c) =>
+      c instanceof HTMLElement ? [{ left: c.offsetLeft, right: c.offsetLeft + c.offsetWidth }] : [],
+    );
+  const page = (dir: -1 | 1) => row.scrollTo({ left: pageScrollLeft(metrics(), dir, spans()) });
+  const before = button('route-before', '‹', () => page(-1));
+  const after = button('route-after', '›', () => page(1));
+  before.classList.add('route-more');
+  after.classList.add('route-more');
+  before.setAttribute('aria-label', 'Earlier roads');
+  after.setAttribute('aria-label', 'More roads');
+  const strip = document.createElement('div');
+  strip.className = 'route-scroll';
+  strip.append(before, row, after);
+  /** Points the arrows at the ends that have more chips. Cheap: three reads, two writes. */
+  const syncCue = () => {
+    const cue = scrollCue(metrics());
+    strip.classList.toggle('scrolls', cue.scrolls);
+    before.disabled = !cue.before;
+    after.disabled = !cue.after;
+  };
+  row.addEventListener('scroll', syncCue, { passive: true });
+  // The row's width changes with the screen and its chips' with the text size: look again on either.
+  const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncCue);
   const blurb = document.createElement('div');
   blurb.className = 'route-blurb';
   const root = document.createElement('div');
   root.id = 'route-picker';
   root.hidden = true;
-  root.append(label, row, blurb);
+  root.append(label, strip, blurb);
 
   const draw = () => {
     root.hidden = routes.length < 2;
@@ -103,6 +221,10 @@ export function createRoutePicker(
         return b;
       }),
     );
+    watch?.disconnect();
+    watch?.observe(row);
+    for (const chip of row.children) watch?.observe(chip);
+    syncCue();
     const picked = routes.find((o) => o.id === route);
     const real = !root.hidden && picked !== undefined && picked.id !== null && !!picked.blurb;
     blurb.textContent = real ? (picked.blurb ?? '') : '';
@@ -113,14 +235,29 @@ export function createRoutePicker(
     if (id === route) return;
     route = id;
     draw();
+    showPicked();
     onChange(id);
+  };
+  /** A chip tapped half out of the row is brought fully in, so the pick is seen. */
+  const showPicked = () => {
+    const chip = [...row.children].find(
+      (c): c is HTMLElement => c instanceof HTMLElement && c.dataset['route'] === (route ?? ''),
+    );
+    if (chip)
+      row.scrollTo({
+        left: scrollLeftToShow(metrics(), chip.offsetLeft, chip.offsetLeft + chip.offsetWidth),
+      });
   };
   return {
     root,
     set(list, picked) {
-      routes = cleanRoutes(list);
+      const cleaned = cleanRoutes(list);
+      // Another region's roads start at the first chip; a refreshed list keeps the row where it is.
+      if (cleaned.map((o) => o.id).join('|') !== routes.map((o) => o.id).join('|')) row.scrollLeft = 0;
+      routes = cleaned;
       route = pickRoute(routes, picked ?? null);
       draw();
+      showPicked();
     },
     get route() {
       return route;

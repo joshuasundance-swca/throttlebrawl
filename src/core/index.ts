@@ -15,3 +15,4 @@ export * from './grudge-rules';
 export * from './routes';
 export * from './smashables';
 export * from './career-race';
+export * from './heights';

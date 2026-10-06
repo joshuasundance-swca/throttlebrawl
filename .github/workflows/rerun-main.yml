@@ -1,9 +1,14 @@
 # Re-run a red main once (docs/engineering.md, "CI on GitHub Actions"). When a push run of ci on
-# main fails on its FIRST attempt, and that commit is still main's head, this re-runs its failed
+# main ends red on its FIRST attempt, and that commit is still main's head, this re-runs its failed
 # jobs once (GitHub re-runs their dependents too: gate, then deploy-prod and release when it goes
-# green). It never re-runs a re-run, and it never re-runs a PR's run. Every decision is logged in
-# the run's summary and as a notice, so `gh run list --workflow rerun-main.yml` is the flake ledger:
-# a rescue there is a flaky test somebody should still fix, not a cure.
+# green). Red is a failed run, or a run cancelled only because a job hit its timeout-minutes: GitHub
+# ends a timed-out job cancelled and the run with it (main run 37423758824, 2026-10-06, was never
+# re-run while this acted on failure alone). A run a person cancelled, or a waiting run a newer
+# push replaced, is left alone. It never re-runs a re-run, and it never re-runs a PR's run. Every
+# decision is logged in the run's summary and as a notice, so `gh run list --workflow
+# rerun-main.yml` is the flake ledger: a rescue there is a flaky test or a slow slice somebody
+# should still fix, not a cure. The decision is scripts/rerun-main.mjs (rerunDecision), tested in
+# scripts/rerun-main.test.ts.
 #
 # Why: on 2026-10-02, 13 main push runs went red on the first try, 3 of them pure flakes by the
 # strategy review's count. On 10-03, b86069b went red on a one-step frame-time jitter (p95 149.9
@@ -16,8 +21,12 @@
 # run. On 10-02's runs this rule would have fired on 5 of the 13 red runs; the other 8 had a newer
 # main commit by the time they finished. [default] (a must-take of the 2026-10-03 strategy review.)
 #
-# Nothing here checks out or runs repository code, and no PR text reaches a run: line. The token
-# can re-run workflows (actions: write) and read the main branch (contents: read), nothing more.
+# It runs main's own scripts/ (a workflow_run event checks out main's newest commit), never the
+# judged run's code, and no PR text reaches a run: line. The token can re-run workflows
+# (actions: write), read the judged jobs' annotations, which tell a timeout from a cancel
+# (checks: read), and read the repo (contents: read), nothing more. A cancelled main run now
+# starts this job too, including a waiting run that a newer push replaced: about half a minute
+# of one runner, which then logs "not re-run".
 name: rerun-main
 
 on:
@@ -30,18 +39,19 @@ permissions: {}
 
 jobs:
   rerun:
-    name: re-run main's failed jobs once
+    name: re-run main's red jobs once
     # Skipped jobs take no runner: green runs, PR runs and later attempts stop here.
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.run_attempt == 1 &&
-      github.event.workflow_run.conclusion == 'failure'
+      (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
       actions: write
+      checks: read
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
@@ -50,27 +60,9 @@ jobs:
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
       RUN_URL: ${{ github.event.workflow_run.html_url }}
     steps:
-      - name: Re-run once, if this is still main's head and nobody re-ran it yet
-        run: |
-          set -euo pipefail
-          short="${RUN_SHA::7}"
-          log() {
-            echo "::notice title=rerun-main::$1"
-            echo "$1" >> "$GITHUB_STEP_SUMMARY"
-          }
-          # The run as it is now, not as the event saw it: someone may have re-run it already.
-          attempt=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.run_attempt')
-          status=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.status')
-          failed=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/1/jobs?per_page=100" \
-            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | .name] | join(", ")')
-          if [ "$attempt" != "1" ] || [ "$status" != "completed" ]; then
-            log "main ${short} (ci run ${RUN_ID}): not re-run, it is already on attempt ${attempt} (${status}). Failed jobs on attempt 1: ${failed}. ${RUN_URL}"
-            exit 0
-          fi
-          head=$(gh api "repos/$REPO/branches/main" --jq '.commit.sha')
-          if [ "$head" != "$RUN_SHA" ]; then
-            log "main ${short} (ci run ${RUN_ID}): not re-run, main has moved on to ${head::7}, whose own run decides. Failed jobs: ${failed}. ${RUN_URL}"
-            exit 0
-          fi
-          gh run rerun "$RUN_ID" --failed --repo "$REPO"
-          log "main ${short} (ci run ${RUN_ID}): re-running its failed jobs once (${failed}). If attempt 2 is green, a test flaked: fix the test, the re-run only hides it. ${RUN_URL}"
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Re-run once, if this is still main's head, its red is a failure or a timeout, and nobody re-ran it yet
+        run: node scripts/rerun-main.mjs

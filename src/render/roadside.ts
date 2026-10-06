@@ -112,6 +112,12 @@ export interface RoadsideRule {
   /** A street front: buildings stood end to end along the road instead of scattered (see `Frontage`). */
   frontage?: Frontage;
   /**
+   * A street front that fills the gaps of another (playtest 4, run B's check: the second row of Old Town's houses):
+   * a building stands only where the rules named here leave more than half of its length open, on this side of
+   * this road. So the row behind is seen through the gaps of the one in front and costs a third of a full row.
+   */
+  behind?: readonly string[];
+  /**
    * Runs before the kit's other rules, so it claims its ground first, without moving any rule's place in
    * the list: a rule's random stream follows its index, so a rule added at the end leaves every other
    * rule's props where they were (playtest 4, P4-19: Old Town's open bars).
@@ -426,6 +432,11 @@ const SECRET = ['key-secret'];
 // the sidewalk, royal poincianas and banyans in the yards behind the row.
 const OLDTOWN = ['key-oldtown'];
 const OLDTOWN_LAND: readonly LandTheme[] = ['oldtown'];
+/**
+ * The second row's facade stands this far past the sidewalk, m: behind the front row's deepest body (about 12 m)
+ * and the yards' trees (a royal poinciana at 14.5 to 17.5 m, a banyan at 15.5 to 18.5 m). [default]
+ */
+export const OLDTOWN_BACK_M = 22;
 /** Keys where mailboxes do not stand (the hotels, the junk, the party). */
 const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY, ...SECRET];
 /** Every key with its own look: conch cottages and their pickets stand only in the conch town. */
@@ -637,14 +648,41 @@ export const KEYS_KIT: RoadsideKit = {
       tier: 0,
     }),
     // Playtest 4 (P4-19, B5; the identity sheets' B2): Big Pine's Key deer, CX5's buck and doe (models.ts
-    // `keysIdentity`, variant 0 the buck and 1 the doe, mostly does), grazing the verges of the road tagged
-    // `key-deer`, past the sign that warns of them (`fromS`), each facing its own way. Last in the list, so
-    // adding it moves no other rule's seeded placements.
-    rule('key-deer', [0, 1, 1], KEYS_LAND, 38, 0.65, [1.4, 3.5], 0.9, {
+    // `keysIdentity`, variant 0 the buck and 1 the doe), on the verges of the road tagged `key-deer`, past the
+    // sign that warns of them (`fromS`). These are the last two rules, so adding them moves no other rule's
+    // seeded placements. Run B's live check (punch item 2: "no Key deer was visible on Big Pine", three frames
+    // at 40 to 87 mph): a doe is 0.7 m, seven pixels tall from the chase camera, so they are drawn half as big
+    // again, 1.5 to 1.7 times (a doe 1.1 m, a buck with antlers 2 m; the sign's joke is "hip high"), and they
+    // stand where the ridable verge ends, 0.6 to 1.4 m past it. [default]
+    // The herd the camera meets: a run of 3 to 5 deer along the verge, 3.4 m apart (one kind to a run, each
+    // turned its own way), a candidate every 130 m of each side, first of the two so no grazer stands in its way.
+    rule('key-deer-herd', [0, 1, 1, 1], KEYS_LAND, 150, 1, [3, 0.8], 0.5, {
       model: 'keysIdentity',
       district: ['key-deer'],
       fromS: 40,
-      size: [0.95, 1.1],
+      size: [1.5, 1.7],
+      run: [4, 6, 3.4],
+    }),
+    // And a lone grazer now and then between the herds.
+    rule('key-deer', [0, 1, 1], KEYS_LAND, 70, 0.6, [3, 0.8], 0.6, {
+      model: 'keysIdentity',
+      district: ['key-deer'],
+      fromS: 40,
+      size: [1.5, 1.7],
+    }),
+    // Playtest 4 (run B's check, punch item 4: "mid-street the sea shows behind both fronts"): Old Town's second
+    // row. The Duval kit's conch houses (variants 3 and 4: no shop boards, so no balcony crowd up there) stand end
+    // to end behind the front row, their facades OLDTOWN_BACK_M past the sidewalk, over the city floor
+    // (`WIDE_LAND_M`), so a gap between two shopfronts shows a house, not the sea. Last in the list, so no other
+    // rule's seeded placements move; it only takes the ground the rules before it left (the trees' discs, the
+    // bars, the front itself).
+    rule('oldtown-back', [3, 4], OLDTOWN_LAND, 0, 1, [OLDTOWN_BACK_M, 0], 0, {
+      model: 'duvalKit',
+      frontage: { gap: [0.3, 1.2], lotRate: 0.03, lotM: 6 },
+      behind: ['oldtown-front', 'oldtown-bar'],
+      district: OLDTOWN,
+      face: true,
+      tier: 0,
     }),
   ],
 };
@@ -1108,6 +1146,32 @@ export class RoadsideScatter {
               : overlaps(f.s0, f.s1, f.d0, f.d1, dFront, dBack),
           );
         if (fits) fits = !zones.some((z) => overlaps(z.s0, z.s1, z.lo, z.hi, dFront, dBack));
+        // A row behind another stands only where that one has a gap: most of its length open, not hidden.
+        if (fits && rule.behind) {
+          const spans = this.items
+            .filter(
+              (o) =>
+                o.edge === e.index &&
+                Math.sign(o.d) === side &&
+                o.foot &&
+                rule.behind?.includes(o.rule) &&
+                o.s + o.foot.half > sc - half &&
+                o.s - o.foot.half < sc + half,
+            )
+            .map((o) => [
+              Math.max(sc - half, o.s - (o.foot?.half ?? 0)),
+              Math.min(sc + half, o.s + (o.foot?.half ?? 0)),
+            ])
+            .sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0));
+          let covered = 0;
+          let upto = sc - half;
+          for (const [a, b] of spans) {
+            if ((b ?? 0) <= upto) continue;
+            covered += (b ?? 0) - Math.max(a ?? 0, upto);
+            upto = b ?? 0;
+          }
+          fits = covered < half;
+        }
         // Its ground as discs along its body (facade to back): clear of the scenery, the scenes and
         // the landmarks.
         const r = Math.min(back, 2 * half) / 2;
