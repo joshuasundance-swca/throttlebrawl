@@ -17,7 +17,7 @@ import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import type { SceneryModel } from './models';
 import { PartyLights, partyRuns } from './party-lights';
-import { buildRoadScene, type RoadDressing } from './road-mesh';
+import { buildRoadScene, LANDMARK_LEAD_M, type RoadDressing } from './road-mesh';
 import { KEYS_KIT, RoadsideLayer, scatterRoadside, type RoadsideInput } from './roadside';
 
 const look = createFlatLook();
@@ -98,14 +98,24 @@ describe.each(SEEDS)('Duval has a city behind its front, seed %i', (seed) => {
     print(
       `seed ${seed}: ${stations} stations on Duval and Whitehead, the ground reaches at least ${least.toFixed(0)} m, ${short} under ${FLOOR_M} m: ${where.join(', ')}`,
     );
-    // The ground is short only where the street meets the Gulf: the left side (the pier's) of the last 330 m of each
-    // of the two roads, where the cruise ship's berth and the shore keep the strip back (road-mesh.ts `landmarkBeyond`).
+    // The ground is short only where the street meets the Gulf, on the left side (the pier's): the last 330 m of each
+    // of the two roads, where the shore keeps the strip back, or beside a landmark on that side (the cruise ship's
+    // berth, whose length the ship sets), where road-mesh.ts `landmarkBeyond` keeps it back from LANDMARK_LEAD_M before.
     expect(where.filter((w) => !/ L s/.test(w)).length, 'short stations off the left side').toBe(0);
     expect(stations - short, 'stations with the city floor').toBeGreaterThan(stations * 0.9);
     for (const w of where) {
       const m = /^(\S+) L s(\d+) /.exec(w);
       const e = road.edges[road.edgeIndex(m?.[1] ?? '')];
-      expect(Number(m?.[2]), w).toBeGreaterThanOrEqual((e?.length ?? 0) - 330);
+      const s = Number(m?.[2]);
+      const berth = (dressing[m?.[1] ?? '']?.features ?? []).some(
+        (f) =>
+          f.kind === 'landmark' &&
+          f.params?.['overRoad'] !== true &&
+          f.d0 + f.d1 < 0 &&
+          s >= Math.min(f.s0, f.s1) - LANDMARK_LEAD_M &&
+          s <= Math.max(f.s0, f.s1) + LANDMARK_LEAD_M,
+      );
+      if (!berth) expect(s, w).toBeGreaterThanOrEqual((e?.length ?? 0) - 330);
     }
   });
 

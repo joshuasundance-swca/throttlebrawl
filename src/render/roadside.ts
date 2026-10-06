@@ -625,14 +625,18 @@ export const KEYS_KIT: RoadsideKit = {
       canopy: true,
     }),
     // Playtest 4, P4-19 (the identity study's S5; Codex CX6's `keys_osprey_post`, variant 8): ospreys nest on
-    // the poles beside the Overseas Highway. A 9 m pole with a stick nest and the bird on it stands on the
-    // shore and mangrove sides, a few metres past the verge, one now and then (every 420 m at half the
-    // chances, so a territory apart), and never on a street: not in Old Town (the `oldtown` theme is not one
-    // it stands on, and the district is kept out as well). The kit file loads only where open water is
-    // (models.ts `modelKindsFor`).
-    rule('osprey-post', [8], [...SHORE, 'mangrove'], 420, 0.5, [3, 6], 2, {
+    // the poles beside the Overseas Highway, on the shore and mangrove sides, and never on a street: not in
+    // Old Town (the `oldtown` theme is not one it stands on, and the district is kept out as well). The kit
+    // file loads only where open water is (models.ts `modelKindsFor`). Run C's live check (punch item, lane
+    // J3: "no osprey post showed in 8 frames along shore and mangrove stretches"): a candidate every 420 m
+    // at half the chances stood one nest per 840 m a side, 3 to 9 m past the verge, a 1.4 m platform that
+    // was 8 to 11 px wide from 40 m. Now a candidate every 200 m at 90 %, the pole 1.2 to 2.4 m past the
+    // ridable verge, and drawn 1.5 to 1.8 times (a 14 to 16 m pole, a platform 2.2 to 2.7 m wide, 13 px or
+    // more from 40 m), so a nest is in sight from a good share of the stretch (tests/sim/keys-places-sight).
+    rule('osprey-post', [8], [...SHORE, 'mangrove'], 200, 0.9, [1.2, 1.2], 1.2, {
       model: 'keysIdentity',
       notDistrict: OLDTOWN,
+      size: [1.5, 1.8],
       tier: 0,
     }),
     // Playtest 4 (P4-19, B5; the identity sheets' B2): Big Pine's Key deer, CX5's buck and doe (models.ts
