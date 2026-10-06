@@ -568,16 +568,33 @@ describe('peds: contact rules', () => {
     expect(events.some((e) => e.type === 'crash')).toBe(false);
   });
 
-  it('hitting something big crashes you', () => {
-    const config = makeConfig({ features: {}, types: [CAR, TOURIST, CHICKEN, GATOR], riders: SOLO });
-    const world = scenario(config, [{ s: 300, d: 1.7, speed: 30 }]);
-    const pedId = placePed(world, config, { type: 3, edge: 0, s: 301, d: 1.7 });
-    const events: SimEvent[] = [];
-    for (let t = 0; t < 5; t++) events.push(...stepWorld(world, config, SCENARIO, [cruise]));
-    const crash = events.find((e) => e.type === 'crash');
+  it('hitting something big square on at speed crashes you; a crawl into it only wobbles (one rule)', () => {
+    // Playtest 4 ("solid but forgiving"): a heavy mover that could not get out of the way is met by the
+    // one rule for heavy things (sim/traffic/contact-rule.ts): at 30 m/s end on, a crash; at 6 m/s, a
+    // wobble. The gator stands 3 m ahead, so the rider's front meets it; it never sees the rider coming
+    // (peds.bigReactScale 0), so the crawl meets it too.
+    const meet = (speed: number) => {
+      const config = makeConfig({
+        features: {},
+        types: [CAR, TOURIST, CHICKEN, GATOR],
+        riders: SOLO,
+        tuning: { 'peds.bigReactScale': 0 },
+      });
+      const world = scenario(config, [{ s: 300, d: 1.7, speed }]);
+      const pedId = placePed(world, config, { type: 3, edge: 0, s: 303, d: 1.7 });
+      const events: SimEvent[] = [];
+      for (let t = 0; t < 40; t++)
+        events.push(...stepWorld(world, config, SCENARIO, [speed > 10 ? cruise : coast]));
+      return { pedId, events: events.filter((e) => e.target === pedId && e.data['cause'] === 'ped') };
+    };
+    const fast = meet(30);
+    const crash = fast.events.find((e) => e.type === 'crash');
     expect(crash?.actor).toBe(0);
-    expect(crash?.target).toBe(pedId);
-    expect(crash?.data['cause']).toBe('ped');
+    expect(crash?.target).toBe(fast.pedId);
+    expect(Number(crash?.data['impactMps'])).toBeGreaterThan(10);
+    const slow = meet(6);
+    expect(slow.events.filter((e) => e.type === 'crash')).toEqual([]);
+    expect(slow.events.some((e) => e.type === 'wobble')).toBe(true);
   });
 });
 

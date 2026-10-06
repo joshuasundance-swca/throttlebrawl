@@ -28,9 +28,9 @@
 // (sim/riders/drift.ts) and road gaps and jumpable walls (sim/riders/gap.ts) plug in through hooks
 // below, each neutral while its move is off, so their lanes never edit this file.
 import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
-import { sRateFactor } from '../../road';
+import { sRateFactor, type FurnitureShape } from '../../road';
 import type { RideLimits } from '../ground';
-import { trafficContactCrashes } from '../traffic/contact-rule';
+import { GRAZE_M, trafficContactCrashes } from '../traffic/contact-rule';
 import type {
   MovesSnapshot,
   SimConfig,
@@ -50,7 +50,7 @@ import {
   touchdown,
   type AirState,
 } from './air';
-import { applyShove, riderContacts } from './contact';
+import { applyShove, RIDER_CONTACT_HALF_WIDTH_M, riderContacts } from './contact';
 import {
   driftDown,
   driftMoves,
@@ -61,6 +61,21 @@ import {
   type DriftState,
 } from './drift';
 import { funnelLimits, FUNNEL_TUNING, ridingLimitsAt } from './funnel';
+import {
+  BIKE_RADIUS_M,
+  BIKE_SPINE_HALF_M,
+  closingMps,
+  firstTouch,
+  furnitureOn,
+  FURNITURE_TUNING,
+  LIGHT_KICK,
+  LIGHT_SCRUB,
+  piecesNear,
+  slideAlong,
+  spineAt,
+  spineGap,
+  type FurnitureHit,
+} from './furniture';
 import { smokeTopScale, SMOKE_TUNING } from './smoke';
 import {
   BOOST_ACCEL_MPS2,
@@ -74,7 +89,8 @@ import {
   KERB_M,
   movingDecks,
   rampTruckAt,
-  solidHazardAt,
+  isLightHazard,
+  solidHazardsNear,
   stagingGuideAt,
   truckBodyAt,
   truckBodyTop,
@@ -339,6 +355,7 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   ...WHEELIE_TUNING,
   ...DRIFT_TUNING,
   ...GAP_TUNING,
+  ...FURNITURE_TUNING,
   // Playtest 4: a smoking bike loses a little top speed (sim/riders/smoke.ts).
   ...SMOKE_TUNING,
 ];
@@ -384,6 +401,13 @@ export interface RiderState extends AirState, UturnState, WheelieState, DriftSta
   truckTouch: number[];
   /** 1 while the rider is held against a solid hazard (run W-U), so one contact emits one event. */
   hazardTouch: number[];
+  /**
+   * The street piece the rider touched last tick, its id + 1 (0 for none; playtest 4, "solid but
+   * forgiving"), so one contact emits one event; and the light one it last rode through, so it is
+   * ridden through once.
+   */
+  furnTouch: number[];
+  lightTouch: number[];
   /**
    * 1 from a landing until the rider rides clear of a crest that would launch him, so one crest is
    * one jump: coming down on the same crest's far side never bounces him straight back up.
@@ -434,8 +458,6 @@ const WOBBLE_STEER = 0.5;
 const WOBBLE_DRAG = 1;
 /** Peak lean shake while wobbling, radians. */
 const WOBBLE_LEAN = 0.18;
-/** Solid hazards that are parked vehicles (their `object`), met by the vehicles' one rule. */
-const PARKED_VEHICLE_HAZARDS: readonly string[] = ['pickup'];
 /** While already wobbling, a contact this fraction of the crash speed crashes you. */
 const UNSTABLE_CRASH_FRACTION = 0.4;
 /** Lean follows its target at this rate, 1/s (the "weighty" part). */
@@ -509,6 +531,8 @@ export function riderState(world: World): RiderState {
     crestHold: [],
     truckTouch: [],
     hazardTouch: [],
+    furnTouch: [],
+    lightTouch: [],
     pitch: [],
     pitchRate: [],
     airBlock: [],
@@ -1072,11 +1096,118 @@ function truckSideContact(
 }
 
 /**
- * A solid road hazard (run W-U: a parked pickup, a stump, a chainsaw bear; sim/riders/features.ts)
- * is a wall box. From the side the rider is held beside it and scrapes, like a barrier; head on it
- * stops where it was and takes its whole speed as the impact, so a fast one crashes and a crawl
- * only wobbles. Events carry `object` (what it is) and the hazard's `feature` id. Returns true when a
- * wheelie launched the rider off it instead (playtest 3): the rider is in the air.
+ * How far round a bike its contacts look for a piece, m: its own reach (half its length) and one tick's
+ * travel at the fastest a racer goes (53 m/s), with room.
+ */
+const CONTACT_REACH_M = 2.5;
+
+/** What a heavy thing a rider meets is, for the contact's events. */
+interface SolidMet {
+  extra: Record<string, string>;
+  newContact: boolean;
+}
+
+/**
+ * A grounded rider meeting something heavy and fixed (playtest 4, "solid but forgiving": a solid road
+ * hazard, or a solid piece of street furniture), classed and decided exactly as a rider meeting a vehicle
+ * is (sim/traffic, #552's one rule): the contact is the first moment the bike's capsule touches it along
+ * the tick's move (sim/riders/furniture.ts); it is **end on** when the two were not side by side as the
+ * move began (the bike's front met it), unless they overlap sideways by less than `GRAZE_M` (a **graze**:
+ * the corner); otherwise it is a **side** contact. End on, the closing speed is the bike's speed along the
+ * road; a graze or a side contact, its speed across it. At `traffic.solidHitMps` or more it is a crash;
+ * under it a wobble. Either way the rider is kept off it along that axis and slides on (a square hit
+ * stops it; a graze or a side brush only loses its speed across, and the bike is eased past). Held
+ * against it (already touching), the rider is kept off it and slides on with no new event.
+ */
+function meetSolid(
+  world: World,
+  st: RiderState,
+  m: Mover,
+  move: { s0: number; d0: number; s1: number; d1: number },
+  hit: FurnitureHit<{ shape: FurnitureShape }>,
+  met: SolidMet,
+): void {
+  const pos = m.pos;
+  const v = m.speed;
+  const yawBefore = m.yaw;
+  const c = hit.piece.shape;
+  const { endOn, alongside, ns, nd } = contactAxis(move, hit);
+  // End on, the bike stops where it met it; a graze or a side contact goes on along it this tick and is
+  // eased off it across the road.
+  if (endOn && !hit.held) {
+    pos.s = move.s0 + (move.s1 - move.s0) * hit.t;
+    pos.d = move.d0 + (move.d1 - move.d0) * hit.t;
+  }
+  keepOff(c, pos, m.yaw, ns, nd);
+  const closing = closingMps(v, pos.dir, m.yaw, ns, nd);
+  const slid = slideAlong(v, pos.dir, m.yaw, ns, nd);
+  m.speed = slid.speed;
+  m.yaw = clamp(slid.yaw, -1.2, 1.2);
+  // Resting against it, or put down in it (a remount): kept off it, and nothing to tell.
+  if (hit.held && closing <= 0) return;
+  // The piece is on this side of the rider, in the road frame.
+  const side: 1 | -1 = endOn ? 1 : nd > 0 ? -1 : 1;
+  wallOutcome(world, st, m, {
+    impact: closing,
+    v,
+    yawBefore,
+    side,
+    newContact: met.newContact,
+    extra: { ...met.extra, hit: endOn ? 'end' : alongside ? 'side' : 'graze' },
+    vehicle: true,
+  });
+}
+
+/**
+ * How a contact met (`meetSolid`): `alongside` when the two were side by side as the move began (the
+ * piece beside the straight of the bike's capsule, not ahead of its round front), `endOn` when the bike's
+ * front met it squarely (not alongside, and overlapping sideways by `GRAZE_M` or more), and the axis its
+ * closing speed is taken along, pointing from the piece to the bike.
+ */
+function contactAxis(
+  move: { s0: number; d0: number; s1: number; d1: number },
+  hit: FurnitureHit<{ shape: FurnitureShape }>,
+): { endOn: boolean; alongside: boolean; ns: number; nd: number } {
+  const c = hit.piece.shape;
+  const s = hit.held ? move.s1 : move.s0 + (move.s1 - move.s0) * hit.t;
+  const d = hit.held ? move.d1 : move.d0 + (move.d1 - move.d0) * hit.t;
+  const alongside = Math.abs(move.s0 - c.s) < c.reachS + BIKE_SPINE_HALF_M;
+  const overD = c.reachD + RIDER_CONTACT_HALF_WIDTH_M - Math.abs(d - c.d);
+  const endOn = !alongside && overD >= GRAZE_M;
+  return { endOn, alongside, ns: endOn ? (s >= c.s ? 1 : -1) : 0, nd: endOn ? 0 : d >= c.d ? 1 : -1 };
+}
+
+/** Moves the bike along (ns, nd) until its capsule clears a footprint (or 3 m, which never happens). */
+function keepOff(shape: FurnitureShape, pos: Mover['pos'], yaw: number, ns: number, nd: number): void {
+  if (spineGap(shape, spineAt(pos.s, pos.d, pos.dir, yaw)).dist >= BIKE_RADIUS_M) return;
+  let lo = 0;
+  let hi = 3;
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    const g = spineGap(shape, spineAt(pos.s + ns * mid, pos.d + nd * mid, pos.dir, yaw));
+    if (g.dist >= BIKE_RADIUS_M) hi = mid;
+    else lo = mid;
+  }
+  pos.s += ns * (hi + 0.005);
+  pos.d += nd * (hi + 0.005);
+}
+/** The tick's move on one edge, from where the bike was to where it is (a move over an edge's end starts where it is). */
+function moveOf(m: Mover, before: { edge: number; s: number; d: number }) {
+  const same = before.edge === m.pos.edge;
+  return {
+    s0: same ? before.s : m.pos.s,
+    d0: same ? before.d : m.pos.d,
+    s1: m.pos.s,
+    d1: m.pos.d,
+  };
+}
+
+/**
+ * A solid road hazard (run W-U: a parked pickup, a stump, a chainsaw bear, a log pile; sim/riders/features.ts)
+ * is a box met by `meetSolid`: the closing speed along the contact's normal decides (playtest 4: one rule for
+ * every heavy fixed thing, with the street furniture; it was the barrier's 6 m/s for all but the pickup, and a
+ * head-on stop at the whole speed). Events carry `object` (what it is) and the hazard's `feature` id.
+ * Returns true when a wheelie launched the rider off it instead (playtest 3): the rider is in the air.
  */
 function hazardContact(
   world: World,
@@ -1084,45 +1215,155 @@ function hazardContact(
   st: RiderState,
   m: Mover,
   before: { edge: number; s: number; d: number },
-  dt: number,
 ): boolean {
   const pos = m.pos;
-  const hazard = solidHazardAt(config, pos.edge, pos.s, pos.d);
-  if (!hazard) {
+  const all = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M);
+  // A light hazard (a festival barricade: boards on legs) is knocked aside as a light street piece is:
+  // ridden through once, a little speed and a heading kick, a `smash` wobble, never a crash.
+  let light = 0;
+  for (const p of all) {
+    if (!isLightHazard(p.feature)) continue;
+    if (spineGap(p.shape, spineAt(pos.s, pos.d, pos.dir, m.yaw)).dist >= BIKE_RADIUS_M) continue;
+    light = -p.key;
+    if (st.lightTouch[m.id] === light) break;
+    const toward = p.shape.d >= pos.d ? 1 : -1;
+    m.speed *= LIGHT_SCRUB;
+    m.yaw = clamp(m.yaw - toward * pos.dir * LIGHT_KICK, -1.2, 1.2);
+    const object = hazardObject(p.feature);
+    emit(world, 'wobble', m.id, { cause: 'smash', object, feature: p.feature.id, speed: m.speed });
+    break;
+  }
+  if (light !== 0 || (st.lightTouch[m.id] ?? 0) < 0) st.lightTouch[m.id] = light;
+  const near = all.filter((p) => !isLightHazard(p.feature));
+  const move = moveOf(m, before);
+  const hit = near.length > 0 ? firstTouch(near, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw) : null;
+  if (!hit) {
     st.hazardTouch[m.id] = 0;
     return false;
   }
-  const v = m.speed;
-  const yawBefore = m.yaw;
+  const hazard = hit.piece.feature;
   const newContact = st.hazardTouch[m.id] !== 1;
   st.hazardTouch[m.id] = 1;
-  const extra = { object: hazardObject(hazard), feature: hazard.id };
-  // A parked pickup is a parked vehicle: playtest 4's one rule for vehicles decides it.
-  const vehicle = PARKED_VEHICLE_HAZARDS.includes(extra.object);
-  const d0 = Math.min(hazard.d0, hazard.d1) - HAZARD_REACH_D_M;
-  const d1 = Math.max(hazard.d0, hazard.d1) + HAZARD_REACH_D_M;
-  const wasInside =
-    before.edge === pos.edge && solidHazardAt(config, before.edge, before.s, before.d) === hazard;
-  if (before.edge === pos.edge && !wasInside && (before.d < d0 || before.d > d1)) {
-    const side = before.d < d0 ? 1 : -1; // the hazard is on this side of the rider
-    const impact = scrapeAlong(config, m, side, dt);
-    pos.d = side > 0 ? d0 - 0.01 : d1 + 0.01;
-    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra, vehicle });
-    return false;
+  // Square on (the normal more along the road than across it) in a wheelie (playtest 3; the critic's S2:
+  // a parked pickup is a car too): the wheelie may launch the rider off it instead (sim/riders/wheelie.ts).
+  const axis = contactAxis(moveOf(m, before), hit);
+  if (!hit.held && axis.endOn) {
+    const closing = closingMps(m.speed, pos.dir, m.yaw, axis.ns, axis.nd);
+    if (hazardLaunch(world, config, st, m, hazard, closing)) return true;
   }
-  if (wasInside) {
-    // Already in it (put down there): step out beside it, toward the nearer side.
-    pos.d = pos.d - d0 < d1 - pos.d ? d0 - 0.01 : d1 + 0.01;
-    return false;
+  meetSolid(world, st, m, move, hit, {
+    extra: { object: hazardObject(hazard), feature: hazard.id },
+    newContact,
+  });
+  return false;
+}
+
+/**
+ * The street furniture a riding rider meets (playtest 4, the maintainer: street furniture is "solid but
+ * maybe forgiving to sides, brushes, etc"; road/furniture.ts plans it, render draws the same plan). A
+ * `solid` piece (a hydrant, a lamp or signal post, a tree's trunk, a bench, a planter, a parked car) is met
+ * by `meetSolid`, by the closing speed along the contact's normal. A `light` one (a meter, a bin, a board,
+ * a scooter) is ridden through as a smashable is (sim/smash): a little speed and a heading kick away
+ * from it, and a `wobble` whose `cause` is `smash`, once per piece, never a crash. Events carry
+ * `object` (the piece's kind) and `furniture` (its id in the plan). Off when `riders.furniture` is.
+ */
+function furnitureContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+): void {
+  if (!furnitureOn(world.params)) return;
+  const pos = m.pos;
+  const near = piecesNear(config, pos.edge, pos.s, CONTACT_REACH_M);
+  if (near.length === 0) {
+    st.furnTouch[m.id] = 0;
+    // (A light hazard's key is negative, and hazardContact keeps it.)
+    if ((st.lightTouch[m.id] ?? 0) > 0) st.lightTouch[m.id] = 0;
+    return;
   }
-  // Head on in a wheelie (playtest 3; the critic's S2: a parked pickup is a car too): the wheelie
-  // may launch the rider off it instead (sim/riders/wheelie.ts).
-  if (hazardLaunch(world, config, st, m, hazard, v)) return true;
-  pos.edge = before.edge;
-  pos.s = before.s;
-  pos.d = before.d;
-  m.speed = 0;
-  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, vehicle });
+  // Light pieces first: ridden through where the bike ends the tick on one.
+  let light = 0;
+  for (const it of near) {
+    if (it.cls !== 'light' || m.h > it.heightM) continue;
+    if (spineGap(it.shape, spineAt(pos.s, pos.d, pos.dir, m.yaw)).dist >= BIKE_RADIUS_M) continue;
+    light = it.id + 1;
+    if (st.lightTouch[m.id] === light) break;
+    const toward = it.shape.d >= pos.d ? 1 : -1;
+    m.speed *= LIGHT_SCRUB;
+    m.yaw = clamp(m.yaw - toward * pos.dir * LIGHT_KICK, -1.2, 1.2);
+    emit(world, 'wobble', m.id, {
+      cause: 'smash',
+      object: it.kind,
+      furniture: String(it.id),
+      speed: m.speed,
+    });
+    break;
+  }
+  if (light !== 0 || (st.lightTouch[m.id] ?? 0) > 0) st.lightTouch[m.id] = light;
+  const solid = near.filter((it) => it.cls === 'solid' && m.h <= it.heightM);
+  const move = moveOf(m, before);
+  const hit = solid.length > 0 ? firstTouch(solid, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw) : null;
+  if (!hit) {
+    st.furnTouch[m.id] = 0;
+    return;
+  }
+  const newContact = st.furnTouch[m.id] !== hit.piece.id + 1;
+  st.furnTouch[m.id] = hit.piece.id + 1;
+  meetSolid(world, st, m, move, hit, {
+    extra: { object: hit.piece.kind, furniture: String(hit.piece.id) },
+    newContact,
+  });
+}
+/**
+ * A rider in the air meeting a solid hazard or a solid street piece below its top (`h` above the road):
+ * the ground's rule (`meetSolid`), the closing speed along the contact's normal deciding. Returns true
+ * when it crashed (the flight ends there); a glance pushes the rider off it and the flight goes on.
+ */
+function airSolids(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  h: number,
+): boolean {
+  const pos = m.pos;
+  const move = moveOf(m, before);
+  const hazards = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
+    (p) => h < hazardTop(p.feature) && !isLightHazard(p.feature),
+  );
+  const pieces = furnitureOn(world.params)
+    ? piecesNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
+        (it) => it.cls === 'solid' && h < it.heightM,
+      )
+    : [];
+  const hh =
+    hazards.length > 0 ? firstTouch(hazards, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw) : null;
+  const hp =
+    pieces.length > 0 ? firstTouch(pieces, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw) : null;
+  if (!hh && !hp) return false;
+  const crashesBefore = world.events.length;
+  if (hp && (!hh || hp.t <= hh.t)) {
+    const newContact = st.furnTouch[m.id] !== hp.piece.id + 1;
+    st.furnTouch[m.id] = hp.piece.id + 1;
+    meetSolid(world, st, m, move, hp, {
+      extra: { object: hp.piece.kind, furniture: String(hp.piece.id) },
+      newContact,
+    });
+  } else if (hh) {
+    const newContact = st.hazardTouch[m.id] !== 1;
+    st.hazardTouch[m.id] = 1;
+    meetSolid(world, st, m, move, hh, {
+      extra: { object: hazardObject(hh.piece.feature), feature: hh.piece.feature.id },
+      newContact,
+    });
+  }
+  for (let i = crashesBefore; i < world.events.length; i++) {
+    const e = world.events[i];
+    if (e && e.type === 'crash' && e.actor === m.id) return true;
+  }
   return false;
 }
 
@@ -1259,7 +1500,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const handed = crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
   truckContact(world, config, st, m, before, dt, decks);
-  if (hazardContact(world, config, st, m, before, dt)) {
+  furnitureContact(world, config, st, m, before);
+  if (hazardContact(world, config, st, m, before)) {
     // Launched off a parked car by a wheelie (playtest 3): its flight is already set up.
     st.throttle[m.id] = throttle;
     st.brake[m.id] = brake;
@@ -1414,6 +1656,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const kappa = road.kappaAt(pos.edge, pos.s);
   const ownTurn = steer * AIR_TURN_RATE;
   const along = m.speed * cos(m.yaw) * sRateFactor(kappa, pos.d);
+  const airFrom = { edge: pos.edge, s: pos.s, d: pos.d };
   // Forgiving landings (playtest 2): the flight follows riders.airCarve of the road's bend, and the
   // heading settles back along the road at riders.airAlign, so the bike comes down lined up.
   const carve = world.params['riders.airCarve'] ?? 0;
@@ -1448,14 +1691,12 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
     return;
   }
-  // A solid hazard (run W-U) stands up from the road: flying into it below its top is a crash.
-  const hazard = solidHazardAt(config, pos.edge, pos.s, pos.d);
-  if (hazard && y - surface < hazardTop(hazard)) {
+  // A solid hazard (run W-U) or a solid piece of street furniture stands up from the road: flying into it
+  // below its top is met by the same rule as on the ground (playtest 4: by the closing speed along the
+  // contact's normal; it was a crash whatever the speed). A crash ends the flight here.
+  if (airSolids(world, config, st, m, airFrom, y - surface)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
-    st.wobble[m.id] = 0;
-    const data = { cause: 'barrier', speed: m.speed, impactMps: m.speed, yaw: m.yaw, side: 1 };
-    emit(world, 'crash', m.id, { ...data, object: hazardObject(hazard), feature: hazard.id });
     return;
   }
   const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
@@ -1725,6 +1966,8 @@ export const ridersSystem: SimSystem = {
       st.onPad[m.id] = 0;
       st.truckTouch[m.id] = 0;
       st.hazardTouch[m.id] = 0;
+      st.furnTouch[m.id] = 0;
+      st.lightTouch[m.id] = 0;
       st.uturn[m.id] = 0;
       uturnForget(st, m.id);
       startFlight(st, m, undefined, slopeAt(config, m));

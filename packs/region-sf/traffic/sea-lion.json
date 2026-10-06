@@ -7,9 +7,9 @@
   "lengthM": 2.0,
   "widthM": 0.8,
   "cruiseMps": 0.8,
-  "hazard": "normal",
+  "hazard": "big",
   "behaviour": {
-    "roadside": "dodges",
+    "roadside": "yields",
     "carFollowing": false,
     "laneChanges": false,
     "dives": true
@@ -22,7 +22,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A sea lion a long way from the pier, unbothered. Flops clear. Placeholder shape: the chicken preset, scaled by its size.",
+    "notes": "A sea lion a long way from the pier, unbothered. Flops clear, late. Playtest 4 (solid but forgiving): 2 m and some 300 kg, a heavy mover like the elk and the gators, so it yields: a hard hit is a crash, a brush a wobble. Placeholder shape: the chicken preset, scaled by its size.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -29,7 +29,7 @@ import {
   Vector3,
   type Texture,
 } from 'three';
-import type { RoadNetwork } from '../road';
+import { planStreetFurniture, type RoadNetwork, type StreetFurniture } from '../road';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
@@ -138,6 +138,13 @@ export interface RoadsideRule {
    * below the land. No water there, or not yet known: it is not placed.
    */
   waterline?: boolean;
+  /**
+   * Stands where road/furniture.ts plans it (playtest 4, "solid but forgiving"): a sidewalk piece the sim
+   * meets, so its place comes from the one plan the sim reads. The plan holds the same rule (its
+   * `SF_SIDEWALK_RULES` and `OLDTOWN_SIDEWALK_RULES`; roadside.test.ts checks the two agree), and the
+   * rule keeps its place in the kit's list, so every other rule keeps its seeded stream.
+   */
+  planned?: boolean;
 }
 
 /** A `waterline` prop stands no more than this far below the land at its anchor, m (a dock under a low bank). [default] */
@@ -369,14 +376,15 @@ export const SF_KIT: RoadsideKit = {
       along: 0.9,
       align: true,
     }),
-    rule('street-tree', [3], CITY, 13, 0.75, [0.55, 0.2], 0.45, { tier: 0, canopy: true }),
-    rule('board', [6, 7, 8], CITY, 110, 0.65, [0.6, 0.5], 0.7, { face: true }),
-    rule('lamp', [12], CITY_AND_DOCKS, 32, 0.85, [0.25, 0], 0.4, BIG),
+    // The kerb's pieces (street-tree to scooter) stand where road/furniture.ts plans them (planned).
+    rule('street-tree', [3], CITY, 13, 0.75, [0.55, 0.2], 0.45, { tier: 0, canopy: true, planned: true }),
+    rule('board', [6, 7, 8], CITY, 110, 0.65, [0.6, 0.5], 0.7, { face: true, planned: true }),
+    rule('lamp', [12], CITY_AND_DOCKS, 32, 0.85, [0.25, 0], 0.4, { ...BIG, planned: true }),
     // A meter on most house plots: the kerb's beat at speed.
-    rule('meter', [10], CITY, 7, 0.6, [0.3, 0], 0.25, { face: true, align: true }),
-    rule('bins', [11], CITY, 40, 0.5, [0.7, 0.3], 1.0, { face: true }),
-    rule('hydrant', [4], CITY_AND_DOCKS, 55, 0.7, [0.35, 0.2], 0.35),
-    rule('scooter', [5], CITY_AND_DOCKS, 30, 0.55, [0.4, 0.8], 0.75, { tier: 2 }),
+    rule('meter', [10], CITY, 7, 0.6, [0.3, 0], 0.25, { face: true, align: true, planned: true }),
+    rule('bins', [11], CITY, 40, 0.5, [0.7, 0.3], 1.0, { face: true, planned: true }),
+    rule('hydrant', [4], CITY_AND_DOCKS, 55, 0.7, [0.35, 0.2], 0.35, { planned: true }),
+    rule('scooter', [5], CITY_AND_DOCKS, 30, 0.55, [0.4, 0.8], 0.75, { tier: 2, planned: true }),
   ],
 };
 
@@ -439,10 +447,12 @@ export const KEYS_KIT: RoadsideKit = {
       tier: 0,
     }),
     // The sidewalk's furniture: within its 4 m (it spans 0 to 3.4 m past the drawn verge).
+    // Both stand where road/furniture.ts plans them (`planned`), as the frangipanis below.
     rule('oldtown-planter', [7], OLDTOWN_LAND, 22, 0.55, [1.4, 0.8], 1.3, {
       model: 'duvalKit',
       district: OLDTOWN,
       tier: 1,
+      planned: true,
     }),
     rule('oldtown-scooters', [6], OLDTOWN_LAND, 40, 0.5, [1.2, 0.6], 0.9, {
       model: 'duvalKit',
@@ -450,6 +460,7 @@ export const KEYS_KIT: RoadsideKit = {
       face: true,
       along: 2.1,
       tier: 2,
+      planned: true,
     }),
     // Each key's big pieces first: they claim their ground before the clutter. Their clear-ground
     // disc covers the body behind the front (`discBack`), and the hotels stand back behind the
@@ -595,6 +606,7 @@ export const KEYS_KIT: RoadsideKit = {
       size: [0.85, 1.15],
       tier: 0,
       canopy: true,
+      planned: true,
     }),
     // The yards behind the row: a royal poinciana and a banyan now and then, their crowns over the roofs
     // (the banyan is 12 m high and 17 m across). Behind the front's deepest building (about 12 m past the
@@ -900,6 +912,8 @@ export class RoadsideScatter {
    * over its 24 seeds).
    */
   private readonly zones = new Map<number, { s0: number; s1: number; lo: number; hi: number }[]>();
+  /** The planned pieces (road/furniture.ts) by edge, rule and side (`edge:rule:side`). */
+  private readonly planned = new Map<string, StreetFurniture[]>();
 
   constructor(private readonly input: RoadsideInput) {
     const { road } = input;
@@ -932,7 +946,15 @@ export class RoadsideScatter {
     }
     // The staged scenes' ground (run W-T, scenes/): nothing of the kit stands in a scene, ferns included.
     for (const q of input.reserved ?? []) this.taken.add(q.x, q.z, q.r, false);
-    if (this.density <= 0) this.edge = road.edges.length;
+    // The kit's sidewalk pieces (playtest 4, "solid but forgiving"): road/furniture.ts plans them, so the
+    // sim meets what is drawn; each `planned` rule stands its pieces from the plan in its own turn.
+    for (const it of planStreetFurniture(road, input.seed).items) {
+      if (it.layer !== 'kit') continue;
+      const key = `${it.edge}:${it.rule}:${it.d < 0 ? -1 : 1}`;
+      const list = this.planned.get(key);
+      if (list) list.push(it);
+      else this.planned.set(key, [it]);
+    }
   }
 
   get done(): boolean {
@@ -959,6 +981,37 @@ export class RoadsideScatter {
     return finished;
   }
 
+  /**
+   * A `planned` rule's pieces on one side of one edge, from road/furniture.ts: the plan made the same
+   * draws the rule would, so they stand where it would have put them; they take their ground as it would.
+   */
+  private standPlanned(edge: number, rule: RoadsideRule, side: -1 | 1): void {
+    const { road } = this.input;
+    for (const it of this.planned.get(`${edge}:${rule.id}:${side}`) ?? []) {
+      const p = road.toWorld(edge, it.s, it.d, LAND_TOP_M);
+      const toRoad = road.toWorld(edge, it.s, 0, 0);
+      const turn =
+        'yaw' in it.turn
+          ? it.turn.yaw
+          : Math.atan2(toRoad.x - p.x, toRoad.z - p.z) + ('face' in it.turn ? it.turn.face : 0);
+      const r = rule.r * (rule.size?.[1] ?? 1);
+      if (rule.canopy) this.taken.add(p.x, p.z, r, true);
+      else this.taken.add(p.x, p.z, rule.understory ? r * 0.6 : r);
+      this.items.push({
+        rule: rule.id,
+        variant: it.variant,
+        edge,
+        s: it.s,
+        d: it.d,
+        p,
+        turn,
+        pitch: 0,
+        size: it.size,
+        tier: rule.tier ?? 1,
+      });
+    }
+  }
+
   private runUnit(edgeIndex: number, ri: number, side: -1 | 1): void {
     const input = this.input;
     const { road, dressing, seed } = input;
@@ -967,6 +1020,12 @@ export class RoadsideScatter {
     if (!e || !rule) return;
     // A rule drawing from another model (Old Town's kit) places nothing until that model is in.
     if (rule.model && !input.models?.[rule.model]) return;
+    if (rule.planned) {
+      this.standPlanned(e.index, rule, side);
+      return;
+    }
+    // Roadside density 0 is no scatter; the planned pieces stand whatever it is (the sim meets them).
+    if (this.density <= 0) return;
     const taken = this.taken;
     const dress = dressing?.[e.id];
     const tags = dress?.tags as readonly SideTag[] | undefined;
@@ -1131,6 +1190,10 @@ export class RoadsideScatter {
           break;
         if (rule.district && !inDistrict(tags, sideName, s, rule.district)) break;
         if (rule.notDistrict && inDistrict(tags, sideName, s, rule.notDistrict)) break;
+        // A run's later section clear of the ridable band too (it widens where a trestle's taper or a side
+        // street's mouth does; playtest 4: a fence there stood on the band with nothing in the sim behind it).
+        if (j > 0 && !rule.understory && across < ridableBandPast(road, e.index, side, s, outer) + rule.r)
+          break;
         // On the drawn land, all of it: across its depth and along its length.
         const land = Math.min(
           input.landReach(e.index, side, s),

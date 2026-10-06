@@ -6,12 +6,18 @@
 // across a side street; nothing on the road or in a sign's, a pad's or a lot's way; the sea lions
 // only on their stretch of water; the seawall's land and its sheer drop; and the layer's cost.
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import {
+  createRoadNetwork,
+  planStreetFurniture,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../road';
 import { readGlb } from './glb';
 import { createFlatLook } from './look';
 import { bakeModel, MODEL_ASSETS, modelKindsFor, type SceneryModels } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
-import { SEAWALL_LAND_M, themeAt } from './scenery';
+import { ridableBandPast, SEAWALL_LAND_M, themeAt } from './scenery';
 import { VergeLayer } from './verge';
 import {
   BLOCK_WIDTH,
@@ -260,16 +266,27 @@ describe('San Francisco waterfront: what stands along the bay', () => {
     expect(other.frontages.map((f) => f.pier)).toEqual(plan.frontages.map((f) => f.pier));
   });
 
-  it('keeps off the ground a staged scene stands on', () => {
-    const palm = byRule('palm')[3];
-    if (!palm) throw new Error('no palm');
-    const held = planWaterfront(
-      { road: wf.road, dressing: wf.dressing, seed: 7, reserved: [{ x: palm.p.x, z: palm.p.z, r: 3 }] },
-      MODELS,
-    );
-    expect(
-      held.items.some((i) => i.rule === 'palm' && Math.hypot(i.p.x - palm.p.x, i.p.z - palm.p.z) < 3),
-    ).toBe(false);
+  it('draws the street furniture the sim meets, and no staged scene can stand among it', () => {
+    // Playtest 4 ("solid but forgiving"): the palms, lamps, benches and the lot's cars are road/furniture.ts's
+    // plan, which the sim meets; this layer draws exactly that plan.
+    const key = (i: { rule: string; edge: number; s: number; d: number }) =>
+      `${i.rule}:${i.edge}:${i.s.toFixed(2)}:${i.d.toFixed(2)}`;
+    const planned = planStreetFurniture(wf.road, 7).items.filter((i) => i.layer === 'waterfront');
+    const rules = new Set(planned.map((i) => i.rule));
+    const drawn = plan.items.filter((i) => rules.has(i.rule));
+    print(`[examined] ${planned.length} planned pieces (${[...rules].join(', ')}), ${drawn.length} drawn`);
+    expect(planned.length).toBeGreaterThan(200);
+    expect(drawn.map(key).sort()).toEqual(planned.map(key).sort());
+    // A staged scene stands past the ridable band (render/scenery.ts `ridableBandPast`): on the promenade
+    // that is the seawall's 12 m of paving, then the water, so no scene stands where a palm does.
+    let checked = 0;
+    for (const e of wf.road.edges)
+      for (let s = 5; s < e.length; s += 25)
+        if (has(e.index, 'right', s, 'promenade')) {
+          checked++;
+          expect(ridableBandPast(wf.road, e.index, 1, s, e.dMax + 0.6)).toBeGreaterThan(11);
+        }
+    expect(checked).toBeGreaterThan(20);
   });
 
   it('draws a few meshes near the camera, inside the still scene budget, and frees them when it has gone', () => {

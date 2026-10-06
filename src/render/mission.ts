@@ -25,6 +25,7 @@
 // its paint (one geometry, revealed by draw range) and its crew. This is a lazy chunk: it loads with
 // the mural network, never in the first load.
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, Vector3 } from 'three';
+import { planStreetFurniture } from '../road';
 import type { RoadNetwork, SimSnapshot } from '../sim/api';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
@@ -82,8 +83,7 @@ export const MASCOT_HEIGHT_M = 14.5;
 const FACE_SIGHT_M = 150;
 /** Share of alley walls painted, and of shopfronts with a mural over the upper floors. */
 const MURAL_SHARE = { murals: 0.72, shopfronts: 0.2 } as const;
-/** Street lamps along a shopfront kerb, every so many metres. */
-const LAMP_EVERY_M = 34;
+// The shopfront kerb's lamps and bins are road/furniture.ts's (MS_LAMP_EVERY_M).
 
 /**
  * Static parts merge per square of ground this wide (the route zig-zags, so a square holds several
@@ -102,9 +102,6 @@ const KEEP_M = MISSION_DRAW_M + 200;
  */
 export const PRIMER: readonly [number, number] = [0.23, 0.78];
 export const FRESH: readonly [number, number] = [0.78, 0.97];
-
-/** The roadside kit's variants this layer borrows (roadside.ts SF_KIT's list). */
-const SF_PROPS = { bins: 11, lamp: 12 } as const;
 
 /** Flat colours. [default] */
 export const MISSION_COLOURS = {
@@ -1201,60 +1198,27 @@ export function planMission(input: MissionInput): MissionPlan {
       }
       k++;
     }
-    // Lamps at the kerb of a shopfront sidewalk, and bins by some doors.
-    if (line.kind === 'shopfronts') {
-      for (let s = LAMP_EVERY_M / 2; s < total; s += LAMP_EVERY_M) {
-        const i = Math.min(line.pts.length - 1, indexAt(line, s));
-        const e = line.edges[i] ?? 0;
-        const ss = line.ss[i] ?? 0;
-        const edge = road.edges[e];
-        if (!edge) continue;
-        const kerb = line.side * (Math.abs(line.ds[i] ?? 0) - 3.6);
-        const features = (dressing?.[edge.id]?.features ?? edge.features).filter((f) =>
-          ['billboard', 'copSpawn', 'roadsideZone'].includes(f.kind),
-        );
-        // Clear of a sign, the cop's lot and the walkers' sidewalk on this side.
-        const blocked = features.some(
-          (f) =>
-            Math.min(f.s0, f.s1) - 3 < ss &&
-            Math.max(f.s0, f.s1) + 3 > ss &&
-            Math.min(f.d0, f.d1) - 1 <= kerb &&
-            Math.max(f.d0, f.d1) + 1 >= kerb,
-        );
-        if (blocked) continue;
-        const p = road.toWorld(e, ss, kerb, 0);
-        const c = road.toWorld(e, ss, 0, 0);
-        const it: MissionItem = {
-          variant: SF_PROPS.lamp,
-          rule: 'lamp',
-          key: gridKey(p.x, p.z),
-          p: { x: p.x, y: c.y, z: p.z },
-          turn: Math.atan2(c.x - p.x, c.z - p.z),
-          edge: e,
-          s: ss,
-          d: kerb,
-        };
-        items.push(it);
-        note(it.key, it.p);
-        if (scatterHash(seed, 5023 + li, s, 9) < 0.35) {
-          const bd = line.side * (Math.abs(line.ds[i] ?? 0) - 0.6);
-          const q = road.toWorld(e, ss + 4, bd, 0);
-          const bin: MissionItem = {
-            variant: SF_PROPS.bins,
-            rule: 'bins',
-            key: gridKey(q.x, q.z),
-            p: { x: q.x, y: c.y, z: q.z },
-            turn: Math.atan2(c.x - q.x, c.z - q.z),
-            edge: e,
-            s: ss + 4,
-            d: bd,
-          };
-          items.push(bin);
-          note(bin.key, bin.p);
-        }
-      }
-    }
+    // The lamps at the kerb of a shopfront sidewalk and the bins by some doors stand where
+    // road/furniture.ts plans them (playtest 4, "solid but forgiving": the sim meets what is drawn).
   });
+
+  for (const f of planStreetFurniture(road, seed).items) {
+    if (f.layer !== 'mission') continue;
+    const p = road.toWorld(f.edge, f.s, f.d, 0);
+    const c = road.toWorld(f.edge, f.s, 0, 0);
+    const it: MissionItem = {
+      variant: f.variant,
+      rule: f.rule,
+      key: gridKey(p.x, p.z),
+      p: { x: p.x, y: c.y, z: p.z },
+      turn: Math.atan2(c.x - p.x, c.z - p.z),
+      edge: f.edge,
+      s: f.s,
+      d: f.d,
+    };
+    items.push(it);
+    note(it.key, it.p);
+  }
 
   const stretches = [...centres.entries()].map(([key, c]) => {
     const cx = c.xs / c.n;
