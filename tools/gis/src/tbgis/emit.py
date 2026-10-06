@@ -265,7 +265,9 @@ def bake(
         # off the decks like the land tags (a deck has its own rail).
         for run in rn.sideRuns:
             if run.s1 > length:
-                raise ValueError(f"{rn.id}: side run {run.tag} at {run.s0}..{run.s1} is off the {length} m road")
+                raise ValueError(
+                    f"{rn.id}: side run {run.tag} at {run.s0}..{run.s1} is off the {length} m road"
+                )
             tags += [
                 {"s0": r4(t0), "s1": r4(t1), "side": run.side, "tag": run.tag}
                 for t0, t1 in without(run.s0, run.s1, decks)

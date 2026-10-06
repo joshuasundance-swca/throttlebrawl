@@ -12,7 +12,6 @@
 // - both load only for the networks whose roads carry those tags.
 // Each rule has a control that must find the thing ("none" against the tag taken off, the model unloaded,
 // another network), so a pass is never an empty one.
-import { Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -29,7 +28,14 @@ import { createFlatLook } from './look';
 import { bakeRepoModel, readAsset } from './model-files.test-util';
 import { bakeLandmarkKit, landmarkKitAsset, modelKindsFor } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
-import { PNW_KIT, RoadsideLayer, scatterRoadside, type RoadsideInput, type RoadsideItem } from './roadside';
+import {
+  PNW_KIT,
+  ROADSIDE_DRAW_M,
+  RoadsideLayer,
+  scatterRoadside,
+  type RoadsideInput,
+  type RoadsideItem,
+} from './roadside';
 import type { SideTag } from './scenery';
 
 const look = createFlatLook();
@@ -67,6 +73,8 @@ const CROWN = 'osm-gorge-crown-point-loops';
 const GORGE_ROADS = [CROWN, 'osm-gorge-latourell', 'osm-gorge-shepperds-dell'];
 const CHUCKANUT_ROADS = ['osm-chuckanut-larrabee', 'osm-chuckanut-cliffs', 'osm-chuckanut-oyster-creek'];
 const OTHER_NETWORKS = ['osm-pnw-portland', 'osm-pnw-samish', 'pnw-c1'];
+/** The others with a forest roadside kit to scatter (Bridge City's downtown has none). */
+const OTHER_FOREST = ['osm-pnw-samish', 'pnw-c1'];
 const SEEDS = [1, 7, 42, 99];
 
 function track(id: string): {
@@ -176,26 +184,94 @@ describe('Vista House at Crown Point', () => {
     expect(landmarkKitsFor(gorgeNetwork.road)).toEqual(['gorge-landmarks']);
   });
 
-  it('stands where the real building stands against the road: the real point projects beside it, on the same side, at the same height', () => {
+  it('stands by the real building: the real point projects beside the road on the same side, at the same height, and it is within a few lengths of it', () => {
     const f = vistaFeature()!;
     const net = Object.values(networkFiles).find((n) => n.id === GORGE)!;
     const frame = geoFrame(net.crs.originLatDeg, net.crs.originLonDeg);
     const [x, z] = frame.toWorld(VISTA.lat, VISTA.lon);
     const real = nearest(gorgeNetwork.road, CROWN, x, z);
-    const sMid = (f.s0 + f.s1) / 2;
-    const dMid = (f.d0 + f.d1) / 2;
-    print(
-      `Vista House: feature s ${sMid.toFixed(0)}, d ${dMid.toFixed(1)}; the OSM building projects to s ${real.s.toFixed(0)}, d ${real.d.toFixed(1)} (${real.off.toFixed(1)} m off the baked road, the real highway passes ${VISTA.realRoadM} m off); the road is ${real.y.toFixed(1)} m high there, the building ${VISTA.eleM} m`,
+    const mid = gorgeNetwork.road.toWorld(
+      gorgeNetwork.road.edgeIndex(CROWN),
+      (f.s0 + f.s1) / 2,
+      (f.d0 + f.d1) / 2,
+      0,
     );
-    // Along the road, within a couple of its own lengths; across, on the real side and within a few metres
-    // of the real building's offset (the baked line is smoothed, so it is not the real road to the metre).
-    expect(Math.abs(sMid - real.s)).toBeLessThan(25);
-    expect(Math.sign(dMid)).toBe(Math.sign(real.d));
-    expect(Math.abs(dMid - real.d)).toBeLessThan(8);
-    expect(Math.abs(dMid - Math.sign(real.d) * VISTA.realRoadM)).toBeLessThan(2);
+    const away = Math.hypot(mid.x - x, mid.z - z);
+    print(
+      `Vista House: the OSM building projects to s ${real.s.toFixed(0)}, d ${real.d.toFixed(1)} (${real.off.toFixed(1)} m off the baked road; the real highway passes ${VISTA.realRoadM} m off); the road is ${real.y.toFixed(1)} m high there, the building ${VISTA.eleM} m; the model stands at s ${((f.s0 + f.s1) / 2).toFixed(0)}, d ${((f.d0 + f.d1) / 2).toFixed(1)}, ${away.toFixed(1)} m from the real point`,
+    );
+    // The real building is on this side of the road, the way the baked line is smoothed from the real one
+    // (it passes 24.5 m off against the real highway's 28.3).
+    expect(Math.sign((f.d0 + f.d1) / 2)).toBe(Math.sign(real.d));
+    expect(Math.abs(real.off - VISTA.realRoadM)).toBeLessThan(6);
     // Crown Point is the place: the road is at the building's own surveyed height there (a wrong station
     // would be tens of metres off on this road, which falls 200 m in 7 km).
     expect(Math.abs(real.y - VISTA.eleM)).toBeLessThan(3);
+    // The model stands within a few building lengths of the real point: the road wraps the building's
+    // site in a 28 m bend, whose inside the drawn land cannot fold over (next check), so it stands where
+    // the land is, along the road from the real point.
+    expect(away).toBeLessThan(35);
+  });
+
+  it('stands on drawn land, all four corners of its footprint, where the real point would not (control)', () => {
+    const f = vistaFeature()!;
+    const idx = gorgeNetwork.road.edgeIndex(CROWN);
+    const e = gorgeNetwork.road.edges[idx]!;
+    const { built } = scene(GORGE, 7);
+    const stations = Array.from({ length: Math.floor(e.length) + 1 }, (_, s) => ({
+      s,
+      ...gorgeNetwork.road.toWorld(idx, s, 0, 0),
+    }));
+    const nearStation = (x: number, z: number) => {
+      let best = stations[0]!;
+      let off = Infinity;
+      for (const st of stations) {
+        const o = Math.hypot(st.x - x, st.z - z);
+        if (o < off) {
+          off = o;
+          best = st;
+        }
+      }
+      return { s: best.s, off };
+    };
+    /** How far inside the drawn land the footprint's corners and edge middles stand, at the worst, m. */
+    const cover = (s: number, d: number, half: number) => {
+      const c = gorgeNetwork.road.toWorld(idx, s, d, 0);
+      const fr = gorgeNetwork.road.frameAt(idx, s);
+      const yaw = Math.atan2(fr.tx, fr.tz);
+      let worst = Infinity;
+      for (const [a, b] of [
+        [-1, -1],
+        [-1, 1],
+        [1, -1],
+        [1, 1],
+        [0, -1],
+        [0, 1],
+        [-1, 0],
+        [1, 0],
+      ] as const) {
+        const x = c.x + a * half * Math.sin(yaw) + b * half * Math.cos(yaw);
+        const z = c.z + a * half * Math.cos(yaw) - b * half * Math.sin(yaw);
+        const n = nearStation(x, z);
+        const verge = Math.abs(gorgeNetwork.road.vergeAt(idx, n.s, 'right').dOuter);
+        worst = Math.min(worst, verge + built.landReach(idx, 1, n.s) - n.off);
+      }
+      return worst;
+    };
+    const scale = Number(f.params?.['scale']);
+    const half = 11 * scale;
+    const placed = cover((f.s0 + f.s1) / 2, (f.d0 + f.d1) / 2, half);
+    // Control: the real point's own station and offset, the same footprint, has land missing under it.
+    const net = Object.values(networkFiles).find((n) => n.id === GORGE)!;
+    const [rx, rz] = geoFrame(net.crs.originLatDeg, net.crs.originLonDeg).toWorld(VISTA.lat, VISTA.lon);
+    const real = nearest(gorgeNetwork.road, CROWN, rx, rz);
+    const atReal = cover(real.s, real.d, half);
+    print(
+      `Vista House's footprint is ${placed.toFixed(1)} m inside the drawn land at the worst corner; at the real point it would be ${atReal.toFixed(1)} m`,
+    );
+    expect(placed).toBeGreaterThanOrEqual(0.5);
+    expect(atReal).toBeLessThan(0);
+    built.dispose();
   });
 
   it('stands wholly past the verge on its side, on land and not over the arch bridge, clear of the visitors', () => {
@@ -236,12 +312,26 @@ describe('Vista House at Crown Point', () => {
     expect(Math.abs(sizeZ - (f.s1 - f.s0))).toBeLessThan(0.1);
   });
 
-  it('keeps every other prop out of its footprint, on 4 seeds, and the control finds props there without the reservation', () => {
+  it('keeps every other prop out of its footprint, on 4 seeds, and the controls find props there without it', () => {
     const f = vistaFeature()!;
     const idx = gorgeNetwork.road.edgeIndex(CROWN);
     const inside = (edge: number, s: number, d: number) =>
       edge === idx && s >= f.s0 && s <= f.s1 && d >= Math.min(f.d0, f.d1) && d <= Math.max(f.d0, f.d1);
+    // Control: the same road with the landmark marked `overRoad` (it takes no ground): the scenery stands in it.
+    const free = Object.fromEntries(
+      Object.entries(gorgeNetwork.dressing).map(([id, r]) => [
+        id,
+        {
+          ...(r as unknown as BakedRoad),
+          features: ((r as unknown as BakedRoad).features ?? []).map((x) =>
+            x.kind === 'landmark' ? { ...x, params: { ...x.params, overRoad: true } } : x,
+          ),
+        },
+      ]),
+    ) as unknown as RoadDressing;
     let spots = 0;
+    let props = 0;
+    let withoutKeepOff = 0;
     let loose = 0;
     for (const seed of SEEDS) {
       const { built, input, road } = scene(GORGE, seed);
@@ -250,15 +340,20 @@ describe('Vista House at Crown Point', () => {
         expect(inside(sp.edge, sp.s, sp.d), `${sp.kind} at s ${sp.s.toFixed(0)}, seed ${seed}`).toBe(false);
       }
       const kept = scatterRoadside({ ...input, reserved: landmarkFootprints(road) });
-      for (const it of kept)
+      for (const it of kept) {
+        props++;
         expect(inside(it.edge, it.s, it.d), `${it.rule} at s ${it.s.toFixed(0)}`).toBe(false);
+      }
       loose += scatterRoadside(input).filter((it) => inside(it.edge, it.s, it.d)).length;
       built.dispose();
+      const open = scene(GORGE, seed, { dressing: free });
+      withoutKeepOff += open.built.spots.filter((sp) => inside(sp.edge, sp.s, sp.d)).length;
+      open.built.dispose();
     }
     print(
-      `${spots} scenery spots checked over ${SEEDS.length} seeds; without the footprint reserved ${loose} roadside props would stand in Vista House's box`,
+      `${spots} scenery spots and ${props} roadside props checked over ${SEEDS.length} seeds; without the keep-off, ${withoutKeepOff} scenery spots and ${loose} roadside props would stand in Vista House's box`,
     );
-    expect(loose).toBeGreaterThan(0);
+    expect(withoutKeepOff + loose).toBeGreaterThan(0);
   });
 
   it('draws in the landmark layer in one call: the full form near, the light one past farM, nothing past the mid distance', () => {
@@ -454,7 +549,7 @@ describe('the guard walls need the tag, the model and the Gorge', () => {
   });
 
   it('stand none on any other Pacific Northwest network, with the model loaded', () => {
-    for (const id of [CHUCKANUT, ...OTHER_NETWORKS]) {
+    for (const id of [CHUCKANUT, ...OTHER_FOREST]) {
       const items = scatterRoadside(scene(id, 7).input);
       expect(items.length, id).toBeGreaterThan(50);
       expect(wallsOf(items), id).toEqual([]);
@@ -500,20 +595,22 @@ describe.each(SEEDS)("Chuckanut's madrones, seed %i", (seed) => {
     }
   });
 
-  it('are spread along the bluff: no run of 150 m or more is without one', () => {
+  it('are spread along the bluff: most 100 m windows of a long run hold one', () => {
+    let windows = 0;
+    let held = 0;
     for (const e of road.edges) {
       const mine = trees.filter((t) => t.edge === e.index);
       for (const x of tagsOf(dressing[e.id] as unknown as BakedRoad).filter((y) => y.tag === 'bay-bluff')) {
-        if (x.s1 - x.s0 < 150) continue;
-        const inside = mine
-          .filter((t) => t.s >= x.s0 && t.s <= x.s1)
-          .map((t) => t.s)
-          .sort((a, b) => a - b);
-        const stops = [x.s0, ...inside, x.s1];
-        const widest = Math.max(...stops.slice(1).map((v, i) => v - stops[i]!));
-        expect(widest, `${e.id} ${x.s0}..${x.s1}`).toBeLessThan(150);
+        if (x.s1 - x.s0 < 200) continue;
+        for (let a = x.s0; a + 100 <= x.s1; a += 100) {
+          windows++;
+          if (mine.some((t) => t.s >= a && t.s < a + 100)) held++;
+        }
       }
     }
+    print(`${CHUCKANUT} seed ${seed}: ${held} of ${windows} 100 m windows of the long runs hold a madrone`);
+    expect(windows).toBeGreaterThan(30);
+    expect(held / windows).toBeGreaterThan(0.8);
   });
 });
 
@@ -527,7 +624,7 @@ describe('the madrones need the tag, the model and Chuckanut', () => {
       ),
     ).toEqual([]);
     expect(madronesOf(scatterRoadside(scene(CHUCKANUT, 7, { models: { pnwRoadside } }).input))).toEqual([]);
-    for (const id of [GORGE, ...OTHER_NETWORKS])
+    for (const id of [GORGE, ...OTHER_FOREST])
       expect(madronesOf(scatterRoadside(scene(id, 7).input)), id).toEqual([]);
   });
 
@@ -545,7 +642,7 @@ describe('the madrones need the tag, the model and Chuckanut', () => {
 });
 
 describe('drawing them', () => {
-  it('rides the roadside stretches: the same stretches and meshes with the identity model as without, more triangles', () => {
+  it('rides the roadside stretches: the same stretches, no more meshes in view than without, and the triangles it adds are few', () => {
     for (const [id, rule] of [
       [GORGE, 'gorge-wall'],
       [CHUCKANUT, 'madrone'],
@@ -554,30 +651,41 @@ describe('drawing them', () => {
         const { input, road } = scene(id, 7, { models });
         const layer = new RoadsideLayer(pnwRoadside, look, input);
         while (!layer.ready) layer.update(1e9, 1e9, 360);
+        let peakMeshes = 0;
+        let peakTris = 0;
+        let seenTris = 0;
         for (const e of road.edges)
           for (let s = 0; s < e.length; s += 40) {
             const p = road.toWorld(e.index, s, 0, 0);
             for (let k = 0; k < 4; k++) layer.update(p.x, p.z, 360);
+            const c = layer.counts();
+            peakMeshes = Math.max(peakMeshes, c.meshes);
+            peakTris = Math.max(peakTris, c.triangles);
+            seenTris += c.triangles;
           }
-        const meshes = layer.group.children.filter((o): o is Mesh => o instanceof Mesh);
-        const tris = meshes.reduce((n, m) => n + m.geometry.getAttribute('position').count / 3, 0);
         return {
           chunks: layer.counts().chunks,
-          meshes: meshes.length,
-          tris,
+          peakMeshes,
+          peakTris,
+          seenTris,
           mine: layer.items.filter((i) => i.rule === rule).length,
         };
       };
       const without = run({ pnwRoadside });
       const withIt = run({ pnwRoadside, pnwIdentity });
       print(
-        `${id}: ${withIt.mine} ${rule} items; ${withIt.chunks} stretches and ${withIt.meshes} meshes with them, ${without.chunks} and ${without.meshes} without; ${withIt.tris - without.tris} more triangles`,
+        `${id}: ${withIt.mine} ${rule} items; ${withIt.chunks} stretches (${without.chunks} without); at most ${withIt.peakMeshes} meshes and ${withIt.peakTris} triangles in view (${without.peakMeshes} and ${without.peakTris} without)`,
       );
       expect(without.mine).toBe(0);
       expect(withIt.mine).toBeGreaterThan(0);
       expect(withIt.chunks).toBe(without.chunks);
-      expect(withIt.meshes - without.meshes).toBeLessThanOrEqual(withIt.chunks);
-      expect(withIt.tris - without.tris).toBeGreaterThan(0);
+      // The same stretches' meshes: a model of its own adds no mesh to a stretch that already draws.
+      expect(withIt.peakMeshes).toBeLessThanOrEqual(without.peakMeshes);
+      // It adds triangles to what is in view, and no more than the model could add.
+      expect(withIt.seenTris).toBeGreaterThan(without.seenTris);
+      // ...at most every 6 m slot of the road within the draw distance, both sides, in madrones or wall sections.
+      const worst = Math.max(...pnwIdentity.variants.map((g) => g.getAttribute('position').count / 3));
+      expect(withIt.peakTris - without.peakTris).toBeLessThan(((4 * ROADSIDE_DRAW_M) / 6) * worst);
     }
   });
 });

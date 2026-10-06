@@ -226,7 +226,7 @@ export const PNW_KIT: RoadsideKit = {
       model: 'pnwIdentity',
       first: true,
     }),
-    rule('madrone', [0, 1], FOREST, 34, 0.7, [1.5, 4.5], 2.3, {
+    rule('madrone', [0, 1], FOREST, 22, 0.7, [1.5, 6], 2, {
       face: true,
       away: true,
       tier: 0,

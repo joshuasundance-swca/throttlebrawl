@@ -8,12 +8,12 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from test_keys_pt3 import OSM, ROADS, WAYS, pt
 
 from tbgis.config import BakeConfig
 from tbgis.drops import FAR_DROP_M, JOIN_GAP_M, MIN_RUN_M, NEAR_DROP_M, Station, runs_of
 from tbgis.emit import bake
 from tbgis.stretch import build_profile, real_path
-from test_keys_pt3 import OSM, ROADS, WAYS, pt
 
 
 def stretch(side_runs: list[dict[str, Any]], on: int = 0) -> list[dict[str, Any]]:
@@ -90,8 +90,12 @@ def test_a_drop_is_ground_well_below_the_road_at_both_offsets() -> None:
     assert runs_of(line, "right") == [(0.0, 190.0)]
     assert runs_of(line, "left") == []
     # Only the near ground falls (a ditch, then level), or only the far ground (a bank): no drop.
-    near_only = [station(10.0 * i, 100.0, {"R": 90.0, "L": 100.0}, {"R": 100.0, "L": 100.0}) for i in range(20)]
-    far_only = [station(10.0 * i, 100.0, {"R": 100.0, "L": 100.0}, {"R": 80.0, "L": 100.0}) for i in range(20)]
+    near_only = [
+        station(10.0 * i, 100.0, {"R": 90.0, "L": 100.0}, {"R": 100.0, "L": 100.0}) for i in range(20)
+    ]
+    far_only = [
+        station(10.0 * i, 100.0, {"R": 100.0, "L": 100.0}, {"R": 80.0, "L": 100.0}) for i in range(20)
+    ]
     assert runs_of(near_only, "right") == [] == runs_of(far_only, "right")
     # The thresholds are the documented ones.
     assert NEAR_DROP_M == 5.0 and FAR_DROP_M == 12.0
