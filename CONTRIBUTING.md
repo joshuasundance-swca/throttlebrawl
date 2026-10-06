@@ -39,16 +39,22 @@ are in [AGENTS.md](AGENTS.md).
 
 ## How a pull request lands
 
-Most PRs land on their own once you have opened them and armed auto-merge. In order:
+Most PRs from a branch of this repo land on their own once you have opened them and armed auto-merge.
+That is the train path, and the numbered steps below describe it. Some PRs skip steps 2 to 6: a PR from
+a fork, a Dependabot PR, a docs-only change, a change under `.github/` and a PR marked `[full-gate]`
+take other paths, set out under "Which path your PR takes" further down. A fork author cannot arm
+auto-merge, so a maintainer merges a fork PR. In order:
 
 1. **Open the PR.** CI starts at once. It first reads what you changed and who opened the PR, and picks a
-   path for it (see "Which path your PR takes", below). An ordinary change takes the train path.
+   path for it (see "Which path your PR takes", below). An ordinary change from a branch of this repo
+   takes the train path; a PR from a fork does not (see "Forks", below).
 2. **The `quick` check runs**: types, lint, the unit tests, the build and its size budget, a few
    minutes in all. It is a fast first look, not permission to merge. If it is red, open it, fix the
    cause and push.
 3. **Arm auto-merge**, in the same step as opening the PR if you can: `gh pr merge --auto --squash`. The
    train only carries PRs that are armed. Without it, a green PR waits for ever, and its `train` line
-   (below) says so.
+   (below) says so. Arming needs write access to the repo, so a fork author cannot do this step: a
+   maintainer merges a fork PR once its `gate` is green.
 4. **The bundle train** gathers the PRs that are armed and have a green quick check, oldest first, up to
    8. It combines them on top of `main` and runs the full suite (sim races, the browser tests, perf)
    once on the combination. One train runs at a time, so your PR may wait for the one in progress.
@@ -79,12 +85,17 @@ check then names the red job and its failing tests.
 
 1. Run `gh pr checks <n>` and read the `train` and `gate` lines. The tables below say what each line
    means and what to do.
-2. If neither is there yet: the quick check is still running or is red, or no train has planned since
-   it went green. A `train` line appears when a train next plans, which is when a CI run or a train
-   finishes, so it can lag a little.
-3. If it still does not say: open the Actions tab, then the newest `train` run, then its `plan` job,
-   whose log has one line per open PR, such as `plan: #123 abc1234: not eligible, auto-merge is not armed`.
-   It names the first rule the PR fails.
+2. If neither is there yet: the quick check is still running or is red, no train has planned since it
+   went green, or `main` is red (the train waits for `main` and posts no notes at all until it is
+   green). A `train` line appears when a train next plans, which is when a CI run or a train finishes.
+   A new train waits for the one that is running, and a train takes 10 to 30 minutes, so the line can
+   lag.
+3. If it still does not say: open the Actions tab, then the newest `train` run whose `plan` job ran (skip
+   runs that are queued or cancelled, which have no jobs: GitHub replaces a waiting run with a newer
+   one), then its `plan` job. Its log has one line per open PR, such as
+   `plan: #123 abc1234: not eligible, auto-merge is not armed`, and it names the first rule the PR
+   fails. While `main` is red the log has no per-PR lines, only one line saying that `main` is red and
+   that nobody departs.
 
 #### What `train` says
 
@@ -110,10 +121,15 @@ Once the PR has ridden, the `gate` line says where it is.
 | `train N: conflicts with ...; waits` | Your PR conflicts with an earlier PR of the same bundle | Nothing; once that PR lands, this one is told if it now conflicts with `main` |
 | `train N: ... timed out; rides once more alone` | A test job ran past its time limit while your PR rode alone; it rides once more before anything is blamed | Nothing |
 | `train N: ... timed out alone, not blamed (...); rides once main is past abc1234` | It timed out alone, but your change cannot reach that job, or `main` did not pass that job itself, so it is not blamed; it rides again once `main` moves on | Nothing; push again if you want it tested sooner |
+| `train N: main abc1234 is red; waits` | Your PR failed alone, but `main` is red too, so nothing is blamed on your change; it waits for `main` to be fixed | Nothing; it rides again once `main` is green |
 | `train N: fails alone on main ...` or `train N: timed out alone on main ...` | Your change fails the full suite by itself (or makes a job run past its limit); the PR comment names the failing tests | Fix it and push |
-| `train N: passes on its branch, fails on main ...` | Your branch is fine alone, but fails on top of what landed on `main` since; the PR comment lists those PRs | Merge `origin/main` into your branch, fix what breaks and push |
+| `train N: passes on its branch, fails on main ...` or `train N: passes on its branch, timed out on main ...` | Your branch is fine alone, but fails on top of what landed on `main` since; the PR comment lists those PRs | Merge `origin/main` into your branch, fix what breaks and push |
 | `train N: conflicts with main ...` | Your branch no longer merges with `main` | Merge `origin/main` into your branch and push (do not rebase a pushed branch) |
 | `passed train N: ...` | Green; auto-merge lands it | Nothing |
+
+A pending line ends with ` [cap N]` (the table leaves it out): N is the most PRs of a bundle your PR may
+ride in next. It starts at 8 and halves each time a bundle your PR rode in is red (8, 4, 2, 1), so a PR
+that keeps failing ends up riding alone. It is the train's own bookkeeping; you do not act on it.
 
 ### Which path your PR takes
 
@@ -128,13 +144,15 @@ Once the PR has ridden, the `gate` line says where it is.
   `[full-gate]` in its title (or alone on a line of its description) runs the whole suite on its own
   and gets `gate` from that run, with no train. A sentence in the description that mentions the marker
   does not count. A change to CI cannot use a train, because a train runs `main`'s workflows, not yours.
-- **When to use `[full-gate]`.** When the train cannot carry your PR: `main` is red (the train does not
-  depart while it is), or the change is to how CI itself works outside `.github/`, such as
-  `scripts/train.mjs`, which a train runs from `main`, not from your branch. The marker is read when CI
-  runs: add it before you open the PR, or push again after adding it.
-- **Forks.** Your PR runs the full suite on its own. GitHub may hold the first run of a new
-  contributor until a maintainer approves it. You cannot arm auto-merge without write access to the
-  repo, so a maintainer merges your PR once `gate` is green. A fork PR gets no `train` line.
+- **When to use `[full-gate]`.** Rarely. Use it for the PR that fixes a red `main` (the train does not
+  depart while `main` is red, so that fix cannot wait for one; the keeper, who looks after `main`, does
+  this), or when the maintainer asks for a change to land alone. Every other PR leaves it out, even
+  while `main` is red: it waits, and rides once `main` is green again, with nothing for you to do. The
+  marker is read when CI runs: add it before you open the PR, or push again after adding it.
+- **Forks.** Your PR runs the full suite on its own, whatever it changes. It gets no `quick` check and no
+  `train` line: its CI result is named `gate`. GitHub may hold the first run of a new contributor until
+  a maintainer approves it. You cannot arm auto-merge without write access to the repo, so steps 2 to 6
+  above do not apply to you: a maintainer merges your PR once `gate` is green.
 - **Dependabot** PRs take the full path too; the safe ones are armed for you.
 
 If your PR sits with no movement for a long time, read its `train` and `gate` lines first; they are

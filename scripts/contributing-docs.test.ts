@@ -115,6 +115,40 @@ function phrasesNotInSource(list: { phrase: string; pieces: string[] }[], source
     .map((p) => p.phrase);
 }
 
+/**
+ * Every gate text the script can post, as the literal words it is built from, a "..." in place of
+ * each value it fills in (the train number, a commit, a PR list, a job name, a reason). The texts are
+ * the template strings that start "train ${run}", "riding train ${run}" or "passed train ${run}";
+ * `${where}` is spelled out in its four forms and a text built by `withPark` gets its tail.
+ */
+function postedGateTexts(source: string): string[] {
+  const wheres = [
+    'passes on its branch, fails on main',
+    'passes on its branch, timed out on main',
+    'fails alone on main',
+    'timed out alone on main',
+  ];
+  return [...source.matchAll(/(withPark\()?`((?:riding |passed )?train \$\{run\}[^`]*)`/g)].flatMap((m) => {
+    const text = (m[2] ?? '') + (m[1] ? '; rides once main is past ${base} [cap 1]' : '');
+    const forms = text.includes('${where}') ? wheres.map((w) => text.replace('${where}', w)) : [text];
+    return forms.map((f) => f.replace(/\$\{[^}]*\}/g, '...'));
+  });
+}
+
+/** The posted texts that no quoted phrase of the page covers: all its literal pieces occur in the text, in order. */
+function postedNotInPage(posted: string[], list: { phrase: string; pieces: string[] }[]): string[] {
+  const covers = (pieces: string[], text: string) => {
+    let from = 0;
+    for (const p of pieces.map((q) => q.replace(/^\W+|\W+$/g, ''))) {
+      const at = text.indexOf(p, from);
+      if (at < 0) return false;
+      from = at + p.length;
+    }
+    return true;
+  };
+  return posted.filter((text) => !list.some(({ pieces }) => covers(pieces, text)));
+}
+
 /** What a page says about the suite's size: "sim in 7, browser in 8" and "N suite jobs". */
 function claimedSuiteSize(md: string) {
   const slices = /sim in (\d+), browser in (\d+)/.exec(md);
@@ -206,6 +240,55 @@ describe('CONTRIBUTING.md: how a PR lands', () => {
     for (const note of [NOTE_UNARMED, NOTE_DRAFT, NOTE_ARMED])
       expect(contributing, note).toContain(note.split(' (')[0]);
     expect(NOTE_MERGED).toMatch(/^merged/);
+  });
+
+  // The other way round: a line the script can post and the page leaves out is as stale as a quote the
+  // script no longer writes. (The trainSource has its whitespace collapsed, so the literals are on one line.)
+  // What AGENTS.md allows `[full-gate]` for (a keeper's fix for a red main, a change the maintainer asks
+  // to land alone), who the numbered steps are for, and the one case where `plan` posts nothing.
+  it('limits `[full-gate]` to what AGENTS.md allows, says up front who skips the steps, and what a red main does', () => {
+    const text = contributing.replace(/\s+/g, ' ');
+    const useIt = /\*\*When to use `\[full-gate\]`\.\*\*([^]*?)(?=- \*\*Forks)/.exec(contributing)?.[1] ?? '';
+    expect(useIt).toMatch(/fixes a red `main`/);
+    expect(useIt).toMatch(/maintainer asks/);
+    expect(useIt).not.toMatch(/train\.mjs/);
+    const intro = (landing.split('\n1. ')[0] ?? '').replace(/\s+/g, ' ');
+    for (const skipper of [/fork/i, /Dependabot/, /\.github\//, /docs-only/, /\[full-gate\]/])
+      expect(intro, String(skipper)).toMatch(skipper);
+    expect(intro).toMatch(/cannot arm auto-merge/);
+    expect(landing).toMatch(/whose `plan` job ran/);
+    expect(text).toMatch(/`main` is red[^.]*posts no notes/);
+    expect(text).toMatch(/no per-PR lines/);
+  });
+
+  it('has a row for every `gate` text the script can post', () => {
+    const posted = postedGateTexts(trainSource);
+    expect(posted.length).toBeGreaterThanOrEqual(12);
+    const gates = quotedPhrases(section(contributing, 'What `gate` says'));
+    expect(postedNotInPage(posted, gates)).toEqual([]);
+  });
+
+  it('says what the " [cap N]" ending of a pending `gate` line means', () => {
+    const text = contributing.replace(/\s+/g, ' ');
+    expect(text).toMatch(/\[cap N\]/);
+    expect(text).toMatch(/\[cap N\][^.]*: N is the most PRs of a bundle/);
+    expect(trainSource).toContain('` [cap ${cap}]`');
+  });
+
+  it('control: a row deleted from the page, or a text the script gains, is found', () => {
+    const posted = postedGateTexts(trainSource);
+    const gates = quotedPhrases(section(contributing, 'What `gate` says'));
+    const without = (phrase: RegExp) => gates.filter((g) => !phrase.test(g.phrase));
+    expect(postedNotInPage(posted, without(/is red; waits/))).toEqual([
+      expect.stringContaining('is red; waits'),
+    ]);
+    expect(postedNotInPage(posted, without(/passes on its branch, fails/)).length).toBeGreaterThan(0);
+    expect(postedNotInPage(posted, without(/waits for the next train/)).length).toBeGreaterThan(0);
+    expect(postedNotInPage([...posted, 'train ...: the bundle exploded'], gates)).toEqual([
+      'train ...: the bundle exploded',
+    ]);
+    expect(postedGateTexts('const a = 1;')).toEqual([]);
+    expect(postedGateTexts('x(`train ${run}: ${where} ${b7}; see the PR comment`)')).toHaveLength(4);
   });
 
   it('control: the quote checker finds words the script does not write', () => {
