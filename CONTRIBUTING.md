@@ -44,7 +44,8 @@ That is the train path, and the numbered steps below describe it. Some PRs never
 to 6): a docs-only change, whose quick check is its whole gate, and a Dependabot PR, a change under
 `.github/` or a PR marked `[full-gate]`, which run the full suite on their own instead of the quick
 check. All are set out under "Which path your PR takes" further down. Every PR from a branch of this
-repo arms auto-merge all the same (step 3), because auto-merge is what merges it. A PR from a fork takes
+repo except a Dependabot PR arms auto-merge all the same (step 3), because auto-merge is what merges it;
+a workflow arms the safe Dependabot PRs and leaves the rest for review. A PR from a fork takes
 the full path too, but a fork author cannot arm auto-merge, so a maintainer merges a fork PR. In order:
 
 1. **Open the PR.** CI starts at once. It first reads what you changed and who opened the PR, and picks a
@@ -153,8 +154,8 @@ you do not act on it.
 - **An ordinary change** takes the train path: steps 2 to 6 above.
 - **The full path.** A PR from a fork, a Dependabot PR, a change under `.github/`, or a PR with
   `[full-gate]` in its title (or alone on a line of its description) runs the whole suite on its own
-  and gets `gate` from that run, with no train. Unless it is from a fork, arm auto-merge all
-  the same (step 3); a maintainer merges a fork's. A sentence in the description that mentions the marker
+  and gets `gate` from that run, with no train. Unless it is from a fork or Dependabot, arm auto-merge
+  all the same (step 3); a maintainer merges a fork's, and Dependabot's are covered below. A sentence in the description that mentions the marker
   does not count. A change to CI cannot use a train, because a train runs `main`'s workflows, not yours.
 - **When to use `[full-gate]`.** Rarely. Use it for the PR that fixes a red `main` (the train does not
   depart while `main` is red, so that fix cannot wait for one; the keeper, who looks after `main`, does
@@ -168,7 +169,10 @@ you do not act on it.
   `train` line: its CI result is named `gate`. GitHub may hold the first run of a new contributor until
   a maintainer approves it. You cannot arm auto-merge without write access to the repo, so steps 2 to 6
   above do not apply to you: a maintainer merges your PR once `gate` is green.
-- **Dependabot** PRs take the full path too; the safe ones are armed for you.
+- **Dependabot** PRs take the full path too. The safe ones (npm or workflow-action minor and patch bumps)
+  are armed for you; the rest stay unarmed until a person or agent has reviewed them: majors, the uv and
+  pip bumps the gate does not test, a package whose maintainers changed, and any dependabot/fetch-metadata
+  bump. Do not arm one yourself without that review.
 
 If your PR sits with no movement for a long time, read its `train` and `gate` lines first; they are
 meant to say why. If they do not, that is a bug in the train: please say so in the PR. One known case:

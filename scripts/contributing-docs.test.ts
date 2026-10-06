@@ -263,13 +263,13 @@ describe('CONTRIBUTING.md: how a PR lands', () => {
     expect(text).toMatch(/no per-PR lines/);
   });
 
-  it('keeps step 3 for every PR from a branch of this repo: only a fork is merged by a maintainer', () => {
+  it('keeps step 3 for every PR from a branch of this repo but Dependabot: only a fork is merged by a maintainer', () => {
     // Auto-merge is the only thing that merges a same-repo PR (gate is the only required check and only
     // Dependabot's own workflow arms for anyone), so a page that lets a docs-only, .github/ or [full-gate]
     // PR skip arming leaves it green and unmerged for ever.
     const intro = (landing.split('\n1. ')[0] ?? '').replace(/\s+/g, ' ');
     expect(intro).not.toMatch(/skip steps 2 to 6/);
-    expect(intro).toMatch(/every PR from a branch of this repo arms auto-merge/i);
+    expect(intro).toMatch(/every PR from a branch of this repo except a Dependabot PR arms auto-merge/i);
     const useIt = (
       /\*\*When to use `\[full-gate\]`\.\*\*([^]*?)(?=- \*\*Forks)/.exec(contributing)?.[1] ?? ''
     ).replace(/\s+/g, ' ');
@@ -596,6 +596,22 @@ describe('CONTRIBUTING.md: the final review of #620, one claim at a time', () =>
     expect(bullet('A docs-only change')).toMatch(/never rides a train/);
     // control
     expect(bullet('An ordinary change')).not.toMatch(/all the same/);
+  });
+
+  it('never tells a reader to arm a Dependabot PR: the workflow arms the safe ones, the rest wait for review', () => {
+    const autoMerge = read('.github/workflows/dependabot-auto-merge.yml').replace(/\s*#\s*/g, ' ');
+    expect(autoMerge).toMatch(/Majors[^.]*stay open for a person or agent to review/);
+    expect(autoMerge).toMatch(/minor or patch version, arm GitHub's auto-merge/);
+    const armsDependabot = (text: string) =>
+      /arm auto-merge all the same/.test(text) && !/fork or Dependabot|Dependabot or a fork/.test(text);
+    expect(armsDependabot(flat(bullet('The full path'))), 'the full-path bullet').toBe(false);
+    expect(flat(bullet('Dependabot'))).toMatch(
+      /minor and patch[^.]*armed for you[^.]*rest stay unarmed[^.]*review/,
+    );
+    const intro = flat(landing.split('\n1. ')[0] ?? '');
+    expect(intro).toMatch(/Every PR from a branch of this repo except a Dependabot PR arms auto-merge/);
+    // control: the sentence #620 shipped is found
+    expect(armsDependabot('Unless it is from a fork, arm auto-merge all the same (step 3)')).toBe(true);
   });
 
   it("says that on a fork the first red job's cancel is refused, so the run goes on", () => {
