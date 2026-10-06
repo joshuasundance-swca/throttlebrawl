@@ -2,4 +2,5 @@
 // "File format choice"). A contract: changes land in a small contract PR (M1 cross-lane rules).
 export * from './common';
 export * from './entries';
+export * from './tables';
 export * from './vocab';

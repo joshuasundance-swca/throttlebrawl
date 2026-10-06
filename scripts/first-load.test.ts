@@ -3,8 +3,11 @@
 // (`import()`) load later, on demand, and are reported apart. The second case is a real production
 // build, in memory: it proves the lazy chunks stay out of the first load, so a stray static import
 // that pulls one back in fails here, not only as a bigger number in the perf check.
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { build, type Rolldown } from 'vite';
+import { packFileOf, preParsePackFile } from '../src/content/pre-parse';
 import { distFileName, readLock, sha256 } from './dataset-assets.mjs';
 import { firstLoadScripts, staticImports } from './first-load.mjs';
 import { repoRoot } from './lib.mjs';
@@ -101,6 +104,18 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]ui[\\/]race-options-view\.ts$/,
 ];
 
+/**
+ * Source modules the first load never carries, shipped lazily or not at all (lane F1, the first-load
+ * headroom): the pack schemas and Zod. The build validates every pack file and ships Zod's output
+ * (scripts/pre-parse-packs.mjs), so the page's loader only freezes it (src/content/validate-prebuilt.ts).
+ */
+const NEVER_FIRST_LOAD = [
+  /[\\/]node_modules[\\/]zod[\\/]/,
+  /[\\/]src[\\/]content[\\/]schema[\\/]entries\.ts$/,
+  /[\\/]src[\\/]content[\\/]schema[\\/]common\.ts$/,
+  /[\\/]src[\\/]content[\\/]validate\.ts$/,
+];
+
 describe('the production build', { timeout: 120_000 }, () => {
   it('keeps the lazy modules out of the first load, and inlines no JSON into it', async () => {
     const out = await build({ configFile: 'vite.config.ts', logLevel: 'silent', build: { write: false } });
@@ -135,6 +150,15 @@ describe('the production build', { timeout: 120_000 }, () => {
         `${re} is in no lazy chunk`,
       ).toBe(true);
     }
+    // Zod and the pack schemas: the build validated the packs, so none of it rides in the first load.
+    // The examined count shows the walk saw the first-load modules (three is always among them).
+    const firstIds = firstChunks.flatMap((c) => c.moduleIds);
+    expect(firstIds.some((id) => /[\\/]node_modules[\\/]three[\\/]/.test(id))).toBe(true);
+    const schemaInFirst = firstIds.filter((id) => NEVER_FIRST_LOAD.some((re) => re.test(id)));
+    console.log(
+      `[examined] ${firstIds.length} first-load modules for Zod and the pack schemas: ${schemaInFirst.length}`,
+    );
+    expect(schemaInFirst).toEqual([]);
     // A pack's road data ships as files, never as data URLs inside the JavaScript.
     for (const c of firstChunks) expect(c.code.includes('data:application/json')).toBe(false);
     // No pack's road data (networks, roads, routes) is bundled into the first load, the Keys'
@@ -147,6 +171,30 @@ describe('the production build', { timeout: 120_000 }, () => {
       `[examined] ${firstChunks.length} first-load chunks for bundled road data: ${bundledRoads.length}`,
     );
     expect(bundledRoads).toEqual([]);
+
+    // Lane F1: every road data file the build ships is the pre-parse of its file on disk (Zod's
+    // output), since the page's loader no longer runs Zod on it; one file per road data file on disk.
+    const onDisk = readdirSync(path.join(repoRoot, 'packs'), { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && roadData.test(path.join(e.parentPath, e.name)))
+      .map((e) => path.relative(repoRoot, path.join(e.parentPath, e.name)).split(path.sep).join('/'));
+    const shippedRoads = items.flatMap((a) => {
+      if (a.type !== 'asset') return [];
+      const rel = a.originalFileNames
+        .map((f) => (path.isAbsolute(f) ? path.relative(repoRoot, f) : f).split(path.sep).join('/'))
+        .find((f) => roadData.test(`/${f}`));
+      return rel ? [{ rel, source: String(a.source) }] : [];
+    });
+    for (const s of shippedRoads) {
+      const file = packFileOf(s.rel);
+      const disk: unknown = JSON.parse(readFileSync(path.join(repoRoot, s.rel), 'utf8'));
+      const want = file ? preParsePackFile(file.path, disk) : null;
+      expect(want && 'data' in want, `${s.rel} passes its schema`).toBe(true);
+      if (want && 'data' in want) expect(s.source, s.rel).toBe(JSON.stringify(want.data));
+    }
+    console.log(
+      `[examined] ${shippedRoads.length} shipped road data files against their pre-parse; ${onDisk.length} on disk`,
+    );
+    expect(new Set(shippedRoads.map((s) => s.rel))).toEqual(new Set(onDisk));
 
     // Run W-Q: every file assets.lock.json pins is baked in under assets/ds/ with its pinned bytes
     // (offline keeps working), and the first load's manifest rows name it.
