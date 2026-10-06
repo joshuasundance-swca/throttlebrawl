@@ -17,8 +17,14 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 // one used is printed), and meets every wanted piece that comes up, until all have been met. A
 // content change that reshuffles the races (new pieces in a pool, a longer start: #391, #414) moves
 // the search on to later seeds instead of failing the spec. It fails when no seed in the search
-// brings a piece, which is a real "this piece never comes up any more" signal. (Headless with the
-// dev bot on 2026-10-04: seeds 1, 2 and 5 meet the four Pacific Northwest pieces, seed 3 the crash.)
+// brings a piece, which is a real "this piece never comes up any more" signal. (On CI on 2026-10-06,
+// run 37418801318: the Pacific Northwest met the hay on seed 2, the speed trap on 4, the roadwork on
+// 5 and the parade on 7; San Francisco the crash scene on seed 8.)
+//
+// Only each region's first seed loads the page. Every later seed goes back to the menu the player's
+// way (pause, Quit to menu) and taps Race again: the same Race button and app path, with a fresh sim
+// and a fresh bot, without paying the page's boot (11 to 13 s on CI) once per seed. The test checks
+// that the race it rides is the seed it asked for (the recording's header).
 //
 // The race fast-forwards between those moments (the test handle's fastForward over the loop's
 // lockstep; the determinism run's R4): 240 ticks a drawn frame until a wanted piece's props are
@@ -54,7 +60,15 @@ interface Handle {
     eventProps?: { total: number; byKind: Readonly<Record<string, number>>; signs: readonly string[] };
   };
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __aheadAt?: number | null };
+interface AppView {
+  getReplayAndSettings(): { replay: { header: { seed: number; eventId: string } } | null };
+}
+type TestWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __game?: Handle & { lockstep(steps: number | null): void };
+  __app?: AppView;
+  __aheadAt?: number | null;
+};
 
 /**
  * Where the fast ride stops short of the piece: the last stretch, 4 ticks a drawn frame, gives the
@@ -95,11 +109,25 @@ const REGIONS = [
   },
 ] as const;
 
-/** Starts the region's free-play race on `seed`, with the bot riding. */
-async function startRace(page: Page, chip: string, seed: number): Promise<void> {
-  await page.goto('./');
-  await page.locator('#start-screen').click();
-  await page.locator(chip).click();
+/**
+ * Starts the region's free-play race on `seed`, with the bot riding (a fresh bot: setBot makes one).
+ * The page boots for the region's first seed, or when the last race is not running any more; a later
+ * seed quits the running race to the menu (pause, Quit to menu), where the region is still picked.
+ */
+async function startRace(page: Page, region: (typeof REGIONS)[number], seed: number): Promise<void> {
+  const state = seed === 1 ? null : await page.evaluate(() => (window as TestWindow).__game?.state() ?? null);
+  if (state === 'race') {
+    // Real time again (this also drops any fast-forward), as on a freshly loaded page.
+    await page.evaluate(() => (window as TestWindow).__game?.lockstep(null));
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause-screen')).toBeVisible();
+    await page.locator('#pause-quit').click();
+    await expect(page.locator(region.chip)).toHaveAttribute('aria-checked', 'true');
+  } else {
+    await page.goto('./');
+    await page.locator('#start-screen').click();
+    await page.locator(region.chip).click();
+  }
   await page.evaluate((s) => {
     const g = (window as TestWindow).__game;
     g?.setSeed(s);
@@ -107,6 +135,17 @@ async function startRace(page: Page, chip: string, seed: number): Promise<void> 
   }, seed);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
+  // The race running is this seed's, in this region: its recording began with it.
+  const header = () =>
+    page.evaluate(() => {
+      const w = window as TestWindow;
+      const h = w.__app?.getReplayAndSettings().replay?.header;
+      return w.__game?.state() === 'race' && h ? `${h.eventId.split(':')[0]} seed ${h.seed}` : null;
+    });
+  const pack = Object.keys(region.pieces)[0]?.split(':')[0];
+  await expect
+    .poll(header, { message: `${region.slug}: the race rides seed ${seed}` })
+    .toBe(`${pack} seed ${seed}`);
 }
 
 /**
@@ -194,7 +233,7 @@ for (const region of REGIONS) {
     const wanted = Object.entries(region.pieces);
     const met = new Map<string, number>();
     for (let seed = 1; seed <= SEARCH_SEEDS && met.size < wanted.length; seed++) {
-      await startRace(page, region.chip, seed);
+      await startRace(page, region, seed);
       // Pieces this race showed but the player rode past: not looked for again in this race.
       const passed = new Set<string>();
       for (;;) {
