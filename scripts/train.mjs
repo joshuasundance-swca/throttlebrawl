@@ -43,6 +43,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, stripVTControlCharacters } from 'node:util';
+import { hitTimeout } from './rerun-main.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -51,7 +52,10 @@ export const QUICK = 'quick';
 export const CONFIG_FILE = '.github/train.json';
 export const MARKER = /\[full-gate\]/i;
 const SHA = /^[0-9a-f]{40}$/;
-/** Conclusions of main's own ci run that mean main is red. A cancelled run was superseded. */
+/**
+ * Conclusions of main's own ci run that mean main is red. A cancelled run is red only when a job hit
+ * its timeout-minutes (ciState); otherwise a person cancelled it or a newer push replaced it.
+ */
 const RED = new Set(['failure', 'timed_out', 'startup_failure']);
 /** The train's merge commits: a no-reply identity, so the leak scan's identity check accepts them. */
 export const TRAIN_IDENT = {
@@ -841,12 +845,62 @@ async function mainCiRun(/** @type {string} */ sha) {
     : null;
 }
 
-/** 'success', 'failure', 'pending' (not finished) or 'none' (no run, or cancelled). */
-function ciState(/** @type {Awaited<ReturnType<typeof mainCiRun>>} */ r) {
+/**
+ * Main's own ci run as the train reads it: 'success', 'failure' (red), 'pending' (not finished) or
+ * 'none' (no run, or no verdict). A job that hits its timeout-minutes ends `cancelled`, and the run
+ * then concludes `cancelled`, not `failure` (main run 37423758824, 2026-10-06), so a cancelled run is
+ * red when its jobs say a timeout cancelled it, by the same rule rerun-main.yml re-runs it by: at
+ * least one cancelled job, and every cancelled job timed out. A run a person cancelled (a job ended
+ * cancelled with no timeout, beside a timeout or not), or a waiting run a newer push replaced (no
+ * jobs), is no verdict, as before; rerun-main.yml leaves those alone too, so a wait for its re-run
+ * would wait for nothing.
+ * @param {{ status: string, conclusion: string } | null} r the run as it is now
+ * @param {{ conclusion: string, timedOut: boolean }[]} [jobs] its latest attempt's jobs, each with
+ *   whether its annotations say it timed out (read only for a cancelled run: mainCiState)
+ * @returns {'success' | 'failure' | 'pending' | 'none'}
+ */
+export function ciState(r, jobs = []) {
   if (!r) return 'none';
   if (r.status !== 'completed') return 'pending';
   if (r.conclusion === 'success') return 'success';
-  return RED.has(r.conclusion) ? 'failure' : 'none';
+  if (RED.has(r.conclusion)) return 'failure';
+  if (r.conclusion !== 'cancelled') return 'none';
+  const cancelled = jobs.filter((j) => j.conclusion === 'cancelled');
+  return cancelled.length > 0 && cancelled.every((j) => j.timedOut) ? 'failure' : 'none';
+}
+
+/**
+ * ciState of main's own run, reading a cancelled run's latest attempt's jobs and, for each cancelled
+ * one, its check run's annotations: the runner's "has exceeded the maximum execution time" tells a
+ * timeout from a cancel (hitTimeout, rerun-main.mjs). Needs `checks: read`; any other run asks
+ * nothing more.
+ * @param {Awaited<ReturnType<typeof mainCiRun>>} r
+ */
+export async function mainCiState(r) {
+  if (!r || r.status !== 'completed' || r.conclusion !== 'cancelled') return ciState(r);
+  /** @type {any} */
+  const listed = await api(
+    'GET',
+    `/repos/${repo()}/actions/runs/${r.id}/attempts/${r.attempt}/jobs?per_page=100`,
+  );
+  const jobs = [];
+  for (const j of listed?.jobs ?? []) {
+    const conclusion = String(j.conclusion ?? '');
+    let timedOut = false;
+    if (conclusion === 'cancelled') {
+      /** @type {any} */
+      const notes = await api('GET', `/repos/${repo()}/check-runs/${j.id}/annotations?per_page=50`);
+      timedOut = hitTimeout((notes ?? []).map((/** @type {any} */ a) => String(a.message ?? '')));
+    }
+    jobs.push({ conclusion, timedOut });
+  }
+  return ciState(r, jobs);
+}
+
+/** Main's own newest ci run on a commit and how the train reads it (plan's gate, report's blame). */
+export async function readMain(/** @type {string} */ sha) {
+  const run = await mainCiRun(sha);
+  return { run, state: await mainCiState(run) };
 }
 
 export async function postStatus(
@@ -1017,8 +1071,7 @@ async function cmdPlan() {
     return output(out);
   }
   const base = await mainSha();
-  const main = await mainCiRun(base);
-  const mainState = ciState(main);
+  const { run: main, state: mainState } = await readMain(base);
   console.log(
     `plan: main is ${base}; its own ci run: ${main ? `${main.id} attempt ${main.attempt}, ${main.status} ${main.conclusion}` : 'none'} (${mainState})`,
   );
@@ -1188,7 +1241,7 @@ async function cmdReport() {
     // Blame needs main itself green: wait for main's own run on base if it is still going.
     const deadline = Date.now() + cfg.mainWaitMinutes * 60_000;
     for (;;) {
-      mainCi = /** @type {typeof mainCi} */ (ciState(await mainCiRun(base)));
+      mainCi = (await readMain(base)).state;
       if (mainCi !== 'pending' || Date.now() > deadline || dry) break;
       console.log(`report: main's own ci run on ${base.slice(0, 7)} is still running; waiting`);
       await sleep(30_000);

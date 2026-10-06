@@ -264,6 +264,13 @@ export interface GameUi {
    */
   offerReload(onReload: (() => void) | null): void;
   /**
+   * A fetch of the game's own data (a region's roads, the Keys' real roads) failed after its tries
+   * (polish lane K2, platform/retry-fetch.ts): a card at the top says so in plain words and offers a
+   * Retry button, so the menu never sits with an empty list and no word. `onRetry` shows it with
+   * `text`; null hides it. Starting a race hides it too.
+   */
+  offerRetry(text: string | null, onRetry: (() => void) | null): void;
+  /**
    * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
    * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
    */
@@ -524,6 +531,11 @@ ${REDUCE_MOTION_CSS}
   display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
 #ui #reload-offer .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui #reload-offer .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
+/* The retry card (polish lane K2): over the screen's top edge, as a notice. */
+#ui #load-retry { z-index: 2; max-width: 92vw; box-sizing: border-box; display: flex; align-items: center;
+  gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
+#ui #load-retry .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui #load-retry .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. ui/hud-layout.ts settles where it goes and sets --hl-toast-* on #ui: on
@@ -1476,6 +1488,16 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     button('reload-offer-reload', 'small', 'Reload now', () => reloadNow?.()),
   );
   reloadOffer.setAttribute('role', 'status');
+  // The load-failed card (offerRetry): the message and a Retry button, kept until it is answered.
+  let retryLoad: (() => void) | null = null;
+  const loadRetryText = el('div', { className: 'reload-offer-text' });
+  const loadRetry = el(
+    'div',
+    { id: 'load-retry', className: 'card notice', hidden: true },
+    loadRetryText,
+    button('load-retry-button', 'small', 'Retry', () => retryLoad?.()),
+  );
+  loadRetry.setAttribute('role', 'alert');
 
   // ---- The resume card and the busy spinner --------------------------------------------------
   let resumeChoice: ((choice: 'resume' | 'startOver') => void) | null = null;
@@ -1712,6 +1734,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     resumeCard,
     busy,
     noticeBox,
+    loadRetry,
   );
   host.append(root, stamp);
   // The tuning panel (ui/tuning) is a lazy chunk, fetched as the game boots rather than in the
@@ -2006,6 +2029,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     clearLookOffer();
     countdownView.set(null);
     if (screen === 'race') {
+      loadRetry.hidden = true;
       targetShown = false;
       tally.reset();
       tallyPlayer = -1;
@@ -2094,6 +2118,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       reloadNow = onReload;
       reloadWanted = onReload !== null;
       placeReloadOffer();
+    },
+    offerRetry(text, onRetry) {
+      retryLoad = onRetry;
+      loadRetryText.textContent = text ?? '';
+      loadRetry.hidden = text === null || onRetry === null;
     },
     setReduceMotion(on) {
       root.dataset['motion'] = on ? 'reduced' : 'full';

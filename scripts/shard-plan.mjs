@@ -287,6 +287,8 @@ export function planSlices({
  * runs of 2026-10-06, and slice 3/7 took 488 s on #601's first run against a plan of 340, every other sim
  * slice 200 to 399 s; its longest file also ran 1.36 times its table time there, so their own share
  * is an estimate, about 30 to 56 s a file. The mean prices them at about that, or a little over.
+ * Since 2026-10-06 tests/file-times.ts prints each sim file's whole time (collect included) and
+ * scripts/timings.mjs reads it, so a refreshed table times them; this stays as a backstop.
  * @param {Record<string, number>} table
  */
 export function collectedOnly(table) {

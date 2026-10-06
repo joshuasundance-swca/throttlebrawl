@@ -6,6 +6,7 @@
 // the injected `resumeAudio` callback. The browser APIs sit behind `PlatformEnv`, so the unit
 // tests drive the same code with mocks.
 import type { ResumeAudio } from '../core';
+import { retryingFetch } from './retry-fetch';
 import { recoverStaleBuild, type StaleBuild } from './stale-build';
 
 /**
@@ -483,6 +484,7 @@ export function registerOfflineWorker(
 }
 
 export { recoverStaleBuild, STALE_BUILD_KEY, type StaleBuild, type StaleBuildPage } from './stale-build';
+export { RETRY_AFTER_CAP_MS, RETRY_DELAYS_MS, retryingFetch, type RetryEnv } from './retry-fetch';
 
 /** The page's `fetch`, as the stale-build watch wraps it. */
 interface FetchingWindow {
@@ -535,6 +537,14 @@ export function startOffline(buildId: string, canReload: () => boolean): StaleBu
   if (!import.meta.env.PROD || typeof window === 'undefined') return null;
   const scope = new URL('./', document.baseURI).href;
   let stale: StaleBuild | null = null;
+  // Inside the watch, so it hears only the final answer of a build file: a 429 or 500 that a retry
+  // cured is no sign of a deploy, and a 404 or 410 is never retried (retry-fetch.ts).
+  window.fetch = retryingFetch(window.fetch.bind(window), {
+    scope,
+    online: () => navigator.onLine,
+    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
+  });
   const net = watchFetches(window, document.baseURI, (url, status) => stale?.answered(url, status));
   stale = recoverStaleBuild(
     {

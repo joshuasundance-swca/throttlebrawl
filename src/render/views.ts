@@ -218,13 +218,13 @@ const LEG_PARTS: BoxPart[] = [
 
 // ---- Vehicle and pedestrian geometry (unit boxes scaled per instance) --------------------
 
-const CAR_PARTS: BoxPart[] = [
+export const CAR_PARTS: BoxPart[] = [
   { size: [1, 0.48, 1], at: [0, 0.34, 0], color: '#ffffff' },
   { size: [0.86, 0.4, 0.5], at: [0, 0.78, 0.06], color: '#3a4550' },
   { size: [1.04, 0.2, 0.2], at: [0, 0.1, -0.32], color: '#111111' },
   { size: [1.04, 0.2, 0.2], at: [0, 0.1, 0.32], color: '#111111' },
 ];
-const TRUCK_PARTS: BoxPart[] = [
+export const TRUCK_PARTS: BoxPart[] = [
   { size: [1, 0.62, 0.2], at: [0, 0.38, -0.39], color: '#ffffff' },
   { size: [0.9, 0.16, 0.02], at: [0, 0.58, -0.495], color: '#2a3440' },
   { size: [1.02, 0.86, 0.74], at: [0, 0.52, 0.12], color: '#e6e6e6' },
@@ -232,7 +232,7 @@ const TRUCK_PARTS: BoxPart[] = [
   { size: [1.04, 0.14, 0.1], at: [0, 0.07, 0.1], color: '#111111' },
   { size: [1.04, 0.14, 0.1], at: [0, 0.07, 0.38], color: '#111111' },
 ];
-const PED_PARTS: BoxPart[] = [
+export const PED_PARTS: BoxPart[] = [
   { size: [0.3, 0.8, 0.2], at: [0, 0.4, 0], color: '#3a6ea5' },
   { size: [0.44, 0.6, 0.26], at: [0, 1.1, 0], color: '#ff8c42' },
   { size: [0.24, 0.26, 0.24], at: [0, 1.55, 0], color: '#d9a27a' },
@@ -253,7 +253,7 @@ const vehicleKey = (asset: string): string => `${VEHICLE_KEY}${asset}`;
 const isVehicleKey = (key: string): boolean => key.startsWith(VEHICLE_KEY);
 
 type Shape = 'car' | 'truck';
-const SHAPE_HEIGHT: Record<Shape, number> = { car: 1.45, truck: 3.3 };
+export const SHAPE_HEIGHT: Record<Shape, number> = { car: 1.45, truck: 3.3 };
 const DEFAULT_DIMS: Record<Shape, { lengthM: number; widthM: number }> = {
   car: { lengthM: 4.4, widthM: 1.8 },
   truck: { lengthM: 10, widthM: 2.5 },

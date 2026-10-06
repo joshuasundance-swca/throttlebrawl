@@ -6,6 +6,7 @@
   "tags": ["local", "swamp"],
   "lengthM": 2.7,
   "widthM": 0.9,
+  "heightM": 0.35,
   "cruiseMps": 0.5,
   "hazard": "big",
   "behaviour": { "roadside": "yields", "carFollowing": false, "laneChanges": false, "dives": true },

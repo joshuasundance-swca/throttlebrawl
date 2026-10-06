@@ -8,6 +8,7 @@
   "tags": ["parking-enforcement"],
   "blurb": "A parking officer who has never once let anything go. Writes the ticket during the chase.",
   "bike": "base:rustbucket-400",
+  "hitbox": { "lengthM": 1.7, "widthM": 1.1 },
   "startingWeapon": "base:baton",
   "stats": {
     "massKg": 88,
