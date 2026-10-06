@@ -19,8 +19,14 @@ export const MODULES_FILE = '.cache/first-load-modules.json';
 
 const gzip = (code) => gzipSync(Buffer.from(code), { level: 9 }).length;
 
-/** A module id as a repo-relative posix path (`src/ui/index.ts`), or the id as it is. */
+/**
+ * A module id as a repo-relative posix path (`src/ui/index.ts`); a package's as its path from the
+ * last `node_modules/` (main's merge base builds under .cache/ and finds the packages up the tree);
+ * anything else as it is.
+ */
 function shortId(id, root) {
+  const pkg = /[\\/](node_modules[\\/](?!.*[\\/]node_modules[\\/]).+)$/.exec(id);
+  if (pkg) return (pkg[1] ?? '').split(/[\\/]/).join('/');
   const rel = path.relative(root, id.replace(/\?.*$/, ''));
   const out = rel.startsWith('..') || path.isAbsolute(rel) ? id : rel;
   return out.split(path.sep).join('/').replace(/^\0/, '');

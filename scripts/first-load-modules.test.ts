@@ -74,6 +74,20 @@ describe('firstLoadModuleStats', () => {
   });
 });
 
+describe('module ids', () => {
+  it('names a package by its node_modules path, wherever the build found it', () => {
+    // Main's merge base builds in a worktree under .cache/ and finds the packages up the folder
+    // tree, so its ids for them lie outside its root: they must still match this build's.
+    const b = bundle();
+    const shared = b['assets/shared-2.js'];
+    shared.modules = { '/elsewhere/up/node_modules/three/build/three.module.js': { code: shared.code } };
+    const ids = firstLoadModuleStats(b, '/r/.cache/perf-base').modules.map((m) => m.id);
+    expect(ids).toContain('node_modules/three/build/three.module.js');
+    // An own source file outside the root keeps its full id rather than a path that climbs out.
+    expect(ids.some((id) => id.startsWith('..'))).toBe(false);
+  });
+});
+
 describe('biggestModules and moduleGrowth', () => {
   const head = [
     { id: 'a', chunk: 'x', bytes: 5000 },
