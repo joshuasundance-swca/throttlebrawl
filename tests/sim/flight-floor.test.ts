@@ -138,6 +138,8 @@ function fly(
 const landedOrDown = (f: Frame) => f.events.some((x) => x.type === 'land' || x.type === 'crash');
 const SEVEN = configOf('osm-keys-seven-mile');
 const CHUCKANUT = configOf('osm-pnw-chuckanut');
+const GOLDEN_GATE = configOf('osm-sf-golden-gate');
+const DUVAL = configOf('osm-keys-duval');
 
 describe('over the Seven Mile Bridge’s rail into the sea', () => {
   const at: Launch = { road: 'osm-sm-bridge', s: 3000, side: 'left', hM: 3, vy: 1, speed: 30, yaw: 0.15 };
@@ -284,6 +286,44 @@ describe('toward the old Seven Mile Bridge beside the new one', () => {
     );
     expect(past.length).toBeGreaterThan(0);
     expect(past.every((x) => !x.e.touchdown)).toBe(true);
+  });
+});
+
+describe('a body falling overboard has the water for a floor', () => {
+  const at: Launch = { road: 'osm-sf-gg-bridge', s: 1400, side: 'right', hM: 3, vy: 1, speed: 30, yaw: 0.15 };
+
+  it('from the crash to the respawn the tumbling rider’s floor is the water level; riding again, it has none', () => {
+    const f = fly(GOLDEN_GATE, at, 60 * 12, true, (x) => x.events.some((e) => e.type === 'respawn'));
+    const down = f.frames.filter((x) => x.e.mode === 'Tumble');
+    const sea = waterLevelOf(GOLDEN_GATE.road);
+    print(
+      `Golden Gate: ${down.length} tumbling frames, floors ${[...new Set(down.map((x) => x.e.floorY))].join(', ')}`,
+    );
+    expect(down.length).toBeGreaterThan(300);
+    expect(down.every((x) => x.e.floorY === sea)).toBe(true);
+    const last = f.frames[f.frames.length - 1];
+    expect(last?.e.mode).toBe('Road');
+    expect(last && 'floorY' in last.e).toBe(false);
+  });
+
+  it('control: an ordinary crash on the road (a tumble that goes over nothing) has no floor to read', () => {
+    // Down hard and sideways on Duval Street, between its shopfronts: the tumble stays on the street.
+    const street: Launch = {
+      road: 'osm-duval-street',
+      s: 200,
+      side: 'right',
+      hM: 2,
+      vy: -14,
+      speed: 12,
+      yaw: 0.9,
+    };
+    const f = fly(DUVAL, street, 60 * 3, true, () => false);
+    const down = f.frames.filter((x) => x.e.mode === 'Tumble');
+    print(
+      `on the street: ${down.length} tumbling frames, floors ${[...new Set(down.map((x) => x.e.floorY))].join(', ')}`,
+    );
+    expect(down.length).toBeGreaterThan(30);
+    expect(down.every((x) => x.e.floorY === undefined)).toBe(true);
   });
 });
 

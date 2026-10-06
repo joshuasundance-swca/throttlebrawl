@@ -1,6 +1,7 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
+import { waterLevelOf } from '../road';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
@@ -68,10 +69,17 @@ const SYSTEMS = orderSystems([
   modifiersSystem,
 ]);
 
-/** `floorY` for a rider in the air (sim/riders `floorOf`); nothing for anyone else (the field is absent). */
+/**
+ * `floorY` for a rider in the air (sim/riders `floorOf`), or for one tumbling overboard (a body falling
+ * past a rail or through a gap: the water level it falls to, `waterLevelOf`); nothing for anyone else
+ * (the field is absent).
+ */
 function floorField(world: World, config: SimConfig, m: Mover): { floorY?: number } {
-  const y = floorOf(world, config, m);
-  return y === null ? {} : { floorY: y };
+  const air = floorOf(world, config, m);
+  if (air !== null) return { floorY: air };
+  if (m.kind === 'rider' && m.mode === 'Tumble' && (tumbleRecord(world, m.id)?.overboard ?? -1) >= 0)
+    return { floorY: waterLevelOf(config.road) };
+  return {};
 }
 
 function snapshotOf(world: World, config: SimConfig): SimSnapshot {
