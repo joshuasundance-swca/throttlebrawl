@@ -63,8 +63,11 @@ export const NOTE_CONTEXT = 'train';
 export const QUICK = 'quick';
 export const CONFIG_FILE = '.github/train.json';
 export const MARKER = /\[full-gate\]/i;
-/** The marker alone on a line of the body (spaces around it allowed; \r for CRLF bodies). */
-const MARKER_LINE = /^[ \t]*\[full-gate\][ \t]*\r?$/im;
+/**
+ * The marker alone on a line of the body, spaces around it allowed. In multiline mode `$` also
+ * matches before a \r, so a CRLF body needs nothing more.
+ */
+const MARKER_LINE = /^[ \t]*\[full-gate\][ \t]*$/im;
 const SHA = /^[0-9a-f]{40}$/;
 /** Conclusions of main's own ci run that mean main is red. A cancelled run was superseded. */
 const RED = new Set(['failure', 'timed_out', 'startup_failure']);
