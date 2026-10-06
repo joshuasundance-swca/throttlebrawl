@@ -333,13 +333,16 @@ jobs:
         if: steps.decide.outputs.deploy == 'true'
         continue-on-error: true
         timeout-minutes: 5
+        # `shell: bash` runs the script as `bash -eo pipefail`. A bare `run:` has no pipefail, so
+        # `probe | tee` would take tee's status and a failing probe would raise no warning.
+        shell: bash
         env:
           SPACE: ${{ vars.HF_SPACE_PROD }}
         run: |
           if [ ! -f scripts/gzip-probe.mjs ]; then echo "this tree has no gzip probe"; exit 0; fi
-          host=$(curl -fsS --max-time 20 "https://huggingface.co/api/spaces/$SPACE?expand=subdomain" | jq -r '.subdomain // empty')
+          host=$(curl -fsS --max-time 20 "https://huggingface.co/api/spaces/$SPACE?expand=subdomain" | jq -r '.subdomain // empty') || host=""
           if [ -z "$host" ]; then echo "::warning title=gzip probe::the Hub API named no subdomain for the game Space"; exit 0; fi
-          if ! node scripts/gzip-probe.mjs --url "https://$host.static.hf.space" --build "${GITHUB_SHA::7}" --wait 240 \
+          if ! node scripts/gzip-probe.mjs --url "https://$host.static.hf.space" --build "${GITHUB_SHA::7}" --wait 240 2>&1 \
             | tee -a "$GITHUB_STEP_SUMMARY"; then
             echo "::warning title=gzip probe::the gzip copies failed their check or the Space never served this build; see the run summary"
             exit 1
