@@ -51,7 +51,7 @@ Parallel lanes share one dev machine, and on 2026-10-02 they locked it up with s
 
 ## Never
 
-- **Never delete** branches, tags, releases, repos, Spaces or datasets `[decided]`. Removing files inside a normal PR, with the reason in its note, is ordinary editing; deploys that replace a Space's files are allowed `[default]`.
+- **Never delete** tags, releases, repos, Spaces or datasets, or any branch by hand `[decided]`. A merged PR's branch is deleted by GitHub's "automatically delete head branches" setting, which the maintainer turned on on 2026-10-05 `[decided]`; don't reuse a merged branch name. Removing files inside a normal PR, with the reason in its note, is ordinary editing; deploys that replace a Space's files are allowed `[default]`.
 - **Never commit to a Space by hand;** each deploy overwrites it from GitHub ([deploy](docs/engineering.md#deploy-game-space-and-staging-space)).
 - **Never force-push or rewrite published history,** and **never skip hooks or checks** (`--no-verify`, disabling a test, loosening a budget without a stated reason). Fix a wrong hook or test in the open.
 - **Never create** repos, Spaces or datasets, **change** repo settings, protection or visibility, or **rename** anything public `[decided]`.
