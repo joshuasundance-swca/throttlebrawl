@@ -14,7 +14,9 @@
 # - plan (read only): who rides, oldest first, up to the cap; the assembled tree.
 # - wait-main (actions: write, runs no repo code): main red, so wait for rerun-main.yml's second
 #   attempt, then send the next train.
-# - announce (statuses and PR comments, runs main's own scripts only): "riding" statuses, conflicts.
+# - announce (statuses and PR comments, runs main's own scripts only): "riding" statuses, conflicts,
+#   and a "waiting: ..." note on a ready PR that is not riding (auto-merge not armed, or armed and
+#   waiting its turn), so the PR says why it is not moving.
 # - suite (contents: read): the full suite on main + the bundle, the same suite.yml ci.yml runs.
 # - control (contents: read): a lone PR that failed, on its own branch, to tell its own failure
 #   from a composition failure.
@@ -66,6 +68,7 @@ jobs:
       conflicts: ${{ steps.plan.outputs.conflicts }}
       single: ${{ steps.plan.outputs.single }}
       wait_main: ${{ steps.plan.outputs.wait_main }}
+      notes: ${{ steps.plan.outputs.notes }}
     steps:
       # Main's own scripts (this workflow's commit). PR heads are fetched as git objects and merged
       # without a working tree; nothing from a PR runs here.
@@ -138,6 +141,7 @@ jobs:
           TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}
           TRAIN_CONFLICTS: ${{ needs.plan.outputs.conflicts }}
           TRAIN_BASE: ${{ needs.plan.outputs.base }}
+          TRAIN_NOTES: ${{ needs.plan.outputs.notes }}
         run: node scripts/train.mjs announce
 
   suite:

@@ -4,14 +4,15 @@
 # single required status check.
 #
 # On a pull request, `route` (scripts/train.mjs) picks the PR's path:
-# - full: the full suite on this PR, and the aggregate is the PR's `gate`: every PR while the train
-#   is off (.github/train.json, "live": false), and with it on, forks, Dependabot, the
-#   "[full-gate]" escape hatch and PRs that change .github/ (a train runs main's workflows, not
-#   the PR's). Only this path records the tree it tested, for main's skip path (below).
+# - full: the full suite on this PR, and the aggregate is the PR's `gate`: every PR but a docs-only
+#   one while the train is off (.github/train.json, "live": false), and with it on, forks,
+#   Dependabot, the "[full-gate]" escape hatch and PRs that change .github/ (a train runs main's
+#   workflows, not the PR's). Only this path records the tree it tested, for main's skip path (below).
 # - train: the quick check (static plus the build and its size budget, and the two unit slices).
 #   Its aggregate is named `quick`, never `gate`, so auto-merge waits for the train, which runs the
 #   full suite once on a bundle of ready PRs and posts `gate` as a commit status on each head.
-# - docs: the same quick check, and its aggregate is the PR's `gate` (no sim or browser tier needed).
+# - docs: the same quick check, and its aggregate is the PR's `gate` (no sim or browser tier needed),
+#   with the train on or off.
 # One source of `gate` per head commit: this workflow's aggregate job, or the train's status.
 #
 # On a push to main: the full suite, then (green) deploy to the game Space and the release notes:

@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+The bundle train is easier to follow for other agents and outside contributors. A PR whose quick check is green but whose auto-merge is not armed used to wait for ever with "Expected: waiting for status gate" and nothing saying why (the reason was only in the train's plan log); it now gets a pending `gate` note that says to run `gh pr merge --auto --squash`, and an armed PR that waits its turn says so. A note never replaces a train's own message and keeps the cap a red bundle gave the PR. A docs-only PR now takes the docs path (the quick check is its gate) whether the train is on or off: #575 ran the whole suite for a docs change because the switch was read before the files. The README no longer calls the build a coloured test screen, and a new CONTRIBUTING.md explains in plain words what happens to a pull request, with a table of what each `gate` line means. The train's tests plant breaks in the logic and in the workflow wiring to show they catch them. The workflow edit passes the notes from `plan` (read only) to `announce` (the job that may write statuses). Not phone-verified (no game change).

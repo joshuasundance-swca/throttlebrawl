@@ -24,7 +24,10 @@ import {
   loadConfig,
   mainGate,
   normalizePr,
+  NOTE_ARMED,
+  NOTE_UNARMED,
   postInOrder,
+  postNotes,
   postStatus,
   prList,
   prNumbersFromTitles,
@@ -32,6 +35,8 @@ import {
   route,
   selectBundle,
   stateOf,
+  waitingNotes,
+  waitNote,
   withCap,
 } from './train.mjs';
 
@@ -93,6 +98,27 @@ describe('config and routing', () => {
   it('gives a docs-only PR its gate from the quick check, and runs everything when unsure', () => {
     expect(route({ ...pr, files: ['docs/a.md', 'changes/2026-10-02-a.md'] }).path).toBe('docs');
     expect(route({ ...pr, files: [] }).path).toBe('full');
+  });
+  // #575 (2026-10-06): a docs-only PR ran the full suite while the train was off, because the
+  // switch was read before the files. The docs path never needs a train (its quick check is its
+  // gate), so the switch decides only what would have ridden one.
+  it('a docs-only PR takes the docs path whether the train is on or off', () => {
+    const docs = ['docs/a.md', 'changes/2026-10-02-a.md'];
+    for (const live of [true, false])
+      expect(route({ ...pr, live, files: docs }).path, `${live}`).toBe('docs');
+    expect(route({ ...pr, live: false, files: ['README.md'] }).path).toBe('docs');
+  });
+  it('negative control: the switch still sends everything else to the full gate when it is off', () => {
+    const docs = ['docs/a.md'];
+    expect(route({ ...pr, live: false, files: ['src/a.ts'] }).path).toBe('full');
+    expect(route({ ...pr, live: false, files: [...docs, 'src/a.ts'] }).path).toBe('full');
+    expect(route({ ...pr, live: false, files: docs, body: 'x [full-gate]' }).path).toBe('full');
+    expect(route({ ...pr, live: false, files: [...docs, '.github/train.json'] }).path).toBe('full');
+    expect(route({ ...pr, live: false, files: docs, fork: true }).path).toBe('full');
+    expect(route({ ...pr, live: false, files: docs, author: 'dependabot[bot]' }).path).toBe('full');
+    expect(route({ ...pr, live: false, files: [] }).path).toBe('full');
+    // And with the switch off, an ordinary PR's reason still says the train is off.
+    expect(route({ ...pr, live: false }).reason).toContain('the train is off');
   });
 });
 
@@ -299,6 +325,99 @@ describe('eligibility', () => {
         }),
       ).ok,
     ).toBe(false);
+  });
+});
+
+describe('saying why a PR waits', () => {
+  const ok = { conclusion: 'SUCCESS' };
+  const ctx = { repo: REPO, cap: 8 };
+  const note = (n: ReturnType<typeof node>) => waitNote(normalizePr(n), ctx);
+  const gateOf = (description: string) => ({ state: 'pending', description });
+
+  // A PR whose quick check is green but whose auto-merge is not armed never rides, and GitHub
+  // shows only "Expected: waiting for status gate". The train's plan log held the reason; the PR
+  // now carries it as its own pending gate status (train review, 2026-10-06).
+  it('tells an unarmed PR with a green quick check how to get on the train, as a pending status', () => {
+    const d = note(node({ number: 1, head: sha('a'), quick: [ok], auto: false }));
+    expect(d).toContain(NOTE_UNARMED);
+    expect(NOTE_UNARMED).toContain('gh pr merge --auto --squash');
+    expect(capOf(d ?? '')).toBe(8);
+    expect(d?.length).toBeLessThanOrEqual(140);
+  });
+  it('tells an armed PR that waits its turn that it is armed and waits for a train', () => {
+    const d = note(node({ number: 1, head: sha('a'), quick: [ok] }));
+    expect(d).toContain(NOTE_ARMED);
+    expect(NOTE_ARMED).not.toContain('gh pr merge');
+  });
+  it('says nothing twice, swaps a stale note for the right one, and keeps a red bundle cap', () => {
+    const unarmed = note(node({ number: 1, head: sha('a'), quick: [ok], auto: false })) ?? '';
+    expect(
+      note(node({ number: 1, head: sha('a'), quick: [ok], auto: false, gate: gateOf(unarmed) })),
+    ).toBeNull();
+    // Armed since: the arm-it note is stale, so the armed one replaces it.
+    expect(note(node({ number: 1, head: sha('a'), quick: [ok], gate: gateOf(unarmed) }))).toContain(
+      NOTE_ARMED,
+    );
+    // A cap a red bundle gave it survives the note, so the split plan still halves it.
+    const capped =
+      note(
+        node({
+          number: 1,
+          head: sha('a'),
+          quick: [ok],
+          auto: false,
+          gate: gateOf(withCap(NOTE_ARMED, 2)),
+        }),
+      ) ?? '';
+    expect(capOf(capped)).toBe(2);
+    const after = normalizePr(node({ number: 1, head: sha('a'), quick: [ok], gate: gateOf(capped) }));
+    expect(eligibility(after, ctx)).toMatchObject({ ok: true, cap: 2 });
+  });
+  it('negative control: nothing is said where something else keeps the PR off the train, or a train has spoken', () => {
+    const base = { number: 1, head: sha('a'), quick: [ok], auto: false };
+    expect(note(node({ ...base, draft: true }))).toBeNull();
+    expect(note(node({ ...base, repo: 'fork/game' }))).toBeNull();
+    expect(note(node({ ...base, title: 'x [full-gate]' }))).toBeNull();
+    expect(note(node({ ...base, gateRun: true }))).toBeNull();
+    expect(note(node({ ...base, totalCount: 140 }))).toBeNull();
+    expect(note(node({ number: 1, head: sha('a'), auto: false }))).toBeNull(); // no quick check yet
+    expect(note(node({ ...base, quick: [{ conclusion: 'FAILURE' }] }))).toBeNull();
+    for (const gate of [
+      { state: 'success', description: 'passed train 3' },
+      { state: 'failure', description: 'fails alone' },
+      gateOf(withCap('train 3 was red with 4 PRs; splits', 2)),
+      gateOf('riding train 5: main abc1234 + #1 #2'),
+    ])
+      expect(note(node({ ...base, gate })), gate.description).toBeNull();
+  });
+  it('lists notes for the PRs that are not in the bundle, never for a rider', () => {
+    const prs = [
+      node({ number: 1, head: sha('a'), quick: [ok] }),
+      node({ number: 2, head: sha('b'), quick: [ok], auto: false }),
+      node({ number: 3, head: sha('c'), quick: [ok] }),
+    ].map(normalizePr);
+    expect(waitingNotes(prs, ctx, [1]).map((n) => [n.number, n.headSha])).toEqual([
+      [2, sha('b')],
+      [3, sha('c')],
+    ]);
+    expect(waitingNotes(prs, ctx, [1, 2, 3])).toEqual([]);
+  });
+  it('posts each note as a pending gate status, and one failed post does not stop the rest', async () => {
+    const posts: [string, string, string][] = [];
+    const post = (s: string, state: string, d: string) => {
+      if (s === sha('a')) return Promise.reject(new Error('API down'));
+      posts.push([s, state, d]);
+      return Promise.resolve();
+    };
+    const failed = await postNotes(
+      [
+        { number: 1, headSha: sha('a'), description: 'x' },
+        { number: 2, headSha: sha('b'), description: 'y' },
+      ],
+      post,
+    );
+    expect(posts).toEqual([[sha('b'), 'pending', 'y']]);
+    expect(failed).toEqual([1]);
   });
 });
 
@@ -975,6 +1094,40 @@ describe('the workflows', () => {
         for (const [expr] of b.matchAll(/\$\{\{[^}]*\}\}/g))
           expect(expr, `${name}: ${expr}`).toMatch(/^\$\{\{ (?:matrix\.shard|strategy\.job-total) \}\}$/);
     }
+  });
+
+  // The waiting notes cross three hands: plan (read only) works them out, announce (the job that
+  // may write statuses) posts them, and the script must read what the workflow passes.
+  it('plan hands its waiting notes to announce, and a break in any link is caught', () => {
+    const script = readFileSync(path.join(import.meta.dirname, 'train.mjs'), 'utf8');
+    const wired = (workflow: string, code: string) => {
+      const t = jobs(workflow);
+      const plan = t.get('plan') ?? '';
+      const announce = t.get('announce') ?? '';
+      return (
+        /^ {6}notes: \$\{\{ steps\.plan\.outputs\.notes \}\}$/m.test(plan) &&
+        !/: write$/m.test(plan) &&
+        /^ {4}if: needs\.plan\.outputs\.post == 'true'$/m.test(announce) &&
+        /^ {10}TRAIN_NOTES: \$\{\{ needs\.plan\.outputs\.notes \}\}$/m.test(announce) &&
+        /^ {6}statuses: write$/m.test(announce) &&
+        code.includes('env.TRAIN_NOTES') &&
+        code.includes("notes: '[]'")
+      );
+    };
+    expect(wired(train, script)).toBe(true);
+    // Planted breaks: each one must turn the check red.
+    expect(wired(train.replace('      notes: ${{ steps.plan.outputs.notes }}\n', ''), script)).toBe(false);
+    expect(wired(train.replace('          TRAIN_NOTES: ${{ needs.plan.outputs.notes }}\n', ''), script)).toBe(
+      false,
+    );
+    expect(
+      wired(
+        train.replace("needs.plan.outputs.post == 'true'", "needs.plan.outputs.depart == 'true'"),
+        script,
+      ),
+    ).toBe(false);
+    expect(wired(train, script.replace('env.TRAIN_NOTES', 'env.TRAIN_NOTE'))).toBe(false);
+    expect(wired(train.replace('      statuses: read\n', '      statuses: write\n'), script)).toBe(false);
   });
 
   it('the checked-in switch reads cleanly', () => {

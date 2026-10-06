@@ -61,8 +61,8 @@ export const TRAIN_IDENT = {
 // Config and routing
 
 /**
- * .github/train.json. `live` false keeps every PR on the full per-PR gate (the train only plans,
- * in a dry run). Out-of-range numbers fall back to the defaults.
+ * .github/train.json. `live` false keeps every PR but a docs-only one on the full per-PR gate (the
+ * train only plans, in a dry run). Out-of-range numbers fall back to the defaults.
  * @param {string} text
  */
 export function readConfig(text) {
@@ -94,16 +94,12 @@ export function isDocsOnly(/** @type {string[]} */ files) {
 }
 
 /**
- * Which path a pull request takes.
+ * Which path a pull request takes. The cases that always run the full gate come first, then docs
+ * (with the train on or off), then the switch, then the train.
  * @param {{ live: boolean, fork: boolean, author: string, title: string, body: string, files: string[] }} pr
  * @returns {{ path: 'train' | 'docs' | 'full', reason: string }}
  */
 export function route({ live, fork, author, title, body, files }) {
-  if (!live)
-    return {
-      path: 'full',
-      reason: `the train is off (${CONFIG_FILE}), so every PR runs the full gate itself`,
-    };
   if (fork) return { path: 'full', reason: 'a PR from a fork runs the full gate itself' };
   if (author === 'dependabot[bot]')
     return { path: 'full', reason: 'a Dependabot PR runs the full gate itself' };
@@ -116,10 +112,17 @@ export function route({ live, fork, author, title, body, files }) {
     };
   if (files.length === 0)
     return { path: 'full', reason: 'no changed files found; when unsure, run everything' };
+  // The docs path needs no train (its quick check is its gate), so it comes before the switch:
+  // a docs-only PR must not run the full suite just because the train is off (#575).
   if (isDocsOnly(files))
     return {
       path: 'docs',
       reason: `docs only (${files.length} file(s) under docs/, changes/ or *.md): the quick check is its gate`,
+    };
+  if (!live)
+    return {
+      path: 'full',
+      reason: `the train is off (${CONFIG_FILE}), so every PR runs the full gate itself`,
     };
   return {
     path: 'train',
@@ -246,6 +249,68 @@ export function eligibility(pr, { repo, cap }) {
   if (s.kind === 'success') return no('passed a train (landing)');
   if (s.kind === 'failure') return no('failed a train or conflicts (a new push rides again)');
   return { ok: true, cap: s.cap, reason: s.kind === 'pending' ? `waiting, cap ${s.cap}` : 'new' };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Saying why a PR waits
+
+/** Every note starts with this, so a train's own messages (riding, red, conflicts) are never overwritten. */
+export const WAIT_PREFIX = 'waiting: ';
+export const NOTE_UNARMED = `${WAIT_PREFIX}arm auto-merge (gh pr merge --auto --squash) and this PR rides the next train`;
+export const NOTE_ARMED = `${WAIT_PREFIX}armed; a train carries ready PRs one train at a time, oldest first`;
+
+/**
+ * What a PR that is ready (a green quick check on its head commit) but not riding should say on
+ * itself, as the description of a pending `gate` status; null when it should say nothing. Without
+ * it a PR whose auto-merge is not armed shows only "Expected: waiting for status gate" for ever,
+ * and the reason lives in a plan log nobody reads. A note replaces nothing but no status or an
+ * older note, and it keeps the cap a red bundle gave the PR.
+ * @param {ReturnType<typeof normalizePr>} pr
+ * @param {{ repo: string, cap: number }} o
+ * @returns {string | null}
+ */
+export function waitNote(pr, { repo, cap }) {
+  // Anything but the arming that keeps it off the train is that check's own message to give.
+  const asIfArmed = eligibility({ ...pr, autoMerge: true }, { repo, cap });
+  if (!asIfArmed.ok) return null;
+  if (pr.gateStatus && !pr.gateStatus.description.startsWith(WAIT_PREFIX)) return null;
+  const description = withCap(pr.autoMerge ? NOTE_ARMED : NOTE_UNARMED, asIfArmed.cap);
+  return pr.gateStatus?.description === description ? null : description;
+}
+
+/**
+ * The notes to post: one per open PR outside the bundle that has something new to say.
+ * @param {ReturnType<typeof normalizePr>[]} prs
+ * @param {{ repo: string, cap: number }} o
+ * @param {number[]} riders PR numbers in the bundle (riding, or conflicting: announce speaks for them)
+ */
+export function waitingNotes(prs, o, riders) {
+  return prs.flatMap((pr) => {
+    if (riders.includes(pr.number)) return [];
+    const description = waitNote(pr, o);
+    return description ? [{ number: pr.number, headSha: pr.headSha, description }] : [];
+  });
+}
+
+/**
+ * Posts the notes as pending `gate` statuses. A note is a courtesy: one that fails to post is
+ * reported (its PR number is returned) and never stops the others or the train.
+ * @param {{ number: number, headSha: string, description: string }[]} notes
+ * @param {(sha: string, state: string, description: string) => Promise<void>} post
+ * @returns {Promise<number[]>} the PRs whose note did not post
+ */
+export async function postNotes(notes, post) {
+  /** @type {number[]} */
+  const failed = [];
+  for (const n of notes) {
+    try {
+      await post(n.headSha, 'pending', n.description);
+    } catch (err) {
+      failed.push(n.number);
+      console.log(`announce: no note on #${n.number}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  return failed;
 }
 
 /**
@@ -845,6 +910,7 @@ async function cmdPlan() {
     conflicts: '[]',
     single: '',
     wait_main: '',
+    notes: '[]',
   };
   const say = (/** @type {string} */ s) => {
     console.log(`plan: ${s}`);
@@ -869,6 +935,8 @@ async function cmdPlan() {
   const prs = await openPrs();
   /** @type {{ number: number, headSha: string, cap: number }[]} */
   let bundle;
+  /** @type {{ number: number, headSha: string, description: string }[]} */
+  let notes = [];
   if (dry && (env.TRAIN_PRS ?? '').trim()) {
     const wanted = (env.TRAIN_PRS ?? '')
       .split(/[\s,]+/)
@@ -891,6 +959,14 @@ async function cmdPlan() {
     );
     bundle = selectBundle(eligible).bundle;
     console.log(`plan: ${eligible.length} of ${prs.length} open PRs are eligible`);
+    // Say why on the PRs that wait (announce posts it; a dry run posts nothing).
+    notes = waitingNotes(
+      prs,
+      { repo: repo(), cap: cfg.cap },
+      bundle.map((p) => p.number),
+    );
+    for (const n of notes) console.log(`plan: #${n.number} gets a note: ${n.description}`);
+    Object.assign(out, { notes: JSON.stringify(notes), post: !dry && notes.length ? 'true' : 'false' });
   }
   if (!bundle.length) {
     say('Nobody is waiting for the train.');
@@ -918,7 +994,7 @@ async function cmdPlan() {
     );
   Object.assign(out, {
     depart: rode.length ? 'true' : 'false',
-    post: !dry && (rode.length || conflicts.length) ? 'true' : 'false',
+    post: !dry && (rode.length || conflicts.length || notes.length) ? 'true' : 'false',
     base,
     heads: rode.map((p) => p.headSha).join(' '),
     tree: asm.tree,
@@ -999,7 +1075,12 @@ async function cmdAnnounce() {
       );
     }
   }
-  console.log(`announce: ${bundle.length} riding, ${conflicts.length} conflicting`);
+  /** @type {{ number: number, headSha: string, description: string }[]} */
+  const notes = JSON.parse(env.TRAIN_NOTES || '[]');
+  const failed = await postNotes(notes, postStatus);
+  console.log(
+    `announce: ${bundle.length} riding, ${conflicts.length} conflicting, ${notes.length - failed.length} of ${notes.length} noted`,
+  );
 }
 
 async function cmdReport() {
