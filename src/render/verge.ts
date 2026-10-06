@@ -52,6 +52,7 @@ import {
 import { keptSamples, mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
 import { SEAWALL_LAND_M, themeAt } from './scenery';
+import { thinRank } from './scenery-merge';
 
 /**
  * A shoulder's rail panel stands no nearer than this to the line of a ramp (a connector road of a branch,
@@ -522,6 +523,8 @@ export class VergeLayer {
   private filledFx = 0;
   private filledFz = 0;
   private dirty = true;
+  /** The share of the fern clumps drawn (a quality tier's `treeShare`, quality.ts; 1 = every one). */
+  private treeShare = 1;
 
   constructor(
     private readonly road: RoadNetwork,
@@ -957,7 +960,12 @@ export class VergeLayer {
       this.fenceMesh,
       this.fenceFar,
     ]);
-    fill(this.clumps, NEAR_CLUMPS, (c) => c, [this.brushMesh, this.brushFar]);
+    // A lower tier draws only the clumps ranked under its share (scenery-merge.ts `thinRank`).
+    const share = this.treeShare;
+    fill(this.clumps, NEAR_CLUMPS, (c) => (share >= 1 || thinRank(c.x, c.z) < share ? c : null), [
+      this.brushMesh,
+      this.brushFar,
+    ]);
     fill(this.hedges, NEAR_HEDGE, (c) => c, [this.hedgeMesh, this.hedgeFar]);
     for (const [look, set] of this.lookSets) {
       const drawM = BARRIER_LOOK_STYLES[look].drawM;
@@ -978,6 +986,14 @@ export class VergeLayer {
     this.filledFx = fx;
     this.filledFz = fz;
     this.dirty = false;
+  }
+
+  /** A quality tier's share of the fern clumps (quality.ts `treeShare`); a change refills them. */
+  setTreeShare(share: number): void {
+    const next = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 1;
+    if (next === this.treeShare) return;
+    this.treeShare = next;
+    this.dirty = true;
   }
 
   /**

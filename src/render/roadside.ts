@@ -35,10 +35,12 @@ import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
 import { formsOf, writeUv, type FlatForm } from './scenery-merge';
+import { SHORE_END_VARIANTS } from './shore-fixes';
 import { placeSurface, type PlacedSurface } from './text-surfaces';
 import {
   BLUFF_LAND_M,
   LAKE_LAND_M,
+  LAKE_SHORE_OVER_M,
   LAND_TOP_M,
   ridableBandPast,
   scatterHash,
@@ -144,6 +146,17 @@ export interface RoadsideRule {
    * below the land. No water there, or not yet known: it is not placed.
    */
   waterline?: boolean;
+  /**
+   * Stands only where a lake's shore, when the land is one (`RoadsideInput.landTop`), is flat at its full level along
+   * the whole prop, not on the ramp where a bank begins or ends (playtest 4 run C, punch item 6: a cabin and a dock).
+   */
+  flatShore?: boolean;
+  /**
+   * The first and last section of a run take another variant that falls away to the ground at the run's end (playtest
+   * 4 run C, punch item 7: "a rock cut ends in a flat vertical edge"), by the run's own variant: [the variant whose
+   * +x end is the low one, the variant whose -x end is]. A run of one section keeps its variant.
+   */
+  taper?: Readonly<Record<number, readonly [number, number]>>;
   /**
    * Stands where road/furniture.ts plans it (playtest 4, "solid but forgiving"): a sidewalk piece the sim
    * meets, so its place comes from the one plan the sim reads. The plan holds the same rule (its
@@ -331,6 +344,8 @@ export const PNW_KIT: RoadsideKit = {
       along: 3,
       back: 3,
       body: true,
+      // The cuts' ends fall away into the ground (shore-fixes.ts `cutEnd`): the short cut's, then the tall cut's.
+      taper: { 0: SHORE_END_VARIANTS.low, 1: SHORE_END_VARIANTS.tall },
     }),
     rule('boulder', [4, 5], ['cut'], 14, 0.5, [0, 1.5], 1.4, {
       model: 'pnwShore',
@@ -347,6 +362,7 @@ export const PNW_KIT: RoadsideKit = {
       along: 4.5,
       discBack: 4.5,
       whole: true,
+      flatShore: true,
     }),
     rule('lake-dock', [7], ['lake'], 30, 0.55, [LAKE_LAND_M, 0], 1.2, {
       model: 'pnwShore',
@@ -355,6 +371,7 @@ export const PNW_KIT: RoadsideKit = {
       back: 0,
       waterline: true,
       whole: true,
+      flatShore: true,
     }),
   ],
 };
@@ -805,6 +822,11 @@ export interface RoadsideInput {
    * Samish, from its backdrop's water floor, backdrop/water.ts). A `waterline` rule places nothing without it.
    */
   waterAt?: (x: number, z: number) => number | null;
+  /**
+   * The height of the drawn land `across` m past the verge when it is not the road's own height, or null (playtest
+   * 4 run C, punch item 6: Lake Samish's shore lies below East Shore Drive, `RoadScene.landTop`): a prop stands on it.
+   */
+  landTop?: (edge: number, side: -1 | 1, s: number, across: number) => number | null;
 }
 
 /** A grid of discs, for keeping props apart. Discs over 8 m (the sawmill) are kept in a list. */
@@ -1243,6 +1265,7 @@ export class RoadsideScatter {
         : 1;
       const step = rule.run?.[2] ?? 0;
       const variant = rule.v[Math.floor(h(k, side, 4) * rule.v.length) % rule.v.length] ?? 0;
+      const runStart = this.items.length;
       for (let j = 0; j < sections; j++) {
         const s = s0 + j * step;
         if (s - along < 0 || s + along > e.length) break;
@@ -1271,6 +1294,19 @@ export class RoadsideScatter {
         if (across + back > land) break;
         const d = side * (outer + across);
         const p = road.toWorld(e.index, s, d, LAND_TOP_M);
+        // A lake's shore lies below the road (`landTop`): the prop stands on it, and the higher roads are asked
+        // about the land at the road's own height, as they were before the shore was drawn there.
+        const roadY = p.y;
+        const shore = input.landTop?.(e.index, side, s, across) ?? null;
+        if (shore !== null) p.y = shore;
+        if (rule.flatShore && shore !== null) {
+          const water = input.waterAt?.(p.x, p.z) ?? null;
+          const flat = (u: number) => {
+            const top = input.landTop?.(e.index, side, u, across) ?? null;
+            return top !== null && water !== null && Math.abs(top - (water + LAKE_SHORE_OVER_M)) < 0.02;
+          };
+          if (![s - along, s, s + along].every(flat)) break;
+        }
         if (rule.waterline) {
           // At the water's level under it, a low bank below the land (playtest 4, P4-19, C4: a dock).
           const water = input.waterAt?.(p.x, p.z) ?? null;
@@ -1286,7 +1322,7 @@ export class RoadsideScatter {
           if (rule.run) break;
           continue;
         }
-        if (otherRoad(s, c.x, c.z, r) || underHigher(p.x, p.z, p.y, s)) break;
+        if (otherRoad(s, c.x, c.z, r) || underHigher(p.x, p.z, shore === null ? p.y : roadY, s)) break;
         // A long prop (a fence section, a hut) must be clear of higher ground at its ends too.
         if (
           along > r &&
@@ -1336,6 +1372,21 @@ export class RoadsideScatter {
           tier: rule.tier ?? 1,
         });
       }
+      // The ends of a run of rock cut fall away into the ground (`taper`).
+      const taper = rule.taper?.[variant];
+      const placed = this.items.length - runStart;
+      if (taper && placed >= 2) {
+        for (const [item, outward] of [
+          [this.items[runStart]!, -1],
+          [this.items[this.items.length - 1]!, 1],
+        ] as const) {
+          // The model's +x in the world is (cos turn, -sin turn); the end that faces away from the run is
+          // the model's +x where that points along the road for the run's end, or against it for its start.
+          const f = road.frameAt(e.index, item.s);
+          const along = Math.cos(item.turn) * f.tx - Math.sin(item.turn) * f.tz;
+          item.variant = along * outward > 0 ? taper[0] : taper[1];
+        }
+      }
     }
   }
 }
@@ -1362,9 +1413,19 @@ interface Chunk {
   levels: [number, number][];
 }
 
-/** A stretch's level of detail at a distance from the camera (`Chunk.levels`). */
-const levelOf = (dist: number): number =>
-  dist <= ROADSIDE_NEAR_M ? 0 : dist <= ROADSIDE_FRONT_M ? 1 : dist <= ROADSIDE_MID_M ? 2 : 3;
+/**
+ * A stretch's level of detail at a distance from the camera (`Chunk.levels`). `detail` scales the three
+ * distances (the quality tier's `propDetail`, quality.ts: 1 on `high`, so a lower tier drops the
+ * understory, the street fronts' full models and the middling props nearer the camera).
+ */
+const levelOf = (dist: number, detail = 1): number =>
+  dist <= ROADSIDE_NEAR_M * detail
+    ? 0
+    : dist <= ROADSIDE_FRONT_M * detail
+      ? 1
+      : dist <= ROADSIDE_MID_M * detail
+        ? 2
+        : 3;
 
 export interface RoadsideCounts {
   /** Props placed, by rule. */
@@ -1467,9 +1528,10 @@ export class RoadsideLayer {
 
   /**
    * Builds, shows, thins and frees stretches by their distance from the camera. A stretch is built a
-   * little before it comes into range, at most one a frame, so no frame pays for two.
+   * little before it comes into range, at most one a frame, so no frame pays for two. `detail` scales
+   * where each level of detail starts (`levelOf`; the quality tier's `propDetail`).
    */
-  update(cameraX: number, cameraZ: number, drawM: number): number {
+  update(cameraX: number, cameraZ: number, drawM: number, detail = 1): number {
     // Placing the props: a few milliseconds a frame until done.
     if (!this.scatter.done) this.addStretches(this.scatter.step(SCATTER_MS_PER_FRAME));
     const draw = Math.min(drawM, ROADSIDE_DRAW_M);
@@ -1497,7 +1559,7 @@ export class RoadsideLayer {
       const dist = Math.hypot(c.cx - cameraX, c.cz - cameraZ) - c.radius;
       if (dist < draw) {
         // Past ROADSIDE_MID_M only the tier-0 props draw, as their far stand-ins.
-        const [start, end] = c.levels[levelOf(dist)] ?? [0, 0];
+        const [start, end] = c.levels[levelOf(dist, detail)] ?? [0, 0];
         const count = end - start;
         mesh.geometry.setDrawRange(start, count);
         mesh.visible = count > 0;

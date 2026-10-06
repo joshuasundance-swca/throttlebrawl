@@ -5,7 +5,7 @@
 // one mesh per block, a far stand-in that keeps the model's size and colours on a fraction of its
 // triangles, the switch at the level-of-detail distance, and blocks built near the camera, one a
 // frame, and freed behind it.
-import { Mesh, type BufferGeometry } from 'three';
+import { BoxGeometry, Mesh, MeshBasicMaterial, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { readGlb } from './glb';
@@ -20,7 +20,15 @@ import {
   type SceneryModels,
 } from './models';
 import { buildRoadScene, MODEL_OF, networkTags, type RoadDressing } from './road-mesh';
-import { formsOf, SCENERY_BLOCK_M, SCENERY_LOD_M } from './scenery-merge';
+import {
+  formsOf,
+  MergedScenery,
+  SCENERY_BLOCK_M,
+  SCENERY_LOD_M,
+  THINNABLE_KINDS,
+  thinRank,
+  type MergeItem,
+} from './scenery-merge';
 
 const look = createFlatLook();
 /** The examined lines, printed even when the tests pass (console.log is not). */
@@ -195,5 +203,80 @@ describe('the still scenery, merged per block', () => {
       `[examined] pnw-c1: ${near} of ${scene.merged().blocks} blocks built near the start, 0 after leaving`,
     );
     scene.dispose();
+  });
+});
+
+// Roadmap M5 (playtest 4 run C, punch item 9): a lower quality tier draws only a share of the trees
+// (quality.ts `treeShare`), ranked by where each stands, and never thins a building. A share is still
+// one draw range per block, near or far, so the layout must hold exactly the right props in it.
+describe("a quality tier's share of the trees", () => {
+  const box = new BoxGeometry(1, 1, 1);
+  const mat = new MeshBasicMaterial();
+  /** Ten houses and forty trees in one block, 3 m apart along x: a triangle's prop is its x / 3. */
+  const items: MergeItem[] = Array.from({ length: 50 }, (_, i) => ({
+    spot: {
+      kind: i % 5 === 0 ? 'house' : 'conifer',
+      variant: 0,
+      p: { x: 3 * i + 0.5, y: 0, z: 0.5 },
+      turn: 0,
+      size: 1,
+      phase: 0,
+      edge: 0,
+      s: 0,
+      d: 0,
+    },
+    geometry: box,
+    material: mat,
+  }));
+  /** The props whose triangles the block's draw range holds, by index. */
+  const drawnProps = (merged: MergedScenery): Set<number> => {
+    const mesh = merged.group.children[0] as Mesh;
+    const g = mesh.geometry;
+    const pos = g.getAttribute('position');
+    const out = new Set<number>();
+    if (!mesh.visible) return out;
+    for (let v = g.drawRange.start; v < g.drawRange.start + g.drawRange.count; v++)
+      out.add(Math.floor(pos.getX(v) / 3));
+    return out;
+  };
+  const expected = (share: number) =>
+    items.flatMap((it, i) =>
+      THINNABLE_KINDS.has(it.spot.kind) && thinRank(it.spot.p.x, it.spot.p.z) >= share ? [] : [i],
+    );
+
+  for (const pass of ['near', 'far'] as const) {
+    it(`draws every building and only the trees ranked under the share (${pass})`, () => {
+      const merged = new MergedScenery(items);
+      const lodM = pass === 'near' ? 1e9 : -1e9;
+      const seen: number[] = [];
+      for (const share of [1, 0.7, 0.4, 0]) {
+        const props = merged.update(0, 0, 1e9, lodM, 1, share);
+        const drawn = [...drawnProps(merged)].sort((a, b) => a - b);
+        expect(drawn).toEqual(expected(share));
+        expect(props).toBe(drawn.length);
+        seen.push(drawn.length);
+      }
+      // Every tier's trees are a subset of the next tier's, and the houses always stand.
+      expect(seen[0]).toBe(50);
+      expect(seen[3]).toBe(10);
+      expect(seen[1]!).toBeGreaterThan(seen[2]!);
+      expect(seen[2]!).toBeGreaterThan(seen[3]!);
+      print(
+        `[examined] one block of 10 houses and 40 trees, ${pass}: props drawn at shares 1, 0.7, 0.4, 0: ${seen.join(', ')}`,
+      );
+      merged.dispose();
+    });
+  }
+
+  it('at a share of 1 draws the whole near run or the whole far run, as before tiers', () => {
+    const merged = new MergedScenery(items);
+    merged.update(0, 0, 1e9, 1e9, 1);
+    const g = (merged.group.children[0] as Mesh).geometry;
+    const nearN = items.reduce((n, it) => n + formsOf(it.geometry).near.n, 0);
+    const farN = items.reduce((n, it) => n + formsOf(it.geometry).far.n, 0);
+    expect([g.drawRange.start, g.drawRange.count]).toEqual([0, nearN]);
+    merged.update(0, 0, 1e9, -1e9, 1);
+    expect([g.drawRange.start, g.drawRange.count]).toEqual([nearN, farN]);
+    merged.dispose();
   });
 });

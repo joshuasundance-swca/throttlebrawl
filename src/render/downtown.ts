@@ -53,7 +53,7 @@ import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
 import { LAND_TOP_M, scatterHash, themeAt, type SideTag, type SideTheme } from './scenery';
-import { ATLAS_WHITE_UV, hasAtlasUv } from './scenery-merge';
+import { ATLAS_WHITE_UV, formsOf, hasAtlasUv } from './scenery-merge';
 import { placeSurface, type PlacedSurface } from './text-surfaces';
 
 /** The kit's variants (tools/blender/props/sf_downtown.py), by name. */
@@ -1552,6 +1552,13 @@ interface Built {
   cz: number;
   radius: number;
   mesh: Mesh | null;
+  /**
+   * The built buffer's two runs (`build`): [the placed models | the stretch's surfaces | the models'
+   * far stand-ins]. Near draws [0, nearN); far draws [farStart, end). Zero until built.
+   */
+  nearN: number;
+  farStart: number;
+  farN: number;
 }
 
 /** The downtown of one road scene: its static stretches near the camera, and its cross traffic. */
@@ -1585,7 +1592,7 @@ export class DowntownLayer {
     this.plan = input.portland
       ? planPortland(input, kit)
       : planDowntown({ ...input, stacked: modules !== undefined });
-    this.stretches = this.plan.stretches.map((s) => ({ ...s, mesh: null }));
+    this.stretches = this.plan.stretches.map((s) => ({ ...s, mesh: null, nearN: 0, farStart: 0, farN: 0 }));
     this.vehicles = seedCrossTraffic(this.plan.crossings, input.seed);
     const material = look.material('vehicle', { vertexColors: true });
     const groups = new Map<string, number[]>();
@@ -1610,9 +1617,17 @@ export class DowntownLayer {
   /**
    * Per frame: builds, shows and frees the stretches by distance from the camera, and moves the
    * cross traffic by dt seconds (0 while the race is paused), keeping it off the avenue while any
-   * mover is near. Returns the static items in view.
+   * mover is near. `nearM` (a quality tier's, quality.ts `cityDetail`): a stretch wholly farther than this
+   * draws its models as their far stand-ins (scenery-merge.ts `formsOf`); the default, everywhere in
+   * full, is the game as it drew before tiers. Returns the static items in view.
    */
-  update(cameraX: number, cameraZ: number, dt: number, movers: readonly GateMover[]): number {
+  update(
+    cameraX: number,
+    cameraZ: number,
+    dt: number,
+    movers: readonly GateMover[],
+    nearM = Infinity,
+  ): number {
     let next: Built | null = null;
     let nextDist = Infinity;
     for (const st of this.stretches) {
@@ -1631,8 +1646,12 @@ export class DowntownLayer {
       const dist = Math.hypot(st.cx - cameraX, st.cz - cameraZ) - st.radius;
       st.mesh.visible = dist < DOWNTOWN_DRAW_M;
       if (st.mesh.visible) {
+        const far = dist > nearM;
+        const start = far ? st.farStart : 0;
+        const count = far ? st.farN : st.nearN;
+        st.mesh.geometry.setDrawRange(start, count);
         meshes++;
-        tris += (st.mesh.geometry.getAttribute('position')?.count ?? 0) / 3;
+        tris += count / 3;
         shown++;
       } else if (dist > KEEP_M) this.free(st);
     }
@@ -1769,63 +1788,82 @@ export class DowntownLayer {
     // The stretch draws with the region atlas as its map when the modules brought one (every part
     // that is not an atlas surface samples its white tile: still one mesh, one draw).
     const map = this.input.portland ? this.kit.map : this.modules?.map;
-    let total = soup ? soup.pos.length / 3 : 0;
-    for (const { parts } of placed) for (const p of parts) total += p.g.getAttribute('position').count;
+    // The buffer, so near and far are each one run: [the models | the surfaces | the models' far
+    // stand-ins]. Near draws the first two, far the last two (`update`).
+    const soupN = soup ? soup.pos.length / 3 : 0;
+    let modelsN = 0;
+    let farModelsN = 0;
+    for (const { parts } of placed)
+      for (const p of parts) {
+        modelsN += p.g.getAttribute('position').count;
+        farModelsN += formsOf(p.g).far.n;
+      }
+    const total = modelsN + soupN + farModelsN;
     const pos = new Float32Array(total * 3);
     const nrm = new Float32Array(total * 3);
     const col = new Float32Array(total * 3);
     const uv = map ? new Float32Array(total * 2) : null;
     let o = 0;
+    const emitModels = (pass: 'near' | 'far') => {
+      for (const { it, parts } of placed) {
+        const cos = Math.cos(it.turn);
+        const sin = Math.sin(it.turn);
+        for (const part of parts) {
+          const g = part.g;
+          // Near: the model as it is; far: its stand-in, in its picture's mean colours on the white tile.
+          const far = pass === 'far' ? formsOf(g).far : null;
+          const gp = far ? far.pos : g.getAttribute('position').array;
+          const gn = far ? far.nrm : g.getAttribute('normal').array;
+          const gc = far ? far.col : g.getAttribute('color').array;
+          const guv = !far && uv && hasAtlasUv(g) ? g.getAttribute('uv').array : null;
+          const n = gp.length / 3;
+          col.set(gc, o * 3);
+          if (uv) {
+            if (guv) uv.set(guv, o * 2);
+            else for (let v = 0; v < n; v++) uv.set(ATLAS_WHITE_UV, (o + v) * 2);
+          }
+          for (let i = 0; i < n; i++, o++) {
+            const x = gp[i * 3] ?? 0;
+            const y = gp[i * 3 + 1] ?? 0;
+            const z = gp[i * 3 + 2] ?? 0;
+            pos[o * 3] = it.p.x + x * cos + z * sin;
+            // A tower's foot reaches down under the slope; the rest scales with its height (a stacked
+            // tower's modules stand at their heights, unscaled).
+            pos[o * 3 + 1] =
+              part.sink && it.foot !== null && y < 0.01 ? it.foot : it.p.y + part.lift + y * part.sy;
+            pos[o * 3 + 2] = it.p.z + z * cos - x * sin;
+            const nx = gn[i * 3] ?? 0;
+            const nz = gn[i * 3 + 2] ?? 0;
+            nrm[o * 3] = nx * cos + nz * sin;
+            nrm[o * 3 + 1] = gn[i * 3 + 1] ?? 0;
+            nrm[o * 3 + 2] = nz * cos - nx * sin;
+          }
+        }
+      }
+    };
+    emitModels('near');
     if (soup) {
-      pos.set(soup.pos, 0);
-      col.set(soup.col, 0);
-      o = soup.pos.length / 3;
+      const s0 = o;
+      pos.set(soup.pos, s0 * 3);
+      col.set(soup.col, s0 * 3);
+      o = s0 + soupN;
       // Face normals for the surfaces.
       const a = new Vector3();
       const b = new Vector3();
       const c = new Vector3();
-      for (let i = 0; i + 2 < o; i += 3) {
+      for (let i = 0; i + 2 < soupN; i += 3) {
         a.fromArray(soup.pos, i * 3);
         b.fromArray(soup.pos, i * 3 + 3).sub(a);
         c.fromArray(soup.pos, i * 3 + 6).sub(a);
         b.cross(c).normalize();
-        for (let k = 0; k < 3; k++) b.toArray(nrm, (i + k) * 3);
+        for (let k = 0; k < 3; k++) b.toArray(nrm, (s0 + i + k) * 3);
       }
-      if (uv) for (let v = 0; v < o; v++) uv.set(ATLAS_WHITE_UV, v * 2);
+      if (uv) for (let v = s0; v < o; v++) uv.set(ATLAS_WHITE_UV, v * 2);
     }
-    for (const { it, parts } of placed) {
-      const cos = Math.cos(it.turn);
-      const sin = Math.sin(it.turn);
-      for (const part of parts) {
-        const g = part.g;
-        const gp = g.getAttribute('position').array;
-        const gn = g.getAttribute('normal').array;
-        const gc = g.getAttribute('color').array;
-        const guv = uv && hasAtlasUv(g) ? g.getAttribute('uv').array : null;
-        const n = gp.length / 3;
-        col.set(gc, o * 3);
-        if (uv) {
-          if (guv) uv.set(guv, o * 2);
-          else for (let v = 0; v < n; v++) uv.set(ATLAS_WHITE_UV, (o + v) * 2);
-        }
-        for (let i = 0; i < n; i++, o++) {
-          const x = gp[i * 3] ?? 0;
-          const y = gp[i * 3 + 1] ?? 0;
-          const z = gp[i * 3 + 2] ?? 0;
-          pos[o * 3] = it.p.x + x * cos + z * sin;
-          // A tower's foot reaches down under the slope; the rest scales with its height (a stacked
-          // tower's modules stand at their heights, unscaled).
-          pos[o * 3 + 1] =
-            part.sink && it.foot !== null && y < 0.01 ? it.foot : it.p.y + part.lift + y * part.sy;
-          pos[o * 3 + 2] = it.p.z + z * cos - x * sin;
-          const nx = gn[i * 3] ?? 0;
-          const nz = gn[i * 3 + 2] ?? 0;
-          nrm[o * 3] = nx * cos + nz * sin;
-          nrm[o * 3 + 1] = gn[i * 3 + 1] ?? 0;
-          nrm[o * 3 + 2] = nz * cos - nx * sin;
-        }
-      }
-    }
+    st.nearN = o;
+    st.farStart = modelsN;
+    emitModels('far');
+    st.farN = o - modelsN;
     const geo = new BufferGeometry();
     geo.setAttribute('position', new Float32BufferAttribute(pos.subarray(0, o * 3), 3));
     geo.setAttribute('normal', new Float32BufferAttribute(nrm.subarray(0, o * 3), 3));

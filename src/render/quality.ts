@@ -3,7 +3,10 @@
 // full rate by default, with a softer picture under load. So:
 // - the render resolution is a scale of the capped device pixel ratio, stepped down quickly when
 //   frames run over the budget and back up slowly when there is room, never below a readable floor;
-// - three tiers, as data: each sets the resolution range and how far the still scenery reaches;
+// - three tiers, as data: each sets the resolution range and how much still scenery it draws: its
+//   reach, where its far stand-ins start, the share of trees and ferns, and where the roadside's, the
+//   road's and the city blocks' small detail stops (playtest 4 run C: reach alone cut about 3% at the
+//   busiest view; scene-cost tests hold `low` at least 25% under `high` at each region's busiest view);
 //   `auto` moves between them from measured frame time and remembers the tier per device; the
 //   player can pin one in the settings.
 // The governor is pure: app/ hands it each drawn frame's interval (the frame-time seam), so tests
@@ -33,13 +36,65 @@ export interface QualityTier {
   /** The still scenery's draw distance and far-detail distance, as shares of their sliders. */
   sceneryReach: number;
   lodReach: number;
+  /**
+   * Where the small detail stops, as a share of its own distances: the roadside props' levels of detail
+   * (roadside.ts `levelOf`: the understory to 50 m, the street fronts' full models to 80 m, the middling
+   * props to 120 m, then only the big props' far stand-ins out to 200 m) and the road's lane lines and
+   * posts (road-mesh.ts ROAD_FINE_DRAW_M, 300 m).
+   */
+  propDetail: number;
+  /**
+   * The share of the scatter's trees and brush drawn (scenery-merge.ts `THINNABLE_KINDS`, ranked by where
+   * each stands, so a lower tier's trees are a subset of a higher one's). Buildings are never thinned.
+   */
+  treeShare: number;
+  /**
+   * Where the city blocks' far stand-ins start, as a share of each layer's own distance: a downtown
+   * (downtown.ts, drawn in full out to its 500 m draw distance on `high`) and Chinatown and North Beach
+   * (chinatown-northbeach.ts `NEAR_M`, 240 m).
+   */
+  cityDetail: number;
 }
 
-/** `high` is the game as it drew before tiers, with only the resolution free to soften. */
+/**
+ * `high` is the game as it drew before tiers, with only the resolution free to soften. The cuts, with the
+ * scenery sliders at their defaults (360 m reach, far stand-ins from 200 m):
+ * - `medium`: reach 324 m; the scatter's far stand-ins from 100 m; 70% of the trees and ferns; the
+ *   roadside's understory to 35 m, its street fronts in full to 56 m and its middling props to 84 m; lane
+ *   lines and posts to 210 m; the city blocks' stand-ins from 300 m (a downtown) and 144 m (Chinatown).
+ * - `low`: reach 288 m; stand-ins from 30 m; 40% of the trees and ferns; understory to 20 m, fronts to
+ *   32 m, middling props to 48 m; lane lines to 120 m; city stand-ins from 150 m and 72 m.
+ * Buildings, landmarks, signs and boards, the land, the road, the backdrop and everything that moves keep
+ * their full count on every tier.
+ */
 export const QUALITY_TIERS: Readonly<Record<QualityTierId, Readonly<QualityTier>>> = {
-  high: { minScale: 0.75, maxScale: 1, sceneryReach: 1, lodReach: 1 },
-  medium: { minScale: 0.6, maxScale: 1, sceneryReach: 0.9, lodReach: 0.85 },
-  low: { minScale: 0.5, maxScale: 0.85, sceneryReach: 0.8, lodReach: 0.7 },
+  high: {
+    minScale: 0.75,
+    maxScale: 1,
+    sceneryReach: 1,
+    lodReach: 1,
+    propDetail: 1,
+    treeShare: 1,
+    cityDetail: 1,
+  },
+  medium: {
+    minScale: 0.6,
+    maxScale: 1,
+    sceneryReach: 0.9,
+    lodReach: 0.5,
+    propDetail: 0.7,
+    treeShare: 0.7,
+    cityDetail: 0.6,
+  },
+  low: {
+    minScale: 0.5,
+    maxScale: 0.85,
+    sceneryReach: 0.8,
+    lodReach: 0.15,
+    propDetail: 0.4,
+    treeShare: 0.4,
+    cityDetail: 0.3,
+  },
 };
 
 export const QUALITY = {
@@ -78,7 +133,13 @@ export function renderPixelRatio(devicePixelRatio: number, scale: number): numbe
 
 /** How far the still scenery draws, and where its far stand-ins start, on a tier. */
 export function sceneryReach(params: Pick<RenderParams, 'sceneryDrawM' | 'sceneryLodM'>, tier: QualityTier) {
-  return { drawM: params.sceneryDrawM * tier.sceneryReach, lodM: params.sceneryLodM * tier.lodReach };
+  return {
+    drawM: params.sceneryDrawM * tier.sceneryReach,
+    lodM: params.sceneryLodM * tier.lodReach,
+    propDetail: tier.propDetail,
+    treeShare: tier.treeShare,
+    cityDetail: tier.cityDetail,
+  };
 }
 
 export interface QualityState {

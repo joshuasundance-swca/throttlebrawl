@@ -31,6 +31,7 @@
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, ShaderMaterial } from 'three';
 import {
   backdropProblems,
+  NEAR_WATER_FLOOR,
   type BackdropNetworkFile,
   type BackdropRegionFile,
   type Piece,
@@ -38,6 +39,7 @@ import {
   type Pt,
 } from './data';
 import { geoFrame } from './geo';
+export { NEAR_WATER_FLOOR };
 import { buildAircraft, buildBridgeTraffic, buildPour, buildTrain } from './movers';
 import {
   buildBlocks,
@@ -108,6 +110,23 @@ export function nearFadeAt(depth: number, fadeM: number, fogFar: number): number
   return 1 - x * x * (3 - 2 * x);
 }
 
+/**
+ * The haze over a floor vertex `d` metres from the eye (a camera `camY` m up), before the aerial haze: the far
+ * floors (the sea, the far ground) are wholly the haze inside the fog's end, where the near world's own sea and
+ * ground cover them, then come out of it gradually and only part way. The vertex shader below does the same.
+ */
+export function floorHazeAt(d: number, fogFar: number, camY: number, flag = 1): number {
+  const smooth = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  const floorMin = 0.82 + (0.3 - 0.82) * smooth(15, 220, camY);
+  const far = 1 + (floorMin - 1) * smooth(fogFar, fogFar * 4, d);
+  if (flag <= 0.5) return 0;
+  // A lake: the fog's haze by distance, so inside the fog's end it keeps its colour and meets the far floor at its end.
+  return flag > 1.5 ? Math.min(far, smooth(0, fogFar, d)) : far;
+}
+
 /** A glide is fully seen over the middle of its run; past this share of the half-run it thins out. */
 export const GLIDE_FADE = 0.8;
 
@@ -165,7 +184,12 @@ void main() {
   // Floors (far land and water) come out of the fog's end gradually, and only part way: the haze
   // lies along the ground, so a camera high on a hill sees more of the ground below than one at sea level.
   float floorMin = mix(0.82, 0.3, smoothstep(15.0, 220.0, uCam.y));
-  h = max(h, aInfo.y * mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d)));
+  // A lake (a water floor above the sea, flag 2) has no near sea or ground over it inside the fog's end: it keeps
+  // its own colour there and takes the fog's haze by distance (floorHazeAt mirrors this).
+  float nearWater = step(1.5, aInfo.y);
+  float floorH = mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d));
+  floorH = mix(floorH, min(floorH, smoothstep(0.0, uFogFar, d)), nearWater);
+  h = max(h, min(aInfo.y, 1.0) * floorH);
   // A glide thins into the haze at each end of its run, so it never pops round.
   if (glide) h = max(h, smoothstep(GLIDE_FADE, 1.0, abs(m)));
   vHaze = clamp(h, 0.0, 1.0);
