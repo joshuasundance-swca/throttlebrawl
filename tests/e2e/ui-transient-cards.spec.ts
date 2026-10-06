@@ -294,11 +294,19 @@ async function checkScreen(
         `${where}: cards ${cardIds.join(', ')}; ${p.words} words, ${p.controls} controls, ${p.boxes} boxes; findings ${JSON.stringify(found)}`,
       );
       // Soft, so one run names every screen and size that is wrong, not only the first.
-      expect.soft(p.words, `${where}: words were examined`).toBeGreaterThan(0);
-      expect.soft(p.controls + p.boxes, `${where}: controls and boxes were examined`).toBeGreaterThan(0);
+      // Only what is painted is examined, so scrolled to the middle of a long result it may be words alone.
+      expect
+        .soft(p.words + p.controls + p.boxes, `${where}: things on the screen were examined`)
+        .toBeGreaterThan(0);
       expect.soft(found, where).toEqual([]);
     }
     await scrollTo(page, screenSel, 0);
+    // Scrolled to the top, each card starts on the screen: none stands out above it, where no scroll
+    // reaches (train 237: the menu row centred a column taller than the screen).
+    for (const id of cardIds) {
+      const top = (await page.locator(`#${id}`).boundingBox())?.y ?? -1;
+      expect.soft(top, `${label} at ${size.name}: ${id} starts on the screen`).toBeGreaterThanOrEqual(0);
+    }
     const cardButtons = cardIds.map((id) => `#${id} button`);
     await expectReachable(page, reachable, cardButtons, `${label} at ${size.name}`);
   }

@@ -535,6 +535,11 @@ ${REDUCE_MOTION_CSS}
    takes the touches on itself, so a tap on its words never lands on what lies behind. */
 #ui .transient-card { pointer-events: auto; }
 #ui #reload-offer, #ui #load-retry, #ui #ui-notice { margin-bottom: 6px; }
+/* Beside the what's-new card the menu is a row, centred up and down: a menu column taller than the screen
+   (the cards above its title make it so at 915x412) would stand out above the screen's top, where no scroll
+   reaches, and Retry with it (train 237's run of ui-transient-cards.spec.ts). Safe centring starts it at
+   the top instead, and the screen scrolls down to the rest. */
+#ui #menu.with-news { align-items: safe center; }
 #ui #load-retry, #ui #ui-notice { flex-shrink: 0; width: max-content; max-width: min(560px, 100%);
   box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   background: rgb(10 5 20 / 92%); }
