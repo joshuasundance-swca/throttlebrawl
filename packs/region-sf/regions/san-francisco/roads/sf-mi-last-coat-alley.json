@@ -26,7 +26,21 @@
     { "s0": 56, "s1": 653, "side": "right", "tag": "murals" },
     { "s0": 0, "s1": 653, "side": "left", "tag": "murals" }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "landmark",
+      "id": "mission-chapel",
+      "s0": 615.0,
+      "s1": 651.0,
+      "d0": -20.0,
+      "d1": -8.0,
+      "params": {
+        "model": "sf-landmarks#sf_mission_church",
+        "yawDeg": 180.0,
+        "frontM": 18.0
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",
