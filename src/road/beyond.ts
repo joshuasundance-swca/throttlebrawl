@@ -9,8 +9,9 @@
 // - `edgeTopAt`: how high the thing at one side's band edge stands above the deck there. A barrier's
 //   own `heightM`; a derived `hard` edge's from what is drawn there (the bluff's parapet, the
 //   interstate's guard rail, the ferry's bulwark); 0 at a `water` edge (nothing stands there); and
-//   Infinity at a building front, which stays a wall at any height (buildings are not in the sim: the
-//   one known gap, the maintainer's future decision). Null at a ground edge (soft, brush, fence): the
+//   Infinity at a building front, which stays a wall at any height (buildings are not in the sim yet:
+//   the one known gap, until the sim meets src/road/structures.ts's plan, docs/architecture.md
+//   "Physical world"). Null at a ground edge (soft, brush, fence): the
 //   ground runs on past it and the band's own edge rules hold, in the air too.
 // - `pastAt`: what lies past that edge: `water` (a `water-*` tag on the side, or a water edge),
 //   `drop` (the bluff, a bridge or a trestle with no water tagged under it, or any `rail`: rails stand
@@ -42,8 +43,9 @@ export function waterLevelOf(road: RoadNetwork): number {
 /**
  * The land tags whose `hard` edge is a building front (the towers, the shopfronts, the mural walls, the
  * row and painted houses, Duval's and the waterfront's buildings, the ferry hall, the pier sheds): a
- * wall at any height, since no building is in the sim [decided] (the maintainer, 2026-10-06: buildings
- * are his future decision). The cafes' patio rail stands right in front of the cafes, so it is one too.
+ * wall at any height while no building is in the sim [default] (a building is to be a wall up to its
+ * roofline with a roof to land on, [decided] 2026-10-06, once the sim meets the structures plan). The
+ * cafes' patio rail stands right in front of the cafes, so it is one too.
  */
 export const BUILDING_FRONT_TAGS: ReadonlySet<string> = new Set([
   'towers',
