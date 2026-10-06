@@ -52,6 +52,118 @@
           "at": { "lat": 45.5133506, "lon": -122.6716324 },
           "footprintM": [10, 24],
           "overRoad": true
+        },
+        {
+          "id": "burnside-bascule-pier-east",
+          "model": "pdx-landmarks#pdx_bascule_pier",
+          "at": { "lat": 45.5230455, "lon": -122.6671101 },
+          "footprintM": [10, 32],
+          "overRoad": true
+        },
+        {
+          "id": "burnside-bascule-pier-west",
+          "model": "pdx-landmarks#pdx_bascule_pier",
+          "at": { "lat": 45.5230635, "lon": -122.6680141 },
+          "footprintM": [10, 32],
+          "overRoad": true
+        },
+        {
+          "id": "burnside-truss-east-1",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5230511, "lon": -122.6667897 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "burnside-truss-east-2",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5230401, "lon": -122.666278 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "burnside-truss-west-1",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.523084, "lon": -122.6683334 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "burnside-truss-west-2",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5230949, "lon": -122.6688451 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-lift-span",
+          "model": "pdx-landmarks#pdx_lift_span",
+          "at": { "lat": 45.5134412, "lon": -122.6720681 },
+          "footprintM": [64, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-west-1",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.513634, "lon": -122.6728203 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-west-2",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5137571, "lon": -122.6733013 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-1",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5132484, "lon": -122.671316 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-2",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5131251, "lon": -122.6708351 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-3",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5130017, "lon": -122.6703542 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-4",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5128783, "lon": -122.6698733 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-5",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5127549, "lon": -122.6693925 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-6",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5126314, "lon": -122.6689117 },
+          "footprintM": [40, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-truss-east-7",
+          "model": "pdx-landmarks#pdx_truss_bay",
+          "at": { "lat": 45.5125084, "lon": -122.6684306 },
+          "footprintM": [40, 24],
+          "overRoad": true
         }
       ],
       "roads": [
@@ -142,6 +254,15 @@
               "d0": 13.5,
               "d1": 33.5,
               "params": { "model": "pdx-landmarks#pdx_roof_sign", "yawDeg": 180, "scale": 0.8, "sightM": 60 }
+            },
+            {
+              "kind": "landmark",
+              "id": "chinatown-gate",
+              "s0": 222.5441,
+              "s1": 236.0441,
+              "d0": 23.9,
+              "d1": 26.3,
+              "params": { "model": "pdx-landmarks#pdx_chinatown_gate", "yawDeg": 90, "crossStreet": true }
             }
           ]
         },
@@ -206,7 +327,8 @@
               "d1": -12,
               "params": {
                 "spawns": "pedestrians",
-                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"],
+                "music": "busker"
               }
             },
             {

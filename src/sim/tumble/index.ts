@@ -36,7 +36,9 @@
 //           running"); pressed during the tumble, it starts at the hand-back. The run is unchanged.
 //   Road    remounted on the parked bike, rolling at `tumble.remountMps` (8 m/s, capped at the
 //           bike's top speed; interview, 2026-10-02: "remount rolling"), with health restored to
-//           full. The splash respawn on the bridge rolls the same way.
+//           full. The splash respawn on the bridge rolls the same way. Either way the rider is a
+//           ghost to traffic for a moment (playtest 4; sim/traffic startTrafficGhost): back on the
+//           bike behind stopped cars, it rides through them instead of crashing again.
 //   Gap     (playtest 3; the maintainer, round 3: "the real 80 m missing span is the big jump (a miss
 //           = splash, respawn on the highway)") a crash with `data.overboard` (sim/riders/gap.ts: a
 //           rider past a gap's kill depth) starts with both bodies overboard (`railOver` with
@@ -64,6 +66,7 @@ import {
 } from '../../road';
 import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
+import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
 import { ownSideBand, standingBand, wallBand, type TumbleBody } from './body';
@@ -768,7 +771,10 @@ function gapRespawn(
   return { pos: gapFarSide(road, edge, f, dir, from.d), at: 'far' };
 }
 
-/** Back on the bike, rolling at tumble.remountMps (capped at its top speed), with full health. */
+/**
+ * Back on the bike, rolling at tumble.remountMps (capped at its top speed), with full health, and a
+ * ghost to traffic for a moment (sim/traffic, startTrafficGhost; playtest 4).
+ */
 function remount(world: World, config: SimConfig, m: Mover, bike: RoadPos): void {
   const def = config.riders[m.riderIndex];
   m.mode = 'Road';
@@ -778,6 +784,9 @@ function remount(world: World, config: SimConfig, m: Mover, bike: RoadPos): void
   m.yaw = 0;
   if (def) riderState(world).health[m.id] = def.healthMax;
   tumbleState(world).records[m.id] = null;
+  // A fair restart (playtest 4): for a moment traffic passes through the rider, so a bike parked
+  // behind stopped cars, or a respawn among them, never crashes again at once.
+  startTrafficGhost(world, m.id);
 }
 
 export const tumbleSystem: SimSystem = {

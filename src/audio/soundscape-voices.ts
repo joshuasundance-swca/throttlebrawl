@@ -4,15 +4,33 @@
 // foghorn, a cable-car bell, a party street's bar music (playtest 4, P4-16: a cover band, a steel pan
 // and a karaoke machine through a doorway) and the rain on the helmet. Each event is a handful of sources that stop
 // themselves, started at `t` on the audio clock; the rain is one looping buffer of droplet ticks.
+// Playtest 4 run B (B11) adds the places' own: a rooster, a streetcar's gong, the bridge-lift bell and
+// horn, a busker, and five BEDS (a crowd's murmur, gusting wind, the falls, the city's hum and rain on
+// awnings): steady loops that follow a level, each built only when first heard and let go after it has
+// been quiet a while, so a race that never meets a place never pays for its sound.
 // They feed the effects input, so the slow-motion low-pass and the effects bus apply.
 import { noiseBuffer } from './engine-patch';
-import { BAR_PHRASE_S, type ScapeEvent } from './soundscape';
+import { BAR_PHRASE_S, type ScapeBeds, type ScapeEvent } from './soundscape';
 
 const SILENT = 0.0001;
+const clamp01 = (x: number) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
 /** The one-shot events' level at full (the rain has its own), measured against the engine, [default]. */
 export const EVENT_LEVEL = 0.5;
 /** The rain's level at full (the director's 1), under the engine and the wind: measured, [default]. */
 export const RAIN_LEVEL = 0.22;
+/**
+ * Each bed's level at full (the director's 1), under the rain's [default]: quieter than the engine and
+ * the wind, a place heard rather than announced (the maintainer, P4-18: effects too loud by default).
+ */
+export const BED_LEVEL = {
+  crowd: 0.13,
+  gust: 0.15,
+  falls: 0.17,
+  city: 0.1,
+  awnings: 0.09,
+} as const satisfies Record<keyof ScapeBeds, number>;
+/** A bed quiet for this long is stopped and released, s; it starts again when it is next heard. */
+export const BED_IDLE_S = 8;
 /** Most one-shot events alive at once; a burst past this is dropped, never queued. */
 export const MAX_SCAPE_EVENTS = 24;
 
@@ -21,6 +39,10 @@ export interface ScapeVoices {
   play(e: ScapeEvent, t: number, gain: number): boolean;
   /** Aims the rain on the helmet (0..1, already scaled by the master level). */
   setRain(level: number): void;
+  /** Aims the place beds (each 0..1) times `master`; a bed is built on its first sound. */
+  setBeds(beds: ScapeBeds, master: number): void;
+  /** Where each bed is aimed now, 0..1 after the master level. */
+  bedLevels(): ScapeBeds;
   readonly rainLevel: () => number;
   /** Events playing now. */
   readonly active: () => number;
@@ -255,6 +277,92 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
     if (last) track(last);
   };
 
+  /**
+   * A rooster's crow (Duval, D4): five notes through a throat formant, "er-er-ER-er-roo": three rising
+   * calls, the long one, then the falling tail. `pitch` varies the bird.
+   */
+  const rooster = (e: Extract<ScapeEvent, { kind: 'rooster' }>, t: number, g: number) => {
+    const notes: readonly (readonly [number, number, number, number])[] = [
+      // [start s, from Hz, to Hz, length s]
+      [0, 560, 780, 0.17],
+      [0.2, 620, 860, 0.15],
+      [0.4, 700, 1080, 0.34],
+      [0.8, 980, 640, 0.18],
+      [1.02, 700, 400, 0.36],
+    ];
+    let last: AudioScheduledSourceNode | null = null;
+    for (const [at, f0, f1, len] of notes) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f0 * e.pitch, t + at);
+      o.frequency.exponentialRampToValueAtTime(f1 * e.pitch, t + at + len);
+      const throat = ctx.createBiquadFilter();
+      throat.type = 'bandpass';
+      throat.frequency.value = 1500 * e.pitch;
+      throat.Q.value = 2.5;
+      o.connect(throat).connect(env(t + at, 0.4 * e.level * g, len, 0.025));
+      o.start(t + at);
+      o.stop(t + at + len + 0.06);
+      last = o;
+    }
+    if (last) track(last);
+  };
+
+  /** A streetcar's gong (Bridge City, P6): a trolley's "ding-ding", lower and rounder than a cable car's bell. */
+  const gong = (e: Extract<ScapeEvent, { kind: 'gong' }>, t: number, g: number) => {
+    let last: AudioScheduledSourceNode | null = null;
+    for (let k = 0; k < e.strikes; k++) {
+      const at = t + k * 0.3;
+      const peak = 0.38 * e.level * g * (k === 0 ? 1 : 0.85);
+      tone('sine', 660, 654, at, peak, 0.9);
+      tone('sine', 1604, 1596, at, peak * 0.45, 0.55);
+      last = tone('sine', 2870, 2860, at, peak * 0.2, 0.3);
+      noise('bandpass', 3200, 3200, 1.2, at, peak * 0.25, 0.02);
+    }
+    if (last) track(last);
+  };
+
+  /**
+   * The bridge-lift's warning (Bridge City, P6): a bell struck a dozen times, then the horn's two long
+   * blasts, all from up the river, through a low-pass.
+   */
+  const liftBell = (e: Extract<ScapeEvent, { kind: 'liftBell' }>, t: number, g: number) => {
+    const river = ctx.createBiquadFilter();
+    river.type = 'lowpass';
+    river.frequency.value = 2600;
+    river.Q.value = 0.6;
+    river.connect(bus);
+    for (let k = 0; k < 12; k++) tone('sine', 1480, 1470, t + k * 0.14, 0.3 * e.level * g, 0.16, 0, river);
+    const blast = (at: number, hold: number) => {
+      const body = ctx.createGain();
+      body.gain.setValueAtTime(SILENT, at);
+      body.gain.linearRampToValueAtTime(0.4 * e.level * g, at + 0.12);
+      body.gain.setValueAtTime(0.4 * e.level * g, at + hold);
+      body.gain.exponentialRampToValueAtTime(SILENT, at + hold + 0.3);
+      const dark = ctx.createBiquadFilter();
+      dark.type = 'lowpass';
+      dark.frequency.value = 520;
+      dark.connect(body).connect(river);
+      let main: OscillatorNode | null = null;
+      for (const [type, hz] of [
+        ['sawtooth', 117],
+        ['square', 117.7],
+        ['sine', 58.5],
+      ] as const) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = hz;
+        o.connect(dark);
+        o.start(at);
+        o.stop(at + hold + 0.35);
+        main ??= o;
+      }
+      return main as OscillatorNode;
+    };
+    blast(t + 2.1, 0.9);
+    track(blast(t + 3.4, 1.3));
+  };
+
   // --- A party street's bar music -------------------------------------------------------------
   // One phrase (BAR_PHRASE_S, four beats) of a bar's music, heard through an open front: everything
   // goes through a low-pass (a doorway muffles the highs), a little under the effects bus. Three styles,
@@ -279,7 +387,8 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
   const EIGHTH = BEAT / 2;
 
   const barMusic = (e: Extract<ScapeEvent, { kind: 'barMusic' }>, t: number, g: number) => {
-    const to = doorway();
+    // A busker plays in the open; a bar's music comes through its doorway.
+    const to = e.style === 'busker' ? bus : doorway();
     const v = e.level * g;
     const t0 = Math.max(e.at, t);
     const v4 = ((e.bar % 4) + 4) % 4;
@@ -348,6 +457,29 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
       });
       for (const k of [0, 5]) tn('sine', 98, 60, k, 0.7, 0.25);
       for (const k of [3, 6, 7]) nz('bandpass', 900, 700, 2, k, 0.22, 0.05);
+    } else if (e.style === 'busker') {
+      // A fingerpicked guitar: Am, C, G, Em, a root-fifth-octave roll under a tune on the top strings,
+      // a pluck being a triangle and its octave with a quick decay, and a soft foot-tap on the beat.
+      const chord = (
+        [
+          [110, 164.81, 220, 261.63, 329.63],
+          [130.81, 196, 261.63, 329.63, 392],
+          [98, 196, 246.94, 293.66, 392],
+          [82.41, 164.81, 196, 246.94, 329.63],
+        ] as const
+      )[v4] ?? [110, 164.81, 220, 261.63, 329.63];
+      const roll = [0, 2, 3, 2, 4, 3, 2, 3] as const;
+      // A different eighth rests each time round, so the four phrases never repeat each other.
+      const rest = ([7, 5, 3, 6] as const)[v4] ?? 7;
+      roll.forEach((idx, k) => {
+        if (k === rest) return;
+        const f = chord[idx] as number;
+        const accent = k % 4 === 0 ? 1 : 0.7;
+        tn('triangle', f, f, k, 0.5 * accent, 0.5);
+        tn('sine', f * 2, f * 2, k, 0.14 * accent, 0.2);
+        nz('bandpass', 2600, 2000, 1.5, k, 0.05 * accent, 0.02);
+      });
+      for (const k of [0, 4]) tn('sine', 90, 55, k, 0.25, 0.1);
     } else {
       // Karaoke: C, Am, F, G under a singer who is not quite on the note.
       const chord = (
@@ -387,6 +519,170 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
       });
     }
     if (last.src) track(last.src);
+  };
+
+  // --- The place beds -------------------------------------------------------------------------
+  // Each is a steady loop of the shared noise (or the rain's droplets) through a few filters, into a
+  // gain that follows the director's level times BED_LEVEL. A bed is built the first time its level is
+  // above zero and stopped again once it has been quiet for BED_IDLE_S, so each costs nothing until a
+  // place calls for it. `shape` lets the level colour the sound (a nearer fall is brighter).
+  interface Bed {
+    sources: AudioScheduledSourceNode[];
+    gain: GainNode;
+    /** Seconds the gain takes to follow the level. */
+    tc: number;
+    shape?: (level: number) => void;
+  }
+  type BedName = keyof ScapeBeds;
+  const noiseSrc = (rate = 1, offset = 0) => {
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuffer(ctx);
+    n.loop = true;
+    n.playbackRate.value = rate;
+    n.start(0, offset);
+    return n;
+  };
+  const filt = (type: BiquadFilterType, hz: number, q: number) => {
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = hz;
+    f.Q.value = q;
+    return f;
+  };
+  /** A slow wobble on a param: a low oscillator scaled by `depth` and added to it. */
+  const wobble = (hz: number, depth: number, param: AudioParam, sources: AudioScheduledSourceNode[]) => {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = hz;
+    const d = ctx.createGain();
+    d.gain.value = depth;
+    lfo.connect(d).connect(param);
+    lfo.start();
+    sources.push(lfo);
+  };
+  /** The bed's own gain, silent until aimed, feeding `dest`. */
+  const bedGain = (dest: AudioNode = out) => {
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(dest);
+    return gain;
+  };
+  let awningBuffer: AudioBuffer | null = null;
+  const BUILD: Record<BedName, () => Bed> = {
+    // A crowd: noise through three speech formants, each swelling and fading at its own slow rate, so
+    // no word forms and the murmur never loops audibly.
+    crowd() {
+      const sources: AudioScheduledSourceNode[] = [];
+      const soft = filt('lowpass', 3200, 0.6);
+      soft.connect(out);
+      const gain = bedGain(soft);
+      (
+        [
+          [520, 0.37, 0.8],
+          [1150, 0.61, 0.6],
+          [2400, 0.97, 0.35],
+        ] as const
+      ).forEach(([hz, rate, amp], k) => {
+        const n = noiseSrc(1 + 0.07 * k, 0.21 * k);
+        const swell = ctx.createGain();
+        swell.gain.value = amp * 0.6;
+        n.connect(filt('bandpass', hz, 2.2))
+          .connect(swell)
+          .connect(gain);
+        wobble(rate, amp * 0.4, swell.gain, sources);
+        sources.push(n);
+      });
+      return { sources, gain, tc: 0.8 };
+    },
+    // Wind: low-passed noise whose brightness rises with the gust, and a high hiss on the strongest.
+    gust() {
+      const gain = bedGain();
+      const n = noiseSrc(1, 0.3);
+      const body = filt('lowpass', 500, 0.7);
+      n.connect(body).connect(gain);
+      const hiss = ctx.createGain();
+      hiss.gain.value = 0;
+      const m = noiseSrc(0.9, 0.55);
+      m.connect(filt('highpass', 1800, 0.5))
+        .connect(hiss)
+        .connect(gain);
+      return {
+        sources: [n, m],
+        gain,
+        tc: 0.35,
+        shape: (level) => {
+          body.frequency.setTargetAtTime(260 + 900 * level, ctx.currentTime, 0.3);
+          hiss.gain.setTargetAtTime(0.25 * level * level, ctx.currentTime, 0.3);
+        },
+      };
+    },
+    // Falls: a low roar and a white hiss, the hiss coming up as the rider comes near.
+    falls() {
+      const sources: AudioScheduledSourceNode[] = [];
+      const gain = bedGain();
+      const roar = noiseSrc(1, 0.1);
+      roar.connect(filt('lowpass', 420, 0.8)).connect(gain);
+      const spray = noiseSrc(0.83, 0.6);
+      const sprayGain = ctx.createGain();
+      sprayGain.gain.value = 0;
+      spray
+        .connect(filt('bandpass', 2600, 0.5))
+        .connect(sprayGain)
+        .connect(gain);
+      wobble(0.23, 0.12, sprayGain.gain, sources);
+      sources.push(roar, spray);
+      return {
+        sources,
+        gain,
+        tc: 0.6,
+        shape: (level) => sprayGain.gain.setTargetAtTime(0.1 + 0.5 * level * level, ctx.currentTime, 0.4),
+      };
+    },
+    // The city: a low rumble of traffic and a slow swell as cars pass.
+    city() {
+      const sources: AudioScheduledSourceNode[] = [];
+      const gain = bedGain();
+      const n = noiseSrc(1, 0.4);
+      n.connect(filt('lowpass', 240, 0.7)).connect(gain);
+      const m = noiseSrc(1.1, 0.8);
+      const wash = ctx.createGain();
+      wash.gain.value = 0.25;
+      m.connect(filt('bandpass', 900, 0.8))
+        .connect(wash)
+        .connect(gain);
+      wobble(0.13, 0.18, wash.gain, sources);
+      sources.push(n, m);
+      return { sources, gain, tc: 0.8 };
+    },
+    // Rain on awnings: the rain's own droplets, slowed and dulled into the drum of wet canvas.
+    awnings() {
+      const sources: AudioScheduledSourceNode[] = [];
+      const gain = bedGain();
+      awningBuffer ??= dropletBuffer(ctx, 2);
+      for (const [rate, off] of [
+        [0.62, 0.2],
+        [0.47, 0.9],
+      ] as const) {
+        const s = ctx.createBufferSource();
+        s.buffer = awningBuffer;
+        s.loop = true;
+        s.playbackRate.value = rate;
+        s.connect(filt('bandpass', 750, 1.1)).connect(gain);
+        s.start(0, off);
+        sources.push(s);
+      }
+      return { sources, gain, tc: 0.8 };
+    },
+  };
+  const beds = new Map<BedName, { bed: Bed; quietSince: number | null }>();
+  const bedAim: ScapeBeds = { crowd: 0, gust: 0, falls: 0, city: 0, awnings: 0 };
+  const stopSources = (sources: readonly AudioScheduledSourceNode[], at: number) => {
+    for (const src of sources) {
+      try {
+        src.stop(at);
+      } catch {
+        // already stopped
+      }
+    }
   };
 
   // --- The rain on the helmet ----------------------------------------------------------------
@@ -447,6 +743,15 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
         case 'barMusic':
           barMusic(e, t, gain);
           break;
+        case 'rooster':
+          rooster(e, t, gain);
+          break;
+        case 'gong':
+          gong(e, t, gain);
+          break;
+        case 'liftBell':
+          liftBell(e, t, gain);
+          break;
       }
       return true;
     },
@@ -455,11 +760,44 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
       if (rain > 0) startRain();
       rainGain.gain.setTargetAtTime(rain * RAIN_LEVEL, ctx.currentTime, 0.25);
     },
+    setBeds(levels, master) {
+      const now = ctx.currentTime;
+      const m = Number.isFinite(master) ? Math.max(0, master) : 0;
+      for (const name of Object.keys(BED_LEVEL) as BedName[]) {
+        const level = stopped ? 0 : clamp01(levels[name]) * m;
+        bedAim[name] = level;
+        let held = beds.get(name);
+        if (level > 0 && !held) {
+          held = { bed: BUILD[name](), quietSince: null };
+          beds.set(name, held);
+        }
+        if (!held) continue;
+        held.bed.gain.gain.setTargetAtTime(level * BED_LEVEL[name], now, held.bed.tc);
+        held.bed.shape?.(Math.min(1, level));
+        if (level > 0) held.quietSince = null;
+        else {
+          held.quietSince ??= now;
+          // Quiet a good while: stop its sources and forget it; it is built again if it is heard again.
+          if (now - held.quietSince > BED_IDLE_S) {
+            stopSources(held.bed.sources, now + 0.3);
+            held.bed.gain.disconnect();
+            beds.delete(name);
+          }
+        }
+      }
+    },
+    bedLevels: () => ({ ...bedAim }),
     rainLevel: () => rain,
     active: () => active,
     stop() {
       stopped = true;
       const now = ctx.currentTime;
+      for (const name of Object.keys(bedAim) as BedName[]) bedAim[name] = 0;
+      for (const { bed } of beds.values()) {
+        bed.gain.gain.setTargetAtTime(0, now, 0.05);
+        stopSources(bed.sources, now + 0.3);
+      }
+      beds.clear();
       rainGain.gain.setTargetAtTime(0, now, 0.05);
       bus.gain.setTargetAtTime(0, now, 0.05);
       for (const s of rainSrc) {

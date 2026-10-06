@@ -30,6 +30,7 @@
 import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
 import { sRateFactor } from '../../road';
 import type { RideLimits } from '../ground';
+import { trafficContactCrashes } from '../traffic/contact-rule';
 import type {
   MovesSnapshot,
   SimConfig,
@@ -50,7 +51,15 @@ import {
   type AirState,
 } from './air';
 import { applyShove, riderContacts } from './contact';
-import { driftMoves, driftStep, driftTakeoff, DRIFT_TUNING, newDriftState, type DriftState } from './drift';
+import {
+  driftDown,
+  driftMoves,
+  driftStep,
+  driftTakeoff,
+  DRIFT_TUNING,
+  newDriftState,
+  type DriftState,
+} from './drift';
 import { funnelLimits, FUNNEL_TUNING, ridingLimitsAt } from './funnel';
 import { smokeTopScale, SMOKE_TUNING } from './smoke';
 import {
@@ -407,6 +416,8 @@ const WOBBLE_STEER = 0.5;
 const WOBBLE_DRAG = 1;
 /** Peak lean shake while wobbling, radians. */
 const WOBBLE_LEAN = 0.18;
+/** Solid hazards that are parked vehicles (their `object`), met by the vehicles' one rule. */
+const PARKED_VEHICLE_HAZARDS: readonly string[] = ['pickup'];
 /** While already wobbling, a contact this fraction of the crash speed crashes you. */
 const UNSTABLE_CRASH_FRACTION = 0.4;
 /** Lean follows its target at this rate, 1/s (the "weighty" part). */
@@ -873,6 +884,11 @@ function wallOutcome(
     crash?: boolean;
     /** Never a crash, only a wobble (a fence that held: off-road, run W-R). */
     noCrash?: boolean;
+    /**
+     * A vehicle (a ramp truck, a parked pickup): playtest 4's one rule for meeting a vehicle
+     * (sim/traffic/contact-rule.ts) decides by the closing speed alone, not the barrier's line.
+     */
+    vehicle?: boolean;
     /** Multiplies the crash speed (1 when left out): a drift's edge room. */
     crashScale?: number;
   },
@@ -880,9 +896,11 @@ function wallOutcome(
   const { impact, v, yawBefore, side } = hit;
   const crashAt = (world.params['riders.crashImpactMps'] ?? 6) * (hit.crashScale ?? 1);
   const unstable = (st.wobble[m.id] ?? 0) > 0;
-  const crashes =
-    hit.noCrash !== true &&
-    (hit.crash === true || impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION));
+  const byImpact =
+    hit.vehicle === true
+      ? trafficContactCrashes(world.params, impact)
+      : impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
+  const crashes = hit.noCrash !== true && (hit.crash === true || byImpact);
   const data = { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side, ...hit.extra };
   if (crashes) {
     st.wobble[m.id] = 0;
@@ -902,6 +920,8 @@ function wallOutcome(
  * takes the whole speed as the impact. Events carry `object: 'rampTruck'` and the truck's id.
  * Playtest 3: a moving deck (`decks`, sim/riders/features.ts) is a truck like any other, met where it
  * stands as this tick ends (`decks.next`); what a head-on hit carries is the speed relative to it.
+ * Playtest 4: wobble or crash is the one rule for meeting a vehicle (sim/traffic/contact-rule.ts: that
+ * closing speed against `traffic.solidHitMps`), except up on the deck into its body (always thrown).
  */
 function truckContact(
   world: World,
@@ -939,7 +959,7 @@ function truckContact(
     const side = before.d < truck.d0 ? 1 : -1; // the truck is on this side of the rider
     const impact = scrapeAlong(config, m, side, dt);
     pos.d = side > 0 ? truck.d0 - 0.01 : truck.d1 + 0.01;
-    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
+    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra, vehicle: true });
     return;
   }
   pos.edge = before.edge;
@@ -949,7 +969,7 @@ function truckContact(
   // Up on the truck (its ramp or lip platform) and into its body, the parked car: thrown off the
   // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck).
   const crash = before.deck > KERB_M;
-  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash });
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash, vehicle: true });
 }
 
 /**
@@ -978,6 +998,8 @@ function hazardContact(
   const newContact = st.hazardTouch[m.id] !== 1;
   st.hazardTouch[m.id] = 1;
   const extra = { object: hazardObject(hazard), feature: hazard.id };
+  // A parked pickup is a parked vehicle: playtest 4's one rule for vehicles decides it.
+  const vehicle = PARKED_VEHICLE_HAZARDS.includes(extra.object);
   const d0 = Math.min(hazard.d0, hazard.d1) - HAZARD_REACH_D_M;
   const d1 = Math.max(hazard.d0, hazard.d1) + HAZARD_REACH_D_M;
   const wasInside =
@@ -986,7 +1008,7 @@ function hazardContact(
     const side = before.d < d0 ? 1 : -1; // the hazard is on this side of the rider
     const impact = scrapeAlong(config, m, side, dt);
     pos.d = side > 0 ? d0 - 0.01 : d1 + 0.01;
-    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
+    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra, vehicle });
     return false;
   }
   if (wasInside) {
@@ -1001,7 +1023,7 @@ function hazardContact(
   pos.s = before.s;
   pos.d = before.d;
   m.speed = 0;
-  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra });
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, vehicle });
   return false;
 }
 
@@ -1614,7 +1636,11 @@ export const ridersSystem: SimSystem = {
     for (const m of world.movers) {
       if (m.kind !== 'rider' || m.riderIndex < 0) continue;
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
-      else if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
+      else {
+        if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
+        // Not riding: a crash last tick loses the drift chain now (it is stepped only on the road).
+        driftDown(world, st, m);
+      }
     }
     // Bumps stop where riding does (the verge's edge with off-road on), never back on the road.
     riderContacts(world, config, st, {

@@ -47,7 +47,9 @@ export type SideTheme =
   // playtest 3 (T10.6), the Marin Headlands: open grass hills, no trees, no poles
   | 'headlands'
   // playtest 3 (T12.6), downtown Portland's blocks (render/downtown.ts draws what stands there)
-  | 'blocks';
+  | 'blocks'
+  // playtest 4 (P4-19), Key West's Old Town: a street, not a palm road (render/roadside.ts stands its fronts)
+  | 'oldtown';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -113,6 +115,12 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   // palms, no bait shacks, no poles, which the `town` tag beside it would give); the downtown layer
   // (downtown.ts) stands the street fronts, the towers and the cart pod.
   'pdx-blocks': 'blocks',
+  // Playtest 4 (P4-19; the maintainer: "The real roads do not have the characteristics of the roads in
+  // question in terms of scenery and feel"): Duval and Whitehead Streets are a street with a sidewalk and
+  // a front of shops on it, not a beach road with palms, shacks and a pole line. Nothing of the scatter
+  // stands there (no palms, no bait shacks, no poles); the roadside kit's Old Town rules (roadside.ts)
+  // stand the fronts, the trees and the sidewalk's planters.
+  'key-oldtown': 'oldtown',
 };
 /**
  * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
@@ -137,15 +145,20 @@ const THEME_ORDER: readonly LandTheme[] = [
   'downtown',
   // Ahead of `commercial`: a Portland block is also tagged `town`.
   'blocks',
+  // Ahead of `commercial` and `palms`: Old Town's streets are tagged `town` and `palms` as well.
+  'oldtown',
   'park',
   'lanterns',
   'cafes',
   'mission',
   'promenade',
   'wharf',
+  // Ahead of `palms` (playtest 4, P4-19): a town street (Key West's Truman, White, Atlantic and the
+  // rest, tagged `town` and `palms`) is a street with a kerb, not a beach road. No road that has
+  // `commercial` and `mangrove` on one side exists; the road/cross-section.ts verge order agrees.
+  'commercial',
   'palms',
   'mangrove',
-  'commercial',
   'beach',
   'sawmill',
   'urban',
@@ -279,6 +292,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   clearcut: {},
   headlands: {},
   blocks: {},
+  oldtown: {},
 };
 /**
  * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
@@ -299,6 +313,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'clearcut',
   'headlands',
   'blocks',
+  'oldtown',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
