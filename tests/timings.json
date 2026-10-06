@@ -390,7 +390,7 @@
     "tools/career/pack-rules.test.ts": 1.1,
     "tools/gis/barrier-looks-vocabulary.test.ts": 0,
     "tools/gis/osm-route.test.ts": 48.8,
-    "tools/gis/region-routes.test.ts": 237.8,
+    "tools/gis/region-routes.test.ts": 75.1,
     "tools/gis/routes-keys-pt3.test.ts": 17.5,
     "tools/gis/routes-pnw-dressing.test.ts": 0,
     "tools/gis/routes-pnw-i5.test.ts": 0.1,
