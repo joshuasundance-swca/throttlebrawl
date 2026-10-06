@@ -8,12 +8,13 @@
 //
 //   node scripts/train.mjs route       ci.yml on a pull request: which path the PR takes
 //                                      (train: the quick check now, the full suite in a train;
-//                                      docs: the quick check is its gate; full: the full gate,
-//                                      per PR, as before the train)
+//                                      docs: the quick check is its gate, with the train on or
+//                                      off; full: the full gate, per PR, as before the train)
 //   node scripts/train.mjs plan        train.yml: who rides, and the tree they make together
 //   node scripts/train.mjs assemble --base <sha> --heads "<sha> ..." [--tree <sha>]
 //                                      every job of a train's suite: rebuild exactly that tree
-//   node scripts/train.mjs announce    train.yml: "riding" statuses, and conflicts
+//   node scripts/train.mjs announce    train.yml: "riding" statuses, conflicts, and "arm
+//                                      auto-merge" on a PR that only waits on its author
 //   node scripts/train.mjs report      train.yml: post the results, wait for the landing, and
 //                                      send the next train
 //
@@ -23,9 +24,10 @@
 // with auto-merge armed). Anything else posts no success, and a new train departs.
 //
 // STATE. A PR's place in the train lives in the `gate` commit status on its head commit, the one
-// check branch protection requires: no status = new; pending = waiting or riding, and its
-// description ends with "[cap N]", the biggest bundle it may ride in next; success = passed (auto-
-// merge lands it); failure = failed or conflicts (a new push rides again). A new push is a new
+// check branch protection requires: no status = new; pending = waiting, riding, or told to arm
+// auto-merge (NUDGE), and its description ends with "[cap N]", the biggest bundle it may ride in
+// next; success = passed (auto-merge lands it); failure = failed, timed out or conflicts (a new
+// push rides again). A new push is a new
 // head commit with no status, so it simply waits for a later train. Nothing else is stored: every
 // train run plans from scratch, so a waiting run that GitHub's concurrency group replaces with a
 // newer one loses nothing.
@@ -35,7 +37,9 @@
 // the current main (cap 1) gets `gate` = failure and a comment naming the failing tests; a second
 // suite on its own branch says whether it fails there too or only on top of what landed (a
 // composition failure). Each red strictly lowers a head commit's cap (8, 4, 2, 1), so a commit
-// rides at most four red trains before it lands or fails.
+// rides at most four red trains before it lands or fails. A suite job that runs past its time limit
+// is red too (GitHub reports it, and the suite, as cancelled; see Timeouts), and so is main's own
+// run when one of its jobs does: then nobody is blamed, as for any red main.
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -88,22 +92,39 @@ export function hasMarker(title = '', body = '') {
 }
 
 const DOCS = [/^docs\//, /^changes\//, /\.md$/];
-/** A change needs no sim or browser tier when every file it touches is under docs/, changes/ or a .md file. */
+/**
+ * Files that look like docs but ship, so a change to one is never docs-only:
+ * - README.md and space/: ci.yml's deploy-prod runs `scripts/space-stage.mjs --readme
+ *   space/README.prod.md`, which writes the Space's README.md from that file's front matter (which
+ *   the Space reads to serve the game) followed by README.md's body;
+ * - THIRD_PARTY_ASSETS.md: the build's credits plugin (scripts/credits.mjs, in vite.config.ts) writes
+ *   credits.json from it, and the browser tier checks the credits page lists every row and fits a
+ *   phone (tests/e2e/ui-screens.spec.ts);
+ * - public/ (Vite copies it into the build as it is), src/ (what the build bundles), packs/ (the
+ *   content and the licence files the credits plugin reads) and tests/ (what the test tiers read).
+ * changes/ stays docs: the build reads every note into changelog.json, but the quick check runs
+ * each reader that can fail on a note (notes:check parses it; its budget tier runs the build), and
+ * the browser test of the changelog page holds for any valid note (one paragraph per player note,
+ * in a list that scrolls). Every PR carries a note, so without it no PR would be docs-only.
+ */
+const SHIPS = [/^README\.md$/, /^THIRD_PARTY_ASSETS\.md$/, /^(?:space|public|src|packs|tests)\//];
+/**
+ * A change needs no sim or browser tier when every file it touches is under docs/ or changes/, or a
+ * .md file, and none of them ships (SHIPS).
+ */
 export function isDocsOnly(/** @type {string[]} */ files) {
-  return files.length > 0 && files.every((f) => DOCS.some((re) => re.test(f)));
+  return (
+    files.length > 0 && files.every((f) => DOCS.some((re) => re.test(f)) && !SHIPS.some((re) => re.test(f)))
+  );
 }
 
 /**
- * Which path a pull request takes.
+ * Which path a pull request takes. A docs-only PR takes the docs path whether the train is on or
+ * off: its gate is ci.yml's own quick check, which needs no train.
  * @param {{ live: boolean, fork: boolean, author: string, title: string, body: string, files: string[] }} pr
  * @returns {{ path: 'train' | 'docs' | 'full', reason: string }}
  */
 export function route({ live, fork, author, title, body, files }) {
-  if (!live)
-    return {
-      path: 'full',
-      reason: `the train is off (${CONFIG_FILE}), so every PR runs the full gate itself`,
-    };
   if (fork) return { path: 'full', reason: 'a PR from a fork runs the full gate itself' };
   if (author === 'dependabot[bot]')
     return { path: 'full', reason: 'a Dependabot PR runs the full gate itself' };
@@ -119,7 +140,12 @@ export function route({ live, fork, author, title, body, files }) {
   if (isDocsOnly(files))
     return {
       path: 'docs',
-      reason: `docs only (${files.length} file(s) under docs/, changes/ or *.md): the quick check is its gate`,
+      reason: `docs only (${files.length} file(s) under docs/, changes/ or *.md, none of them shipped): the quick check is its gate`,
+    };
+  if (!live)
+    return {
+      path: 'full',
+      reason: `the train is off (${CONFIG_FILE}), so every PR but a docs-only one runs the full gate itself`,
     };
   return {
     path: 'train',
@@ -248,6 +274,34 @@ export function eligibility(pr, { repo, cap }) {
   return { ok: true, cap: s.cap, reason: s.kind === 'pending' ? `waiting, cap ${s.cap}` : 'new' };
 }
 
+/** What a PR that only waits on its author is told, in its pending `gate` status. */
+export const NUDGE = 'quick check green: arm auto-merge to ride the next train';
+export const NUDGE_DRAFT =
+  'quick check green: mark it ready for review, then arm auto-merge to ride the next train';
+
+/**
+ * A train-path PR that would ride but for a step its author has not taken: its quick check is
+ * green, but auto-merge is not armed, or it is a draft. Without this, nothing on the PR said why it
+ * waited (only the plan's log did). Returns the pending `gate` status to post on its head commit, or
+ * null: never on a fork, Dependabot, [full-gate], the docs or full path (their `gate` is a check
+ * run), a PR that can ride, or a head commit that already has a verdict or already says so. The cap
+ * a red train gave it goes with the new text, so turning auto-merge off and on again never resets
+ * the cap ladder.
+ * @param {ReturnType<typeof normalizePr>} pr
+ * @param {{ repo: string, cap: number }} o
+ * @returns {{ number: number, headSha: string, description: string } | null}
+ */
+export function nudge(pr, { repo, cap }) {
+  if (pr.headRepo !== repo || pr.author === 'dependabot[bot]' || hasMarker(pr.title, pr.body)) return null;
+  if (pr.truncated || pr.gateCheck || pr.quick !== 'success') return null;
+  if (!pr.draft && pr.autoMerge) return null; // it can ride
+  const s = stateOf(pr.gateStatus, cap);
+  if (s.kind === 'success' || s.kind === 'failure') return null;
+  const text = pr.draft ? NUDGE_DRAFT : NUDGE;
+  if (s.kind === 'pending' && pr.gateStatus?.description.startsWith(text)) return null;
+  return { number: pr.number, headSha: pr.headSha, description: withCap(text, s.cap) };
+}
+
 /**
  * The next bundle: the PRs with the smallest cap (a red bundle's halves go first), oldest (lowest
  * number) first, at most that many. It departs with whatever is eligible; it never waits to fill.
@@ -348,13 +402,74 @@ export function assemble(run, base, heads) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Timeouts
+//
+// A job that runs past its timeout-minutes is cancelled, and GitHub reports the job, a called
+// workflow that holds it (needs.suite.result) and the whole run as `cancelled`, the same word as
+// for a run someone cancelled or a newer push replaced (train 29, run 37414740605: browser 5/7 ran
+// 610 s against 600; main's ci run 37052696293: sim 3/3 timed out). Only the job's annotation tells
+// them apart, so the train reads it.
+
+/** GitHub's annotation on a job that ran past its timeout-minutes. */
+const TIMEOUT_NOTE = /exceeded the maximum execution time/i;
+/**
+ * No job in these workflows has a timeout under 3 minutes, so a cancelled job that ran less than
+ * this never timed out, and its annotations need not be read (a run replaced while it waited has no
+ * jobs at all).
+ */
+const MIN_TIMEOUT_SECONDS = 60;
+
+/** Did this job run past its time limit, by its annotations? */
+export function hitTimeout(/** @type {{ message?: string }[]} */ annotations) {
+  return annotations.some((a) => TIMEOUT_NOTE.test(String(a.message ?? '')));
+}
+
+/**
+ * Could this job have hit its timeout? Only a cancelled job that ran a while; its annotations say.
+ * @param {{ conclusion?: string | null, started_at?: string | null, completed_at?: string | null }} job
+ */
+export function mayHaveTimedOut(job) {
+  if (job.conclusion !== 'cancelled' || !job.started_at || !job.completed_at) return false;
+  return (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000 >= MIN_TIMEOUT_SECONDS;
+}
+
+/**
+ * The suite's result as the report judges it: a cancelled suite with a red job in it (one that ran
+ * past its time limit, or one that failed) is red, so the bundle splits and a lone PR is blamed, and
+ * each red lowers the cap like any other. A cancelled suite with no red job (someone cancelled the
+ * run) still concludes nothing.
+ * @param {string} result the suite's result as GitHub reports it
+ * @param {{ failed: string[], timedOut: string[] }} jobs the suite's failed and timed-out jobs
+ */
+export function suiteResult(result, { failed, timedOut }) {
+  if (result === 'cancelled' && (failed.length > 0 || timedOut.length > 0)) return 'failure';
+  return result;
+}
+
+/**
+ * Main's own ci run as the train reads it: 'success', 'failure', 'pending' (not finished) or
+ * 'none' (no run, or one cancelled without a timeout: a newer push replaced it, or someone cancelled
+ * it). A run with a job that timed out is red: its gate read that job as red.
+ * @param {{ status: string, conclusion: string, timedOut?: string[] } | null} r
+ * @returns {'success' | 'failure' | 'pending' | 'none'}
+ */
+export function ciState(r) {
+  if (!r) return 'none';
+  if (r.status !== 'completed') return 'pending';
+  if (r.conclusion === 'success') return 'success';
+  if (RED.has(r.conclusion)) return 'failure';
+  return r.conclusion === 'cancelled' && (r.timedOut ?? []).length > 0 ? 'failure' : 'none';
+}
+
+// ---------------------------------------------------------------------------------------------
 // What a finished train posts
 
 /**
  * The report's decision, from what the train tested and what is true now.
  * @param {object} o
- * @param {string} o.result the suite's result ('success', 'failure', 'cancelled', ...)
+ * @param {string} o.result the suite's result ('success', 'failure', 'cancelled', ...), as suiteResult judges it
  * @param {string} [o.control] a lone PR's own-branch suite result, when it ran
+ * @param {string[]} [o.timedOut] the suite's jobs that ran past their time limit
  * @param {{ number: number, headSha: string, cap: number }[]} o.bundle the PRs that rode, in order
  * @param {string} o.base main when the train departed
  * @param {string} o.mainNow main now
@@ -362,8 +477,19 @@ export function assemble(run, base, heads) {
  * @param {'success' | 'failure' | 'pending' | 'none'} [o.mainCi] main's own ci run on base (read only for a lone PR that failed)
  * @param {number} o.run the train's run number
  */
-export function decide({ result, control = 'skipped', bundle, base, mainNow, now, mainCi = 'none', run }) {
+export function decide({
+  result,
+  control = 'skipped',
+  timedOut = [],
+  bundle,
+  base,
+  mainNow,
+  now,
+  mainCi = 'none',
+  run,
+}) {
   const b7 = base.slice(0, 7);
+  const late = timedOut.length > 0;
   /** @type {{ number: number, sha: string, state: 'pending' | 'success' | 'failure', description: string }[]} */
   const statuses = [];
   const waitAll = (/** @type {string} */ why, skip = new Set()) => {
@@ -390,7 +516,7 @@ export function decide({ result, control = 'skipped', bundle, base, mainNow, now
       ...base_,
       verdict: 'unfinished',
       dispatch: false,
-      why: `the suite's result is ${result}, so nothing is concluded; the next trigger plans again`,
+      why: `the suite's result is ${result}, with no job failed or past its time limit, so nothing is concluded; the next trigger plans again`,
     };
   }
   const changed = bundle.filter((p) => {
@@ -441,13 +567,16 @@ export function decide({ result, control = 'skipped', bundle, base, mainNow, now
         number: p.number,
         sha: p.headSha,
         state: 'pending',
-        description: withCap(`train ${run} was red with ${bundle.length} PRs; splits`, cap),
+        description: withCap(
+          `train ${run} was red with ${bundle.length} PRs${late ? ' (timed out)' : ''}; splits`,
+          cap,
+        ),
       });
     return {
       ...base_,
       verdict: 'split',
       dispatch: true,
-      why: `a bundle of ${bundle.length} was red, so each rides next in a bundle of at most ${cap}`,
+      why: `a bundle of ${bundle.length} was red${late ? ` (${timedOut.join(', ')} timed out)` : ''}, so each rides next in a bundle of at most ${cap}`,
     };
   }
   const [p] = /** @type {[{ number: number, headSha: string, cap: number }]} */ (bundle);
@@ -466,7 +595,8 @@ export function decide({ result, control = 'skipped', bundle, base, mainNow, now
     };
   }
   const kind = control === 'success' ? 'composition' : control === 'failure' ? 'own' : 'unknown';
-  const where = kind === 'composition' ? 'passes on its branch, fails on main' : 'fails alone on main';
+  const red = late ? 'timed out' : 'fails';
+  const where = kind === 'composition' ? `passes on its branch, ${red} on main` : `${red} alone on main`;
   statuses.push({
     number: p.number,
     sha: p.headSha,
@@ -478,7 +608,7 @@ export function decide({ result, control = 'skipped', bundle, base, mainNow, now
     blame: { number: p.number, sha: p.headSha, kind },
     verdict: 'culprit',
     dispatch: true,
-    why: `#${p.number} failed alone on main ${b7} (${kind})`,
+    why: `#${p.number} ${late ? 'timed out' : 'failed'} alone on main ${b7} (${kind})`,
   };
 }
 
@@ -531,26 +661,37 @@ export function prNumbersFromTitles(/** @type {string[]} */ titles) {
 export const COMMENT_TAG = '<!-- bundle-train -->';
 
 /**
- * The comment on a PR that failed alone.
- * @param {{ kind: 'own' | 'composition' | 'unknown', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string }} o
+ * The comment on a PR that failed alone, or timed out alone (`timedOut` names the suite jobs that
+ * ran past their time limit).
+ * @param {{ kind: 'own' | 'composition' | 'unknown', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, timedOut?: string[] }} o
  */
-export function blameComment({ kind, sha, base, run, url, failing, lacks, mainCi }) {
+export function blameComment({ kind, sha, base, run, url, failing, lacks, mainCi, timedOut = [] }) {
+  const late = timedOut.length > 0;
+  const red = late ? 'timed out' : 'fails';
   const head =
     kind === 'composition'
-      ? `**Bundle train ${run}: this PR passes on its own branch but fails on top of main.** It is a composition failure with what landed on main since your branch.`
-      : `**Bundle train ${run}: this PR fails alone on main.**`;
+      ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
+      : `**Bundle train ${run}: this PR ${red} alone on main.**`;
   const lines = [
     COMMENT_TAG,
     head,
     '',
     `- Tested: main \`${base.slice(0, 7)}\` + this PR (\`${sha.slice(0, 7)}\`), the full suite: static, unit, sim, browser and perf, exactly as main runs it. [The train's run](${url}).`,
+  ];
+  if (late)
+    lines.push(
+      `- Timed out: ${timedOut.join(', ')}. A job that runs past its time limit is cancelled, so the tests it had not reached did not finish.`,
+    );
+  lines.push(
     kind === 'own'
       ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
       : kind === 'composition'
         ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) passes the full suite.`
-        : '- Its own branch was not tested (that suite did not finish).',
+        : late
+          ? '- Its own branch was not tested (a timeout does not start that suite).'
+          : '- Its own branch was not tested (that suite did not finish).',
     `- Main's own CI on \`${base.slice(0, 7)}\`: ${mainCi === 'success' ? 'green' : mainCi === 'pending' ? 'still running' : 'no finished run'}.`,
-  ];
+  );
   if (lacks.length) lines.push(`- Main has PRs your branch does not: ${prList(lacks, 400)}.`);
   lines.push(
     '',
@@ -559,9 +700,11 @@ export function blameComment({ kind, sha, base, run, url, failing, lacks, mainCi
   );
   if (failing.length) lines.push('```text', fenceSafe(failing), '```', '');
   lines.push(
-    kind === 'composition'
-      ? 'To fix: merge origin/main into your branch, reproduce the failing tests, fix them, and push. A new push rides a later train by itself.'
-      : 'To fix: reproduce the failing tests, fix them, and push. A new push rides a later train by itself. If it looks like a flake, push again (an empty commit is fine).',
+    late
+      ? 'To fix: look for what this PR made slower, or a test that hangs (the job\'s log shows the last test it ran), fix it, and push. If that slice was already close to its limit before this PR (docs/engineering.md, "Jobs and timeouts"), push again (an empty commit is fine) and tell the keeper. A new push rides a later train by itself.'
+      : kind === 'composition'
+        ? 'To fix: merge origin/main into your branch, reproduce the failing tests, fix them, and push. A new push rides a later train by itself.'
+        : 'To fix: reproduce the failing tests, fix them, and push. A new push rides a later train by itself. If it looks like a flake, push again (an empty commit is fine).',
   );
   return lines.join('\n');
 }
@@ -677,7 +820,33 @@ async function mainSha() {
   return String(ref.object.sha);
 }
 
-/** main's own newest ci run (a push) on a commit, or null. */
+/**
+ * The jobs of one attempt of a workflow run.
+ * @returns {Promise<{ id: number, name: string, conclusion: string | null, started_at: string | null, completed_at: string | null }[]>}
+ */
+async function jobsOf(/** @type {number | string} */ runId, /** @type {number | string} */ attempt) {
+  /** @type {any} */
+  const res = await api(
+    'GET',
+    `/repos/${repo()}/actions/runs/${runId}/attempts/${attempt}/jobs?per_page=100`,
+  );
+  return res.jobs ?? [];
+}
+
+/** The names of the jobs that ran past their time limit, read from their annotations. */
+async function timedOutJobs(/** @type {Awaited<ReturnType<typeof jobsOf>>} */ jobs) {
+  /** @type {string[]} */
+  const out = [];
+  for (const job of jobs.filter(mayHaveTimedOut)) {
+    // A job's id is its check run's id.
+    /** @type {any} */
+    const notes = await api('GET', `/repos/${repo()}/check-runs/${Number(job.id)}/annotations?per_page=50`);
+    if (hitTimeout(notes ?? [])) out.push(String(job.name));
+  }
+  return out;
+}
+
+/** main's own newest ci run (a push) on a commit, or null; `timedOut` names its jobs past their time limit. */
 async function mainCiRun(/** @type {string} */ sha) {
   /** @type {any} */
   const res = await api(
@@ -688,22 +857,18 @@ async function mainCiRun(/** @type {string} */ sha) {
     String(b.created_at).localeCompare(String(a.created_at)),
   );
   const r = runs[0];
-  return r
-    ? {
-        id: Number(r.id),
-        status: String(r.status),
-        conclusion: String(r.conclusion ?? ''),
-        attempt: Number(r.run_attempt ?? 1),
-      }
-    : null;
-}
-
-/** 'success', 'failure', 'pending' (not finished) or 'none' (no run, or cancelled). */
-function ciState(/** @type {Awaited<ReturnType<typeof mainCiRun>>} */ r) {
-  if (!r) return 'none';
-  if (r.status !== 'completed') return 'pending';
-  if (r.conclusion === 'success') return 'success';
-  return RED.has(r.conclusion) ? 'failure' : 'none';
+  if (!r) return null;
+  const run = {
+    id: Number(r.id),
+    status: String(r.status),
+    conclusion: String(r.conclusion ?? ''),
+    attempt: Number(r.run_attempt ?? 1),
+    /** @type {string[]} */
+    timedOut: [],
+  };
+  if (run.status === 'completed' && run.conclusion === 'cancelled')
+    run.timedOut = await timedOutJobs(await jobsOf(run.id, run.attempt));
+  return run;
 }
 
 export async function postStatus(
@@ -754,26 +919,28 @@ export async function postInOrder(statuses, bundle, run, post) {
   }
 }
 
-/** The failing tests of this run's failed suite jobs, read from their logs. */
-async function failingFromRun() {
-  /** @type {any} */
-  const res = await api(
-    'GET',
-    `/repos/${repo()}/actions/runs/${env.GITHUB_RUN_ID}/attempts/${env.GITHUB_RUN_ATTEMPT ?? 1}/jobs?per_page=100`,
-  );
+/**
+ * The failing tests of this run's failed suite jobs, read from their logs, and a line for each job
+ * that timed out (with any test its log shows failing before then).
+ * @param {Awaited<ReturnType<typeof jobsOf>>} jobs this run's suite jobs
+ * @param {string[]} timedOut
+ */
+async function failingFromRun(jobs, timedOut) {
   /** @type {string[]} */
   const out = [];
-  for (const job of res.jobs ?? []) {
-    if (job.conclusion !== 'failure' || !/^suite \/ /.test(String(job.name))) continue;
+  for (const job of jobs) {
+    const late = timedOut.includes(String(job.name));
+    if (job.conclusion !== 'failure' && !late) continue;
+    if (late) out.push(`${job.name}: timed out (ran past its job time limit)`);
     try {
       const log = /** @type {string} */ (
         await api('GET', `/repos/${repo()}/actions/jobs/${job.id}/logs`, undefined, { raw: true })
       );
       const found = failingTests(log);
-      out.push(...(found.length ? found : [`${job.name}: failed (no test names in its log)`]));
+      out.push(...(found.length || late ? found : [`${job.name}: failed (no test names in its log)`]));
     } catch (err) {
       out.push(
-        `${job.name}: failed (its log could not be read: ${err instanceof Error ? err.message.slice(0, 80) : err})`,
+        `${job.name}: ${late ? 'timed out' : 'failed'} (its log could not be read: ${err instanceof Error ? err.message.slice(0, 80) : err})`,
       );
     }
   }
@@ -831,8 +998,11 @@ function cmdRoute() {
   output({ path: r.path });
 }
 
-async function cmdPlan() {
-  const cfg = loadConfig();
+/**
+ * train.yml's plan job (read only): who rides, the tree they make, and which PRs announce tells to
+ * arm auto-merge.
+ */
+export async function cmdPlan(cfg = loadConfig()) {
   const dry = env.TRAIN_DRY_RUN === 'true';
   const out = {
     depart: 'false',
@@ -843,6 +1013,7 @@ async function cmdPlan() {
     commit: '',
     bundle: '[]',
     conflicts: '[]',
+    nudges: '[]',
     single: '',
     wait_main: '',
   };
@@ -858,7 +1029,7 @@ async function cmdPlan() {
   const main = await mainCiRun(base);
   const mainState = ciState(main);
   console.log(
-    `plan: main is ${base}; its own ci run: ${main ? `${main.id} attempt ${main.attempt}, ${main.status} ${main.conclusion}` : 'none'} (${mainState})`,
+    `plan: main is ${base}; its own ci run: ${main ? `${main.id} attempt ${main.attempt}, ${main.status} ${main.conclusion}${main.timedOut.length ? ` (timed out: ${main.timedOut.join(', ')})` : ''}` : 'none'} (${mainState})`,
   );
   const gate = mainGate(main ? { id: main.id, state: mainState, attempt: main.attempt } : null, dry);
   if (!gate.go) {
@@ -869,6 +1040,8 @@ async function cmdPlan() {
   const prs = await openPrs();
   /** @type {{ number: number, headSha: string, cap: number }[]} */
   let bundle;
+  /** @type {{ number: number, headSha: string, description: string }[]} */
+  let nudges = [];
   if (dry && (env.TRAIN_PRS ?? '').trim()) {
     const wanted = (env.TRAIN_PRS ?? '')
       .split(/[\s,]+/)
@@ -891,7 +1064,27 @@ async function cmdPlan() {
     );
     bundle = selectBundle(eligible).bundle;
     console.log(`plan: ${eligible.length} of ${prs.length} open PRs are eligible`);
+    nudges = prs.flatMap((pr) => {
+      const n = nudge(pr, { repo: repo(), cap: cfg.cap });
+      return n ? [n] : [];
+    });
+    for (const n of nudges)
+      console.log(
+        `plan: #${n.number} ${n.headSha.slice(0, 7)}: announce ${dry ? 'would post' : 'posts'} gate=pending: ${n.description}`,
+      );
+    if (nudges.length)
+      say(
+        `Quick check green but waiting on their authors (told so in their \`gate\` status): ${prList(
+          nudges.map((n) => n.number),
+          400,
+        )}.`,
+      );
   }
+  // announce posts the nudges whether or not a train departs (a dry run posts nothing).
+  Object.assign(out, {
+    nudges: JSON.stringify(nudges),
+    post: !dry && nudges.length ? 'true' : 'false',
+  });
   if (!bundle.length) {
     say('Nobody is waiting for the train.');
     return output(out);
@@ -918,7 +1111,7 @@ async function cmdPlan() {
     );
   Object.assign(out, {
     depart: rode.length ? 'true' : 'false',
-    post: !dry && (rode.length || conflicts.length) ? 'true' : 'false',
+    post: !dry && (rode.length || conflicts.length || nudges.length) ? 'true' : 'false',
     base,
     heads: rode.map((p) => p.headSha).join(' '),
     tree: asm.tree,
@@ -965,12 +1158,20 @@ function cmdAssemble() {
 /** @returns {{ number: number, headSha: string, cap: number }[]} */
 const readBundle = (/** @type {string | undefined} */ s) => JSON.parse(s || '[]');
 
-async function cmdAnnounce() {
+/**
+ * train.yml's announce job (statuses and PR comments; main's own scripts only): "riding" statuses,
+ * conflicts, and plan's nudges, the pending "arm auto-merge" status on a PR that only waits on its
+ * author.
+ */
+export async function cmdAnnounce() {
   const bundle = readBundle(env.TRAIN_BUNDLE);
   /** @type {{ number: number, headSha: string, cap: number, with: string, earlier: number[] }[]} */
   const conflicts = JSON.parse(env.TRAIN_CONFLICTS || '[]');
+  /** @type {{ number: number, headSha: string, description: string }[]} */
+  const nudges = JSON.parse(env.TRAIN_NUDGES || '[]');
   const base = env.TRAIN_BASE ?? '';
   const run = runNumber();
+  for (const n of nudges) await postStatus(n.headSha, 'pending', n.description);
   for (const p of bundle)
     await postStatus(
       p.headSha,
@@ -999,16 +1200,18 @@ async function cmdAnnounce() {
       );
     }
   }
-  console.log(`announce: ${bundle.length} riding, ${conflicts.length} conflicting`);
+  console.log(
+    `announce: ${bundle.length} riding, ${conflicts.length} conflicting, ${nudges.length} told to arm auto-merge`,
+  );
 }
 
-async function cmdReport() {
-  const cfg = loadConfig();
+/** train.yml's report job: post the results, wait for the landing, and send the next train. */
+export async function cmdReport(cfg = loadConfig()) {
   const dry = env.TRAIN_DRY_RUN === 'true';
   const bundle = readBundle(env.TRAIN_BUNDLE);
   const base = env.TRAIN_BASE ?? '';
   const run = runNumber();
-  const result = env.TRAIN_RESULT ?? '';
+  const reported = env.TRAIN_RESULT ?? '';
   const control = env.TRAIN_CONTROL || 'skipped';
   const say = (/** @type {string} */ s) => {
     console.log(`report: ${s}`);
@@ -1020,6 +1223,29 @@ async function cmdReport() {
   const now = new Map(
     open.map((p) => [p.number, { headSha: p.headSha, draft: p.draft, autoMerge: p.autoMerge }]),
   );
+  // This run's suite jobs: which failed, and which ran past their time limit (GitHub reports those,
+  // and then the whole suite, as cancelled). If they cannot be read, the suite's own result stands.
+  /** @type {Awaited<ReturnType<typeof jobsOf>>} */
+  let suiteJobs = [];
+  /** @type {string[]} */
+  let timedOut = [];
+  if (reported === 'failure' || reported === 'cancelled') {
+    try {
+      suiteJobs = (await jobsOf(env.GITHUB_RUN_ID ?? '', env.GITHUB_RUN_ATTEMPT ?? 1)).filter((j) =>
+        /^suite \/ /.test(String(j.name)),
+      );
+      timedOut = await timedOutJobs(suiteJobs);
+    } catch (err) {
+      console.log(
+        `report: could not read the suite's jobs, so its result (${reported}) stands: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+  const failedJobs = suiteJobs.filter((j) => j.conclusion === 'failure').map((j) => String(j.name));
+  const result = suiteResult(reported, { failed: failedJobs, timedOut });
+  if (timedOut.length) console.log(`report: past their time limit: ${timedOut.join(', ')}`);
+  if (result !== reported)
+    console.log(`report: the suite reads ${reported}, but a job in it is red, so the bundle is red`);
   /** @type {'success' | 'failure' | 'pending' | 'none'} */
   let mainCi = 'none';
   if (result === 'failure' && bundle.length === 1 && mainNow === base) {
@@ -1032,9 +1258,9 @@ async function cmdReport() {
       await sleep(30_000);
     }
   }
-  const d = decide({ result, control, bundle, base, mainNow, now, mainCi, run });
+  const d = decide({ result, control, timedOut, bundle, base, mainNow, now, mainCi, run });
   say(`**${d.verdict}**: ${d.why}.`);
-  const failing = result === 'failure' ? await failingFromRun() : [];
+  const failing = result === 'failure' ? await failingFromRun(suiteJobs, timedOut) : [];
   if (failing.length) summary(['Failing:', '```text', fenceSafe(failing, 40), '```'].join('\n'));
   /** @type {string | null} */
   let blameBody = null;
@@ -1060,6 +1286,7 @@ async function cmdReport() {
       failing,
       lacks,
       mainCi,
+      timedOut,
     });
   }
   for (const s of d.statuses)
@@ -1138,10 +1365,10 @@ async function awaitLanding(
 async function main() {
   const cmd = process.argv[2];
   if (cmd === 'route') return cmdRoute();
-  if (cmd === 'plan') return cmdPlan();
+  if (cmd === 'plan') return cmdPlan(loadConfig());
   if (cmd === 'assemble') return cmdAssemble();
   if (cmd === 'announce') return cmdAnnounce();
-  if (cmd === 'report') return cmdReport();
+  if (cmd === 'report') return cmdReport(loadConfig());
   console.error('usage: node scripts/train.mjs route | plan | assemble | announce | report');
   process.exit(1);
 }

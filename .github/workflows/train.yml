@@ -11,10 +11,14 @@
 # statuses. So no job here may skip planning.
 #
 # Jobs and their rights (no job that runs PR code can write anything):
-# - plan (read only): who rides, oldest first, up to the cap; the assembled tree.
+# - plan (read only): who rides, oldest first, up to the cap; the assembled tree; and which PRs have
+#   a green quick check but wait on their author (auto-merge not armed, or a draft).
 # - wait-main (actions: write, runs no repo code): main red, so wait for rerun-main.yml's second
 #   attempt, then send the next train.
-# - announce (statuses and PR comments, runs main's own scripts only): "riding" statuses, conflicts.
+# - announce (statuses and PR comments, runs main's own scripts only): "riding" statuses, conflicts,
+#   and a pending `gate` status telling a PR that waits on its author what to do ("quick check
+#   green: arm auto-merge to ride the next train"). It runs when plan has any of these to post,
+#   whether or not a train departs.
 # - suite (contents: read): the full suite on main + the bundle, the same suite.yml ci.yml runs.
 # - control (contents: read): a lone PR that failed, on its own branch, to tell its own failure
 #   from a composition failure.
@@ -64,6 +68,7 @@ jobs:
       commit: ${{ steps.plan.outputs.commit }}
       bundle: ${{ steps.plan.outputs.bundle }}
       conflicts: ${{ steps.plan.outputs.conflicts }}
+      nudges: ${{ steps.plan.outputs.nudges }}
       single: ${{ steps.plan.outputs.single }}
       wait_main: ${{ steps.plan.outputs.wait_main }}
     steps:
@@ -132,11 +137,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - name: Riding statuses, and conflicts
+      - name: Riding statuses, conflicts, and "arm auto-merge"
         env:
           GH_TOKEN: ${{ github.token }}
           TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}
           TRAIN_CONFLICTS: ${{ needs.plan.outputs.conflicts }}
+          TRAIN_NUDGES: ${{ needs.plan.outputs.nudges }}
           TRAIN_BASE: ${{ needs.plan.outputs.base }}
         run: node scripts/train.mjs announce
 
@@ -157,6 +163,10 @@ jobs:
       identity-range: ${{ format('{0}..HEAD', needs.plan.outputs.base) }}
       notes-base: ${{ needs.plan.outputs.base }}
 
+  # A lone PR that failed, once more on its own branch, to tell its own failure from a composition
+  # failure. Only when the suite reports `failure`: a job that runs past its time limit makes the
+  # suite read `cancelled` (report finds it by the job's annotation and counts it red), so a lone PR
+  # that timed out is blamed with its own branch untested.
   control:
     needs: [plan, suite]
     if: always() && needs.plan.outputs.single != '' && needs.suite.result == 'failure'

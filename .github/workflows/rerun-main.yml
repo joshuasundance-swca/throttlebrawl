@@ -5,6 +5,15 @@
 # the run's summary and as a notice, so `gh run list --workflow rerun-main.yml` is the flake ledger:
 # a rescue there is a flaky test somebody should still fix, not a cure.
 #
+# A run with a job that ran past its timeout-minutes is red too, but GitHub concludes it
+# `cancelled`, not `failure` (ci run 37052696293, 2026-10-02: sim 3/3 timed out, and its gate
+# failed). So a cancelled run is re-run when, and only when, one of its jobs carries GitHub's
+# timeout annotation ("The job has exceeded the maximum execution time of ..."); a run cancelled for
+# any other reason (a newer push replaced it while it waited, so it has no jobs, or someone
+# cancelled it) is not. A failed-jobs re-run re-runs the timed-out job too: that run's attempt 2
+# re-ran its sim 3/3 and went green. The bundle train counts a main like that as red as well
+# (scripts/train.mjs ciState), and waits for this re-run.
+#
 # Why: on 2026-10-02, 13 main push runs went red on the first try, 3 of them pure flakes by the
 # strategy review's count. On 10-03, b86069b went red on a one-step frame-time jitter (p95 149.9
 # against 141.5) on a tree whose PR run had passed, and main stayed red for 42 minutes, until the
@@ -17,7 +26,8 @@
 # main commit by the time they finished. [default] (a must-take of the 2026-10-03 strategy review.)
 #
 # Nothing here checks out or runs repository code, and no PR text reaches a run: line. The token
-# can re-run workflows (actions: write) and read the main branch (contents: read), nothing more.
+# can re-run workflows (actions: write), read the jobs' annotations (checks: read) and read the main
+# branch (contents: read), nothing more.
 name: rerun-main
 
 on:
@@ -31,17 +41,19 @@ permissions: {}
 jobs:
   rerun:
     name: re-run main's failed jobs once
-    # Skipped jobs take no runner: green runs, PR runs and later attempts stop here.
+    # Skipped jobs take no runner: green runs, PR runs and later attempts stop here. A cancelled
+    # first attempt starts the job, which looks for a timed-out job and otherwise stops at once.
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.run_attempt == 1 &&
-      github.event.workflow_run.conclusion == 'failure'
+      (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
       actions: write
+      checks: read
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
@@ -49,6 +61,7 @@ jobs:
       RUN_ID: ${{ github.event.workflow_run.id }}
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
       RUN_URL: ${{ github.event.workflow_run.html_url }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
     steps:
       - name: Re-run once, if this is still main's head and nobody re-ran it yet
         run: |
@@ -66,6 +79,21 @@ jobs:
           if [ "$attempt" != "1" ] || [ "$status" != "completed" ]; then
             log "main ${short} (ci run ${RUN_ID}): not re-run, it is already on attempt ${attempt} (${status}). Failed jobs on attempt 1: ${failed}. ${RUN_URL}"
             exit 0
+          fi
+          # Cancelled: red only if a job ran past its time limit (a job's id is its check run's id).
+          if [ "$CONCLUSION" = cancelled ]; then
+            timed=""
+            for job in $(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/1/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion == "cancelled") | .id'); do
+              n=$(gh api "repos/$REPO/check-runs/$job/annotations?per_page=50" \
+                --jq '[.[] | select(.message | test("exceeded the maximum execution time"))] | length') || n=0
+              if [ "$n" -gt 0 ]; then timed="$timed $job"; fi
+            done
+            if [ -z "$timed" ]; then
+              log "main ${short} (ci run ${RUN_ID}): not re-run, it was cancelled and no job ran past its time limit (a newer push replaced it, or someone cancelled it). ${RUN_URL}"
+              exit 0
+            fi
+            log "main ${short} (ci run ${RUN_ID}): a job ran past its time limit (job id(s)${timed}), so GitHub concluded the run cancelled; it is red."
           fi
           head=$(gh api "repos/$REPO/branches/main" --jq '.commit.sha')
           if [ "$head" != "$RUN_SHA" ]; then
