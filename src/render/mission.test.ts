@@ -115,6 +115,54 @@ describe('the mural district: what stands there', () => {
     expect(closest).toBeGreaterThan(EDGE + 1.5 - 0.1);
   });
 
+  it('keeps off every landmark beside the alleys: no wall corner stands in a footprint (the mission chapel, M3)', () => {
+    let boxes = 0;
+    let points = 0;
+    for (const e of road.edges)
+      for (const f of road.featuresOf(e.index, 'landmark')) {
+        boxes++;
+        for (const b of plan.buildings)
+          for (const p of [...b.front, ...b.back]) {
+            const at = road.project(p.x, p.z, e.index);
+            if (at.edge !== e.index) continue;
+            points++;
+            const inside =
+              at.s > f.s0 && at.s < f.s1 && at.d > Math.min(f.d0, f.d1) && at.d < Math.max(f.d0, f.d1);
+            expect(
+              inside,
+              `a wall corner at ${e.id} s ${at.s.toFixed(0)} d ${at.d.toFixed(1)} in ${f.id}`,
+            ).toBe(false);
+          }
+      }
+    print(`[examined] ${boxes} landmark footprint(s), ${points} wall corners tested against them`);
+    expect(boxes).toBeGreaterThan(0);
+    // The control: the same walls with no landmark in the way do stand there, so the test can see them.
+    const without = planMission({
+      road,
+      dressing: Object.fromEntries(
+        Object.entries(dressing).map(([id, d]) => [
+          id,
+          { ...d, features: d.features?.filter((x) => x.kind !== 'landmark') },
+        ]),
+      ),
+      seed: 1,
+    });
+    const chapel = road.edges.map((e) => road.featuresOf(e.index, 'landmark')).flat()[0]!;
+    const chapelEdge = road.edgeIndex('sf-mi-last-coat-alley');
+    const standing = without.buildings.some((b) =>
+      [...b.front, ...b.back].some((p) => {
+        const at = road.project(p.x, p.z, chapelEdge);
+        return (
+          at.s > chapel.s0 &&
+          at.s < chapel.s1 &&
+          at.d > Math.min(chapel.d0, chapel.d1) &&
+          at.d < Math.max(chapel.d0, chapel.d1)
+        );
+      }),
+    );
+    expect(standing, 'without the landmark a wall stands where the chapel does').toBe(true);
+  });
+
   it('is the same for the same seed and changes with the seed', () => {
     const key = (p: typeof plan) =>
       p.buildings.map((b) => `${b.u0.toFixed(2)}:${b.height.toFixed(2)}:${b.motif}`).join('|');

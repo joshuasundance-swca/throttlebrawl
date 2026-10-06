@@ -79,6 +79,18 @@
         "lipHeightM": 2.8,
         "slot": "hills-truck"
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "columbus-flatiron",
+      "s0": 410.0,
+      "s1": 440.0,
+      "d0": 11.0,
+      "d1": 29.0,
+      "params": {
+        "model": "sf-landmarks#sf_flatiron",
+        "farM": 250.0
+      }
     }
   ],
   "barriers": [],

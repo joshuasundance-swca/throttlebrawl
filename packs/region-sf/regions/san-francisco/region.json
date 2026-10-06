@@ -145,6 +145,44 @@
       "status": "live",
       "note": "NEW, playtest 4, P4-19 (CX5's Dragon Gate, Chinatown's south entry): the words on the gate's plaque, gold on dark green. A text surface, not a board: the game paints it on the model's `sf_dragon_gate_plaque` panel (docs/content-packs.md, Text surfaces), and cutting it in the game leaves the plaque blank. An invented line, vetoable like any sign."
     },
+    {
+      "id": "sf-corner-l-sign",
+      "text": "FOGLINE LAUNDRY & BAR",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19 (R3, CX6's corner buildings): the shop sign on a corner building's blank board, an invented business. A text surface, not a board: the game paints it on the `sf_corner_l_sign` panel of the left-handed corner building (docs/content-packs.md, Text surfaces), and the board's other names are the signs `sf-corner-l-sign-2` and `sf-corner-l-sign-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "sf-corner-l-sign-2",
+      "text": "THE LAST GOOD DELI",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "sf-corner-l-sign-3",
+      "text": "SOURDOUGH OR NOTHING",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "sf-corner-r-sign",
+      "text": "ALMOST OPEN CAFE",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19 (R3, CX6's corner buildings): the shop sign on a corner building's blank board, an invented business. The same as `sf-corner-l-sign`, for the right-handed corner building's `sf_corner_r_sign` panel, with `sf-corner-r-sign-2` and `sf-corner-r-sign-3` as its other names. Vetoable like any sign."
+    },
+    {
+      "id": "sf-corner-r-sign-2",
+      "text": "THE UPHILL PHARMACY",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "sf-corner-r-sign-3",
+      "text": "STEEP DISCOUNT TIRES",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
     { "id": "robotaxi-cones", "text": "ROBOTAXI ZONE. Do not place cones on hoods.", "status": "live" },
     { "id": "shuttles-only", "text": "BUS STOP: SHUTTLES ONLY. Buses by appointment.", "status": "live" },
     { "id": "summer-fog", "text": "VISIBILITY 200 FT. Summer has begun.", "status": "live" },
