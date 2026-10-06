@@ -10,3 +10,5 @@ For devs: `src/input/bindings.ts` (new: the Keys rows, the saved record to a Key
 
 Keeper fix: the new U-turn row put the open keyboard legend and the first "cut this" row 2 px past the bottom of a 915x412 touch phone (CI: 414.6 against 412.5). On a short landscape screen the legend's lines are now a little tighter (line height 1.15, was 1.3), which wins back about 2 px a line; the font size is unchanged.
 Keeper fix 2: the build-stamp check (`tests/e2e/ui-style-popups.spec.ts`) pressed every settings tab, including the Keys tab this change hides on a touch-only phone, and timed out on it; it now presses the tabs the device shows.
+
+Keeper (merge of main, shift 2): the settings tabs are now Sound, Race, Controls, Keys, Display and main's Access (#546); the pause legend keeps main's `0.75rem` type (so Text size scales it) with this change's tighter 1.15 lines.

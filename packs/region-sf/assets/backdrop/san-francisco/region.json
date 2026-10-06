@@ -263,6 +263,52 @@
       "keepOutM": 350
     },
     {
+      "id": "telegraph-hill",
+      "kind": "peak",
+      "networks": [
+        "osm-sf-golden-gate",
+        "osm-sf-russian-hill",
+        "osm-sf-twin-peaks",
+        "sf-chinatown-northbeach",
+        "sf-downtown",
+        "sf-hills",
+        "sf-mission",
+        "sf-waterfront"
+      ],
+      "at": [37.8025, -122.40583],
+      "heightM": 85,
+      "radiusM": 220,
+      "shape": "dome",
+      "colour": "#6f7a5c",
+      "keepOutM": 405
+    },
+    {
+      "id": "coit-tower",
+      "kind": "skyline",
+      "networks": [
+        "osm-sf-golden-gate",
+        "osm-sf-russian-hill",
+        "osm-sf-twin-peaks",
+        "sf-chinatown-northbeach",
+        "sf-downtown",
+        "sf-hills",
+        "sf-mission",
+        "sf-waterfront"
+      ],
+      "centre": [37.8025, -122.40583],
+      "radiusM": 1,
+      "count": 0,
+      "heightM": [64, 64],
+      "widthM": [11, 11],
+      "colours": ["#e6dfcc"],
+      "baseM": 85,
+      "exaggerate": 1.25,
+      "keepOutM": 200,
+      "towers": [
+        { "at": [37.8025, -122.40583], "heightM": 64, "widthM": 11, "depthM": 11, "colour": "#e6dfcc" }
+      ]
+    },
+    {
       "id": "city-blocks",
       "kind": "blocks",
       "area": [

@@ -34,7 +34,7 @@ import {
   type ContentRegistry,
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
-import { APP_ID, runStartTap, watchLifecycle } from '../platform';
+import { APP_ID, installOffer, runStartTap, startOffline, watchLifecycle } from '../platform';
 import {
   createRenderer,
   interpolateEntity,
@@ -93,6 +93,7 @@ import {
   raceTimeOfDay,
   withEventPatch,
 } from './config';
+import { motionAmounts, osPrefersReducedMotion } from './motion';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -102,8 +103,8 @@ import {
   boardCatalog,
   createStreamCache,
   narrativeSettingOf,
-  racePalette,
   raceRadio,
+  raceSky,
   regionChoices,
   regionKeyOf,
   routeChoices,
@@ -140,6 +141,7 @@ export {
   createStreamCache,
   racePalette,
   raceRadio,
+  raceSky,
   regionChoices,
   regionKeyOf,
   routeChoices,
@@ -215,6 +217,12 @@ export interface AppPresentation {
   camera: { view: ViewMode; mode: CameraMode; shake: number };
   /** The loop draws one animation frame in every `frameDivisor`. */
   display: { frameDivisor: number };
+  /**
+   * Reduce motion as app handed it on (M5's a11y-1): `camera` is the camera's motion amount (1 full
+   * lean roll and FOV kick, 0 softened), `calm` whether the picture's flashes and the HUD's
+   * animations are calmed.
+   */
+  motion: { camera: number; calm: boolean };
   radio: { region: string | null; stations: string[]; tunedTo: string };
   /** The look render draws now (`classic`, `kodak`, ...). */
   look: string;
@@ -474,6 +482,8 @@ export function createApp(opts: AppOptions): AppHandle {
   let shownReceipts = '';
   /** The weather shown: the menu race's pick (playtest 4, P4-12), else the region's own. */
   let shownWeather: RaceWeather = 'local';
+  /** The event shown: its own weather is part of the sky (`raceSky`), so two events on one road differ. */
+  let shownEvent = '';
   /**
    * The region's landing one-liners (playtest 3: they ride the top ticker, never the renderer's
    * overlay, which gets an empty pool). The last one shown, so it is not picked twice running.
@@ -493,13 +503,15 @@ export function createApp(opts: AppOptions): AppHandle {
       shownRoad === stream.road &&
       shownTime === timeOfDay &&
       shownReceipts === receipts &&
-      shownWeather === weather
+      shownWeather === weather &&
+      shownEvent === eventId
     )
       return;
     shownRoad = stream.road;
     shownTime = timeOfDay;
     shownReceipts = receipts;
     shownWeather = weather;
+    shownEvent = eventId;
     const regionKey = regionKeyOf(registry, eventId);
     const roadPack = packOf(
       networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
@@ -510,14 +522,14 @@ export function createApp(opts: AppOptions): AppHandle {
     const vetoed = new Set(settings.vetoes.map((v) => v.contentRef));
     // `palette` is the region's colours (docs/content-packs.md, "Region packs at runtime",
     // Palette), which the renderer reads over the look's own (#205).
+    // The weather is the menu race's pick (playtest 4, P4-12), else the event's own, else the light's
+    // (`raceSky`): render only, so a dry race has neither the drizzle nor the rain on the helmet.
+    const sky = raceSky(registry, eventId, timeOfDay, weather);
     const env: LookEnv & { palette: Record<string, string> } = {
       timeOfDay,
-      palette: racePalette(registry, regionKey, timeOfDay),
+      palette: sky.palette,
+      ...(sky.weather ? { weather: sky.weather } : {}),
     };
-    // The menu race's weather (playtest 4, P4-12), render only: dry drops the region's drizzle (its
-    // palette's `rain` colour), rain asks for it anywhere (render/rain.ts).
-    if (weather === 'dry') delete env.palette['rain'];
-    if (weather === 'rain') env.weather = 'rain';
     // A world that keeps receipts (run W-T): in a career race, the boards nearest where a rival went
     // into a vehicle, or you were busted, say so.
     const boards =
@@ -545,7 +557,7 @@ export function createApp(opts: AppOptions): AppHandle {
     renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
-    audio.setRoad(stream.road);
+    audio.setRoad(stream.road, sky.wet);
     attractPose = null;
     tuneRadio();
   };
@@ -721,6 +733,7 @@ export function createApp(opts: AppOptions): AppHandle {
       'steerStyle',
       'slowMo',
       'reduceShake',
+      'reduceMotion',
       'frameRateCap',
       // The voices off switch (run W-O): the voices bus volume, above.
       'voicesOn',
@@ -740,6 +753,8 @@ export function createApp(opts: AppOptions): AppHandle {
       careerStarted: () => careerStarted(profile),
       // The menu race's options (playtest 4, P4-12 and P4-13) for the region picked on the menu (its
       // event, even before its road data is in) and the road picked there.
+      // Install as an app (roadmap M5): the menu offers it only while the browser does.
+      install: installOffer(),
       raceOptions: () => {
         const at = pickedChoice()?.eventId ?? eventId;
         return raceOptionsView(registry, at, at === eventId ? route : null, profile.bikes, settings.units);
@@ -873,11 +888,19 @@ export function createApp(opts: AppOptions): AppHandle {
     else if (owner === 'barks') ui.narrative.setParam(id, value);
     else if (owner === 'render') renderer.setParam(id, value);
   };
-  // Reduce screen shake [decided]: no shake and no hit jolt (camera-2's setShakeAmount 0). [default]
+  // Reduce screen shake [decided]: no shake and no hit jolt (camera-2's setShakeAmount 0). Reduce motion
+  // (M5's a11y-1) takes the shake with it, softens the chase cameras' roll and FOV kick, and calms the
+  // flashes (app/motion.ts). [default]
   let shakeAmount = 1;
+  let motionNow = { camera: 1, calm: false };
   function applyShake(s: typeof settings) {
-    shakeAmount = s.reduceShake ? 0 : 1;
-    camera.setShakeAmount(shakeAmount);
+    const amounts = motionAmounts(s, osPrefersReducedMotion());
+    shakeAmount = amounts.shake;
+    motionNow = { camera: amounts.motion, calm: amounts.calm };
+    camera.setShakeAmount(amounts.shake);
+    camera.setMotionAmount(amounts.motion);
+    renderer.setReduceMotion(amounts.calm);
+    ui.setReduceMotion(amounts.calm);
   }
   applyShake(settings);
   tuning.onChange(applyPresentationParam);
@@ -1040,6 +1063,9 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     onShown: () => hold('hidden', false),
   });
+  // Offline play (roadmap M5): a production build's worker caches the whole build once the page
+  // has loaded, so a loaded game plays with the network off.
+  startOffline();
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());
@@ -1645,6 +1671,7 @@ export function createApp(opts: AppOptions): AppHandle {
       return {
         camera: { view: camera.view, mode: camera.mode, shake: shakeAmount },
         display: { frameDivisor: frameDivisor() },
+        motion: motionNow,
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
         look: renderer.look,
         audio: { busTargets: mix.busTargets, voicesOn: mix.voice.on },

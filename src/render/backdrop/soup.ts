@@ -51,6 +51,14 @@ export class Soup {
   readonly motion: number[] = [];
   /** Per vertex: the rise (m) that goes with the drift (a pour falls, a seaplane comes down). */
   readonly lift: number[] = [];
+  /**
+   * Per vertex: the piece's `nearFadeM` (m; 0 for none): the vertex is never drawn nearer than the near
+   * fog's end and comes out of the haze over this many metres past it (playtest 4, G1).
+   */
+  readonly fade: number[] = [];
+
+  /** The current piece's near fade, m (set by the builder around each piece; begin() leaves it). */
+  nearFade = 0;
 
   // The current piece's state, set before its triangles.
   haze = 0;
@@ -118,6 +126,7 @@ export class Soup {
       this.info.push(this.hazeAt(p[1]), this.floor, this.bias, this.follow);
       this.motion.push(...this.drift);
       this.lift.push(this.rise);
+      this.fade.push(this.nearFade);
     }
   }
 

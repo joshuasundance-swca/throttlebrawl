@@ -18,7 +18,9 @@
 //   - on foot: running back, the get-up and the fist shake; the bike stands on its stand;
 //   - hurt (under half health) a rider sheds their prop, and under a third the bike trails smoke;
 //   - Dial-Up in his Bad Connection grudge (run W-U): a see-through, flickering ghost while his
-//     connection is dropped (ghost.ts).
+//     connection is dropped (ghost.ts);
+//   - the player back on the bike (playtest 4): their own look, gently see-through, while the sim
+//     lets them ride through traffic (ghost.ts, respawnOpacity).
 // views.ts still places each rider in the world (its box rider's root, parked bike and tumbling bike
 // are the inputs here); everything in this folder is presentation and may use wall-clock time.
 import {
@@ -46,9 +48,10 @@ import { readGlb } from '../glb';
 import type { LookStyle } from '../look';
 import { FALLBACK_BIKE_MODEL, withPlayerPaint, type RiderLook } from '../rider-looks';
 import { Skids } from '../skids';
+import { lightBarPhase } from '../calm';
 import type { RenderParams } from '../tuning';
 import { bakePart, paintedColors, RIDER_BONES, type BakedPart, type PartKind, type RiderBone } from './bake';
-import { Ghosts } from './ghost';
+import { Ghosts, respawnOpacity } from './ghost';
 import {
   bikeFrame,
   follow,
@@ -97,6 +100,9 @@ const SMOKE_LIFE_S = 1.3;
 const GHOST_TINT = '#9fe8ff';
 const GHOST_GLOW = '#1d4fd8';
 
+/** The material a rig wears: its look's own, a hit's flash, Dial-Up's ghost, or the player's fade. */
+type Wear = 'rider' | 'flash' | 'ghost' | 'fade';
+
 /** What views.ts hands over for one rider each frame. */
 export interface RigFrame {
   /** Its box rider's root, as views placed it this frame (riding, tumbling or on foot). */
@@ -109,6 +115,8 @@ export interface RigFrame {
   weapon: Mesh;
   glint: Mesh;
   flashing: boolean;
+  /** Reduce motion is on: the cops' light bar flashes slowly (render/calm.ts). Off when left out. */
+  calm?: boolean;
   /** Wall-clock seconds, and this frame's world seconds (0 in a hit-stop). */
   time: number;
   dt: number;
@@ -226,12 +234,16 @@ class Rig {
   flinchSide = 1;
   kicking = false;
   private shed: ShedProp | null = null;
-  /** The material the mesh wears now: its look's own, a hit's flash, or the ghost. */
-  private wearing: 'rider' | 'flash' | 'ghost' = 'rider';
+  /** The material the mesh wears now: its look's own, a hit's flash, the ghost, or the fade. */
+  private wearing: Wear = 'rider';
   /** Dial-Up's ghost material, made the first time he drops (one rig in a race needs it). */
   private ghostMat: MeshLambertMaterial | null = null;
   /** This frame's see-through level (1 solid; below 1 the Bad Connection ghost), set by RiderRigs. */
   ghost = 1;
+  /** The player's own see-through look while riding through traffic (playtest 4), made on first use. */
+  private fadeMat: Material | null = null;
+  /** This frame's level of it (1 solid), set by RiderRigs. */
+  fade = 1;
   private lastSmoke = 0;
   private lastTime = 0;
   private lagSeed = 0;
@@ -390,11 +402,32 @@ class Rig {
     this.flame.geometry.dispose();
     this.lightBar?.geometry.dispose();
     this.ghostMat?.dispose();
+    this.fadeMat?.dispose();
   }
 
-  /** The material this frame wears: a ghost while dropped, else a hit's flash, else its look's own. */
-  wornMaterial(): 'rider' | 'flash' | 'ghost' {
+  /**
+   * The material this frame wears: a ghost while dropped, else a hit's flash, else the fade while
+   * riding through traffic, else its look's own.
+   */
+  wornMaterial(): Wear {
     return this.wearing;
+  }
+
+  /**
+   * The fade (playtest 4): the look's own rider material, copied and made see-through, so every look
+   * keeps its shading and the ink outline (depth is still written). The copy defers to the look's
+   * shader patch, which is set on the instance and not carried by three's copy. [default]
+   */
+  private fadeMaterial(): Material {
+    if (this.fadeMat) return this.fadeMat;
+    const own = this.lookStyle.material('rider', { vertexColors: true });
+    const m = own.clone();
+    m.onBeforeCompile = (shader, renderer) => own.onBeforeCompile(shader, renderer);
+    m.customProgramCacheKey = () => own.customProgramCacheKey();
+    m.transparent = true;
+    m.name = 'rider-fade';
+    this.fadeMat = m;
+    return m;
   }
 
   /**
@@ -595,18 +628,23 @@ class Rig {
       this.glint.scale.copy(f.glint.scale);
       this.glint.rotation.z = f.glint.rotation.z;
     }
-    const wear = this.ghost < 1 ? 'ghost' : f.flashing ? 'flash' : 'rider';
+    const wear: Wear = this.ghost < 1 ? 'ghost' : f.flashing ? 'flash' : this.fade < 1 ? 'fade' : 'rider';
     if (wear !== this.wearing) {
       const mat: Material =
-        wear === 'ghost' ? this.ghostMaterial() : this.lookStyle.material(wear, { vertexColors: true });
+        wear === 'ghost'
+          ? this.ghostMaterial()
+          : wear === 'fade'
+            ? this.fadeMaterial()
+            : this.lookStyle.material(wear, { vertexColors: true });
       this.mesh.material = mat;
       this.wearing = wear;
     }
     if (wear === 'ghost' && this.ghostMat) this.ghostMat.opacity = this.ghost;
+    if (wear === 'fade' && this.fadeMat) this.fadeMat.opacity = this.fade;
     const boostS = e.boostS ?? 0;
     this.flame.visible = riding && boostS > 0;
     if (this.flame.visible) this.flame.scale.set(1, 1, 0.7 + 0.5 * Math.abs(Math.sin(t * 31)));
-    this.flashLights(t, riding);
+    this.flashLights(t, riding, f.calm === true);
     va.setFromMatrixPosition(this.riderGroup.matrix);
     const far = va.distanceTo(cam) > RIDER_LOD_M;
     this.mesh.geometry.setDrawRange(0, far ? this.farCount : this.fullCount);
@@ -1166,9 +1204,9 @@ class Rig {
     if (this.bellSwing) prop.quaternion.multiply(rot(X, 0.9 * this.bellSwing, qa));
   }
 
-  private flashLights(t: number, riding: boolean): void {
+  private flashLights(t: number, riding: boolean, calm: boolean): void {
     const L = this.lights;
-    const phase = riding ? Math.floor(t * 8) % 2 : -1;
+    const phase = riding ? lightBarPhase(t, calm) : -1;
     if (this.lightBar) {
       this.lightBar.visible = riding;
       if (riding)
@@ -1342,6 +1380,7 @@ export class RiderRigs {
     const rig = this.rigFor(e);
     if (!rig) return false;
     rig.ghost = this.ghosts.opacity(e, f.time);
+    rig.fade = respawnOpacity(e, f.time);
     rig.update(e, prev, curr, f, this.cam, this.root);
     const rubber = rig.tyreMark(e, this.markAt);
     this.skids.lay(e.id, rubber > 0 ? this.markAt : null, rubber, f.dt);
@@ -1490,7 +1529,7 @@ export class RiderRigs {
   }
 
   /** The material a rig wears now, and its see-through level (tests: the Bad Connection ghost). */
-  wearOf(entityId: number): { wearing: 'rider' | 'flash' | 'ghost'; opacity: number } | null {
+  wearOf(entityId: number): { wearing: Wear; opacity: number } | null {
     const rig = this.rigs.get(entityId);
     if (!rig) return null;
     const m = rig.mesh.material as Material;

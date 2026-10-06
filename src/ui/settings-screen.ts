@@ -42,17 +42,17 @@ export const SETTINGS_CSS = `
 #settings .settings-pane { display: flex; flex-direction: column; gap: 6px; align-items: stretch;
   width: min(640px, 94vw); }
 #settings .settings-grid { display: grid; grid-template-columns: auto minmax(140px, 260px) 3.5em; gap: 4px 10px;
-  align-items: center; font: 700 16px ui-monospace, monospace; text-align: left; align-self: center; }
+  align-items: center; font: 700 1rem ui-monospace, monospace; text-align: left; align-self: center; }
 #settings input[type=range] { width: 100%; height: 40px; accent-color: #f5c542; }
 #settings .toggles { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 #settings .toggles label, #settings .setting-row { display: flex; gap: 10px; align-items: center; min-height: 44px;
-  padding: 0 12px; background: #000a; font: 700 16px ui-monospace, monospace; box-sizing: border-box; }
+  padding: 0 12px; background: #000a; font: 700 1rem ui-monospace, monospace; box-sizing: border-box; }
 #settings .toggles label { cursor: pointer; }
-#settings .setting-row { justify-content: space-between; }
+#settings .setting-row { justify-content: space-between; flex-wrap: wrap; row-gap: 4px; }
 #settings .setting-label { text-align: left; }
-#settings .next-race { display: block; font: italic 500 12px ui-monospace, monospace; color: #f5c542; }
-#settings .choices { display: flex; gap: 4px; flex-wrap: nowrap; }
-#settings .choices button { min-width: 64px; min-height: 40px; padding: 4px 10px; font: 800 15px ui-monospace, monospace;
+#settings .next-race { display: block; font: italic 500 0.75rem ui-monospace, monospace; color: #f5c542; }
+#settings .choices { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+#settings .choices button { min-width: 64px; min-height: 40px; padding: 4px 10px; font: 800 0.9375rem ui-monospace, monospace;
   color: #f2ead8; background: #0008; border: 2px solid #f2ead8; cursor: pointer; }
 #settings .choices button[aria-pressed=true] { color: #111; background: #f5c542; border-color: #111; }
 #settings input[type=checkbox] { width: 24px; height: 24px; accent-color: #f5c542; cursor: pointer; }

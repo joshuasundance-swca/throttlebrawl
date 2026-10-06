@@ -67,6 +67,7 @@ import {
   RIDER_SHADOW,
   type ShadowSize,
 } from './shadows';
+import { lightBarPhase } from './calm';
 import { defaultRenderParams, type RenderParams } from './tuning';
 import { WEAPON_PARTS, weaponShapeOf, type WeaponShape } from './weapons';
 
@@ -411,6 +412,30 @@ export interface EntityViewCounts {
   pooled: number;
 }
 
+/**
+ * Fits a unit vehicle figure's x and z into [-0.5, 0.5] (its type's sim box once scaled), each axis
+ * only when it overhangs: one longer than 1 is shrunk to 1, then one still past an end is slid back
+ * in. Height is left alone, and a figure that fits is drawn exactly as before; fitting again
+ * changes nothing.
+ */
+export function fitUnitFootprint(g: BufferGeometry): void {
+  g.computeBoundingBox();
+  const b = g.boundingBox;
+  if (!b) return;
+  const fit = (lo: number, hi: number): { s: number; shift: number } => {
+    if (lo >= -0.5 && hi <= 0.5) return { s: 1, shift: 0 };
+    const s = Math.min(1, 1 / Math.max(1e-6, hi - lo));
+    const shift = lo * s < -0.5 ? -0.5 - lo * s : hi * s > 0.5 ? 0.5 - hi * s : 0;
+    return { s, shift };
+  };
+  const x = fit(b.min.x, b.max.x);
+  const z = fit(b.min.z, b.max.z);
+  if (x.s === 1 && z.s === 1 && x.shift === 0 && z.shift === 0) return;
+  g.scale(x.s, 1, z.s);
+  g.translate(x.shift, 0, z.shift);
+  g.computeBoundingBox();
+}
+
 export class EntityViews {
   readonly root = new Group();
   /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
@@ -557,10 +582,11 @@ export class EntityViews {
       const side = typeof ev.data['side'] === 'number' ? Math.sign(ev.data['side']) || 1 : null;
       if ((ev.type === 'hit' || ev.type === 'kick') && ev.target !== undefined) {
         this.wobbles.set(ev.target, { until: this.now + WOBBLE_S, side });
-        this.flashes.set(ev.target, this.now + P.hitFlashS);
+        // Reduce motion: no white wash (the wobble, the sparks, the sound and the haptics still say it).
+        if (!P.reduceMotion) this.flashes.set(ev.target, this.now + P.hitFlashS);
       }
       if (ev.type === 'takedown' && ev.target !== undefined) {
-        this.flashes.set(ev.target, this.now + 2 * P.hitFlashS);
+        if (!P.reduceMotion) this.flashes.set(ev.target, this.now + 2 * P.hitFlashS);
       }
       if (ev.type === 'getUp') this.getUps.set(ev.actor, this.now + P.getUpS);
       if (ev.type === 'fistShake') {
@@ -911,11 +937,13 @@ export class EntityViews {
     kind: 'vehicle' | 'ped',
     capacity: number,
   ): InstancedMesh {
-    const mesh = new InstancedMesh(
-      Array.isArray(parts) ? this.geometry(`inst:${name}`, () => parts) : parts,
-      this.material(kind),
-      capacity,
-    );
+    const boxes = Array.isArray(parts) ? this.geometry(`inst:${name}`, () => parts) : null;
+    // A vehicle is scaled to its type's sim box (widthM by lengthM), so its unit figure must not
+    // reach past the unit footprint: a kayak rack or a tow hitch drawn past it was paint the sim
+    // calls empty road, ridden into (the helmet clipping, 2026-10-05). A figure is pulled in only
+    // on an axis it overhangs, about its origin, so one that fits is drawn exactly as before.
+    if (boxes && kind === 'vehicle') fitUnitFootprint(boxes);
+    const mesh = new InstancedMesh(boxes ?? (parts as BufferGeometry), this.material(kind), capacity);
     mesh.name = `views-${name}`;
     mesh.count = 0;
     mesh.visible = false;
@@ -1269,10 +1297,10 @@ export class EntityViews {
     const boostS = (e as EntitySnapshot & { boostS?: number }).boostS ?? 0;
     view.flame.visible = boostS > 0 && !detached;
     if (view.flame.visible) view.flame.scale.set(1, 1, 0.7 + 0.5 * Math.abs(Math.sin(time * 31)));
-    // The law: a light bar flashing red and blue at 4 Hz.
+    // The law: a light bar flashing red and blue at 4 Hz (1 Hz under reduce motion, calm.ts).
     view.lightBar.visible = scheme.law && !detached;
     if (view.lightBar.visible) {
-      const red = Math.floor(time * 8) % 2 === 0;
+      const red = lightBarPhase(time, this.params.reduceMotion === true) === 0;
       view.lightBar.material = this.look.material('lightbar', { color: red ? LIGHT_RED : LIGHT_BLUE });
     }
     // Real riders: once this rider's models are in, its rig draws it where the boxes were placed
@@ -1285,6 +1313,7 @@ export class EntityViews {
         weapon: view.weapon,
         glint: view.glint,
         flashing,
+        calm: this.params.reduceMotion === true,
         time,
         dt: this.dt,
       }) ?? false;

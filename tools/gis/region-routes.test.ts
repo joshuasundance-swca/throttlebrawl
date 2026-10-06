@@ -257,16 +257,22 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
     // A network whose land is all open grass hill (the Golden Gate's `headlands`, playtest 3, T10.6)
     // scatters nothing: its check is that nothing stands there, while any other network must have
     // spots to check (so a scatter that placed none would not pass for a clean one).
-    const OPEN = new Set(['headlands', 'bridge', 'water-open', 'water-shallow', 'fog']);
+    // `gg-deck` (playtest 4) is the deck's traffic-area tag beside `bridge`; it says nothing about land.
+    const OPEN = new Set(['headlands', 'bridge', 'water-open', 'water-shallow', 'fog', 'gg-deck']);
     // Downtown Portland's blocks (playtest 3, T12.6) scatter nothing either: `pdx-blocks` is a land theme of
     // its own, and render/downtown.ts stands the street fronts there (src/render/portland-blocks.test.ts
     // checks them on land). The `town`, `pdx-deck` and `rail-line` tags beside it say nothing more about it.
     const BLOCKS = new Set([...OPEN, 'pdx-blocks', 'town', 'pdx-deck', 'rail-line']);
+    // Key West's Old Town (playtest 4, P4-19) is a street too: `key-oldtown` is a land theme of its own that
+    // outranks the `town` and `palms` tags beside it, so the scatter puts no palm, shack or pole there
+    // (the roadside kit's fronts and trees do, src/render/duval-street.test.ts).
+    const OLDTOWN = new Set([...OPEN, 'key-oldtown', 'town', 'palms', 'conch-houses']);
     const tagged = baked(id).roads.flatMap((r) => (r.tags ?? []).map((t) => t.tag));
     const open =
       tagged.every((t) => OPEN.has(t)) ||
-      (tagged.includes('pdx-blocks') && tagged.every((t) => BLOCKS.has(t)));
-    if (open) expect(spots, 'open grass hills and city blocks scatter nothing').toBe(0);
+      (tagged.includes('pdx-blocks') && tagged.every((t) => BLOCKS.has(t))) ||
+      (tagged.includes('key-oldtown') && tagged.every((t) => OLDTOWN.has(t)));
+    if (open) expect(spots, 'open grass hills, city blocks and the Old Town scatter nothing').toBe(0);
     else expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
     // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3), on the networks

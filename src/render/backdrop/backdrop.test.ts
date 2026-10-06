@@ -145,6 +145,8 @@ const SIGNATURES: Record<string, PieceKind[]> = {
   'sf-hills': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
   'osm-sf-russian-hill': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
   'osm-sf-twin-peaks': ['bridge', 'skyline', 'vessels', 'clouds', 'floor', 'blocks'],
+  // Playtest 4, G1: the far Golden Gate (faded inside the fog, where the near kit draws it) and Coit Tower.
+  'osm-sf-golden-gate': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
 };
 
 describe.each(Object.keys(SIGNATURES))('the backdrop of %s', (id) => {
@@ -185,6 +187,7 @@ const MOVERS: Record<string, string[]> = {
   'sf-hills': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
   'osm-sf-russian-hill': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
   'osm-sf-twin-peaks': ['golden-gate-bridge', 'headlands-pour'],
+  'osm-sf-golden-gate': ['golden-gate-far', 'bay-bridge-west'],
 };
 
 /** The vertex indices of a soup whose motion is a one-way glide (a negative speed). */

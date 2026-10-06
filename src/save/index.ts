@@ -48,6 +48,14 @@ export type FrameRateCap = 'full' | 'half' | 'third';
 export type LookSetting = 'classic' | 'kodak' | 'wasteland' | 'brush';
 export const LOOK_SETTINGS: readonly LookSetting[] = ['classic', 'kodak', 'wasteland', 'brush'];
 /**
+ * The Text size (playtest 4 run B, B13; M5's a11y-1): Normal, Large or Largest, for the menus, the
+ * ticker, the objective and the HUD's text. ui/text-size.ts turns it into a factor. Presentation
+ * only: it never feeds SimConfig. Additive: the version stays 1, and a name this build doesn't know
+ * sanitises to Normal.
+ */
+export type TextSize = 'normal' | 'large' | 'largest';
+export const TEXT_SIZES: readonly TextSize[] = ['normal', 'large', 'largest'];
+/**
  * The view (camera-3's base framings, playtest 1c integration): the low chase cam, the far chase
  * cam, or the helmet cam; camera/'s `camera.mode` 0, 1 and 2. Presentation only.
  */
@@ -157,6 +165,14 @@ export interface Settings {
   /** The takedown slow motion. */
   slowMo: boolean;
   reduceShake: boolean;
+  /**
+   * Reduce motion (M5's a11y-1): no screen shake, a softer lean roll and speed FOV kick, and no
+   * white hit flashes, strobing light bars or screen tint. Wider than `reduceShake`, which keeps
+   * only the shake. Presentation only. Additive: the version stays 1.
+   */
+  reduceMotion: boolean;
+  /** The Text size for the menus, the ticker and the HUD; applies at once. Presentation only. */
+  textSize: TextSize;
   frameRateCap: FrameRateCap;
   /** The look; applies at once. */
   look: LookSetting;
@@ -237,6 +253,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   haptics: true,
   slowMo: true,
   reduceShake: false,
+  reduceMotion: false,
+  textSize: 'normal',
   frameRateCap: 'full',
   look: 'kodak',
   lookFallbackDismissed: false,
@@ -449,6 +467,8 @@ export function sanitiseSettings(data: unknown): Settings {
     haptics: bool(d['haptics'], def.haptics),
     slowMo: bool(d['slowMo'], def.slowMo),
     reduceShake: bool(d['reduceShake'], def.reduceShake),
+    reduceMotion: bool(d['reduceMotion'], def.reduceMotion),
+    textSize: oneOf(d['textSize'], TEXT_SIZES, def.textSize),
     frameRateCap: oneOf(d['frameRateCap'], ['full', 'half', 'third'], def.frameRateCap),
     look: oneOf(d['look'], LOOK_SETTINGS, def.look),
     lookFallbackDismissed: bool(d['lookFallbackDismissed'], def.lookFallbackDismissed),
