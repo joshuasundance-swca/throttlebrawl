@@ -10,10 +10,11 @@
 //   0.8 s between kicks), so a player's kick is never swapped for a punch. Rivals keep the data's
 //   wait, so they kick as often as before (their AI paces by the whole cycle). [default]
 // - The press buffer (playtest 4, P4-6: "reduce delay between tap and attack"; the feel audit's F1).
-//   A player's press made in the last PRESS_BUFFER_TICKS of a recovery is kept, and the attack
-//   starts on the first legal tick: the tick the recovery ends, or the stagger after it. Earlier
-//   presses (wind-up, active, the start of the recovery) are ignored, as in M1. A player's press made
-//   while staggered is kept the same way (M2 combat-3). A kept press keeps its flags: a kick asked
+//   A player's press made anywhere in a recovery is kept (run A's live check, punch item 3: the
+//   last 10 ticks dropped a mashing thumb's presses), and the attack starts on the first legal tick:
+//   the tick the recovery ends, or the stagger after it. Presses in the wind-up and the active moment
+//   are the same swing and are ignored, as in M1. A player's press made while staggered is kept the
+//   same way (M2 combat-3). The latest press wins; it keeps its flags while it waits: a kick asked
 //   for at the press or by a swipe recognised later stays a kick, and the latest side wins. Rivals'
 //   presses are never kept: the AI presses again when it wants to. [default]
 // - Phase timers count scaled time (world.timeScale per tick); only the hit-stop countdown runs
@@ -33,7 +34,9 @@
 //   in the BUMP_AFTER_TICKS (0.5 s) before its press (run B's B15: a press just after a rear bump
 //   found the rider 2 m ahead, past every reach), the attack lands on that rider in its active
 //   moment while he is within BUMP_REACH_M along and across. Without a bump the reach boxes are
-//   unchanged, and rivals' attacks keep the reach box. [default]
+//   unchanged, and rivals' attacks keep the reach box. A clear side swipe (one side flag) lets go of
+//   a touched rider on the other side, so it never lands there (run A's check, punch item 5: a
+//   punch's bump on the right carried into the left kick it became). [default]
 // - The kick conversion (M2 combat-3, playtest 1 item 3): a `kick` flag converts any attack but a
 //   kick into a kick while it is still in its wind-up (M1's rule), or while it is no older than
 //   combat.kickConvertMs (default 250 ms, 15 ticks) in any phase. A natural swipe-down takes longer
@@ -57,7 +60,8 @@
 //   hit per attack; no hit by the end of the active moment is an `attackMiss`.
 // - A landed hit: damage to health, a stagger (the target cannot start an attack, its own wind-up
 //   is interrupted, and the riders phase's wobble halves its steering and shakes the bike for the
-//   stagger's length), a sideways shove away from the attacker, and at zero health a `crash` event
+//   stagger's length; a non-player's hit on a player scales both by combat.onPlayerScale, so his
+//   attacks come back the tick his wobble ends: run A's check, punch item 4), a sideways shove away from the attacker, and at zero health a `crash` event
 //   (tumble-1 turns it into the tumble). A hit involving a player sets timeScale to 0 for
 //   hitStopMs × combat.hitStopScale (rival-against-rival hits get none).
 // - The shove (M2 combat-3, playtest 1 item 4) is a short curve: the lateral speed peaks on the
@@ -575,8 +579,6 @@ export const ACQUIRE_S_M = 4;
 export const ACQUIRE_D_M = 3;
 /** The straight kick's lateral half-width: it boots the rider directly ahead. [default] */
 export const STRAIGHT_KICK_D_M = 1;
-/** A player's press this close to the end of a recovery (10 ticks, 167 ms) is kept. [default] */
-export const PRESS_BUFFER_TICKS = 10;
 /**
  * How far (along and across, m) a rider a player's attack touched stays in its reach. Contact holds
  * two bikes 2 m apart nose to tail and glances them about 1 m further apart across within a punch's
@@ -944,26 +946,32 @@ function keepFlags(kept: number, now: number): number {
   return ((kept | now) & InputFlag.kick) | sides;
 }
 
-/** Keeps a player's press (the stagger queue, the press buffer), with this tick's flags. */
+/**
+ * Keeps a player's press (the stagger queue, the press buffer). A new press replaces the one kept
+ * before it (the latest press wins); its kick and side flags then keep updating while it waits.
+ */
 function keep(st: CombatState, id: EntityId, flags: number): void {
-  st.pendingFlags[id] = keepFlags(st.pending[id] ? (st.pendingFlags[id] ?? 0) : 0, flags);
+  st.pendingFlags[id] = keepFlags(0, flags);
   st.pending[id] = true;
 }
 
-/** Whether a rider is in the last PRESS_BUFFER_TICKS of an attack's recovery (scaled ticks). */
-function inBuffer(config: SimConfig, st: CombatState, id: EntityId): boolean {
-  if (st.phase[id] !== 'recovery') return false;
-  const w = weaponById(config, st.weapon[id] ?? '');
-  return !!w && w.recoveryTicks - (st.elapsed[id] ?? 0) <= PRESS_BUFFER_TICKS + EPS;
-}
-
-/** Aims an attack from this tick's flags: the straight kick, a forced side, or the auto side. */
+/**
+ * Aims an attack from this tick's flags: the straight kick, a forced side, or the auto side. A forced
+ * side (a clear side swipe) also lets go of a rider the attack touched on the other side, so the bump
+ * rule never lands it there (run A's check, punch item 5: a punch's bump carried into the kick).
+ */
 function setAim(world: World, config: SimConfig, st: CombatState, a: Mover, flags: number): void {
   const straight = straightFlag(flags);
-  const aimed = aim(world, config, a, straight ? 0 : sideFlag(flags), straight);
+  const forced = straight ? 0 : sideFlag(flags);
+  const aimed = aim(world, config, a, forced, straight);
   st.straight[a.id] = straight;
   st.targetId[a.id] = aimed.target;
   st.side[a.id] = aimed.side;
+  const bumped = world.movers[st.touched[a.id] ?? -1];
+  if (forced !== 0 && bumped) {
+    const rel = relative(config.road, a, bumped, BUMP_REACH_M + 2);
+    if (!rel || forced * rel.dd < 0) st.touched[a.id] = -1;
+  }
 }
 
 function durationOf(w: SimWeaponDef, phase: ActivePhase): number {
@@ -1198,10 +1206,12 @@ function land(
   st.knockPeak[vid] = yank ? -away * yankPeak : away * peak;
   st.knockT[vid] = 0;
   st.knockTicks[vid] = knockTicks;
-  // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike).
+  // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike). A
+  // non-player's hit on a player locks his attacks for the wobble he feels (onPlayer), not the data
+  // stagger behind it (run A's check, punch item 4), so the attack and the wobble end on one tick.
   const stagger = Math.round((w.staggerTicks * (world.params['combat.staggerScale'] ?? 1)) / toughness);
-  st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, stagger);
   const wobble = Math.round(stagger * onPlayer);
+  st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, wobble);
   if (wobble > 0) riders.wobble[vid] = Math.max(riders.wobble[vid] ?? 0, wobble);
   st.lastAttackerId[vid] = id;
   st.hitTick[vid] = world.tick;
@@ -2130,9 +2140,9 @@ export const combatSystem: SimSystem = {
         wantKick &&
         st.weapon[id] !== KICK_ID &&
         convertToKick(world, config, st, a, flags);
-      // The press buffer: a player's press in the last PRESS_BUFFER_TICKS of a recovery (one the kick
-      // conversion did not take) is kept; a kept press keeps reading the kick and side flags.
-      if (pressed[id] && player && !converted && inBuffer(config, st, id)) keep(st, id, flags);
+      // The press buffer: a player's press anywhere in a recovery (one the kick conversion did not
+      // take) is kept; a kept press keeps reading the kick and side flags.
+      if (pressed[id] && player && !converted && st.phase[id] === 'recovery') keep(st, id, flags);
       else if (st.pending[id]) st.pendingFlags[id] = keepFlags(st.pendingFlags[id] ?? 0, flags);
       hitTest(world, config, st, a);
     }

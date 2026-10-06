@@ -241,10 +241,14 @@ describe('combat-3: a player’s health recovers out of combat', () => {
 });
 
 describe('combat-3: a press while staggered', () => {
+  /** A rival's kick locks the player for the wobble he feels: 21 x 0.4, rounded. */
+  const PLAYER_STAGGER = Math.round(KICK.staggerTicks * 0.4);
+
   it('a press while staggered is kept, and the attack (a kick, if the swipe is held) starts as the stagger ends', () => {
-    // The rival's kick lands on its wind-up's last tick and staggers the player KICK.staggerTicks
-    // world ticks after the 4-tick hit-stop. The player presses on tick 15 and holds the kick flag.
-    const ends = KICK.windupTicks + 4 + KICK.staggerTicks;
+    // The rival's kick lands on its wind-up's last tick and staggers the player for the wobble he feels
+    // (KICK.staggerTicks x combat.onPlayerScale 0.4: run A's check) world ticks after the 4-tick
+    // hit-stop. The player presses on tick 15, inside it, and holds the kick flag.
+    const ends = KICK.windupTicks + 4 + PLAYER_STAGGER;
     const h = makeHarness(
       pair({ role: 'rival' }, { role: 'player' }),
       scriptOf({
@@ -258,7 +262,7 @@ describe('combat-3: a press while staggered', () => {
   });
 
   it('playtest 4: a kick swiped while staggered stays a kick even if the flag is let go before the stagger ends', () => {
-    const ends = KICK.windupTicks + 4 + KICK.staggerTicks;
+    const ends = KICK.windupTicks + 4 + PLAYER_STAGGER;
     const h = makeHarness(
       pair({ role: 'rival' }, { role: 'player' }),
       scriptOf({
