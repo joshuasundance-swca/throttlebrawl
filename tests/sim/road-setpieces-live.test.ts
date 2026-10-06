@@ -270,10 +270,12 @@ function ride(config: SimConfig, edgeId: string, from: number, to: number, line:
   const events: { ev: SimEvent; edge: string; s: number }[] = [];
   let reached = false;
   let past = 0;
+  // One snapshot a tick (the test-diet run, 2026-10-06): the one taken after a step places that
+  // tick's events and is the next tick's view; the sim does not change between the two.
+  let me = sim.snapshot().entities[0] as EntitySnapshot;
   // Up to 7 minutes: the real roads are 5 to 7.6 km, and a pad near the end of the Gorge sits
   // more than 6 km in (4 minutes at this ride's careful pace through the loops).
   for (let t = 0; t < 60 * 420; t++) {
-    const me = sim.snapshot().entities[0] as EntitySnapshot;
     const { edge, s, d, dir, yaw } = me.road;
     if (edge === target && s >= to) reached = true;
     if (reached) past += me.speed / 60;
@@ -294,9 +296,9 @@ function ride(config: SimConfig, edgeId: string, from: number, to: number, line:
     const want = edge === target && s >= from && s <= to ? line : 2;
     a.steer = Math.max(-1, Math.min(1, 0.35 * (want - d) * dir - 2.5 * yaw + (kappa * v * v) / 22));
     sim.step([quantizeInput({ ...a, flags: 0 })]);
-    const now = sim.snapshot().entities[0] as EntitySnapshot;
+    me = sim.snapshot().entities[0] as EntitySnapshot;
     for (const ev of sim.events())
-      if (ev.actor === 0) events.push({ ev, edge: name(now.road.edge), s: now.road.s });
+      if (ev.actor === 0) events.push({ ev, edge: name(me.road.edge), s: me.road.s });
   }
   return { events, reached };
 }
