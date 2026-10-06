@@ -124,21 +124,33 @@ type Needs = Record<string, { result?: string; outputs?: Record<string, string> 
 const suite = (result: string): Needs => Object.fromEntries(SUITE.map((job) => [job, { result }]));
 const suitePath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'false' } },
+  route: { result: 'skipped' },
   ...suite('success'),
   'prod-build': { result: 'skipped' },
   ...over,
 });
 const skipPath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'true' } },
+  route: { result: 'skipped' },
   ...suite('skipped'),
   'prod-build': { result: 'success' },
   ...over,
 });
 
 describe('gateVerdict', () => {
-  it('is green on a PR: plan skipped, the suite green', () => {
-    const v = gateVerdict(suitePath({ plan: { result: 'skipped', outputs: {} } }));
+  it('is green on a PR: plan skipped, route green, the suite green', () => {
+    const v = gateVerdict(
+      suitePath({ plan: { result: 'skipped', outputs: {} }, route: { result: 'success' } }),
+    );
     expect(v).toMatchObject({ ok: true, path: 'suite' });
+  });
+
+  it('fails a PR whose route failed or was cancelled, even with the suite green', () => {
+    for (const result of ['failure', 'cancelled']) {
+      const v = gateVerdict(suitePath({ plan: { result: 'skipped', outputs: {} }, route: { result } }));
+      expect(v.ok, result).toBe(false);
+      expect(v.problems.join(' ')).toContain('route');
+    }
   });
 
   it('is green on a main push that ran the suite', () => {
@@ -180,13 +192,13 @@ describe('gateVerdict', () => {
   });
 
   it('fails the skip path when a suite job ran anyway, red or green', () => {
-    expect(gateVerdict(skipPath({ sim: { result: 'failure' } })).ok).toBe(false);
-    expect(gateVerdict(skipPath({ sim: { result: 'success' } })).ok).toBe(false);
+    expect(gateVerdict(skipPath({ suite: { result: 'failure' } })).ok).toBe(false);
+    expect(gateVerdict(skipPath({ suite: { result: 'success' } })).ok).toBe(false);
   });
 
   it('fails a missing job', () => {
     const needs = suitePath();
-    delete needs.browser;
+    delete needs.suite;
     expect(gateVerdict(needs).ok).toBe(false);
     expect(gateVerdict({}).ok).toBe(false);
   });
@@ -195,19 +207,23 @@ describe('gateVerdict', () => {
 describe('ci.yml wiring', () => {
   const ci = readFileSync(path.join(import.meta.dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
 
-  it("gate needs every job its verdict reads, so none can drop out of the gate's view", () => {
-    const m = /\n {2}gate:\n(?: {4}.*\n)*? {4}needs: \[([^\]]*)\]/.exec(ci);
-    expect(m, 'gate needs: line').not.toBeNull();
+  it("the aggregate (gate) needs every job its verdict reads, so none can drop out of the gate's view", () => {
+    const m = /\n {2}aggregate:\n(?: {4}.*\n)*? {4}needs: \[([^\]]*)\]/.exec(ci);
+    expect(m, 'aggregate needs: line').not.toBeNull();
     const needs = (m?.[1] ?? '').split(',').map((s) => s.trim());
-    expect(needs.sort()).toEqual(['plan', ...SUITE, PROD_BUILD].sort());
+    expect(needs.sort()).toEqual(['plan', 'route', ...SUITE, PROD_BUILD].sort());
   });
 
-  it('every suite job and prod-build waits on plan, and deploy-prod still needs gate', () => {
-    for (const job of [...SUITE, PROD_BUILD]) {
-      const block = new RegExp(`\\n {2}${job}:\\n(?: {4}.*\\n)*? {4}needs: \\[plan\\]`);
+  it('the suite waits on plan and route, prod-build on plan, and deploy-prod still needs the aggregate', () => {
+    const wants: [string, string][] = [
+      ...SUITE.map((job): [string, string] => [job, 'plan, route']),
+      [PROD_BUILD, 'plan'],
+      ['deploy-prod', 'aggregate'],
+    ];
+    for (const [job, needs] of wants) {
+      const block = new RegExp(`\\n {2}${job}:\\n(?: {4}.*\\n)*? {4}needs: \\[${needs}\\]`);
       expect(block.test(ci), job).toBe(true);
     }
-    expect(/\n {2}deploy-prod:\n(?: {4}.*\n)*? {4}needs: \[gate\]/.test(ci)).toBe(true);
   });
 
   // A job skipped by its own `if:` is always upstream of deploy-prod and release now (prod-build on
@@ -227,7 +243,7 @@ describe('ci.yml wiring', () => {
   it('every job that needs another opens its if: with a status function, so a skipped ancestor never skips it', () => {
     const list = jobs();
     expect(list.map((j) => j.name)).toEqual(
-      expect.arrayContaining(['plan', ...SUITE, PROD_BUILD, 'gate', 'deploy-prod', 'release']),
+      expect.arrayContaining(['plan', 'route', ...SUITE, PROD_BUILD, 'aggregate', 'deploy-prod', 'release']),
     );
     for (const job of list.filter((j) => j.needs)) {
       expect(job.cond, `${job.name} has an if:`).toBeDefined();
@@ -238,50 +254,76 @@ describe('ci.yml wiring', () => {
   // Fail fast on a PR (docs/engineering.md, "Fail fast on a PR"): the first red suite job cancels
   // the rest of its PR run, so a red PR stops holding runner slots other PRs need. A push to main
   // keeps running every job (a red slice never hides another's result there, and rerun-main
-  // re-runs only the failed ones). The gate still reads a cancelled job as red.
-  const jobBlock = (job: string) => new RegExp(`\\n {2}${job}:\\n((?:(?: {4}.*)?\\n)*)`).exec(ci)?.[1] ?? '';
+  // re-runs only the failed ones). The gate still reads a cancelled job as red. The suite's jobs
+  // live in suite.yml, shared with the bundle train, which must never cancel its own run (its
+  // control and report jobs come after the suite): so fail fast is an input only ci.yml sets.
+  const wf = (name: string) =>
+    readFileSync(path.join(import.meta.dirname, '..', '.github', 'workflows', name), 'utf8');
+  const suite = wf('suite.yml');
+  const train = wf('train.yml');
+  const blockIn = (text: string, job: string) =>
+    new RegExp(`\\n {2}${job}:\\n((?:(?: {4}.*)?\\n)*)`).exec(text)?.[1] ?? '';
+  const jobBlock = (job: string) => blockIn(ci, job);
+  const SUITE_JOBS = ['static', 'unit', 'sim', 'browser'];
 
   it('on a PR, a red suite job cancels the rest of its run, as its last step', () => {
-    for (const job of SUITE) {
-      const block = jobBlock(job);
+    for (const job of SUITE_JOBS) {
+      const block = blockIn(suite, job);
       expect(block, job).not.toBe('');
-      // Job-level permissions replace the workflow's, so contents: read must be restated.
-      expect(block, `${job} permissions`).toMatch(
-        /^ {4}permissions:\n {6}actions: write\n {6}contents: read\n(?! {6})/m,
-      );
+      // No permissions of its own: the job gets its caller's token (ci.yml grants actions: write).
+      expect(block, `${job} permissions`).not.toMatch(/^ {4}permissions:/m);
       const steps = block.split(/\n {6}- /);
       const last = steps[steps.length - 1] ?? '';
-      expect(last, `${job} last step`).toContain("if: failure() && github.event_name == 'pull_request'");
+      expect(last, `${job} last step`).toContain(
+        "if: failure() && inputs.fail-fast && github.event_name == 'pull_request'",
+      );
       expect(last, `${job} last step`).toContain('GH_TOKEN: ${{ github.token }}');
       expect(last, `${job} last step`).toMatch(
         /gh run cancel "\$GITHUB_RUN_ID" --repo "\$GITHUB_REPOSITORY" \|\| /,
       );
     }
+    // A called workflow's own permissions could only lower its caller's token, and the cancel
+    // needs the caller's actions: write.
+    expect(suite).not.toMatch(/^permissions:/m);
   });
 
-  it('every matrix fails fast on a PR only', () => {
-    const matrices = SUITE.filter((job) => /^ {4}strategy:$/m.test(jobBlock(job)));
+  it('every matrix fails fast only when the caller asks, and only ci.yml asks, on a PR', () => {
+    const matrices = SUITE_JOBS.filter((job) => /^ {4}strategy:$/m.test(blockIn(suite, job)));
     expect(matrices.sort()).toEqual(['browser', 'sim', 'unit']);
-    for (const job of matrices) {
-      expect(jobBlock(job), job).toContain("      fail-fast: ${{ github.event_name == 'pull_request' }}\n");
-    }
+    for (const job of matrices)
+      expect(blockIn(suite, job), job).toContain('      fail-fast: ${{ inputs.fail-fast }}\n');
+    expect(suite).not.toMatch(/fail-fast: (?:false|true)/);
+    expect(suite).toMatch(/\n {6}fail-fast:\n(?: {8}.*\n)*? {8}type: boolean\n {8}default: false\n/);
+    expect(jobBlock('suite')).toContain("      fail-fast: ${{ github.event_name == 'pull_request' }}\n");
+    expect(train).not.toContain('fail-fast');
     expect(ci).not.toMatch(/fail-fast: (?:false|true)/);
   });
 
-  it('only the suite jobs and plan get an actions token, and the workflow default stays read-only', () => {
+  it("only ci.yml's suite call gets an actions token, and the workflow default stays read-only", () => {
     expect(ci).toMatch(/\npermissions:\n {2}contents: read\n\n/);
+    // Job-level permissions replace the workflow's, so contents: read must be restated.
+    expect(jobBlock('suite')).toMatch(/^ {4}permissions:\n {6}actions: write\n {6}contents: read\n(?! {6})/m);
     for (const { name } of jobs()) {
-      const block = jobBlock(name);
       if (SUITE.includes(name)) continue;
+      const block = jobBlock(name);
       expect(block, name).not.toContain('actions: write');
       expect(block, name).not.toContain('gh run cancel');
     }
+    // The train's suite runs PR code, so it gets no write token (scripts/train.test.ts checks more).
+    for (const job of ['suite', 'control'])
+      expect(blockIn(train, job), job).toMatch(/^ {4}permissions:\n {6}contents: read\n {4}uses:/m);
   });
 
   it('deploy-prod and release check their own upstream result, not only the status function', () => {
     const byName = new Map(jobs().map((j) => [j.name, j.cond ?? '']));
-    expect(byName.get('deploy-prod')).toContain("needs.gate.result == 'success'");
+    expect(byName.get('deploy-prod')).toContain("needs.aggregate.result == 'success'");
     expect(byName.get('release')).toContain("needs.deploy-prod.result == 'success'");
     expect(byName.get(PROD_BUILD)).toContain("needs.plan.result == 'success'");
+  });
+
+  it('only a full-path PR run records the tree it tested: the quick check never vouches for main', () => {
+    const rec = /- name: Record the tree this PR run tested\n(?: {8}.*\n)*? {8}if: (.+)\n/.exec(ci);
+    expect(rec, 'the record step').not.toBeNull();
+    expect(rec?.[1]).toBe("github.event_name == 'pull_request' && needs.route.outputs.path == 'full'");
   });
 });

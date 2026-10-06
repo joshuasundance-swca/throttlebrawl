@@ -105,17 +105,21 @@ export async function decide(tree, { repo, api }) {
   };
 }
 
-/** The suite jobs, which run on every PR and on a push whose tree was not tested. */
-export const SUITE = ['static', 'unit', 'sim', 'browser'];
+/**
+ * The suite: one job of ci.yml that calls suite.yml (static, unit, sim and browser, or the quick
+ * check), which runs on every PR and on a push whose tree was not tested. A called workflow's job
+ * succeeds only when every job inside it succeeded or was skipped by its own `if:`.
+ */
+export const SUITE = ['suite'];
 /** The push-only job of the skip path: identity leak scan and the prod-stamped build. */
 export const PROD_BUILD = 'prod-build';
 
 /**
- * gate's verdict from `toJSON(needs)`. Two green shapes, nothing else:
- * - the suite path: plan succeeded or was skipped (a PR), every suite job succeeded, and
- *   prod-build was skipped;
- * - the skip path, only when plan ran and said skip=true: every suite job was skipped, and
- *   prod-build succeeded.
+ * The aggregate's verdict from `toJSON(needs)`. Two green shapes, nothing else:
+ * - the suite path: plan succeeded or was skipped (a PR), route succeeded or was skipped (a push),
+ *   the suite succeeded, and prod-build was skipped;
+ * - the skip path, only when plan ran and said skip=true: the suite was skipped, and prod-build
+ *   succeeded.
  * A failed, cancelled or missing job fails the gate on either path.
  * @param {Record<string, { result?: string, outputs?: Record<string, string> }>} needs
  */
@@ -128,6 +132,7 @@ export function gateVerdict(needs) {
     if (!ok.includes(got)) problems.push(`${job} is ${got}, needs ${ok.join(' or ')}`);
   };
   want('plan', ['success', 'skipped']);
+  want('route', ['success', 'skipped']);
   for (const job of SUITE) want(job, skip ? ['skipped'] : ['success']);
   want(PROD_BUILD, skip ? ['success'] : ['skipped']);
   return { ok: problems.length === 0, path: skip ? 'skip' : 'suite', problems };

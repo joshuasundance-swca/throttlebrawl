@@ -43,10 +43,16 @@ describe('check --shard', () => {
     expect(r.err).toContain('--shard wants i/n');
   });
 
-  it('names the sim and perf tiers among the known tiers', () => {
+  it('names the sim, perf and budget tiers among the known tiers', () => {
     const r = check('--tier', 'nope');
     expect(r.code).toBe(1);
-    expect(r.err).toContain('static, unit, sim, browser, perf');
+    expect(r.err).toContain('static, unit, sim, browser, perf, budget');
+  });
+
+  it('refuses a slice of the budget tier (the quick check builds and measures once)', () => {
+    const r = check('--tier', 'static,budget', '--shard', '1/2');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('--shard needs a --tier whose steps all shard');
   });
 
   it('refuses a tier list with an unknown tier in it, even beside known ones', () => {
