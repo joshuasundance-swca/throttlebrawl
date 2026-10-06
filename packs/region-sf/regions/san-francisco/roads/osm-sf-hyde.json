@@ -87,6 +87,18 @@
       "s1": 1763.0826,
       "side": "both",
       "tag": "cable-line"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1156.0598,
+      "side": "both",
+      "tag": "cable-route"
+    },
+    {
+      "s0": 1176.0609,
+      "s1": 1763.0826,
+      "side": "both",
+      "tag": "cable-route"
     }
   ],
   "features": [

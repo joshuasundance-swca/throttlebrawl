@@ -83,6 +83,13 @@ const TOWER_R = 4.6;
 /** The park's back row of buildings stands this far past its grass, and clear of the tower's hill, m. */
 const PARK_BACK_M = 24;
 const TOWER_CLEAR_M = 75;
+/** A feature's box on the road: s0 to s1 along, d0 to d1 across (a landmark's footprint, a zone). */
+interface FeatureBox {
+  s0: number;
+  s1: number;
+  d0: number;
+  d1: number;
+}
 /** Features nothing of this layer stands in. */
 const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck', 'roadsideZone', 'copSpawn']);
 
@@ -154,6 +161,8 @@ export interface BlocksPlan {
   /** Patio tables (presentation only, behind the rail). */
   tables: { edge: number; s: number; d: number }[];
   trees: number;
+  /** Where each park tree stands (tests read these): its road, s and signed d. */
+  treeSpots: { edge: number; s: number; d: number }[];
   sideStreets: { edge: number; s: number }[];
   tower: Point3 | null;
   near: Map<string, Soup>;
@@ -464,6 +473,7 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
     strings: [],
     tables: [],
     trees: 0,
+    treeSpots: [],
     sideStreets: [],
     tower: null,
     near,
@@ -505,6 +515,10 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
     const tags = (dress?.tags ?? e.tags) as readonly SideTag[] | undefined;
     if (!tags?.some((t) => (BLOCK_TAGS as readonly string[]).includes(t.tag))) continue;
     const features = (dress?.features ?? e.features).filter((f) => KEEP_CLEAR.has(f.kind));
+    // The landmarks (the Dragon Gate over the street, the church by the park): their footprints are
+    // closed to the districts, as a staged scene's is (landmarks.ts `landmarkFootprints`), and an
+    // `overRoad` one too, since its posts stand where the fronts would.
+    const landmarks = (dress?.features ?? e.features).filter((f) => f.kind === 'landmark');
     const h = (k: number, side: number, salt: number) =>
       scatterHash(seed, 7019 + e.index * 613, k, side * 41 + salt);
     const w = (s: number, d: number, y = 0) =>
@@ -526,12 +540,36 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
       }
       return out;
     };
+    const boxHit = (f: FeatureBox, side: -1 | 1, s0: number, s1: number, a0: number, a1: number) => {
+      const lo = Math.min(f.d0 * side, f.d1 * side);
+      const hi = Math.max(f.d0 * side, f.d1 * side);
+      return Math.min(f.s0, f.s1) - 1 < s1 && Math.max(f.s0, f.s1) + 1 > s0 && lo - 1 < a1 && hi + 1 > a0;
+    };
+    /** Nothing of the scene's own (a sign, a pad, a zone, a lot) is in the way. */
+    const clearOfScene = (side: -1 | 1, s0: number, s1: number, a0: number, a1: number) =>
+      !features.some((f) => boxHit(f, side, s0, s1, a0, a1));
+    /** Also nothing of a landmark's, with a metre to spare (a tree, a bench). */
     const clearOf = (side: -1 | 1, s0: number, s1: number, a0: number, a1: number) =>
-      !features.some((f) => {
+      clearOfScene(side, s0, s1, a0, a1) && !landmarks.some((f) => boxHit(f, side, s0, s1, a0, a1));
+    /** The first landmark ahead of `from` (and short of `to`) whose footprint reaches a0..a1 out on a side. */
+    const landmarkAhead = (
+      side: -1 | 1,
+      from: number,
+      to: number,
+      a0: number,
+      a1: number,
+    ): { s0: number; s1: number } | null => {
+      let found: { s0: number; s1: number } | null = null;
+      for (const f of landmarks) {
         const lo = Math.min(f.d0 * side, f.d1 * side);
         const hi = Math.max(f.d0 * side, f.d1 * side);
-        return Math.min(f.s0, f.s1) - 1 < s1 && Math.max(f.s0, f.s1) + 1 > s0 && lo - 1 < a1 && hi + 1 > a0;
-      });
+        const s0 = Math.min(f.s0, f.s1);
+        const s1 = Math.max(f.s0, f.s1);
+        if (s1 <= from || s0 >= to || lo >= a1 || hi <= a0) continue;
+        if (!found || s0 < found.s0) found = { s0, s1 };
+      }
+      return found;
+    };
     /** The frame of a frontage from s0 to s1 on a side, its front `d` out (the front's left end first). */
     const frontFrame = (side: -1 | 1, s0: number, s1: number, d: number): { f: Frame; width: number } => {
       // Seen from the street, a right-side front runs with s and a left-side one against it.
@@ -685,6 +723,19 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
           for (let k = 0; ; k++) {
             const u = h(k + Math.round(a), side, 1);
             let width = district === 'lanterns' ? 6 + 4 * u : 7 + 4.5 * u;
+            // A landmark's footprint ahead (the Dragon Gate across the street): the row closes up to it,
+            // 0.3 m short, with a building at least 5 m wide (the last one takes the room that is left),
+            // and starts again 0.3 m past it.
+            const reach = edgeAt(side, cursor) + (district === 'cafes' ? PATIO_M : 0);
+            const lm = landmarkAhead(side, cursor, b, reach, reach + DEPTH_M + 0.5 + BACK_DEPTH_M);
+            if (lm) {
+              const room = lm.s0 - 0.3 - cursor;
+              if (room < 5) {
+                cursor = Math.max(cursor, lm.s1 + 0.3);
+                continue;
+              }
+              if (room < width + 5.3) width = room;
+            }
             if (cursor + width > b - 0.3) {
               width = b - 0.3 - cursor;
               if (width < 5) break;
@@ -694,7 +745,7 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
             cursor = s1 + 0.25;
             const edgeD = edgeAt(side, (s0 + s1) / 2);
             const frontD = district === 'cafes' ? edgeD + PATIO_M : edgeD;
-            if (!clearOf(side, s0, s1, frontD, frontD + DEPTH_M)) continue;
+            if (!clearOfScene(side, s0, s1, frontD, frontD + DEPTH_M)) continue;
             const { f, width: len } = frontFrame(side, s0, s1, frontD);
             const ground = groundAlong(side, s0, s1);
             const v = (salt: number) => h(k + Math.round(a), side, salt);
@@ -857,6 +908,8 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
               const s = a + 5 + k * STRING_EVERY_M + (h(k, 0, 20) - 0.5) * 3;
               if (s > b - 3) break;
               if (theme(-1, s) !== 'lanterns') continue;
+              // None through a landmark that spans the street (the gate's lintel and side roofs).
+              if (landmarks.some((f) => f.d0 < 0 && f.d1 > 0 && s > f.s0 - 1.5 && s < f.s1 + 1.5)) continue;
               const left = edgeAt(-1, s);
               const right = edgeAt(1, s);
               const y = w(s, 0).y + STRING_HEIGHT_M;
@@ -920,6 +973,7 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
             tree(ns, { x: p.x, y: w(s, 0).y - 0.05, z: p.z }, hgt, colour);
             tree(fs, { x: p.x, y: w(s, 0).y - 0.05, z: p.z }, hgt, colour);
             plan.trees++;
+            plan.treeSpots.push({ edge: e.index, s, d: side * d });
             note(e.index, s, p);
           }
           if (h(k, side, 40) < 0.35) {
@@ -940,6 +994,7 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
           const s1 = s0 + 10 + 4 * h(k, side, 51);
           if (s1 > b - 2) break;
           const d = edgeAt(side, (s0 + s1) / 2) + PARK_BACK_M;
+          if (landmarks.some((f) => boxHit(f, side, s0, s1, d, d + DEPTH_M))) continue;
           parkRow.push({
             edge: e.index,
             side,

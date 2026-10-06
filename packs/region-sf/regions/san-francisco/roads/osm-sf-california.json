@@ -57,6 +57,12 @@
       "s1": 1157.0428,
       "side": "both",
       "tag": "cable-line"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1157.0428,
+      "side": "both",
+      "tag": "cable-route"
     }
   ],
   "features": [

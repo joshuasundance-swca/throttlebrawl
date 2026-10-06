@@ -50,7 +50,120 @@
       "tag": "gardens"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-1",
+      "s0": 21.0,
+      "s1": 34.0,
+      "d0": -5.4,
+      "d1": -3.9,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-2",
+      "s0": 40.0,
+      "s1": 56.0,
+      "d0": 3.9,
+      "d1": 5.4,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-3",
+      "s0": 59.0,
+      "s1": 76.0,
+      "d0": -5.4,
+      "d1": -3.9,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-4",
+      "s0": 82.0,
+      "s1": 98.0,
+      "d0": 3.9,
+      "d1": 5.4,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-5",
+      "s0": 102.0,
+      "s1": 118.0,
+      "d0": -5.4,
+      "d1": -3.9,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-6",
+      "s0": 124.0,
+      "s1": 140.0,
+      "d0": 3.9,
+      "d1": 5.4,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-7",
+      "s0": 144.0,
+      "s1": 160.0,
+      "d0": -5.4,
+      "d1": -3.9,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "lombard-stairs-8",
+      "s0": 166.0,
+      "s1": 179.0,
+      "d0": 3.9,
+      "d1": 5.4,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 4
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

@@ -196,7 +196,8 @@ describe('region-sf: the San Francisco race', () => {
       expect(type.weight, type.contentId).toBe(listed.get(type.contentId) ?? 0);
     expect([...listed.keys()].some((k) => k.startsWith('region-sf:') && (weight(k) ?? 0) > 0)).toBe(true);
     // Playtest 2 ("including in forests"), run W-R: cable cars run only on downtown's cable-car
-    // streets (render), never as traffic on a race road.
+    // streets (render), never in the region-wide mix. Playtest 4 (P4-19): they also run as traffic on
+    // Russian Hill's real cable streets, a traffic area of their own (tests/sim/sf-identity.test.ts).
     expect(weight('region-sf:cable-car') ?? 0).toBe(0);
   });
 
