@@ -34,7 +34,14 @@ import {
   type ContentRegistry,
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
-import { APP_ID, installOffer, runStartTap, startOffline, watchLifecycle } from '../platform';
+import {
+  APP_ID,
+  installOffer,
+  runStartTap,
+  startOffline,
+  watchLifecycle,
+  type StaleBuild,
+} from '../platform';
 import {
   createQualityGovernor,
   createRenderer,
@@ -118,7 +125,7 @@ import {
 import { boardSpots, spotOn, withIncidentSites, withReceiptBoards } from './receipt-boards';
 import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
-import { transition, type AppEvent, type AppState } from './states';
+import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
   createSeenPoll,
   landingLineFor,
@@ -719,9 +726,27 @@ export function createApp(opts: AppOptions): AppHandle {
   curr = newSim(seeds.next()).snapshot();
   showRegion();
 
+  // A build the host no longer serves (platform/stale-build.ts; playtest 4 run A fix check, new
+  // mustFix 2 and punch item 1): the page reloads to the current build only when that loses nothing.
+  // A race finishes on what it has loaded; a reload found mid-race waits, and the result screen says
+  // so and offers it, so the result stays on screen until the player leaves it or taps Reload.
+  let staleBuild: StaleBuild | null = null;
+  const offerUpdate = () => {
+    const watch = staleBuild;
+    ui.offerReload(state === 'results' && watch?.waiting() ? () => void watch.reloadNow() : null);
+  };
   const go = (e: AppEvent) => {
     const next = transition(state, e);
-    if (next) state = next;
+    if (next) {
+      state = next;
+      // After the tap's own steps: Restart and Race again pass through the menu on their way back
+      // into a race, and must not reload there.
+      if (staleBuild)
+        queueMicrotask(() => {
+          staleBuild?.settle();
+          offerUpdate();
+        });
+    }
     return next !== null;
   };
 
@@ -1114,8 +1139,10 @@ export function createApp(opts: AppOptions): AppHandle {
     onShown: () => hold('hidden', false),
   });
   // Offline play (roadmap M5): a production build's worker caches the whole build once the page
-  // has loaded, so a loaded game plays with the network off.
-  startOffline(build.id);
+  // has loaded, so a loaded game plays with the network off; and the watch for a build the host no
+  // longer serves, which reloads to the current one when that loses nothing.
+  staleBuild = startOffline(build.id, () => reloadLosesNothing(state));
+  staleBuild?.onWaiting(offerUpdate);
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());

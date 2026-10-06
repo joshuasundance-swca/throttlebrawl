@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 // Offline play and installing as an app (roadmap M5, launch polish; the maintainer: "Offline
 // definitely preferable"). The rules: once the game has loaded, its worker has cached everything the
@@ -8,8 +8,64 @@ import { expect, test } from '@playwright/test';
 
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __game?: { snapshot(): { tick: number } | null; setBot(on: boolean): void };
+  __game?: { snapshot(): { tick: number } | null; setBot(on: boolean): void; state(): string };
 };
+
+/** platform/stale-build.ts's STALE_BUILD_KEY: the build a tab reloaded from. */
+const STALE_BUILD_KEY = 'throttlebrawl:stale-chunk-reload';
+/** The tab's page loads, counted in its session (a reload keeps the session). */
+const LOADS_KEY = 'e2e-offline-loads';
+/** The worker file's cache name, which names its build (scripts/service-worker.mjs). */
+const WORKER_CACHE = /"cache":"offline-([^"]+)-([0-9a-f]{12})"/;
+
+/** Test mode, and a count of the tab's page loads. */
+async function countLoads(page: Page) {
+  await page.addInitScript((key) => {
+    (window as TestWindow).__GAME_TEST__ = true;
+    sessionStorage.setItem(key, String(Number(sessionStorage.getItem(key) ?? '0') + 1));
+  }, LOADS_KEY);
+}
+const loadsOf = (page: Page) => page.evaluate((key) => Number(sessionStorage.getItem(key)), LOADS_KEY);
+
+/** The build the host's worker file names, read with the test's own request (no route). */
+async function hostBuild(page: Page): Promise<string> {
+  const text = await (await page.request.get('sw.js')).text();
+  const id = WORKER_CACHE.exec(text)?.[1];
+  if (!id) throw new Error('sw.js names no build');
+  return id;
+}
+
+/** A host that has deployed another build: its worker file names it (the rest is this build's). */
+async function workerOfAnotherBuild(route: Route) {
+  const res = await route.fetch();
+  const body = (await res.text()).replace(WORKER_CACHE, '"cache":"offline-d3pl0y0-$2"');
+  await route.fulfill({ response: res, body });
+}
+
+/** The tab's worker caches: ours, and every same-origin file the page loaded that none holds. */
+async function cacheOfLoadedFiles(page: Page) {
+  return page.evaluate(async () => {
+    const own = (await caches.keys()).filter((n) => n.startsWith('offline-'));
+    const loaded = [
+      ...new Set(
+        performance
+          .getEntriesByType('resource')
+          .map((e) => e.name.split('#')[0] ?? '')
+          .filter((u) => u.startsWith(location.origin)),
+      ),
+    ];
+    const missing: string[] = [];
+    for (const url of loaded) {
+      // changelog.json is written after the build, so it is kept the first time the page reads it
+      // through the worker, not cached up front; the worker file is never cached.
+      if (url.endsWith('/changelog.json') || url.endsWith('/sw.js')) continue;
+      if (!(await caches.match(url, { ignoreVary: true }))) missing.push(url);
+    }
+    // A negative control: the same lookup finds nothing for a file the build never had.
+    const control = await caches.match(`${location.origin}/no-such-file.js`);
+    return { own, checked: loaded.length, missing, control: control !== undefined };
+  });
+}
 
 test.describe('offline', () => {
   // Every other spec blocks service workers (playwright.config.ts); this one needs the game's.
@@ -42,27 +98,7 @@ test.describe('offline', () => {
       timeout: 120_000,
       polling: 250,
     });
-    const cached = await page.evaluate(async () => {
-      const own = (await caches.keys()).filter((n) => n.startsWith('offline-'));
-      const loaded = [
-        ...new Set(
-          performance
-            .getEntriesByType('resource')
-            .map((e) => e.name.split('#')[0] ?? '')
-            .filter((u) => u.startsWith(location.origin)),
-        ),
-      ];
-      const missing: string[] = [];
-      for (const url of loaded) {
-        // changelog.json is written after the build, so it is kept the first time the page reads it
-        // through the worker, not cached up front.
-        if (url.endsWith('/changelog.json')) continue;
-        if (!(await caches.match(url, { ignoreVary: true }))) missing.push(url);
-      }
-      // A negative control: the same lookup finds nothing for a file the build never had.
-      const control = await caches.match(`${location.origin}/no-such-file.js`);
-      return { own, checked: loaded.length, missing, control: control !== undefined };
-    });
+    const cached = await cacheOfLoadedFiles(page);
     console.log(
       `[print] caches ${cached.own.join(', ')}; ${cached.checked} files the page loaded checked, ` +
         `${cached.missing.length} not cached`,
@@ -102,6 +138,153 @@ test.describe('offline', () => {
     expect(problems).toEqual([]);
     expect(preloadWarnings).toEqual([]);
   });
+
+  // Playtest 4 run A fix check, new mustFix 2b and punch item 1, with a simulated deploy (the preview
+  // serves one build, so the deploy is routes): a deploy lands while the worker is installing and
+  // the player is racing. The install fails (all or nothing), and the host's worker file names
+  // another build. The tab must not reload mid-race; it reloads once on the way back to the menu, and
+  // the reloaded page's worker caches its whole build, so an offline relaunch opens and races.
+  test('a deploy during the install: no reload mid-race, one reload after it, then a whole cache offline', async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(300_000);
+    await countLoads(page);
+    let deployed = false;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = () => resolve()));
+    let heldUrl: string | null = null;
+    let probes = 0;
+    let gone = 0;
+    await context.route('**/sw.js', async (route) => {
+      const req = route.request();
+      if (!req.serviceWorker() && req.resourceType() === 'fetch') probes++;
+      if (deployed) await workerOfAnotherBuild(route);
+      else await route.continue();
+    });
+    await context.route('**/assets/**', async (route) => {
+      // The worker's first download waits for the deploy, so the deploy lands mid-install.
+      if (heldUrl === null && route.request().serviceWorker()) {
+        heldUrl = route.request().url();
+        await held;
+      }
+      if (!deployed) return route.continue();
+      gone++;
+      return route.fulfill({ status: 404, body: 'Not Found' });
+    });
+
+    await page.goto('./');
+    await page.locator('#start-screen').click();
+    await expect(page.locator('#menu-race')).toBeVisible();
+    await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await page.locator('#menu-race').click();
+    await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60, null, {
+      timeout: 120_000,
+    });
+    await expect.poll(() => heldUrl, { timeout: 120_000 }).not.toBeNull();
+
+    // The deploy lands: the old build's files answer 404 and the worker file names another build.
+    deployed = true;
+    release();
+    // The install fails: no worker, no cache. The page asks the host which build it serves.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(async () => {
+            const reg = await navigator.serviceWorker.getRegistration();
+            return reg?.installing || reg?.waiting || reg?.active ? 'a worker' : 'none';
+          }),
+        { timeout: 120_000 },
+      )
+      .toBe('none');
+    await expect.poll(() => probes, { timeout: 60_000 }).toBeGreaterThan(0);
+    // Ten more seconds of race (600 sim ticks): still racing, never reloaded, no offer over the race.
+    const askedAt = await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? 0);
+    await page.waitForFunction(
+      (from) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > from + 600,
+      askedAt,
+      { timeout: 120_000 },
+    );
+    expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('race');
+    expect(await loadsOf(page)).toBe(1);
+    await expect(page.locator('#reload-offer')).toBeHidden();
+    console.log(
+      `[print] held ${String(heldUrl)}; ${gone} old-build files answered 404; ${probes} questions to the host`,
+    );
+
+    // The deploy is complete (the preview serves its one build again). Quitting to the menu reloads
+    // the tab once.
+    await context.unrouteAll({ behavior: 'ignoreErrors' });
+    const reloaded = page.waitForEvent('load', { timeout: 60_000 });
+    await page.keyboard.press('Escape');
+    await page.locator('#pause-quit').click();
+    await reloaded;
+    expect(await loadsOf(page)).toBe(2);
+    expect(await page.evaluate((key) => sessionStorage.getItem(key), STALE_BUILD_KEY)).toBe(
+      await hostBuild(page),
+    );
+
+    // The reloaded page's worker caches the whole build and takes the page.
+    await page.locator('#start-screen').click();
+    await expect(page.locator('#menu-race')).toBeVisible();
+    await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
+      timeout: 120_000,
+      polling: 250,
+    });
+    const cached = await cacheOfLoadedFiles(page);
+    console.log(
+      `[print] after the reload: caches ${cached.own.join(', ')}; ${cached.missing.length} not cached`,
+    );
+    expect(cached.own).toHaveLength(1);
+    expect(cached.missing).toEqual([]);
+
+    // An offline relaunch opens from that cache and races.
+    await context.setOffline(true);
+    await page.reload();
+    await page.locator('#start-screen').click();
+    await expect(page.locator('#menu-race')).toBeVisible();
+    await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await page.locator('#menu-race').click();
+    await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120, null, {
+      timeout: 120_000,
+    });
+    expect(await loadsOf(page)).toBe(3);
+  });
+});
+
+// Playtest 4 run A fix check, new mustFix 2a: online, a deploy had renamed San Francisco's map files;
+// picking the region fetched 4 of them, all 404, and nothing reloaded (#584 heard only lazy chunks).
+// Service workers are blocked here, as in every other spec: the page fetches from the host itself.
+test('a region whose map files a deploy renamed reloads the tab once to the current build', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await countLoads(page);
+  const build = await hostBuild(page);
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+
+  // The deploy lands: San Francisco's map files answer 404, and the host's worker file names another
+  // build. (That the same 404s reload nothing while the host serves this build is unit-tested in
+  // src/platform/stale-build.test.ts.)
+  const gone: string[] = [];
+  await page.route(
+    (url) => /\/assets\/(osm-)?sf-[\w-]+\.json$/.test(url.pathname),
+    (route) => {
+      gone.push(route.request().url());
+      return route.fulfill({ status: 404, body: 'Not Found' });
+    },
+  );
+  await page.route('**/sw.js', workerOfAnotherBuild);
+  const reloaded = page.waitForEvent('load', { timeout: 60_000 });
+  await page.locator('#region-region-sf-san-francisco').click();
+  await reloaded;
+  console.log(`[print] ${gone.length} San Francisco map files answered 404 before the reload`);
+  expect(gone.length).toBeGreaterThan(0);
+  expect(await loadsOf(page)).toBe(2);
+  // Remembered: this tab never reloads from this build again.
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), STALE_BUILD_KEY)).toBe(build);
 });
 
 test('the menu offers Install only while the browser does, and only its tap opens the prompt', async ({

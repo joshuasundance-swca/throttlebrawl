@@ -6,6 +6,7 @@
 // the injected `resumeAudio` callback. The browser APIs sit behind `PlatformEnv`, so the unit
 // tests drive the same code with mocks.
 import type { ResumeAudio } from '../core';
+import { recoverStaleBuild, type StaleBuild } from './stale-build';
 
 /**
  * The one place the app id appears. Storage keys, export prefixes and format strings derive from
@@ -419,9 +420,38 @@ export function wakeLockHeld(): boolean {
 /** The worker's file, beside index.html (scripts/service-worker.mjs writes it). */
 export const SERVICE_WORKER_FILE = 'sw.js';
 
+/** A service worker, reduced to what the install watch reads. */
+interface WorkerLike extends EventTarget {
+  readonly state: string;
+}
+/** A service worker registration, reduced to what the install watch reads. */
+interface RegistrationLike extends EventTarget {
+  readonly installing: WorkerLike | null;
+}
+
 /** The part of `navigator` the registration needs; the real one or a test's stand-in. */
 interface WorkerNavigator {
   serviceWorker?: { register(url: string, opts?: { scope?: string }): Promise<unknown> };
+}
+
+/**
+ * Calls `onFailed` once for each worker of this registration whose install fails (it turns
+ * redundant before it ever installed); a worker that installed and was later replaced is not a
+ * failure. The browser gives no other sign: `register` resolves before the install has run.
+ */
+export function watchInstall(reg: RegistrationLike, onFailed: () => void): void {
+  const seen = new WeakSet<WorkerLike>();
+  const track = (w: WorkerLike | null) => {
+    if (!w || seen.has(w)) return;
+    seen.add(w);
+    let installed = false;
+    w.addEventListener('statechange', () => {
+      if (w.state === 'installed' || w.state === 'activating' || w.state === 'activated') installed = true;
+      else if (w.state === 'redundant' && !installed) onFailed();
+    });
+  };
+  track(reg.installing);
+  reg.addEventListener('updatefound', () => track(reg.installing));
 }
 
 /**
@@ -429,53 +459,59 @@ interface WorkerNavigator {
  * says it already has), so its downloads never compete with the first screen. Resolves true once
  * registered; false where there are no service workers or the browser refused (a test browser that
  * blocks them, a private window). Never throws and logs nothing: the game plays the same online.
+ * `onInstallFailed` hears of each install that fails (a deploy landing while it ran).
  */
 export function registerOfflineWorker(
   nav: WorkerNavigator,
   win: EventTarget,
   loaded: boolean,
+  onInstallFailed?: () => void,
 ): Promise<boolean> {
   const sw = nav.serviceWorker;
   if (!sw || typeof sw.register !== 'function') return Promise.resolve(false);
   const register = () =>
     sw.register(`./${SERVICE_WORKER_FILE}`, { scope: './' }).then(
-      () => true,
+      (reg) => {
+        if (onInstallFailed && reg instanceof EventTarget && 'installing' in reg)
+          watchInstall(reg as RegistrationLike, onInstallFailed);
+        return true;
+      },
       () => false,
     );
   if (loaded) return register();
   return new Promise((resolve) => win.addEventListener('load', () => resolve(register()), { once: true }));
 }
 
-/** The session key that remembers a stale-chunk reload: the build the page reloaded from. */
-export const STALE_CHUNK_KEY = 'throttlebrawl:stale-chunk-reload';
+export { recoverStaleBuild, STALE_BUILD_KEY, type StaleBuild, type StaleBuildPage } from './stale-build';
 
-/** What the stale-chunk reload needs from the page; the real one or a test's stand-in. */
-interface StaleChunkPage {
-  /** Receives Vite's `vite:preloadError`, fired when a lazy chunk's import fails. */
-  win: EventTarget;
-  online(): boolean;
-  storage: Pick<Storage, 'getItem' | 'setItem'> | null;
-  reload(): void;
+/** The page's `fetch`, as the stale-build watch wraps it. */
+interface FetchingWindow {
+  fetch: typeof fetch;
 }
 
 /**
- * A lazy chunk that will not load (playtest 4 run A's live check, mustFix 2): once a deploy has
- * replaced the build on the host, the open tab's chunk names answer 404, so the import fails and
- * the race goes on without its landmarks. The page reloads to the build the host serves now, once
- * per build (`buildId`, kept in session storage), so a chunk that fails again on the same build
- * never loops. With the network off, or where it cannot remember, it does not reload.
+ * Passes every answer the page's `fetch` gets to `onAnswer` (its absolute URL and status) and
+ * returns it untouched, so a build file the host no longer serves is noticed whoever fetched it:
+ * content/'s map and pack data, assets/' models and kits, audio/'s voices. A request that fails
+ * (offline) is not an answer. Returns the unwrapped `fetch`.
  */
-export function reloadOnStaleChunk(page: StaleChunkPage, buildId: string): void {
-  page.win.addEventListener('vite:preloadError', () => {
-    if (!page.online() || !page.storage) return;
-    try {
-      if (page.storage.getItem(STALE_CHUNK_KEY) === buildId) return;
-      page.storage.setItem(STALE_CHUNK_KEY, buildId);
-    } catch {
-      return;
-    }
-    page.reload();
-  });
+export function watchFetches(
+  win: FetchingWindow,
+  base: string,
+  onAnswer: (url: string, status: number) => void,
+): typeof fetch {
+  const inner = win.fetch.bind(win);
+  win.fetch = (input, init) =>
+    inner(input, init).then((res) => {
+      try {
+        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        onAnswer(new URL(raw, base).href, res.status);
+      } catch {
+        // an address it cannot read is not a build file
+      }
+      return res;
+    });
+  return inner;
 }
 
 /** Session storage, or null where the browser refuses it. */
@@ -488,22 +524,35 @@ function sessionStore(): Storage | null {
 }
 
 /**
- * The game's own offline worker, in a production build only: a dev server's modules change on every
- * save and must never be cached. With it, the reload that recovers a lazy chunk a deploy removed
- * (`buildId` is this build's stamp id).
+ * The game's own offline worker, in a production build only (a dev server's modules change on every
+ * save and must never be cached), and the watch for a build the host no longer serves
+ * (stale-build.ts): a lazy chunk that fails, a build file that answers 404, an install that fails.
+ * `buildId` is this build's stamp id; `canReload` is app/'s answer to "does a reload lose nothing
+ * now" (false mid-race and on a result). Returns the watch, which app/ tells of every change of
+ * screen; null outside a production build.
  */
-export function startOffline(buildId: string): void {
-  if (!import.meta.env.PROD || typeof window === 'undefined') return;
-  reloadOnStaleChunk(
+export function startOffline(buildId: string, canReload: () => boolean): StaleBuild | null {
+  if (!import.meta.env.PROD || typeof window === 'undefined') return null;
+  const scope = new URL('./', document.baseURI).href;
+  let stale: StaleBuild | null = null;
+  const net = watchFetches(window, document.baseURI, (url, status) => stale?.answered(url, status));
+  stale = recoverStaleBuild(
     {
       win: window,
+      scope,
       online: () => navigator.onLine,
       storage: sessionStore(),
       reload: () => window.location.reload(),
+      fetch: net,
+      canReload,
     },
     buildId,
   );
-  void registerOfflineWorker(navigator, window, document.readyState === 'complete');
+  const watch = stale;
+  void registerOfflineWorker(navigator, window, document.readyState === 'complete', () =>
+    watch.installFailed(),
+  );
+  return stale;
 }
 
 /** Chrome's `beforeinstallprompt` event: the browser offering to install the page as an app. */
