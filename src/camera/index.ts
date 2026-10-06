@@ -22,6 +22,14 @@ import {
 export type { CameraContext, CameraPose, CameraTarget, ViewMode } from './chase';
 export { VIEW_MODES, wideAmount } from './chase';
 export { bindViewKey, CAMERA_VIEW_KEY } from './keys';
+export {
+  nearestFocus,
+  shotFociOf,
+  shotPose,
+  SHOT_EASE_TICKS,
+  SHOT_REACH_M,
+  type ShotFocus,
+} from './finish-shot';
 export { FALLBACK_IMPULSE } from './jolt';
 export { SHAKE_TRAUMA } from './shake';
 

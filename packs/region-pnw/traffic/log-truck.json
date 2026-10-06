@@ -6,6 +6,7 @@
   "tags": ["commercial", "local"],
   "lengthM": 16,
   "widthM": 2.6,
+  "heightM": 3.9,
   "cruiseMps": 23.0,
   "hazard": "big",
   "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },

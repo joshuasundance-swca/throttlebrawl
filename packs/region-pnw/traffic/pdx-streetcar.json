@@ -6,6 +6,7 @@
   "tags": ["local", "pnw", "slow"],
   "lengthM": 20,
   "widthM": 2.5,
+  "heightM": 3.9,
   "cruiseMps": 9.0,
   "hazard": "big",
   "behaviour": {

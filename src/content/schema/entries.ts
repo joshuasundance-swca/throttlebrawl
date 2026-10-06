@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   BARRIER_LOOKS,
   GRUDGE_RULE_IDS,
+  MAX_HEIGHT_M,
   MAX_SEASON,
   MEDIAN_KINDS,
   ROAD_SURFACES,
@@ -73,6 +74,21 @@ export const packSchema = z.looseObject({
   idAliases: z.record(z.string(), z.string()).optional(),
 });
 
+/**
+ * A height in metres (docs/content-packs.md, "Heights and hitboxes"): above zero and below
+ * `MAX_HEIGHT_M`, a bound that catches a typo (a stair tower is 6.4 m, a tram 3.5 m).
+ */
+const heightSchema = z.number().positive().max(MAX_HEIGHT_M);
+
+/**
+ * A rider's contact box on its bike, in metres (docs/content-packs.md, "Heights and hitboxes"):
+ * length along the heading and width across. Absent, the box is `DEFAULT_HITBOX` (2.0 x 0.8).
+ */
+const hitboxSchema = z.looseObject({
+  lengthM: z.number().min(0.5).max(4),
+  widthM: z.number().min(0.3).max(3),
+});
+
 /** A vetoable item inside an entry: a sign, a billboard, a bark line or a station track. */
 const itemStatus = { status: statusSchema.optional(), note: z.string().optional() };
 
@@ -94,6 +110,8 @@ const smashableSchema = z.looseObject({
   id: idSchema,
   kind: z.enum(SMASHABLE_KINDS),
   text: z.string().min(1).max(32),
+  // Overrides the kind's drawn height (`SMASHABLE_HEIGHT_M`).
+  heightM: heightSchema.optional(),
   weight: z.number().positive().optional(),
   tags: z.array(z.string().min(1)).optional(),
   ...itemStatus,
@@ -101,6 +119,8 @@ const smashableSchema = z.looseObject({
 
 export const bikeSchema = entry('bike', {
   class: z.enum(BIKE_CLASSES),
+  // The rider's contact box on this bike where it is not the default 2.0 x 0.8 (the lawnmower).
+  hitbox: hitboxSchema.optional(),
   handling: z.looseObject({
     topSpeedMps: z.number().positive(),
     accelMps2: z.number().positive(),
@@ -165,6 +185,9 @@ export const riderSchema = entry('rider', {
   crew: refSchema.optional(),
   blurb: z.string().optional(),
   bike: refSchema,
+  // The contact box when this rider's drawn bike (`look.bikeModel`) is not the default size; it
+  // overrides the sim bike's own `hitbox`.
+  hitbox: hitboxSchema.optional(),
   stats: z
     .looseObject({
       massKg: z.number().positive().optional(),
@@ -554,6 +577,8 @@ export const trafficTypeSchema = entry('traffic-type', {
   category: z.enum(['car', 'truck', 'rv', 'oddity', 'pedestrian', 'animal']),
   lengthM: z.number().positive(),
   widthM: z.number().positive(),
+  // How tall it is drawn; absent, the category's default (`TRAFFIC_HEIGHT_DEFAULT_M`).
+  heightM: heightSchema.optional(),
   cruiseMps: nonNegative,
   hazard: z.enum(['normal', 'big']),
   behaviour: trafficBehaviourSchema.optional(),

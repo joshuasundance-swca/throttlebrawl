@@ -11,9 +11,12 @@
 //   before a split zone on the route (`RouteProgress.shortcuts`) it moves into the zone, holds off
 //   fights, and follows a car rather than swerve out of the zone;
 // - avoids traffic: a vehicle ahead in its line makes it pick another lane of its own direction,
-//   pass in the oncoming lane when that is clear far enough ahead, or brake and follow. Only
-//   vehicles count: riders pass through each other in the sim, so a rival (or the cop) in its line
-//   is never a reason to brake;
+//   pass in the oncoming lane when that is clear far enough ahead, or brake and follow (the lanes of
+//   its own direction come first, whichever is nearer). Only vehicles count: riders pass through
+//   each other in the sim, so a rival (or the cop) in its line is never a reason to brake;
+// - back on the bike after a fall, it keeps to the lanes of its own direction for
+//   REMOUNT_OWN_SIDE_TICKS: no oncoming pass and no line-up on a rival across the centre line, while
+//   it is still getting back up to speed;
 // - fights a rival down (dev-4 part 2, so the batch exercises takedowns): with a rival rider (never
 //   the cop) near it on the same road, the weakest one in reach first, it pulls alongside at
 //   KICK_OFFSET_M on the side that shoves the rival toward danger (a vehicle in the lane next to
@@ -124,6 +127,13 @@ const LINE_HALF_WIDTH_M = 1.3;
 export const SHORTCUT_APPROACH_M = 150;
 /** The bot's line in a split zone: this far into the zone from its inner edge, m. */
 const SHORTCUT_LINE_IN_M = 0.9;
+/**
+ * After a remount the bot keeps to its own side of the road for this long, ticks: from a walking
+ * pace it takes about 3.7 s (220 ticks) to get back to cruise, and a pass or a line-up on a rival
+ * across the centre line, in front of cars closing at 25 m/s, spends all of that in the oncoming
+ * lanes (playtest 4, run C's live check: 2 of 8 remounts, 191 and 217 of the next 240 ticks).
+ */
+export const REMOUNT_OWN_SIDE_TICKS = 300;
 
 type ShortcutZone = RouteProgress['shortcuts'][number];
 
@@ -223,6 +233,8 @@ export function createBot(): BotController {
   let dodging = false;
   /** Was the bot down (tumbling or on foot) on its last tick? */
   let wasDown = false;
+  /** The tick until which a remounted bot keeps to its own side (see REMOUNT_OWN_SIDE_TICKS). */
+  let ownSideUntil = -1;
 
   /** Is a stretch of road clear of vehicles around lateral `d`, from s0 to s1 ahead? */
   function clearAt(snap: SimSnapshot, me: EntitySnapshot, d: number, s0: number, s1: number): boolean {
@@ -249,11 +261,15 @@ export function createBot(): BotController {
     return best;
   }
 
-  /** The road's rideable span (every drive, shortcut and shoulder lane), for clamping a target d. */
-  function span(lanes: readonly LaneInfo[]): { lo: number; hi: number } {
+  /**
+   * The road's rideable span (every drive, shortcut and shoulder lane, or only those of the bot's
+   * own direction when `ownSide`), for clamping a target d.
+   */
+  function span(lanes: readonly LaneInfo[], ownSide?: 1 | -1): { lo: number; hi: number } {
     let lo = Infinity;
     let hi = -Infinity;
     for (const l of lanes) {
+      if (ownSide !== undefined && l.direction !== ownSide) continue;
       lo = Math.min(lo, l.dCenterM - l.widthM / 2);
       hi = Math.max(hi, l.dCenterM + l.widthM / 2);
     }
@@ -357,6 +373,7 @@ export function createBot(): BotController {
         // walking pace, in front of traffic closing at 25 m/s (the head-on crashes after each
         // remount in playtest 4's respawn lane). A cut on its own side, or one further on, stays on.
         wasDown = false;
+        ownSideUntil = snap.tick + REMOUNT_OWN_SIDE_TICKS;
         const near = zonesOf(route).find((z) => approaching(z, me.road.edge, me.road.s, me.road.dir));
         if (near && crossesOncoming(near, route, me.road.dir)) shortcutDone = true;
       }
@@ -374,7 +391,10 @@ export function createBot(): BotController {
       if (onShortcut && !inShortcut) shortcutDone = true;
       onShortcut = inShortcut;
 
-      const bounds = span(lanes);
+      // A remounted bot keeps to the lanes of its own direction (fights and passes included), if
+      // the road has any at this spot.
+      const ownSide = snap.tick < ownSideUntil && own.length > 0;
+      const bounds = span(lanes, ownSide ? dir : undefined);
       let targetD = homeLine(me, lanes);
       let throttle = 1;
       let brake = 0;
@@ -458,13 +478,16 @@ export function createBot(): BotController {
         throttle = 0;
         brake = 0.5;
       } else if (!clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
-        const choices = [
-          ...own.map((l) => ({ d: l.dCenterM, reach: TRAFFIC_LOOKAHEAD_M })),
-          ...lanes
-            .filter((l) => l.kind === 'drive' && l.direction !== dir)
-            .map((l) => ({ d: l.dCenterM, reach: PASS_CLEAR_M })),
-        ].sort((p, q) => Math.abs(p.d - d) - Math.abs(q.d - d));
-        const free = choices.find((c) => clearAt(snap, me, c.d, -4, c.reach));
+        // Another lane of its own direction first (nearest first); the oncoming lane only when none
+        // is free, so a car ahead does not put it across the centre line while a lane on its own
+        // side is open.
+        const byNearest = (p: { d: number }, q: { d: number }) => Math.abs(p.d - d) - Math.abs(q.d - d);
+        const ownChoices = own.map((l) => ({ d: l.dCenterM, reach: TRAFFIC_LOOKAHEAD_M })).sort(byNearest);
+        const passChoices = (ownSide ? [] : lanes)
+          .filter((l) => l.kind === 'drive' && l.direction !== dir)
+          .map((l) => ({ d: l.dCenterM, reach: PASS_CLEAR_M }))
+          .sort(byNearest);
+        const free = [...ownChoices, ...passChoices].find((c) => clearAt(snap, me, c.d, -4, c.reach));
         if (free) {
           if (!dodging) stats.trafficDodges++;
           dodging = true;
