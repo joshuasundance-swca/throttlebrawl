@@ -80,8 +80,11 @@ describe('module ids', () => {
     // tree, so its ids for them lie outside its root: they must still match this build's.
     const b = bundle();
     const shared = b['assets/shared-2.js'];
-    shared.modules = { '/elsewhere/up/node_modules/three/build/three.module.js': { code: shared.code } };
-    const ids = firstLoadModuleStats(b, '/r/.cache/perf-base').modules.map((m) => m.id);
+    const modules: Record<string, { code: string }> = {
+      '/elsewhere/up/node_modules/three/build/three.module.js': { code: shared.code },
+    };
+    const built = { ...b, 'assets/shared-2.js': { ...shared, modules } };
+    const ids = firstLoadModuleStats(built, '/r/.cache/perf-base').modules.map((m) => m.id);
     expect(ids).toContain('node_modules/three/build/three.module.js');
     // An own source file outside the root keeps its full id rather than a path that climbs out.
     expect(ids.some((id) => id.startsWith('..'))).toBe(false);
