@@ -10,7 +10,7 @@ import type { BoardCatalog } from './boards';
 import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { textSurfaceItemId, type SceneryModel } from './models';
-import { isLitTime, PartyLights, partyRuns, PARTY_DRESSING } from './party-lights';
+import { CROSS_CLEARANCE_M, isLitTime, PartyLights, partyRuns, PARTY_DRESSING } from './party-lights';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KEYS_KIT, RoadsideLayer } from './roadside';
 import {
@@ -48,6 +48,26 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
     .map(([, r]) => r);
   const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
   return { road: createRoadNetwork({ network, roads }), dressing };
+}
+
+/** The dressing with every party zone on one side taken out (a one-sided party, for a control). */
+function stripSide(dressing: RoadDressing, side: -1 | 1): RoadDressing {
+  return Object.fromEntries(
+    Object.entries(dressing).map(([id, r]) => [
+      id,
+      {
+        ...r,
+        features: ((r as unknown as BakedRoad).features ?? []).filter(
+          (f) =>
+            !(
+              f.kind === 'roadsideZone' &&
+              f.params?.['dressing'] === PARTY_DRESSING &&
+              Math.sign(f.d0 + f.d1) === side
+            ),
+        ),
+      },
+    ]),
+  );
 }
 
 const duvalKit: SceneryModel = await bakeRepoModel('duvalKit');
@@ -304,29 +324,67 @@ describe('the party strings', () => {
 
   const lit = new PartyLights(look, { road, dressing, seed: 7, lit: true, landReach });
 
-  it('hangs its bulbs beside the road, high and clear of it, over the party stretches only', () => {
+  it('hangs its bulbs along the sidewalk or across the street, high, over the party stretches only', () => {
     const bulbs = lit.bulbs();
     expect(bulbs.length).toBeGreaterThan(300);
     const bad: string[] = [];
     for (const b of bulbs) {
       const p = road.project(b.x, b.z);
       const e = road.edges[p.edge];
-      const run = runs.find(
-        (r) => r.edge === p.edge && p.s >= r.s0 - 2 && p.s <= r.s1 + 2 && Math.sign(p.d) === r.side,
-      );
-      if (!e || !run) {
+      const covering = runs.filter((r) => r.edge === p.edge && p.s >= r.s0 - 2 && p.s <= r.s1 + 2);
+      if (!e || covering.length === 0) {
         bad.push(`a bulb at s ${p.s.toFixed(0)} d ${p.d.toFixed(1)} is over no party stretch`);
         continue;
       }
-      const outer = p.d < 0 ? -e.dMin : e.dMax;
-      if (Math.abs(p.d) < outer + 6)
-        bad.push(`a bulb at s ${p.s.toFixed(0)} is ${(Math.abs(p.d) - outer).toFixed(1)} m past the road`);
-      const up = b.y - road.toWorld(p.edge, p.s, p.d, 0).y;
+      const ground = road.toWorld(p.edge, p.s, p.d, 0).y;
+      const up = b.y - ground;
       if (up < 3.2) bad.push(`a bulb at s ${p.s.toFixed(0)} hangs ${up.toFixed(1)} m up`);
+      const outer = p.d < 0 ? -e.dMin : e.dMax;
+      if (b.over) {
+        // Across the street: only where both sides are party, and clear over the lanes.
+        if (!covering.some((r) => r.side < 0) || !covering.some((r) => r.side > 0))
+          bad.push(`a string over the street at s ${p.s.toFixed(0)} where only one side is party`);
+        const road0 = road.toWorld(p.edge, p.s, 0, 0).y;
+        if (b.y - road0 < CROSS_CLEARANCE_M - 0.3)
+          bad.push(
+            `a bulb over the lanes at s ${p.s.toFixed(0)} hangs ${(b.y - road0).toFixed(1)} m over the road`,
+          );
+      } else {
+        // Along a side: on that side, past the road's edge, never over the lanes.
+        if (!covering.some((r) => Math.sign(p.d) === r.side))
+          bad.push(`a side bulb at s ${p.s.toFixed(0)} d ${p.d.toFixed(1)} is on the wrong side`);
+        if (Math.abs(p.d) < outer + 0.5)
+          bad.push(
+            `a side bulb at s ${p.s.toFixed(0)} is ${(Math.abs(p.d) - outer).toFixed(1)} m past the road`,
+          );
+      }
     }
     expect(bad.slice(0, 8)).toEqual([]);
     expect(new Set(bulbs.map((b) => b.colour)).size, 'more than a couple of colours').toBeGreaterThanOrEqual(
       4,
+    );
+  });
+
+  it('crosses the street with strings between the two sides of a block, and only there', () => {
+    const counts = lit.counts();
+    const over = lit.bulbs().filter((b) => b.over);
+    // Five blocks with a party on both sides, 120 to 180 m each: several strings in every block.
+    expect(counts.crossings).toBeGreaterThanOrEqual(10);
+    expect(over.length).toBeGreaterThan(counts.crossings * 5);
+    // Every crossing is within a block both sides share; the control: a one-sided party has none.
+    const oneSided = runs.filter((r) => r.side > 0);
+    const control = new PartyLights(look, {
+      road,
+      dressing: stripSide(dressing, -1),
+      seed: 7,
+      lit: true,
+      landReach,
+    });
+    expect(oneSided.length).toBeGreaterThan(0);
+    expect(control.counts().crossings).toBe(0);
+    expect(control.bulbs().filter((b) => b.over)).toEqual([]);
+    print(
+      `[examined] ${counts.crossings} strings across Duval, ${over.length} bulbs over the lanes; the right-hand blocks alone cross none`,
     );
   });
 

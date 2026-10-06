@@ -73,7 +73,80 @@
       "tag": "pdx-deck"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "landmark",
+      "id": "burnside-bascule-pier-east",
+      "s0": 334.2555,
+      "s1": 344.2555,
+      "d0": -16.0,
+      "d1": 16.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_bascule_pier",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "burnside-bascule-pier-west",
+      "s0": 404.9096,
+      "s1": 414.9096,
+      "d0": -16.0,
+      "d1": 16.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_bascule_pier",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "burnside-truss-east-1",
+      "s0": 294.2555,
+      "s1": 334.2555,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "burnside-truss-east-2",
+      "s0": 254.2555,
+      "s1": 294.2555,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "burnside-truss-west-1",
+      "s0": 414.9096,
+      "s1": 454.9096,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "burnside-truss-west-2",
+      "s0": 454.9096,
+      "s1": 494.9096,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 0.0,

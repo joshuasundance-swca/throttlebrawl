@@ -62,6 +62,10 @@ export const MODEL_ASSETS = {
   sfTowerModules: 'models/scenery/sf-tower-modules',
   // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
   duvalKit: 'models/scenery/duval-kit',
+  // Playtest 4 (P4-19, Codex CX5): the Keys' identity props. Old Town draws its banyan, poinciana,
+  // frangipani and two open bars from it (roadside.ts KEYS_KIT); the Key deer and the mile post wait for
+  // their roads.
+  keysIdentity: 'models/scenery/keys-identity',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
   sevenMileKit: 'models/scenery/seven-mile-kit',
   // Playtest 3 (T12.6, Codex CX4): downtown Portland's street fronts, pink tower modules, food carts and
@@ -204,6 +208,19 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_closed_bar',
     'keys_flamingo',
   ],
+  // Variants 0 and 1 the Key deer (a buck and a doe), 2 a mile post, 3 a banyan, 4 a royal poinciana, 5 a
+  // frangipani, 6 and 7 two open-fronted bars (tools/blender/props/keys_identity.py). The bars' blank
+  // name boards are text surfaces.
+  keysIdentity: [
+    'key_deer_buck',
+    'key_deer_doe',
+    'keys_mile_marker',
+    'keys_banyan',
+    'keys_poinciana',
+    'keys_frangipani',
+    'duval_open_bar_a',
+    'duval_open_bar_b',
+  ],
   // Its variants: 0 to 2 balconied shopfronts, 3 and 4 conch houses, 5 the corner bar, 6 a scooter
   // rack, 7 a palm in a planter (roadside.ts KEYS_KIT, the `oldtown` rules).
   duvalKit: [
@@ -272,7 +289,11 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     out.add('keysIslets');
     // Playtest 3 (T12.1): Key West's Old Town (Duval and Whitehead Streets) lines its street with
     // the Duval kit.
-    if (n.tags.has('key-oldtown')) out.add('duvalKit');
+    // Its trees and open bars come from the Keys' identity kit (playtest 4, P4-19, Codex CX5).
+    if (n.tags.has('key-oldtown')) {
+      out.add('duvalKit');
+      out.add('keysIdentity');
+    }
     // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
     if (n.tags.has('old-bridge')) out.add('sevenMileKit');
   } else {

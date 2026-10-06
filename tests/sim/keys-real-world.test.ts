@@ -189,6 +189,62 @@ describe('the Old Town on the map and in the roadside zones', () => {
     }
   });
 
+  it("a crowd of the Old Town's people stands only on a road and a side the Old Town's tag covers", () => {
+    // Playtest 4 (P4-19): Duval is a street of its own, and its people (bar hoppers, a birthday party, door
+    // greeters, cruise day-trippers, buskers, roosters) belong to it. A zone on any other street that names
+    // one would put the party on a beach road, so a zone naming an Old Town kind lies wholly inside a stretch
+    // of its own road that carries `key-oldtown`, on the side the zone is on.
+    interface Road {
+      id: string;
+      tags?: { tag: string; s0: number; s1: number; side?: string }[];
+      features?: {
+        kind: string;
+        id: string;
+        s0: number;
+        s1: number;
+        d0: number;
+        d1: number;
+        params?: Record<string, unknown>;
+      }[];
+    }
+    const oldTown = new Set(
+      Object.entries(REG.trafficTypes)
+        .filter(([k, t]) => k.startsWith('base:') && (t.tags ?? []).includes('key-oldtown'))
+        .map(([k]) => bare(k)),
+    );
+    const off = (roads: readonly Road[]) => {
+      const out: string[] = [];
+      let zones = 0;
+      for (const r of roads) {
+        for (const f of r.features ?? []) {
+          const kinds = f.kind === 'roadsideZone' ? f.params?.['kinds'] : undefined;
+          if (!Array.isArray(kinds) || !(kinds as string[]).some((k) => oldTown.has(bare(k)))) continue;
+          zones++;
+          const side = f.d0 + f.d1 < 0 ? 'left' : 'right';
+          const covered = (r.tags ?? []).some(
+            (t) =>
+              t.tag === 'key-oldtown' &&
+              t.s0 <= f.s0 &&
+              t.s1 >= f.s1 &&
+              (t.side === undefined || t.side === 'both' || t.side === side),
+          );
+          if (!covered) out.push(`${r.id} ${f.id}`);
+        }
+      }
+      return { out, zones };
+    };
+    const roads = Object.entries(REG.roads)
+      .filter(([k]) => k.startsWith('base:'))
+      .map(([, r]) => r as unknown as Road);
+    const { out, zones } = off(roads);
+    print(`${zones} zones name an Old Town kind; ${out.length} are off the Old Town's tag`);
+    expect(zones).toBeGreaterThanOrEqual(14);
+    expect(out).toEqual([]);
+    // The control: the same roads with the tag taken off Duval and Whitehead have every one of them off it.
+    const bare0 = roads.map((r) => ({ ...r, tags: (r.tags ?? []).filter((t) => t.tag !== 'key-oldtown') }));
+    expect(off(bare0).out).toHaveLength(zones);
+  });
+
   it("every sign and billboard of the Old Town has a slot on the Old Town's streets, on its own tag", () => {
     // Boards stand in `billboard` slots the roads name (docs/content-packs.md, signs and billboards): a
     // sign tagged `key-oldtown` that no slot names is dead words. The Old Town's roads are the ones

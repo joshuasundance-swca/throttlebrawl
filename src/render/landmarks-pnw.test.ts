@@ -109,6 +109,110 @@ describe('the Hawthorne lift towers on Bridge City', () => {
   });
 });
 
+// Playtest 4, B7: the Burnside and Hawthorne bridges carry their own structures, CX4's bascule piers, truss
+// bays and lift span. The deck must stay clear for the rider, and the structure must follow the deck it spans.
+describe("the bridges' trusses, lift span and bascule piers (playtest 4, B7)", () => {
+  const STRUCTURES = ['pdx_bascule_pier', 'pdx_truss_bay', 'pdx_lift_span'];
+
+  it('places every one from the kit, so each is drawn, and all of them cost the one landmark call', async () => {
+    const road = track('osm-pnw-portland');
+    const placed = landmarkPlacements(road).filter((p) => STRUCTURES.includes(p.node));
+    const counts = new Map<string, number>();
+    for (const p of placed) counts.set(p.node, (counts.get(p.node) ?? 0) + 1);
+    stdout.write(`[examined] placed ${[...counts].map(([n, c]) => `${c} ${n}`).join(', ')}\n`);
+    expect(counts.get('pdx_bascule_pier')).toBe(2);
+    expect(counts.get('pdx_lift_span')).toBe(1);
+    expect(counts.get('pdx_truss_bay') ?? 0).toBeGreaterThanOrEqual(8);
+    const kits = await kitsFor(road);
+    const layer = new LandmarkLayer(kits, look, { road });
+    expect(layer.counts().skipped).toBe(0);
+    // Standing on the Hawthorne Bridge, in the middle of its trusses, with the Burnside Bridge's structures
+    // out of reach: the structures of this view come to the call the towers and the sign already cost.
+    const span = placed.find((p) => p.node === 'pdx_lift_span');
+    if (!span) throw new Error('no lift span');
+    layer.update(span.x, span.z);
+    expect(layer.counts().nearPieces).toBeGreaterThanOrEqual(10);
+    expect(layer.counts().drawCalls).toBe(1);
+    // The worst view of the structures along both bridges (every 40 m), in triangles: the layer's own cost.
+    let worst = 0;
+    let worstAt = '';
+    for (const p of placed) {
+      layer.update(p.x + 1000, p.z + 1000);
+      layer.update(p.x, p.z);
+      if (layer.counts().trianglesDrawn > worst) {
+        worst = layer.counts().trianglesDrawn;
+        worstAt = p.feature.id ?? p.node;
+      }
+    }
+    stdout.write(
+      `[examined] the landmark layer's worst view standing at a structure: ${worst} triangles at ${worstAt}\n`,
+    );
+    // The same cap the Golden Gate's landmark view holds (landmarks.test.ts: 9,060 and 500 for its ropes).
+    expect(worst).toBeLessThan(9_560);
+  });
+
+  it('keeps every structure clear of the lanes: nothing between the deck and a truck high, and its floor beam under it', async () => {
+    const road = track('osm-pnw-portland');
+    const kit = (await kitsFor(road)).get('pdx-landmarks');
+    if (!kit) throw new Error('no kit');
+    /** Triangles of a node over the lanes (|x| < halfW) that stand between the deck and a truck high. */
+    const inLanes = (name: string, halfW: number): number => {
+      const node = kit.nodes.get(name);
+      if (!node) throw new Error(name);
+      const pos = node.geometry.getAttribute('position');
+      let hits = 0;
+      for (let i = 0; i < pos.count; i += 3) {
+        const xs = [pos.getX(i), pos.getX(i + 1), pos.getX(i + 2)];
+        const ys = [pos.getY(i), pos.getY(i + 1), pos.getY(i + 2)];
+        // The road's surface is y = 0; a truck and a rider in the air reach 6 m. A floor beam sits under it.
+        if (
+          Math.max(...xs) > -halfW &&
+          Math.min(...xs) < halfW &&
+          Math.max(...ys) > -0.3 &&
+          Math.min(...ys) < 6
+        )
+          hits++;
+      }
+      return hits;
+    };
+    let examined = 0;
+    for (const at of landmarkPlacements(road).filter((p) => STRUCTURES.includes(p.node))) {
+      const halfW = halfWidth(road, at.edge, (at.feature.s0 + at.feature.s1) / 2);
+      examined += kit.nodes.get(at.node)?.geometry.getAttribute('position').count ?? 0;
+      expect(inLanes(at.node, halfW), `${at.feature.id ?? at.node}: triangles in the lanes`).toBe(0);
+    }
+    stdout.write(
+      `[examined] ${examined / 3} triangles of the structures, none in the lanes' clearance (y -0.3 to 6 m)\n`,
+    );
+    // The control: the roof sign's building stands over x -8 to 8, so the same check finds it.
+    expect(inLanes('pdx_roof_sign', 9.5), 'the control finds a building in the lanes').toBeGreaterThan(20);
+  });
+
+  it('follows the deck: a truss bay or the span is straight, and the road under it bends at most 0.6 m off its axis', () => {
+    const road = track('osm-pnw-portland');
+    let worst = 0;
+    let which = '';
+    for (const at of landmarkPlacements(road).filter((p) =>
+      ['pdx_truss_bay', 'pdx_lift_span'].includes(p.node),
+    )) {
+      const ax = Math.sin(at.yaw);
+      const az = Math.cos(at.yaw);
+      for (const s of [at.feature.s0, (at.feature.s0 + at.feature.s1) / 2, at.feature.s1]) {
+        const p = road.toWorld(at.edge, s, 0, 0);
+        const off = Math.abs((p.x - at.x) * az - (p.z - at.z) * ax);
+        if (off > worst) {
+          worst = off;
+          which = `${at.feature.id ?? '?'} s ${s.toFixed(0)}`;
+        }
+      }
+    }
+    stdout.write(
+      `[examined] the road's centre lies at most ${worst.toFixed(2)} m off the axis of a bay (${which})\n`,
+    );
+    expect(worst).toBeLessThanOrEqual(0.6);
+  });
+});
+
 // Playtest 4, P1 (the wave C check: "the neon salmon is a thin dark outline"): the roof sign's neon
 // strokes (its salmon and the frame round its board) draw as light. The node's `neon` vertices leave the
 // lit mesh for a second, unlit and additive one: a bright core and a dimmer halo shell stood out from it.

@@ -42,7 +42,7 @@ const CSS = `
   width: min(${PANEL_MAX_W}px, ${PANEL_VW * 100}vw); max-height: calc(100% - ${PANEL_AIR + 44 + 2 * PANEL_AIR}px);
   display: flex; flex-direction: column; overflow: hidden;
   box-sizing: border-box; padding: 0; pointer-events: auto; z-index: 30;
-  background: rgb(10 5 25 / 45%); color: #fff; border-radius: 8px; font: 600 12px/1.3 system-ui, sans-serif;
+  background: rgb(10 5 25 / 45%); color: #fff; border-radius: 8px; font: 600 0.75rem/1.3 system-ui, sans-serif;
   text-shadow: 0 1px 2px #000; text-align: left; }
 #tuning-panel.tp[hidden] { display: none; }
 #tuning-panel.tp.min { width: auto; }
@@ -53,8 +53,8 @@ const CSS = `
 #tuning-panel .tp-head button { min-height: 40px; min-width: 40px; padding: 4px 10px; }
 #tuning-panel .tp-scroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
   padding: 0 10px 8px; touch-action: pan-y; }
-#tuning-panel .tp-title { flex: 1 1 auto; font-size: 14px; font-weight: 800; letter-spacing: 0.04em; }
-#tuning-panel .tp-group-title { margin-top: 6px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+#tuning-panel .tp-title { flex: 1 1 auto; font-size: 0.875rem; font-weight: 800; letter-spacing: 0.04em; }
+#tuning-panel .tp-group-title { margin-top: 6px; font-size: 0.625rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
 #tuning-panel .tp-row { display: grid; grid-template-columns: 5.6em minmax(0, 1fr) 4em; gap: 6px; align-items: center; min-height: 30px; }
 #tuning-panel .tp-row > span { overflow-wrap: anywhere; }
 #tuning-panel output { text-align: right; font-variant-numeric: tabular-nums; }
@@ -66,7 +66,7 @@ const CSS = `
 #tuning-panel button[aria-pressed='true'] { background: #e0543a; border-color: #fff; }
 #tuning-panel .tp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 #tuning-panel .tp-status { min-height: 1.3em; margin-top: 4px; font-weight: 500; }
-#tuning-panel textarea { box-sizing: border-box; width: 100%; height: 8em; margin-top: 4px; font: 11px/1.3 ui-monospace, monospace;
+#tuning-panel textarea { box-sizing: border-box; width: 100%; height: 8em; margin-top: 4px; font: 0.6875rem/1.3 ui-monospace, monospace;
   color: #fff; background: rgb(0 0 0 / 70%); border: 1px solid rgb(255 255 255 / 40%); border-radius: 4px; user-select: text; -webkit-user-select: text; }
 `;
 

@@ -105,6 +105,20 @@
       "pool": "billboards"
     },
     {
+      "kind": "roadsideZone",
+      "id": "latourell-creek-falls",
+      "s0": 1150.0,
+      "s1": 1220.0,
+      "d0": 5.6,
+      "d1": 12.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:rain-shell-hiker"],
+        "maxPeds": 2,
+        "sound": "falls"
+      }
+    },
+    {
       "kind": "rampTruck",
       "id": "carrier-latourell",
       "s0": 1260.0,

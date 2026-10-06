@@ -21,11 +21,14 @@
 //   traffic area (a Keys district such as `key-fishing`) covers a spawn slot, that area's own mix
 //   (SimTrafficTypeDef.areaWeights) picks the type instead, from the same one roll. A vehicle keeps
 //   its type as it drives on; recycled, it is picked again where it reappears.
-// - Contacts (playtest 1): a solid frontal or rear hit crashes the rider inelastically; a side
-//   brush, a graze or a slow nudge wobbles (a `wobble` event), unless the rider is still unstable
-//   or the vehicle is `big` (trucks), which crashes (a `crash` event for the tumble). Both carry
-//   data.cause `traffic`, `hit` and `impactMps`, and target the vehicle. A close, fast pass with no
-//   contact fires `nearMiss`. The full rule is on contacts() below.
+// - Contacts (playtest 1, playtest 4): one rule (./contact-rule.ts) for every geometry: a contact
+//   closing at `traffic.solidHitMps` or faster, along its normal from both bodies' velocities,
+//   crashes the rider (a `crash` event for the tumble; end on, inelastically), and anything slower
+//   wobbles (a `wobble` event), whatever the vehicle. Both carry data.cause `traffic`, `hit` and
+//   `impactMps` (the closing speed), and target the vehicle. A close, fast pass with no contact fires
+//   `nearMiss`. The full rule is on contacts() below.
+// - Back on the bike (playtest 4): a rider who has just remounted or respawned is a ghost to
+//   traffic for a moment (startTrafficGhost), so a restart behind stopped traffic is never a crash.
 // - Wasteland oddities (M3 traffic-4) are ordinary entries with category `oddity`, picked by the
 //   same region weights (scaled by the `traffic.oddities` slider) and spawned under the same
 //   fairness rule. A rolling one (a mobile home with no truck) is a slow vehicle that comes only
@@ -65,12 +68,18 @@
 //   outer edge inside the smashables' line, but is not light: it keeps the old contact rules (a
 //   solid rear-end is still a crash).
 // Every number below is a [default] starting value, to be tuned on the phone.
-import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
+import { clamp, cos, nextFloat, secondsToTicks, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor, type RoadPos } from '../../road';
 import { driftOf } from '../riders/drift';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
+import {
+  closingOnAxis,
+  TRAFFIC_HIT_DEFAULT_MPS,
+  TRAFFIC_HIT_KEY,
+  trafficContactCrashes,
+} from './contact-rule';
 import {
   buildCorridor,
   buildLaneMap,
@@ -209,15 +218,32 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
-    // Playtest 1: a frontal or rear hit at least this fast throws the rider off. [default]
-    id: 'traffic.solidHitMps',
+    // Playtest 1: a frontal or rear hit at least this fast throws the rider off. Playtest 4 (the
+    // maintainer, 2026-10-05: "low speeds should wobble not crash"): the one line for every contact
+    // with a vehicle, by the closing speed along the contact (./contact-rule.ts). [default]
+    id: TRAFFIC_HIT_KEY,
     group: 'traffic',
-    label: 'Car hit: wipeout speed',
-    default: 6,
+    label: 'Car hit: wipeout closing speed',
+    default: TRAFFIC_HIT_DEFAULT_MPS,
     min: 0,
     max: 40,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Playtest 4 (the maintainer, 2026-10-05: "I've respawned behind stuck traffic and crashed
+    // repeatedly ... maybe clip through if that happens"): after a remount or a respawn the rider is
+    // a ghost to traffic for at least this long, and on until clear of every vehicle, capped at
+    // TRAFFIC.ghostCapS. 0 turns it off. [default]
+    id: 'traffic.respawnGhostS',
+    group: 'traffic',
+    label: 'Back on the bike: ride through traffic for',
+    default: 1.5,
+    min: 0,
+    max: 4,
+    step: 0.25,
+    unit: 's',
     affectsSim: true,
   },
   {
@@ -294,10 +320,21 @@ export const TRAFFIC = {
   nearMissMinMps: 8,
   /** Fallback for the `traffic.nearMissClosingMps` slider: the least closing speed of a near miss. */
   nearMissClosingMps: 12,
-  /** Fallback for `traffic.solidHitMps`: an end-on hit at least this fast crashes the rider. */
-  solidHitMps: 6,
-  /** An end-on contact overlapping sideways by less than this is a graze (a wobble), m. */
+  /** Fallback for `traffic.solidHitMps`: a contact closing at least this fast crashes the rider. */
+  solidHitMps: TRAFFIC_HIT_DEFAULT_MPS,
+  /**
+   * An end-on contact overlapping sideways by less than this is a graze, m: it meets the corner, so
+   * its closing speed is taken across the road, like a side brush's.
+   */
   grazeM: 0.3,
+  /**
+   * The ghost after a remount or a respawn (playtest 4): it lasts `traffic.respawnGhostS`, then on
+   * while the rider's box is within ghostClearM of any vehicle's, never past ghostCapS in all, s/m.
+   */
+  ghostCapS: 4,
+  ghostClearM: 0.25,
+  /** Fallback for `traffic.respawnGhostS`, s. */
+  respawnGhostS: 1.5,
   /** With the ease-in on, oncoming density starts at this fraction of its slider value. */
   oncomingEaseFrom: 0.25,
   /** Riders higher than this above the road pass over traffic, m. */
@@ -564,7 +601,22 @@ export interface TrafficState {
   yieldUntilS: number[];
   yieldCd: number[];
   toppleS: number[];
+  /**
+   * By rider entity id: seconds a traffic wobble leaves it shaky. Since playtest 4's one rule it no
+   * longer lowers the crash line (a second slow touch wobbles again); kept as the wobble's record.
+   */
   unstableS: number[];
+  /**
+   * By vehicle slot: how fast it moved across the road last tick (corridor d per second): a lane
+   * change, a swerve, a weave. A contact's closing speed across the road reads it (playtest 4).
+   */
+  cdMps: number[];
+  /**
+   * By rider entity id, the ghost after a remount or a respawn (playtest 4; startTrafficGhost): the
+   * scaled ticks of its minimum left, and of its hard cap left. Ghosting while the cap is above 0.
+   */
+  ghostT: number[];
+  ghostCapT: number[];
   /** Per rider, per vehicle slot: the vehicle's position ahead of the rider last tick (0 = unknown). */
   lastRel: number[][];
   spawns: number;
@@ -598,6 +650,9 @@ export function trafficState(world: World): TrafficState {
     yieldCd: [],
     toppleS: [],
     unstableS: [],
+    cdMps: [],
+    ghostT: [],
+    ghostCapT: [],
     lastRel: [],
     spawns: 0,
     recycles: 0,
@@ -916,6 +971,7 @@ export function placeVehicle(
   st.yieldUntilS[slot] = 0;
   st.yieldCd[slot] = cd;
   st.toppleS[slot] = 0;
+  st.cdMps[slot] = 0;
   // A weaver starts its weave at a seeded point (W-P); nobody else rolls, so plain traffic keeps
   // its rolls.
   st.weavePhase[slot] = (t.behaviour?.weaveM ?? 0) > 0 ? nextFloat(world.rng.traffic) * TAU : 0;
@@ -1325,6 +1381,8 @@ interface RiderView {
    * its view is that point's corridor position, and contact moves it on its own road.
    */
   over: boolean;
+  /** Back on the bike moments ago: traffic passes through it and it through traffic (playtest 4). */
+  ghost: boolean;
 }
 
 /**
@@ -1348,6 +1406,7 @@ function riderViews(world: World, config: SimConfig, st: TrafficState): RiderVie
       down: m.mode === 'Tumble' || m.mode === 'OnFoot',
       drifting: Math.abs(driftOf(world, m)) > DRIFT_SLIP_MIN,
       over: p.over,
+      ghost: (st.ghostCapT[m.id] ?? 0) > 0,
     });
   }
   return out;
@@ -1637,6 +1696,7 @@ function move(
     const step = rate * dt;
     const nextCd = cd + clamp(target - cd, -step, step);
     st.cd[k] = nextCd;
+    st.cdMps[k] = dt > 0 ? (nextCd - cd) / dt : 0;
     // Back on its line: the dodge is over.
     if (returning && Math.abs(nextCd - target) <= 0.05) st.yieldUntilS[k] = 0;
     const mover = world.movers[st.id[k] ?? -1];
@@ -1829,17 +1889,21 @@ function wheelieReasonData(reason: string | undefined): { wheelieReason?: string
 
 /**
  * Wobbles, crashes and near misses between riders and vehicles (M1 traffic-1, reshaped by
- * playtest 1, 2026-09-30: "hitting cars feels bouncy"). A first contact is classed by how the
- * boxes met:
+ * playtest 1, 2026-09-30: "hitting cars feels bouncy", and playtest 4, 2026-10-05: "low speeds
+ * should wobble not crash, accounting for biker speed and traffic speed"). A first contact is
+ * classed by how the boxes met, and decided by ONE rule (./contact-rule.ts): its closing speed along
+ * the contact's normal, from both bodies' velocities, against `traffic.solidHitMps`:
  * - **end-on** (they were not side by side last tick, so the rider met the car's front or tail, or
- *   it met the rider's), overlapping sideways by at least `grazeM`, at a closing speed of at least
- *   `traffic.solidHitMps`: a solid hit (`hit` `frontal` or `rear`). The rider crashes (the tumble
- *   hand-off) and the collision is inelastic: the rider is left at the car's speed along the road
- *   (0 for a head-on), just touching it, never thrown back;
- * - otherwise a **side brush**, a **graze** (end-on but barely overlapping) or a slow **nudge**:
- *   a wobble with the speed scrub, pushed just clear of the car. It is still a crash when the rider
- *   is unstable from an earlier wobble, or the vehicle is `big` (M1's rules).
- * A close, fast pass with no contact fires `nearMiss`.
+ *   it met the rider's), overlapping sideways by at least `grazeM` (`hit` `frontal` or `rear`): the
+ *   closing speed along the road. A crash is a solid hit: the rider goes down (the tumble hand-off)
+ *   and the collision is inelastic, the rider left at the car's speed along the road (0 for a
+ *   head-on), just touching it, never thrown back;
+ * - a **side brush** or a **graze** (end-on but barely overlapping): the closing speed across the
+ *   road. A crash scrubs the speed.
+ * Below the line it is a wobble with the speed scrub, pushed just clear of the car, whatever the
+ * vehicle (a truck too) and however shaky the rider already is.
+ * A close, fast pass with no contact fires `nearMiss`. A ghost (startTrafficGhost: back on the bike
+ * moments ago) touches nothing.
  * Playtest 3: a vehicle with its ramp down (a live moving deck, SimMovingDeck) is the riders' to
  * meet, by the deck rules, so traffic skips it; and a first contact a wheelie turns into a hood
  * launch (sim/riders/wheelie.ts) is neither a crash nor a wobble, and a crash a wheelie did not turn
@@ -1850,7 +1914,6 @@ function wheelieReasonData(reason: string | undefined): { wheelieReason?: string
  */
 function contacts(world: World, config: SimConfig, st: TrafficState, riders: RiderView[], dt: number): void {
   const T = TRAFFIC;
-  const solidMps = world.params['traffic.solidHitMps'] ?? T.solidHitMps;
   const closingMin = world.params['traffic.nearMissClosingMps'] ?? T.nearMissClosingMps;
   const decks = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
   const kerbSoft = (world.params['traffic.kerbSoft'] ?? 0) > 0;
@@ -1860,6 +1923,11 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
     const rel = st.lastRel[r.id] ?? [];
     const m = world.movers[r.id];
     if (!m) continue;
+    // The rider's velocity in corridor terms: along the road from its speed and heading; across it
+    // from its heading plus a kick's or a hit's shove still sliding it sideways (the corridor runs
+    // with the rider's road when r.dir equals its pos.dir, against it otherwise).
+    const riderU = r.dir * m.speed * cos(m.yaw);
+    const riderCross = r.dir * m.speed * sin(m.yaw) + r.dir * m.pos.dir * shoveDMps(world, r.id);
     for (let k = 0; k < st.id.length; k++) {
       const vid = st.id[k] ?? -1;
       const t = typeOf(config, st, k);
@@ -1871,6 +1939,9 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       const prev = rel[k] ?? 0;
       rel[k] = ahead === 0 ? -1e-9 : ahead;
       if (!r.touchable || isDeckVehicle(decks, vid)) continue;
+      // A ghost, back on the bike moments ago (playtest 4), passes straight through: no contact, no
+      // push, and no near miss either (nothing was risked).
+      if (r.ghost) continue;
       // A toppled kerb rider (T4.1) lies on the ground: riders pass it by, and it can't be hit again.
       if ((st.toppleS[k] ?? 0) > 0) continue;
       if (st.contactWith[r.id] === vid && (overU < -1 || overD < -0.5)) st.contactWith[r.id] = -1;
@@ -1887,9 +1958,16 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           const halfLen = (t.lengthM + T.riderLengthM) / 2;
           const endOn = prev === 0 ? overU < overD : Math.abs(prev) >= halfLen;
           const front = du * r.dir > 0;
-          const closing = Math.abs(m.speed - vAlong);
           const graze = endOn && overD < T.grazeM;
           const oncoming = vDir !== r.dir;
+          // The closing speed (playtest 4, ./contact-rule.ts): how fast the two came together along
+          // the contact's normal, from both bodies' velocities in corridor terms. End on, along the
+          // road (rear-ending, rear-ended, head-on); a side brush or a graze, across it (the rider's
+          // heading off the road's line, the car's lane change or swerve).
+          const closing =
+            endOn && !graze
+              ? closingOnAxis(riderU, vDir * vSpeed, du)
+              : closingOnAxis(riderCross, st.cdMps[k] ?? 0, dcd);
           const hood = {
             rider: r.id,
             vehicle: vid,
@@ -1906,8 +1984,10 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             // Soft contact (T4.1): the rider only wobbles, even when it is still unstable from an
             // earlier wobble, and a hard enough clip topples the cyclist. A toppled cyclist is moved
             // clear, so the rider is neither pushed out of its box nor slowed to its speed; a slow
-            // brush (a scooter against a cop standing at the kerb) is resolved as any nudge is.
-            soft = closing >= KERB_YIELD.toppleMinMps;
+            // brush (a scooter against a cop standing at the kerb) is resolved as any nudge is. How
+            // hard the clip was is the speed difference along the road, as T4.1 tuned it.
+            const clip = Math.abs(m.speed - vAlong);
+            soft = clip >= KERB_YIELD.toppleMinMps;
             m.speed *= KERB_YIELD.bumpScrub;
             const away = dcd > 0 ? -1 : 1;
             m.yaw = clamp(m.yaw + away * r.dir * KERB_YIELD.bumpKickRad, -1.2, 1.2);
@@ -1922,7 +2002,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
                 vehicle: t.contentId,
                 contact: 'wobble',
                 hit,
-                impactMps: closing,
+                impactMps: clip,
                 kerb: true,
                 ...(soft ? { toppleS: KERB_YIELD.toppleS } : {}),
               },
@@ -1930,8 +2010,10 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             );
             if (soft) toppleKerbRider(world, config, st, k, overD);
           } else {
-            solid = endOn && !graze && closing >= solidMps;
-            const crash = solid || t.hazard === 'big' || (st.unstableS[r.id] ?? 0) > 0;
+            // The one rule (playtest 4): the closing speed alone decides, whatever the vehicle and
+            // however shaky the rider already is. An end-on crash is inelastic (`solid`).
+            const crash = trafficContactCrashes(world.params, closing);
+            solid = crash && endOn && !graze;
             const data = {
               cause: 'traffic',
               hazard: t.hazard,
@@ -2016,6 +2098,94 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
   }
 }
 
+/**
+ * A rider's sideways shove from a hit or a kick still in progress, m/s along +d (sim/combat's curve:
+ * peak × (1 − t/N), header of sim/combat). Read from combat's state by name, as sim/riders/wheelie
+ * reads the riders', so traffic does not import combat (combat imports tumble, which imports traffic).
+ */
+function shoveDMps(world: World, id: number): number {
+  const c = world.systems['combat'] as
+    { knockPeak?: number[]; knockT?: number[]; knockTicks?: number[] } | undefined;
+  const peak = c?.knockPeak?.[id] ?? 0;
+  if (peak === 0) return 0;
+  const n = c?.knockTicks?.[id] ?? 1;
+  const t = c?.knockT?.[id] ?? 0;
+  return t >= n ? 0 : peak * (1 - t / n);
+}
+
+/**
+ * Whether a rider's box is within TRAFFIC.ghostClearM of any vehicle's (a live moving deck aside: the
+ * riders' to meet), in corridor terms; false off the traffic road or above it.
+ */
+function nearVehicle(
+  config: SimConfig,
+  st: TrafficState,
+  m: Mover,
+  decks: readonly { vehicle: number }[],
+): boolean {
+  if (m.h > TRAFFIC.maxContactH) return false;
+  const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
+  if (!p) return false;
+  const T = TRAFFIC;
+  for (let k = 0; k < st.id.length; k++) {
+    if (isDeckVehicle(decks, st.id[k] ?? -1)) continue;
+    const t = typeOf(config, st, k);
+    const overU = (t.lengthM + T.riderLengthM) / 2 - Math.abs((st.u[k] ?? 0) - p.u);
+    const overD = (t.widthM + T.riderWidthM) / 2 - Math.abs((st.cd[k] ?? 0) - p.cd);
+    if (overU > -T.ghostClearM && overD > -T.ghostClearM) return true;
+  }
+  return false;
+}
+
+/**
+ * Counts each ghost down (scaled ticks, so a hit-stop holds it) and ends it once its minimum is over
+ * and the rider is clear of every vehicle, or at its hard cap (playtest 4). Before contacts(), so a
+ * ghost that ends this tick is already solid there.
+ */
+function stepGhosts(world: World, config: SimConfig, st: TrafficState): void {
+  const decks = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
+  const ts = world.timeScale;
+  for (const m of world.movers) {
+    if (m.kind !== 'rider' || !((st.ghostCapT[m.id] ?? 0) > 0)) continue;
+    const left = Math.max(0, (st.ghostT[m.id] ?? 0) - ts);
+    const cap = Math.max(0, (st.ghostCapT[m.id] ?? 0) - ts);
+    st.ghostT[m.id] = left;
+    st.ghostCapT[m.id] = cap;
+    // Down again (a rival knocked it off): a ghost no more.
+    const down = m.mode === 'Tumble' || m.mode === 'OnFoot';
+    const over = down || cap <= 0 || (left <= 0 && !(m.mode === 'Road' && nearVehicle(config, st, m, decks)));
+    if (over) {
+      st.ghostT[m.id] = 0;
+      st.ghostCapT[m.id] = 0;
+    }
+  }
+}
+
+/**
+ * Makes a rider a ghost to traffic (playtest 4; the maintainer, 2026-10-05: "maybe clip through if
+ * that happens"): sim/tumble calls it the moment a rider is back on the bike, at a remount or a
+ * splash respawn. For `traffic.respawnGhostS`, and on while its box is still within
+ * TRAFFIC.ghostClearM of any vehicle's (never past TRAFFIC.ghostCapS in all), the rider and traffic
+ * pass through each other: no crash, no wobble, no push, no near miss (cars still brake for it, as
+ * for any rider in their lane). Rivals, cops, walls and the road's edge meet it as ever. A world with
+ * no traffic system is left alone.
+ */
+export function startTrafficGhost(world: World, riderId: number): void {
+  const st = world.systems['traffic'] as TrafficState | undefined;
+  if (!st) return;
+  const s = world.params['traffic.respawnGhostS'] ?? TRAFFIC.respawnGhostS;
+  if (!(s > 0)) return;
+  st.ghostT[riderId] = secondsToTicks(s);
+  st.ghostCapT[riderId] = secondsToTicks(Math.max(s, TRAFFIC.ghostCapS));
+  st.contactWith[riderId] = -1;
+}
+
+/** Whether a rider is a ghost to traffic now (startTrafficGhost), for the snapshot. Never writes. */
+export function trafficGhost(world: World, riderId: number): boolean {
+  const st = world.systems['traffic'] as TrafficState | undefined;
+  return (st?.ghostCapT[riderId] ?? 0) > 0;
+}
+
 /** Whether a vehicle has a live moving deck this tick (playtest 3's moving ramp trucks). */
 function isDeckVehicle(decks: readonly { vehicle: number }[], vid: number): boolean {
   for (const d of decks) if (d.vehicle === vid) return true;
@@ -2046,6 +2216,8 @@ export const trafficSystem: SimSystem = {
       if (m.kind !== 'rider') continue;
       st.contactWith[m.id] = -1;
       st.unstableS[m.id] = 0;
+      st.ghostT[m.id] = 0;
+      st.ghostCapT[m.id] = 0;
       st.lastRel[m.id] = [];
     }
     // The first fill: every direction up to its target, from the front of the windows back.
@@ -2065,6 +2237,7 @@ export const trafficSystem: SimSystem = {
       if ((st.dir[k] === 1 && u >= st.corridor.hi) || (st.dir[k] === -1 && u <= st.corridor.lo))
         leaveRoad(world, config, st, k);
     }
+    stepGhosts(world, config, st);
     contacts(world, config, st, riderViews(world, config, st), dt);
   },
 };

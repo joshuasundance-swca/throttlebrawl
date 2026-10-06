@@ -5,6 +5,13 @@
 import type { TuningParamDecl } from '../sim/api';
 
 export interface RenderParams {
+  /**
+   * The player's Reduce motion setting (M5's a11y-1), set through `GameRenderer.setReduceMotion`, not a
+   * tuning slider: no white hit flash, half the slow-motion tint and the speed lines, a slower cops'
+   * light bar and steady road-event lights (calm.ts). Absent (off) until the renderer sets it, so it
+   * is not one of the sliders `defaultRenderParams` lists.
+   */
+  reduceMotion?: boolean;
   /** How long a hit target flashes bright, seconds (a takedown's victim flashes twice as long). */
   hitFlashS: number;
   /** Sparks in one hit's burst (a kick throws 1.5 times as many, a crash 2 times). */

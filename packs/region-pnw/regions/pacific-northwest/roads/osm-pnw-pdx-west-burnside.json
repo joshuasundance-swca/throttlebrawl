@@ -120,6 +120,19 @@
         "scale": 0.8,
         "sightM": 60.0
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "chinatown-gate",
+      "s0": 222.5441,
+      "s1": 236.0441,
+      "d0": 23.9,
+      "d1": 26.3,
+      "params": {
+        "model": "pdx-landmarks#pdx_chinatown_gate",
+        "yawDeg": 90.0,
+        "crossStreet": true
+      }
     }
   ],
   "barriers": [

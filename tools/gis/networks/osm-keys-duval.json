@@ -65,27 +65,15 @@
       },
       "crossSection": {
         "laneWidthM": 4.0,
-        "lanesPerDirection": 1,
-        "verges": {
-          "left": {
-            "widthM": 1.5,
-            "surface": "kerb",
-            "edge": "hard"
-          },
-          "right": {
-            "widthM": 1.5,
-            "surface": "kerb",
-            "edge": "hard"
-          }
-        }
+        "lanesPerDirection": 1
       },
       "landmarks": [
         {
           "id": "southernmost-buoy",
           "model": "models/landmarks/keys-landmarks#southernmost_buoy",
           "at": {
-            "lat": 24.5465022,
-            "lon": -81.7974966
+            "lat": 24.5464852,
+            "lon": -81.7974995
           },
           "footprintM": [2.2, 2.2]
         },
@@ -93,8 +81,8 @@
           "id": "mile-0",
           "model": "models/landmarks/keys-landmarks#mile_marker_0",
           "at": {
-            "lat": 24.5552531,
-            "lon": -81.8040686
+            "lat": 24.555241,
+            "lon": -81.804088
           },
           "footprintM": [0.8, 0.8]
         },
@@ -102,8 +90,8 @@
           "id": "mallory-pier",
           "model": "models/landmarks/keys-landmarks#mallory_pier",
           "at": {
-            "lat": 24.5604318,
-            "lon": -81.8064861
+            "lat": 24.5604369,
+            "lon": -81.806478
           },
           "footprintM": [30, 24],
           "side": "left",
@@ -165,7 +153,7 @@
               "s0": 1490,
               "s1": 1570,
               "d0": 5.6,
-              "d1": 10.6,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["tourist-with-cooler", "cruise-day-tripper"]
@@ -183,7 +171,7 @@
               "id": "duval-roosters-a",
               "s0": 300,
               "s1": 400,
-              "d0": -10.6,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "animals",
@@ -236,7 +224,7 @@
               "s0": 800,
               "s1": 880,
               "d0": 5.6,
-              "d1": 10.6,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["cruise-day-tripper", "tourist-with-cooler"]
@@ -248,7 +236,7 @@
               "s0": 1100,
               "s1": 1180,
               "d0": 5.6,
-              "d1": 10.6,
+              "d1": 8.5,
               "params": {
                 "kinds": ["rooster", "cruise-day-tripper"]
               }
@@ -289,7 +277,7 @@
               "id": "mallory-sunset",
               "s0": 1660,
               "s1": 1740,
-              "d0": -10.6,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "pedestrians",
@@ -301,7 +289,7 @@
               "id": "party-1-l",
               "s0": 100.0,
               "s1": 280.0,
-              "d0": -11.0,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "pedestrians",
@@ -318,7 +306,7 @@
               "s0": 100.0,
               "s1": 280.0,
               "d0": 5.6,
-              "d1": 11.0,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
@@ -333,7 +321,7 @@
               "id": "party-2-l",
               "s0": 450.0,
               "s1": 570.0,
-              "d0": -11.0,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "pedestrians",
@@ -350,7 +338,7 @@
               "s0": 450.0,
               "s1": 570.0,
               "d0": 5.6,
-              "d1": 11.0,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
@@ -365,7 +353,7 @@
               "id": "party-3-l",
               "s0": 910.0,
               "s1": 1070.0,
-              "d0": -11.0,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "pedestrians",
@@ -382,7 +370,7 @@
               "s0": 910.0,
               "s1": 1070.0,
               "d0": 5.6,
-              "d1": 11.0,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
@@ -397,7 +385,7 @@
               "id": "party-4-l",
               "s0": 1200.0,
               "s1": 1380.0,
-              "d0": -11.0,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "pedestrians",
@@ -414,7 +402,7 @@
               "s0": 1200.0,
               "s1": 1380.0,
               "d0": 5.6,
-              "d1": 11.0,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
@@ -429,7 +417,7 @@
               "id": "party-5-l",
               "s0": 1430.0,
               "s1": 1580.0,
-              "d0": -11.0,
+              "d0": -8.5,
               "d1": -5.6,
               "params": {
                 "spawns": "pedestrians",
@@ -446,7 +434,7 @@
               "s0": 1430.0,
               "s1": 1580.0,
               "d0": 5.6,
-              "d1": 11.0,
+              "d1": 8.5,
               "params": {
                 "spawns": "pedestrians",
                 "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],

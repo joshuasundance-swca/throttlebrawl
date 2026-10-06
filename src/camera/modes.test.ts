@@ -520,16 +520,18 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
 
   // camera-3: the far chase and helmet sliders only act in their own view, and the helmet's calm
   // share only under reduce-shake, so the script runs once per view; a slider must move at least
-  // one of the three traces.
+  // one of the traces. M5's a11y-1: the chase views' motion calm acts only under reduce-motion.
   const VARIANTS = [
-    { view: 0, shake: 1 },
-    { view: 1, shake: 1 },
-    { view: 2, shake: 0.5 },
+    { view: 0, shake: 1, motion: 1 },
+    { view: 1, shake: 1, motion: 1 },
+    { view: 2, shake: 0.5, motion: 1 },
+    { view: 0, shake: 1, motion: 0.5 },
   ];
-  const make = (v: { view: number; shake: number }): FollowCamera => {
+  const make = (v: { view: number; shake: number; motion: number }): FollowCamera => {
     const cam = createFollowCamera({});
     cam.setParam('camera.mode', v.view);
     cam.setShakeAmount(v.shake);
+    cam.setMotionAmount(v.motion);
     return cam;
   };
 
@@ -548,7 +550,7 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
     }
     console.log(
       `[examined] ${CAMERA_TUNING.length} camera tuning declarations against a scripted run in ` +
-        `${VARIANTS.length} views`,
+        `${VARIANTS.length} view and motion variants`,
     );
     expect(dead).toEqual([]);
   });
