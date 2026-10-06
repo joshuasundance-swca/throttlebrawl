@@ -863,6 +863,89 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
 /** A building keeps this far from any road's verge, m: the sidewalk less what a front's corner may give. */
 export const PDX_ROAD_CLEAR_M = SIDEWALK_M - 0.6;
 
+/** The grid square the road's cuts are filed by, m. */
+const CUT_CELL_M = 16;
+
+/**
+ * Every road of a network as cuts across its lanes: one each metre along every edge (a branch, a
+ * shortcut's connector, a junction's other road), from one side's lane edge to the other's, `clear` past
+ * each, filed by grid square. `crosses(r, except)` says whether a footprint crosses any of them (but
+ * those of the edge `except`). Playtest 4's
+ * phone play (2026-10-06: "in bridge city near shortcut(?) junctions in two places it seems like there's
+ * a building in the road"): the Morrison shortcut's connectors stood their fronts on the main road's
+ * connector and on the Hawthorne Bridge's end, which a projection of nine points onto the building's own
+ * road and its neighbours never saw.
+ */
+export function roadCuts(road: RoadNetwork, clear: number): { crosses(r: Rect, except?: number): boolean } {
+  const cuts: number[] = [];
+  const cells = new Map<number, number[]>();
+  const cell = (v: number) => Math.floor(v / CUT_CELL_M);
+  const key = (i: number, j: number) => (i + 0x8000) * 0x10000 + (j + 0x8000);
+  for (const e of road.edges) {
+    const n = Math.max(1, Math.ceil(e.length));
+    for (let k = 0; k <= n; k++) {
+      const s = (e.length * k) / n;
+      let lo = 0;
+      let hi = 0;
+      for (const lane of road.lanesAt(e.index, s)) {
+        lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+        hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+      }
+      const a = road.toWorld(e.index, s, lo - clear, 0);
+      const b = road.toWorld(e.index, s, hi + clear, 0);
+      const id = cuts.length / 5;
+      cuts.push(a.x, a.z, b.x, b.z, e.index);
+      for (let i = cell(Math.min(a.x, b.x)); i <= cell(Math.max(a.x, b.x)); i++)
+        for (let j = cell(Math.min(a.z, b.z)); j <= cell(Math.max(a.z, b.z)); j++) {
+          const list = cells.get(key(i, j));
+          if (list) list.push(id);
+          else cells.set(key(i, j), [id]);
+        }
+    }
+  }
+  /** Whether the segment (x0, z0)-(x1, z1) passes through the footprint (Liang-Barsky in its axes). */
+  const through = (r: Rect, x0: number, z0: number, x1: number, z1: number): boolean => {
+    const u0 = (x0 - r.cx) * r.ux + (z0 - r.cz) * r.uz;
+    const v0 = (x0 - r.cx) * r.vx + (z0 - r.cz) * r.vz;
+    const du = (x1 - r.cx) * r.ux + (z1 - r.cz) * r.uz - u0;
+    const dv = (x1 - r.cx) * r.vx + (z1 - r.cz) * r.vz - v0;
+    let t0 = 0;
+    let t1 = 1;
+    // Each pair keeps p * t <= q.
+    for (const [p, q] of [
+      [-du, u0 + r.hw],
+      [du, r.hw - u0],
+      [-dv, v0 + r.hd],
+      [dv, r.hd - v0],
+    ] as const) {
+      if (Math.abs(p) < 1e-12) {
+        if (q < 0) return false;
+      } else if (p < 0) t0 = Math.max(t0, q / p);
+      else t1 = Math.min(t1, q / p);
+      if (t0 > t1) return false;
+    }
+    return true;
+  };
+  const seen = new Set<number>();
+  return {
+    crosses(r: Rect, except = -1): boolean {
+      const ex = r.hw * Math.abs(r.ux) + r.hd * Math.abs(r.vx);
+      const ez = r.hw * Math.abs(r.uz) + r.hd * Math.abs(r.vz);
+      seen.clear();
+      for (let i = cell(r.cx - ex); i <= cell(r.cx + ex); i++)
+        for (let j = cell(r.cz - ez); j <= cell(r.cz + ez); j++)
+          for (const id of cells.get(key(i, j)) ?? []) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const o = id * 5;
+            if (cuts[o + 4] === except) continue;
+            if (through(r, cuts[o] ?? 0, cuts[o + 1] ?? 0, cuts[o + 2] ?? 0, cuts[o + 3] ?? 0)) return true;
+          }
+      return false;
+    },
+  };
+}
+
 /** The width and depth of one of the kit's buildings, m: its bounding box (the front is at z = 0). */
 export function pdxFootprint(kit: SceneryModel, variant: number): readonly [number, number] {
   const g = kit.variants[variant];
@@ -896,6 +979,10 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
   };
   /** Every building placed so far, on any road: two roads' fronts meet at a corner and must not overlap. */
   const footprints: Rect[] = [];
+  /** Every road's lanes and a sidewalk's clearance past them, branches and connectors included. */
+  const cuts = roadCuts(road, PDX_ROAD_CLEAR_M);
+  /** A rack or a cart only keeps off the lanes themselves (it stands on a sidewalk, by design). */
+  const laneCuts = roadCuts(road, 0.3);
   /** Work that waits until every road's street fronts stand: the second row never takes a front's lot. */
   const later: (() => void)[] = [];
   /**
@@ -995,12 +1082,32 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
       for (const [, far] of across(side, s0, s1, 1.5)) if (far > outer + back - 0.5) back = far - outer + 0.5;
       return back;
     };
+    /**
+     * How far past the verge a side's paving may run at each of `at` before it meets another road's lanes,
+     * m (`upTo` when it meets none before it). A connector's or a bridge's side reaches
+     * over the road beside it at a split or a join, at its own height: the Hawthorne Bridge's lot floor
+     * stood a metre over the Morrison shortcut's way back (playtest 4's phone play, 2026-10-06).
+     */
+    const offLanes = (side: -1 | 1, outer: number, at: readonly number[], upTo: number) => {
+      let out = upTo;
+      for (const s of at)
+        for (let t = 0; t < out; t += 1) {
+          const p = w(Math.min(e.length, s), side * (outer + t), 0);
+          if (laneCuts.crosses({ cx: p.x, cz: p.z, ux: 1, uz: 0, vx: 0, vz: 1, hw: 0.5, hd: 0.5 }, e.index)) {
+            out = Math.max(0, t - 0.5);
+            break;
+          }
+        }
+      return out;
+    };
     /** The ground a building over s0..s1 at d stands on: its highest and lowest road height there, m. */
     const groundOver = (s0: number, s1: number, d: number) => {
       let hi = -Infinity;
       let lo = Infinity;
-      for (let i = 0; i <= 3; i++) {
-        const y = w(Math.max(0, Math.min(e.length, s0 + ((s1 - s0) * i) / 3)), d, 0).y;
+      // Every 2 m or closer (four looks missed a crest under a short connector's front by a centimetre).
+      const n = Math.max(3, Math.ceil((s1 - s0) / 2));
+      for (let i = 0; i <= n; i++) {
+        const y = w(Math.max(0, Math.min(e.length, s0 + ((s1 - s0) * i) / n)), d, 0).y;
         hi = Math.max(hi, y);
         lo = Math.min(lo, y);
       }
@@ -1014,7 +1121,7 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
         // The paving: a sidewalk past the verge, and the lot behind it out to the land's edge.
         for (let s = a; s < b; s += 6) {
           const s1 = Math.min(b, s + 6);
-          const r = Math.min(reach(side, s), reach(side, s1));
+          const r = offLanes(side, outer, [s, (s + s1) / 2, s1], Math.min(reach(side, s), reach(side, s1)));
           if (r < 1) continue;
           const soup = soupAt(e.index, s);
           const walk = Math.min(r, SIDEWALK_M);
@@ -1081,8 +1188,14 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           const p = w(s, d, 0);
           const turn = faceRoad(p, s);
           const rect = rectOf(p, turn, width, depth);
-          // Not over a road (the inside of a bend, a junction) and not over another building.
-          if (!clearOfRoads(rect, e.index) || footprints.some((o) => rectsOverlap(rect, o))) return null;
+          // Not over a road (the inside of a bend, a junction, a branch or a shortcut's connector beside
+          // this one) and not over another building.
+          if (
+            !clearOfRoads(rect, e.index) ||
+            cuts.crosses(rect) ||
+            footprints.some((o) => rectsOverlap(rect, o))
+          )
+            return null;
           return { width, depth, back, s0, s1, s, d, p, turn, rect };
         };
         // The front row.
@@ -1096,7 +1209,12 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           }
           // A cross street: its asphalt from the verge out across the land.
           const openStreet = (s0: number, s1: number) => {
-            const r = Math.min(reach(side, s0), reach(side, s1));
+            const r = offLanes(
+              side,
+              outer,
+              [s0, (s0 + s1) / 2, s1],
+              Math.min(reach(side, s0), reach(side, s1)),
+            );
             if (r >= 1) {
               const soup = soupAt(e.index, s0);
               const n0 = w(s0, side * outer, 0.05);
@@ -1269,12 +1387,16 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           if (reach(side, s) < SIDEWALK_M) continue;
           const d = side * (outer + 1.5);
           const p = w(s, d, 0.03);
+          const turn = faceRoad(p, s);
+          // A connector's sidewalk can lie over a sibling road's lanes at a split or a join: no rack there.
+          const [rackW, rackD] = size(PDX.bikeRack);
+          if (laneCuts.crosses(rectOf(p, turn, rackW, Math.max(rackD, 0.5)))) continue;
           place({
             model: 'kit',
             variant: PDX.bikeRack,
             rule: 'pdx-rack',
             p,
-            turn: faceRoad(p, s),
+            turn,
             sy: 1,
             foot: null,
             edge: e.index,
@@ -1306,7 +1428,7 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           cx: rect.cx + rect.ux * PDX_CART_MID_X_M,
           cz: rect.cz + rect.uz * PDX_CART_MID_X_M,
         };
-        if (footprints.some((o) => rectsOverlap(shifted, o))) continue;
+        if (footprints.some((o) => rectsOverlap(shifted, o)) || laneCuts.crosses(shifted)) continue;
         footprints.push(shifted);
         place({
           model: 'kit',
