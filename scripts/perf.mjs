@@ -15,6 +15,9 @@
 //     prints a warning. The budget fails any build; on a pull request (GitHub's `pull_request`
 //     event), a change that grows the first load and leaves under 10 KB of headroom fails too (the
 //     floor, scripts/perf-limits.mjs). Main's pushes keep the budget alone.
+//     It names the biggest first-load modules, each one's estimated share of the gzip size, from the
+//     list the build writes (scripts/first-load-modules.mjs, lane F1), and with main measured, the
+//     modules that grew, so a growth shows by name, not only as a bigger chunk.
 //  2. The Playwright perf probes (project `perf`): draw calls and triangles are hard limits; frame
 //     and sim step times are a trend with a 3x catastrophe guard (scripts/perf-limits.mjs). Their
 //     numbers and the size line go to CI's step summary (GITHUB_STEP_SUMMARY) when it is set.
@@ -36,6 +39,13 @@ import {
   worstRaceModelBytes,
 } from './dataset-assets.mjs';
 import { firstLoadScripts } from './first-load.mjs';
+import {
+  biggestModules,
+  moduleGrowth,
+  moduleLines,
+  MODULES_FILE,
+  statsMatch,
+} from './first-load-modules.mjs';
 import { examined, fmtBytes, git, refExists, repoRoot } from './lib.mjs';
 import {
   firstLoadReport,
@@ -77,7 +87,17 @@ function measure(dir) {
   const first = firstLoadScripts(readFileSync(path.join(dir, 'index.html'), 'utf8'), (rel) =>
     readFileSync(path.join(dir, rel), 'utf8'),
   );
-  const out = { files: 0, raw: 0, jsGzip: 0, jsFiles: 0, lazy: [], distFiles: [], gzCopies: 0, gzBytes: 0 };
+  const out = {
+    files: 0,
+    raw: 0,
+    jsGzip: 0,
+    jsFiles: 0,
+    lazy: [],
+    distFiles: [],
+    gzCopies: 0,
+    gzBytes: 0,
+    first,
+  };
   for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile()) continue;
     const buf = readFileSync(path.join(entry.parentPath, entry.name));
@@ -102,6 +122,27 @@ function measure(dir) {
     }
   }
   return out;
+}
+
+/** How many modules the check names, and the smallest growth it names against main. */
+const TOP_MODULES = 15;
+const GROWTH_MODULES = 10;
+const GROWTH_MIN_BYTES = 512;
+
+/**
+ * The first-load module list the build wrote under `root` (scripts/first-load-modules.mjs), when it
+ * names the same first-load scripts as `first` (the build in dist/), or the reason it is not used.
+ */
+function readModules(root, first) {
+  const file = path.join(root, MODULES_FILE);
+  if (!existsSync(file)) return { reason: `the build wrote no ${MODULES_FILE}` };
+  try {
+    const stats = JSON.parse(readFileSync(file, 'utf8'));
+    if (!statsMatch(stats, first)) return { reason: `${MODULES_FILE} is from another build` };
+    return { modules: stats.modules };
+  } catch (err) {
+    return { reason: `${MODULES_FILE} did not read: ${String(err)}` };
+  }
 }
 
 /**
@@ -140,7 +181,12 @@ function measureBase(ref) {
         reason: `the base build failed: ${(res.stderr || res.stdout).trim().split('\n').slice(-3).join(' ')}`,
       };
     const m = measure(path.join(dir, 'dist'));
-    return { sha: base.slice(0, 7), jsGzip: m.jsGzip, seconds: (Date.now() - started) / 1000 };
+    return {
+      sha: base.slice(0, 7),
+      jsGzip: m.jsGzip,
+      seconds: (Date.now() - started) / 1000,
+      modules: readModules(dir, m.first),
+    };
   } catch (err) {
     return { reason: String(err?.message ?? err).split('\n')[0] };
   } finally {
@@ -183,6 +229,33 @@ if (fl.warn)
     `perf: WARNING: this change grows the first-load JavaScript by ${fmtBytes(fl.deltaBytes ?? 0)}; ` +
       'move code the first screen does not need into a lazy import() chunk (docs/engineering.md, perf check)',
   );
+// The first load by module: the biggest, and against main, the ones that grew (lane F1).
+const headModules = readModules(repoRoot, here.first);
+const moduleSummary = [];
+if ('modules' in headModules) {
+  const top = moduleLines(biggestModules(headModules.modules, TOP_MODULES));
+  console.log(`perf: the ${top.length} biggest first-load modules (estimated share of the gzip size):`);
+  for (const line of top) console.log(`perf:   ${line}`);
+  moduleSummary.push(`Biggest first-load modules (gzip share): ${top.slice(0, 5).join('; ')}`);
+  const baseModules = 'jsGzip' in baseM ? baseM.modules : { reason: baseM.reason };
+  if ('modules' in baseModules) {
+    const grown = moduleLines(
+      moduleGrowth(baseModules.modules, headModules.modules, {
+        n: GROWTH_MODULES,
+        minBytes: GROWTH_MIN_BYTES,
+      }),
+      true,
+    );
+    console.log(
+      grown.length
+        ? `perf: first-load modules grown by ${fmtBytes(GROWTH_MIN_BYTES)} or more against main:`
+        : `perf: no first-load module grew by ${fmtBytes(GROWTH_MIN_BYTES)} or more against main`,
+    );
+    for (const line of grown) console.log(`perf:   ${line}`);
+    if (grown.length) moduleSummary.push(`Grown against main: ${grown.join('; ')}`);
+  } else console.log(`perf: first-load module growth against main not measured: ${baseModules.reason}`);
+} else console.log(`perf: first-load modules not named: ${headModules.reason}`);
+
 // The pull request's floor: a PR that grows the first load must leave PR_FLOOR_KB of headroom.
 const pullRequest = isPullRequestRun(process.env);
 const floor = floorProblem(fl, budget.jsGzipKB, pullRequest);
@@ -249,6 +322,7 @@ if (process.env.GITHUB_STEP_SUMMARY) {
     sizeLine,
     ...(fl.warn ? ['**Warning:** the first-load JavaScript grew by 5 KB or more.'] : []),
     floor ? `**Failed:** ${floor}` : floorLine,
+    ...moduleSummary,
   ];
   try {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryMarkdown({ size, probes }));

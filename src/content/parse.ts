@@ -1,10 +1,11 @@
 // Parsing one pack (docs/content-packs.md, "Validation", step 1): every entry file is validated
-// with the Zod schema for its `type`, and the checks a single file can make on its own path run
-// here (filename equals id, the folder matches the type, one id per type). The registry and the
-// packs:check tool both start from this, so the loader and the linter share one validator.
-import type { z } from 'zod';
-import { error, pointer, type Finding } from './findings';
-import { ENTRY_SCHEMAS, packSchema, RESERVED_TYPES, type EntryType, type PackManifest } from './schema';
+// with the Zod schema for its `type` (validate.ts), and the checks a single file can make on its own
+// path run here (filename equals id, the folder matches the type, one id per type). The registry and
+// the packs:check tool both start from this, so the loader and the linter share one validator. A
+// production build swaps validate.ts for validate-prebuilt.ts: the build ran the schemas already.
+import { error, type Finding } from './findings';
+import type { EntryType, PackManifest } from './schema';
+import * as validate from './validate';
 
 /** The pack format versions this build reads (docs/content-packs.md, "Versioning and migration"). */
 export const FORMAT_VERSION = 1;
@@ -79,23 +80,28 @@ function folderOf(type: EntryType): string {
   return ['networks', 'roads', 'routes'].includes(folder) ? `regions/<region>/${folder}/` : `${folder}/`;
 }
 
-function zodFindings(file: string, err: z.ZodError): Finding[] {
-  return err.issues.map((i) =>
-    error('schema', file, pointer(i.path.filter((p) => typeof p !== 'symbol')), i.message),
-  );
-}
+/** The schema check parsePack runs: validate.ts, or a production build's validate-prebuilt.ts. */
+export type SchemaCheck = Pick<typeof validate, 'checkManifest' | 'checkEntry'>;
 
 /**
  * Validates one pack's files. Returns the parsed pack (null when the manifest is missing, invalid
  * or in a format this build cannot read, since the pack is then refused whole) and the findings.
  */
 export function parsePack(files: readonly PackFile[]): { pack: ParsedPack | null; findings: Finding[] } {
+  return parsePackWith(files, validate);
+}
+
+/** parsePack with a given schema check (the tests compare validate.ts with validate-prebuilt.ts). */
+export function parsePackWith(
+  files: readonly PackFile[],
+  check: SchemaCheck,
+): { pack: ParsedPack | null; findings: Finding[] } {
   const findings: Finding[] = [];
   const manifestFile = files.find((f) => f.path === 'pack.json');
   if (!manifestFile)
     return { pack: null, findings: [error('schema', 'pack.json', '', 'pack.json is missing')] };
-  const manifest = packSchema.safeParse(manifestFile.json);
-  if (!manifest.success) return { pack: null, findings: zodFindings('pack.json', manifest.error) };
+  const manifest = check.checkManifest('pack.json', manifestFile.json);
+  if (!manifest.ok) return { pack: null, findings: manifest.findings };
   const packId = manifest.data.id;
   if (manifest.data.formatVersion !== FORMAT_VERSION) {
     const msg = `pack ${packId} needs format ${manifest.data.formatVersion}; this game reads format ${FORMAT_VERSION} (this pack needs a newer game version)`;
@@ -106,29 +112,17 @@ export function parsePack(files: readonly PackFile[]): { pack: ParsedPack | null
   const seen = new Map<string, string>();
   for (const file of [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
     if (file.path === 'pack.json' || !isEntryFile(file.path)) continue;
-    const type = (file.json as { type?: unknown } | null)?.type;
-    if (typeof type !== 'string' || !(type in ENTRY_SCHEMAS)) {
-      findings.push(error('schema', file.path, '/type', `unknown entry type ${String(type)}`));
+    const checked = check.checkEntry(file.path, file.json);
+    if (!checked.ok) {
+      findings.push(...checked.findings);
       continue;
     }
-    const entryType = type as EntryType;
-    if (RESERVED_TYPES.includes(entryType)) {
-      findings.push(
-        error(
-          'schema',
-          file.path,
-          '/type',
-          `${type} entries are reserved and not loaded yet (docs/content-packs.md)`,
-        ),
-      );
-      continue;
-    }
-    const parsed = ENTRY_SCHEMAS[entryType].safeParse(file.json);
-    if (!parsed.success) {
-      findings.push(...zodFindings(file.path, parsed.error));
-      continue;
-    }
-    const data = parsed.data as Record<string, unknown> & { id: string; meta?: { status?: EntryStatus } };
+    const entryType = checked.data.type;
+    const type: string = entryType;
+    const data = checked.data.data as Record<string, unknown> & {
+      id: string;
+      meta?: { status?: EntryStatus };
+    };
     const id = data.id;
 
     // The filename equals the id; a region file is `regions/<id>/region.json`.

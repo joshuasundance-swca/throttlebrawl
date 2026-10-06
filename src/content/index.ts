@@ -38,7 +38,7 @@ export {
   SECRET_KINDS,
   SIGNATURE_MOVES,
   TIMES_OF_DAY,
-} from './schema';
+} from './schema/vocab';
 export type { BarkFactDecl, BarkOp, BarkTrigger } from './schema';
 export type {
   BarkSet,

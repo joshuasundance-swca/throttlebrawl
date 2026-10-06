@@ -4,27 +4,27 @@
 import { qualify } from '../core';
 import { formatFinding } from './findings';
 import { computeContentHashes, type ContentHashes } from './hashes';
-import { parsePack, type PackFile } from './parse';
-import {
-  VETOABLE_ITEMS,
-  type BarkSet,
-  type Bike,
-  type Crew,
-  type EntryType,
-  type EventModifier,
-  type HudLayout,
-  type PackManifest,
-  type Career,
-  type RaceEvent,
-  type Region,
-  type Rider,
-  type RoadFile,
-  type RoadNetworkFile,
-  type RouteFile,
-  type Station,
-  type TrafficType,
-  type TuningPreset,
-  type Weapon,
+import { parsePack, parsePackWith, type PackFile, type SchemaCheck } from './parse';
+import { VETOABLE_ITEMS } from './schema/tables';
+import type {
+  BarkSet,
+  Bike,
+  Crew,
+  EntryType,
+  EventModifier,
+  HudLayout,
+  PackManifest,
+  Career,
+  RaceEvent,
+  Region,
+  Rider,
+  RoadFile,
+  RoadNetworkFile,
+  RouteFile,
+  Station,
+  TrafficType,
+  TuningPreset,
+  Weapon,
 } from './schema';
 
 /** One row per entry file (vetoed ones included); the tool's pack.index.json adds bytes and hashes. */
@@ -107,8 +107,20 @@ function loads(status: unknown, includeDrafts: boolean): boolean {
  * `draft` ones load only when asked.
  */
 export function buildRegistry(files: readonly PackFile[], options: LoadOptions = {}): ContentRegistry {
+  return registryOf(parsePack(files), options);
+}
+
+/** buildRegistry with a given schema check (the tests compare validate.ts with validate-prebuilt.ts). */
+export function buildRegistryWith(
+  files: readonly PackFile[],
+  check: SchemaCheck,
+  options: LoadOptions = {},
+): ContentRegistry {
+  return registryOf(parsePackWith(files, check), options);
+}
+
+function registryOf({ pack, findings }: ReturnType<typeof parsePack>, options: LoadOptions): ContentRegistry {
   const drafts = options.includeDrafts ?? false;
-  const { pack, findings } = parsePack(files);
   const errors = findings.filter((f) => f.level === 'error');
   if (!pack || errors.length) throw new ContentError(errors.map((f) => formatFinding(f)).join('\n'));
 
