@@ -131,3 +131,44 @@ export function barkFact(name: string): BarkFactDecl | undefined {
   if (Object.hasOwn(BARK_FACTS, name)) return BARK_FACTS[name];
   return FLAG_FACT.test(name) ? FLAG_DECL : undefined;
 }
+
+export const AI_STYLES = [
+  'heavy-hitter',
+  'weaver',
+  'showboat',
+  'grudge-keeper',
+  'scrapper',
+  'crowd-pleaser',
+  'crew-boss',
+  'cop',
+  'racer',
+] as const;
+
+/**
+ * Signature moves (interview, 2026-10-02: "Visible personalities"): the rider file's
+ * `personality.signature`, one per rival. The same list as the sim contract's SIGNATURE_IDS (the app
+ * tests check they agree; content never imports the sim).
+ */
+export const SIGNATURE_MOVES = [
+  'selfie',
+  'wave',
+  'bell',
+  'counter',
+  'lag',
+  'ram',
+  'slow-burn',
+  'sweet-talk',
+  'cut-in',
+  'timber',
+  'pivot',
+] as const;
+
+/**
+ * A cop's pursuit habit (the pitch deck's #11, "Law with a personality", run W-T): the rider file's
+ * `law.habit.kind`. `relentless` closes in harder the longer he chases; `radar` waits at a long
+ * bridge and clocks you; `citations` never rams but writes you up while alongside, billed at the
+ * finish; `budget` chases on a pursuit budget that runs out. Its other fields are numbers the sim
+ * reads by name (docs/content-packs.md, "Rider"). The same list as the sim contract's LAW_HABIT_IDS
+ * (the app tests check they agree; content never imports the sim). [default]
+ */
+export const LAW_HABITS = ['relentless', 'radar', 'citations', 'budget'] as const;

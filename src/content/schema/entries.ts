@@ -18,12 +18,15 @@ import {
 } from '../../core';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
 import {
+  AI_STYLES,
   BARK_OPS,
   BIKE_CLASSES,
   EVENT_KINDS,
+  LAW_HABITS,
   MODIFIER_KINDS,
   OBJECTIVE_KINDS,
   SECRET_KINDS,
+  SIGNATURE_MOVES,
   TIMES_OF_DAY,
 } from './vocab';
 
@@ -136,47 +139,6 @@ export const bikeSchema = entry('bike', {
     .optional(),
   engineSound: engineSoundSchema,
 });
-
-export const AI_STYLES = [
-  'heavy-hitter',
-  'weaver',
-  'showboat',
-  'grudge-keeper',
-  'scrapper',
-  'crowd-pleaser',
-  'crew-boss',
-  'cop',
-  'racer',
-] as const;
-
-/**
- * Signature moves (interview, 2026-10-02: "Visible personalities"): the rider file's
- * `personality.signature`, one per rival. The same list as the sim contract's SIGNATURE_IDS (the app
- * tests check they agree; content never imports the sim).
- */
-export const SIGNATURE_MOVES = [
-  'selfie',
-  'wave',
-  'bell',
-  'counter',
-  'lag',
-  'ram',
-  'slow-burn',
-  'sweet-talk',
-  'cut-in',
-  'timber',
-  'pivot',
-] as const;
-
-/**
- * A cop's pursuit habit (the pitch deck's #11, "Law with a personality", run W-T): the rider file's
- * `law.habit.kind`. `relentless` closes in harder the longer he chases; `radar` waits at a long
- * bridge and clocks you; `citations` never rams but writes you up while alongside, billed at the
- * finish; `budget` chases on a pursuit budget that runs out. Its other fields are numbers the sim
- * reads by name (docs/content-packs.md, "Rider"). The same list as the sim contract's LAW_HABIT_IDS
- * (the app tests check they agree; content never imports the sim). [default]
- */
-export const LAW_HABITS = ['relentless', 'radar', 'citations', 'budget'] as const;
 
 export const riderSchema = entry('rider', {
   role: z.enum(['rival', 'cop', 'player-preset', 'extra']),
@@ -855,58 +817,6 @@ export const ENTRY_SCHEMAS = {
 
 export type EntryType = keyof typeof ENTRY_SCHEMAS;
 
-/** Reserved types: valid files, but not loaded into the registry yet. */
-export const RESERVED_TYPES: readonly EntryType[] = ['patch'];
-
-/**
- * Top-level fields left out of the sim content hash, per type (docs/content-packs.md, "Which
- * fields count as sim-facing"). Everything else in an entry of that type is sim-facing, so a field
- * a later lane adds counts toward the sim hash until it is listed here: a missed presentation
- * field only renews the replay key, while a missed sim field would let replays silently diverge.
- * `null` means the whole type is presentation-only (full hash only).
- */
-export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] | null>> = {
-  bike: ['name', 'tags', 'meta', 'look', 'engineSound', 'blurb'],
-  rider: ['name', 'tags', 'meta', 'look', 'paint', 'blurb'],
-  crew: ['name', 'tags', 'meta'],
-  weapon: ['name', 'tags', 'meta', 'look', 'sounds'],
-  event: ['name', 'tags', 'meta', 'interludes', 'weather'],
-  // A career picks which events to play and in what order; each race's sim comes from its event.
-  career: null,
-  region: [
-    'name',
-    'tags',
-    'meta',
-    'blurb',
-    'chapter',
-    'palette',
-    'timeOfDayOptions',
-    'signs',
-    'billboards',
-    'landingLines',
-  ],
-  'road-network': ['name', 'meta', 'provenance'],
-  road: ['name', 'realName', 'meta', 'provenance'],
-  route: ['name', 'meta'],
-  'traffic-type': ['name', 'tags', 'meta', 'look'],
-  'tuning-preset': ['name', 'tags', 'meta'],
-  'event-modifier': ['name', 'tags', 'meta', 'announce'],
-  'bark-set': null,
-  'hud-layout': null,
-  station: null,
-  patch: null,
-};
-
-/**
- * The lists of vetoable items per type (docs/content-packs.md, "In-game veto"): each item has an
- * id unique in its entry and an optional `status`; the loader drops vetoed (and, in release
- * builds, draft) items, and the file keeps them as the taste log.
- */
-export const VETOABLE_ITEMS: Readonly<Partial<Record<EntryType, readonly string[]>>> = {
-  'bark-set': ['lines'],
-  region: ['signs', 'billboards', 'landingLines', 'smashables'],
-  station: ['tracks'],
-};
 export type PackManifest = z.infer<typeof packSchema>;
 export type Bike = z.infer<typeof bikeSchema>;
 export type Rider = z.infer<typeof riderSchema>;
