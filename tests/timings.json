@@ -564,7 +564,7 @@
     "tests/e2e/render-quality.spec.ts": 52.9,
     "tests/e2e/render-regions.spec.ts": 84.2,
     "tests/e2e/render-set-pieces.spec.ts": 32.6,
-    "tests/e2e/road-events.spec.ts": 252,
+    "tests/e2e/road-events.spec.ts": 352.8,
     "tests/e2e/traffic-regions.spec.ts": 80,
     "tests/e2e/tuning-panel.spec.ts": 256.3,
     "tests/e2e/ui-hud-layout.spec.ts": 68.3,
