@@ -6,7 +6,24 @@ import { cardLines, changelogDays, type ChangelogNote, type WhatsNew } from './w
 export const CHANGELOG_CSS = `
 #menu.with-news { flex-direction: row; gap: 28px; }
 #menu .menu-main { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-#whats-new { width: min(320px, 40vw); display: flex; flex-direction: column; gap: 6px; }
+#whats-new { flex: 0 0 auto; width: min(320px, 38vw); display: flex; flex-direction: column; gap: 6px; }
+/* Beside the menu (a screen taller than 380 px, or upright): the menu takes the room the card leaves, not
+   more, so the card never stands over the region and road chips or off the screen's side (playtest 4,
+   run B, punch item 10: on a first visit it covered chips 3 and 4). The chips stay inside that room, and
+   the road row scrolls there. The short landscape layout stacks the card under the menu instead. */
+@media (min-height: 381px), (orientation: portrait) {
+  #menu.with-news .menu-main { flex: 1 1 0; min-width: 0; max-width: 600px; }
+  #menu.with-news #region-picker, #menu.with-news #route-picker { max-width: 100%; }
+}
+/* That narrower menu wraps its bottom row of small buttons on a phone held sideways (915x412: Copy debug
+   report drops to a second line), and the menu then stood 2 px taller than the screen with its title cut
+   off at the top. On a sideways screen from 381 to 440 px high, beside the card, the menu packs tighter
+   (gaps and title) so all of it stays on the screen. [default] */
+@media (orientation: landscape) and (min-height: 381px) and (max-height: 440px) {
+  #ui #menu.with-news .menu-main { gap: 6px; }
+  #ui #menu.with-news .menu-main > .row { row-gap: 6px; }
+  #ui #menu.with-news .title { font-size: 1.625rem; }
+}
 #whats-new .wn-title { font: 800 0.9375rem ui-monospace, monospace; color: #f5c542; }
 #whats-new ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 #whats-new .row { justify-content: flex-start; gap: 8px; }
