@@ -186,6 +186,12 @@ export interface GameRenderer {
   /** Applies a `render.*` tuning value at once; other ids are ignored. */
   setParam(id: string, value: number): void;
   /**
+   * The player's Reduce motion setting (M5's a11y-1), at once: no white hit flash, half the
+   * slow-motion tint and the speed lines, a slower cops' light bar and steady road-event lights.
+   * Presentation only; the sim never sees it.
+   */
+  setReduceMotion(on: boolean): void;
+  /**
    * The veto's picker: the content reference of the sign or billboard under a pointer position in
    * client (CSS) pixels, as the last frame drew it, or null (docs/architecture.md, "In-game veto").
    */
@@ -947,6 +953,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const t = now();
       backdrop.update(camera.position, scene, t);
       if (race) {
+        race.eventProps.calm = params.reduceMotion === true;
         race.eventProps.sync(curr, t);
         race.smashables.sync(curr, t);
       } else loadRace();
@@ -1051,6 +1058,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         roadArgs.density = params.roadsideDensity;
         buildRoad();
       }
+    },
+    setReduceMotion(on) {
+      params.reduceMotion = on === true;
     },
     pickContentAt(clientX, clientY) {
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());

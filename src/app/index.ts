@@ -97,6 +97,7 @@ import {
   raceTimeOfDay,
   withEventPatch,
 } from './config';
+import { motionAmounts, osPrefersReducedMotion } from './motion';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -226,6 +227,12 @@ export interface AppPresentation {
     frameDivisor: number;
     quality: { setting: string; tier: QualityTierId; scale: number; pixelRatio: number; on: boolean };
   };
+  /**
+   * Reduce motion as app handed it on (M5's a11y-1): `camera` is the camera's motion amount (1 full
+   * lean roll and FOV kick, 0 softened), `calm` whether the picture's flashes and the HUD's
+   * animations are calmed.
+   */
+  motion: { camera: number; calm: boolean };
   radio: { region: string | null; stations: string[]; tunedTo: string };
   /** The look render draws now (`classic`, `kodak`, ...). */
   look: string;
@@ -758,6 +765,7 @@ export function createApp(opts: AppOptions): AppHandle {
       'steerStyle',
       'slowMo',
       'reduceShake',
+      'reduceMotion',
       'frameRateCap',
       // Graphics (roadmap M5): Auto or a pinned quality tier, applied at once.
       'qualityTier',
@@ -919,11 +927,19 @@ export function createApp(opts: AppOptions): AppHandle {
     else if (owner === 'barks') ui.narrative.setParam(id, value);
     else if (owner === 'render') renderer.setParam(id, value);
   };
-  // Reduce screen shake [decided]: no shake and no hit jolt (camera-2's setShakeAmount 0). [default]
+  // Reduce screen shake [decided]: no shake and no hit jolt (camera-2's setShakeAmount 0). Reduce motion
+  // (M5's a11y-1) takes the shake with it, softens the chase cameras' roll and FOV kick, and calms the
+  // flashes (app/motion.ts). [default]
   let shakeAmount = 1;
+  let motionNow = { camera: 1, calm: false };
   function applyShake(s: typeof settings) {
-    shakeAmount = s.reduceShake ? 0 : 1;
-    camera.setShakeAmount(shakeAmount);
+    const amounts = motionAmounts(s, osPrefersReducedMotion());
+    shakeAmount = amounts.shake;
+    motionNow = { camera: amounts.motion, calm: amounts.calm };
+    camera.setShakeAmount(amounts.shake);
+    camera.setMotionAmount(amounts.motion);
+    renderer.setReduceMotion(amounts.calm);
+    ui.setReduceMotion(amounts.calm);
   }
   applyShake(settings);
   tuning.onChange(applyPresentationParam);
@@ -1711,6 +1727,7 @@ export function createApp(opts: AppOptions): AppHandle {
             on: qualityOn(),
           },
         },
+        motion: motionNow,
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
         look: renderer.look,
         audio: { busTargets: mix.busTargets, voicesOn: mix.voice.on },

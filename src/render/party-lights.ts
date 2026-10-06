@@ -1,17 +1,22 @@
 // A party street's string lights (playtest 4, P4-16: "Duval St should be a party street"; neon and
 // string lights at dusk). A `roadsideZone` whose `params.dressing` is `party` is a stretch of bars and
-// crowds: at dusk and after, its side of the road gets a line of posts in front of the shopfronts, with
-// a string of coloured bulbs hung between them, sagging. Code-made and unlit (the bulbs read as light
-// sources in every look), one mesh and one draw call whatever the length of the street: the whole
-// street's bulbs sit in one static buffer and an index of the ones near the camera is refilled as it
-// moves (as text-surfaces.ts does for its words). Presentation only: nothing here reaches the sim, and
-// nothing hangs where a bike can ride (the line stands past the sidewalk, 4 m up and more). A lazy
-// chunk, loaded only for a road that has a party zone. By day (noon, golden hour) it builds nothing.
+// crowds: at dusk and after, its side of the road gets a line of tall posts along the sidewalk, with a
+// string of coloured bulbs hung between them, sagging. Where both sides of the street are party
+// (P4-19: "lights over the street"), a string also crosses the street between a pair of posts, high
+// over the lanes, hung with the same helper as Chinatown's lantern strings (string-lights.ts). Code-made
+// and unlit (the bulbs read as light sources in every look), one mesh and one draw call whatever the
+// length of the street: the whole street's bulbs sit in one static buffer and an index of the ones near
+// the camera is refilled as it moves (as text-surfaces.ts does for its words). Presentation only: nothing
+// here reaches the sim, and nothing hangs where a bike or a car can ride (the lowest cord is
+// `CROSS_CLEARANCE_M` over the road). A lazy chunk, loaded only for a road that has a party zone. By day
+// (noon, golden hour) it builds nothing.
 import { BufferGeometry, BufferAttribute, Color, Float32BufferAttribute, Group, Mesh } from 'three';
 import type { RoadNetwork } from '../sim/api';
+import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { RoadDressing } from './road-mesh';
 import { LAND_TOP_M, scatterHash } from './scenery';
+import { hangPoints, lowestPoint } from './string-lights';
 
 /** The roadside zone's `params.dressing` that makes it a party stretch (docs/content-packs.md). */
 export const PARTY_DRESSING = 'party';
@@ -55,11 +60,23 @@ export function partyRuns(road: RoadNetwork, dressing: RoadDressing | undefined)
 export const POST_EVERY_M = 12;
 export const BULB_EVERY_M = 1.5;
 /** The posts' height, and how far a string sags between two, m. [default] */
-export const POST_H_M = 4.4;
-export const SAG_M = 0.7;
-/** The line of posts stands this far past the road's verge, m: in front of the shopfronts (9 m). [default] */
-export const POST_OUT_M = 8.2;
+export const POST_H_M = 6;
+export const SAG_M = 0.8;
+/**
+ * The line of posts stands this far past the road's verge, m: on the sidewalk (4 m wide in Old Town, the
+ * crowd's ground), in front of the shopfronts, which stand on its edge. [default]
+ */
+export const POST_OUT_M = 1;
 const VERGE_M = 0.6;
+/** A string across the street every so often where both sides are party, and its sag, m. [default] */
+export const CROSS_EVERY_M = 26;
+export const CROSS_SAG_M = 1;
+/**
+ * The lowest a cord hangs over the road, m: over the tallest vehicle on Old Town's streets (the island
+ * tram is 3.3 m) with the room a rider's raised arm needs. A cross string is only hung where its low
+ * point clears this.
+ */
+export const CROSS_CLEARANCE_M = 4.8;
 /** Bulbs and posts within this far of the camera are drawn, m; the index refills every REFILL_M. [default] */
 export const LIGHTS_DRAW_M = 170;
 export const LIGHTS_REFILL_M = 10;
@@ -82,10 +99,14 @@ export interface PartyBulb {
   y: number;
   z: number;
   colour: string;
+  /** Hung across the street (over the lanes), not along a sidewalk. */
+  over: boolean;
 }
 
 export interface PartyLightsCounts {
   runs: number;
+  /** Strings hung across the street. */
+  crossings: number;
   bulbs: number;
   /** Bulbs and triangles in the index now, and the draw calls (1 while any is shown). */
   shownBulbs: number;
@@ -123,6 +144,7 @@ export class PartyLights {
   private filledX = Number.NaN;
   private filledZ = Number.NaN;
   private shownBulbs = 0;
+  private crossings = 0;
   private shownVerts = 0;
 
   constructor(look: LookStyle, input: PartyLightsInput) {
@@ -172,48 +194,80 @@ export class PartyLights {
       quad(rx, 0);
       quad(0, rx);
     };
-    for (const run of this.runList) {
+    /** Hangs the bulbs of one string between two post tops, as one span of the index. */
+    const hang = (
+      from: Point3,
+      to: Point3,
+      sagM: number,
+      salt: number,
+      k: number,
+      over: boolean,
+      post: Point3[],
+    ) => {
+      const v0 = pos.length / 3;
+      for (const p of post) cross(p.x, p.y + POST_H_M / 2, p.z, POST_R, POST_H_M / 2, POST_COLOUR);
+      const span = Math.hypot(to.x - from.x, to.z - from.z);
+      const pitch = span / Math.max(2, Math.round(span / BULB_EVERY_M));
+      const hung = hangPoints(from, to, { sagM, pitchM: pitch, endM: pitch });
+      hung.forEach((p, i) => {
+        // The colour: a seeded run of the palette, so no two strings repeat.
+        const pick = Math.floor(scatterHash(seed, salt, from.x, k * 64 + i) * BULB_COLOURS.length);
+        const colour = BULB_COLOURS[pick] ?? '#ffffff';
+        cross(p.x, p.y, p.z, BULB_R, BULB_R * 1.25, colour);
+        this.bulbList.push({ ...p, colour, over });
+      });
+      this.spans.push({
+        v0,
+        n: pos.length / 3 - v0,
+        x: (from.x + to.x) / 2,
+        z: (from.z + to.z) / 2,
+        bulbs: hung.length,
+      });
+    };
+    /** A post top on a run's side at s, or null where the drawn land does not reach it. */
+    const postTop = (run: PartyRun, s: number): Point3 | null => {
       const e = road.edges[run.edge];
-      if (!e) continue;
+      if (!e) return null;
+      if (input.landReach && input.landReach(run.edge, run.side, s) < POST_OUT_M + 1) return null;
       const outer = (run.side < 0 ? -e.dMin : e.dMax) + VERGE_M;
-      const d = run.side * (outer + POST_OUT_M);
+      const w = road.toWorld(run.edge, s, run.side * (outer + POST_OUT_M), LAND_TOP_M);
+      return { x: w.x, y: w.y, z: w.z };
+    };
+    const up = (p: Point3, h: number): Point3 => ({ x: p.x, y: p.y + h, z: p.z });
+    for (const run of this.runList) {
       const n = Math.max(1, Math.round((run.s1 - run.s0) / POST_EVERY_M));
       const step = (run.s1 - run.s0) / n;
-      // Posts at both ends of every span; the land must reach them.
-      const post = (s: number) => {
-        if (input.landReach && input.landReach(run.edge, run.side, s) < POST_OUT_M + 1) return null;
-        const w = road.toWorld(run.edge, s, d, LAND_TOP_M);
-        return { s, x: w.x, y: w.y, z: w.z };
-      };
+      // A string along the sidewalk between posts at both ends of every span; the land must reach them.
       for (let k = 0; k < n; k++) {
-        const a = post(run.s0 + k * step);
-        const b = post(run.s0 + (k + 1) * step);
+        const a = postTop(run, run.s0 + k * step);
+        const b = postTop(run, run.s0 + (k + 1) * step);
         if (!a || !b) continue;
-        const v0 = pos.length / 3;
-        // The post at the span's start, standing on the ground.
-        cross(a.x, a.y + POST_H_M / 2, a.z, POST_R, POST_H_M / 2, POST_COLOUR);
-        const bulbs = Math.max(2, Math.round(step / BULB_EVERY_M));
-        for (let i = 1; i < bulbs; i++) {
-          const t = i / bulbs;
-          const w = road.toWorld(run.edge, a.s + (b.s - a.s) * t, d, LAND_TOP_M);
-          const y = w.y + POST_H_M - SAG_M * 4 * t * (1 - t);
-          // The colour: a seeded run of the palette, so no two strings repeat.
-          const pick = Math.floor(
-            scatterHash(seed, 4417 + run.edge, a.s + i * 0.01, k) * BULB_COLOURS.length,
-          );
-          const colour = BULB_COLOURS[pick] ?? '#ffffff';
-          cross(w.x, y, w.z, BULB_R, BULB_R * 1.25, colour);
-          this.bulbList.push({ x: w.x, y, z: w.z, colour });
-        }
         // The last span of a run is closed by its far post.
-        if (k === n - 1) cross(b.x, b.y + POST_H_M / 2, b.z, POST_R, POST_H_M / 2, POST_COLOUR);
-        this.spans.push({
-          v0,
-          n: pos.length / 3 - v0,
-          x: (a.x + b.x) / 2,
-          z: (a.z + b.z) / 2,
-          bulbs: bulbs - 1,
-        });
+        hang(up(a, POST_H_M), up(b, POST_H_M), SAG_M, 4417 + run.edge, k, false, k === n - 1 ? [a, b] : [a]);
+      }
+    }
+    // Where both sides of the street are party, strings cross it between a pair of posts, high over the
+    // lanes (P4-19: "lights over the street"): every CROSS_EVERY_M through the stretch the two share.
+    for (const left of this.runList) {
+      if (left.side !== -1) continue;
+      for (const right of this.runList) {
+        if (right.side !== 1 || right.edge !== left.edge) continue;
+        const lo = Math.max(left.s0, right.s0);
+        const hi = Math.min(left.s1, right.s1);
+        const count = Math.floor((hi - lo) / CROSS_EVERY_M);
+        for (let k = 0; k < count; k++) {
+          const s = lo + (k + 0.5) * ((hi - lo) / count);
+          const a = postTop(left, s);
+          const b = postTop(right, s);
+          if (!a || !b) continue;
+          const from = up(a, POST_H_M);
+          const to = up(b, POST_H_M);
+          // Never lower over the road than the clearance (the road's own grade included).
+          const road0 = road.toWorld(left.edge, s, 0, 0).y;
+          if (lowestPoint(from, to, CROSS_SAG_M) - road0 < CROSS_CLEARANCE_M) continue;
+          hang(from, to, CROSS_SAG_M, 4423 + left.edge, k, true, [a, b]);
+          this.crossings++;
+        }
       }
     }
   }
@@ -247,6 +301,7 @@ export class PartyLights {
   counts(): PartyLightsCounts {
     return {
       runs: this.runList.length,
+      crossings: this.crossings,
       bulbs: this.bulbList.length,
       shownBulbs: this.shownBulbs,
       triangles: this.shownVerts / 3,

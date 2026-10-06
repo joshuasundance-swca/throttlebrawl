@@ -48,7 +48,7 @@ describe('musicAt: where the music is, and how loud', () => {
   });
 
   it('knows only the styles the voices can play, and only a zone that names one', () => {
-    expect([...BAR_STYLES].sort()).toEqual(['cover-band', 'karaoke', 'steel-drum']);
+    expect([...BAR_STYLES].sort()).toEqual(['busker', 'cover-band', 'karaoke', 'steel-drum']);
     for (const bad of ['accordion', 7, null, undefined, ['karaoke']])
       expect(musicAt(roadOf(zone('b', 0, 100, bad)), 0, 50), String(bad)).toBeNull();
     const noMusic: ScapeRoad = {
@@ -124,9 +124,10 @@ describe('the director: a phrase after phrase, in time', () => {
     expect(barsOf(createDirector(3).step(bare as ScapeInput).events)).toHaveLength(0);
   });
 
-  it('is the Keys only, and not in the air', () => {
-    expect(heard({ region: 'sf' }, 6)).toHaveLength(0);
-    expect(heard({ region: 'pnw' }, 6)).toHaveLength(0);
+  it('is wherever a zone names music (any region), but not with no region, and not in the air', () => {
+    // Playtest 4 run B: a busker plays at Portland's square, so the zone's data decides, not the region.
+    expect(heard({ region: 'sf' }, 6).length).toBeGreaterThan(0);
+    expect(heard({ region: 'pnw' }, 6).length).toBeGreaterThan(0);
     expect(heard({ region: null }, 6)).toHaveLength(0);
     expect(heard({ grounded: false }, 6)).toHaveLength(0);
   });
@@ -192,8 +193,7 @@ describe('the voices: a doorway muffles each style', () => {
         .map((x) => `${x.type}${Math.round(x.frequency.value)}@${x.startedAt}`)
         .join(' ');
     };
-    const [a, b, c] = BAR_STYLES.map((s) => shape(s, 0));
-    expect(new Set([a, b, c]).size).toBe(3);
+    expect(new Set(BAR_STYLES.map((s) => shape(s, 0))).size).toBe(BAR_STYLES.length);
     for (const s of BAR_STYLES) expect(shape(s, 1), s).not.toBe(shape(s, 0));
   });
 
@@ -286,8 +286,8 @@ describe('the mixer plays the bars of a party street', () => {
     ).toBe(true);
   });
 
-  it('another region has no bars, and the regional-sounds slider silences it', async () => {
-    expect(await ride('region-sf:san-francisco', 410, 500)).toHaveLength(0);
+  it('another region plays a zone that names music too, and the regional-sounds slider silences it', async () => {
+    expect((await ride('region-sf:san-francisco', 410, 500)).length).toBeGreaterThanOrEqual(3);
     expect(await ride('base:florida-keys', 410, 500, 0)).toHaveLength(0);
   });
 });

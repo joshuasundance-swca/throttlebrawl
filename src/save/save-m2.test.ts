@@ -60,6 +60,8 @@ const m2Custom: Settings = {
   haptics: false,
   slowMo: false,
   reduceShake: true,
+  reduceMotion: true,
+  textSize: 'largest',
   frameRateCap: 'half',
   // Roadmap M5 (the A16 speed pass): a pinned quality tier.
   qualityTier: 'low',
@@ -101,6 +103,9 @@ const M2_FIELDS = [
   'haptics',
   'slowMo',
   'reduceShake',
+  // Playtest 4 run B (B13, M5's a11y-1): reduce motion, and the text size.
+  'reduceMotion',
+  'textSize',
   'frameRateCap',
   'look',
   'showTuningPanel',
@@ -150,6 +155,8 @@ describe('the M2 settings record', () => {
       haptics: true,
       slowMo: true,
       reduceShake: false,
+      reduceMotion: false,
+      textSize: 'normal',
       frameRateCap: 'full',
       // Run W-O (maintainer, 2026-10-01): "ink+60s but may change later".
       look: 'kodak',
@@ -257,6 +264,8 @@ describe('the M2 settings record', () => {
       haptics: 0,
       slowMo: null,
       reduceShake: 'on',
+      reduceMotion: 'on',
+      textSize: 'huge',
       frameRateCap: 'quarter',
       look: 'sepia',
       showTuningPanel: 1,

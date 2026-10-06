@@ -39,6 +39,7 @@ type TestWindow = Window & {
     presentation(): {
       camera: { shake: number };
       display: { frameDivisor: number; quality: { tier: string } };
+      motion: { camera: number; calm: boolean };
       audio: { busTargets: { voices: number } };
     };
   };
@@ -607,7 +608,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
   reduceShake: {
     // The camera is handed no shake at all (camera-2's setShakeAmount 0 has its own unit test).
     set: async (page) => {
-      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-tab-access').click();
       await page.locator('#settings-reduceShake').check();
     },
     effect: async (page) => {
@@ -616,9 +617,45 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       await quitRace(page);
     },
     persisted: async (page) => {
-      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-tab-access').click();
       await expect(page.locator('#settings-reduceShake')).toBeChecked();
     },
+  },
+  reduceMotion: {
+    // M5's a11y-1: app hands the camera the softer roll and FOV kick (and no shake), the renderer calm
+    // flashes and ui the still HUD. camera/ and render/ have their own unit tests for what each does.
+    set: async (page) => {
+      await page.locator('#settings-tab-access').click();
+      await page.locator('#settings-reduceMotion').check();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      const state = await page.evaluate(() => (window as TestWindow).__app?.presentation());
+      expect(state?.motion).toEqual({ camera: 0, calm: true });
+      expect(state?.camera.shake, 'reduce motion takes the shake with it').toBe(0);
+      expect(await page.evaluate(() => document.getElementById('ui')?.dataset['motion'])).toBe('reduced');
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-access').click();
+      await expect(page.locator('#settings-reduceMotion')).toBeChecked();
+    },
+  },
+  textSize: {
+    // The largest size: the page's root size grows to the largest factor (1.4), and the menus' type
+    // with it. ui-text-size.spec.ts holds the screens to the layout rules at that size.
+    set: (page) => choose(page, 'access', 'textSize', 'largest'),
+    effect: async (page) => {
+      await raceAlone(page);
+      const root = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+      const hud = await page.evaluate(() => document.getElementById('ui')?.dataset['text']);
+      expect(hud).toBe('largest');
+      // The suite's phone (915 x 412) has room for the whole of the largest factor: 16 px x 1.4.
+      // (hud-layout.test.ts holds the cap a shorter screen gets.)
+      expect(root).toBeCloseTo(22.4, 1);
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'access', 'textSize', 'largest'),
   },
   frameRateCap: {
     // A third: the loop draws one frame in three.

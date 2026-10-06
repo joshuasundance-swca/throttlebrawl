@@ -82,6 +82,9 @@ const SHOP_NEON: Readonly<Record<string, SurfaceStyle>> = {
   duval_balcony_c_shop_name_1: neon('#8ff5d8', '#00d9a5', '#0f1b1b'),
   duval_balcony_c_shop_name_2: neon('#ffe07a', '#ffb000', '#1a170d'),
   duval_corner_bar_name: neon('#ff8fd0', '#ff3fa8', '#190f1a'),
+  // The identity kit's two open-fronted bars (playtest 4, P4-19).
+  duval_open_bar_a_name: neon('#ffb36b', '#ff7a00', '#1b130d'),
+  duval_open_bar_b_name: neon('#9be8ff', '#2d9cff', '#0e1822'),
 };
 const SHOP_BY_DAY: SurfaceStyle = { bg: '#f1e6c8', fg: '#2b3a42', glow: null };
 

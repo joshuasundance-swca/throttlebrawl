@@ -78,11 +78,14 @@ import { seededRandom } from './radio-util';
 import {
   CABLE_BELL_RANGE_M,
   createDirector,
+  fallsAt,
   musicAt,
   LOG_TRUCK_RANGE_M,
+  NO_BEDS,
   scapeRegionOf,
   tagsAt,
   type Director,
+  type ScapeBeds,
   type ScapeEvent,
   type ScapeNear,
   type ScapeRegion,
@@ -164,6 +167,8 @@ export interface AudioInspect {
   soundscape: {
     region: ScapeRegion | null;
     rain: number;
+    /** The place beds' levels, 0..1 after the soundscape slider (a crowd, wind, falls, city, awnings). */
+    beds: ScapeBeds;
     active: number;
     played: { kind: ScapeEvent['kind']; at: number; level: number }[];
   };
@@ -692,6 +697,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     squeal?.set(0, params.squealGain);
     movesCues.reset();
     scape?.setRain(0);
+    scape?.setBeds(NO_BEDS, 1);
     director.reset();
     if (pirateOn) {
       pirateOn = false;
@@ -813,9 +819,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     const near: ScapeNear[] = [];
     if (region === 'pnw' || region === 'sf') {
       const range = region === 'pnw' ? LOG_TRUCK_RANGE_M : CABLE_BELL_RANGE_M;
-      const kind = region === 'pnw' ? 'log-truck' : 'cable-car';
+      // The PNW listens for log trucks (the forest) and streetcars (Bridge City); SF for cable cars.
+      const kinds = region === 'pnw' ? ['log-truck', 'streetcar'] : ['cable-car'];
       for (const e of snap.entities) {
-        if (e.kind !== 'vehicle' || !e.contentId.includes(kind)) continue;
+        if (e.kind !== 'vehicle' || !kinds.some((k) => e.contentId.includes(k))) continue;
         const d = distance(me, e);
         if (d > range) continue;
         near.push({
@@ -837,12 +844,15 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       grounded: !down && me.mode !== 'Airborne',
       tags: tagsAt(scapeRoad, me.road.edge, me.road.s),
       near,
-      // A party street's open fronts (playtest 4, P4-16): the Keys only; the zone under the rider.
-      music: region === 'keys' ? musicAt(scapeRoad, me.road.edge, me.road.s) : null,
+      // A bar's open front or a busker (playtest 4, P4-16; B11): the music zone under the rider.
+      music: musicAt(scapeRoad, me.road.edge, me.road.s),
+      // The Gorge's falls (B11, CR4): the roar by distance to the zone.
+      falls: region === 'pnw' ? fallsAt(scapeRoad, me.road.edge, me.road.s) : 0,
       dry: !scapeWet,
     });
     const level = Math.max(0, params.soundscape) * (hitStop ? 0.3 : 1);
     scape.setRain(frame.rain * level);
+    scape.setBeds(frame.beds, level);
     scapeRegion = region;
     for (const e of frame.events) {
       if (!scape.play(e, now, level)) continue;
@@ -1228,6 +1238,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       soundscape: {
         region: scapeRegion,
         rain: scape?.rainLevel() ?? 0,
+        beds: scape?.bedLevels() ?? { ...NO_BEDS },
         active: scape?.active() ?? 0,
         played: scapePlayed.slice(),
       },

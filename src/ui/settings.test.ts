@@ -35,6 +35,8 @@ describe('the M2 settings table', () => {
       'haptics',
       'slowMo',
       'reduceShake',
+      'reduceMotion',
+      'textSize',
       'frameRateCap',
       'showTuningPanel',
     ] satisfies SettingId[]) {
@@ -93,6 +95,34 @@ describe('the M2 settings table', () => {
       expect(sanitiseSettings(next).qualityTier).toBe(tier);
     }
     expect(sanitiseSettings({ ...DEFAULT_SETTINGS, qualityTier: 'ultra' }).qualityTier).toBe('auto');
+  });
+
+  it('offers reduce motion and the text size on the Access tab, off and Normal by default, kept by the record, applied at once', () => {
+    // M5's a11y-1 (playtest 4 run B, B13): both are presentation only, so neither waits for a race.
+    const motion = settingDef('reduceMotion');
+    expect(motion.tab).toBe('access');
+    expect(motion.kind).toBe('toggle');
+    expect(motion.nextRace).toBeUndefined();
+    expect(settingValue(DEFAULT_SETTINGS, 'reduceMotion')).toBe(false);
+    expect(settingPersists('reduceMotion', sanitiseSettings)).toBe(true);
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'reduceMotion', value: true }).reduceMotion,
+    ).toBe(true);
+    // It is not the shake switch: changing one leaves the other.
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'reduceMotion', value: true }).reduceShake,
+    ).toBe(false);
+
+    const size = settingDef('textSize');
+    expect(size.tab).toBe('access');
+    expect(size.nextRace).toBeUndefined();
+    expect(size.options?.map((o) => o.value)).toEqual(['normal', 'large', 'largest']);
+    expect(settingValue(DEFAULT_SETTINGS, 'textSize')).toBe('normal');
+    expect(nonDefaultValue(size)).toBe('large');
+    expect(settingPersists('textSize', sanitiseSettings)).toBe(true);
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'textSize', value: 'largest' }).textSize,
+    ).toBe('largest');
   });
 
   it('marks exactly the settings that feed SimConfig as "applies next race"', () => {
@@ -225,7 +255,7 @@ describe('which settings the screen shows', () => {
       preview: false,
     });
     expect(unsaved).toEqual(['units']);
-    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel', 'stylePopups']);
+    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel', 'stylePopups', 'textSize']);
   });
 
   it('shows the view and the radio once the registry declares their sliders (ui applies them)', () => {

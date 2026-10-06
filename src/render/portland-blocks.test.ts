@@ -22,6 +22,7 @@ import {
   SIDEWALK_M,
   towerFootprint,
   type DowntownItem,
+  type DowntownPlan,
   type Rect,
 } from './downtown';
 import { readGlb } from './glb';
@@ -402,7 +403,10 @@ describe("the roof sign and the square on Bridge City's roads", () => {
     const kits = await kitFor();
     const placements = landmarkPlacements(road).filter((p) => p.kit === 'pdx-landmarks');
     const nodes = placements.map((p) => p.node).sort();
-    expect(nodes).toEqual(['pdx_lift_tower', 'pdx_lift_tower', 'pdx_plaza', 'pdx_roof_sign']);
+    // The lift towers, the roof sign and the square, and (playtest 4, B7) the bridges' structures and the gate.
+    expect(nodes).toEqual(
+      expect.arrayContaining(['pdx_lift_tower', 'pdx_lift_tower', 'pdx_plaza', 'pdx_roof_sign']),
+    );
     for (const p of placements) {
       const kitNodes = kits.get('pdx-landmarks')?.nodes;
       expect(kitNodes?.has(p.node) || kitNodes?.has(`${p.node}_lod0`), `${p.feature.id}: ${p.node}`).toBe(
@@ -411,9 +415,14 @@ describe("the roof sign and the square on Bridge City's roads", () => {
     }
     const layer = new LandmarkLayer(kits, look, { road });
     expect(layer.counts().skipped).toBe(0);
-    expect(layer.counts().placed).toBe(4);
-    // The roof sign's board is a text surface to paint, and the lift towers have none.
-    expect(layer.surfaces().map((s) => s.id)).toEqual(['pdx-roof-sign-words']);
+    expect(layer.counts().placed).toBe(placements.length);
+    // The roof sign's board and the gate's plaque are text surfaces to paint; the bridges' structures have none.
+    expect(
+      layer
+        .surfaces()
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual(['pdx-chinatown-gate-plaque', 'pdx-roof-sign-words']);
   });
 
   it("stands the roof sign on its building's ground, its face toward the rider coming off the Burnside Bridge", () => {
@@ -551,6 +560,42 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
 `,
     );
     expect(doubled / fronted).toBeGreaterThan(0.5);
+  });
+
+  it('stands behind the fronts of every blocks side that has the full wide strip for 30 m (playtest 4, B7)', () => {
+    const wide = (WIDE_LAND_M.blocks ?? 0) - 1;
+    const bare: string[] = [];
+    let sides = 0;
+    for (const e of road.edges) {
+      if (!dressing[e.id]?.tags?.some((t) => t.tag === 'pdx-blocks')) continue;
+      for (const side of [-1, 1] as const) {
+        // The longest stretch of this side where the strip is the full wide one.
+        let run = 0;
+        let best = 0;
+        for (let s = 0; s <= e.length; s += 5) {
+          run = scene.landReach(e.index, side, s) >= wide ? run + 5 : 0;
+          best = Math.max(best, run);
+        }
+        if (best < 30) continue;
+        sides++;
+        const behind = plan.items.filter(
+          (i) => i.edge === e.index && sideOf(i) === side && (isBack(i) || isEnd(i)),
+        );
+        if (behind.length === 0)
+          bare.push(`${e.id} ${side > 0 ? 'right' : 'left'} (${best} m of wide strip)`);
+      }
+    }
+    stdout.write(
+      `[examined] ${sides} blocks sides with 30 m or more of the wide strip; sides with no second row: ${bare.length ? bare.join('; ') : 'none'}\n`,
+    );
+    expect(sides, 'the sides the rule looked at').toBeGreaterThan(15);
+    expect(bare).toEqual([]);
+    // The control: on the old 24 m strip there is room for no second row anywhere.
+    const narrow = planPortland(
+      { ...input, portland: { landReach: (e, side, s) => Math.min(24, scene.landReach(e, side, s)) } },
+      kit,
+    );
+    expect(narrow.items.filter((i) => isBack(i) || isEnd(i))).toHaveLength(0);
   });
 
   it('is taller than the row in front of it, so it shows over the roofs', () => {
@@ -756,5 +801,166 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
       );
       expect(hidden).toBeGreaterThan(5);
     });
+  });
+});
+
+// Playtest 4, B7 (CX5's report, item 13: "Portland's Chinatown gate on West Burnside at NW 4th"): the
+// gate stands over a side street's mouth, not on the road. The road names it (`crossStreet`), the plan
+// opens a cross street where it stands (no front or second-row building takes its lot, the street's
+// asphalt runs under it), and its plaque faces the rider on West Burnside.
+describe("Old Town Chinatown's gate on West Burnside (playtest 4, B7)", () => {
+  const WEST = 'osm-pnw-pdx-west-burnside';
+  const edge = road.edgeIndex(WEST);
+  const gateOf = (r: RoadNetwork) => landmarkPlacements(r).find((p) => p.node === 'pdx_chinatown_gate');
+  const gate = gateOf(road);
+  const gateF = gate?.feature;
+  const centreS = ((gateF?.s0 ?? 0) + (gateF?.s1 ?? 0)) / 2;
+  const centreD = ((gateF?.d0 ?? 0) + (gateF?.d1 ?? 0)) / 2;
+
+  /** How many of the plan's asphalt triangles (the cross streets') cover a point of the ground, in xz. */
+  function streetCovers(p: DowntownPlan, x: number, z: number): number {
+    const want = [0x4a / 255, 0x4b / 255, 0x50 / 255];
+    let hits = 0;
+    for (const soup of p.soups.values()) {
+      for (let i = 0; i + 8 < soup.pos.length; i += 9) {
+        const c = [soup.col[i] ?? 0, soup.col[i + 1] ?? 0, soup.col[i + 2] ?? 0];
+        if (!c.every((v, k) => Math.abs(v - (want[k] ?? 0)) < 1e-4)) continue;
+        const [ax, az, bx, bz, cx, cz] = [
+          soup.pos[i] ?? 0,
+          soup.pos[i + 2] ?? 0,
+          soup.pos[i + 3] ?? 0,
+          soup.pos[i + 5] ?? 0,
+          soup.pos[i + 6] ?? 0,
+          soup.pos[i + 8] ?? 0,
+        ];
+        const d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+        const u = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / d;
+        const v = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / d;
+        if (u >= -1e-6 && v >= -1e-6 && u + v <= 1 + 1e-6) hits++;
+      }
+    }
+    return hits;
+  }
+
+  /** Bridge City with the gate's `crossStreet` taken off (the control). */
+  const withoutStreet = () =>
+    Object.fromEntries(
+      bakedRoads.map((r) => [
+        r.id,
+        {
+          ...r,
+          features: (r.features ?? []).map((f) =>
+            f.id === 'chinatown-gate' ? { ...f, params: { ...f.params, crossStreet: undefined } } : f,
+          ),
+        },
+      ]),
+    ) as unknown as RoadDressing;
+
+  it('is named by West Burnside on its right, a gate turned to span a street that leaves the road', () => {
+    expect(gate, 'a gate placement').toBeDefined();
+    expect(gate?.edge).toBe(edge);
+    expect(gateF?.d0, 'on the right, the north side, as the real gate').toBeGreaterThan(outerOf(edge, 1));
+    expect(gate?.params.overRoad).not.toBe(true);
+    // Its width runs along the road: the model's +Z (its passage) is across the road.
+    const frame = road.frameAt(edge, centreS);
+    const passage = new Vector3(Math.sin(gate?.yaw ?? 0), 0, Math.cos(gate?.yaw ?? 0));
+    expect(
+      Math.abs(passage.x * frame.tx + passage.z * frame.tz),
+      'its passage is across the road',
+    ).toBeLessThan(0.05);
+  });
+
+  it('opens a cross street under the gate: asphalt under it, no building on its corridor', () => {
+    const at = road.toWorld(edge, centreS, centreD, 0);
+    expect(streetCovers(plan, at.x, at.z), 'asphalt under the gate').toBeGreaterThan(0);
+    // The corridor from the verge to the gate's far side, as wide as the gate: no building on it.
+    const outer = outerOf(edge, 1);
+    const corridor = (it: DowntownItem) => {
+      const [width, depth] = pdxFootprint(kit, it.variant);
+      const inS = it.s - width / 2 < (gateF?.s1 ?? 0) && it.s + width / 2 > (gateF?.s0 ?? 0);
+      return inS && Math.abs(it.d) + depth > outer && Math.abs(it.d) < (gateF?.d1 ?? 0) + 0.5;
+    };
+    const blockers = plan.items.filter(
+      (i) => i.edge === edge && sideOf(i) === 1 && isBuilding(i) && corridor(i),
+    );
+    expect(blockers.map((b) => `${b.rule} s ${b.s.toFixed(0)}`)).toEqual([]);
+    stdout.write(
+      `[examined] the gate at s ${centreS.toFixed(1)} d ${centreD.toFixed(1)}: ${streetCovers(plan, at.x, at.z)} asphalt triangles under it, ${blockers.length} buildings on its corridor\n`,
+    );
+    // The control: without `crossStreet` nothing opens a street there.
+    const control = planPortland({ ...input, dressing: withoutStreet() }, kit);
+    expect(streetCovers(control, at.x, at.z), 'no asphalt under the gate without the param').toBe(0);
+  });
+
+  it('keeps the street open for every seed, and the gate off every building and every road', () => {
+    const rectGate = rectOf(
+      { x: gate?.x ?? 0, y: 0, z: gate?.z ?? 0 },
+      gate?.yaw ?? 0,
+      (gateF?.s1 ?? 0) - (gateF?.s0 ?? 0),
+      Math.abs((gateF?.d1 ?? 0) - (gateF?.d0 ?? 0)),
+    );
+    const at = road.toWorld(edge, centreS, centreD, 0);
+    for (const seed of [1, 2, 3, 4]) {
+      const other = seed === 1 ? plan : planPortland({ ...input, seed }, kit);
+      expect(streetCovers(other, at.x, at.z), `seed ${seed}: asphalt under the gate`).toBeGreaterThan(0);
+      for (const it of other.items.filter(isBuilding)) {
+        const [width, depth] = pdxFootprint(kit, it.variant);
+        expect(rectsOverlap(rectOf(it.p, it.turn, width, depth), rectGate), `seed ${seed}: ${it.rule}`).toBe(
+          false,
+        );
+      }
+    }
+    // No road under any corner or the middle of its footprint, or within a sidewalk of one.
+    for (const [a, b] of [
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1],
+      [0, 0],
+    ] as const) {
+      const x = rectGate.cx + rectGate.ux * a * rectGate.hw + rectGate.vx * b * rectGate.hd;
+      const z = rectGate.cz + rectGate.uz * a * rectGate.hw + rectGate.vz * b * rectGate.hd;
+      const pos = road.project(x, z, edge);
+      const e = road.edges[pos.edge];
+      const out = pos.d < 0 ? -(e?.dMin ?? 0) : (e?.dMax ?? 0);
+      expect(Math.abs(pos.d), `(${a}, ${b}) is past the road and its sidewalk`).toBeGreaterThanOrEqual(
+        out + 3,
+      );
+    }
+  });
+
+  it('turns its plaque toward West Burnside, so a rider sees the words (the control: unturned, it looks along the road)', async () => {
+    const kits = new Map([
+      [
+        'pdx-landmarks' as const,
+        bakeLandmarkKit('pdx-landmarks', readGlb(await readAsset('models/landmarks/pdx-landmarks', 'glb'))),
+      ],
+    ]);
+    const layer = new LandmarkLayer(kits, look, { road });
+    const plaque = layer.surfaces().find((s) => s.id === 'pdx-chinatown-gate-plaque');
+    expect(plaque, "the gate's plaque is a text surface").toBeDefined();
+    if (!plaque || !gate) return;
+    const toRoad = road.toWorld(edge, centreS, 0, 0);
+    const way = new Vector3(toRoad.x - plaque.centre.x, 0, toRoad.z - plaque.centre.z).normalize();
+    const facing = plaque.normal.clone().setY(0).normalize().dot(way);
+    stdout.write(
+      `[examined] the plaque faces the road: its normal is ${facing.toFixed(3)} of the way to it\n`,
+    );
+    expect(facing).toBeGreaterThan(0.95);
+    // The control: the same gate with no yaw looks along the road, not at it.
+    const unturned = createRoadNetwork({
+      network,
+      roads: bakedRoads.map((r) => ({
+        ...r,
+        features: (r.features ?? []).map((f) =>
+          f.id === 'chinatown-gate' ? { ...f, params: { ...f.params, yawDeg: 0 } } : f,
+        ),
+      })),
+    });
+    const other = new LandmarkLayer(kits, look, { road: unturned })
+      .surfaces()
+      .find((s) => s.id === 'pdx-chinatown-gate-plaque');
+    const alongRoad = other?.normal.clone().setY(0).normalize().dot(way) ?? 1;
+    expect(Math.abs(alongRoad), 'without the yaw the plaque looks along the road').toBeLessThan(0.3);
   });
 });

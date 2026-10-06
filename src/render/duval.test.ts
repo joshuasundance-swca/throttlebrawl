@@ -1,8 +1,9 @@
 // Duval Street's Old Town (playtest 3, T12.1; the wave-B live check's punch list, item 1: "Duval
 // Street draws as an empty palm-and-sand highway, with no Old Town shopfronts"). The Duval kit from
 // Codex CX2 lines every road side tagged `key-oldtown`: balconied shopfronts, conch houses and the
-// corner bar stood end to end behind the sidewalk palms, facing the road, on the drawn land, clear of
-// the pedestrian zones and the landmarks, in the Keys' roadside stretches (no new draw call), with
+// corner bar stood end to end on the sidewalk's edge (playtest 4, P4-19: a street, not a palm road),
+// facing the road, on the drawn land, clear of the landmarks and of the pedestrian zones' pavement, in
+// the Keys' roadside stretches (no new draw call), with
 // the region atlas as their one material's map. The buoy and the Mile 0 marker draw where the
 // route's landmark features name them.
 import { Mesh } from 'three';
@@ -173,6 +174,8 @@ describe.each(SEEDS)('Duval Street and Whitehead Street, seed %i', (seed) => {
       const dFront = it.d - sgn * f.front;
       const dBack = it.d + sgn * f.back;
       const [lo, hi] = [Math.min(dFront, dBack), Math.max(dFront, dBack)];
+      // A crowd stands on the pavement under the balcony (playtest 4, P4-19): only the body is in its way.
+      const [bodyLo, bodyHi] = [Math.min(it.d, dBack), Math.max(it.d, dBack)];
       // Facing: its +Z turned by `turn` points at the road's centre line.
       const toRoad = road.toWorld(e.index, it.s, 0, 0);
       const fx = Math.sin(it.turn);
@@ -183,7 +186,8 @@ describe.each(SEEDS)('Duval Street and Whitehead Street, seed %i', (seed) => {
       for (const ft of dressing[e.id]?.features ?? []) {
         if (!keepClear.has(ft.kind)) continue;
         const overS = it.s + f.half > Math.min(ft.s0, ft.s1) && it.s - f.half < Math.max(ft.s0, ft.s1);
-        const overD = hi > Math.min(ft.d0, ft.d1) && lo < Math.max(ft.d0, ft.d1);
+        const [from, to] = ft.kind === 'roadsideZone' ? [bodyLo, bodyHi] : [lo, hi];
+        const overD = to > Math.min(ft.d0, ft.d1) && from < Math.max(ft.d0, ft.d1);
         if (overS && overD) bad.push(`${it.rule} at s ${it.s.toFixed(0)} stands in ${ft.kind} ${ft.id}`);
       }
       for (const other of fronts) {
@@ -232,11 +236,12 @@ describe('without Old Town', () => {
     expect(items.length).toBeGreaterThan(300);
   });
 
-  it('keeps the Keys props on Duval when the Duval kit failed to load, and throws nothing', () => {
+  it('places no Old Town prop at all when its kits failed to load, and throws nothing', () => {
+    // Old Town is a street of its own (playtest 4, P4-19): the Keys kit's beach props do not stand on it,
+    // so with the Duval kit and the identity kit missing the street is bare ground, not a palm road.
     const { input } = scene(DUVAL, 7, false);
     const items = scatterRoadside({ ...input, models: { keysRoadside } });
-    expect(items.filter(fromDuval)).toEqual([]);
-    expect(items.length).toBeGreaterThan(50);
+    expect(items).toEqual([]);
   });
 });
 

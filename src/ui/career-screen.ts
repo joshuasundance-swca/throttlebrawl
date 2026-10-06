@@ -176,25 +176,25 @@ export const CAREER_CSS = `
 .career-col { width: min(720px, 100%); display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
 .career-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
 .career-top .small { min-height: 40px; }
-.career-wallet { font: 800 15px ui-monospace, 'Courier New', monospace; color: #f5c542; text-align: right; }
-.career-wallet small { display: block; color: #f2ead8; font-weight: 600; font-size: 12px; }
+.career-wallet { font: 800 0.9375rem ui-monospace, 'Courier New', monospace; color: #f5c542; text-align: right; }
+.career-wallet small { display: block; color: #f2ead8; font-weight: 600; font-size: 0.75rem; }
 .career-wallet .swatch { display: inline-block; width: 12px; height: 12px; border: 2px solid #111; margin-right: 4px;
   vertical-align: middle; }
 .career-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.career-tabs .small { white-space: normal; max-width: 100%; text-align: center; flex: 0 1 auto; font-size: 13px; padding: 4px 10px; }
+.career-tabs .small { white-space: normal; max-width: 100%; text-align: center; flex: 0 1 auto; font-size: 0.8125rem; padding: 4px 10px; }
 .career-tabs .small[aria-selected='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a; }
 .career-head { text-align: left; }
-.career-head .title { font-size: 22px; display: inline-block; }
+.career-head .title { font-size: 1.375rem; display: inline-block; }
 .career-season-card { background: #0006; border: 2px solid #f5c542; padding: 8px 10px; display: flex; flex-direction: column;
   gap: 6px; align-items: stretch; margin-top: 6px; }
 /* The title banner is tilted and throws a 4 px red underline, which hangs about 8 px below its box on
    the low end of the tilt; the tally keeps clear of that (playtest 3, wave B's check: "clipped at its
    top by the title banner's red underline"). [default] */
-.career-tally { font: 600 13px ui-monospace, monospace; color: #f2ead8; margin-top: 4px; }
+.career-tally { font: 600 0.8125rem ui-monospace, monospace; color: #f2ead8; margin-top: 4px; }
 .career-head .career-tally { margin-top: 12px; }
 .career-maps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .career-map { flex: 0 0 auto; margin: 0; background: #0b1a24; border: 2px solid #111; box-shadow: 3px 3px 0 #000; }
-.career-map figcaption { font: 700 11px ui-monospace, monospace; color: #f2ead8; padding: 2px 6px; background: #111;
+.career-map figcaption { font: 700 0.6875rem ui-monospace, monospace; color: #f2ead8; padding: 2px 6px; background: #111;
   width: 260px; box-sizing: border-box; }
 .career-map svg { display: block; width: 260px; height: 150px; }
 .career-map .road { fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -206,46 +206,46 @@ export const CAREER_CSS = `
 .career-map .pin.won { fill: #f5c542; }
 .career-map .pin.locked { fill: #6b737b; }
 .career-map .pin.suggested { stroke: #e0543a; stroke-width: 4; }
-.career-map .secret { fill: #7fd1c7; font: 900 14px ui-monospace, monospace; }
+.career-map .secret { fill: #7fd1c7; font: 900 0.875rem ui-monospace, monospace; }
 .career-map .secret.hint { fill: #f5c542; }
-.career-loading { font: 600 13px ui-monospace, monospace; color: #f2ead8; opacity: 0.8; }
+.career-loading { font: 600 0.8125rem ui-monospace, monospace; color: #f2ead8; opacity: 0.8; }
 .career-tier { background: #0006; border: 1px dashed #fff6; padding: 6px 8px; }
-.career-tier h3 { margin: 0 0 6px; font: 900 14px ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase;
+.career-tier h3 { margin: 0 0 6px; font: 900 0.875rem ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase;
   color: #f2ead8; display: flex; justify-content: space-between; gap: 8px; }
 .career-tier.locked h3 { color: #8a929a; }
 .career-nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
 .career-node { text-align: left; min-height: 56px; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px !important; }
-.career-node .node-name { font-size: 15px; }
-.career-node .node-kind { font: 600 12px system-ui, sans-serif; }
+.career-node .node-name { font-size: 0.9375rem; }
+.career-node .node-kind { font: 600 0.75rem system-ui, sans-serif; }
 .career-node.won { background: #f5c542; }
 .career-node.locked { background: #9aa0a6; color: #333; }
 .career-node.suggested { box-shadow: 3px 3px 0 #e0543a !important; }
 .career-node.boss .node-name::before { content: '★ '; }
 .career-detail { background: #f2ead8; color: #111; border: 3px solid #111; box-shadow: 4px 4px 0 #e0543a; padding: 10px 12px;
-  text-align: left; font: 500 14px/1.4 system-ui, sans-serif; }
-.career-detail h2 { margin: 0 0 4px; font: 900 20px ui-monospace, monospace; }
+  text-align: left; font: 500 0.875rem/1.4 system-ui, sans-serif; }
+.career-detail h2 { margin: 0 0 4px; font: 900 1.25rem ui-monospace, monospace; }
 .career-detail .why { font-weight: 800; }
-.career-detail .facts { font: 600 12px ui-monospace, monospace; color: #444; }
+.career-detail .facts { font: 600 0.75rem ui-monospace, monospace; color: #444; }
 .career-detail .row { justify-content: flex-start; margin-top: 8px; }
-.career-garage h3 { margin: 6px 0; font: 900 14px ui-monospace, monospace; color: #f2ead8; text-transform: uppercase; }
+.career-garage h3 { margin: 6px 0; font: 900 0.875rem ui-monospace, monospace; color: #f2ead8; text-transform: uppercase; }
 .garage-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #0006; padding: 6px 8px;
-  border: 1px dashed #fff4; font: 600 14px system-ui, sans-serif; text-align: left; }
+  border: 1px dashed #fff4; font: 600 0.875rem system-ui, sans-serif; text-align: left; }
 .garage-row .what { min-width: 0; overflow-wrap: anywhere; }
-.garage-row .what small { display: block; font: 500 12px ui-monospace, monospace; opacity: 0.85; }
+.garage-row .what small { display: block; font: 500 0.75rem ui-monospace, monospace; opacity: 0.85; }
 .garage-row .swatch { display: inline-block; width: 18px; height: 18px; border: 2px solid #111; vertical-align: middle; margin-right: 6px; }
 .garage-row.current { outline: 2px solid #f5c542; }
-.garage-code textarea { width: 100%; min-height: 64px; box-sizing: border-box; font: 500 12px ui-monospace, monospace; }
-.career-msg { font: 700 14px system-ui, sans-serif; color: #f5c542; min-height: 1em; }
-.career-results-list { list-style: none; margin: 0; padding: 0; font: 600 14px ui-monospace, monospace; text-align: left; }
+.garage-code textarea { width: 100%; min-height: 64px; box-sizing: border-box; font: 500 0.75rem ui-monospace, monospace; }
+.career-msg { font: 700 0.875rem system-ui, sans-serif; color: #f5c542; min-height: 1em; }
+.career-results-list { list-style: none; margin: 0; padding: 0; font: 600 0.875rem ui-monospace, monospace; text-align: left; }
 .career-results-list li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
 #career-results-objectives li { justify-content: flex-start; gap: 6px; }
 .career-results-list li.met::before { content: '✓ '; color: #9cc56b; }
 .career-results-list li.missed::before { content: '✗ '; color: #e0543a; }
 .career-results-list .total { border-top: 2px solid #f2ead8; font-weight: 900; color: #f5c542; }
-.career-news { font: 600 13px system-ui, sans-serif; color: #f2ead8; text-align: left; }
-#career-teaser .teaser-line { font: 900 20px/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8; text-align: center;
+.career-news { font: 600 0.8125rem system-ui, sans-serif; color: #f2ead8; text-align: left; }
+#career-teaser .teaser-line { font: 900 1.25rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8; text-align: center;
   max-width: min(640px, 92vw); text-transform: uppercase; }
-#career-teaser .teaser-line:first-of-type { color: #f5c542; font-size: 24px; }
+#career-teaser .teaser-line:first-of-type { color: #f5c542; font-size: 1.5rem; }
 /* The prompt sits low in the middle, between the speed (left) and the touch buttons (right), clear
    of the bark bubble at the top and of the road ahead. It wraps inside the touch buttons' reach on
    both sides (ui/ sets --touch-reach from where it places them; the live check after #430: the
@@ -254,7 +254,7 @@ export const CAREER_CSS = `
   width: max-content; max-width: min(520px, calc(100vw - 360px), calc(100vw - 2 * var(--touch-reach, 0px) - 16px));
   background: #111d; color: #f2ead8;
   border-left: 4px solid #f5c542; padding: 6px 12px; box-sizing: border-box;
-  font: 800 14px/1.3 ui-monospace, 'Courier New', monospace; pointer-events: none; z-index: 1; }
+  font: 800 0.875rem/1.3 ui-monospace, 'Courier New', monospace; pointer-events: none; z-index: 1; }
 /* Upright and narrow: across the screen, just above the speed and health (and any touch buttons),
    as low as it can sit under the player's bike. */
 @media (max-width: 700px) and (orientation: portrait) {
@@ -267,14 +267,14 @@ export const CAREER_CSS = `
    is stacked. The fallbacks are for a screen no plan has settled. [default] */
 #hud-objective { position: absolute; top: var(--hl-obj-y, 60px); left: var(--hl-obj-l, 12px);
   right: var(--hl-obj-r, auto); width: max-content; max-width: var(--hl-obj-w, 392px); box-sizing: border-box;
-  background: #0009; color: #f5c542; padding: 2px 10px; border-radius: 4px; font: 800 12px/16px ui-monospace, monospace;
+  background: #0009; color: #f5c542; padding: 2px 10px; border-radius: 4px; font: 800 0.75rem/1rem ui-monospace, monospace;
   text-align: var(--hl-obj-a, left); pointer-events: none; overflow: hidden; display: -webkit-box;
   -webkit-box-orient: vertical; -webkit-line-clamp: var(--hl-obj-lines, 2); line-clamp: var(--hl-obj-lines, 2);
   overflow-wrap: anywhere; }
 @media (orientation: landscape) and (max-height: 520px) {
   .career-map svg { width: 220px; height: 120px; }
   .career-map figcaption { width: 220px; }
-  #career-prompt { font-size: 13px; }
+  #career-prompt { font-size: 0.8125rem; }
 }
 /* A very short phone held sideways (568x320): under the player's bike there are about 55 px, so the
    prompt takes the whole free stretch of the bottom band (ui/ sets --prompt-l and --prompt-r: what
@@ -282,7 +282,7 @@ export const CAREER_CSS = `
 @media (orientation: landscape) and (max-height: 340px) {
   #career-prompt { left: calc(var(--prompt-l, 0px) + (100vw - var(--prompt-l, 0px) - var(--prompt-r, 0px)) / 2);
     max-width: calc(100vw - var(--prompt-l, 0px) - var(--prompt-r, 0px) - 12px);
-    font-size: 11px; line-height: 1.2; padding: 2px 6px; }
+    font-size: 0.6875rem; line-height: 1.2; padding: 2px 6px; }
 }
 .career-show { display: flex; flex-direction: column; gap: 8px; }
 ${SHOW_CSS}`;

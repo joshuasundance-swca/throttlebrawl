@@ -20,12 +20,15 @@
 // - wheelie (playtest 3): a clean `wheelieEnd` of at least `race.styleWheelieMinS`, worth
 //   perWheelieSecondCash × (its sweet-band seconds + half the rest);
 // - drift (playtest 3): a `driftEnd` that banks a chain scores the `data.points` sim/riders/drift.ts
-//   accrued (perDriftSecondCash per second of full slip at full speed, × the chain).
+//   accrued (perDriftSecondCash per second of full slip at full speed, × the chain). A rider who
+//   stops racing with a chain open (the finish line, or classified at the race end) is paid it then
+//   (`closeStyle`, `driftFinish`), so no chain is forfeited at the line.
 // Each scores a `style` event (data.kind, data.points) beside `addStyle`, for racers still racing;
 // the law never scores, and a source worth 0 cash emits nothing. Durations are world time, the sum
 // of timeScale / 60 over the ticks, so slow motion stretches nothing and hit-stop adds nothing.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import { topSpeedOf } from '../riders';
+import { driftFinish } from '../riders/drift';
 import type { SimConfig, SimEvent, SimStyleRewards, StyleKind, StyleRunSnapshot } from '../types';
 import { addStyle, emit, systemState, type Mover, type World } from '../world';
 
@@ -147,6 +150,8 @@ interface StyleState {
   /** By entity id: takedowns in the current combo, and the clock at the last one (-1: none yet). */
   combo: number[];
   comboAtS: number[];
+  /** By entity id: 1 once a finisher's open drift chain has been paid at the line (once only). */
+  driftPaid: number[];
 }
 
 function styleState(world: World): StyleState {
@@ -156,6 +161,7 @@ function styleState(world: World): StyleState {
     oncomingS: [],
     combo: [],
     comboAtS: [],
+    driftPaid: [],
   }));
 }
 
@@ -311,7 +317,8 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
       case 'driftEnd': {
         const points = Number(e.data['points'] ?? 0);
         const chain = Number(e.data['chain'] ?? 1);
-        if (points > 0) score(world, id, 'drift', points, { chain }, e.causeId);
+        // A chain paid at the finish line is scored by closeStyle, which emits it: never twice.
+        if (points > 0 && e.data['finish'] !== true) score(world, id, 'drift', points, { chain }, e.causeId);
         break;
       }
       case 'crash':
@@ -356,7 +363,8 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
 
 /**
  * Closes the open oncoming stretch of every rider who stopped racing this tick: a finisher (over
- * the line, or classified at the race end) scores it; a rider busted or down loses it.
+ * the line, or classified at the race end) scores it; a rider busted or down loses it. A finisher is
+ * also paid the drift chain still open at the line (playtest 4: DRIFT LOST is a crash's alone), once.
  */
 export function closeStyle(
   world: World,
@@ -367,6 +375,11 @@ export function closeStyle(
   const rewards = config.event.style ?? NO_STYLE;
   for (const m of world.movers) {
     const now = status(m.id);
+    if (now === 'finished' && !st.driftPaid[m.id]) {
+      st.driftPaid[m.id] = 1;
+      const paid = driftFinish(world, m);
+      if (paid) score(world, m.id, 'drift', paid.points, { chain: paid.chain });
+    }
     if ((st.oncomingS[m.id] ?? 0) <= 0 || now === 'racing') continue;
     if (now === 'finished') endOncoming(world, st, m.id, rewards);
     else st.oncomingS[m.id] = 0;
