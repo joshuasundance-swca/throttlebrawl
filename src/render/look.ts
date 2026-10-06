@@ -55,6 +55,12 @@ export interface MaterialParams {
   color?: string;
   /** Multiply by the geometry's per-vertex colours (merged primitive views use this). */
   vertexColors?: boolean;
+  /**
+   * With `vertexColors`: the vertex colours multiply the kind's own colour (the region palette's, in a
+   * look that recolours it) instead of carrying the colour themselves, so a tinted sea still takes its
+   * region's water. Playtest 4 (P4-19, the Keys' sea in bands).
+   */
+  paletteBase?: boolean;
   /** Draw both faces (vertical strips such as rails and deck fascias). */
   doubleSided?: boolean;
   /** A texture (a board's printed face). */
@@ -150,7 +156,9 @@ export function createFlatLook(): LookStyle {
       const vertexColors = params?.vertexColors ?? false;
       // Vertex-coloured geometry carries its own colours, so the base stays white; an overlay's
       // vertex colours only carry its vignette alpha, so it keeps its kind's colour.
-      const color = params?.color ?? (vertexColors && !params?.overlay ? '#ffffff' : CLASSIC_PALETTE[kind]);
+      const color =
+        params?.color ??
+        (vertexColors && !params?.overlay && !params?.paletteBase ? '#ffffff' : CLASSIC_PALETTE[kind]);
       const doubleSided = params?.doubleSided ?? false;
       const map = params?.map ?? null;
       const overlay = params?.overlay ?? false;

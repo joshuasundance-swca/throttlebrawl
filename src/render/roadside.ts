@@ -470,6 +470,17 @@ export const KEYS_KIT: RoadsideKit = {
       tier: 0,
       canopy: true,
     }),
+    // Playtest 4, P4-19 (the identity study's S5; Codex CX6's `keys_osprey_post`, variant 8): ospreys nest on
+    // the poles beside the Overseas Highway. A 9 m pole with a stick nest and the bird on it stands on the
+    // shore and mangrove sides, a few metres past the verge, one now and then (every 420 m at half the
+    // chances, so a territory apart), and never on a street: not in Old Town (the `oldtown` theme is not one
+    // it stands on, and the district is kept out as well). The kit file loads only where open water is
+    // (models.ts `modelKindsFor`).
+    rule('osprey-post', [8], [...SHORE, 'mangrove'], 420, 0.5, [3, 6], 2, {
+      model: 'keysIdentity',
+      notDistrict: OLDTOWN,
+      tier: 0,
+    }),
   ],
 };
 

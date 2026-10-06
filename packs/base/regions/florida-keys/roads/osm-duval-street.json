@@ -203,6 +203,20 @@
       }
     },
     {
+      "kind": "landmark",
+      "id": "cruise-ship",
+      "s0": 1489.0,
+      "s1": 1779.0,
+      "d0": -76.0,
+      "d1": -40.0,
+      "params": {
+        "model": "models/landmarks/keys-landmarks#cruise_ship",
+        "yawDeg": 0.0,
+        "baseY": 0.0,
+        "farM": 300.0
+      }
+    },
+    {
       "kind": "roadsideZone",
       "id": "party-1-l",
       "s0": 100.0,

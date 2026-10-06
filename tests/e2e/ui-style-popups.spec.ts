@@ -1302,7 +1302,10 @@ for (const [where, width, height, finePointer] of [
       await expectStampClear(page, `${where}, menu`);
 
       await press(page, '#menu-settings', where);
-      const tabs = await page.locator('[id^="settings-tab-"]').evaluateAll((els) => els.map((e) => e.id));
+      // Only the tabs this device shows (Keys hides on a touch-only screen).
+      const tabs = await page
+        .locator('[id^="settings-tab-"]:visible')
+        .evaluateAll((els) => els.map((e) => e.id));
       expect(tabs.length, `${where}: the settings tabs were found`).toBeGreaterThan(0);
       for (const id of tabs) {
         await press(page, `#${id}`, where);
