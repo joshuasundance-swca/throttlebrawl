@@ -9,6 +9,7 @@ import {
   type OfflineEnv,
   type WorkerRequest,
 } from './offline-worker';
+import { recoverStaleBuild } from './stale-build';
 
 // The offline service worker's policy (docs/architecture.md, "Asset manifest"; docs/engineering.md,
 // "Deploy", Offline): after the first load the whole build is cached, so a loaded game plays with
@@ -464,5 +465,88 @@ describe('the page the worker serves', () => {
     expect(BUILD_X['index.html']).toContain(
       '<link rel="preload" as="fetch" crossorigin href="./assets/road-R1.json">',
     );
+  });
+});
+
+describe('the page after an install a deploy failed (playtest 4 run A fix check, new mustFix 2b)', () => {
+  /** The worker file a build's host serves, naming its build (scripts/service-worker.mjs). */
+  const swOf = (id: string) => `self.__OFFLINE__={"cache":"${CACHE_PREFIX}${id}-0123456789ab"};\n`;
+  const cacheOf = (id: string) => `${CACHE_PREFIX}${id}-0123456789ab`;
+  /** A build's page, watching for a build the host no longer serves (platform/stale-build.ts). */
+  function pageOf(build: string, site: ReturnType<typeof host>) {
+    const store = new Map<string, string>();
+    let reloads = 0;
+    const stale = recoverStaleBuild(
+      {
+        win: new EventTarget(),
+        scope: SCOPE,
+        online: () => true,
+        storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v) },
+        reload: () => void reloads++,
+        fetch: (url) => site.fetchFn(url),
+        canReload: () => true,
+      },
+      build,
+    );
+    return { stale, reloads: () => reloads };
+  }
+  /** Every hashed file of `build`, as an offline worker on `mem` serves it. */
+  async function offlineAssets(
+    build: Record<string, string>,
+    cache: string,
+    mem: ReturnType<typeof memoryCaches>,
+  ) {
+    const off = await workerFor(build, cache, network({ down: () => true }), mem);
+    const page = (await text(off.worker.respond(get('', 'navigate')))) ?? '';
+    const served: Record<string, string | null> = {};
+    for (const rel of filesOf(build).filter((f) => f.startsWith('assets/')))
+      served[rel] = await text(off.worker.respond(get(rel)));
+    return { page, served };
+  }
+  const assetsOf = (build: Record<string, string>) =>
+    Object.fromEntries(
+      filesOf(build)
+        .filter((f) => f.startsWith('assets/'))
+        .map((rel) => [rel, build[rel]]),
+    );
+
+  it('a first visit reloads to the new build, whose whole install then opens with the network off', async () => {
+    const mem = memoryCaches();
+    const site = host({ ...BUILD_X, 'sw.js': swOf('xxxxxxx') });
+    site.deployAfter(3, { ...BUILD_Y, 'sw.js': swOf('yyyyyyy') });
+    const page = pageOf('xxxxxxx', site);
+    const x = await workerFor(BUILD_X, cacheOf('xxxxxxx'), site, mem);
+    await x.worker.install().then(
+      () => undefined,
+      () => page.stale.installFailed(),
+    );
+    await page.stale.idle();
+    // No worker and no cache for X; the page goes to the build the host serves now.
+    expect([...mem.stores.keys()]).toEqual([]);
+    expect(page.reloads()).toBe(1);
+
+    // The reloaded page is Y's: its worker installs all of Y and takes the page.
+    const y = await workerFor(BUILD_Y, cacheOf('yyyyyyy'), site, mem);
+    await y.worker.install();
+    await y.worker.activate();
+    // An offline relaunch opens Y from its whole cache: the page, the landmarks and every kit.
+    const off = await offlineAssets(BUILD_Y, cacheOf('yyyyyyy'), mem);
+    expect(off.page).toContain('assets/index-YYY.js');
+    expect(off.served).toEqual(assetsOf(BUILD_Y));
+  });
+
+  it('a returning visit keeps its last whole cache in charge, so an offline relaunch opens that build', async () => {
+    // Holds #584's guarantee (it held before this fix too): the last worker's cache is never touched.
+    const mem = memoryCaches();
+    const site = host({ ...BUILD_Y, 'sw.js': swOf('yyyyyyy') });
+    await (await workerFor(BUILD_Y, cacheOf('yyyyyyy'), site, mem)).worker.install();
+    site.deploy({ ...BUILD_X, 'sw.js': swOf('xxxxxxx') });
+    site.deployAfter(site.asked.length + 3, { ...BUILD_Y, 'sw.js': swOf('yyyyyyy') });
+    const x = await workerFor(BUILD_X, cacheOf('xxxxxxx'), site, mem);
+    await expect(x.worker.install()).rejects.toThrow(/not installed/);
+    expect([...mem.stores.keys()]).toEqual([cacheOf('yyyyyyy')]);
+    const off = await offlineAssets(BUILD_Y, cacheOf('yyyyyyy'), mem);
+    expect(off.page).toContain('assets/index-YYY.js');
+    expect(off.served).toEqual(assetsOf(BUILD_Y));
   });
 });
