@@ -272,6 +272,12 @@ def test_bridge_barriers_take_the_configured_kind_height_and_look() -> None:
     # Left out, a bridge keeps today's rail, byte for byte.
     _, plain, _ = stretch()
     assert set(plain[1]["barriers"][0]) == {"s0", "s1", "side", "kind", "heightM"}
+    # The interstate's looks (playtest 4, run C5): a concrete parapet and a guard rail bake and lint too.
+    for look in ("concrete", "guardrail"):
+        net, looked, route = stretch(bridgeBarrier={"kind": "wall", "heightM": 0.81, "look": look})
+        (made,) = looked[1]["barriers"]
+        assert (made["kind"], made["heightM"], made["look"]) == ("wall", 0.81, look)
+        assert lint_bake(net, looked, route) == []
 
 
 def test_a_stretch_refuses_a_gap_stitch() -> None:

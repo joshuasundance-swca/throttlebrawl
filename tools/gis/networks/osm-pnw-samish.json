@@ -49,11 +49,12 @@
         "medianM": 4,
         "medianKind": "grass"
       },
+      "bridgeBarrier": { "kind": "wall", "heightM": 0.81, "look": "concrete" },
       "roads": [
         {
           "id": "osm-i5-samish-summit",
           "name": "Samish Summit",
-          "tags": ["forest"],
+          "tags": ["forest", "interstate"],
           "features": [
             {
               "kind": "copSpawn",
@@ -81,8 +82,8 @@
               "id": "bb-samish-summit",
               "s0": 300,
               "s1": 340,
-              "d0": -21,
-              "d1": -13,
+              "d0": -27,
+              "d1": -19,
               "pool": "billboards"
             },
             {
@@ -103,19 +104,29 @@
               "id": "samish-summit-pullout",
               "s0": 520,
               "s1": 600,
-              "d0": 12,
-              "d1": 19,
+              "d0": 16,
+              "d1": 22,
               "params": {
                 "spawns": "pedestrians"
               }
             },
             {
               "kind": "billboard",
+              "id": "sign-exit-246",
+              "s0": 640,
+              "s1": 650,
+              "d0": 15.5,
+              "d1": 20.5,
+              "item": "i5-exit-246",
+              "params": { "style": "guide" }
+            },
+            {
+              "kind": "billboard",
               "id": "sign-lake-samish-keep-right",
               "s0": 760,
               "s1": 770,
-              "d0": 12.5,
-              "d1": 15,
+              "d0": 15.5,
+              "d1": 20.5,
               "item": "lake-samish-keep-right",
               "params": { "style": "guide" }
             }
@@ -124,16 +135,17 @@
         {
           "id": "osm-i5-lake-samish",
           "name": "Lake Samish Grade",
-          "tags": ["forest"],
+          "tags": ["forest", "interstate"],
+          "deckTags": ["interstate"],
           "features": [
             {
               "kind": "billboard",
               "id": "sign-lake-samish-grade",
               "s0": 400,
               "s1": 410,
-              "d0": 12.5,
-              "d1": 15,
-              "pool": "signs",
+              "d0": 15.5,
+              "d1": 20.5,
+              "item": "i5-seattle-canada",
               "params": { "style": "guide" }
             },
             {
@@ -154,8 +166,8 @@
               "id": "bb-lake-samish-grade",
               "s0": 2200,
               "s1": 2240,
-              "d0": -21,
-              "d1": -13,
+              "d0": -27,
+              "d1": -19,
               "pool": "billboards"
             },
             {
@@ -176,9 +188,9 @@
               "id": "sign-nulle-road",
               "s0": 4600,
               "s1": 4610,
-              "d0": 12.5,
-              "d1": 15,
-              "pool": "signs",
+              "d0": 15.5,
+              "d1": 20.5,
+              "item": "i5-exit-242",
               "params": { "style": "guide" }
             }
           ]
@@ -186,16 +198,27 @@
         {
           "id": "osm-i5-nulle-run",
           "name": "Nulle Road Run",
-          "tags": ["forest"],
+          "tags": ["forest", "interstate"],
+          "deckTags": ["interstate"],
           "features": [
             {
               "kind": "billboard",
               "id": "bb-nulle-run",
               "s0": 200,
               "s1": 240,
-              "d0": -21,
-              "d1": -13,
+              "d0": -27,
+              "d1": -19,
               "pool": "billboards"
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-weigh-station",
+              "s0": 330,
+              "s1": 340,
+              "d0": 15.5,
+              "d1": 20.5,
+              "item": "i5-weigh-station",
+              "params": { "style": "guide" }
             }
           ]
         }

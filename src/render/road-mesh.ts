@@ -40,6 +40,7 @@ import {
   planArches,
   planBays,
 } from './bridge-bays';
+import { barrierLookAt } from './barrier-looks';
 import { ChunkedStrips, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
@@ -94,7 +95,7 @@ export interface BarrierSpan {
   side: string;
   kind: string;
   heightM?: number;
-  /** `railing`: drawn as a bridge railing by the verge layer (verge.ts), not as this band (render only). */
+  /** A barrier look (`railing`, `concrete`, `guardrail`): drawn by the verge layer (verge.ts), not as this band (render only). */
   look?: string | undefined;
 }
 export interface FeatureSpan {
@@ -1930,8 +1931,9 @@ export function buildRoadScene(
         const s0 = Math.max(0, b.s0);
         const s1 = Math.min(e.length, b.s1);
         if (s1 <= s0) continue;
-        // A railing look is see-through: the verge layer draws it (posts and rails), so no band here.
-        if (b.look === 'railing') continue;
+        // A barrier with a look (its own, or its road tag's: barrier-looks.ts) is drawn by the verge layer
+        // as that look's panels, so no solid band here.
+        if (barrierLookAt(b, e.tags, side, (s0 + s1) / 2) !== undefined) continue;
         const h = b.heightM ?? 1;
         const bottom = b.kind === 'wall' ? 0 : h - 0.3;
         // On a terrain network a wall is a concrete retaining wall, not the bridge's painted rail.

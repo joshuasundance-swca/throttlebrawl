@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "semi",
+  "name": "Semi",
+  "category": "truck",
+  "tags": ["commercial", "interstate"],
+  "lengthM": 16.0,
+  "widthM": 2.6,
+  "cruiseMps": 25.0,
+  "hazard": "big",
+  "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },
+  "look": {
+    "procedural": { "preset": "box-truck", "params": { "cargoHeightM": 3.0 } },
+    "paintOptions": ["#d9d9d9", "#3d4a5c", "#8a8f86"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 4, P4-19 (sheet I2): the interstate's big hazard, a tractor and a long box trailer, no brand and no words on it. It runs only where a road is tagged `interstate` (the region's traffic area), a touch quicker than the log truck and as long: 16 m is the longest vehicle the region already has, because the rival AI sizes every vehicle by the largest type of the race (`vehicleSize`, src/sim/ai/sense.ts), so a longer type would change how every rival rides round every car on every Pacific Northwest road. Its model is the shared semi (16.5 m, drawn at 16 m).",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

@@ -153,6 +153,13 @@ export interface RoadsideKit {
   rules: readonly RoadsideRule[];
 }
 
+/**
+ * An interstate's district tag (playtest 4, P4-19, run C5; sheet I1): the Pacific Northwest's byway things (a
+ * mailbox on its post, a firewood stack, an espresso hut, a split-rail or log fence, a warning sign gone dark with
+ * rain) have no place on the verge of a four-lane highway, so each rule that draws one lists it in `notDistrict`.
+ * The woods (ferns, salal, trees, stumps, rocks) stand on beside it.
+ */
+const INTERSTATE: readonly string[] = ['interstate'];
 const FOREST: readonly LandTheme[] = ['forest', 'sawmill'];
 const TOWN: readonly LandTheme[] = ['commercial'];
 const WOODS_AND_TOWN: readonly LandTheme[] = [...FOREST, ...TOWN];
@@ -188,13 +195,36 @@ export const PNW_KIT: RoadsideKit = {
   id: 'pnw',
   // In order of how much ground each needs: the big props claim theirs first, the understory last.
   rules: [
-    rule('espresso', [9], FOREST, 1100, 0.7, [4, 3], 2.6, { ...BIG, back: 1.6, along: 2.1 }),
-    rule('espresso-town', [9], TOWN, 260, 0.8, [3.5, 3], 2.6, { ...BIG, back: 1.6, along: 2.1 }),
-    rule('firewood', [5], WOODS_AND_TOWN, 120, 0.55, [3, 4], 1.6, { ...BIG, back: 0.6, along: 1.4 }),
-    rule('sign', [8], WOODS_AND_TOWN, 300, 0.7, [0.5, 0.4], 0.8, BIG),
-    rule('mailbox', [4], WOODS_AND_TOWN, 70, 0.6, [0.5, 0.3], 0.7, { face: true }),
-    rule('split-rail', [6], WOODS_AND_TOWN, 110, 0.6, [1.4, 1.2], 0.4, { ...FENCE, run: [4, 14, 6] }),
-    rule('log-fence', [7], FOREST, 170, 0.5, [1.6, 1.5], 0.4, { ...FENCE, run: [3, 10, 6] }),
+    rule('espresso', [9], FOREST, 1100, 0.7, [4, 3], 2.6, {
+      ...BIG,
+      back: 1.6,
+      along: 2.1,
+      notDistrict: INTERSTATE,
+    }),
+    rule('espresso-town', [9], TOWN, 260, 0.8, [3.5, 3], 2.6, {
+      ...BIG,
+      back: 1.6,
+      along: 2.1,
+      notDistrict: INTERSTATE,
+    }),
+    rule('firewood', [5], WOODS_AND_TOWN, 120, 0.55, [3, 4], 1.6, {
+      ...BIG,
+      back: 0.6,
+      along: 1.4,
+      notDistrict: INTERSTATE,
+    }),
+    rule('sign', [8], WOODS_AND_TOWN, 300, 0.7, [0.5, 0.4], 0.8, { ...BIG, notDistrict: INTERSTATE }),
+    rule('mailbox', [4], WOODS_AND_TOWN, 70, 0.6, [0.5, 0.3], 0.7, { face: true, notDistrict: INTERSTATE }),
+    rule('split-rail', [6], WOODS_AND_TOWN, 110, 0.6, [1.4, 1.2], 0.4, {
+      ...FENCE,
+      run: [4, 14, 6],
+      notDistrict: INTERSTATE,
+    }),
+    rule('log-fence', [7], FOREST, 170, 0.5, [1.6, 1.5], 0.4, {
+      ...FENCE,
+      run: [3, 10, 6],
+      notDistrict: INTERSTATE,
+    }),
     rule('broadleaf', [10, 11, 11], WOODS_AND_TOWN, 24, 0.6, [3, 11], 2.2, {
       size: [0.8, 1.15],
       tier: 0,

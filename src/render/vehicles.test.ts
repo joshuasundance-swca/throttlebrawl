@@ -50,7 +50,6 @@ const MODELS_NO_TYPE_TAKES: Readonly<Record<string, string>> = {
     'the island tram is 7.5 m (the rival AI sizes by the largest vehicle, so it cannot grow, #500); this model is 18 m',
   'models/traffic/city-bus':
     'the startup shuttle now draws its own model; no city-bus type is in a traffic mix yet',
-  'models/traffic/semi': 'no semi type exists yet (sheet I2); it is new traffic, a sim content change',
   'models/traffic/suv': 'no SUV type exists yet; a second sedan model would add a draw call per pool',
   'models/traffic/sf-streetcar': 'no vintage-streetcar type exists yet (sheet W1)',
   'models/traffic/sf-trolleybus': 'no trolleybus type exists yet (sheet R2)',

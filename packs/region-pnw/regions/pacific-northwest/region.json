@@ -103,6 +103,20 @@
           { "kind": "cargo-bike", "weight": 0.5, "hazard": "normal" },
           { "kind": "pdx-streetcar", "weight": 1, "hazard": "big" }
         ]
+      },
+      {
+        "tag": "interstate",
+        "mix": [
+          { "kind": "mossy-wagon", "weight": 4, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 3, "hazard": "normal" },
+          { "kind": "base:sedan-rental", "weight": 3, "hazard": "normal" },
+          { "kind": "muddy-pickup", "weight": 2, "hazard": "normal" },
+          { "kind": "wagon-with-kayaks", "weight": 2, "hazard": "normal" },
+          { "kind": "semi", "weight": 4, "hazard": "big" },
+          { "kind": "log-truck", "weight": 0.8, "hazard": "big" },
+          { "kind": "camper-van", "weight": 0.6, "hazard": "big" },
+          { "kind": "motorhome", "weight": 0.5, "hazard": "big" }
+        ]
       }
     ]
   },
@@ -116,6 +130,34 @@
       "id": "lake-samish-keep-right",
       "text": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
       "status": "live"
+    },
+    {
+      "id": "i5-exit-246",
+      "text": "EXIT 246: LAKE SAMISH. 1 mile. The lake is where it was.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19, run C5 (sheet I1): an interstate guide sign on I-5, in the big green face, a mile before the Lake Samish exit."
+    },
+    {
+      "id": "i5-seattle-canada",
+      "text": "SEATTLE OR CANADA. South or north. You are between them.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19, run C5 (sheet I1): an interstate guide sign on I-5's Lake Samish grade, the one a guide sign has to be."
+    },
+    {
+      "id": "i5-exit-242",
+      "text": "EXIT 242: NULLE ROAD. Rejoin the highway. It missed you.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19, run C5 (sheet I1): an interstate guide sign on I-5 before the Nulle Road on-ramp, where the lake drives rejoin."
+    },
+    {
+      "id": "i5-weigh-station",
+      "text": "WEIGH STATION, NEXT RIGHT. Trucks must stop. Bikes may watch.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19, run C5 (sheet I1): an interstate guide sign on I-5's Nulle Road run, where the cop escape at the weigh station is named."
     },
     {
       "id": "morrison-keep-left",

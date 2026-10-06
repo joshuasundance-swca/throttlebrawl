@@ -114,6 +114,21 @@ export const BOARD_SIZES: Record<BoardKind, { panelH: number; bottom: number; mi
     billboard: { panelH: 4.6, bottom: 4, minW: 8.5, maxW: 13 },
     cone: { panelH: 1.4, bottom: 0.5, minW: 2.8, maxW: 2.8 },
   };
+/**
+ * An interstate guide sign's board (playtest 4, P4-19, run C5; sheet I1): taller and wider than a town sign, its
+ * lower edge a head higher, as the big green guide signs on their steel posts are. The words fit as they do on
+ * any sign (sign-fit.test.ts), with more room.
+ */
+export const GUIDE_SIGN_SIZE: (typeof BOARD_SIZES)['sign'] = {
+  panelH: 2.4,
+  bottom: 2.6,
+  minW: 4.6,
+  maxW: 6.4,
+};
+/** The size a board is built at: a `guide`-style sign's own, else its kind's. */
+export function sizeOfBoard(kind: BoardKind, style: SignStyle): (typeof BOARD_SIZES)[BoardKind] {
+  return kind === 'sign' && style === 'guide' ? GUIDE_SIGN_SIZE : BOARD_SIZES[kind];
+}
 /** How far ahead of a board (along its road) the rider it turns toward is, metres. */
 const AIM_AHEAD_M = 70;
 /** How far behind the printed face the posts stand, metres. */
@@ -551,7 +566,8 @@ export class Boards {
     item: BoardItem,
     catalog: BoardCatalog,
   ): BoardView {
-    const size = BOARD_SIZES[item.kind];
+    const style = styleOfSlot(item.kind, slot, catalog);
+    const size = sizeOfBoard(item.kind, style);
     const s = Math.min(length, Math.max(0, (slot.s0 + slot.s1) / 2));
     const d = (slot.d0 + slot.d1) / 2;
     const w = Math.min(size.maxW, Math.max(size.minW, Math.abs(slot.d1 - slot.d0)));
@@ -564,7 +580,6 @@ export class Boards {
     // instead of edge-on from a hundred metres out.
     const aim = road.toWorld(edge, Math.max(0, s - AIM_AHEAD_M), 0, 0);
     group.rotation.y = Math.atan2(aim.x - base.x, aim.z - base.z);
-    const style = styleOfSlot(item.kind, slot, catalog);
     const face = faceOf(item.kind, style);
     const postH = size.bottom + size.panelH;
     // Posts and the cross rails stand BEHIND the printed face (local -z), so nothing crosses the
