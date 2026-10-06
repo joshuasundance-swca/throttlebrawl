@@ -71,6 +71,7 @@ const STILL_MODELS: readonly ModelKind[] = [
   'powerPole',
   'conifers',
   'rowHouses',
+  'sfApartments',
   'sawmill',
   'keysIslets',
 ];
@@ -152,6 +153,7 @@ describe('the still scenery, merged per block', () => {
         pole: 'powerPole',
         conifer: 'conifers',
         house: 'rowHouses',
+        apartment: 'sfApartments',
         sawmill: 'sawmill',
         islet: 'keysIslets',
       };

@@ -71,6 +71,16 @@
         "laneWidthM": 4.0,
         "lanesPerDirection": 1
       },
+      "landmarks": [
+        {
+          "id": "columbus-flatiron",
+          "model": "sf-landmarks#sf_flatiron",
+          "at": { "lat": 37.7964, "lon": -122.4049 },
+          "footprintM": [30, 18],
+          "side": "right",
+          "farM": 250
+        }
+      ],
       "roads": [
         {
           "id": "osm-sf-hyde",

@@ -104,7 +104,7 @@ function under(objs: Object3D[], x: number, z: number, top = 60): string | null 
   return ray.intersectObjects(objs, false)[0]?.object.name ?? null;
 }
 
-const LAND_KINDS = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill']);
+const LAND_KINDS = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'apartment', 'sawmill']);
 
 describe('scenery tags to themes (docs/content-packs.md, scenery tags)', () => {
   it('reads water over land, no land on a bridge alone, and palm land when a road has no tags', () => {
@@ -346,6 +346,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // playtest 4 (P4-19, CX5): the Presidio's cypress and eucalyptus, and the Gorge's two deck arches
       sfIdentity: 2,
       gorgeArches: 2,
+      // playtest 4 (P4-19): CX6's two flats, two apartment blocks and two corner buildings
+      sfApartments: 6,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {

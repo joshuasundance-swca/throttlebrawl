@@ -844,6 +844,11 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [0.6, 5, 0.6], at: [0, 2.5, 0], color: '#5b4a3a' },
       { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
     ],
+    // an apartment block of two plots, taller than a row house (playtest 4, R3)
+    apartment: [
+      { size: [13.2, 17, 11], at: [0, 8.5, -5.5], color: '#cfc6b8' },
+      { size: [13.4, 0.6, 0.6], at: [0, 16.8, 0.1], color: '#f4efe4' },
+    ],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -867,6 +872,7 @@ const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   bay: 'sevenMileKit',
   arch: 'gorgeArches',
   coastTree: 'sfIdentity',
+  apartment: 'sfApartments',
 };
 
 /**

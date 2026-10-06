@@ -79,6 +79,9 @@ export const MODEL_ASSETS = {
   // Gorge's landmark kit (bridge-bays.ts `planArches`, under an `arch-bridge` deck). The file is a
   // landmark kit, so it loads with the kit's own decoder (`KIT_MODELS`).
   gorgeArches: 'models/landmarks/gorge-landmarks',
+  // Playtest 4 (P4-19, Codex CX6): San Francisco's flats, apartment blocks and corner buildings, which stand in
+  // the row houses' plots (scenery.ts `upgradeTerrace`); the corners' shop signs are text surfaces.
+  sfApartments: 'models/scenery/sf-apartments',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -180,6 +183,15 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   ],
   sfIdentity: ['sf_cypress', 'sf_eucalyptus'],
   gorgeArches: ARCH_ROOTS,
+  // In the order of scenery.ts `APARTMENT`: two flats of one plot, two blocks and two handed corners of two.
+  sfApartments: [
+    'sf_flats_a',
+    'sf_flats_b',
+    'sf_apartment_a',
+    'sf_apartment_b',
+    'sf_corner_l',
+    'sf_corner_r',
+  ],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -311,6 +323,7 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
     if (urban) {
       out.add('rowHouses');
+      out.add('sfApartments');
       out.add('sfRoadside');
     }
     // Run W-P: each region's roadside kit (roadside.ts). San Francisco's forest (Twin Peaks)
