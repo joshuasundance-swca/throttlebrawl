@@ -406,3 +406,56 @@ describe('a sloping deck (deckEndM)', () => {
     expect(backdropProblems(file({ nearFadeM: 0 }), 'region')).toEqual(['pieces[0]: nearFadeM must be > 0']);
   });
 });
+
+// Playtest 4, P4-19, B5: the old Bahia Honda bridge stands in the baked road's own metres a few tens of
+// metres from the new one, not on the horizon. Its deck is the width and thickness of the real one (a
+// narrow road on a truss), not the far bridges' 32 m slab, so a piece may say its own (`widthM`, `thickM`).
+describe("a near bridge's own deck width and thickness (widthM, thickM)", () => {
+  const zs = (t: Tri) => t.map((v) => v[2]!);
+  const near = piece({ style: 'truss', deckOnTop: true, deckM: 14, spanM: 60, widthM: 7, thickM: 1.2 });
+  const plain = piece({ style: 'truss', deckOnTop: true, deckM: 14, spanM: 60 });
+
+  /** The across-the-deck extent of its top, and how far down its edge face goes (the slab's thickness). */
+  const deck = (p: BridgePiece) => {
+    const tris = trisOf(p);
+    const tops = deckTops(tris, 14);
+    const z = tops.flatMap(zs);
+    // The slab's side faces stand at the deck's edge, from its top down to its underside.
+    const edge = tris.filter((t) => Math.max(...ys(t)) === 14 && zs(t).every((v) => Math.abs(v) > 3));
+    return {
+      tops: tops.length,
+      halfWidth: Math.max(...z),
+      widest: Math.max(...tris.filter((t) => Math.min(...ys(t)) > -20).flatMap((t) => zs(t).map(Math.abs))),
+      thick: 14 - Math.min(...edge.flatMap(ys)),
+    };
+  };
+
+  it('builds the deck as wide and as thick as the piece says, and nothing of it wider', () => {
+    const d = deck(near);
+    expect(d.tops).toBeGreaterThan(10);
+    expect(d.halfWidth).toBeCloseTo(3.5, 6);
+    expect(d.thick).toBeCloseTo(1.2, 6);
+    // The truss hangs inside the deck's width, and the piers are narrower than it.
+    expect(d.widest).toBeLessThanOrEqual(3.5 + 1e-6);
+  });
+
+  it('leaves the far bridges as they were: 32 m wide, a slab of at least 4 m (the control)', () => {
+    const d = deck(plain);
+    expect(d.halfWidth).toBeCloseTo(16, 6);
+    expect(d.thick).toBeCloseTo(4, 6);
+  });
+
+  it('refuses a width or a thickness that is not a positive number', () => {
+    const file = (extra: Record<string, unknown>) => ({
+      formatVersion: 1,
+      network: 'n',
+      originLatDeg: 0,
+      originLonDeg: 0,
+      pieces: [{ ...near, ...extra }],
+    });
+    expect(backdropProblems(file({}), 'network')).toEqual([]);
+    for (const k of ['widthM', 'thickM'])
+      for (const v of [0, -2, 'wide'])
+        expect(backdropProblems(file({ [k]: v }), 'network').join(' | '), `${k} ${String(v)}`).toContain(k);
+  });
+});

@@ -144,6 +144,20 @@
       }
     },
     {
+      "kind": "landmark",
+      "id": "east-martello",
+      "s0": 2574.72,
+      "s1": 2597.28,
+      "d0": -39.28,
+      "d1": -16.72,
+      "params": {
+        "model": "models/landmarks/keys-landmarks#east_martello",
+        "yawDeg": -90.0,
+        "scale": 0.47,
+        "farM": 160.0
+      }
+    },
+    {
       "kind": "billboard",
       "id": "bb-smathers-beach",
       "s0": 2900.0,

@@ -65,7 +65,21 @@
       "tag": "beach"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "landmark",
+      "id": "west-martello",
+      "s0": 44.43,
+      "s1": 65.57,
+      "d0": -31.14,
+      "d1": -10.0,
+      "params": {
+        "model": "models/landmarks/keys-landmarks#west_martello",
+        "yawDeg": -90.0,
+        "scale": 0.7
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

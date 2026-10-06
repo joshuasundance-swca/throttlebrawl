@@ -55,8 +55,8 @@ export const MODEL_ASSETS = {
   // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
   duvalKit: 'models/scenery/duval-kit',
   // Playtest 4 (P4-19, Codex CX5): the Keys' identity props. Old Town draws its banyan, poinciana,
-  // frangipani and two open bars from it (roadside.ts KEYS_KIT), and the shores of open water the osprey
-  // post (CX6); the Key deer wait for their roads, and the mile post is a landmark of the same file
+  // frangipani and two open bars from it, and Big Pine its Key deer (roadside.ts KEYS_KIT), and the
+  // shores of open water the osprey post (CX6); the mile post is a landmark of the same file
   // (`LANDMARK_ROOTS`).
   keysIdentity: 'models/scenery/keys-identity',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
@@ -192,9 +192,10 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_closed_bar',
     'keys_flamingo',
   ],
-  // Variants 0 and 1 the Key deer (a buck and a doe), 2 a mile post, 3 a banyan, 4 a royal poinciana, 5 a
-  // frangipani, 6 and 7 two open-fronted bars, 8 an osprey's nesting post (tools/blender/props/keys_identity.py).
-  // The bars' blank name boards are text surfaces.
+  // Variants 0 and 1 the Key deer (a buck and a doe: a buck with antlers is 1.3 m, a doe 0.7 m; front +Z,
+  // feet on y 0), 2 a mile post, 3 a banyan, 4 a royal poinciana, 5 a frangipani, 6 and 7 two
+  // open-fronted bars, 8 an osprey's nesting post (tools/blender/props/keys_identity.py). The bars'
+  // blank name boards are text surfaces.
   keysIdentity: [
     'key_deer_buck',
     'key_deer_doe',
@@ -283,6 +284,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('water-open')) out.add('keysIdentity');
     // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
     if (n.tags.has('old-bridge')) out.add('sevenMileKit');
+    // Playtest 4 (P4-19, B5): the Key deer, for the road that has the `key-deer` tag (Big Pine Bend).
+    if (n.tags.has('key-deer')) out.add('keysIdentity');
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');

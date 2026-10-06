@@ -36,7 +36,7 @@
     },
     {
       "id": "old-bahia-honda-bridge",
-      "networks": ["osm-keys-bahia-honda", "osm-keys-seven-mile"],
+      "networks": ["osm-keys-seven-mile"],
       "kind": "bridge",
       "style": "truss",
       "from": [24.65542, -81.2969],

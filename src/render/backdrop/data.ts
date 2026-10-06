@@ -109,6 +109,14 @@ export interface BridgePiece extends Base {
   trussM?: number;
   /** A truss with the deck on top of it, the truss hanging under (default: a through truss, over the deck). */
   deckOnTop?: boolean;
+  /**
+   * The deck's own width and its slab's thickness, m (playtest 4, P4-19, B5: the old Bahia Honda bridge, a
+   * narrow road a few tens of metres from the road, in the road's own metres). Default: a far bridge's 32 m
+   * wide and 4 m or more thick, as it reads from the road. The truss, the piers and the cables follow the
+   * width, so a narrow deck has a narrow truss.
+   */
+  widthM?: number;
+  thickM?: number;
   /** A tied arch's springings along the span, 0..1 (default 0.25 and 0.75), and its rise over the deck, m. */
   archAt?: readonly [number, number];
   archM?: number;
@@ -475,7 +483,7 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
           ))
       )
         out.push(`${at}: gaps must be [from, to] shares of the length, 0 <= from < to <= 1`);
-      for (const k of ['spanM', 'trussM', 'archM'])
+      for (const k of ['spanM', 'trussM', 'archM', 'widthM', 'thickM'])
         if (q[k] !== undefined && !(typeof q[k] === 'number' && q[k] > 0))
           out.push(`${at}: ${k} must be > 0`);
       const arch = q['archAt'];

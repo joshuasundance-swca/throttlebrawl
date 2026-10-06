@@ -113,6 +113,13 @@
       "tags": ["site"],
       "status": "live"
     },
+    {
+      "id": "key-deer-crossing",
+      "text": "KEY DEER CROSSING. Hip high. The fine is not.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-19, B5): the sign before the Key deer on Big Pine Key (docs/content-packs.md, Roadside kits). A `site` sign: only the board slot `sign-key-deer` on `osm-big-pine-bend` shows it. Vetoable like any sign."
+    },
     { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. It is 91 degrees.", "status": "live" },
     { "id": "next-regret", "text": "NEXT GAS 40 MI. Next regret 2 mi.", "status": "live" },
     { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. Legally unclear.", "status": "live" },
