@@ -97,6 +97,8 @@ import {
 } from './radio-panel';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
+import { createCardSlots, retryButton, type SlotCardId } from './transient-cards';
+import type { Screen } from './screen';
 import { createManualClock, type Schedule } from './narrative/long-press';
 import type { TuningPanel } from './tuning';
 import { keyLegend, keyMapFromBindings } from '../input';
@@ -135,21 +137,7 @@ export { BARK_TUNING } from './narrative';
 export { HUD_TUNING };
 export type { RadioSource, RadioState } from './radio-panel';
 
-export type Screen =
-  | 'start'
-  | 'menu'
-  | 'settings'
-  | 'race'
-  | 'results'
-  | 'changelog'
-  // The credits and data licences (roadmap M5, credits-1).
-  | 'credits'
-  // The menu race's options (playtest 4, P4-12 and P4-13).
-  | 'raceOptions'
-  // The career (run W-R): its map and garage, its results, the next region's teaser.
-  | 'career'
-  | 'careerResults'
-  | 'teaser';
+export type { Screen } from './screen';
 
 /**
  * The browser's offer to install the game as an app (platform/'s install offer, roadmap M5). The
@@ -241,6 +229,11 @@ export interface GameUi {
    * (the Reduce motion setting, or the phone's own preference). Sets `data-motion` on the root.
    */
   setReduceMotion(on: boolean): void;
+  /**
+   * A short notice (a save that could not be read, a ride the career refuses), for 4 s: a transient
+   * card first in the flow of the screen showing, gone when the screen changes; in a race, a line on
+   * the top ticker instead.
+   */
   notice(text: string): void;
   /**
    * The race-start countdown's number (playtest 4, P4-11): "3", "2", "1" or "GO" in the middle of
@@ -265,11 +258,14 @@ export interface GameUi {
   offerReload(onReload: (() => void) | null): void;
   /**
    * A fetch of the game's own data (a region's roads, the Keys' real roads) failed after its tries
-   * (polish lane K2, platform/retry-fetch.ts): a card at the top says so in plain words and offers a
-   * Retry button, so the menu never sits with an empty list and no word. `onRetry` shows it with
-   * `text`; null hides it. Starting a race hides it too.
+   * (polish lane K2, platform/retry-fetch.ts): a card says so in plain words and offers a Retry
+   * button, so the menu never sits with an empty list and no word. `onRetry` shows it with `text`;
+   * null hides it. It is a transient card (transient-cards.ts): first in the flow of the screen that
+   * raised it (the menu for one raised before the start tap or on a page with no slot), gone when that
+   * screen changes or a busy "Loading ..." line goes up. `waitMs` keeps Retry off for the host's
+   * Retry-After, counting it down on the button.
    */
-  offerRetry(text: string | null, onRetry: (() => void) | null): void;
+  offerRetry(text: string | null, onRetry: (() => void) | null, opts?: { waitMs?: number }): void;
   /**
    * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
    * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
@@ -360,6 +356,8 @@ const WHEELIE_HINT_MIN_PX = 48;
 const EDGE_PX = 24;
 /** How long the slow-frames offer stays up in the race, unanswered, before it fades (ms). [default] */
 export const LOOK_OFFER_MS = 12_000;
+/** How long a notice (`GameUi.notice`) stays up (ms). [default] */
+const NOTICE_MS = 4000;
 
 /** The credits page (credits-screen.ts draws into it): a scrolling list under a Back bar, like the changelog. */
 const CREDITS_CSS = `
@@ -522,20 +520,37 @@ ${REDUCE_MOTION_CSS}
 #rotate-screen::before { content: ''; width: 44px; height: 76px; border: 4px solid #f2ead8; border-radius: 8px;
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
-#ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
 /* The newer-build offer on a result screen (playtest 4 run A's second fix check, mustFix: a card fixed at
    the top covered the career result's title). It is the first thing inside the result screen that is
-   showing (placeReloadOffer), so it takes its own room, scrolls away with the screen and lies over no
+   showing (placeCards), so it takes its own room, scrolls away with the screen and lies over no
    title, button or road. */
 #ui #reload-offer { flex-shrink: 0; width: max-content; max-width: min(560px, 92vw); box-sizing: border-box;
   display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
 #ui #reload-offer .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui #reload-offer .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
-/* The retry card (polish lane K2): over the screen's top edge, as a notice. */
-#ui #load-retry { z-index: 2; max-width: 92vw; box-sizing: border-box; display: flex; align-items: center;
-  gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
-#ui #load-retry .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
+/* The transient cards (transient-cards.ts; docs/architecture.md, "Transient cards"): the did-not-load card
+   (polish lane K2) and a notice sit where the update offer does, first in the flow of the screen showing
+   (placeCards), never as a layer over it (polish batch D's mustFix 1: the did-not-load card, a top-centre
+   layer, hid the career's Map and Garage tabs and, at 568x320, the title and the region buttons). Each
+   takes the touches on itself, so a tap on its words never lands on what lies behind. */
+#ui .transient-card { pointer-events: auto; }
+#ui #reload-offer, #ui #load-retry, #ui #ui-notice { margin-bottom: 6px; }
+/* Beside the what's-new card the menu is a row, centred up and down: a menu column taller than the screen
+   (the cards above its title make it so at 915x412) would stand out above the screen's top, where no scroll
+   reaches, and Retry with it (train 237's run of ui-transient-cards.spec.ts). Safe centring starts it at
+   the top instead, and the screen scrolls down to the rest. Only where the menu is that row (as
+   changelog-screen.ts lays it out): the short landscape layout stacks the card under the menu, a column
+   whose cross axis is across, and safe centring there pushed the cards off the right edge at 568x320
+   (train 246). */
+@media (min-height: 381px), (orientation: portrait) {
+  #ui #menu.with-news { align-items: safe center; }
+}
+#ui #load-retry, #ui #ui-notice { flex-shrink: 0; width: max-content; max-width: min(560px, 100%);
+  box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+  background: rgb(10 5 20 / 92%); }
+#ui #load-retry .reload-offer-text, #ui #ui-notice { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui #load-retry .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
+#ui #load-retry .small:disabled { background: #f2ead8; opacity: 0.7; cursor: default; }
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. ui/hud-layout.ts settles where it goes and sets --hl-toast-* on #ui: on
@@ -605,6 +620,24 @@ const tickerQuiet = (): boolean => {
   const w = window as TickerSeamWindow;
   return w.__GAME_TEST__ === true && w.__uiTickerQuiet === true;
 };
+
+type CardSeamWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __uiCards?: { raise(id: string): boolean };
+};
+
+/**
+ * The browser specs' transient-card seam (docs/architecture.md, "Testing seams"), only when the test
+ * flag is set before the page loads: `window.__uiCards.raise(id)` raises one of TRANSIENT_CARDS
+ * (transient-cards.ts) on the screen showing, as the game would, with stand-in words and a Retry that
+ * does nothing, held up until its screen changes; true when it is shown. So
+ * `ui-transient-cards.spec.ts` can measure every card on every screen it can appear on without a
+ * failed load, a deploy or slow frames. It writes no sim state.
+ */
+function installCardSeam(raise: (id: string) => boolean): void {
+  const w = window as CardSeamWindow;
+  if (w.__GAME_TEST__ === true) w.__uiCards = { raise };
+}
 
 type LongPressSeamWindow = Window & {
   __GAME_TEST__?: boolean;
@@ -762,6 +795,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     onOpenChangelog: () => show('changelog'),
     onHide: () => menu.classList.remove('with-news'),
   });
+  // A transient card too (transient-cards.ts): in the menu's flow, and it takes the touches on itself.
+  whatsNewCard.root.classList.add('transient-card');
   // The first run's first tap (playtest 4, P4-5): "Start career" until the career has started.
   const careerButton = button('menu-career', 'big', careerButtonText(false), () => cb.onCareer?.());
   const syncCareerButton = () => {
@@ -776,34 +811,36 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const syncInstallButton = () => (installButton.hidden = !install?.available());
   syncInstallButton();
   install?.onChange(syncInstallButton);
+  // The menu's main column: its transient cards sit first in it, above the title (placeCards).
+  const menuMain = el(
+    'div',
+    { className: 'menu-main' },
+    el('div', { className: 'title', textContent: 'throttlebrawl' }),
+    regionPicker,
+    routePicker.root,
+    el(
+      'div',
+      { className: 'row' },
+      ...(cb.onCareer ? [careerButton] : []),
+      button('menu-race', 'big', 'Race', () => cb.onRace()),
+      // The menu race's options (playtest 4, P4-12 and P4-13), beside the Race they set up. Small, so
+      // Start career stays the first big tap (P4-5).
+      ...(cb.raceOptions ? [button('menu-options', 'small', 'Options', () => show('raceOptions'))] : []),
+    ),
+    el(
+      'div',
+      { className: 'row' },
+      button('menu-settings', 'small', 'Settings', () => show('settings')),
+      button('menu-changelog', 'small', "What's new", () => show('changelog')),
+      button('menu-credits', 'small', 'Credits', () => show('credits')),
+      button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      ...(install ? [installButton] : []),
+    ),
+  );
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
-    el(
-      'div',
-      { className: 'menu-main' },
-      el('div', { className: 'title', textContent: 'throttlebrawl' }),
-      regionPicker,
-      routePicker.root,
-      el(
-        'div',
-        { className: 'row' },
-        ...(cb.onCareer ? [careerButton] : []),
-        button('menu-race', 'big', 'Race', () => cb.onRace()),
-        // The menu race's options (playtest 4, P4-12 and P4-13), beside the Race they set up. Small, so
-        // Start career stays the first big tap (P4-5).
-        ...(cb.raceOptions ? [button('menu-options', 'small', 'Options', () => show('raceOptions'))] : []),
-      ),
-      el(
-        'div',
-        { className: 'row' },
-        button('menu-settings', 'small', 'Settings', () => show('settings')),
-        button('menu-changelog', 'small', "What's new", () => show('changelog')),
-        button('menu-credits', 'small', 'Credits', () => show('credits')),
-        button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
-        ...(install ? [installButton] : []),
-      ),
-    ),
+    menuMain,
     whatsNewCard.root,
     el('div', { id: 'menu-build', className: 'footer', textContent: `build ${buildId}` }),
   );
@@ -1475,29 +1512,54 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     ),
   );
 
-  const noticeBox = el('div', { className: 'card notice', hidden: true });
+  // The transient cards (transient-cards.ts): each sits first in the flow of the screen that raised it
+  // (placeCards, below), never over it. The notice and the did-not-load card come and go through the
+  // slot model, which drops them when their screen changes.
+  const cardSlots = createCardSlots();
+  const noticeBox = el('div', { id: 'ui-notice', className: 'card transient-card', hidden: true });
+  noticeBox.setAttribute('role', 'status');
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null;
   // The newer-build offer (offerReload): plain words and one button. It lives inside the result
-  // screen that is showing (placeReloadOffer, below), never over it.
+  // screen that is showing (placeCards, below), never over it.
   let reloadNow: (() => void) | null = null;
   let reloadWanted = false;
   const reloadOfferWords = el('div', { className: 'reload-offer-text' });
   const reloadOffer = el(
     'div',
-    { id: 'reload-offer', className: 'card', hidden: true },
+    { id: 'reload-offer', className: 'card transient-card', hidden: true },
     reloadOfferWords,
     button('reload-offer-reload', 'small', 'Reload now', () => reloadNow?.()),
   );
   reloadOffer.setAttribute('role', 'status');
-  // The load-failed card (offerRetry): the message and a Retry button, kept until it is answered.
+  // The load-failed card (offerRetry): the message and a Retry button, kept until it is answered or
+  // its screen changes. While the host's Retry-After runs, Retry is off and counts the wait down.
   let retryLoad: (() => void) | null = null;
+  let retryWaitUntil: number | null = null;
+  let retryTimer: ReturnType<typeof setInterval> | null = null;
   const loadRetryText = el('div', { className: 'reload-offer-text' });
+  const loadRetryButton = button('load-retry-button', 'small', 'Retry', () => {
+    if (!loadRetryButton.disabled) retryLoad?.();
+  });
   const loadRetry = el(
     'div',
-    { id: 'load-retry', className: 'card notice', hidden: true },
+    { id: 'load-retry', className: 'card transient-card', hidden: true },
     loadRetryText,
-    button('load-retry-button', 'small', 'Retry', () => retryLoad?.()),
+    loadRetryButton,
   );
   loadRetry.setAttribute('role', 'alert');
+  const syncRetryButton = () => {
+    const state = retryButton(retryWaitUntil, performance.now());
+    loadRetryButton.textContent = state.label;
+    loadRetryButton.disabled = state.disabled;
+    if (!state.disabled && retryTimer !== null) {
+      clearInterval(retryTimer);
+      retryTimer = null;
+    }
+  };
+  const stopRetryWait = () => {
+    retryWaitUntil = null;
+    syncRetryButton();
+  };
 
   // ---- The resume card and the busy spinner --------------------------------------------------
   let resumeChoice: ((choice: 'resume' | 'startOver') => void) | null = null;
@@ -1733,8 +1795,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     pauseScreen,
     resumeCard,
     busy,
-    noticeBox,
-    loadRetry,
   );
   host.append(root, stamp);
   // The tuning panel (ui/tuning) is a lazy chunk, fetched as the game boots rather than in the
@@ -1884,7 +1944,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     c.teaser.hidden = current !== 'teaser';
     realCareer = c;
     for (const f of careerCalls.splice(0)) f(c);
-    placeReloadOffer();
+    placeCards();
   });
   // The menu race's options (playtest 4, P4-12 and P4-13): a lazy chunk too, fetched as the game
   // boots. Each step is a new settings record, saved like a settings row, so the picks are
@@ -1916,6 +1976,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       screen.root.hidden = current !== 'raceOptions';
       raceOptionsScreen = screen;
       drawRaceOptions();
+      placeCards();
     });
   const career: CareerUi = {
     showMap: (v, g, t, s) => withCareer((c) => c.showMap(v, g, t, s)),
@@ -1923,7 +1984,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     showResults: (r) =>
       withCareer((c) => {
         c.showResults(r);
-        placeReloadOffer();
+        placeCards();
       }),
     showTeaser: (t) => withCareer((c) => c.showTeaser(t)),
     prompt: (t) => withCareer((c) => c.prompt(t)),
@@ -1997,24 +2058,66 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   });
 
   /**
-   * Seats the newer-build offer as the first thing inside the result screen that is showing (the
-   * race's, or the career's), and hides it anywhere else. The career's result is rebuilt each time
-   * (`showResults` replaces its children), so this runs after that too.
+   * Where a screen's transient cards sit: first in its column (transient-cards.ts SLOT_SCREENS); null
+   * for a screen with none, or one whose lazy chunk has not arrived.
    */
-  const placeReloadOffer = () => {
-    const quick = current === 'results';
-    const host = quick ? results : current === 'careerResults' ? (realCareer?.results ?? null) : null;
-    if (!reloadWanted || !host) {
-      reloadOffer.hidden = true;
-      return;
+  const cardHost = (screen: Screen): HTMLElement | null => {
+    switch (screen) {
+      case 'start':
+        return start;
+      case 'menu':
+        return menuMain;
+      case 'raceOptions':
+        return raceOptionsScreen?.root ?? null;
+      case 'career':
+        return realCareer?.map ?? null;
+      case 'results':
+        return results;
+      case 'careerResults':
+        return realCareer?.results ?? null;
+      default:
+        return null;
     }
-    reloadOfferWords.textContent = reloadOfferText(quick ? 'results' : 'careerResults');
-    if (host.firstElementChild !== reloadOffer) host.prepend(reloadOffer);
-    reloadOffer.hidden = false;
+  };
+  const slotCards: Record<SlotCardId, HTMLElement> = { 'load-retry': loadRetry, 'ui-notice': noticeBox };
+  /**
+   * Seats the transient cards of the screen showing first in its flow, in order (the newer-build offer
+   * on a result screen, then the did-not-load card, then a notice), and hides every other. The career's
+   * result is rebuilt each time (`showResults` replaces its children), so this runs after that too.
+   */
+  const placeCards = () => {
+    const host = cardHost(current);
+    const wanted: HTMLElement[] = [];
+    const quick = current === 'results';
+    if (reloadWanted && (quick || current === 'careerResults')) {
+      reloadOfferWords.textContent = reloadOfferText(quick ? 'results' : 'careerResults');
+      wanted.push(reloadOffer);
+    }
+    // A did-not-load card raised while a busy "Loading ..." line is up waits for the line to go.
+    for (const id of cardSlots.visible(current))
+      if (id !== 'load-retry' || busy.hidden) wanted.push(slotCards[id]);
+    for (const card of [reloadOffer, loadRetry, noticeBox])
+      if (!host || !wanted.includes(card)) card.hidden = true;
+    if (!host) return;
+    if (wanted.some((card, i) => host.children[i] !== card)) host.prepend(...wanted);
+    for (const card of wanted) card.hidden = false;
+  };
+  const dropCard = (id: SlotCardId) => {
+    cardSlots.drop(id);
+    if (id === 'load-retry') {
+      retryLoad = null;
+      stopRetryWait();
+    } else if (noticeTimer !== null) {
+      clearTimeout(noticeTimer);
+      noticeTimer = null;
+    }
+    placeCards();
   };
 
   function show(screen: Screen) {
     current = screen;
+    // A transient card shown on the screen being left goes with it (transient-cards.ts).
+    cardSlots.screenChanged(screen);
     syncTextScale(window.innerHeight);
     for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
     if (paused) closePause();
@@ -2029,7 +2132,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     clearLookOffer();
     countdownView.set(null);
     if (screen === 'race') {
-      loadRetry.hidden = true;
       targetShown = false;
       tally.reset();
       tallyPlayer = -1;
@@ -2051,8 +2153,57 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       raceView = cb.raceOptions?.() ?? null;
       drawRaceOptions();
     }
-    placeReloadOffer();
+    placeCards();
   }
+
+  /**
+   * A notice for `NOTICE_MS` (or held, for the browser spec's seam): a transient card first in the
+   * flow of the screen showing; in a race, a line on the top ticker, the race's one text strip.
+   */
+  function showNotice(text: string, hold = false) {
+    if (current === 'race') {
+      ticker.push({ cls: 'system', text });
+      return;
+    }
+    noticeBox.textContent = text;
+    if (noticeTimer !== null) clearTimeout(noticeTimer);
+    noticeTimer = hold ? null : setTimeout(() => dropCard('ui-notice'), NOTICE_MS);
+    cardSlots.raise('ui-notice', current);
+    placeCards();
+  }
+  installCardSeam((id) => {
+    switch (id) {
+      case 'load-retry':
+        retryLoad = () => undefined;
+        loadRetryText.textContent = 'Test Region did not load. Check the connection, then tap Retry.';
+        stopRetryWait();
+        cardSlots.raise('load-retry', current);
+        placeCards();
+        return !loadRetry.hidden;
+      case 'ui-notice':
+        showNotice('A test notice: the saved settings could not be read, so the defaults are back.', true);
+        return !noticeBox.hidden;
+      case 'reload-offer':
+        reloadNow = () => undefined;
+        reloadWanted = true;
+        placeCards();
+        return !reloadOffer.hidden;
+      case 'whats-new':
+        if (current !== 'menu') return false;
+        whatsNewCard.show({ kind: 'welcome' });
+        menu.classList.add('with-news');
+        return true;
+      case 'look-offer': {
+        const up = offerClassicLook();
+        // Held up while the spec measures it (its fade is wall time).
+        if (lookOfferTimer !== null) clearTimeout(lookOfferTimer);
+        lookOfferTimer = null;
+        return up && !lookOffer.hidden;
+      }
+      default:
+        return false;
+    }
+  });
 
   const setText = (node: HTMLElement, text: string) => {
     if (node.textContent !== text) node.textContent = text;
@@ -2117,21 +2268,26 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     offerReload(onReload) {
       reloadNow = onReload;
       reloadWanted = onReload !== null;
-      placeReloadOffer();
+      placeCards();
     },
-    offerRetry(text, onRetry) {
+    offerRetry(text, onRetry, opts) {
+      if (text === null || onRetry === null) {
+        dropCard('load-retry');
+        return;
+      }
       retryLoad = onRetry;
-      loadRetryText.textContent = text ?? '';
-      loadRetry.hidden = text === null || onRetry === null;
+      loadRetryText.textContent = text;
+      const waitMs = opts?.waitMs ?? 0;
+      retryWaitUntil = waitMs > 0 ? performance.now() + waitMs : null;
+      if (retryWaitUntil !== null) retryTimer ??= setInterval(syncRetryButton, 250);
+      syncRetryButton();
+      cardSlots.raise('load-retry', current);
+      placeCards();
     },
     setReduceMotion(on) {
       root.dataset['motion'] = on ? 'reduced' : 'full';
     },
-    notice(text) {
-      noticeBox.textContent = text;
-      noticeBox.hidden = false;
-      setTimeout(() => (noticeBox.hidden = true), 4000);
-    },
+    notice: showNotice,
     setCountdown: (text) => countdownView.set(text),
     showResumeCard(onChoice) {
       resumeChoice = onChoice;
@@ -2140,6 +2296,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     setBusy(text) {
       busyText.textContent = text ?? '';
       busy.hidden = text === null;
+      // The load runs again under the busy line; the did-not-load card is not left up beside it.
+      if (text !== null) dropCard('load-retry');
+      else placeCards();
     },
     get settings() {
       return settings;

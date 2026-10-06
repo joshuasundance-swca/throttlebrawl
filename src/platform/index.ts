@@ -484,7 +484,13 @@ export function registerOfflineWorker(
 }
 
 export { recoverStaleBuild, STALE_BUILD_KEY, type StaleBuild, type StaleBuildPage } from './stale-build';
-export { RETRY_AFTER_CAP_MS, RETRY_DELAYS_MS, retryingFetch, type RetryEnv } from './retry-fetch';
+export {
+  RETRY_AFTER_CAP_MS,
+  RETRY_DELAYS_MS,
+  retryAfterMsOf,
+  retryingFetch,
+  type RetryEnv,
+} from './retry-fetch';
 
 /** The page's `fetch`, as the stale-build watch wraps it. */
 interface FetchingWindow {

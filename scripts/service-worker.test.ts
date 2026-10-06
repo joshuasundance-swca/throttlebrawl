@@ -129,6 +129,41 @@ describe('the offline worker build step', () => {
     }
   });
 
+  it('names the files index.html itself loads, which a first visit has in the HTTP cache (punch item 1)', () => {
+    // The live page's tags (build bae17cc): the entry script, module preloads and road-file
+    // preloads under assets/, plus icon and manifest links outside it, which are not hashed files.
+    const page =
+      '<!doctype html><link rel="icon" type="image/png" href="./icon-192.png" />' +
+      '<link rel="manifest" href="./manifest.webmanifest" />' +
+      '<script type="module" crossorigin src="./assets/index-AAA.js"></script>' +
+      '<link rel="modulepreload" crossorigin href="./assets/sim-S1.js">' +
+      '<link rel="modulepreload" crossorigin href="./assets/three.core-T1.js">' +
+      '<link rel="preload" as="fetch" crossorigin href="./assets/c-boardwalk-in-R1.json">' +
+      '<link rel="preload" as="fetch" crossorigin href="./assets/not-built-X1.json">';
+    const built = [
+      'assets/index-AAA.js',
+      'assets/sim-S1.js',
+      'assets/three.core-T1.js',
+      'assets/c-boardwalk-in-R1.json',
+    ];
+    const cfg = workerConfig('abc1234', [
+      { path: 'index.html', bytes: enc(page) },
+      { path: 'manifest.webmanifest', bytes: enc('{}') },
+      { path: 'icon-192.png', bytes: enc('png') },
+      { path: 'assets/landmarks-L1.js', bytes: enc('lazy') },
+      ...built.map((p) => ({ path: p, bytes: enc(p) })),
+    ]);
+    expect(cfg.firstLoad).toEqual([...built].sort());
+    // The negative control: a page that loads only its entry names only its entry.
+    expect(
+      workerConfig('abc1234', [
+        { path: 'index.html', bytes: enc(PAGE) },
+        { path: 'assets/index-AAA.js', bytes: enc('x') },
+        { path: 'assets/landmarks-L1.js', bytes: enc('lazy') },
+      ]).firstLoad,
+    ).toEqual(['assets/index-AAA.js']);
+  });
+
   it('hands the worker its config ahead of its code', () => {
     const config = { cache: 'c', files: ['index.html'], checks: { 'index.html': { contains: 'x.js' } } };
     const src = workerSource(config, 'run();');

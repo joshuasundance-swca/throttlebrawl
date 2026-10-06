@@ -41,14 +41,21 @@ export interface RetryEnv {
 const worthRetrying = (status: number): boolean =>
   status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
 
-/** The wait a response's Retry-After asks for, in ms; null when it has none that can be read. */
-function retryAfterMs(res: Response, now: number): number | null {
-  const raw = res.headers.get('Retry-After')?.trim();
+/**
+ * The wait a Retry-After value asks for, in ms (whole seconds, or an HTTP date counted from `now`);
+ * null when there is none that can be read. app/'s did-not-load card reads it too (load-retry.ts).
+ */
+export function retryAfterMsOf(value: string | null | undefined, now: number): number | null {
+  const raw = value?.trim();
   if (!raw) return null;
   if (/^\d+$/.test(raw)) return Number(raw) * 1000;
   const at = Date.parse(raw);
   return Number.isNaN(at) ? null : Math.max(0, at - now);
 }
+
+/** The wait a response's Retry-After asks for, in ms; null when it has none that can be read. */
+const retryAfterMs = (res: Response, now: number): number | null =>
+  retryAfterMsOf(res.headers.get('Retry-After'), now);
 
 export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch {
   const buildDir = new URL(BUILD_DIR, env.scope).href;
