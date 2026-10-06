@@ -322,6 +322,31 @@ jobs:
           "$RUNNER_TEMP/hf/bin/pip" install --quiet --disable-pip-version-check -r .github/deploy/requirements.txt
           "$RUNNER_TEMP/hf/bin/hf" upload "$SPACE" .cache/space . --repo-type space --delete "*" \
             --commit-message "deploy ${GITHUB_SHA::7}"
+      # The deploy's smoke check of the gzip copies (docs/engineering.md, "Deploy", Compression;
+      # playtest 4 run B's live check, punch item 8). The game Space sends files uncompressed, so the
+      # offline worker downloads each script's, JSON file's and model's `.gz` copy and unpacks it.
+      # This waits (up to 4 minutes, inside the job's 10) until the Space serves this build, then checks the entry script and one lazy
+      # chunk: the copy is served and unpacks to its file byte for byte. It reports only: the worker
+      # falls back to the plain files, so a failure here never fails the deploy or turns main red; it
+      # leaves a warning on the run and its lines in the summary. [default]
+      - name: Probe the gzip copies on the game Space (reports only)
+        if: steps.decide.outputs.deploy == 'true'
+        continue-on-error: true
+        timeout-minutes: 5
+        # `shell: bash` runs the script as `bash -eo pipefail`. A bare `run:` has no pipefail, so
+        # `probe | tee` would take tee's status and a failing probe would raise no warning.
+        shell: bash
+        env:
+          SPACE: ${{ vars.HF_SPACE_PROD }}
+        run: |
+          if [ ! -f scripts/gzip-probe.mjs ]; then echo "this tree has no gzip probe"; exit 0; fi
+          host=$(curl -fsS --max-time 20 "https://huggingface.co/api/spaces/$SPACE?expand=subdomain" | jq -r '.subdomain // empty') || host=""
+          if [ -z "$host" ]; then echo "::warning title=gzip probe::the Hub API named no subdomain for the game Space"; exit 0; fi
+          if ! node scripts/gzip-probe.mjs --url "https://$host.static.hf.space" --build "${GITHUB_SHA::7}" --wait 240 2>&1 \
+            | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo "::warning title=gzip probe::the gzip copies failed their check or the Space never served this build; see the run summary"
+            exit 1
+          fi
 
   release:
     name: release

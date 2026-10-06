@@ -321,6 +321,33 @@ describe('ci.yml wiring', () => {
     expect(byName.get(PROD_BUILD)).toContain("needs.plan.result == 'success'");
   });
 
+  // The deploy's gzip probe (docs/engineering.md, "Deploy"). It exists to report, so three things must
+  // hold: it can never fail the deploy or touch a secret, and a failing probe must actually reach its
+  // warning. Actions runs a bare `run:` as `bash -e {0}` with no pipefail, so `probe | tee` takes
+  // tee's status and a failing probe is silent (reproduced in the review of the PR that added the
+  // step): the step needs pipefail, and stderr in the pipe, or the "never served this build" line
+  // never reaches the summary.
+  it('the deploy gzip probe reports only, holds no secret, and a failing probe reaches its warning', () => {
+    const deploy = jobBlock('deploy-prod');
+    const step = deploy.split(/\n {6}- /).find((s) => s.startsWith('name: Probe the gzip copies'));
+    expect(step, 'the probe step, inside deploy-prod').toBeDefined();
+    const text = step ?? '';
+    expect(text).toMatch(/^ {8}if: steps\.decide\.outputs\.deploy == 'true'$/m);
+    expect(text).toMatch(/^ {8}continue-on-error: true$/m);
+    const stepLimit = Number(/^ {8}timeout-minutes: (\d+)$/m.exec(text)?.[1]);
+    const jobLimit = Number(/^ {4}timeout-minutes: (\d+)$/m.exec(deploy)?.[1]);
+    expect(stepLimit, 'the step has a limit').toBeGreaterThan(0);
+    expect(stepLimit, 'inside the job limit').toBeLessThan(jobLimit);
+    // No secret in the step's env or script: it is an unauthenticated read of a public Space.
+    expect(text).not.toMatch(/secrets\./);
+    expect(text).not.toMatch(/HF_TOKEN/);
+    // pipefail, from `shell: bash` (bash -eo pipefail) or set in the script...
+    expect(text, 'pipefail').toMatch(/^ {8}shell: bash$|set -[a-z]*o pipefail/m);
+    // ...and the pipe carries stderr, so the exit-2 line and a thrown error reach the summary.
+    expect(text, 'runs the probe').toContain('gzip-probe.mjs');
+    expect(text, 'stderr into the summary').toMatch(/2>&1\s*\\?\s*\| tee -a "\$GITHUB_STEP_SUMMARY"/);
+  });
+
   it('only a full-path PR run records the tree it tested: the quick check never vouches for main', () => {
     const rec = /- name: Record the tree this PR run tested\n(?: {8}.*\n)*? {8}if: (.+)\n/.exec(ci);
     expect(rec, 'the record step').not.toBeNull();
