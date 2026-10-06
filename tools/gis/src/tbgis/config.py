@@ -239,6 +239,24 @@ class Stitch(Strict):
         return self
 
 
+class SideRun(Strict):
+    """A tag on ONE side of a road over a run of s (playtest 4, P4-19, B9): the Historic Columbia
+    River Highway's `guard-wall` along its cliff side, Chuckanut Drive's `bay-bluff` along its bay
+    side. `tbgis.drops` is how the runs were found. A run never covers a bridge deck (a deck has
+    its own rail), and a district tag says nothing about the ground."""
+
+    tag: str
+    side: Literal["left", "right"]
+    s0: float = Field(ge=0)
+    s1: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> SideRun:
+        if not self.s0 < self.s1:
+            raise ValueError(f"side run {self.tag}: s0 {self.s0} is not before s1 {self.s1}")
+        return self
+
+
 class RoadName(Strict):
     id: str = Field(pattern=r"^osm-[a-z0-9]+(-[a-z0-9]+)*$")
     name: str
@@ -252,6 +270,8 @@ class RoadName(Strict):
     # Tags over the road's bridges only, beside `bridge` (playtest 3: the Old Seven Mile Bridge's
     # `old-bridge` deck look). The land tags above never reach a deck.
     deckTags: list[str] = []  # noqa: N815
+    # District tags on one side over a run of s, never over a deck (see `SideRun`).
+    sideRuns: list[SideRun] = []  # noqa: N815
     features: list[Feature] = []
     # This road's own sample spacing (1-10 m, the lint's range); None: the config's. A long straight
     # bridge at 6 m costs a third of the road data it would at 2 m (the Seven Mile, critic C1).
