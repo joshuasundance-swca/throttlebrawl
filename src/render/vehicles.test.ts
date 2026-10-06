@@ -54,6 +54,8 @@ const MODELS_NO_TYPE_TAKES: Readonly<Record<string, string>> = {
   'models/traffic/suv': 'no SUV type exists yet; a second sedan model would add a draw call per pool',
   'models/traffic/sf-streetcar': 'no vintage-streetcar type exists yet (sheet W1)',
   'models/traffic/sf-trolleybus': 'no trolleybus type exists yet (sheet R2)',
+  'models/traffic/island-tram':
+    "built for base:island-tram's 7.5 m (CX7, models only); its row in the base traffic-models.json is sheet D5, with the Keys' draw headroom",
 };
 
 /** A model's size: its baked geometry's box. */

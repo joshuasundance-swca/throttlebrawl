@@ -223,6 +223,12 @@ export interface Settings {
    * remapped actions are listed; an empty object means input/'s default bindings.
    */
   gamepadBindings: Record<string, string[]>;
+  /**
+   * Key remaps (2026-10-05, Settings, Keys): action id → key codes (such as `KeyQ`), in input/'s
+   * vocabulary. Only remapped actions are listed; an empty object means input/'s default keys.
+   * Additive: the version stays 1.
+   */
+  keyBindings: Record<string, string[]>;
   /** The last build whose what's-new card this device saw; null before the first launch. */
   lastSeenBuild: string | null;
   /** Local "cut this" flags, one per content reference, oldest first. */
@@ -270,6 +276,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   radioDefault: 'station',
   effectsDefault: 0.7,
   gamepadBindings: Object.freeze({}),
+  keyBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
   raceOptions: DEFAULT_RACE_OPTIONS,
@@ -484,6 +491,7 @@ export function sanitiseSettings(data: unknown): Settings {
     effectsDefault: unit(d['effectsDefault'], def.effectsDefault),
     radioStation: text(d['radioStation'], 64) ?? def.radioStation,
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
+    keyBindings: sanitiseBindings(d['keyBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
     vetoes: sanitiseVetoes(d['vetoes']),
     raceOptions: sanitiseRaceOptions(d['raceOptions']),

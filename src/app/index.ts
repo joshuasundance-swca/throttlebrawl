@@ -972,6 +972,8 @@ export function createApp(opts: AppOptions): AppHandle {
   // on the grid too.
   const cycleViewOnPress = () => {
     if (input.lastActions().cycleCamera) ui.syncLive({ view: VIEW_MODES.indexOf(camera.cycleView()) });
+    // The pad's pause button (2026-10-05; the keyboard's pause keys are ui's own): the pause screen.
+    if (input.lastActions().pause) ui.pause();
   };
   const step = () => {
     if (!race) return;

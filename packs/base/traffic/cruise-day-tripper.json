@@ -8,7 +8,7 @@
   "widthM": 0.6,
   "cruiseMps": 1.2,
   "hazard": "normal",
-  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "behaviour": { "roadside": "dodges", "carFollowing": false, "laneChanges": false, "dives": true },
   "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#f4f1e8", "#8fd3f0", "#ff8fab"] },
   "meta": {
     "status": "live",

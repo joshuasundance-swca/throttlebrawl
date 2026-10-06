@@ -8,7 +8,7 @@
   "widthM": 2.4,
   "cruiseMps": 0,
   "hazard": "big",
-  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": false },
+  "behaviour": { "roadside": "solid", "carFollowing": false, "laneChanges": false, "dives": false },
   "look": { "procedural": { "preset": "boat-parked" }, "paintOptions": ["#f4f1e8", "#19b5b0", "#e8c07d"] },
   "meta": {
     "status": "draft",

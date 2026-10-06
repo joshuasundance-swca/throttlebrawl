@@ -39,7 +39,7 @@ interface Built {
 }
 
 /** An LFO into a param: `rate` Hz, `depth` around the param's own value. */
-function lfo(ctx: BaseAudioContext, param: AudioParam, rate: number, depth: number): OscillatorNode {
+export function lfo(ctx: BaseAudioContext, param: AudioParam, rate: number, depth: number): OscillatorNode {
   const o = ctx.createOscillator();
   o.frequency.value = rate;
   const d = ctx.createGain();
@@ -50,7 +50,7 @@ function lfo(ctx: BaseAudioContext, param: AudioParam, rate: number, depth: numb
 }
 
 /** A two-operator FM electric piano note: a sine carrier, a sine modulator whose index decays. */
-function fmKeys(
+export function fmKeys(
   k: Kit,
   ctx: BaseAudioContext,
   dest: AudioNode,

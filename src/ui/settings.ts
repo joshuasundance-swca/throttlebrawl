@@ -8,6 +8,7 @@
 // forgets itself on reload is too. "Live" means app/ has wired it (`UiOptions.liveSettings`), or
 // the effect is ui's own (the tuning entry) or was wired in M1 (units). "Kept" is checked against
 // save/'s own sanitiser.
+import type { BindDevice, Bindings } from '../input';
 import { DEFAULT_SETTINGS, type Settings } from '../save';
 
 export type VolumeBus = keyof Settings['volumes'];
@@ -44,7 +45,8 @@ export type SettingId =
   | 'voicesOn'
   | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
-export type SettingsTab = 'sound' | 'race' | 'controls' | 'display' | 'access';
+/** `keys` is the remap page (input/bindings.ts): no table rows, drawn by the screen itself. */
+export type SettingsTab = 'sound' | 'race' | 'controls' | 'keys' | 'display' | 'access';
 
 export interface SettingDef {
   id: SettingId;
@@ -61,6 +63,7 @@ export const SETTINGS_TABS: readonly { tab: SettingsTab; label: string }[] = [
   { tab: 'sound', label: 'Sound' },
   { tab: 'race', label: 'Race' },
   { tab: 'controls', label: 'Controls' },
+  { tab: 'keys', label: 'Keys' },
   { tab: 'display', label: 'Display' },
   // M5's a11y-1: the accessibility options together, with their own tab so the Display tab still fits
   // a phone held sideways.
@@ -345,7 +348,9 @@ export type SettingsChange =
   | { kind: 'mute'; value: boolean }
   | { kind: 'mirror'; value: boolean }
   | { kind: 'set'; id: SettingId; value: unknown }
-  | { kind: 'seen'; build: string };
+  | { kind: 'seen'; build: string }
+  /** A device's whole remap record (input/'s `withBinding` made it; {} is the reset). */
+  | { kind: 'bindings'; device: BindDevice; bindings: Bindings };
 
 const unit = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
@@ -368,7 +373,12 @@ export function applySettingsChange(s: Readonly<Settings>, c: SettingsChange): S
   else if (c.kind === 'mute') next.mute = c.value;
   else if (c.kind === 'mirror') next.mirror = c.value;
   else if (c.kind === 'seen') next.lastSeenBuild = c.build;
-  else if (valid(settingDef(c.id), c.value)) {
+  else if (c.kind === 'bindings') {
+    const copy: Record<string, string[]> = {};
+    for (const [action, tokens] of Object.entries(c.bindings)) copy[action] = [...tokens];
+    if (c.device === 'keyboard') next.keyBindings = copy;
+    else next.gamepadBindings = copy;
+  } else if (valid(settingDef(c.id), c.value)) {
     return writePath(
       next as unknown as Record<string, unknown>,
       c.id.split('.'),

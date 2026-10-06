@@ -107,23 +107,26 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Key | Action | Tag |
 |---|---|---|
 | W / Up | Throttle (ramps up while held) | [default] |
-| S / Down | Brake | [default] |
+| S / Down / Space | Brake. Space joined on 2026-10-05 so a drift (brake, steer and throttle at once) sits under the left thumb: Space with W and A or D, or Space with the arrows. The maintainer: "on computer drifting is a bit less than ideal because the brake is the s key". A double tap still makes the U-turn. | [default] |
 | A, D / Left, Right | Steer | [default] |
+| Q (hold) | U-turn button: hold it and steer the way round. It makes the brake's double tap for you (2026-10-05). | [default] |
 | H (hold) | Wheelie: hold to lift the front, release to drop it (playtest 4). Not Shift: five quick presses of Shift open the Sticky Keys prompt on Windows. | [default] |
 | J | Attack (auto-target) | [default] |
 | U / O | Attack, forced left / right | [default] |
 | K | Kick | [default] |
 | C | Change the camera view: low chase, far chase, helmet (camera-3; d-pad up on a gamepad). The cruise-control action stays reserved, on the shelf [decided], and gets a key of its own if a playtest asks for it. | [default] |
-| Esc | Pause | [default] |
-| Space | Skip the run-back while on foot | [default] |
+| Esc | Pause. Esc always pauses; Settings, Keys can add more pause keys. | [default] |
+| Space | Skip the run-back while on foot (it shares Space with the brake: the skip only counts on foot) | [default] |
 | L (hold) | Look back | [default] |
 | Backquote (`) | Open the tuning panel | [default] |
 
 - Keyboard is as important as touch, and every key is remappable. [decided for equal priority; default for remapping]
+- Remapping (2026-10-05, the maintainer: "can we customize keyboard settings and stuff? I want to be sure it's a joy to play and use all functions"): Settings has a Keys tab listing every action with its keys (up to three) or pad buttons (up to two; the steering stick takes one). Tap a slot and press the key or button; Esc cancels and Backspace clears a slot, but an action always keeps at least one binding. A key or button that does two jobs is flagged in words on both rows ("Also: Punch"), and R is flagged as the radio's key; skipping the run-back may share with anything. Reset puts a device back to its defaults. The remaps are saved with the settings (`keyBindings`, `gamepadBindings`: only what changed). Esc always pauses and Backquote stays the tuning panel's. The pause screen's keyboard legend shows the player's own keys. The tab shows where a keyboard (a fine pointer) or a pad is around, and never on a touch-only phone, whose touch controls don't change. Remapping is input only: the sim and replays see the same commands. [default]
 
 ### Gamepad
 
 - All input goes through one mapping layer designed for gamepads from the start. A PS4-style controller, including one paired over Bluetooth to the phone, is added around milestone 2. [decided]
+- Default buttons (standard mapping): left stick and d-pad left and right steer, R2 throttle, L2 brake, Cross punch (and skip the run-back), Square and Circle to a side, Triangle kick, L1 the straight kick, R1 look back, d-pad up the camera view, R3 (hold) wheelie, d-pad down (hold) the U-turn button, Options pause. All remappable in Settings, Keys. The pad's pause button opens the pause screen; resuming is the screen's Resume. [default]
 
 ### Settings
 
@@ -173,7 +176,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - Punch, kick and picked-up weapons. [decided]
 - **Auto-target**: an attack hits the nearest rival in reach. The side comes from which side they're on; dragging off the button overrides it. With nobody in reach, you swing at air. [decided for auto-target and drag; default for the reach rule]
 - **Kick** is a swipe down on the attack button. [decided] A kick needs a short wind-up and a reach window, so a kick that sends a rival flying is earned. The look-lab sample let you kick any time and have the rival fly, which the maintainer flagged as needing a timing gate. [default] Your next kick waits only for the leg to come back, about 0.8 s between kicks, with no extra cooldown (playtest 4, "No wait"). [decided] Rivals keep their pace between kicks. [default]
-- **Timing** (playtest 4: "reduce delay between tap and attack and make it so that bumping into a rival while attacking doesn't negate the attack"). A kick lands as soon as a punch, about 0.12 s after the tap. A press made in the last moment of an attack (about 0.17 s) is kept and fires as soon as the attack ends. Bumping into the rider you are attacking never cancels the attack. [default]
+- **Timing** (playtest 4: "reduce delay between tap and attack and make it so that bumping into a rival while attacking doesn't negate the attack"). A kick lands as soon as a punch, about 0.12 s after the tap. A press made in the last moment of an attack (about 0.17 s) is kept and fires as soon as the attack ends. Bumping into the rider you are attacking never cancels the attack, and an attack pressed up to half a second after a bump with a rider lands on him while he is still within 3 m (run B: a press just after riding into his back wheel found him pushed 2 m ahead, past every reach). Without a bump the reach is unchanged, and rivals keep theirs. [default]
 - **Weapons in v1**: club or pipe, chain, wasteland junk, and the cops' baton or taser. [decided]
 - Weapons are data. Adding one means adding a data entry and art, not code. [decided]
 - **Weapon steal**: a timing snatch. Tap attack while a rival holds their weapon out or winds up to swing. [decided] The 3DO manual (1994) says: "To Grab Weapon: C (when opponent is holding it out)". The steal window gets a clear telegraph: a glint and a sound cue on the wind-up. [default]
@@ -436,7 +439,7 @@ The bike can't be destroyed. Playtest 3 (2026-10-03) added repairs after crashes
 - Music: a single original, gritty 90s-style score in milestones 1 and 2. [decided]
 - Then **radio stations by genre, plus regional stations**; for the Keys, surf and rockabilly come first. [decided] Which milestone brings radio is a proposal. [default] A station is data: a genre, region tags and a playlist of manifest tracks. [default]
 - **More code-made music only, for now** (interview, 2026-10-02: "More code-made music only"): more stations, each region with its own, plus a hidden pirate station per region; no DJ and no AI songs. [decided] This replaces, for now, the cockpit answer of 2026-09-29 that took AI-generated songs as a second source. The maintainer cuts tracks they don't like with "cut this", the same way as rival lines. [decided] "The music is impressive", so the composer's direction stays. [decided]
-- **Richer music in every region** (playtest 4, 2026-10-04: "The more complex SF music is impressive probably my favorite I like Keys music too but PNW seems very simple and slow. It's not as good as the others even if I get the motivation and vibe."; then "I'm surprised how good the music is lol feel free to make more for all regions :P"). [decided] Every region's stations get as rich as San Francisco's, keeping each region's vibe. For the Pacific Northwest, all four of his directions: driving garage and grunge, indie and folk with drive, rainy-night synth, and the same vibe with more complexity. Still code-made only. [decided] A track he dislikes is cut with "cut this" as before.
+- **Richer music in every region** (playtest 4, 2026-10-04: "The more complex SF music is impressive probably my favorite I like Keys music too but PNW seems very simple and slow. It's not as good as the others even if I get the motivation and vibe."; then "I'm surprised how good the music is lol feel free to make more for all regions :P"). [decided] Every region's stations get as rich as San Francisco's, keeping each region's vibe. For the Pacific Northwest, all four of his directions: driving garage and grunge, indie and folk with drive, rainy-night synth, and the same vibe with more complexity. Still code-made only. [decided] A track he dislikes is cut with "cut this" as before. [default] Run C added one more station per region on a band of its own: Cuban son for the Keys, motorik dream pop for the Pacific Northwest and Bay Area beats for San Francisco.
 - Radio DJ lines come later, together with the AI barks. Music that rises with the action comes later too. [decided]
 - Genres that appeal, tentatively (the maintainer said "idk"): grunge, surf and rockabilly, stoner or desert rock, and swamp blues. [default]
 - No licensed music. [default] Research says the 3DO and PS1 versions played their licensed grunge in menus and videos, with an original score during races *(unverified)*.

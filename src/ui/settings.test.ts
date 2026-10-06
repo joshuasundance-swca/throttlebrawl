@@ -271,3 +271,30 @@ describe('which settings the screen shows', () => {
     expect(all).toEqual(SETTINGS.map((s) => s.id));
   });
 });
+
+// Settings, Keys (2026-10-05): a device's remap record replaces that device's field, a reset is {},
+// and the saved record keeps it across a reload (save/'s sanitiser).
+describe('the Keys tab: remaps in the settings record', () => {
+  it('a keyboard or pad remap lands in its own field, survives the sanitiser, and {} resets it', () => {
+    const keys = applySettingsChange(DEFAULT_SETTINGS, {
+      kind: 'bindings',
+      device: 'keyboard',
+      bindings: { brake: ['KeyS', 'ShiftLeft'] },
+    });
+    expect(keys.keyBindings).toEqual({ brake: ['KeyS', 'ShiftLeft'] });
+    expect(keys.gamepadBindings).toEqual({});
+    const pad = applySettingsChange(keys, {
+      kind: 'bindings',
+      device: 'gamepad',
+      bindings: { uturn: ['button4'] },
+    });
+    expect(pad.gamepadBindings).toEqual({ uturn: ['button4'] });
+    expect(pad.keyBindings).toEqual({ brake: ['KeyS', 'ShiftLeft'] });
+    const reloaded = sanitiseSettings(JSON.parse(JSON.stringify(pad)));
+    expect(reloaded.keyBindings).toEqual({ brake: ['KeyS', 'ShiftLeft'] });
+    expect(reloaded.gamepadBindings).toEqual({ uturn: ['button4'] });
+    const reset = applySettingsChange(pad, { kind: 'bindings', device: 'keyboard', bindings: {} });
+    expect(reset.keyBindings).toEqual({});
+    expect(reset.gamepadBindings).toEqual({ uturn: ['button4'] });
+  });
+});

@@ -124,7 +124,8 @@ describe('Fred the Tree on the old Seven Mile Bridge', () => {
     expect(placement, 'the bake places Fred').toBeDefined();
     if (!placement) return;
     const layer = new LandmarkLayer(new Map([['keys-landmarks', emptyKit]]), look, { road });
-    expect(layer.counts().skipped).toBe(0);
+    // Only his kit is loaded here: the island and the mile posts on the same network need theirs.
+    expect(layer.counts().skipped).toBe(landmarkPlacements(road).length - 1);
     expect(layer.counts().placed).toBe(1);
 
     layer.update(placement.x - 200, placement.z);
