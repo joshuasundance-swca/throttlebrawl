@@ -29,7 +29,7 @@
 // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys") adds San Francisco's
 // mural district (mission.ts, a lazy chunk): shopfronts, painted alleys, and the streaming outfit's
 // mascot on two corner walls, painted over by a crew as the race's leader goes round.
-import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
+import { Fog, Frustum, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, backdropFilesFor, loadNetworkWater, type BackdropStats } from './backdrop';
 import type {
@@ -84,6 +84,7 @@ import {
 } from './road-mesh';
 import type { SpeedLineCounts, SpeedLines } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
+import { frustumOf } from './view-frustum';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
 
 export type { LookEnv, LookStyle, MaterialKind, MaterialParams } from './look';
@@ -418,6 +419,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let lastFrameAt = -1;
   // Run W-R: the rider rigs, a lazy chunk that loads with the first race's looks.
   let rigs: RiderRigs | null = null;
+  /** What the camera sees through this frame, handed to the rigs (render). */
+  const viewFrustum = new Frustum();
   let rigsLoading = false;
   let riderLooks: readonly RiderLook[] = [];
   let playerPaint: string | null = null;
@@ -982,13 +985,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     render(prev, curr, alpha, pose) {
       if (lost) return;
-      rigs?.setCamera(pose.x, pose.y, pose.z);
-      if (curr) views.sync(prev, curr, alpha, now(), pose);
       camera.fov = pose.fov;
       camera.updateProjectionMatrix();
       camera.position.set(pose.x, pose.y, pose.z);
       camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
       if (pose.roll) camera.rotateZ(pose.roll);
+      // The riders are placed through the view the camera has this frame: a rig it cannot see is not drawn (polish J3).
+      rigs?.setCamera(pose.x, pose.y, pose.z);
+      rigs?.setView(frustumOf(camera, viewFrustum));
+      if (curr) views.sync(prev, curr, alpha, now(), pose);
       race?.effects.fitTint(camera);
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
       const t = now();

@@ -10,6 +10,7 @@ import {
   type Object3D,
 } from 'three';
 import { expect } from 'vitest';
+import budget from '../../tests/perf/budget.json';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { buildBackdrop, roadPointsOf } from './backdrop/builder';
 import type { BackdropNetworkFile, BackdropRegionFile } from './backdrop/data';
@@ -195,6 +196,20 @@ const LOD_M = RENDER_TUNING.find((d) => d.id === 'render.sceneryLodM')?.default 
  */
 export const STILL_DRAWS_MAX = 80;
 export const STILL_TRIS_MAX = 110_000;
+/**
+ * What the riders, the traffic, the people and the effects cost in the busiest takedown frame measured live, after the
+ * rigs the camera cannot see are left out (riders/index.ts RIG_CULL_RADIUS_M), draw calls. [default] Bridge City seed 3,
+ * Broadway South, tick 5472 (polish G's check): 112 draw calls in all, 80 of them the still scene, so 32; that frame
+ * drew all nine rider rigs, and its camera, aimed down a side street, saw three (a headless replay of the same seed
+ * and tick, polish J3's report), so 32 - 6 = 26.
+ */
+export const TAKEDOWN_MOVERS_DRAWS = 26;
+/** The headroom Bridge City keeps under the frame budget in its takedown frames, draw calls: the lane's ask. [default] */
+export const TAKEDOWN_HEADROOM_DRAWS = 15;
+/** The routes whose takedown frames are held to TAKEDOWN_HEADROOM_DRAWS (the others are held to the still share). */
+export const HEADROOM_HELD_ROUTES: readonly string[] = ['osm-bridge-city-run'];
+/** The still draw calls a takedown frame may cost to keep that headroom: 120 - 15 - 26 = 79. */
+export const TAKEDOWN_STILL_DRAWS_MAX = budget.drawCallsMax - TAKEDOWN_HEADROOM_DRAWS - TAKEDOWN_MOVERS_DRAWS;
 /** How far apart the sweep's poses are along a road, m. [default] Under a merged block's 160 m and the 18 m look-ahead. */
 export const SAMPLE_M = 5;
 /** The phone view's width over its height (CI's and the live check's 915 x 412). */
@@ -236,11 +251,25 @@ const CAMERA_KEYS = [
   'takedownDistanceM',
   'takedownHeightM',
   'takedownSwingDeg',
+  'takedownFocus',
   'lookBackDistanceM',
   'lookBackHeightM',
   'lookBackAimM',
 ] as const;
-type CameraParams = Record<(typeof CAMERA_KEYS)[number], number>;
+/** The camera's declared defaults, and the one constant the takedown framing keeps beside them (the victim's reach). */
+type CameraParams = Record<(typeof CAMERA_KEYS)[number] | 'takedownReachM', number>;
+
+/**
+ * How far a flung victim is framed as being, m: camera/chase.ts's own `TAKEDOWN_REACH_M`, read as text for the
+ * reason `cameraDefaults` is (render may not import camera). A renamed or removed constant fails here.
+ */
+async function takedownReachM(): Promise<number> {
+  const mod: string = 'node:fs';
+  const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string, enc: 'utf8'): string };
+  const m = /const TAKEDOWN_REACH_M = (\d+(?:\.\d+)?)/.exec(fs.readFileSync('src/camera/chase.ts', 'utf8'));
+  if (!m) throw new Error('camera/chase.ts declares no TAKEDOWN_REACH_M');
+  return Number(m[1]);
+}
 
 interface View {
   name: string;
@@ -325,9 +354,82 @@ function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: Camera
   return views;
 }
 
+/** The name the takedown and slow-motion framing's views are counted under. */
+export const CINEMATIC_CAMERA = 'takedown-aim';
+/**
+ * The takedown framing is seen from every this-many samples (every 10 m): it moves slowly against a 160 m block
+ * and a 512 m chunk, and each sample costs 48 counts. [default]
+ */
+export const CINEMATIC_EVERY = 2;
+/** The aim's distances from the rider, m: a victim just down the road, and one at the framing's full focus. */
+const CINEMATIC_NEAR_AIM_M = 12;
+/** The aim's bearings round the rider, from the travel direction: eight, 45 degrees apart. */
+const CINEMATIC_BEARINGS = 8;
+
+interface Shot {
+  label: string;
+  eye: View['eye'];
+  fov: number;
+  aims: { label: string; x: number; y: number; z: number }[];
+}
+
+/**
+ * The takedown framing and its slow motion (camera/chase.ts takedownPlacement, trackVictim): the camera stands
+ * `takedownDistanceM` back and `takedownHeightM` up, swung `takedownSwingDeg` to the side away from the victim,
+ * and aims between the rider and the victim, so the aim sits anywhere round the rider out to `takedownFocus` of
+ * the victim's reach (`TAKEDOWN_REACH_M`): ahead, beside or behind, near or far. The swing flips as the victim
+ * crosses the rider, and the eye blends back to the chase view on its way out, so the eye is seen at either
+ * swing and at none. The live frame that cost Bridge City 112 of its 120 draw calls (polish G's check, Broadway
+ * South at tick 5472) stood at swing 0 with the aim 10 m behind the rider and 4 m to the side: a view down a side
+ * street that no chase view faces, which sees nine road chunks and fourteen downtown stretches at once.
+ */
+function cinematicShotsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: CameraParams): Shot[] {
+  const edge = road.edges[e]!;
+  const rider = road.toWorld(e, Math.max(0, Math.min(edge.length, s)), 0, 0);
+  const frame = road.frameAt(e, s);
+  const fx = frame.tx * dir;
+  const fz = frame.tz * dir;
+  const rx = -fz;
+  const rz = fx;
+  const focusM = Math.min(1, Math.max(0, c.takedownFocus)) * c.takedownReachM;
+  const shots: Shot[] = [];
+  for (const swing of [-1, 0, 1]) {
+    const a = (swing * c.takedownSwingDeg * Math.PI) / 180;
+    const bx = -fx * Math.cos(a) + rx * Math.sin(a);
+    const bz = -fz * Math.cos(a) + rz * Math.sin(a);
+    const aims: Shot['aims'] = [];
+    for (const r of [CINEMATIC_NEAR_AIM_M, focusM]) {
+      for (let k = 0; k < CINEMATIC_BEARINGS; k++) {
+        const t = (k * 2 * Math.PI) / CINEMATIC_BEARINGS;
+        aims.push({
+          label: `aim ${r.toFixed(0)} m at ${((k * 360) / CINEMATIC_BEARINGS).toFixed(0)} deg`,
+          x: rider.x + (fx * Math.cos(t) + rx * Math.sin(t)) * r,
+          y: rider.y + c.lookHeightM,
+          z: rider.z + (fz * Math.cos(t) + rz * Math.sin(t)) * r,
+        });
+      }
+    }
+    shots.push({
+      label: `swing ${swing * c.takedownSwingDeg} deg`,
+      eye: {
+        x: rider.x + bx * c.takedownDistanceM,
+        y: rider.y + c.takedownHeightM,
+        z: rider.z + bz * c.takedownDistanceM,
+      },
+      fov: c.fovBaseDeg,
+      aims,
+    });
+  }
+  return shots;
+}
+
 export interface StillScene {
-  /** Moves every layer's near detail to a camera at (x, z) aiming at (ax, az), as a ride to there would. */
-  update(x: number, z: number, ax: number, az: number): void;
+  /**
+   * Moves every layer's near detail to a camera at (x, z) aiming at (ax, az), as a ride to there would.
+   * Without an aim nothing is left out for standing behind the camera (the verge's fences and ferns), so a
+   * count from any aim through that update is the most the layers would draw.
+   */
+  update(x: number, z: number, ax?: number, az?: number): void;
   /** What the renderer would draw through this frustum, by part. */
   count(frustum: Frustum): Map<string, Load>;
   /** Every still layer's root as it stands now (the backdrop's mesh last). */
@@ -539,6 +641,8 @@ export interface Sweep {
   /** The most triangles and the most draw calls each camera saw, by camera name. */
   byCamera: Map<string, number>;
   drawsByCamera: Map<string, number>;
+  /** Each camera's busiest view by draw calls, with its parts. */
+  peakByCamera: Map<string, Peak>;
   branchViews: number;
 }
 
@@ -550,56 +654,86 @@ const sumOf = (parts: Map<string, Load>): Load =>
 
 /**
  * Rides every leg of the route every `step` m, both ways (or forward only, as the old checkpoints did),
- * and counts each camera's view. `extra` is drawn too (the negative control's heavy prop).
+ * and counts each camera's view. `extra` is drawn too (the negative control's heavy prop). With `cinematic`,
+ * every CINEMATIC_EVERY-th sample is also seen through the takedown and slow-motion framing (cinematicShotsAt).
  */
 export function sweep(
   road: RoadNetwork,
   scene: StillScene,
   route: Route,
   c: CameraParams,
-  opts: { step: number; bothWays: boolean; cameras?: readonly string[]; extra?: Object3D },
+  opts: {
+    step: number;
+    bothWays: boolean;
+    cameras?: readonly string[];
+    extra?: Object3D;
+    cinematic?: boolean;
+  },
 ): Sweep {
   const cam = new PerspectiveCamera(60, ASPECT, 0.3, CAMERA_FAR_M);
   let tris: Peak | null = null;
   let draws: Peak | null = null;
   const byCamera = new Map<string, number>();
   const drawsByCamera = new Map<string, number>();
+  const peakByCamera = new Map<string, Peak>();
   let views = 0;
   let branchViews = 0;
+  /** Counts what the renderer would draw from the camera as it stands now, and keeps each peak. */
+  const see = (name: string, at: string, main: boolean) => {
+    cam.updateMatrixWorld(true);
+    cam.updateProjectionMatrix();
+    const frustum = new Frustum().setFromProjectionMatrix(
+      new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+    );
+    const parts = scene.count(frustum);
+    if (opts.extra) drawn(opts.extra, frustum, parts);
+    const total = sumOf(parts);
+    if (!tris || total.tris > tris.total.tris) tris = { at, total, parts };
+    if (!draws || total.draws > draws.total.draws) draws = { at, total, parts };
+    byCamera.set(name, Math.max(byCamera.get(name) ?? 0, total.tris));
+    drawsByCamera.set(name, Math.max(drawsByCamera.get(name) ?? 0, total.draws));
+    if (total.draws > (peakByCamera.get(name)?.total.draws ?? -1))
+      peakByCamera.set(name, { at, total, parts });
+    views++;
+    if (!main) branchViews++;
+  };
   for (const { id, main } of legsOf(route)) {
     const e = road.edgeIndex(id);
     const edge = road.edges[e]!;
     const dirs: (1 | -1)[] = opts.bothWays ? [1, -1] : [1];
     for (const dir of dirs) {
-      for (let u = 0; u <= edge.length; u += opts.step) {
+      for (let u = 0, i = 0; u <= edge.length; u += opts.step, i++) {
         const s = dir > 0 ? u : edge.length - u;
+        const heading = dir > 0 ? '+' : '-';
         for (const v of viewsAt(road, e, s, dir, c)) {
           if (opts.cameras && !opts.cameras.includes(v.name)) continue;
           scene.update(v.eye.x, v.eye.z, v.aim.x, v.aim.z);
           cam.fov = v.fov;
           cam.position.set(v.eye.x, v.eye.y, v.eye.z);
           cam.lookAt(v.aim.x, v.aim.y, v.aim.z);
-          cam.updateMatrixWorld(true);
-          cam.updateProjectionMatrix();
-          const frustum = new Frustum().setFromProjectionMatrix(
-            new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
-          );
-          const parts = scene.count(frustum);
-          if (opts.extra) drawn(opts.extra, frustum, parts);
-          const total = sumOf(parts);
-          const at = `${id}@${s.toFixed(0)}${dir > 0 ? '+' : '-'} ${v.name}`;
-          if (!tris || total.tris > tris.total.tris) tris = { at, total, parts };
-          if (!draws || total.draws > draws.total.draws) draws = { at, total, parts };
-          byCamera.set(v.name, Math.max(byCamera.get(v.name) ?? 0, total.tris));
-          drawsByCamera.set(v.name, Math.max(drawsByCamera.get(v.name) ?? 0, total.draws));
-          views++;
-          if (!main) branchViews++;
+          see(v.name, `${id}@${s.toFixed(0)}${heading} ${v.name}`, main);
+        }
+        if (!opts.cinematic || i % CINEMATIC_EVERY !== 0) continue;
+        for (const shot of cinematicShotsAt(road, e, s, dir, c)) {
+          // The layers move to the eye once, with no aim to leave anything out: what stands behind an aim is
+          // seen by another of the shot's aims, so no count is lower than the renderer's.
+          scene.update(shot.eye.x, shot.eye.z);
+          cam.fov = shot.fov;
+          cam.position.set(shot.eye.x, shot.eye.y, shot.eye.z);
+          for (const aim of shot.aims) {
+            cam.lookAt(aim.x, aim.y, aim.z);
+            see(
+              CINEMATIC_CAMERA,
+              `${id}@${s.toFixed(0)}${heading} ${CINEMATIC_CAMERA} ${shot.label} ${aim.label}`,
+              main,
+            );
+          }
         }
       }
     }
   }
   if (!tris || !draws) throw new Error('no views');
-  return { views, tris, draws, byCamera, drawsByCamera, branchViews };
+  return { views, tris, draws, byCamera, drawsByCamera, peakByCamera, branchViews };
 }
 
 export const describeParts = (parts: Map<string, Load>, by: 'tris' | 'draws') =>
@@ -611,7 +745,7 @@ export const describeParts = (parts: Map<string, Load>, by: 'tris' | 'draws') =>
 
 export async function cameraParams(): Promise<CameraParams> {
   const all = await cameraDefaults();
-  const out: Partial<CameraParams> = {};
+  const out: Partial<CameraParams> = { takedownReachM: await takedownReachM() };
   for (const k of CAMERA_KEYS) {
     const v = all[k];
     if (v === undefined || !Number.isFinite(v)) throw new Error(`camera/index.ts declares no camera.${k}`);
@@ -633,7 +767,7 @@ const DRAWS_HELD = (camera: string) => camera !== 'helmet';
 export async function checkRoute(route: Route): Promise<void> {
   const c = await cameraParams();
   const { road, scene } = await stillSceneOf(route.network, 1);
-  const r = sweep(road, scene, route, c, { step: SAMPLE_M, bothWays: true });
+  const r = sweep(road, scene, route, c, { step: SAMPLE_M, bothWays: true, cinematic: true });
   const cams = [...r.byCamera.entries()]
     .map(([k, v]) => `${k} ${Math.round(v)} triangles, ${r.drawsByCamera.get(k) ?? 0} draw calls`)
     .join('; ');
@@ -642,9 +776,21 @@ export async function checkRoute(route: Route): Promise<void> {
       `triangles max ${Math.round(r.tris.total.tris)} (${STILL_TRIS_MAX - Math.round(r.tris.total.tris)} under ${STILL_TRIS_MAX}) at ${r.tris.at}: ${describeParts(r.tris.parts, 'tris')} | ` +
       `draw calls max ${r.draws.total.draws} at ${r.draws.at}: ${describeParts(r.draws.parts, 'draws')} | by camera: ${cams}`,
   );
+  const cinematic = r.peakByCamera.get(CINEMATIC_CAMERA);
+  if (cinematic)
+    print(
+      `[examined] ${route.id}: the takedown framing's busiest view, ${cinematic.total.draws} still draw calls (${STILL_DRAWS_MAX - cinematic.total.draws} under ${STILL_DRAWS_MAX}), ` +
+        `${budget.drawCallsMax - cinematic.total.draws - TAKEDOWN_MOVERS_DRAWS} calls of headroom with ${TAKEDOWN_MOVERS_DRAWS} for what moves, at ${cinematic.at}: ${describeParts(cinematic.parts, 'draws')}`,
+    );
   expect(r.views).toBeGreaterThan(100);
+  expect(cinematic, `${route.id}: no takedown view counted`).toBeDefined();
   for (const [camera, draws] of r.drawsByCamera)
     if (DRAWS_HELD(camera))
       expect(draws, `${route.id}: draw calls, ${camera} view`).toBeLessThanOrEqual(STILL_DRAWS_MAX);
+  if (cinematic && HEADROOM_HELD_ROUTES.includes(route.id))
+    expect(
+      cinematic.total.draws,
+      `${route.id}: still draw calls in its takedown framing at ${cinematic.at} (${TAKEDOWN_HEADROOM_DRAWS} calls of headroom with ${TAKEDOWN_MOVERS_DRAWS} for what moves)`,
+    ).toBeLessThanOrEqual(TAKEDOWN_STILL_DRAWS_MAX);
   expect(r.tris.total.tris, `${route.id}: triangles at ${r.tris.at}`).toBeLessThanOrEqual(STILL_TRIS_MAX);
 }
