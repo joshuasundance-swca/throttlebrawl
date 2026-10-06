@@ -142,7 +142,7 @@ import {
 
 export { trickOf } from './air';
 export { driftOf } from './drift';
-export { HIGH_DROP_KEY, highDrop } from './gap';
+export { highDrop } from './gap';
 export { wheelieOf } from './wheelie';
 export { LOOSE_GROUND, offRoadOf, vergeState, type BrokenFence } from './verge';
 

@@ -20,7 +20,7 @@
 // - the new behaviour records and replays to the same hashes, and a race where nobody goes over keeps
 //   no new state.
 import { describe, expect, it } from 'vitest';
-import { createHeadlessRace } from '../../src/app';
+import { createHeadlessRace, type ActionState } from '../../src/app';
 import { createStubBot } from '../../src/dev/bot';
 import {
   edgeTopAt,
@@ -276,7 +276,7 @@ describe('the old Seven Mile Bridge beside the new one', () => {
       (e) => e.some((x) => x.type === 'land' || x.type === 'crash'),
     );
     const land = ofType(f, 'land')[0];
-    const onRoad = land ? f.roads[land.at] : '';
+    const onRoad = (land ? f.roads[land.at] : undefined) ?? '';
     print(
       `toward the old bridge: furthest past ${f.furthestPast.toFixed(2)} m; landed on ${onRoad}; ${brief(f)}`,
     );
@@ -407,7 +407,7 @@ describe('determinism', () => {
     for (let t = 0; t < 1800 && !sim.isOver(); t++) {
       const me = sim.snapshot().entities[race.playerId];
       if (!me) throw new Error('no player');
-      const a = {
+      const a: ActionState = {
         throttle: 0,
         brake: 0,
         steer: 0,

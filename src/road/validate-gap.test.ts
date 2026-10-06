@@ -39,7 +39,11 @@ describe('jumpable walls', () => {
 describe('every barrier has its height (over the barrier, 2026-10-06)', () => {
   it('refuses a barrier with no height, or one that is not a height; passes one with its height', () => {
     const noHeight = { s0: 0, s1: 100, side: 'left', kind: 'rail' } as unknown as BakedBarrier;
-    const bad = [noHeight, { ...noHeight, heightM: 0 }, { ...noHeight, kind: 'wall', heightM: Infinity }];
+    const bad: BakedBarrier[] = [
+      noHeight,
+      { ...noHeight, heightM: 0 },
+      { ...noHeight, kind: 'wall', heightM: Infinity },
+    ];
     for (const b of bad) {
       const issues = messages(lintRoad(withBarrier(b)));
       console.log(`[examined] ${JSON.stringify(b)}: ${issues.join(' | ')}`);
