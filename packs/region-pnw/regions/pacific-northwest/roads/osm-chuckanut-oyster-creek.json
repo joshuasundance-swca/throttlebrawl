@@ -53,6 +53,12 @@
       "tag": "forest"
     },
     {
+      "s0": 0.0,
+      "s1": 2630.0582,
+      "side": "both",
+      "tag": "thin-haze"
+    },
+    {
       "s0": 190.0,
       "s1": 430.0,
       "side": "right",

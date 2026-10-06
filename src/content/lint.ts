@@ -5,7 +5,9 @@
 import { secondsToTicks, type TuningParamDecl } from '../core';
 import { error, pointer, warning, type Finding } from './findings';
 import type { EntryStatus, ParsedEntry, ParsedPack } from './parse';
-import { BARK_TRIGGERS, barkFact, VETOABLE_ITEMS, type BarkOp, type EntryType } from './schema';
+import type { EntryType } from './schema';
+import { VETOABLE_ITEMS } from './schema/tables';
+import { BARK_TRIGGERS, barkFact, type BarkOp } from './schema/vocab';
 
 type Json = Record<string, unknown>;
 type Path = (string | number)[];

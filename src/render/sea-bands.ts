@@ -46,24 +46,35 @@ export const SEA_BANDS = {
   landStepM: 150,
   deckStepM: 30,
   /**
-   * The patches of seagrass and sand (run C's live check, lane J3: "the flats look one turquoise"): the size
-   * of a patch, m; the second, finer octave's share of that size; and the noise value where a patch starts
-   * and where its tint is full. A patch is two squares of the fine grid and a little more, so it is a shape
-   * and not a vertex, and a view of the flats holds several (tests/sim/keys-places-sight).
+   * The patches of seagrass and sand (run C's live check, lane J3: "the flats look one turquoise"; its fix
+   * check, punch item 1: "no seagrass or sand patch in 9 frames", for the patches were there and too faint to
+   * see): the size of a patch, m; the second, finer octave's share of that size; and the noise value where a
+   * patch starts and where its tint is full. A patch is two squares of the fine grid and a little more, so it
+   * is a shape and not a vertex. Its edge is short (7 hundredths of the noise, not a third), so most of a
+   * patch is at its full tint and its edge is a line you can see. The open sea gives way to the deep before
+   * the patches do (`patchGiveWay`). What a rider sees of it, after the water's light, the haze and the grade,
+   * is asked by tests/sim/keys-flats-show.
    */
-  patchM: 60,
+  patchM: 90,
   octaveShare: 0.55,
-  patchFrom: 0.04,
-  patchTo: 0.36,
+  patchFrom: 0.02,
+  patchTo: 0.09,
+  /** The sea's depth at which the patches start to give way, and where they are gone (0 the flats, 1 the channel). */
+  patchGiveWay: [0.05, 0.3],
   /** How many lattice points' tints are kept between re-lays (the camera's trail), before the memory is dropped. */
   memoryMax: 20000,
   /** The fine grid round the camera: squares each side and the side of one, m. */
   cells: 32,
   cellM: 28,
-  /** The colours of the deep channel (display sRGB), and the tints of a sand patch and a seagrass patch. */
+  /**
+   * The colours of the deep channel (display sRGB), and the tints of a sand patch and a seagrass patch. The
+   * water has almost no red, so a sand patch needs a large multiple of it to read pale aqua (the default
+   * look's water, #1e8e98, goes to about #57beaf under it) and a seagrass patch goes to a dark green-teal
+   * (about #177364).
+   */
   deep: '#16639f',
-  sand: [1.3, 1.2, 0.95],
-  seagrass: [0.5, 0.72, 0.62],
+  sand: [6, 1.6, 1.25],
+  seagrass: [0.45, 0.5, 0.4],
   /**
    * A salt pond (display sRGB): pale olive, and its mud; how far inland it reaches from the road's edge, the width of
    * the mud by the road, on its far side and at each end, and how far apart the road samples its spans are, m. A
@@ -286,7 +297,7 @@ export function seaTintAt(plan: SeaPlan, x: number, z: number, seed: number): Ti
   const depth = seaDepthAt(plan, x, z);
   const n = patchNoise(x, z, seed);
   // The patches live on the flats and give way to the deep before it is dark.
-  const flat = 1 - smooth(0, 0.5, depth);
+  const flat = 1 - smooth(SEA_BANDS.patchGiveWay[0], SEA_BANDS.patchGiveWay[1], depth);
   const sand = smooth(SEA_BANDS.patchFrom, SEA_BANDS.patchTo, n) * flat;
   const grass = smooth(SEA_BANDS.patchFrom, SEA_BANDS.patchTo, -n) * flat;
   const deep = smooth(0, 1, depth);

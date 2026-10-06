@@ -6,6 +6,7 @@ import {
   assembleCredits,
   collectCredits,
   globToRegExp,
+  packageDir,
   parseLedger,
   provenanceSources,
   ruleIsUsed,
@@ -166,6 +167,20 @@ describe('the inline words of a ledger cell', () => {
     expect(entryTitle('Palm models, 3 variants (`models/scenery/palms`)')).toBe('Palm models, 3 variants');
     expect(entryTitle('Bike models: the first batch')).toBe('Bike models');
     expect(entryTitle('Plain')).toBe('Plain');
+  });
+});
+
+describe('packageDir', () => {
+  // The perf check builds main's merge base in a worktree under .cache/ with no node_modules of its
+  // own (lane F1): Node finds the packages up the folder tree, and the credits must too.
+  it('finds a shipped package up the folder tree, as Node does', () => {
+    const nested = path.join(repoRoot, '.cache', 'perf-base');
+    expect(packageDir(nested, 'three')).toBe(path.join(repoRoot, 'node_modules', 'three'));
+    expect(packageDir(repoRoot, 'zod')).toBe(path.join(repoRoot, 'node_modules', 'zod'));
+  });
+
+  it('says which package is missing when none is installed up the tree', () => {
+    expect(() => packageDir(repoRoot, 'no-such-package-f1')).toThrow(/no-such-package-f1/);
   });
 });
 
