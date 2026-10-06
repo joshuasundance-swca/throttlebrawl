@@ -96,3 +96,26 @@ export type {
   GapRespawn,
   LandmarkParams,
 } from './types';
+export { LAND_TAGS, onSide, scatterHash, THEME_ORDER, themeAt } from './themes';
+export type { LandTheme, SideTag, SideTheme } from './themes';
+export {
+  DRAWN_VERGE_M,
+  FURNITURE,
+  FURNITURE_KINDS,
+  kitOfNetwork,
+  OLDTOWN_SIDEWALK_RULES,
+  onRidableBand,
+  planStreetFurniture,
+  SF_SIDEWALK_RULES,
+} from './furniture';
+export type {
+  FurnitureClass,
+  FurnitureFoot,
+  FurnitureKind,
+  FurnitureLayer,
+  FurniturePlan,
+  FurnitureShape,
+  FurnitureSpec,
+  FurnitureTurn,
+  StreetFurniture,
+} from './furniture';

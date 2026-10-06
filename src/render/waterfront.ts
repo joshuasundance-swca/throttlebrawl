@@ -37,7 +37,7 @@ import {
   Vector3,
   type Material,
 } from 'three';
-import type { RoadNetwork } from '../road';
+import { planStreetFurniture, type RoadNetwork } from '../road';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel, SceneryModels } from './models';
@@ -78,10 +78,7 @@ const CITY_FLOOR_Y = 0.45;
 export const CITY_FLOOR_M = 260;
 /** Behind the plaza and the lot, buildings stand this far past the verge, m: where their paving ends. */
 const OPEN_BACK_M = 17.4;
-/** Along the promenade: palms, lamps and benches every so many metres. [default] */
-const PALM_EVERY_M = 24;
-const LAMP_EVERY_M = 32;
-const BENCH_EVERY_M = 48;
+// The promenade's palms, lamps and benches, and the city side's, are road/furniture.ts's now.
 /** Static surfaces are merged per stretch of road this long, m. [default] */
 export const STRETCH_M = 160;
 /** Items and surfaces are drawn out to this far (the foggy region's haze is full at 480 m), m. */
@@ -832,9 +829,8 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
   const carModel: SceneryModel | undefined = models.sfRoadside;
   const boats = [models.skiff?.variants[0], models.boat?.variants[0]].filter((g): g is BufferGeometry => !!g);
 
-  const reserved = input.reserved ?? [];
-  const takenByScene = (p: Point3, r: number) =>
-    reserved.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < q.r + r);
+  // (The staged scenes keep off the ridable bands, render/scenery.ts `ridableBandPast`, so nothing of
+  // this layer meets one.)
   const place = (it: WaterfrontItem) => {
     items.push(it);
     note(it.edge, it.s, it.p);
@@ -943,71 +939,8 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
           quad(soup, w(s, d0 - 0.6, -0.02), w(s1, d1 - 0.6, -0.02), w(s, d0, -0.02), w(s1, d1, -0.02), C.cap);
         }
       }
-      // Palms, lamps and benches along the seawall's edge (palms and lamps on the paving a little in
-      // from it, benches at it, facing the bay), never in front of a shed's door or the hall.
-      for (const [a, b] of runs((s) => has('right', s, 'promenade'))) {
-        for (let k = 0; ; k++) {
-          const s = a + 8 + k * PALM_EVERY_M + 6 * (h(k, 1, 1) - 0.5);
-          if (s > b - 4) break;
-          const d = vR(s).dOuter - 1.6;
-          if (!clear(1, s - 2, s + 2, d - 2, d + 2)) continue;
-          const p = w(s, d, LAND_TOP_M);
-          if (takenByScene(p, 1.5)) continue;
-          const variant = Math.floor(h(k, 1, 2) * 3);
-          const geo = palmModel?.variants[variant] ?? palmFallback;
-          place({
-            rule: 'palm',
-            geometry: geo,
-            doubleSided: !!palmModel?.doubleSided,
-            p,
-            turn: h(k, 1, 3) * Math.PI * 2,
-            size: 1.05 + 0.3 * h(k, 1, 4),
-            edge: e.index,
-            s,
-            d,
-          });
-        }
-        for (let k = 0; ; k++) {
-          const s = a + 20 + k * LAMP_EVERY_M;
-          if (s > b - 4) break;
-          const d = vR(s).dOuter - 0.9;
-          if (!clear(1, s - 1, s + 1, d - 1, d + 1)) continue;
-          const p = w(s, d, LAND_TOP_M);
-          if (takenByScene(p, 1)) continue;
-          place({
-            rule: 'lamp',
-            geometry: lampGeo,
-            doubleSided: false,
-            p,
-            turn: faceRoad(p, s) + Math.PI / 2,
-            size: 1,
-            edge: e.index,
-            s,
-            d,
-          });
-        }
-        for (let k = 0; ; k++) {
-          const s = a + 32 + k * BENCH_EVERY_M;
-          if (s > b - 4) break;
-          if (!bayOpen(s)) continue;
-          const d = vR(s).dOuter - 0.7;
-          if (!clear(1, s - 2, s + 2, d - 1, d + 1)) continue;
-          const p = w(s, d, LAND_TOP_M);
-          if (takenByScene(p, 1.5)) continue;
-          // It faces the bay: its +z away from the road.
-          place({
-            rule: 'bench',
-            geometry: benchGeo,
-            doubleSided: false,
-            p,
-            turn: faceRoad(p, s) + Math.PI,
-            size: 1,
-            edge: e.index,
-            s,
-            d,
-          });
-        }
-      }
+      // The palms, lamps and benches along the seawall's edge stand where road/furniture.ts plans them
+      // (playtest 4, "solid but forgiving": the sim meets what is drawn), placed after the edges below.
       // In the water between the piers: a moored boat now and then, and the sea lions' floats.
       for (const [a, b] of runs(bayOpen)) {
         for (let k = 0; ; k++) {
@@ -1133,64 +1066,7 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
         });
       }
     }
-    // Lamps along the sidewalk, and palms on the plaza.
-    for (const [a, b] of runs(front)) {
-      for (let k = 0; ; k++) {
-        const s = a + 10 + k * LAMP_EVERY_M;
-        if (s > b - 4) break;
-        const d = -(outerL + 0.5);
-        if (!clear(-1, s - 1, s + 1, -d - 1, -d + 1)) continue;
-        const p = w(s, d, LAND_TOP_M);
-        place({
-          rule: 'sidewalk-lamp',
-          geometry: lampGeo,
-          doubleSided: false,
-          p,
-          turn: faceRoad(p, s) + Math.PI / 2,
-          size: 0.9,
-          edge: e.index,
-          s,
-          d,
-        });
-      }
-    }
-    for (const [a, b] of runs((s) => has('left', s, 'ferry-plaza'))) {
-      for (let s = a + 8; s < b - 6; s += 15) {
-        for (const across of [5, 13]) {
-          const d = -(outerL + across);
-          if (!clear(-1, s - 2, s + 2, -d - 2, -d + 2)) continue;
-          const p = w(s, d, LAND_TOP_M);
-          if (takenByScene(p, 1.5)) continue;
-          const k = Math.round(s) + across;
-          place({
-            rule: 'plaza-palm',
-            geometry: palmModel?.variants[k % 3] ?? palmFallback,
-            doubleSided: !!palmModel?.doubleSided,
-            p,
-            turn: h(k, -1, 40) * Math.PI * 2,
-            size: 1.1 + 0.25 * h(k, -1, 41),
-            edge: e.index,
-            s,
-            d,
-          });
-        }
-        const d = -(outerL + 9);
-        if (clear(-1, s + 5, s + 9, -d - 1, -d + 1)) {
-          const p = w(s + 7, d, LAND_TOP_M);
-          place({
-            rule: 'plaza-bench',
-            geometry: benchGeo,
-            doubleSided: false,
-            p,
-            turn: faceRoad(p, s + 7),
-            size: 1,
-            edge: e.index,
-            s: s + 7,
-            d,
-          });
-        }
-      }
-    }
+    // The sidewalk's lamps and the plaza's palms and benches: road/furniture.ts's plan, as the promenade's.
     // The lot: parked cars in a row, nose to the road, and its painted bays.
     for (const [a, b] of runs((s) => has('left', s, 'wharf-lot'))) {
       for (let s = a + 4; s < b - 3; s += 3) {
@@ -1209,33 +1085,7 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
           );
         }
       }
-      for (let k = 0; ; k++) {
-        const s = a + 5.5 + k * 3;
-        if (s > b - 3) break;
-        for (const [across, row] of [
-          [6.8, 0],
-          [14.3, 1],
-        ] as const) {
-          if (!carModel || h(k, -1, 50 + row) < 0.35) continue;
-          const d = -(outerL + across);
-          if (!clear(-1, s - 1.5, s + 1.5, -d - 3, -d + 3, 0.5)) continue;
-          const p = w(s, d, LAND_TOP_M);
-          const variant = [0, 1, 2][Math.floor(h(k, -1, 52 + row) * 3)] ?? 0;
-          const geo = carModel.variants[variant];
-          if (!geo) continue;
-          place({
-            rule: 'parked-car',
-            geometry: geo,
-            doubleSided: false,
-            p,
-            turn: faceRoad(p, s) + (row ? Math.PI : 0),
-            size: 1,
-            edge: e.index,
-            s,
-            d,
-          });
-        }
-      }
+      // Its cars stand where road/furniture.ts plans them (the sim meets them as parked cars).
     }
     // Side streets: the roadway and its sidewalks running inland, buildings lining both sides.
     for (const t of tags.filter((x) => x.tag === 'wharf-street' && onSide(x, 'left'))) {
@@ -1324,6 +1174,29 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
         C.floor,
       );
     }
+  }
+
+  // The street furniture (the promenade's palms, lamps and benches, the city side's lamps, the plaza's
+  // palms and benches, the lot's cars), from the plan the sim meets (road/furniture.ts, playtest 4:
+  // "solid but forgiving"): the same rules this layer had, moved there unchanged.
+  for (const it of planStreetFurniture(road, seed).items) {
+    if (it.layer !== 'waterfront') continue;
+    const p = road.toWorld(it.edge, it.s, it.d, LAND_TOP_M);
+    const c = road.toWorld(it.edge, it.s, 0, 0);
+    const turn =
+      'yaw' in it.turn
+        ? it.turn.yaw
+        : Math.atan2(c.x - p.x, c.z - p.z) + ('face' in it.turn ? it.turn.face : 0);
+    let geometry: BufferGeometry | undefined;
+    let doubleSided = false;
+    if (it.kind === 'palm') {
+      geometry = palmModel?.variants[it.variant] ?? palmFallback;
+      doubleSided = !!palmModel?.doubleSided;
+    } else if (it.kind === 'wf-lamp') geometry = lampGeo;
+    else if (it.kind === 'wf-bench') geometry = benchGeo;
+    else if (it.kind === 'parked-car') geometry = carModel?.variants[it.variant];
+    if (!geometry) continue;
+    place({ rule: it.rule, geometry, doubleSided, p, turn, size: it.size, edge: it.edge, s: it.s, d: it.d });
   }
 
   const stretches = [...centres.entries()].map(([key, c]) => {

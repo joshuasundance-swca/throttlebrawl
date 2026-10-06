@@ -1,12 +1,16 @@
 // Solid road hazards (run W-U, the pitch deck's #12: the ferry deck's parked pickups and coffee cart,
 // the clear-cut's stumps, the festival's chainsaw bears). A `hazard` feature with `params.solid` is a
-// wall box for a riding rider: head on it stops him (a crash when fast, a wobble at a crawl), from
-// the side it holds him beside it, and flying into it below its top is a crash. One without `solid`
-// is what every hazard was before: nothing the sim reads.
+// box a riding rider meets with its capsule (sim/riders/furniture.ts): head on it stops him (a crash
+// when fast, a wobble at a crawl), from the side it holds him beside it, and flying into it below its
+// top is met the same way. Playtest 4 ("solid but forgiving"): every one is decided by the closing speed
+// along the contact's normal against `traffic.solidHitMps`, the one rule for heavy things. One without
+// `solid` is what every hazard was before: nothing the sim reads.
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedFeature } from '../../road';
+import { trafficHitMps } from '../traffic/contact-rule';
 import type { SimConfig, SimEvent } from '../types';
-import { HAZARD_REACH_D_M, HAZARD_REACH_S_M, hazardTop, solidHazardAt } from './features';
+import { hazardTop, solidHazardsNear } from './features';
+import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M } from './furniture';
 import { riderState } from './index';
 import { input, riderHarness, testConfig } from './testing';
 
@@ -51,22 +55,30 @@ function rideInto(config: SimConfig, speed: number, d = 3.4, ticks = 60 * 6) {
   return { events, trace, h };
 }
 
+/** The bike's centre well inside the box grown by its capsule (a margin for the round ends' corners). */
 const inside = (p: { s: number; d: number }) =>
-  p.s > PICKUP.s0 - HAZARD_REACH_S_M + 0.01 &&
-  p.s < PICKUP.s1 + HAZARD_REACH_S_M &&
-  p.d > PICKUP.d0 - HAZARD_REACH_D_M + 0.01 &&
-  p.d < PICKUP.d1 + HAZARD_REACH_D_M - 0.01;
+  p.s > PICKUP.s0 - BIKE_SPINE_HALF_M - BIKE_RADIUS_M + 0.05 &&
+  p.s < PICKUP.s1 + BIKE_SPINE_HALF_M + BIKE_RADIUS_M - 0.05 &&
+  p.d > PICKUP.d0 - BIKE_RADIUS_M + 0.05 &&
+  p.d < PICKUP.d1 + BIKE_RADIUS_M - 0.05;
 
 describe('solid road hazards (run W-U)', () => {
-  it('finds a solid hazard by its box grown by the bike, and nothing else', () => {
+  it('finds a solid hazard by its box, and nothing else', () => {
     const config = withHazards([
       PICKUP,
       { ...PICKUP, id: 'decor', s0: 700, s1: 705, params: { object: 'pickup' } },
     ]);
-    expect(solidHazardAt(config, 0, 600 - HAZARD_REACH_S_M + 0.05, 3)?.id).toBe('deck-pickup-1');
-    expect(solidHazardAt(config, 0, 603, PICKUP.d0 - HAZARD_REACH_D_M + 0.05)?.id).toBe('deck-pickup-1');
-    expect(solidHazardAt(config, 0, 603, PICKUP.d0 - HAZARD_REACH_D_M - 0.05)).toBeNull();
-    expect(solidHazardAt(config, 0, 702, 3)).toBeNull(); // no `solid`: data the sim never reads
+    const near = solidHazardsNear(config, 0, 603, 2.5);
+    expect(near.map((p) => p.feature.id)).toEqual(['deck-pickup-1']);
+    const shape = near[0]?.shape;
+    for (const [k, v] of [
+      ['s', 602.7],
+      ['d', 3.45],
+      ['hu', 2.7],
+      ['hv', 1.05],
+    ] as const)
+      expect(shape?.[k]).toBeCloseTo(v, 9);
+    expect(solidHazardsNear(config, 0, 702, 2.5)).toEqual([]); // no `solid`: data the sim never reads
     expect(hazardTop(PICKUP)).toBe(1.9);
   });
 
@@ -85,19 +97,20 @@ describe('solid road hazards (run W-U)', () => {
     expect(r.h.rider.pos.s).toBeLessThan(PICKUP.s0);
   });
 
-  it("a parked pickup is a parked vehicle: the vehicles' one rule decides it, a stump keeps the barrier line", () => {
-    // Playtest 4 (sim/traffic/contact-rule.ts): 8 m/s into the pickup is under traffic.solidHitMps,
-    // a wobble; the same 8 m/s into a stump is over the barrier's riders.crashImpactMps, a crash.
-    const pickup = rideInto(withHazards([PICKUP]), 8, 3.4, 60 * 12);
-    expect(pickup.events.filter((e) => e.type === 'crash')).toEqual([]);
-    expect(pickup.events.some((e) => e.type === 'wobble' && e.data['object'] === 'pickup')).toBe(true);
-    const stump = rideInto(
-      withHazards([{ ...PICKUP, params: { solid: true, object: 'stump', heightM: 0.6 } }]),
-      8,
-    );
-    expect(stump.events.find((e) => e.type === 'crash')?.data['object']).toBe('stump');
-    // Past the vehicles' line the pickup is a crash too.
-    expect(rideInto(withHazards([PICKUP]), 14).events.some((e) => e.type === 'crash')).toBe(true);
+  it('every solid hazard is met by the one rule for heavy things: a pickup and a stump alike', () => {
+    // Playtest 4 ("solid but forgiving", one rule): 8 m/s square on is under traffic.solidHitMps, so a
+    // wobble, for the parked pickup and for a stump alike (the stump crashed at the barrier's 6 m/s
+    // before); 14 m/s is over it, a crash, for both.
+    expect(trafficHitMps({})).toBe(10);
+    const stumpBox = { ...PICKUP, params: { solid: true, object: 'stump', heightM: 0.6 } };
+    for (const box of [PICKUP, stumpBox]) {
+      const object = String(box.params?.['object']);
+      const slow = rideInto(withHazards([box]), 8, 3.4, 60 * 12);
+      expect(slow.events.filter((e) => e.type === 'crash')).toEqual([]);
+      expect(slow.events.some((e) => e.type === 'wobble' && e.data['object'] === object)).toBe(true);
+      const fast = rideInto(withHazards([box]), 14);
+      expect(fast.events.find((e) => e.type === 'crash')?.data['object']).toBe(object);
+    }
   });
 
   it('a rider steering into its side is held beside it and scrapes along, never inside', () => {
@@ -109,7 +122,7 @@ describe('solid road hazards (run W-U)', () => {
       events.push(...h.step(input(0.4, 0, 0.4)));
       ds.push(h.rider.pos.d);
     }
-    expect(Math.max(...ds)).toBeLessThan(PICKUP.d0 - HAZARD_REACH_D_M);
+    expect(Math.max(...ds)).toBeLessThan(PICKUP.d0 - BIKE_RADIUS_M + 0.01);
     const touch = events.find((e) => e.data['object'] === 'pickup');
     expect(touch?.type).toBe('wobble');
   });

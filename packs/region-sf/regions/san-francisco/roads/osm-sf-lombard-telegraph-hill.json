@@ -71,7 +71,8 @@
       "d0": -30.0,
       "d1": -8.0,
       "params": {
-        "model": "sf-landmarks#coit_tower"
+        "model": "sf-landmarks#coit_tower",
+        "frameHeightM": 64
       }
     }
   ],

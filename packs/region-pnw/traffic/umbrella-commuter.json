@@ -6,6 +6,7 @@
   "tags": ["local", "downtown", "commuter"],
   "lengthM": 0.5,
   "widthM": 0.7,
+  "heightM": 1.75,
   "cruiseMps": 1.5,
   "hazard": "normal",
   "behaviour": {

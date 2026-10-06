@@ -6,6 +6,7 @@
   "tags": ["tourist", "slow"],
   "lengthM": 7.5,
   "widthM": 2.4,
+  "heightM": 3.4,
   "cruiseMps": 19.0,
   "hazard": "big",
   "behaviour": {

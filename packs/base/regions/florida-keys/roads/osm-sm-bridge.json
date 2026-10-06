@@ -122,6 +122,7 @@
       "params": {
         "model": "keys-identity#keys_mile_marker",
         "yawDeg": 180.0,
+        "scale": 2.0,
         "number": 41
       }
     },
@@ -135,6 +136,7 @@
       "params": {
         "model": "keys-identity#keys_mile_marker",
         "yawDeg": 180.0,
+        "scale": 2.0,
         "number": 42
       }
     },
@@ -148,6 +150,7 @@
       "params": {
         "model": "keys-identity#keys_mile_marker",
         "yawDeg": 180.0,
+        "scale": 2.0,
         "number": 43
       }
     },
@@ -161,6 +164,7 @@
       "params": {
         "model": "keys-identity#keys_mile_marker",
         "yawDeg": 180.0,
+        "scale": 2.0,
         "number": 44
       }
     },
@@ -174,6 +178,7 @@
       "params": {
         "model": "keys-identity#keys_mile_marker",
         "yawDeg": 180.0,
+        "scale": 2.0,
         "number": 45
       }
     },
@@ -187,6 +192,7 @@
       "params": {
         "model": "keys-identity#keys_mile_marker",
         "yawDeg": 180.0,
+        "scale": 2.0,
         "number": 46
       }
     }

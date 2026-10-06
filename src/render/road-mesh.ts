@@ -712,6 +712,8 @@ const FEATURE_CLEAR_M = 3;
 export const SCENERY_LAND_M = 24;
 /** The shelf from the land's edge down to the sea floor, m. */
 const SCENERY_SHELF_M = 4;
+/** A wide land strip keeps off a landmark standing beyond the usual strip from this far before it to this far after it, m. */
+export const LANDMARK_LEAD_M = 12;
 /** A seawall's drop (run W-U): near sheer, m out from the strip's edge. */
 const SEAWALL_SHELF_M = 0.05;
 /** Land widths tried where another road leaves no room for a shelf, m. [default] */
@@ -1455,6 +1457,23 @@ export function buildRoadScene(
       for (let d = d0; d < d1; d += STRIP_ROAD_PROBE_M) if (lowerRoadAt(s, side * d, 1)) return false;
       return true;
     };
+    /**
+     * Whether a landmark of this side stands beyond the usual strip but within the wide one (playtest 4, run B's
+     * check: Old Town's city floor, `WIDE_LAND_M`, would have drowned the cruise ship's berth in ground): the
+     * wide strip is not laid there, and the next narrower one is tried. A landmark within the usual strip is
+     * on the land already, and one over the road is no business of the strip's.
+     */
+    const landmarks = (dress.features ?? []).filter(
+      (f) => f.kind === 'landmark' && f.params?.['overRoad'] !== true,
+    );
+    const landmarkBeyond = (side: -1 | 1, s: number, outer: number, width: number): boolean =>
+      landmarks.some((f) => {
+        if (Math.sign(f.d0 + f.d1) !== side) return false;
+        if (s < Math.min(f.s0, f.s1) - LANDMARK_LEAD_M || s > Math.max(f.s0, f.s1) + LANDMARK_LEAD_M)
+          return false;
+        const near = Math.min(Math.abs(f.d0), Math.abs(f.d1));
+        return near > outer + SCENERY_LAND_M - 2 && near < outer + width + SCENERY_SHELF_M + 3;
+      });
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
     landOf[e.index] = { step, reach: reachOf };
@@ -1561,6 +1580,7 @@ export function buildRoadScene(
                 : [SCENERY_LAND_M, 14, 6];
           for (const width of widths) {
             if (width > room) continue;
+            if (width > SCENERY_LAND_M && landmarkBeyond(side, s, outer, width)) continue;
             const d = outer + width + SCENERY_SHELF_M;
             if (
               !otherRoadAt(s, side * d, 1) &&

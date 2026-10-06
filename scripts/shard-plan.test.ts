@@ -1,21 +1,30 @@
 // CI's slice plan (scripts/shard-plan.mjs) and its timing table refresh (scripts/timings.mjs): the
 // slices must be a partition of the tier's files whatever the timings say, so a slice can never
 // quietly drop a test file.
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   batchUsers,
+  collectedOnly,
   estimateSeconds,
+  JOB_SHARE,
+  overLine,
   planSlices,
   planTier,
   presetUsers,
   readTimings,
+  spreadUsers,
+  suiteJobs,
   TIERS,
   unmeasured,
 } from './shard-plan.mjs';
 import { timedOrder } from '../tests/sequencer';
-import { parseLog } from './timings.mjs';
+import FileTimes from '../tests/file-times';
+import { meanOverheads, parseLog, runnerSeconds, simRuns } from './timings.mjs';
 
 const timings = readTimings() as {
+  overhead?: { unit?: number; sim?: number; e2e?: number };
   unit?: Record<string, number>;
   sim?: Record<string, number>;
   e2e?: Record<string, number>;
@@ -164,10 +173,42 @@ describe('planSlices', () => {
     // they are 373 s, so some go to the big file's slice.
     const small = plan.map((s) => s.files.filter((f) => f !== 'big').length);
     expect(Math.min(...small)).toBeGreaterThan(0);
-    for (const s of plan) expect(s.predicted).toBeLessThanOrEqual(301);
-    expect(plan.find((s) => s.files.includes('big'))?.predicted).toBe(301);
+    // The job's own setup (overhead) is the same for every slice; the files' share is what is balanced.
+    const files_ = (s: { predicted: number }) => s.predicted - TIERS.unit.overhead;
+    for (const s of plan) expect(files_(s)).toBeLessThanOrEqual(301);
+    expect(files_(plan.find((s) => s.files.includes('big')) ?? { predicted: 0 })).toBe(301);
   });
 
+  // Vitest's per-file time leaves out a file's collection, and 8 sim files race at describe time
+  // (app-cast-and-law, riders-race, ...), so the table times them at 0 s. Priced at 0 s they all went
+  // to one slice: 3/6 on main took 590 to 597 s of 600; 3/7 on #601's run took 488 s against a plan
+  // of 340, every other sim slice 200 to 399 s. A sim file timed at 0 s is now planned as the mean.
+  it('plans a sim file timed at 0 s as the mean file, so those files no longer all ride one slice', () => {
+    const zeros = [
+      'tests/sim/z1.test.ts',
+      'tests/sim/z2.test.ts',
+      'tests/sim/z3.test.ts',
+      'tests/sim/z4.test.ts',
+    ];
+    const sim = {
+      'tests/sim/a.test.ts': 100,
+      'tests/sim/b.test.ts': 50,
+      ...Object.fromEntries(zeros.map((z) => [z, 0])),
+    };
+    const opts = { timings: { sim, overhead: { sim: 0 } }, read: () => '' };
+    // Alone, a 0 s file is planned as the mean of the timed ones (75 s), not as 0.
+    expect(planTier('sim', [zeros[0] ?? ''], 1, opts)[0]?.predicted).toBe(75);
+    const plan = planTier('sim', Object.keys(sim), 3, opts);
+    expect(Math.max(...plan.map((s) => s.files.filter((f) => zeros.includes(f)).length))).toBeLessThan(
+      zeros.length,
+    );
+    expect(collectedOnly(sim)).toEqual({ 'tests/sim/a.test.ts': 100, 'tests/sim/b.test.ts': 50 });
+    // A unit file at 0 s is a tiny file, and stays one (perFile prices its setup).
+    const [unit] = planTier('unit', ['src/a.test.ts'], 1, {
+      timings: { unit: { 'src/a.test.ts': 0, 'src/b.test.ts': 50 }, overhead: { unit: 0 } },
+    });
+    expect(unit?.predicted).toBe(Math.round(TIERS.unit.perFile));
+  });
   it('leaves the last slice room for perf (lastExtra)', () => {
     const files = ['a', 'b', 'c', 'd', 'e', 'f'];
     const seconds = Object.fromEntries(files.map((f) => [f, 10]));
@@ -271,6 +312,37 @@ describe('timings.mjs parseLog', () => {
     expect(got.perf).toBeCloseTo(22.7);
   });
 
+  // A job's own seconds outside its runner: check.mjs's result line for each runner step (the
+  // tests, and perf in the last browser slice), never the build, which belongs to the job's setup.
+  it("reads the runner steps' seconds from check's result lines, leaving out the build", () => {
+    const log = [
+      'suite / unit (1/2)\tUNKNOWN STEP\t2026-10-06T09:39:28.1712434Z unit tests (slice 1/2, 211 files)  pass  2772 tests passed (211 files passed) (248.0s)',
+      '2026-10-06T09:43:21.2092459Z sim batch (slice 3/6, 29 files)  pass  300 tests passed (29 files passed) (479.7s)',
+      '2026-10-06T09:43:00.6089375Z build                      pass  672 files in dist/, 10.32 MB (6.7s)',
+      '2026-10-06T09:43:00.6090401Z e2e (slice 7/7, 10 files)  pass  45 browser tests passed (316.2s)',
+      '2026-10-06T09:43:00.6092889Z perf                       pass  672 dist files: first-load JavaScript 471.2 KB gzip (budget 500 KB) (110.7s)',
+      '2026-10-06T09:43:00.6092889Z e2e (slice 2/7, 3 files)  FAIL  1 of 9 browser tests failed (61.5s)',
+      '2026-10-06T09:43:00.6092889Z > playwright test --project=e2e tests/e2e/a.spec.ts',
+    ];
+    expect(runnerSeconds(log[0] ?? '')).toBeCloseTo(248);
+    expect(runnerSeconds(log[1] ?? '')).toBeCloseTo(479.7);
+    expect(runnerSeconds(log.slice(2, 5).join('\n'))).toBeCloseTo(426.9);
+    expect(runnerSeconds(log.slice(5).join('\n'))).toBeCloseTo(61.5);
+    expect(runnerSeconds('')).toBe(0);
+  });
+
+  it('averages each tier’s job-minus-runner seconds, and names a browser job e2e', () => {
+    expect(
+      meanOverheads([
+        { tier: 'unit', seconds: 264, ran: 248.8 },
+        { tier: 'unit', seconds: 227, ran: 208.2 },
+        { tier: 'browser', seconds: 391, ran: 335.6 },
+        { tier: 'sim', seconds: 597, ran: 579 },
+        { tier: 'sim', seconds: 100, ran: 0 },
+      ]),
+    ).toEqual({ unit: 17, sim: 18, e2e: 55 });
+    expect(meanOverheads([])).toEqual({});
+  });
   it('reads the unit project’s per-file lines into their own table, apart from the sim batch', () => {
     // The unit job's slowest file (tools/gis/region-routes.test.ts, 337 s on #475's run) started
     // 74 s into the run in Vitest's own order; with a unit table the sequencer starts it first.
@@ -289,4 +361,209 @@ describe('timings.mjs parseLog', () => {
     });
     expect(got.sim).toEqual({});
   });
+});
+
+// Vitest's per-file line times a file's tests and hooks only, not its collection (the import and
+// the describe callbacks). Eight sim files race at describe time (app-cast-and-law, riders-race and
+// six more), so on main run 37457079930 (2026-10-06) Vitest timed them at 4 to 30 ms, and the
+// table at 0 s, while sim slice 2/7, which ran seven of them, took 280 s. tests/file-times.ts prints
+// each sim file's whole time on its worker (collect + tests), and timings.mjs takes that line.
+describe('whole sim file times (tests/file-times.ts)', () => {
+  const vitestLine = (file: string, ms: number) =>
+    `suite / sim (2/7)\tUNKNOWN STEP\t2026-10-06T11:37:41.79Z  ^[[32m✓^[[39m ^[[30m^[[43m sim ^[[49m^[[39m ${file} ^[[2m(^[[22m^[[2m9 tests^[[22m^[[2m)^[[22m^[[33m ${ms}^[[2mms^[[22m^[[39m`;
+  const logged = (project: string, file: string, collectDuration: number, duration: number) => {
+    const lines: string[] = [];
+    const reporter = new FileTimes();
+    reporter.onInit({ logger: { log: (s: string) => lines.push(s) } } as never);
+    reporter.onTestModuleEnd({
+      project: { name: project, config: { root: '/repo' } },
+      moduleId: `/repo/${file}`,
+      diagnostic: () => ({ collectDuration, duration }),
+    } as never);
+    return lines;
+  };
+
+  it('prints a sim file’s collect and test time, and timings.mjs reads it over Vitest’s line', () => {
+    const lines = logged('sim', 'tests/sim/riders-race.test.ts', 45_260, 7);
+    expect(lines).toHaveLength(1);
+    const log = [
+      vitestLine('tests/sim/riders-race.test.ts', 7),
+      `suite / sim (2/7)\tUNKNOWN STEP\t2026-10-06T11:38:30.20Z ${lines[0]}`,
+      vitestLine('tests/sim/dev-presets.test.ts', 287_662),
+    ].join('\n');
+    const got = parseLog(log);
+    expect(got.sim['tests/sim/riders-race.test.ts']).toBeCloseTo(45.27, 1);
+    // A file with no whole-file line (an old log) keeps Vitest's own time.
+    expect(got.sim['tests/sim/dev-presets.test.ts']).toBeCloseTo(287.662);
+    expect(got.simWhole).toBe(1);
+    expect(parseLog(vitestLine('tests/sim/a.test.ts', 5)).simWhole).toBe(0);
+  });
+
+  it('prints nothing for a unit file (the unit table is not sliced by whole-file time)', () => {
+    expect(logged('unit', 'src/sim/ai/ai.test.ts', 900, 3655)).toEqual([]);
+  });
+
+  it('averages sim only over runs that printed whole-file times, when any did', () => {
+    const old = { sim: { 'tests/sim/a.test.ts': 0, 'tests/sim/b.test.ts': 10 }, simWhole: 0 };
+    const fresh = { sim: { 'tests/sim/a.test.ts': 40, 'tests/sim/b.test.ts': 12 }, simWhole: 2 };
+    expect(simRuns([old, fresh])).toEqual([fresh]);
+    // Logs from before tests/file-times.ts: Vitest's lines, as before.
+    expect(simRuns([old, old])).toEqual([old, old]);
+  });
+
+  it('the checked-in table times no sim file at 0 s', () => {
+    const zeros = Object.entries(timings.sim ?? {})
+      .filter(([, s]) => !(s > 0))
+      .map(([f]) => f);
+    expect(zeros).toEqual([]);
+  });
+});
+
+// A job is more than its test files: a browser slice spent 40 to 70 s on checkout, npm ci, the
+// browser install, the build and listing its files before its first test, and a sim or unit slice
+// 11 to 25 s (main and train runs of 2026-10-06, scratch/c2/jobs.mjs's job-minus-runner seconds).
+// Planning test seconds alone put browser slices at 355 s that took 410 to 533 s as jobs (run
+// 37439710625), and sim slice 3/6 at 386 s that took 590 to 597 s of its 600 (runs 37435436811,
+// 37439710625). So a slice is planned as its whole job, and every slice of the checked-in table must
+// fit JOB_SHARE of its job's timeout-minutes in suite.yml, the rest being room for a slow runner.
+describe('whole jobs against their timeouts', () => {
+  const root = path.resolve(import.meta.dirname, '..');
+  const suite = readFileSync(path.join(root, '.github', 'workflows', 'suite.yml'), 'utf8');
+
+  it("plans a slice as its whole job: the runner's files plus the job's own setup (overhead)", () => {
+    const base = { files: ['a', 'b', 'c'], seconds: { a: 100, b: 100, c: 50 }, n: 2, workers: 1 };
+    expect(
+      planSlices(base)
+        .map((s) => s.predicted)
+        .sort((x, y) => x - y),
+    ).toEqual([100, 150]);
+    expect(
+      planSlices({ ...base, overhead: 40 })
+        .map((s) => s.predicted)
+        .sort((x, y) => x - y),
+    ).toEqual([140, 190]);
+    // The overhead is the same for every slice, so it never moves a file.
+    expect(planSlices({ ...base, overhead: 40 }).map((s) => s.files)).toEqual(
+      planSlices(base).map((s) => s.files),
+    );
+  });
+
+  it("prices each tier's setup from measured jobs, and planTier adds it", () => {
+    // The smallest job-minus-runner seconds seen on 2026-10-06 (eight green runs): unit 11, sim 11.8,
+    // browser 37. The table's own (written by scripts/timings.mjs) comes first; TIERS is the fallback.
+    expect(TIERS.unit.overhead).toBeGreaterThanOrEqual(11);
+    expect(TIERS.sim.overhead).toBeGreaterThanOrEqual(11);
+    expect(TIERS.e2e.overhead).toBeGreaterThanOrEqual(37);
+    expect(timings.overhead?.unit).toBeGreaterThanOrEqual(11);
+    expect(timings.overhead?.sim).toBeGreaterThanOrEqual(11);
+    expect(timings.overhead?.e2e).toBeGreaterThanOrEqual(37);
+    const [own] = planTier('sim', ['tests/sim/a.test.ts'], 1, {
+      timings: { sim: { 'tests/sim/a.test.ts': 100 }, overhead: { sim: 30 } },
+      read: () => '',
+    });
+    expect(own?.predicted).toBe(130);
+    for (const tier of ['unit', 'sim', 'e2e'] as const) {
+      const file = tier === 'e2e' ? 'tests/e2e/a.spec.ts' : 'tests/sim/a.test.ts';
+      const [only] = planTier(tier, [file], 1, { timings: { [tier]: { [file]: 100 } }, read: () => '' });
+      const perFile = 'perFile' in TIERS[tier] ? TIERS.unit.perFile : 0;
+      expect(only?.predicted, tier).toBe(Math.round(100 + perFile + TIERS[tier].overhead));
+    }
+  });
+
+  // tests/e2e/ui-settings.spec.ts runs its tests in parallel (`test.describe.configure({ mode:
+  // 'parallel' })`), so its 486.6 s of summed test times (train run 37442774709) ran in 258 s of
+  // its slice on Playwright's two workers. Planned as one worker's file, it put its slice at 537 s.
+  it("spreads a parallel-mode spec's tests over the runner's workers", () => {
+    const base = { files: ['p.spec.ts'], seconds: { 'p.spec.ts': 200 }, n: 1, workers: 2 };
+    expect(planSlices(base)[0]?.predicted).toBe(200);
+    expect(planSlices({ ...base, spread: ['p.spec.ts'] })[0]?.predicted).toBe(100);
+    // Beside a serial file it still fills both workers: 100 + 2 x 100 on two workers.
+    const both = {
+      ...base,
+      files: ['a.spec.ts', 'p.spec.ts'],
+      seconds: { 'a.spec.ts': 100, 'p.spec.ts': 200 },
+    };
+    expect(planSlices({ ...both, spread: ['p.spec.ts'] })[0]?.predicted).toBe(200);
+    expect(planSlices({ ...both, n: 2, spread: ['p.spec.ts'] }).map((s) => s.predicted)).toEqual([100, 100]);
+  });
+
+  it('finds the parallel-mode specs by their source, and planTier spreads them', () => {
+    const src: Record<string, string> = {
+      'tests/e2e/p.spec.ts': "test.describe.configure({ mode: 'parallel' });",
+      'tests/e2e/s.spec.ts': "test.describe.configure({ mode: 'serial' });",
+      'tests/e2e/q.spec.ts': "test('one', async () => {});",
+    };
+    const read = (f: string) => src[f] ?? '';
+    expect(spreadUsers(Object.keys(src), read)).toEqual(['tests/e2e/p.spec.ts']);
+    const [only] = planTier('e2e', ['tests/e2e/p.spec.ts'], 1, {
+      timings: { e2e: { 'tests/e2e/p.spec.ts': 200 } },
+      read,
+    });
+    expect(only?.predicted).toBe(100 + TIERS.e2e.overhead);
+    // The real spec that does it today.
+    expect(spreadUsers(['tests/e2e/ui-settings.spec.ts'])).toEqual(['tests/e2e/ui-settings.spec.ts']);
+  });
+  it("reads each sliced job's slice count and timeout from suite.yml", () => {
+    const fixture = [
+      'jobs:',
+      '  static:',
+      '    timeout-minutes: ${{ inputs.full && 4 || 5 }}',
+      '  unit:',
+      '    timeout-minutes: 8',
+      '    strategy:',
+      '      matrix:',
+      '        shard: [1, 2]',
+      '  sim:',
+      '    timeout-minutes: 10',
+      '    strategy:',
+      '      matrix:',
+      '        shard: [1, 2, 3, 4, 5, 6, 7]',
+      '  browser:',
+      '    timeout-minutes: 12',
+      '    strategy:',
+      '      matrix:',
+      '        shard: [1, 2, 3]',
+      '',
+    ].join('\n');
+    expect(suiteJobs(fixture)).toEqual({
+      unit: { slices: 2, timeout: 480 },
+      sim: { slices: 7, timeout: 600 },
+      e2e: { slices: 3, timeout: 720 },
+    });
+    expect(() => suiteJobs(fixture.replace('  sim:', '  simulation:'))).toThrow(/sim/);
+    const real = suiteJobs(suite);
+    for (const tier of ['unit', 'sim', 'e2e'] as const) {
+      expect(real[tier].slices, tier).toBeGreaterThan(0);
+      expect(real[tier].timeout, tier).toBeGreaterThanOrEqual(300);
+    }
+  });
+
+  it('names every slice over its line, and only those', () => {
+    const plan = [
+      { files: ['a'], predicted: 420 },
+      { files: ['b'], predicted: 421 },
+      { files: ['c'], predicted: 100 },
+    ];
+    expect(JOB_SHARE).toBe(0.7);
+    expect(overLine(plan, 600)).toEqual([{ slice: 2, predicted: 421, line: 420 }]);
+    expect(overLine(plan, 1000)).toEqual([]);
+  });
+
+  // The checked-in table, sliced as suite.yml slices it: what CI's next run plans. The files are
+  // the table's own (those still on disk), so only a refresh of the table, the slice counts or the
+  // timeouts can move this, never an unrelated new test file (CI warns about those).
+  it.each(['unit', 'sim', 'e2e'] as const)(
+    'plans every %s slice of the checked-in table within its share of the timeout',
+    (tier) => {
+      const jobs = suiteJobs(suite);
+      const files = Object.keys(timings[tier] ?? {}).filter((f) => existsSync(path.join(root, f)));
+      expect(files.length, `tests/timings.json has ${tier} files on disk`).toBeGreaterThan(10);
+      const plan = planTier(tier, files, jobs[tier].slices);
+      const over = overLine(plan, jobs[tier].timeout);
+      expect(
+        over,
+        `${tier}: planned job seconds ${plan.map((s) => s.predicted).join(' / ')} against a line of ${Math.round(jobs[tier].timeout * JOB_SHARE)} s`,
+      ).toEqual([]);
+    },
+  );
 });

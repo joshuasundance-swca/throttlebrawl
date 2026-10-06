@@ -6,6 +6,7 @@
   "tags": ["local"],
   "lengthM": 5.4,
   "widthM": 2.0,
+  "heightM": 1.9,
   "cruiseMps": 23.5,
   "hazard": "normal",
   "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": true, "dives": false },

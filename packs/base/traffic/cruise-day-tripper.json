@@ -6,6 +6,7 @@
   "tags": ["tourist", "key-oldtown"],
   "lengthM": 0.5,
   "widthM": 0.6,
+  "heightM": 1.75,
   "cruiseMps": 1.2,
   "hazard": "normal",
   "behaviour": { "roadside": "dodges", "carFollowing": false, "laneChanges": false, "dives": true },

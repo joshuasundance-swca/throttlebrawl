@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CACHE_PREFIX,
   createOfflineWorker,
+  GZIP_MARK,
   NETWORK_TIMEOUT_MS,
   type FileCheck,
   type OfflineCache,
@@ -548,5 +549,165 @@ describe('the page after an install a deploy failed (playtest 4 run A fix check,
     const off = await offlineAssets(BUILD_Y, cacheOf('yyyyyyy'), mem);
     expect(off.page).toContain('assets/index-YYY.js');
     expect(off.served).toEqual(assetsOf(BUILD_Y));
+  });
+});
+
+describe('gzip copies (playtest 4 run B live check, punch item 8: the host sends files uncompressed)', () => {
+  // The game's host sends every file as stored, with no Content-Encoding whatever the browser
+  // accepts (checked on the live host, 2026-10-06: the 750,140-byte entry script came whole with
+  // `Accept-Encoding: gzip, br`), and sends a stored `.gz` file as its raw bytes. The build stores a
+  // gzip copy beside each JavaScript, JSON and model file (scripts/service-worker.mjs), and the
+  // worker downloads that copy and unpacks it itself.
+  const GZIP = ['.glb', '.js', '.json'];
+  const SITE: Record<string, string> = {
+    'index.html': PAGE_BODY,
+    'manifest.webmanifest': '{"name":"throttlebrawl"}',
+    'assets/index-AAA.js': `export const entry = "${'e'.repeat(2000)}";`,
+    'assets/landmarks-L1.js': `export const landmarks = "${'l'.repeat(2000)}";`,
+    'assets/road-R1.json': JSON.stringify({ points: Array.from({ length: 200 }, (_, i) => [i, i]) }),
+    'assets/ds/keys/bike-B1.glb': 'glTF'.repeat(400),
+    'assets/ds/keys/clip-C1.ogg': 'OggS'.repeat(50),
+  };
+  const FILES = Object.keys(SITE).sort();
+  /** Gzip bytes of `text`, as the build step writes them (the web's CompressionStream). */
+  const gzip = async (text: string) =>
+    new Uint8Array(
+      await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer(),
+    );
+
+  type CopyMode = 'raw' | 'decoded' | 'missing' | 'truncated' | 'not-gzip';
+  /**
+   * The host: each file, and each gzip copy answered as `copies` says ('raw': the stored gzip bytes,
+   * as the game's host sends them; 'decoded': unpacked by the browser under Content-Encoding: gzip,
+   * as Vite's preview server sends them). `loaded` is what the page already fetched, which the
+   * browser's HTTP cache answers to `cache: 'only-if-cached'`; anything else fails that request.
+   */
+  function gzipHost(copies: CopyMode, loaded: readonly string[] = []) {
+    const asked: string[] = [];
+    const fromCache: string[] = [];
+    let wire = 0;
+    const fetchFn = async (req: WorkerRequest | string, init?: RequestInit): Promise<Response> => {
+      const url = typeof req === 'string' ? req : req.url;
+      const rel = url.slice(SCOPE.length).split(/[?#]/)[0] ?? '';
+      if (init?.cache === 'only-if-cached') {
+        fromCache.push(rel);
+        const body = loaded.includes(rel) ? SITE[rel] : undefined;
+        if (body === undefined) throw new TypeError('Failed to fetch');
+        return new Response(body, { status: 200 });
+      }
+      asked.push(rel);
+      const original = rel.endsWith('.gz') ? SITE[rel.slice(0, -3)] : SITE[rel];
+      if (original === undefined || (rel.endsWith('.gz') && copies === 'missing'))
+        return new Response('Not Found', { status: 404 });
+      if (!rel.endsWith('.gz')) {
+        wire += original.length;
+        return new Response(original, { status: 200 });
+      }
+      const packed = await gzip(original);
+      if (copies === 'decoded') {
+        wire += packed.length;
+        return new Response(original, { status: 200, headers: { 'content-encoding': 'gzip' } });
+      }
+      const bytes =
+        copies === 'truncated'
+          ? packed.subarray(0, packed.length - 12)
+          : copies === 'not-gzip'
+            ? new TextEncoder().encode('<html>an error page</html>')
+            : packed;
+      wire += bytes.length;
+      return new Response(bytes, { status: 200, headers: { 'content-type': 'application/gzip' } });
+    };
+    return { fetchFn, asked, fromCache, wire: () => wire };
+  }
+
+  async function gzipWorker(net: { fetchFn: OfflineEnv['fetch'] }, gzip?: readonly string[]) {
+    const mem = memoryCaches();
+    const checks = await checksOf(FILES, (rel) => SITE[rel] ?? '');
+    const env: OfflineEnv = {
+      scope: SCOPE,
+      caches: mem.caches,
+      fetch: net.fetchFn,
+      delay: manualDelay().delay,
+    };
+    const config = { cache: `${CACHE_PREFIX}g`, files: FILES, checks, ...(gzip ? { gzip } : {}) };
+    return { worker: createOfflineWorker(env, config), mem };
+  }
+  const plain = () => Object.fromEntries(FILES.map((rel) => [rel, SITE[rel]]));
+  const rawBytes = FILES.reduce((n, rel) => n + (SITE[rel]?.length ?? 0), 0);
+
+  it('downloads each JavaScript, JSON and model file as its gzip copy, and caches the file itself', async () => {
+    const net = gzipHost('raw', ['index.html', 'assets/index-AAA.js']);
+    const { worker, mem } = await gzipWorker(net, GZIP);
+    await worker.install();
+    expect(await contents(mem, `${CACHE_PREFIX}g`)).toEqual(plain());
+    expect([...net.asked].sort()).toEqual(
+      [
+        'assets/ds/keys/bike-B1.glb.gz',
+        'assets/ds/keys/clip-C1.ogg',
+        'assets/landmarks-L1.js.gz',
+        'assets/road-R1.json.gz',
+        'index.html',
+        'manifest.webmanifest',
+      ].sort(),
+    );
+    // The entry the page already loaded comes from the browser's HTTP cache, not the network again.
+    expect(net.fromCache).toContain('assets/index-AAA.js');
+    // A script is cached as a script, so the page can run it from the cache.
+    const cached = await mem.caches.match(`${SCOPE}assets/landmarks-L1.js`);
+    expect(cached?.headers.get('content-type')).toMatch(/^text\/javascript/);
+    expect(cached?.headers.get(GZIP_MARK)).toBe('gzip');
+    console.log(`[print] install on the wire: ${net.wire()} bytes; the plain files are ${rawBytes} bytes`);
+    expect(net.wire()).toBeLessThan(rawBytes / 2);
+  });
+
+  it('downloads the plain files when the build step names no gzip copies (the negative control)', async () => {
+    const net = gzipHost('raw', ['index.html', 'assets/index-AAA.js']);
+    const { worker, mem } = await gzipWorker(net);
+    await worker.install();
+    expect(await contents(mem, `${CACHE_PREFIX}g`)).toEqual(plain());
+    expect(net.asked.filter((rel) => rel.endsWith('.gz'))).toEqual([]);
+    expect(net.wire()).toBeGreaterThan(rawBytes / 2);
+  });
+
+  it('takes a copy the browser already unpacked (a host that sends it with Content-Encoding: gzip)', async () => {
+    const net = gzipHost('decoded');
+    const { worker, mem } = await gzipWorker(net, GZIP);
+    await worker.install();
+    expect(await contents(mem, `${CACHE_PREFIX}g`)).toEqual(plain());
+    expect(net.asked.filter((rel) => /\.(js|json|glb)$/.test(rel))).toEqual([]);
+  });
+
+  for (const copies of ['missing', 'truncated', 'not-gzip'] as const)
+    it(`falls back to the plain file when the gzip copy is ${copies}`, async () => {
+      const net = gzipHost(copies);
+      const { worker, mem } = await gzipWorker(net, GZIP);
+      await worker.install();
+      expect(await contents(mem, `${CACHE_PREFIX}g`)).toEqual(plain());
+      expect(net.asked).toContain('assets/landmarks-L1.js.gz');
+      expect(net.asked).toContain('assets/landmarks-L1.js');
+    });
+
+  it("passes a newer build's chunk on from its gzip copy, unpacked and never kept", async () => {
+    const net = gzipHost('raw');
+    const { worker, mem } = await gzipWorker(net, GZIP);
+    await worker.install();
+    const before = plain();
+    SITE['assets/landmarks-L2.js'] = `export const landmarks = "${'m'.repeat(2000)}";`;
+    try {
+      net.asked.length = 0;
+      const res = await worker.respond(get('assets/landmarks-L2.js'));
+      expect(await res?.text()).toBe(SITE['assets/landmarks-L2.js']);
+      expect(res?.headers.get('content-type')).toMatch(/^text\/javascript/);
+      expect(net.asked).toEqual(['assets/landmarks-L2.js.gz']);
+      expect(await contents(mem, `${CACHE_PREFIX}g`)).toEqual(before);
+      // A file only an older page asks for, gone from the host: the plain file's 404 reaches the
+      // page, so its stale-build watch still hears of the deploy.
+      net.asked.length = 0;
+      const gone = await worker.respond(get('assets/landmarks-L0.js'));
+      expect(gone?.status).toBe(404);
+      expect(net.asked).toEqual(['assets/landmarks-L0.js.gz', 'assets/landmarks-L0.js']);
+    } finally {
+      delete SITE['assets/landmarks-L2.js'];
+    }
   });
 });

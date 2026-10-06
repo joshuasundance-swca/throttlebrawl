@@ -4,7 +4,7 @@
 // the shore and mangrove sides of the roads that run beside open water. The rules this file asks, whatever
 // the numbers are: the kit's one file serves the roadside's variants and the mile post whichever loads
 // first; a network with open water loads the file for the roadside; the post stands on land the road scene
-// drew, past the verge, a territory apart; it stands on no Old Town street, bridge or sea; and each rule
+// drew, past the verge, apart from one another; it stands on no Old Town street, bridge or sea; and each rule
 // has a control (the same scatter without the rule, or with the tag it keeps out of).
 import { describe, expect, it } from 'vitest';
 import type { AssetManifest } from '../assets';
@@ -180,7 +180,7 @@ describe('osprey posts stand on the highway`s shores', () => {
     print(`${all.length} osprey posts ray-checked onto drawn land and off the bridges`);
   });
 
-  it('keeps a territory apart: no two on one side of a road within 150 m', () => {
+  it('keeps the nests apart: no two on one side of a road within 50 m (a candidate every 200 m, jittered)', () => {
     for (const run of runs) {
       for (const side of [-1, 1] as const) {
         const own = osprey(run.items)
@@ -190,7 +190,7 @@ describe('osprey posts stand on the highway`s shores', () => {
           const a = own[i - 1];
           const b = own[i];
           if (a && b && a.edge === b.edge)
-            expect(b.s - a.s, `${run.id} seed ${run.seed}`).toBeGreaterThan(150);
+            expect(b.s - a.s, `${run.id} seed ${run.seed}`).toBeGreaterThan(50);
         }
       }
     }

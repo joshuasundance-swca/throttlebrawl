@@ -21,7 +21,19 @@ import type {
   RivalText,
 } from '../career';
 import { createAudio, type EngineSoundSpec } from '../audio';
-import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
+import {
+  createFollowCamera,
+  nearestFocus,
+  shotFociOf,
+  shotPose,
+  SHOT_EASE_TICKS,
+  SHOT_REACH_M,
+  VIEW_MODES,
+  type CameraMode,
+  type CameraPose,
+  type ShotFocus,
+  type ViewMode,
+} from '../camera';
 import {
   assetIndex,
   contentHashes,
@@ -105,6 +117,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
+import { clearLoadRetry, offerLoadRetry } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -346,6 +359,17 @@ function countdownOn(): boolean {
 }
 
 /**
+ * The newer-build offer on a result screen (ui `offerReload`): under the test flag, `window.__reloadOffer
+ * = true` makes the result screen show it as if a deploy had landed mid-race, so a spec can measure
+ * where the card sits on every result screen without a service worker or a simulated deploy. Its
+ * Reload now does nothing. Never true in production (the flag needs `__GAME_TEST__`).
+ */
+function testReloadOffer(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __reloadOffer?: unknown };
+  return w.__GAME_TEST__ === true && w.__reloadOffer === true;
+}
+
+/**
  * Quality tiers and dynamic resolution (roadmap M5; render/quality.ts) run in production always; under
  * the test flag only when a spec asks (`window.__dynamicResolution = true`), so the browser specs and
  * the perf check draw the `high` tier at full resolution whatever the runner's speed, and their draw
@@ -513,6 +537,13 @@ export function createApp(opts: AppOptions): AppHandle {
   const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
   const camera = createFollowCamera({ road: stream.road });
   let attractPose: CameraPose | null = null;
+  /**
+   * The finish shot (playtest 4, run C: a landmark by the line is too tall for the chase view): the landmarks of
+   * the road that ask for it, and, once the player has finished within reach of one, the chase pose the camera
+   * holds and the tick it began. Render only; the sim and the replay never read it.
+   */
+  let shotFoci: ShotFocus[] = [];
+  let finishShot: { held: CameraPose; focus: ShotFocus; from: number } | null = null;
   /** The network the renderer and camera show, so a race in the same region rebuilds nothing. */
   let shownRoad: unknown = null;
   /** The time of day shown: the event's on the menu, the race's own in a free-play race (W-Q). */
@@ -598,6 +629,9 @@ export function createApp(opts: AppOptions): AppHandle {
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road, sky.wet);
     attractPose = null;
+    // The landmarks of this road that ask for the finish shot (the camera's, never the sim's).
+    shotFoci = shotFociOf(stream.road);
+    finishShot = null;
     tuneRadio();
   };
   /** Makes `id` (a qualified event) the race's event; its pack's road data must be loaded. */
@@ -733,7 +767,16 @@ export function createApp(opts: AppOptions): AppHandle {
   let staleBuild: StaleBuild | null = null;
   const offerUpdate = () => {
     const watch = staleBuild;
-    ui.offerReload(state === 'results' && watch?.waiting() ? () => void watch.reloadNow() : null);
+    const forced = testReloadOffer();
+    ui.offerReload(
+      state !== 'results'
+        ? null
+        : forced
+          ? () => undefined
+          : watch?.waiting()
+            ? () => void watch.reloadNow()
+            : null,
+    );
   };
   const go = (e: AppEvent) => {
     const next = transition(state, e);
@@ -1087,6 +1130,20 @@ export function createApp(opts: AppOptions): AppHandle {
               aspect: viewAspect(),
             },
           );
+          // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
+          if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
+            if (!finishShot) {
+              const focus = nearestFocus(shotFoci, me.x, me.z, SHOT_REACH_M);
+              if (focus) finishShot = { held: pose, focus, from: outcome.doneTick };
+            }
+            if (finishShot)
+              pose = shotPose(
+                finishShot.held,
+                finishShot.focus,
+                viewAspect(),
+                (race.tick - finishShot.from) / SHOT_EASE_TICKS,
+              );
+          }
         } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
@@ -1161,6 +1218,7 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   const roadsArrived = (reg: ContentRegistry) => {
     registry = reg;
+    clearLoadRetry(ui);
     // A race keeps the key it started under (its packs' roads were all in before it started).
     if (state === 'race') return;
     hashes = raceHashes(eventId);
@@ -1184,7 +1242,8 @@ export function createApp(opts: AppOptions): AppHandle {
       return true;
     } catch (err) {
       console.warn('region road data did not load', err);
-      ui.notice(`${choice.name} did not load. Check the connection and tap Race again.`);
+      // Retry goes on to the race the player asked for (the picked region, fetched again).
+      offerLoadRetry(ui, choice.name, () => handle.startRace());
       return false;
     } finally {
       loadingRoads = false;
@@ -1203,20 +1262,30 @@ export function createApp(opts: AppOptions): AppHandle {
     curr = newSim(seeds.next()).snapshot();
     prev = null;
   };
+  /** Fetches the picked region's road data in the background; says so, with Retry, if it fails. */
+  const loadPicked = (choice: RegionChoice) =>
+    void library.loadRoads(choice.packId).then(
+      (reg) => {
+        roadsArrived(reg);
+        showPicked();
+      },
+      (err: unknown) => {
+        console.warn('region road data did not load', err);
+        // Only for the region still picked: a pick made since has its own load and its own say.
+        if (pickedChoice()?.id === choice.id)
+          offerLoadRetry(ui, choice.name, () => {
+            if (pickedChoice()?.id === choice.id) loadPicked(choice);
+          });
+      },
+    );
   const pickRegion = (id: string) => {
     const choice = regions.find((r) => r.id === id);
     if (!choice) return;
+    clearLoadRetry(ui);
     // The routes on offer are the new region's, once its road data is in.
     if (choice.eventId !== eventId) ui.setRoutes([], null);
     if (library.hasRoads(choice.packId)) showPicked();
-    else
-      void library.loadRoads(choice.packId).then(
-        (reg) => {
-          roadsArrived(reg);
-          showPicked();
-        },
-        () => undefined, // Race tries again and says so if it fails
-      );
+    else loadPicked(choice);
   };
   /**
    * The route picker (the maintainer, 2026-10-01: "Yes, add as routes"): a real road, or null for
@@ -1235,11 +1304,13 @@ export function createApp(opts: AppOptions): AppHandle {
   // its road data is in). The Keys' real roads are not in the first-load bundle (run W-P): they are
   // fetched now, in the background, so the picker offers them and a race starts without a wait.
   offerRoutes();
-  if (!library.hasRoads('base'))
+  const loadKeysRoads = () =>
     void library.loadRoads('base').then(roadsArrived, (err: unknown) => {
-      // Race fetches them again, with a busy line and a notice if that fails too.
+      // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
       console.warn('the Keys real-road data did not load', err);
+      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads);
     });
+  if (!library.hasRoads('base')) loadKeysRoads();
 
   // ---- The career flow (run W-R) ----------------------------------------------------------------
   const careerReady: Promise<CareerFlow | null> = import('./career-flow').then(
@@ -1281,6 +1352,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // menu race's picks beside it (playtest 4, P4-12).
     recorder.beginRace(race, replayKey, options ? { ...options } : undefined);
     outcome = createOutcome();
+    finishShot = null;
     lookWatch.reset();
     seenPoll.reset();
     lastLandingRef = null;
@@ -1324,7 +1396,7 @@ export function createApp(opts: AppOptions): AppHandle {
           },
           (err: unknown) => {
             console.warn('career road data did not load', err);
-            ui.notice(`${def.regionName} did not load. Check the connection and try again.`);
+            offerLoadRetry(ui, def.regionName, () => startCareerRace(def, node));
             return false;
           },
         )

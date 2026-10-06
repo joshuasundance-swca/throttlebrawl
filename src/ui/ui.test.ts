@@ -6,6 +6,7 @@ import {
   formatSpeed,
   healthFraction,
   ordinal,
+  reloadOfferText,
   resultText,
   riderCount,
   targetOf,
@@ -95,6 +96,16 @@ describe('ui formatting', () => {
     expect(bust.headline).toBe('Busted');
     expect(bust.detail).toContain('Fine: $400');
     expect(bust.busted).toBe(true);
+  });
+
+  // Playtest 4 run A's second fix check, punch 2: "It reloads when you leave this screen" was wrong
+  // for Race again (no reload). The card names the one way out that reloads (app/states.test.ts).
+  it('says exactly when the update card reloads: the menu from a race result, the map from a career one', () => {
+    const quick = reloadOfferText('results');
+    const career = reloadOfferText('careerResults');
+    expect(quick).toBe('The game was updated while you raced. It reloads when you go back to the menu.');
+    expect(career).toBe('The game was updated while you raced. It reloads when you go to the map.');
+    for (const t of [quick, career]) expect(t).not.toMatch(/leave this screen/);
   });
 
   it('reads the build id from the stamp', () => {

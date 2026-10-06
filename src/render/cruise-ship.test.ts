@@ -17,6 +17,7 @@ import {
   type BakedRoad,
   type RoadNetwork,
 } from '../road';
+import { CRUISE_SHIP_TOP } from './cruise-ship-top';
 import { readGlb } from './glb';
 import { LANDMARK_MID_M, LandmarkLayer, landmarkPlacements, type LandmarkPlacement } from './landmarks';
 import { createFlatLook } from './look';
@@ -210,12 +211,13 @@ describe('the whole hull lies over open water', () => {
     }
     print(`ship: ${mine.length} vertices, nearest road edge ${nearest.toFixed(1)} m from any of them`);
     expect(nearest).toBeGreaterThan(20);
-    // The waterline: the hull reaches 8 m under it, the top stands 60 m over it.
+    // The waterline: the hull reaches 8 m under it, and the top deck's highest part (the funnel's cap, 64.8 m)
+    // stands over it, both at the ship's scale.
     const low = Math.min(...mine.map((v) => v.y));
     const high = Math.max(...mine.map((v) => v.y));
     print(`ship hull from y ${low.toFixed(2)} to ${high.toFixed(2)}`);
-    expect(low).toBeCloseTo(-8, 0);
-    expect(high).toBeCloseTo(60, 0);
+    expect(low).toBeCloseTo(-8 * ship.scale, 0);
+    expect(high).toBeCloseTo(CRUISE_SHIP_TOP.topM * ship.scale, 0);
     layer.dispose();
   });
 });
@@ -242,5 +244,59 @@ describe('a rider far down the street gets the light hull', () => {
     layer.update(ship.x + LANDMARK_MID_M + 500, ship.z);
     expect(layer.counts().drawCalls).toBe(0);
     layer.dispose();
+  });
+});
+
+describe('the ship is a real one in scale and shows a cruise ship over a roofline (playtest 4, run C, lane J3)', () => {
+  /** The big class that calls at Key West (a 360 m ship, 70 to 75 m over the sea at its funnel): the model's 290 m, drawn 1.25 times. */
+  const REAL_LENGTH_M: readonly [number, number] = [340, 380];
+  const REAL_HEIGHT_M: readonly [number, number] = [66, 85];
+
+  it('is drawn at the scale of the biggest ships that call there, its footprint box the scaled hull', () => {
+    if (!ship) throw new Error('no ship');
+    const f = ship.feature;
+    const length = f.s1 - f.s0;
+    const beam = Math.abs(f.d1 - f.d0);
+    const top = CRUISE_SHIP_TOP.topM * ship.scale;
+    print(
+      `ship scale ${ship.scale}: box ${length.toFixed(1)} m by ${beam.toFixed(1)} m, top ${top.toFixed(1)} m`,
+    );
+    expect(length).toBeGreaterThanOrEqual(REAL_LENGTH_M[0]);
+    expect(length).toBeLessThanOrEqual(REAL_LENGTH_M[1]);
+    // The model is 290 m by 36 m: the box is that times the scale (to a metre).
+    expect(length).toBeCloseTo(290 * ship.scale, 0);
+    expect(beam).toBeCloseTo(36 * ship.scale, 0);
+    expect(top).toBeGreaterThanOrEqual(REAL_HEIGHT_M[0]);
+    expect(top).toBeLessThanOrEqual(REAL_HEIGHT_M[1]);
+  });
+
+  it('carries its top deck (a funnel, a mast, lifeboats and slides) as a piece of its own, which the pier has not (control)', async () => {
+    if (!ship) throw new Error('no ship');
+    const kit = await keysKit();
+    const only = (id: string) =>
+      new LandmarkLayer(new Map([['keys-landmarks', kit]]), look, {
+        road: duval((r) => ({
+          ...r,
+          features: (r.features ?? []).filter((x) => x.kind !== 'landmark' || x.id === id),
+        })).road,
+      });
+    const withShip = only(ship.feature.id);
+    const pier = only('mallory-pier');
+    expect(withShip.counts().pieces, 'the hull and the top deck').toBe(2);
+    expect(pier.counts().pieces, 'the pier is one piece').toBe(1);
+    // The funnel's cap stands over the model's own top (60 m, its old funnel box).
+    withShip.update(ship.x, ship.z);
+    const mesh = withShip.group.children[0] as Mesh;
+    const pos = mesh.geometry.getAttribute('position') as BufferAttribute;
+    let highest = -Infinity;
+    for (let i = 0; i < pos.count; i++) highest = Math.max(highest, pos.getY(i));
+    expect(highest, 'over the model`s own 60 m').toBeGreaterThan(60 * ship.scale + 2);
+    // The slides, the lifeboats and the rest cost a few hundred triangles on the hull's 378.
+    const tops = withShip.levels()[1]?.[0];
+    print(`ship top deck: ${tops?.[1]} triangles, drawn out to ${tops?.[0]} m`);
+    expect(tops?.[1] ?? 0, 'the top deck`s triangles').toBeGreaterThan(200);
+    expect(tops?.[1] ?? 0).toBeLessThan(900);
+    withShip.dispose();
+    pier.dispose();
   });
 });

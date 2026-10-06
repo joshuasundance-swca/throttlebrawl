@@ -47,7 +47,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import type { RoadNetwork } from '../road';
+import { planStreetFurniture, type RoadNetwork } from '../road';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
@@ -184,8 +184,7 @@ const BACK_ROW_M = 46;
 const BACK_ROW_EVERY_M = 34;
 /** The headquarters stands this far past the verge, behind the last plaza. */
 const HQ_BACK_M = 24;
-/** Lamps and planters along a sidewalk, m. [default] */
-const LAMP_EVERY_M = 30;
+// The lamps and planters along a sidewalk are road/furniture.ts's now (DT_LAMP_EVERY_M).
 /** Cross streets: their reach from the avenue, their roadway's half width, a lane's offset, m. */
 export const CROSS_REACH_M = 200;
 const CROSS_ROAD_HALF_M = 5.5;
@@ -557,133 +556,9 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
         }
       }
 
-      // Lamps on the sidewalks and the plazas, a planter between each two, and the kit's clutter.
-      for (const want of ['downtown', 'plaza'] as const) {
-        for (const [a, b] of runs(side, want)) {
-          for (let k = 0; ; k++) {
-            const s = a + 6 + k * LAMP_EVERY_M + (side > 0 ? LAMP_EVERY_M / 2 : 0);
-            if (s > b - 4) break;
-            if (clear(side, s - 1, s + 1, outer, outer + 1.6)) {
-              const p = w(s, side * (outer + 0.6), LAND_TOP_M);
-              place({
-                model: 'kit',
-                variant: DT.lamp,
-                rule: 'lamp',
-                p,
-                turn: faceRoad(p, s),
-                sy: 1,
-                foot: null,
-                edge: e.index,
-                s,
-                d: side * (outer + 0.6),
-              });
-            }
-            const sp = s + LAMP_EVERY_M / 2;
-            if (sp < b - 4 && clear(side, sp - 1.5, sp + 1.5, outer + 0.8, outer + 3.4)) {
-              const pick = h(k + Math.round(a), side, 8);
-              const p = w(sp, side * (outer + 2.3), LAND_TOP_M);
-              if (pick < 0.45)
-                place({
-                  model: 'kit',
-                  variant: DT.planter,
-                  rule: 'planter',
-                  p,
-                  turn: 0,
-                  sy: 1,
-                  foot: null,
-                  edge: e.index,
-                  s: sp,
-                  d: side * (outer + 2.3),
-                });
-              else if (pick < 0.6)
-                place({
-                  model: 'props',
-                  variant: SF_PROPS.hydrant,
-                  rule: 'hydrant',
-                  p,
-                  turn: faceRoad(p, sp),
-                  sy: 1,
-                  foot: null,
-                  edge: e.index,
-                  s: sp,
-                  d: side * (outer + 2.3),
-                });
-              else if (pick < 0.8)
-                place({
-                  model: 'props',
-                  variant: SF_PROPS.scooter,
-                  rule: 'scooter',
-                  p,
-                  turn: pick * 40,
-                  sy: 1,
-                  foot: null,
-                  edge: e.index,
-                  s: sp,
-                  d: side * (outer + 2.3),
-                });
-              else {
-                const v = SF_PROPS.boards[Math.floor(h(k, side, 9) * 3) % 3] ?? 6;
-                place({
-                  model: 'props',
-                  variant: v,
-                  rule: 'board',
-                  p,
-                  turn: faceRoad(p, sp),
-                  sy: 1,
-                  foot: null,
-                  edge: e.index,
-                  s: sp,
-                  d: side * (outer + 2.3),
-                });
-              }
-            }
-          }
-        }
-      }
-
-      // Plazas: benches and planters in rows, the orb in the middle of each.
-      for (const [a, b] of runs(side, 'plaza')) {
-        const mid = (a + b) / 2;
-        for (let s = a + 10; s < b - 8; s += 16) {
-          for (const across of [7, 13]) {
-            if (!clear(side, s - 2, s + 2, outer + across - 2, outer + across + 2)) continue;
-            const p = w(s, side * (outer + across), LAND_TOP_M);
-            const bench = across === 7;
-            place({
-              model: 'kit',
-              variant: bench ? DT.bench : DT.planter,
-              rule: bench ? 'bench' : 'plaza-planter',
-              p,
-              turn: faceRoad(p, s),
-              sy: 1,
-              foot: null,
-              edge: e.index,
-              s,
-              d: side * (outer + across),
-            });
-          }
-        }
-        // The orb: in the middle if it is free, else the nearest free spot along the plaza.
-        for (const off of [0, -40, 40, -80, 80, -120, 120]) {
-          const at = mid + off;
-          if (at < a + 8 || at > b - 8 || !clear(side, at - 4, at + 4, outer + 6, outer + 14, 1)) continue;
-          const p = w(at, side * (outer + 10), LAND_TOP_M);
-          place({
-            model: 'kit',
-            variant: DT.orb,
-            rule: 'orb',
-            p,
-            turn: 0,
-            sy: 1,
-            foot: null,
-            edge: e.index,
-            s: at,
-            d: side * (outer + 10),
-          });
-          break;
-        }
-      }
-
+      // The street furniture (lamps, a planter, hydrant, scooter or board between each two, the plaza's
+      // benches, planters and orb) stands where road/furniture.ts plans it, after this edge's sides
+      // (playtest 4, "solid but forgiving": the sim meets what is drawn).
       // The city floor: from the land strip's edge out to CITY_FLOOR_M, every 20 m.
       for (let s = 0; s < e.length; s += 20) {
         const s1 = Math.min(e.length, s + 20);
@@ -824,28 +699,43 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
           quad(soup, a, cc, b, dd, DOWNTOWN_COLOURS.slot);
         }
     }
-    // The signals: on the far right corner for each way along the avenue, the arm over its lanes.
-    for (const way of [1, -1] as const) {
-      const s = c.s + way * (c.half + 1.5);
-      const d = way * (c.outer + 0.5);
-      const p = road.toWorld(c.edge, Math.max(0, Math.min(e.length, s)), d, LAND_TOP_M);
-      // It faces the riders coming (along -way), and its arm (the model's -X) reaches over the road.
-      const turn = Math.atan2(-way * c.along.x, -way * c.along.z);
-      place({
-        model: 'kit',
-        variant: DT.signal,
-        rule: 'signal',
-        p,
-        turn,
-        sy: 1,
-        foot: null,
-        edge: c.edge,
-        s,
-        d,
-      });
-    }
+    // The signals (one on the far right corner for each way along the avenue) are in the plan below.
     note(c.edge, c.s, at(-c.outer - CROSS_REACH_M, 0));
     note(c.edge, c.s, at(c.outer + CROSS_REACH_M, 0));
+  }
+
+  // The street furniture, from the plan the sim meets (road/furniture.ts, playtest 4: "solid but
+  // forgiving"): the same rules this layer had, moved there unchanged.
+  for (const it of planStreetFurniture(road, seed).items) {
+    if (it.layer !== 'downtown') continue;
+    const e = road.edges[it.edge];
+    if (!e) continue;
+    const p = road.toWorld(it.edge, Math.max(0, Math.min(e.length, it.s)), it.d, LAND_TOP_M);
+    let turn: number;
+    if ('yaw' in it.turn) turn = it.turn.yaw;
+    else if ('face' in it.turn) {
+      const c = road.toWorld(it.edge, it.s, 0, 0);
+      turn = Math.atan2(c.x - p.x, c.z - p.z) + it.turn.face;
+    } else {
+      // A signal faces the riders coming (along -way), its arm (the model's -X) over the road.
+      const f = road.toWorld(it.edge, Math.min(e.length, it.s + 1), 0, 0);
+      const b = road.toWorld(it.edge, Math.max(0, it.s - 1), 0, 0);
+      const fl = Math.hypot(f.x - b.x, f.z - b.z) || 1;
+      turn = Math.atan2((-it.turn.along * (f.x - b.x)) / fl, (-it.turn.along * (f.z - b.z)) / fl);
+    }
+    const props = it.kind === 'hydrant' || it.kind === 'scooter' || it.kind === 'board';
+    place({
+      model: props ? 'props' : 'kit',
+      variant: it.variant,
+      rule: it.rule,
+      p,
+      turn,
+      sy: 1,
+      foot: null,
+      edge: it.edge,
+      s: it.s,
+      d: it.d,
+    });
   }
 
   return finish(crossings, CITY_FLOOR_M + 80);

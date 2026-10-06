@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_HEIGHT_M } from '../core';
 import {
   fixtureNetwork,
   lintRoadNetwork,
@@ -142,6 +143,34 @@ describe('road/validate: the road lint', () => {
     const decor = clean();
     road(decor, 'a').features = [{ ...pickup, d0: 1, d1: 3, params: { object: 'pickup' } }];
     expect(rules(decor)).not.toContain('features');
+  });
+
+  it("features: a hazard's params.heightM must be above 0 and at most MAX_HEIGHT_M (the height contract)", () => {
+    const pickup = {
+      kind: 'hazard',
+      id: 'p',
+      s0: 100,
+      s1: 105.4,
+      d0: 6.0,
+      d1: 8.1,
+      params: { solid: true, object: 'pickup', heightM: 1.9 },
+    };
+    const lint = (heightM: unknown) => {
+      const b = clean();
+      road(b, 'a').features = [{ ...pickup, params: { ...pickup.params, heightM } }];
+      return lintRoadNetwork(b)
+        .filter((i) => i.rule === 'features')
+        .map((i) => `${i.pointer} ${i.message}`)
+        .join();
+    };
+    expect(lint(1.9)).toBe('');
+    // A feature that gives none is fine: the object's default height applies (core hazardHeightM).
+    const none = clean();
+    road(none, 'a').features = [{ ...pickup, params: { solid: true, object: 'pickup' } }];
+    expect(rules(none)).not.toContain('features');
+    // The negative controls: zero, negative, over the bound, and not a number.
+    for (const bad of [0, -1, MAX_HEIGHT_M + 0.1, '1.9', null])
+      expect(lint(bad), `heightM ${String(bad)}`).toMatch(/\/features\/0\/params\/heightM .*heightM/);
   });
 
   it('junction-ends: fails a road end more than 0.5 m from its junction', () => {

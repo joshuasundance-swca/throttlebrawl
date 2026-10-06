@@ -1,11 +1,15 @@
 // The offline worker's build step (scripts/service-worker.mjs): the worker's precache list is every
 // file the build wrote but the worker itself, and its cache name changes whenever any file's bytes
 // do, so a deploy always installs a new worker with a new cache and the last build's is dropped.
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { runInNewContext } from 'node:vm';
+import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { CACHE_PREFIX } from '../src/platform/offline-worker';
 import { SERVICE_WORKER_FILE } from '../src/platform/index';
-import { SW_FILE, workerConfig, workerSource } from './service-worker.mjs';
+import { SW_FILE, serviceWorkerPlugin, workerConfig, workerSource } from './service-worker.mjs';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 /** A built page: it loads its entry script, as Vite's index.html does. */
@@ -64,6 +68,65 @@ describe('the offline worker build step', () => {
     expect(() => workerConfig('abc1234', [{ path: 'index.html', bytes: enc('<html>') }])).toThrow(
       /index\.html/,
     );
+  });
+
+  it('writes a gzip copy beside each JavaScript, JSON and model file under assets/, and the worker list leaves the copies out', () => {
+    // Playtest 4 run B's live check, punch item 8: the game's host sends every file uncompressed
+    // (no Content-Encoding, whatever the browser accepts), so a phone downloaded 1.64 MB of
+    // first-load JavaScript, not the 472 KB gzip the budget counts. The host serves stored bytes as
+    // they are, so the build stores a `.gz` copy the offline worker downloads and unpacks itself.
+    const dir = mkdtempSync(path.join(tmpdir(), 'tb-sw-'));
+    try {
+      const big =
+        'export const road = ' + JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ i, x: i * 2 })));
+      const files: Record<string, string> = {
+        'index.html': PAGE,
+        'assets/index-AAA.js': big,
+        'assets/road-R1.json': JSON.stringify({ points: Array.from({ length: 300 }, (_, i) => [i, i]) }),
+        'assets/ds/keys/bike-B1.glb': 'glTF'.repeat(500),
+        'assets/ds/keys/clip-C1.ogg': 'OggS'.repeat(100),
+        'manifest.webmanifest': '{}',
+        'icon-192.png': 'png',
+        [SW_FILE]: 'self.addEventListener("fetch", () => {});',
+      };
+      for (const [rel, body] of Object.entries(files)) {
+        mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+        writeFileSync(path.join(dir, rel), body);
+      }
+      const plugin = serviceWorkerPlugin({ root: dir, buildId: 'abc1234' });
+      plugin.writeBundle.handler({ dir });
+
+      const gz = readdirSync(dir, { recursive: true })
+        .map((p) => String(p).split(path.sep).join('/'))
+        .filter((p) => p.endsWith('.gz'))
+        .sort();
+      expect(gz).toEqual([
+        'assets/ds/keys/bike-B1.glb.gz',
+        'assets/index-AAA.js.gz',
+        'assets/road-R1.json.gz',
+      ]);
+      for (const p of gz) {
+        const original = readFileSync(path.join(dir, p.slice(0, -3)));
+        const packed = readFileSync(path.join(dir, p));
+        expect(gunzipSync(packed).equals(original), p).toBe(true);
+        expect(packed.length, `${p} is smaller than its file`).toBeLessThan(original.length);
+      }
+      // Negative control: audio, the page, the manifest and the icon get no copy (audio is already
+      // compressed; the rest sit outside assets/ and are checked by their bytes).
+      expect(gz.some((p) => /\.(ogg|html|webmanifest|png)\.gz$/.test(p))).toBe(false);
+
+      // The worker learns which files have a copy, and never caches a copy as a file of its own.
+      const scope: { __OFFLINE__?: { files: string[]; gzip?: string[] } } = {};
+      runInNewContext(readFileSync(path.join(dir, SW_FILE), 'utf8'), {
+        self: Object.assign(scope, { addEventListener: () => undefined }),
+      });
+      const config = scope.__OFFLINE__ ?? { files: [] };
+      expect(config.gzip).toEqual(['.glb', '.js', '.json']);
+      expect(config.files.filter((f) => f.endsWith('.gz'))).toEqual([]);
+      expect(config.files).toContain('assets/index-AAA.js');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('hands the worker its config ahead of its code', () => {

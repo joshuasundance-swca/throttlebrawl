@@ -29,7 +29,15 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
 import { dependabotOnlyCommits } from './notes.mjs';
-import { planTier, TIMINGS_FILE, unmeasured } from './shard-plan.mjs';
+import {
+  JOB_SHARE,
+  overLine,
+  planTier,
+  readSuiteJobs,
+  SUITE_FILE,
+  TIMINGS_FILE,
+  unmeasured,
+} from './shard-plan.mjs';
 
 const stripAnsi = (s) => stripVTControlCharacters(s);
 const lastExamined = (out) => [...out.matchAll(/^\[examined\] (.*)$/gm)].pop()?.[1] ?? '';
@@ -270,8 +278,22 @@ function sliceOf(step) {
   console.log(
     `\n${step.name}: slice ${slice.i}/${slice.n} runs ${mine.files.length} of ${files.length} files` +
       (step.shardable === 'e2e' ? `, ${testsIn(mine.files)} of ${total} tests` : '') +
-      `; planned CI seconds per slice: ${plan.map((p) => p.predicted).join(' / ')} (scripts/shard-plan.mjs)`,
+      `; planned job seconds per slice, setup included: ${plan.map((p) => p.predicted).join(' / ')} (scripts/shard-plan.mjs)`,
   );
+  // A slice planned past its share of the job's timeout runs into the timeout on a slow runner.
+  // Only for the slice count suite.yml runs; a local --plan with another count is a what-if.
+  const jobs = readSuiteJobs();
+  const job = jobs?.[step.shardable];
+  if (job && job.slices === slice.n) {
+    const over = overLine(plan, job.timeout);
+    if (over.length > 0) {
+      const text =
+        `${step.name}: ${over.map((o) => `slice ${o.slice}/${slice.n} is planned at ${o.predicted} s`).join(', ')}, ` +
+        `past ${Math.round(JOB_SHARE * 100)}% of its ${job.timeout} s timeout (${over[0]?.line} s). Refresh ` +
+        `${TIMINGS_FILE} or add a slice in ${SUITE_FILE}.`;
+      console.log(process.env.GITHUB_ACTIONS ? `::warning title=slice plan::${text}` : `warning: ${text}`);
+    }
+  }
   // A file the timing table does not know is planned at an estimate; say so, so a new slow test
   // cannot quietly overload a slice. On CI it is also an annotation on the run's summary.
   const missing = unmeasured(step.shardable, files);
@@ -284,7 +306,7 @@ function sliceOf(step) {
   }
   for (const [k, s] of (planOnly ? plan : [mine]).entries()) {
     if (planOnly)
-      console.log(`[slice ${k + 1}/${slice.n}] ${s.files.length} files, about ${s.predicted} s on CI`);
+      console.log(`[slice ${k + 1}/${slice.n}] ${s.files.length} files, about ${s.predicted} s of job on CI`);
     for (const f of s.files) console.log(`  ${f}`);
   }
   if (mine.files.length === 0) {

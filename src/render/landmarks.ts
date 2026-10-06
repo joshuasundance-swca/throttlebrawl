@@ -35,10 +35,12 @@ import {
   Vector3,
 } from 'three';
 import { landmarkParams, type BakedFeature, type LandmarkParams, type RoadNetwork } from '../road';
+import { CRUISE_SHIP_TOP, CRUISE_SLIDES, cruiseShipTopSoup } from './cruise-ship-top';
 import { fredSoup, FRED, type Soup } from './fred';
 import { anchorageSoup, ANCHORAGE_PIECE_R_M } from './gg-anchorage';
 import type { LookStyle } from './look';
 import { islandSoup, pigeonKeyPlan, PIGEON_KEY } from './pigeon-key';
+import { SUMMIT_LOT, summitLotSoup } from './summit-lot';
 import {
   LANDMARK_KITS,
   LANDMARK_ROLE_PALETTE,
@@ -862,12 +864,72 @@ function pigeonKey(c: Compose): Piece[] | null {
   ];
 }
 
+/**
+ * The cruise ship's top deck (playtest 4, P4-19, lane J3; cruise-ship-top.ts): the funnel, the mast, the
+ * lifeboats and the water slides, code-made in the model's own frame and set on the ship by its placement,
+ * at its scale. One piece, one level, drawn out to LANDMARK_MID_M, beside the ship's own pieces.
+ */
+function cruiseShipTop(b: MeshBuilder, at: LandmarkPlacement): Piece {
+  const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
+  const v0 = b.vertices;
+  b.addSoup(cruiseShipTopSoup(), m);
+  for (const slide of CRUISE_SLIDES)
+    b.addTube(
+      slide.points.map((p) => new Vector3(p[0], p[1], p[2]).applyMatrix4(m)),
+      slide.radius * at.scale,
+      6,
+      new Color(slide.hex),
+    );
+  return {
+    x: at.x,
+    z: at.z,
+    r: CRUISE_SHIP_TOP.radiusM * at.scale,
+    tiers: [{ maxM: LANDMARK_MID_M, v0, n: b.vertices - v0 }],
+  };
+}
+
+/** Pieces a kit node gets besides its own model, by `<kit>#<node>`: code-made parts set on it. */
+const EXTRAS: Readonly<Record<string, (b: MeshBuilder, at: LandmarkPlacement) => Piece>> = {
+  'keys-landmarks#cruise_ship': cruiseShipTop,
+};
+
+/**
+ * The Twin Peaks summit lot (playtest 4, run C; the sheets' T2): `sf-landmarks#summit_lot`, a paved viewpoint lot
+ * with a parked tour bus, a rail and two coin binoculars, made in summit-lot.ts. One piece with one level, drawn
+ * out to LANDMARK_MID_M; the kit only has to be loaded. The soup is sheared to the road's grade between the lot's
+ * two ends (read from the road itself), so the pavement meets the road's level along the whole of it.
+ */
+function summitLot(c: Compose): Piece[] {
+  const { at, builder, road } = c;
+  const hz = SUMMIT_LOT.halfAlongM * at.scale;
+  const heightAt = (z: number): number => {
+    const wx = at.x + Math.sin(at.yaw) * z;
+    const wz = at.z + Math.cos(at.yaw) * z;
+    const p = road.project(wx, wz, at.edge);
+    return road.toWorld(at.edge, p.s, p.d, 0).y;
+  };
+  const grade = (heightAt(hz) - heightAt(-hz)) / (2 * hz);
+  const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
+  return [
+    {
+      x: at.x,
+      z: at.z,
+      r: Math.hypot(SUMMIT_LOT.halfAcrossM, SUMMIT_LOT.halfAlongM) * at.scale,
+      tiers: [{ maxM: LANDMARK_MID_M, ...builder.addSoup(summitLotSoup(grade / at.scale), m) }],
+    },
+  ];
+}
+
 /** Virtual nodes composed in code, by `<kit>#<node>`. */
 const COMPOSITES: Readonly<Record<string, (c: Compose) => Piece[] | null>> = {
+  'sf-landmarks#summit_lot': summitLot,
   'golden-gate#gg_bridge': suspensionBridge,
   'keys-landmarks#fred_the_tree': fredTheTree,
   'seven-mile-kit#pigeon_key': pigeonKey,
 };
+
+/** Whether a `<kit>#<node>` is a virtual node composed in code (the bridge, Fred the Tree, Pigeon Key, the summit lot). */
+export const isComposite = (kit: string, node: string): boolean => `${kit}#${node}` in COMPOSITES;
 
 export interface LandmarkCounts {
   /** Landmark features drawn (their kit and node loaded). */
@@ -938,6 +1000,8 @@ export class LandmarkLayer {
       const made = composite
         ? composite({ road: opts.road, at, kit, builder, paint, paintColour })
         : this.single(builder, paint, kit, at);
+      const extra = EXTRAS[`${at.kit}#${at.node}`];
+      if (extra && made && made.length > 0) made.push(extra(builder, at));
       if (!made || made.length === 0) {
         this.skipped++;
         continue;

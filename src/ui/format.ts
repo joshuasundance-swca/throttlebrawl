@@ -39,6 +39,17 @@ function cash(n: number): string {
 }
 
 /**
+ * The update card on a result screen (a deploy replaced the game while the player raced): what it
+ * says and exactly when the reload comes (playtest 4 run A's second fix check, punch 2). Race again,
+ * Retry and Next go into a race and never reload; only the way back to the menu does, and a career
+ * result's way back is its Map (app/states.test.ts holds that rule).
+ */
+export function reloadOfferText(screen: 'results' | 'careerResults'): string {
+  const when = screen === 'careerResults' ? 'go to the map' : 'go back to the menu';
+  return `The game was updated while you raced. It reloads when you ${when}.`;
+}
+
+/**
  * The results screen's lines. The headline format `1st of 5` is read by the bot race test. The
  * tally (takedowns and style, ui-3) is null when the result carries neither.
  */
