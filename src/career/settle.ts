@@ -80,6 +80,7 @@ const STYLE_LABELS: Readonly<Record<string, string>> = {
   trick: 'Tricks',
   wheelie: 'Wheelies',
   drift: 'Drifts',
+  roofRide: 'Roof rides',
 };
 
 /** A wreck bills this share of the bike's price. [default] */

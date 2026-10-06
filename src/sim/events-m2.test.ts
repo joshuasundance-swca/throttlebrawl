@@ -9,7 +9,7 @@ describe('the M2 SimEvent contract', () => {
     expect([...TAKEDOWN_KINDS]).toEqual(['traffic', 'scenery', 'health']);
   });
 
-  it('lists the five style sources the maintainer decided, tricks (playtest 2) and the playtest 3 moves', () => {
+  it('lists the five style sources the maintainer decided, tricks (playtest 2), the playtest 3 moves and the roof ride', () => {
     expect([...STYLE_KINDS]).toEqual([
       'nearMiss',
       'airtime',
@@ -19,6 +19,8 @@ describe('the M2 SimEvent contract', () => {
       'trick',
       'wheelie',
       'drift',
+      // Riding on top of a vehicle (the maintainer, 2026-10-06: "land on it and ride on it").
+      'roofRide',
     ]);
     expect([...TRICK_IDS]).toEqual(['backflip', 'frontflip', 'wheelie', 'whip', 'newspaper']);
   });
