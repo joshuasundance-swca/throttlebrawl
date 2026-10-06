@@ -8,11 +8,19 @@
 // keeps the street open, apart). Each with its control: the street with no buildings shows the sea.
 import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../../src/road';
+import {
+  createRoadNetwork,
+  OLDTOWN_RULES,
+  planOldTown,
+  type BakedNetwork,
+  type BakedRoad,
+  type OldTownRule,
+  type RoadNetwork,
+} from '../../src/road';
 import { createFlatLook } from '../../src/render/look';
 import { bakeRepoModel } from '../../src/render/model-files.test-util';
 import { buildRoadScene, type RoadDressing } from '../../src/render/road-mesh';
-import { KEYS_KIT, scatterRoadside, type RoadsideItem, type RoadsideRule } from '../../src/render/roadside';
+import { KEYS_KIT, scatterRoadside, type RoadsideItem } from '../../src/render/roadside';
 import { settledPose } from './chase-sight.test-util';
 import { blocks, type Occluder } from './occlusion.test-util';
 
@@ -49,18 +57,18 @@ function track(): { road: RoadNetwork; dressing: RoadDressing } {
   return { road: createRoadNetwork({ network, roads }), dressing };
 }
 
-/** The second row as it was before run B's fix check: half a house open, a 0.3 to 1.2 m gap, now and then a lot. */
-const OLD_KIT = {
-  ...KEYS_KIT,
-  rules: KEYS_KIT.rules.map((r) => {
-    if (r.id !== 'oldtown-back') return r;
-    const before: RoadsideRule = { ...r, frontage: { gap: [0.3, 1.2], lotRate: 0.03, lotM: 6 } };
-    delete before.behindOpenM;
-    return before;
-  }),
-};
+/**
+ * The second row as it was before run B's fix check: half a house open, a 0.3 to 1.2 m gap, now and then a lot.
+ * The street fronts are a structure plan since 2026-10-06 (road/structures/oldtown.ts), so the old row is the
+ * plan's rule as it was.
+ */
+const OLD_RULES: readonly OldTownRule[] = OLDTOWN_RULES.map((r) => {
+  if (r.id !== 'oldtown-back') return r;
+  const { behindOpenM: _now, ...before } = r;
+  return { ...before, frontage: { gap: [0.3, 1.2], lotRate: 0.03, lotM: 6 } };
+});
 
-function scene(seed: number, kit: typeof KEYS_KIT = KEYS_KIT) {
+function scene(seed: number, rules: readonly OldTownRule[] = OLDTOWN_RULES) {
   const { road, dressing } = track();
   const built = buildRoadScene(road, look, dressing, { seed, roadsideDensity: 1 });
   const items = scatterRoadside({
@@ -68,10 +76,11 @@ function scene(seed: number, kit: typeof KEYS_KIT = KEYS_KIT) {
     dressing,
     seed,
     density: 1,
-    kit,
+    kit: KEYS_KIT,
     landReach: (e, side, s) => built.landReach(e, side, s),
     spots: built.spots,
     models,
+    fronts: planOldTown(road, seed, rules).fronts,
   });
   return { road, built, items };
 }
@@ -193,7 +202,7 @@ describe.each([1, 7, 42])('Duval shows no sea past its rows, seed %i', (seed) =>
   });
 
   it('the measure can tell: the second row as it was shows the sea along the streets (control)', () => {
-    const old = scene(seed, OLD_KIT);
+    const old = scene(seed, OLD_RULES);
     const oldAll = occluders(old.items, old.built.spots);
     let views = 0;
     let sea = 0;
