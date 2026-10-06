@@ -70,8 +70,11 @@ export class EdgeLocator {
     });
   }
 
-  /** Every edge (but `except`) whose centre line the point projects onto, within REACH_M across. */
-  at(x: number, z: number, except: number): EdgeHit[] {
+  /**
+   * Every edge (but `except`) whose centre line the point projects onto, within REACH_M across and at most
+   * `pastM` past an end (s is then clamped to that end).
+   */
+  at(x: number, z: number, except: number, pastM = 0.25): EdgeHit[] {
     const out: EdgeHit[] = [];
     for (const e of this.road.edges) {
       if (e.index === except) continue;
@@ -86,7 +89,7 @@ export class EdgeLocator {
         continue;
       }
       const p = projectOnto(this.road, e, x, z);
-      if (p.past > 0.25 || Math.abs(p.d) > REACH_M) continue;
+      if (p.past > pastM || Math.abs(p.d) > REACH_M) continue;
       out.push({ edge: e.index, s: p.s, d: p.d });
     }
     return out;

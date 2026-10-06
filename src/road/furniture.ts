@@ -31,6 +31,7 @@
 //
 // Pure + - * / and core math, like the rest of road/: the same network and seed give the same plan.
 import { atan2, cos, sin } from '../core';
+import { lanesUnderOf } from './lanes-under';
 import type { RoadNetwork } from './network';
 import type { BakedFeature } from './types';
 import { onSide, scatterHash, themeAt, type LandTheme, type SideTag } from './themes';
@@ -456,6 +457,53 @@ function runsOf(length: number, want: (s: number) => boolean): [number, number][
 }
 
 /** Collects the pieces as they are placed. */
+/**
+ * How far off every road's lanes a piece's footprint keeps, m [default]. The maintainer, 2026-10-06: "a road
+ * race in a physical world with honest edges". Street furniture is solid, so a piece on a lane is a solid
+ * thing in it, and the rules above place it by its own road only: Campus Yard's plaza lamps, hydrants and a
+ * planter stood on the Plaza Cut's lanes (the ride-column check, render/road-clear.test-util.ts).
+ */
+export const FURNITURE_LANES_CLEAR_M = 0.25;
+
+/** A footprint's centre and points round its rim (a circle's eight, a box's corners and side middles), (s, d). */
+export function rimOf(shape: FurnitureShape): { s: number; d: number }[] {
+  const out = [{ s: shape.s, d: shape.d }];
+  if (shape.r > 0) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      out.push({ s: shape.s + shape.r * cos(a), d: shape.d + shape.r * sin(a) });
+    }
+    return out;
+  }
+  // The box's u axis is (us, ud); its v axis is u turned a quarter, (-ud, us).
+  for (const [a, b] of [
+    [-1, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, -1],
+    [0, 1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
+  ] as const)
+    out.push({
+      s: shape.s + a * shape.hu * shape.us - b * shape.hv * shape.ud,
+      d: shape.d + a * shape.hu * shape.ud + b * shape.hv * shape.us,
+    });
+  return out;
+}
+
+/** The road whose lanes (FURNITURE_LANES_CLEAR_M wider) a footprint on `edge` stands on, or -1. */
+export function lanesUnderPiece(road: RoadNetwork, edge: number, shape: FurnitureShape): number {
+  const finder = lanesUnderOf(road);
+  for (const q of rimOf(shape)) {
+    const p = road.toWorld(edge, Math.max(0, Math.min(road.edges[edge]?.length ?? 0, q.s)), q.d, 0);
+    const hit = finder.at(p.x, p.y, p.z, FURNITURE_LANES_CLEAR_M);
+    if (hit) return hit.edge;
+  }
+  return -1;
+}
+
 class Collector {
   readonly items: StreetFurniture[] = [];
   constructor(private readonly road: RoadNetwork) {}
@@ -478,6 +526,9 @@ class Collector {
           ? faceRoadYaw(road, edge, s, d) + turn.face
           : roadYaw(road, edge, s) + (turn.along > 0 ? Math.PI : 0);
     const spec: FurnitureSpec = FURNITURE[kind];
+    const shape = shapeOf(road, kind, variant, edge, s, d, yaw, size);
+    // Never on a lane of any road (its own, a branch's, a shortcut's through a plaza).
+    if (lanesUnderPiece(road, edge, shape) >= 0) return;
     this.items.push({
       id: this.items.length,
       kind,
@@ -490,7 +541,7 @@ class Collector {
       d,
       turn,
       size,
-      shape: shapeOf(road, kind, variant, edge, s, d, yaw, size),
+      shape,
       heightM: spec.heightM * size,
     });
   }

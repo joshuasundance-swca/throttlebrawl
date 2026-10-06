@@ -1,0 +1,31 @@
+---
+kind: fixed
+audience: player
+---
+Nothing drawn stands in a lane any more where you ride through it. On Bridge City's Morrison shortcut, the way back to the Hawthorne Bridge ran under the grass: the bridge's verge land lay up to a metre over the link's asphalt, so you rode under it and the chase view turned into a green plane. The same grass lay over the shortcut's way in, and over link roads on Lake Samish, the logging spur, Russian Hill's Jones Street choice and the SF hills' park cut and stair alley. That land now stops where another road's lanes begin. Campus Yard's lamps, hydrants, benches, a planter and a scooter no longer stand on the Plaza Cut's lanes, and they are solid, so you no longer hit a lamp in the middle of the cut. Three billboards that stood on a neighbouring road's lanes now stand beside it: Sandbar Flats' sign by Tarpon Flats, and two in the SF hills. A road event's warning and joke signs now stand past the outermost lane. On a road with two lanes each way they stood in the outer one, and the bot rode through their posts and panels on Bridge City's Burnside Bridge, West Burnside and Broadway South.
+
+For devs:
+
+- **The rule** (the maintainer, 2026-10-06: "a road race in a physical world with honest edges"; `docs/architecture.md`, "Nothing drawn stands in a lane", `[default]` mechanics):
+  - **Land.** `src/render/road-mesh.ts`: a tagged land strip's width is refused where it would lie more than 5 cm over another road's lanes (`landOverRoad`, probed every metre across the strip; `lowerRoadAt` let a road up to 1.5 m lower through). A land cap's curtain leaves out a stretch whose top runs over another road's lanes (`curtain`); Switchback Street's end cap stood 0.7 m into the stair alley. `EdgeLocator.at` takes an optional `pastM`, so the check also sees the half metre past a road's end.
+  - **Street furniture.** `src/road/furniture.ts` drops a piece whose footprint comes within 0.25 m (`FURNITURE_LANES_CLEAR_M`) of any road's lanes, its own included. The sim meets the same plan, so **the sim's pieces move too**: at seed 1, 67 of 5,759 pieces on the 8 networks with furniture are gone. Without the drop, an independent check finds 55 pieces on a lane: 14 on SF downtown's Plaza Cut and its way in, and 41 rental scooters whose turned footprint reached into their own street's outer lane.
+  - **Boards.** `src/render/boards.ts` `boardOffLanes`: a slot's posts, and its panel where it hangs lower than 2.5 m, keep 0.25 m off every road's lanes. If they do not, the board moves out from its road, 0.5 m at a time, up to 12 m. If no spot is clear, it is not built. Three moved: `sign-sandbar-advised` 6 m, `sign-switchback-curb` 8.5 m, `sign-fogline-toll` 1 m. None was dropped.
+  - **Event signs.** `src/sim/modifiers/setpieces.ts` `signCd`: a warning or serial sign stands past the outermost lane at its own spot. The old offset was measured from the piece's lane, which is the one nearest the centre line. It then moves on out until its post and a serial sign's low panel clear every road's lanes, up to 8 m, or the sign is left out. It may stand past a rail. The cops' END OF JURISDICTION sign keeps its post off the lanes the same way (`placeLine`, `src/sim/cops/index.ts`).
+  - `src/road/lanes-under.ts` (new) finds every road's lanes under a world point, from a grid of every edge's centre line.
+- **The ride-column check** (`src/render/road-clear.test-util.ts`, run per PR on all 19 networks):
+  - **The ground rule.** The name exemption for the road's own surfaces is gone. Land, shoulders, the verge band, decks, the water and the paint are held to a height rule. None may stand more than 0.15 m (a kerb) over any road's asphalt at a column point. A steep ground triangle (a curtain, a bank, a wall) is also tested from the knees up, like anything else. Before the fix it found the Morrison grass at `osm-pnw-portland-morrison-out` s 28 to 93, up to 1.09 m (the live check saw 0.14 to 1.07 m at s 37 to 93), and at `morrison-in` s 43 to 59, up to 1.45 m.
+  - **Every board slot.** It now builds every board slot, with a stand-in for a pooled item: 158 boards over the 19 networks. Before, it built only the slots that name a region sign.
+  - **Speed.** Each ground mesh is looked at whole, once, not at every camera pose. The three files take 35 s on the dev machine with 2 workers.
+  - **Negative control.** Land planted 0.3 m over Alder Street's lanes is found there (s 237 to 243, 0.32 m). Land 0.05 m under them, and land 1 m up just past their edge, are not found.
+  - **On main's code** the check fails on 9 network runs: the land on Bridge City (seeds 1, 2 and 3), Samish, C1, Russian Hill and the SF hills, the three boards, and the Plaza Cut's furniture.
+- **`KNOWN` lines deleted:** the Keys' `boards/` and `boards/board-panel` (Sandbar Flats), SF downtown's `road-downtown` (Campus Yard), and the SF hills' `boards/`.
+- **`KNOWN` lines added**, found by the ground rule: not land, but another road's edge across a branch's lanes where the two overlap. Each is a follow-up:
+  - verge bands on Russian Hill's Jones Street choice, the SF hills' park cut and stair alley, and Lake Samish's links and shore roads (up to 1.96 m);
+  - shoulders, paint and a deck end of Switchback Street over the stair alley;
+  - the I-5's shoulder over the east shore road's end;
+  - 1.2 m side walls, drawn as deck, along SF downtown's Plaza Cut and C1's Mill Yard Cut, and at the Samish lake road's ends.
+- **Signs in races.** `tests/sim/event-signs-clear.test.ts` (new) has the bot ride Bridge City (seeds 1 and 3), the logging spur and the Keys' long haul with every road event forced in. It draws every sign the sim puts up as render draws it, and holds them to the same ride column. On the old placement it fails on all four races: posts 4.5 m into Bridge City's lanes, and serial panels 2 m into the lanes. 42 signs, 16 of them serial.
+- **Furniture test.** `src/road/furniture.test.ts`: on every network, no piece stands on any road's lanes. It uses a lane-point grid of its own, not the plan's finder, and has a negative control on the Plaza Cut.
+- **Budgets:** draw calls are unchanged on every route. Triangles: Bridge City +20, Lombard -506, Twin Peaks -470, others within ±130. The tightest held route is Key West: 77 of 80 draw calls.
+
+Not phone-verified. No local browser was run.
