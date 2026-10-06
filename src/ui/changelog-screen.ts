@@ -15,6 +15,15 @@ export const CHANGELOG_CSS = `
   #menu.with-news .menu-main { flex: 1 1 0; min-width: 0; max-width: 600px; }
   #menu.with-news #region-picker, #menu.with-news #route-picker { max-width: 100%; }
 }
+/* That narrower menu wraps its bottom row of small buttons on a phone held sideways (915x412: Copy debug
+   report drops to a second line), and the menu then stood 2 px taller than the screen with its title cut
+   off at the top. On a sideways screen from 381 to 440 px high, beside the card, the menu packs tighter
+   (gaps and title) so all of it stays on the screen. [default] */
+@media (orientation: landscape) and (min-height: 381px) and (max-height: 440px) {
+  #ui #menu.with-news .menu-main { gap: 6px; }
+  #ui #menu.with-news .menu-main > .row { row-gap: 6px; }
+  #ui #menu.with-news .title { font-size: 1.625rem; }
+}
 #whats-new .wn-title { font: 800 0.9375rem ui-monospace, monospace; color: #f5c542; }
 #whats-new ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 #whats-new .row { justify-content: flex-start; gap: 8px; }

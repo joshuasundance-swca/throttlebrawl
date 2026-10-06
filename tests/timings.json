@@ -578,6 +578,7 @@
     "tests/e2e/ui-race-options.spec.ts": 50.8,
     "tests/e2e/ui-radio-panel.spec.ts": 22.5,
     "tests/e2e/ui-region-picker.spec.ts": 28.4,
+    "tests/e2e/ui-route-chips.spec.ts": 260.7,
     "tests/e2e/ui-route-picker.spec.ts": 66.8,
     "tests/e2e/ui-screens.spec.ts": 98.3,
     "tests/e2e/ui-settings-sync.spec.ts": 27.9,
