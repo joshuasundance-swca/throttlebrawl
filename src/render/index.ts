@@ -992,8 +992,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // The tier's reach for the still scenery (quality.ts). Boards keep the slider's own: their words
       // are content, and threats are never trimmed (they are not scenery).
       const reach = sceneryReach(params, quality);
-      sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, reach.drawM, reach.lodM) : 0;
-      if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, reach.drawM);
+      sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, reach.drawM, reach.lodM, 1, reach) : 0;
+      if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, reach.drawM, reach.propDetail);
       // The street fronts are placed over the first frames of a race; their shop names follow.
       if (roadside?.ready && !roadsideWords) {
         roadsideWords = true;
@@ -1011,10 +1011,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         downtownStill = tick === downtownTick ? downtownStill + dt : 0;
         downtownTick = tick;
         const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
-        sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
+        // The tier's share of its draw distance in full detail (quality.ts `cityDetail`; all of it on `high`).
+        const nearM = (downtownModule?.DOWNTOWN_DRAW_M ?? Infinity) * reach.cityDetail;
+        sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? [], nearM);
       }
       if (waterfront) sceneryVisible += waterfront.update(pose.x, pose.z, reach.lodM);
-      if (blocks) sceneryVisible += blocks.update(pose.x, pose.z);
+      if (blocks && blocksModule)
+        sceneryVisible += blocks.update(pose.x, pose.z, blocksModule.NEAR_M * reach.cityDetail);
       if (mission && missionModule) {
         // The crew paints with the race: the leader's share of it, and stands still while it is paused.
         const tick = curr?.tick ?? -1;
@@ -1027,6 +1030,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       landmarks?.update(pose.x, pose.z);
       textSurfaces?.update(pose.x, pose.z);
       // The camera's aim: fences and ferns behind it are left out (main-green-4).
+      verge?.setTreeShare(reach.treeShare);
       verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
       airboats?.update(curr, t, dt * (curr?.timeScale ?? 1));
       const me = curr?.entities.find((e) => e.slot === 0);

@@ -215,6 +215,29 @@ describe("San Francisco's Chinatown and North Beach: what stands along the stree
     expect(farTris).toBeLessThan(nearTris * 0.4);
     layer.dispose();
   });
+
+  // Roadmap M5 (playtest 4 run C, punch item 9): a lower quality tier's stand-ins start nearer
+  // (quality.ts `cityDetail`); the default, NEAR_M, is the top tier's and the game as before tiers.
+  it("a lower tier's stand-ins start nearer: fewer triangles in range, never more meshes", () => {
+    const layer = new BlocksLayer(look, { road: net.road, dressing: net.dressing, seed: 7 });
+    const e = net.road.edges[0]!;
+    const p = net.road.toWorld(e.index, Math.min(200, e.length / 2), 0, 0);
+    const at = (nearM?: number) => {
+      for (let i = 0; i < 30; i++) layer.update(p.x, p.z, nearM);
+      return layer.counts();
+    };
+    const before = at();
+    const top = at(NEAR_M);
+    const low = at(NEAR_M * 0.3);
+    print(
+      `[examined] ${e.id} s ${Math.min(200, e.length / 2).toFixed(0)}: ${before.triangles} triangles in ${before.meshes} meshes ` +
+        `with the near detail to ${NEAR_M} m; ${low.triangles} in ${low.meshes} with it to ${NEAR_M * 0.3} m`,
+    );
+    expect(top.triangles).toBe(before.triangles);
+    expect(low.triangles).toBeLessThan(before.triangles);
+    expect(low.meshes).toBeLessThanOrEqual(before.meshes);
+    layer.dispose();
+  });
 });
 
 // Playtest 4, P4-19 (CX5's Dragon Gate across Lantern Row and the twin-spired church across the park): the

@@ -14,8 +14,8 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork 
 import { buildBackdrop, roadPointsOf } from './backdrop/builder';
 import type { BackdropNetworkFile, BackdropRegionFile } from './backdrop/data';
 import { waterAtOf, waterFloors } from './backdrop/water';
-import { BlocksLayer, hasBlocks } from './chinatown-northbeach';
-import { DowntownLayer, hasDowntown, hasPortland } from './downtown';
+import { BlocksLayer, hasBlocks, NEAR_M as BLOCKS_NEAR_M } from './chinatown-northbeach';
+import { DOWNTOWN_DRAW_M, DowntownLayer, hasDowntown, hasPortland } from './downtown';
 import { hasMission, MissionLayer } from './mission';
 import { landmarkFootprints, landmarkKitsFor, LandmarkLayer } from './landmarks';
 import { CAMERA_FAR_M } from './index';
@@ -35,6 +35,7 @@ import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { apartmentSurfaces, TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { PartyLights } from './party-lights';
+import { QUALITY_TIERS, sceneryReach, type QualityTier } from './quality';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KITS, kitFor, RoadsideLayer } from './roadside';
 import { SCENERY_LOD_M } from './scenery-merge';
@@ -335,8 +336,14 @@ export interface StillScene {
 export async function stillSceneOf(
   networkId: string,
   seed: number,
+  tier: Readonly<QualityTier> = QUALITY_TIERS.high,
 ): Promise<{ road: RoadNetwork; scene: StillScene }> {
   const { road, dressing, pack } = track(networkId);
+  // The tier's reach, as render/index.ts hands it to each layer (boards keep the slider's own).
+  const { drawM, lodM, propDetail, treeShare, cityDetail } = sceneryReach(
+    { sceneryDrawM: DRAW_M, sceneryLodM: LOD_M },
+    tier,
+  );
   const models = await modelsFor(road, dressing);
   const rs = buildRoadScene(road, look, dressing, { seed, models, roadsideDensity: 1 });
   const { tropical, tags } = networkTags(road, dressing);
@@ -387,6 +394,7 @@ export async function stillSceneOf(
       : null;
   if (roadside) for (let i = 0; i < 2000 && !roadside.ready; i++) roadside.update(1e9, 1e9, 360);
   const verge = new VergeLayer(road, look, { tags });
+  verge.setTreeShare(treeShare);
   const dt = hasPortland(tags)
     ? models.pdxDowntown
       ? // Downtown Portland's blocks (playtest 3, T12.6), on the land the road scene drew.
@@ -472,21 +480,21 @@ export async function stillSceneOf(
   ];
   const scene: StillScene = {
     update(x, z, ax, az) {
-      rs.update(x, z, 0, DRAW_M, LOD_M, Infinity);
-      if (roadside) for (let i = 0; i < 12; i++) roadside.update(x, z, DRAW_M);
+      rs.update(x, z, 0, drawM, lodM, Infinity, { treeShare, propDetail });
+      if (roadside) for (let i = 0; i < 12; i++) roadside.update(x, z, drawM, propDetail);
       verge.update(x, z, null, 0, ax, az);
       // The renderer builds one stretch a frame; a ride to here has had a frame for each.
-      if (dt) for (let i = 0; i < 12; i++) dt.update(x, z, 0, []);
+      if (dt) for (let i = 0; i < 12; i++) dt.update(x, z, 0, [], DOWNTOWN_DRAW_M * cityDetail);
       lm?.update(x, z);
       words?.update(x, z);
       lights.update(x, z);
       // Everything near enough is built at once here (the renderer builds one a frame).
-      wf?.update(x, z, LOD_M, undefined, 1000);
-      places?.update(x, z, DRAW_M, LOD_M, Infinity);
+      wf?.update(x, z, lodM, undefined, 1000);
+      places?.update(x, z, drawM, lodM, Infinity);
       // The blocks build one mesh a frame: as many frames as a ride to here would have had.
-      if (blocks) for (let i = 0; i < 30; i++) blocks.update(x, z);
+      if (blocks) for (let i = 0; i < 30; i++) blocks.update(x, z, BLOCKS_NEAR_M * cityDetail);
       if (mission) for (let i = 0; i < 8; i++) mission.update(x, z, 0, 0.5);
-      scenes?.update(x, z, DRAW_M, LOD_M);
+      scenes?.update(x, z, drawM, lodM);
       boards.update(x, z, DRAW_M);
     },
     count(frustum) {

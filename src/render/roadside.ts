@@ -1362,9 +1362,19 @@ interface Chunk {
   levels: [number, number][];
 }
 
-/** A stretch's level of detail at a distance from the camera (`Chunk.levels`). */
-const levelOf = (dist: number): number =>
-  dist <= ROADSIDE_NEAR_M ? 0 : dist <= ROADSIDE_FRONT_M ? 1 : dist <= ROADSIDE_MID_M ? 2 : 3;
+/**
+ * A stretch's level of detail at a distance from the camera (`Chunk.levels`). `detail` scales the three
+ * distances (the quality tier's `propDetail`, quality.ts: 1 on `high`, so a lower tier drops the
+ * understory, the street fronts' full models and the middling props nearer the camera).
+ */
+const levelOf = (dist: number, detail = 1): number =>
+  dist <= ROADSIDE_NEAR_M * detail
+    ? 0
+    : dist <= ROADSIDE_FRONT_M * detail
+      ? 1
+      : dist <= ROADSIDE_MID_M * detail
+        ? 2
+        : 3;
 
 export interface RoadsideCounts {
   /** Props placed, by rule. */
@@ -1467,9 +1477,10 @@ export class RoadsideLayer {
 
   /**
    * Builds, shows, thins and frees stretches by their distance from the camera. A stretch is built a
-   * little before it comes into range, at most one a frame, so no frame pays for two.
+   * little before it comes into range, at most one a frame, so no frame pays for two. `detail` scales
+   * where each level of detail starts (`levelOf`; the quality tier's `propDetail`).
    */
-  update(cameraX: number, cameraZ: number, drawM: number): number {
+  update(cameraX: number, cameraZ: number, drawM: number, detail = 1): number {
     // Placing the props: a few milliseconds a frame until done.
     if (!this.scatter.done) this.addStretches(this.scatter.step(SCATTER_MS_PER_FRAME));
     const draw = Math.min(drawM, ROADSIDE_DRAW_M);
@@ -1497,7 +1508,7 @@ export class RoadsideLayer {
       const dist = Math.hypot(c.cx - cameraX, c.cz - cameraZ) - c.radius;
       if (dist < draw) {
         // Past ROADSIDE_MID_M only the tier-0 props draw, as their far stand-ins.
-        const [start, end] = c.levels[levelOf(dist)] ?? [0, 0];
+        const [start, end] = c.levels[levelOf(dist, detail)] ?? [0, 0];
         const count = end - start;
         mesh.geometry.setDrawRange(start, count);
         mesh.visible = count > 0;
