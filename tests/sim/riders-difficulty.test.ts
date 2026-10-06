@@ -159,7 +159,14 @@ describe('riders-5: Easy and Hard differ in the printed direction', () => {
     const easy = encounters('easy', ALONGSIDE);
     const hard = encounters('hard', ALONGSIDE);
     line('held alongside', easy, hard);
-    line('with the shove (trend)', encounters('easy'), encounters('hard'));
+    // The same encounters with the shove are a printed trend only, asserted nowhere, and cost about
+    // 25 s of CI time (the test diet, 2026-10-05), so they run on request.
+    if (process.env['RIDERS5_SHOVE_TREND'] === '1')
+      line('with the shove (trend)', encounters('easy'), encounters('hard'));
+    else
+      print(
+        'riders-5 staged encounters, with the shove (trend): skipped; set RIDERS5_SHOVE_TREND=1 to print them',
+      );
     expect(easy.length).toBe(4);
     expect(sum(easy, 'swings')).toBeGreaterThan(0);
     expect(sum(hard, 'swings')).toBeGreaterThanOrEqual(sum(easy, 'swings') * HARD_SWING_RATIO);
