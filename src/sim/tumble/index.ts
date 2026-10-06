@@ -67,7 +67,15 @@ import {
 import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../riders/contact';
-import { furnitureOn, LIGHT_KICK, LIGHT_SCRUB } from '../riders/furniture';
+import {
+  furnitureOn,
+  LIGHT_KICK,
+  LIGHT_SCRUB,
+  PARKED_BIKE_HALF_LENGTH_M,
+  PARKED_BIKE_HALF_WIDTH_M,
+  PARKED_BIKE_TOP_M,
+  pileUpsOn,
+} from '../riders/furniture';
 import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -302,22 +310,18 @@ export function tumbleState(world: World): TumbleState {
   }));
 }
 
-/** A parked bike's box (the rider box the bike models are fitted to, render/riders/bake.ts) and its top, m. */
-const PARKED_BIKE_HALF_LENGTH_M = RIDER_HALF_LENGTH_M;
-const PARKED_BIKE_HALF_WIDTH_M = RIDER_CONTACT_HALF_WIDTH_M;
-const PARKED_BIKE_TOP_M = 1.2;
-
 /**
- * A riding rider meeting another rider's parked bike (playtest 4: the hitbox audit found the bikes left
- * standing while their riders run back to them drawn with no sim shape, so anyone rode through them). A
- * parked bike is knocked aside, not ridden into as a wall (docs/content-packs.md, "Contact outcomes":
- * light or knockable things): the rider rides through it once with a light street piece's cost (a
- * little speed and a heading kick, sim/riders/furniture.ts) and a `wobble` whose `cause` is `smash`
- * (`object` `parked-bike`, target its rider), never a crash, so a bike left on a lane after a crash never
- * brings down the rider behind it. Off with `riders.furniture`.
+ * The old rule for a riding rider meeting another rider's parked bike (playtest 4: the hitbox audit found
+ * the bikes left standing while their riders run back to them drawn with no sim shape, so anyone rode
+ * through them): the bike was knocked aside, a light thing, ridden through once with a light street
+ * piece's cost (a little speed and a heading kick, sim/riders/furniture.ts) and a `wobble` whose `cause`
+ * is `smash` (`object` `parked-bike`, target its rider), never a crash. Since the maintainer's "Pile ups
+ * are fun lol" (2026-10-06) a dropped bike is solid by closing speed, met by the riding model
+ * (sim/riders, `droppedBikeContact`); this rule stays for a race whose tuning leaves `riders.pileUps`
+ * out (every recording made before), so those replay as they were. Off with `riders.furniture`.
  */
 function parkedBikeContacts(world: World, st: TumbleState): void {
-  if (!furnitureOn(world.params)) return;
+  if (!furnitureOn(world.params) || pileUpsOn(world.params)) return;
   const touch = (st.bikeTouch ??= []);
   for (const m of world.movers) {
     if (m.kind !== 'rider' || (m.mode !== 'Road' && m.mode !== 'Airborne') || m.h > PARKED_BIKE_TOP_M)
