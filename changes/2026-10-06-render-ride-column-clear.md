@@ -26,6 +26,7 @@ For devs:
   - 1.2 m side walls, drawn as deck, along SF downtown's Plaza Cut and C1's Mill Yard Cut, and at the Samish lake road's ends.
 - **Signs in races.** `tests/sim/event-signs-clear.test.ts` (new) has the bot ride Bridge City (seeds 1 and 3), the logging spur and the Keys' long haul with every road event forced in. It draws every sign the sim puts up as render draws it, and holds them to the same ride column. On the old placement it fails on all four races: posts 4.5 m into Bridge City's lanes, and serial panels 2 m into the lanes. 42 signs, 16 of them serial.
 - **Furniture test.** `src/road/furniture.test.ts`: on every network, no piece stands on any road's lanes. It uses a lane-point grid of its own, not the plan's finder, and has a negative control on the Plaza Cut.
+- **Build time** (the keeper, merging main): the land's lookup costs road scene build time. `src/render/scenes/scenes.test.ts` builds Lake Samish's road scene six times; that took 11.7 s on the dev machine with this change and 5.3 s on main, about 1 s more a build, past the unit tier's 20 s timeout on CI twice. That test now has a 60 s timeout; the build cost on the phone is not measured (a follow-up).
 - **Budgets:** draw calls are unchanged on every route. Triangles: Bridge City +20, Lombard -506, Twin Peaks -470, others within ±130. The tightest held route is Key West: 77 of 80 draw calls.
 
 Not phone-verified. No local browser was run.
