@@ -58,6 +58,10 @@ TAGS = {
     "key-party",
     # Big Pine's Key deer (playtest 4, P4-19, B5): the road they graze beside.
     "key-deer",
+    # A salt pond on ONE side over a run of s (playtest 4, run B's fix check, punch item 5: Smathers Beach's
+    # inland ponds; config `sideRuns`), beside the `water-shallow` that keeps land off it: the sea's mesh
+    # paints it brackish, not the sea's colour. It says nothing about the ground.
+    "salt-pond",
     # District tags on ONE side of a road over a run of s (playtest 4, P4-19, B9; config `sideRuns`): the
     # Gorge's masonry guard walls on its cliff side, Chuckanut's madrones over its bay side. Neither says
     # anything about the ground.
