@@ -271,7 +271,7 @@ describe('the tourists', () => {
 // The radio mast (the sheets' "Recognisable by": "the three-legged TV mast looms overhead"; run C saw none). It was
 // drawn, but at the region's 1.3 times (a far landmark must be more than a pixel tall), which on a road 440 to 550 m
 // from it stands 36 degrees up: its top and half of it were out of the frame. The Twin Peaks route now draws its
-// own near mast (`radio-mast-near`, 0.7 times, in its network's backdrop file) and the region's piece names the
+// own near mast (`radio-mast-near`, 0.4 times since the run C fix check, in its network's backdrop file) and the region's piece names the
 // other networks. It stands 500 m to the west, so it is ahead of the rider on the way up (about s 1650 to 1760)
 // and in the last metres, and behind the rider at the finish. The checks: every San Francisco network draws one
 // mast and never two, and the route draws its near one. (Where the camera sees it is tests/sim/twin-peaks-mast.test.ts.)

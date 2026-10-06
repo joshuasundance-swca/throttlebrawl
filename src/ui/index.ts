@@ -67,6 +67,7 @@ import {
 } from './moves-meter';
 import { pickStampSpot } from './stamp';
 import { COUNTDOWN_CSS, createCountdownView } from './countdown-view';
+import { FINISH_SHOT_CSS, setFinishShotFlag } from './finish-shot-hud';
 import { careerButtonText, MENU_FIRST_CSS, START_HERE_CLASS } from './menu-first';
 import { hudStyle } from './placement';
 import { ROOT_FONT_PCT, textScaleOf } from './text-size';
@@ -129,6 +130,7 @@ export type {
 } from './career-screen';
 export type { GigCard } from './career-show';
 export { HUD_ELEMENTS, hudStyle } from './placement';
+export { finishShotHudOn } from './finish-shot-hud';
 export { applySettingsChange, SETTINGS, settingValue } from './settings';
 export type { SettingId, SettingsChange, SettingValue } from './settings';
 // The barks' tuning declarations (narrative-1), for app/'s collected list.
@@ -240,6 +242,11 @@ export interface GameUi {
    * the race screen; null hides it. Any change of screen clears it.
    */
   setCountdown(text: string | null): void;
+  /**
+   * The finish shot (camera/finish-shot.ts): while it frames a landmark after the player's finish, the race HUD
+   * and the touch buttons are hidden (ui/finish-shot-hud.ts); `false`, or any change of screen, brings them back.
+   */
+  setFinishShot(on: boolean): void;
   /**
    * The slow-frames offer (run W-O): app/ calls it when the frames stay slow on an ink look. A
    * non-blocking note at the top of the race offers a one-tap switch to the Classic look, or "No
@@ -699,7 +706,9 @@ function healthWidget(id: string, label: string) {
 
 export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const cb = opts.callbacks;
-  const style = el('style', { textContent: CSS + ROUTE_PICKER_CSS + COUNTDOWN_CSS + MENU_FIRST_CSS });
+  const style = el('style', {
+    textContent: CSS + ROUTE_PICKER_CSS + COUNTDOWN_CSS + MENU_FIRST_CSS + FINISH_SHOT_CSS,
+  });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
   const stamp = el('div', { id: 'build-stamp', textContent: opts.stampText });
@@ -2131,6 +2140,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // A new race (or leaving one) starts the offer over; app/'s watch offers again if it must.
     clearLookOffer();
     countdownView.set(null);
+    setFinishShotFlag(root, false);
     if (screen === 'race') {
       targetShown = false;
       tally.reset();
@@ -2289,6 +2299,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     },
     notice: showNotice,
     setCountdown: (text) => countdownView.set(text),
+    setFinishShot: (on) => setFinishShotFlag(root, on && current === 'race'),
     showResumeCard(onChoice) {
       resumeChoice = onChoice;
       resumeCard.hidden = false;
