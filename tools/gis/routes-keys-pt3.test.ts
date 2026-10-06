@@ -673,8 +673,9 @@ describe('Duval Street: Whitehead, the Southernmost Point and Duval at their rea
     const REAL: Record<string, { at: [number, number]; within: number }> = {
       'southernmost-buoy': { at: [24.5465112, -81.7974964], within: 8 },
       // On the sidewalk: the OSM point is 2.3 m from the road's centre line, so the marker stands a
-      // few metres out, past the verge.
-      'mile-0': { at: [24.5552807, -81.8040252], within: 7 },
+      // few metres out, past the verge. Old Town's sidewalk is 4 m since playtest 4 (P4-19), so it stands
+      // 10 m out, past the pavement's edge (the footprint rule `landmark-clear`), and the allowance is 1 m wider.
+      'mile-0': { at: [24.5552807, -81.8040252], within: 8 },
     };
     const found = new Set<string>();
     for (const [i, r] of DV.roads.entries()) {
