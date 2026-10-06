@@ -50,7 +50,18 @@ export interface ContactRules {
   wobbleTicks: number;
   /** The drivable limits for a rider's centre at its d (the barrier rule's, the verge's off-road). */
   limits(config: SimConfig, edge: number, s: number, d: number): { lo: number; hi: number };
+  /**
+   * Two riders this far apart in height (or more) pass over each other (supports: one riding a truck's
+   * roof, one on the road below it); absent, any height meets, as before.
+   */
+  heightGapM?: number;
 }
+
+/**
+ * A rider on its bike stands this tall, m: the crash tumble's rider box (sim/tumble/contacts.ts), and
+ * the height gap at which two riders pass over each other [default].
+ */
+export const RIDER_BODY_HEIGHT_M = 1.6;
 
 function massOf(config: SimConfig, m: Mover): number {
   const def = config.riders[m.riderIndex];
@@ -172,6 +183,7 @@ export function riderContacts(world: World, config: SimConfig, st: ContactState,
       const b = riding[j];
       if (!a || !b || a.pos.edge !== b.pos.edge) continue;
       if (a.mode !== 'Road' || b.mode !== 'Road') continue; // one crashed on an earlier pair
+      if (rules.heightGapM !== undefined && Math.abs(a.h - b.h) >= rules.heightGapM) continue;
       resolvePair(world, config, st, rules, a, b);
     }
   }

@@ -68,6 +68,7 @@ import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../riders/contact';
 import { furnitureOn, LIGHT_KICK, LIGHT_SCRUB } from '../riders/furniture';
+import { leaveSupport, supportMotion } from '../riders/supports';
 import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -437,6 +438,13 @@ function startCrash(
   const rx = -fz;
   const rz = fx;
   const v = m.speed;
+  // On a support (sim/riders/supports.ts: a truck's roof) the rider's speed is over it, signed: through
+  // the world the bodies go at that plus the support's own velocity. Then it stands on nothing.
+  const on = supportMotion(world, m.id);
+  const wx = on ? fx * on.vr + on.vx : fx * v;
+  const wz = on ? fz * on.vr + on.vz : fz * v;
+  const throwV = on ? Math.sqrt(wx * wx + wz * wz) : v;
+  if (on) leaveSupport(world, m.id);
   const side = num(data, 'sideMps');
   const up = num(data, 'upMps');
   // Rolls, always in this order, from the tumble stream.
@@ -447,7 +455,7 @@ function startCrash(
   const spin = (nextFloat(rng) - 0.5) * 16;
   const riderPitch = 2 + 4 * nextFloat(rng);
   const riderRoll = (nextFloat(rng) - 0.5) * 6;
-  const big = v >= CARTWHEEL_MPS;
+  const big = throwV >= CARTWHEEL_MPS;
   const bikePitch = big ? 5 + 4 * nextFloat(rng) : 2 * nextFloat(rng);
   const bikeRoll = (nextFloat(rng) - 0.5) * (big ? 3 : 6);
   const base = road.toWorld(pos.edge, pos.s, pos.d, m.h);
@@ -463,7 +471,7 @@ function startCrash(
     'rider',
     base,
     frame,
-    { x: fx * v * RIDER_THROW + rx * riderSide, y: riderUp, z: fz * v * RIDER_THROW + rz * riderSide },
+    { x: wx * RIDER_THROW + rx * riderSide, y: riderUp, z: wz * RIDER_THROW + rz * riderSide },
     turn(riderPitch, riderRoll, spin),
     pos.edge,
   );
@@ -471,7 +479,7 @@ function startCrash(
     'bike',
     base,
     frame,
-    { x: fx * v * BIKE_THROW + rx * bikeSide, y: bikeUp, z: fz * v * BIKE_THROW + rz * bikeSide },
+    { x: wx * BIKE_THROW + rx * bikeSide, y: bikeUp, z: wz * BIKE_THROW + rz * bikeSide },
     turn(bikePitch, bikeRoll, 0),
     pos.edge,
   );

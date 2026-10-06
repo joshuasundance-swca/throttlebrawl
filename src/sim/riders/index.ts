@@ -31,13 +31,14 @@ import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } fr
 import { sRateFactor, type FurnitureShape } from '../../road';
 import type { RideLimits } from '../ground';
 import { GRAZE_M, trafficContactCrashes } from '../traffic/contact-rule';
-import type {
-  MovesSnapshot,
-  SimConfig,
-  SimInput,
-  SimRiderDef,
-  SimSteerAssist,
-  TouchdownSnapshot,
+import {
+  InputFlag,
+  type MovesSnapshot,
+  type SimConfig,
+  type SimInput,
+  type SimRiderDef,
+  type SimSteerAssist,
+  type TouchdownSnapshot,
 } from '../types';
 import {
   AIR_TUNING,
@@ -50,7 +51,7 @@ import {
   touchdown,
   type AirState,
 } from './air';
-import { applyShove, RIDER_CONTACT_HALF_WIDTH_M, riderContacts } from './contact';
+import { applyShove, RIDER_BODY_HEIGHT_M, RIDER_CONTACT_HALF_WIDTH_M, riderContacts } from './contact';
 import {
   driftDown,
   driftMoves,
@@ -98,6 +99,19 @@ import {
   type MovingDecks,
 } from './features';
 import { airWallSkip, gapFall, gapUnder, GAP_TUNING, newGapState, type GapState } from './gap';
+import {
+  inRiderFrame,
+  JOLT_WOBBLE_MPS,
+  leaveSupport,
+  standOn,
+  SUPPORT_GRIP,
+  supportAt,
+  supportKeyOf,
+  supportMotion,
+  supportsOn,
+  SUPPORTS_TUNING,
+  type Support,
+} from './supports';
 import { uturnForget, uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
   behindFence,
@@ -358,6 +372,8 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   ...FURNITURE_TUNING,
   // Playtest 4: a smoking bike loses a little top speed (sim/riders/smoke.ts).
   ...SMOKE_TUNING,
+  // Landing on and riding solid tops (the maintainer, 2026-10-06; sim/riders/supports.ts).
+  ...SUPPORTS_TUNING,
 ];
 
 /**
@@ -1217,7 +1233,12 @@ function hazardContact(
   before: { edge: number; s: number; d: number },
 ): boolean {
   const pos = m.pos;
-  const all = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M);
+  // Met below its top only (a rider on a support stands above most of them), and never the hazard the
+  // rider stands on (supports: the parked pickup, the stair tower).
+  const own = supportKeyOf(world, m.id);
+  const all = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
+    (p) => m.h < hazardTop(p.feature) && own !== `h:${p.key}`,
+  );
   // A light hazard (a festival barricade: boards on legs) is knocked aside as a light street piece is:
   // ridden through once, a little speed and a heading kick, a `smash` wobble, never a crash.
   let light = 0;
@@ -1302,7 +1323,9 @@ function furnitureContact(
     break;
   }
   if (light !== 0 || (st.lightTouch[m.id] ?? 0) > 0) st.lightTouch[m.id] = light;
-  const solid = near.filter((it) => it.cls === 'solid' && m.h <= it.heightM);
+  // A rider standing on a piece (supports: the waterfront's parked cars) is not riding into it.
+  const own = supportKeyOf(world, m.id);
+  const solid = near.filter((it) => it.cls === 'solid' && m.h <= it.heightM && own !== `f:${it.id}`);
   const move = moveOf(m, before);
   const hit = solid.length > 0 ? firstTouch(solid, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw) : null;
   if (!hit) {
@@ -1320,6 +1343,9 @@ function furnitureContact(
  * A rider in the air meeting a solid hazard or a solid street piece below its top (`h` above the road):
  * the ground's rule (`meetSolid`), the closing speed along the contact's normal deciding. Returns true
  * when it crashed (the flight ends there); a glance pushes the rider off it and the flight goes on.
+ * Supports (`hBefore`, the flight's height as the tick began; absent with `riders.supports` off): a top
+ * too small to hold the bike (a hydrant, a post, a stump) that the rider comes down onto from above is
+ * met by the same rule with the closing speed straight down, the fall speed (`topContact`).
  */
 function airSolids(
   world: World,
@@ -1328,15 +1354,25 @@ function airSolids(
   m: Mover,
   before: { edge: number; s: number; d: number },
   h: number,
+  hBefore?: number,
 ): boolean {
   const pos = m.pos;
   const move = moveOf(m, before);
+  const fromAbove = (top: number) => hBefore !== undefined && hBefore >= top - 1e-6;
+  const eventsBefore = world.events.length;
+  if (hBefore !== undefined && topContact(world, config, st, m, h, fromAbove)) {
+    for (let i = eventsBefore; i < world.events.length; i++) {
+      const e = world.events[i];
+      if (e && e.type === 'crash' && e.actor === m.id) return true;
+    }
+    return false;
+  }
   const hazards = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
-    (p) => h < hazardTop(p.feature) && !isLightHazard(p.feature),
+    (p) => h < hazardTop(p.feature) && !isLightHazard(p.feature) && !fromAbove(hazardTop(p.feature)),
   );
   const pieces = furnitureOn(world.params)
     ? piecesNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
-        (it) => it.cls === 'solid' && h < it.heightM,
+        (it) => it.cls === 'solid' && h < it.heightM && !fromAbove(it.heightM),
       )
     : [];
   const hh =
@@ -1367,6 +1403,57 @@ function airSolids(
   return false;
 }
 
+/**
+ * Supports (the maintainer, 2026-10-06): a rider in the air coming down onto a solid top too small to
+ * hold the bike (`fromAbove` its top as the tick began, under it now, the bike's capsule on it): an
+ * obstacle met from above by the one rule for heavy things, the closing speed straight down (how fast
+ * it falls) against `traffic.solidHitMps`, `hit: 'top'`. A crash ends the flight there; under the line
+ * it wobbles and is pushed off it across the road, and the flight goes on. Returns true on a contact.
+ */
+function topContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  h: number,
+  fromAbove: (top: number) => boolean,
+): boolean {
+  const pos = m.pos;
+  const spine = spineAt(pos.s, pos.d, pos.dir, m.yaw);
+  const touching = (shape: FurnitureShape) => spineGap(shape, spine).dist < BIKE_RADIUS_M;
+  const fall = Math.max(0, -(st.vy[m.id] ?? 0));
+  const meet = (shape: FurnitureShape, extra: Record<string, string>, newContact: boolean) => {
+    wallOutcome(world, st, m, {
+      impact: fall,
+      v: m.speed,
+      yawBefore: m.yaw,
+      side: 1,
+      newContact,
+      extra: { ...extra, hit: 'top' },
+      vehicle: true,
+    });
+    keepOff(shape, pos, m.yaw, 0, pos.d >= shape.d ? 1 : -1);
+  };
+  if (furnitureOn(world.params)) {
+    for (const it of piecesNear(config, pos.edge, pos.s, CONTACT_REACH_M)) {
+      if (it.cls !== 'solid' || h >= it.heightM || !fromAbove(it.heightM) || !touching(it.shape)) continue;
+      const newContact = st.furnTouch[m.id] !== it.id + 1;
+      st.furnTouch[m.id] = it.id + 1;
+      meet(it.shape, { object: it.kind, furniture: String(it.id) }, newContact);
+      return true;
+    }
+  }
+  for (const p of solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M)) {
+    const top = hazardTop(p.feature);
+    if (isLightHazard(p.feature) || h >= top || !fromAbove(top) || !touching(p.shape)) continue;
+    const newContact = st.hazardTouch[m.id] !== 1;
+    st.hazardTouch[m.id] = 1;
+    meet(p.shape, { object: hazardObject(p.feature), feature: p.feature.id }, newContact);
+    return true;
+  }
+  return false;
+}
+
 /** A grounded rider riding onto a boost pad gets its boost, once per crossing, and one `boost` event. */
 function touchPads(world: World, config: SimConfig, st: RiderState, m: Mover): void {
   const pad = boostPadAt(config, m.pos.edge, m.pos.s, m.pos.d);
@@ -1380,6 +1467,109 @@ function touchPads(world: World, config: SimConfig, st: RiderState, m: Mover): v
   st.boost[m.id] = holdS * 60;
   st.boostMps[m.id] = mps;
   emit(world, 'boost', m.id, { feature: pad.id, speed: m.speed, holdS });
+}
+
+/**
+ * Supports (sim/riders/supports.ts): puts a rider coming down on a support into its frame. Its speed
+ * and heading become its motion over the top; returns true when that motion is backward (the support
+ * outruns the bike: it rolls backward over it, heading on the way it faces).
+ */
+function toSupportFrame(config: SimConfig, m: Mover, on: Support): boolean {
+  const v = inRiderFrame(config, m, on.vx, on.vz);
+  const along = m.speed * cos(m.yaw) - v.along;
+  const across = m.speed * sin(m.yaw) - v.across;
+  const back = along < 0;
+  m.speed = Math.sqrt(along * along + across * across);
+  m.yaw = m.speed > 1e-9 ? (back ? atan2(-across, -along) : atan2(across, along)) : 0;
+  return back;
+}
+
+/**
+ * Takes a supported rider off its support into the world's frame: its speed and heading become its
+ * motion through the world (the support's velocity added), its travel turned round when that motion
+ * runs back along the road. Nothing to do for a rider on no support.
+ */
+function toWorldFrame(world: World, config: SimConfig, m: Mover): void {
+  const mo = supportMotion(world, m.id);
+  if (!mo) return;
+  const v = inRiderFrame(config, m, mo.vx, mo.vz);
+  let along = mo.vr * cos(m.yaw) + v.along;
+  let across = mo.vr * sin(m.yaw) + v.across;
+  if (along < 0) {
+    m.pos.dir = m.pos.dir === 1 ? -1 : 1;
+    along = -along;
+    across = -across;
+  }
+  m.speed = Math.sqrt(along * along + across * across);
+  m.yaw = m.speed > 1e-9 ? clamp(atan2(across, along), -1.2, 1.2) : 0;
+  leaveSupport(world, m.id);
+}
+
+/**
+ * The support a grounded rider stands on as this tick starts, or null. Put down by another system
+ * (`fresh`: a remount, a respawn) it stands on none; a support that has gone (a vehicle recycled, the
+ * switch turned off) hands the rider back to the world's frame.
+ */
+function groundSupport(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  decks: MovingDecks,
+  fresh: boolean,
+): Support | null {
+  const key = supportKeyOf(world, m.id);
+  if (key === '') return null;
+  if (fresh) {
+    leaveSupport(world, m.id);
+    return null;
+  }
+  const at = { edge: m.pos.edge, s: m.pos.s, d: m.pos.d, ahead: 0 };
+  const on = supportsOn(world) ? supportAt(world, config, m, at, decks, () => true, key) : null;
+  if (!on) toWorldFrame(world, config, m);
+  return on;
+}
+
+/**
+ * A grounded rider above whatever is under it (pushed off a top, or its top gone): it falls, a take-off
+ * from where it is, as riding off an edge is.
+ */
+function fallFrom(world: World, config: SimConfig, st: RiderState, m: Mover, input: SimInput): void {
+  const pos = m.pos;
+  m.mode = 'Airborne';
+  st.yAbs[m.id] = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
+  st.vy[m.id] = 0;
+  st.airTicks[m.id] = 0;
+  startFlight(st, m, input, slopeAt(config, m));
+  wheelieTakeoff(world, st, m);
+  driftTakeoff(world, st, m);
+  emit(world, 'jump', m.id, { speed: m.speed, vyMps: 0, drop: true });
+}
+
+/**
+ * The support's velocity changed under the rider by `jolt` m/s in one tick (a truck braking, traffic's
+ * no-overlap snap, a lane's end): the one rule's line (`traffic.solidHitMps`) throws him off, a crash;
+ * from JOLT_WOBBLE_MPS it wobbles. Returns true when it threw him.
+ */
+function joltOutcome(world: World, st: RiderState, m: Mover, on: Support, jolt: number): boolean {
+  const crash = trafficContactCrashes(world.params, jolt);
+  const data = {
+    cause: on.vehicle >= 0 ? 'traffic' : 'barrier',
+    hit: 'jolt',
+    contact: crash ? 'crash' : 'wobble',
+    impactMps: jolt,
+    speed: m.speed,
+    object: on.object,
+    ...(on.kind === 'vehicle' ? { vehicle: on.object } : {}),
+  };
+  const target = on.vehicle >= 0 ? { target: on.vehicle } : {};
+  if (crash) {
+    st.wobble[m.id] = 0;
+    emit(world, 'crash', m.id, data, target);
+    return true;
+  }
+  st.wobble[m.id] = WOBBLE_TICKS;
+  emit(world, 'wobble', m.id, data, target);
+  return false;
 }
 
 function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover): void {
@@ -1414,19 +1604,70 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     const out = Math.sign(inside.d1 - inside.d0) * TRUCK_STEP_OUT_M;
     pos.d = Math.abs(inside.d0) <= Math.abs(inside.d1) ? inside.d0 - out : inside.d1 + out;
   }
-  const deckBefore = deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.now });
+  // Supports (the maintainer, 2026-10-06; sim/riders/supports.ts): the top the rider stands on, its
+  // ground as a deck is. Null for a rider on the road or a ramp truck's deck.
+  const sup = groundSupport(world, config, m, decks, fresh);
+  const ramps = deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.now });
+  const deckBefore = sup ? Math.max(ramps, sup.top) : ramps;
+  // Above whatever is under it now (pushed off a top, or its top gone): it falls from where it is.
+  if (!fresh && m.h > deckBefore + KERB_M && supportsOn(world)) {
+    st.lastTick[m.id] = world.tick;
+    fallFrom(world, config, st, m, input);
+    st.throttle[m.id] = throttle;
+    st.brake[m.id] = brake;
+    gearAndRpm(st, m);
+    return;
+  }
   const before = { edge: pos.edge, s: pos.s, d: pos.d, deck: deckBefore };
   const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
   st.lastTick[m.id] = world.tick;
+  // On a support the bike moves over it (its signed speed over it, `vr`), carried at its velocity
+  // (`carry`, along and across the rider's travel). When that velocity changed since last tick (a truck
+  // braking, traffic's no-overlap snap), the bike rolls on at its own: what the support lost along the
+  // bike's heading adds to its speed over it, and a big enough change in one tick wobbles or throws it.
+  let vr = 0;
+  let carry = { along: 0, across: 0 };
+  if (sup) {
+    const mo = supportMotion(world, m.id);
+    const was = inRiderFrame(config, m, mo?.vx ?? sup.vx, mo?.vz ?? sup.vz);
+    carry = inRiderFrame(config, m, sup.vx, sup.vz);
+    const lostA = was.along - carry.along;
+    const lostC = was.across - carry.across;
+    vr = (mo?.vr ?? m.speed) + lostA * cos(m.yaw) + lostC * sin(m.yaw);
+    m.speed = Math.abs(vr);
+    const jolt = Math.sqrt(lostA * lostA + lostC * lostC);
+    if (jolt >= JOLT_WOBBLE_MPS && joltOutcome(world, st, m, sup, jolt)) {
+      // Thrown off it: the tumble takes the rider from here, at its speed through the world.
+      standOn(world, m.id, sup, vr);
+      st.throttle[m.id] = throttle;
+      st.brake[m.id] = brake;
+      gearAndRpm(st, m);
+      return;
+    }
+  }
+  // Rolling backward over a support, no wheelie, drift or U-turn starts.
+  const back = sup !== null && vr < 0;
   // A U-turn (interview, 2026-10-02; playtest 4's own gesture, P4-9): a slow player who double-taps
   // the brake and then holds it with full lock pivots round (sim/riders/uturn.ts); null while riding
-  // normally.
-  const uturn = uturnStep(world, st, def, m, steer, brake, fresh, dt);
+  // normally. Never on a support: the gesture is not read there.
+  const uturn = sup
+    ? uturnStep(world, st, def, m, 0, 0, fresh, dt)
+    : uturnStep(world, st, def, m, steer, brake, fresh, dt);
   // Playtest 3's moves: the wheelie (steering × steerScale, the front's pitch) and the drift
   // (steering × maxYawScale, a drag, the knee-down lean). Neutral while each is off.
-  const wh = wheelieStep(world, config, st, m, input, brake, dt);
-  const dr = driftStep(world, config, st, m, input, steer, throttle, brake, dt);
+  const wh = wheelieStep(
+    world,
+    config,
+    st,
+    m,
+    back ? { ...input, flags: input.flags & ~InputFlag.wheelie } : input,
+    brake,
+    dt,
+  );
+  const dr = back
+    ? driftStep(world, config, st, m, input, 0, throttle, 0, dt)
+    : driftStep(world, config, st, m, input, steer, throttle, brake, dt);
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
   // top speed for a while and pushes the bike toward it. The launch punch (playtest 1c) multiplies
@@ -1442,8 +1683,9 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const boostLeft = st.boost[m.id] ?? 0;
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
   // The ground under the wheels (off-road, run W-R): its speed scales the top speed and the push,
-  // its grip the steering; 1 and 1 on the road, and with the off-road switch off.
-  const feel = groundFeel(config, world.params, m);
+  // its grip the steering; 1 and 1 on the road, and with the off-road switch off. On a support, its
+  // top: a little less grip than asphalt.
+  const feel = sup ? { speed: 1, grip: SUPPORT_GRIP } : groundFeel(config, world.params, m);
   const ownTop = topSpeedOf(world, config, bike.topSpeedMps) * feel.speed * smokeScaleOf(world, st, m, def);
   const top = ownTop + boostTop;
   const a = bike.accelMps2 * accelScale * m2 * feel.speed;
@@ -1454,25 +1696,46 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
       : clamp((throttle - AI_LAUNCH_THROTTLE) / (1 - AI_LAUNCH_THROTTLE), 0, 1);
   const share = def.faction === 'law' ? (world.params['cops.launchShare'] ?? 0) : 1;
   const launch = 1 + ((world.params['riders.launchGain'] ?? 1) - 1) * fade * open * share;
-  let accel = throttle * a * launch - (a * v * v) / (top * top);
-  accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
-  if (boostLeft > 0) {
-    // The push stops at the raised top speed; it never carries the bike past it.
-    if (v < top) accel = Math.max(accel, Math.min(accel + BOOST_ACCEL_MPS2 * m2, (top - v) / dt));
-    st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
+  if (sup) {
+    // On a support (sim/riders/supports.ts): the engine, the brake, the coasting drag and the drags of a
+    // wobble or a drift act on the bike's speed over the top; the air drag (the model's pull toward top
+    // speed) acts on its speed through the air, the support's along its heading added, so on a moving
+    // truck the wind rolls a rider who lets go slowly back. Friction stops the bike over the top and
+    // never turns it round; the engine, the wind and the slope may.
+    const air = vr + carry.along * cos(m.yaw) + carry.across * sin(m.yaw);
+    let drive = throttle * a * launch - (a * air * Math.abs(air)) / (top * top) - gravity * grade;
+    if (boostLeft > 0) {
+      if (air < top) drive = Math.max(drive, Math.min(drive + BOOST_ACCEL_MPS2 * m2, (top - air) / dt));
+      st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
+    }
+    let friction = ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2 * SUPPORT_GRIP) * m2;
+    if (wobble > 0) friction += WOBBLE_DRAG * m2;
+    if (dr.dragMps2 !== 0) friction += dr.dragMps2 * m2;
+    const free = vr + drive * dt;
+    vr = free > 0 ? Math.max(0, free - friction * dt) : Math.min(0, free + friction * dt);
+    m.speed = Math.abs(vr);
+  } else {
+    let accel = throttle * a * launch - (a * v * v) / (top * top);
+    accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
+    if (boostLeft > 0) {
+      // The push stops at the raised top speed; it never carries the bike past it.
+      if (v < top) accel = Math.max(accel, Math.min(accel + BOOST_ACCEL_MPS2 * m2, (top - v) / dt));
+      st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
+    }
+    if (onShoulder(config, m)) accel -= SHOULDER_DRAG * m2;
+    if (wobble > 0) accel -= WOBBLE_DRAG * m2;
+    if (dr.dragMps2 !== 0) accel -= dr.dragMps2 * m2;
+    // Gassing round a U-turn never takes the bike past the turn's speed.
+    if (uturn && dt > 0 && v + accel * dt > uturn.capMps) accel = Math.min(accel, (uturn.capMps - v) / dt);
+    m.speed = Math.max(0, v + accel * dt);
   }
-  if (onShoulder(config, m)) accel -= SHOULDER_DRAG * m2;
-  if (wobble > 0) accel -= WOBBLE_DRAG * m2;
-  if (dr.dragMps2 !== 0) accel -= dr.dragMps2 * m2;
-  // Gassing round a U-turn never takes the bike past the turn's speed.
-  if (uturn && dt > 0 && v + accel * dt > uturn.capMps) accel = Math.min(accel, (uturn.capMps - v) / dt);
-  m.speed = Math.max(0, v + accel * dt);
 
   // Lateral: steering asks for a heading offset; the road turning under the bike pulls it.
   const authority = (wobble > 0 ? WOBBLE_STEER : 1) * feel.grip;
   const maxYaw = maxYawAt(bike.steerRateMps, m.speed, steerScale) * dr.maxYawScale * wh.steerScale;
   const slot = slotAssists(config, slotOf(def));
-  const assist = assistYaw(config, m, slot.steer, maxYaw);
+  // The steering assist pushes back from the road's edges; on a top they are not the edges.
+  const assist = sup ? 0 : assistYaw(config, m, slot.steer, maxYaw);
   const asked = steer * authority * maxYaw;
   // Without a nudge the heading asked for is untouched (no clamp, no +0), exactly as before M2.
   const yawTarget = assist === 0 ? asked : clamp(asked + assist, -maxYaw, maxYaw);
@@ -1488,13 +1751,20 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     : slot.steerStyle === 'free'
       ? yawTarget * YAW_RESPONSE
       : (yawTarget - m.yaw) * YAW_RESPONSE;
-  const along = m.speed * cos(m.yaw) * sRateFactor(frameKappa, pos.d);
+  // On a support the bike moves at its signed speed over it, and the support carries it on.
+  const moving = sup ? vr : m.speed;
+  const along = moving * cos(m.yaw) * sRateFactor(frameKappa, pos.d);
   const yawLimit = uturn ? Infinity : Math.max(1.2, Math.abs(m.yaw));
   m.yaw = clamp(m.yaw + (ownTurn - pos.dir * frameKappa * along) * dt, -yawLimit, yawLimit);
   pos.s += pos.dir * along * dt;
-  pos.d += pos.dir * m.speed * sin(m.yaw) * dt;
+  pos.d += pos.dir * moving * sin(m.yaw) * dt;
+  if (sup) {
+    pos.s += pos.dir * carry.along * sRateFactor(frameKappa, pos.d) * dt;
+    pos.d += pos.dir * carry.across * dt;
+  }
   if (uturn) uturnSettle(st, m);
-  m.h = 0;
+  // Contacts meet a rider on a support at its top (the road's and a ramp deck's riders at 0, as ever).
+  m.h = sup ? sup.top : 0;
   applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   const handed = crossToBranch(config, m);
@@ -1513,12 +1783,28 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
   // rider is kept out of above): h is always the height above the road.
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
+  const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
+  // Still over its support as the tick ends (a moving one where its velocity takes it)? Off its edge,
+  // the ground under the bike fell away: a take-off by the same lip rule as a ramp's.
+  const still = sup
+    ? supportAt(
+        world,
+        config,
+        m,
+        { edge: pos.edge, s: pos.s, d: pos.d, ahead: dt },
+        decks,
+        () => true,
+        sup.key,
+      )
+    : null;
+  const deck = still ? Math.max(ramp, still.top) : ramp;
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
   // Over a gap (playtest 3, sim/riders/gap.ts) there is no surface: the ground fell away.
-  const overGap = gapUnder(world, config, m);
+  const overGap = !still && gapUnder(world, config, m);
   const lip = overGap || ballistic > ground + TAKEOFF_CLEARANCE_M;
+  // Off its support (or onto a ramp deck), the rider moves in the world's frame again.
+  if (sup && (!still || lip)) toWorldFrame(world, config, m);
   // Over a crest, the pull needed to follow the road (speed along it² × its downward curvature)
   // can beat gravity well before one tick's ballistic gap reaches the lip threshold: then the bike
   // floats off the top. Only on the road itself (a truck deck has its own lip).
@@ -1558,7 +1844,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // which can stand apart where real branches climb and fall (playtest 3, T9.4: 0.6 m on Bridge
     // City). That step is no vertical speed, or the next tick launches the bike off flat road.
     if (dt > 0) st.vy[m.id] = handed ? vyBefore : (ground - yBefore) / dt;
-    touchPads(world, config, st, m);
+    // On its support: its speed over it, and the support's velocity as read this tick (the next tick's
+    // jolt is measured from it). A boost pad lies on the road below, not on the top.
+    if (sup && still) standOn(world, m.id, sup, vr);
+    else touchPads(world, config, st, m);
     groundPitch(st, m, slopeAt(config, m));
     // A wheelie's front is up this far above the slope (playtest 3).
     if (wh.pitchAdd !== 0) st.pitch[m.id] = (st.pitch[m.id] ?? 0) + wh.pitchAdd;
@@ -1657,6 +1946,10 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const ownTurn = steer * AIR_TURN_RATE;
   const along = m.speed * cos(m.yaw) * sRateFactor(kappa, pos.d);
   const airFrom = { edge: pos.edge, s: pos.s, d: pos.d };
+  // Supports (sim/riders/supports.ts): how high above the road the flight was as the tick began, so a
+  // top it comes down onto is met from above.
+  const tops = supportsOn(world);
+  const hBefore = tops ? (st.yAbs[m.id] ?? 0) - road.surfaceHeight(pos.edge, pos.s, pos.d) : 0;
   // Forgiving landings (playtest 2): the flight follows riders.airCarve of the road's bend, and the
   // heading settles back along the road at riders.airAlign, so the bike comes down lined up.
   const carve = world.params['riders.airCarve'] ?? 0;
@@ -1681,7 +1974,15 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // Playtest 3: a moving deck is where its truck stands as the tick ends (`next`), and the speed to
   // clear its body is over the truck, not over the road.
   const decks = movingDecks(world, dt);
-  const body = truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next);
+  // Supports (the maintainer, 2026-10-06: "land on it and ride on it"): coming down from above onto a
+  // top that holds the bike (a vehicle's roof, a ramp truck's body, a parked pickup; sim/riders/
+  // supports.ts), where it stands as the tick ends, the rider lands on it as on the road (land()).
+  const hNow = y - surface;
+  const here = { edge: pos.edge, s: pos.s, d: pos.d, ahead: dt };
+  const onTop = tops
+    ? supportAt(world, config, m, here, decks, (t) => hBefore >= t - 1e-6 && hNow <= t)
+    : null;
+  const body = onTop ? null : truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next);
   if (body && y - surface < truckBodyTop(body) && !clearsBody(body, m.speed, pos.dir, gravity)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
@@ -1694,23 +1995,28 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // A solid hazard (run W-U) or a solid piece of street furniture stands up from the road: flying into it
   // below its top is met by the same rule as on the ground (playtest 4: by the closing speed along the
   // contact's normal; it was a crash whatever the speed). A crash ends the flight here.
-  if (airSolids(world, config, st, m, airFrom, y - surface)) {
+  if (!onTop && airSolids(world, config, st, m, airFrom, y - surface, tops ? hBefore : undefined)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
     return;
   }
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
+  const deck = onTop
+    ? onTop.top
+    : deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
   // Air control and flips (playtest 2): the bike's pitch, and the lean the steering asks for. The
   // time to the ground is forecast over the ground's current slope, so a held brake or kick never
-  // turns the bike past where it can right itself before touch-down.
+  // turns the bike past where it can right itself before touch-down. Over a support's top, the top is
+  // the ground the forecast meets.
+  const under = tops && !onTop ? supportAt(world, config, m, here, decks, (t) => t < hNow) : null;
+  const ahead = under ? Math.max(deck, under.top) : deck;
   const groundRate = road.frameAt(pos.edge, pos.s).grade * pos.dir * along;
-  const tGround = timeToGround(y - (surface + deck), (st.vy[m.id] ?? 0) - groundRate, gravity);
+  const tGround = timeToGround(y - (surface + ahead), (st.vy[m.id] ?? 0) - groundRate, gravity);
   const airS = (st.airTicks[m.id] ?? 0) / 60;
   const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt, tGround, airS);
   // Over a gap (playtest 3, sim/riders/gap.ts) there is nothing to land on: the rider falls on, and
   // past the gap's kill depth it goes overboard.
-  const overGap = gapUnder(world, config, m);
-  if (!overGap && y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
+  const overGap = !onTop && gapUnder(world, config, m);
+  if (!overGap && y - (surface + deck) <= 0) land(world, config, st, m, surface, deck, onTop ?? undefined);
   else {
     m.h = y - surface;
     st.yAbs[m.id] = y;
@@ -1730,11 +2036,23 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
  * speed (`data.slide`), and only a really bad one crashes. A landing while still wobbling is judged
  * like any other. Emits `land`, plus `wobble` or `crash`.
  */
-function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface: number, deck = 0): void {
+function land(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  surface: number,
+  deck = 0,
+  on?: Support,
+): void {
   const pos = m.pos;
   const grade = config.road.frameAt(pos.edge, pos.s).grade * pos.dir;
   const slopeVy = grade * m.speed * cos(m.yaw);
   const vertical = Math.max(0, slopeVy - (st.vy[m.id] ?? 0));
+  // Onto a support (sim/riders/supports.ts; the maintainer, 2026-10-06): the same judgement, made in the
+  // support's frame, so the sideways speed is the bike's over the top (a truck changing lanes under
+  // it adds its own), and the bike rides on at its speed over it.
+  const back = on ? toSupportFrame(config, m, on) : false;
   const lateral = Math.abs(m.speed * sin(m.yaw));
   const crashAt = world.params['riders.landingCrashMps'] ?? 4;
   // The bike's attitude (sim/riders/air.ts): a trick landed, or nose first or looped out.
@@ -1762,6 +2080,8 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   st.airTicks[m.id] = 0;
   st.crestHold[m.id] = 1;
   groundPitch(st, m, slope);
+  // On a support it stands on it now, moving over it at its speed (backward when the top outruns it).
+  if (on) standOn(world, m.id, on, back ? -m.speed : m.speed);
   const data = {
     quality,
     airTicks,
@@ -1774,10 +2094,16 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
     pitchOff: td.pitchOff,
     // Off a hood launch (playtest 3): sim/race scores its trick × race.styleHoodScale.
     ...(td.hood ? { hood: true } : {}),
+    // On a support: what kind it is and what it is (a vehicle's content id, `rampTruck`, a hazard's object).
+    ...(on ? { on: on.kind, object: on.object } : {}),
   };
   // Air that pays: a clean landing after real air spits the bike forward (rivals too).
   const surge = quality === 'clean' ? landingSurge(world, config, st, m, airTicks) : 0;
-  const cause = emit(world, 'land', m.id, surge > 0 ? { ...data, surge: true, surgeS: surge } : data);
+  const landData = surge > 0 ? { ...data, surge: true, surgeS: surge } : data;
+  const cause =
+    on && on.vehicle >= 0
+      ? emit(world, 'land', m.id, landData, { target: on.vehicle })
+      : emit(world, 'land', m.id, landData);
   if (quality !== 'crash') landingHit(world, config, st, m, cause);
   if (quality === 'crash') {
     st.wobble[m.id] = 0;
@@ -1827,8 +2153,12 @@ function landingHit(world: World, config: SimConfig, st: RiderState, m: Mover, c
   if (!def || def.controller.kind !== 'player' || damage <= 0) return;
   let victim: Mover | null = null;
   let best = LANDING_HIT_REACH_M;
+  // A hit reaches only a rider within combat's height gap (sim/combat, `combat.reachHeightM`): landing
+  // on a truck's roof never hits the rider on the road below it. With the key left out, any height.
+  const reachH = world.params['combat.reachHeightM'] ?? Infinity;
   for (const o of world.movers) {
     if (o.id === m.id || o.kind !== 'rider' || o.mode !== 'Road' || o.pos.edge !== m.pos.edge) continue;
+    if (Math.abs(o.h - m.h) > reachH) continue;
     const ds = o.pos.s - m.pos.s;
     const dd = o.pos.d - m.pos.d;
     const gap = Math.sqrt(ds * ds + dd * dd);
@@ -1977,6 +2307,12 @@ export const ridersSystem: SimSystem = {
     const st = riderState(world);
     for (const m of world.movers) {
       if (m.kind !== 'rider' || m.riderIndex < 0) continue;
+      // Taken off its support by another system (the tumble after a crash, a hood launch into the air):
+      // it stands on none, and a rider in the air flies at its speed through the world.
+      if (m.mode !== 'Road' && supportKeyOf(world, m.id) !== '') {
+        if (m.mode === 'Airborne') toWorldFrame(world, config, m);
+        else leaveSupport(world, m.id);
+      }
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
       else {
         if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
@@ -1984,10 +2320,13 @@ export const ridersSystem: SimSystem = {
         driftDown(world, st, m);
       }
     }
-    // Bumps stop where riding does (the verge's edge with off-road on), never back on the road.
+    // Bumps stop where riding does (the verge's edge with off-road on), never back on the road. With
+    // supports, two riders meet only within a rider's height of each other (one on a truck's roof
+    // passes over one on the road).
     riderContacts(world, config, st, {
       wobbleTicks: WOBBLE_TICKS,
       limits: (c, edge, s, d) => riderLimits(world, c, edge, s, d),
+      ...(supportsOn(world) ? { heightGapM: RIDER_BODY_HEIGHT_M } : {}),
     });
   },
 };
