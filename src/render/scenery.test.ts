@@ -333,7 +333,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       sfDowntown: 12,
       // playtest 3 (T12.1): Key West's Old Town, Codex CX2's Duval kit
       duvalKit: 8,
-      keysIdentity: 8,
+      // playtest 4 (P4-19): CX5's deer, mile post, three trees and two bars, and CX6's osprey post
+      keysIdentity: 9,
       // playtest 3, T12.3: the Seven Mile's bays (bridge-bays.ts): the new span's two, the old
       // bridge's two, a gap end and a repair platform
       sevenMileKit: 6,

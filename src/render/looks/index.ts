@@ -199,7 +199,10 @@ export function createLookSet(base: LookStyle): LookSet {
     if (tracked.has(m)) return m;
     const withColor = m as Material & { color?: Color };
     // The palette decides this colour only when the caller gave none and no vertex colours override it.
-    const ownColour = params?.color !== undefined || (params?.vertexColors === true && !params?.overlay);
+    // A `paletteBase` material multiplies the palette's colour by its vertex colours: the palette still decides.
+    const ownColour =
+      params?.color !== undefined ||
+      (params?.vertexColors === true && !params?.overlay && params?.paletteBase !== true);
     const t: Tracked = {
       material: m,
       classic: !ownColour && withColor.color ? withColor.color.clone() : null,

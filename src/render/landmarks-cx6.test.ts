@@ -1,8 +1,8 @@
 // The CX6 landmark nodes (playtest 4, P4-19: "The real roads do not have the characteristics of the
 // roads in question"), baked as the game bakes them: each kit is found through the asset manifest the
 // build ships, and each new node resolves the way the landmark layer looks it up (`<node>`, else
-// `<node>_lod0`, with `<node>_lod1` past a feature's `farM`; landmarks.ts `single()`). No route names
-// these nodes yet; a later run places them, so this proves only that the shipped kits answer for them.
+// `<node>_lod0`, with `<node>_lod1` past a feature's `farM`; landmarks.ts `single()`). The cruise ship is placed on Duval's finish
+// road (cruise-ship.test.ts); the others wait for a later run, so this proves only that the shipped kits answer for them.
 import { describe, expect, it } from 'vitest';
 import { assetIndex, createPackLibrary } from '../content';
 import { readGlb } from './glb';
