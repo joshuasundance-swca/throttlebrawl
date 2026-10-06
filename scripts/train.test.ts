@@ -2470,7 +2470,9 @@ describe('the workflows', () => {
       expect(canReach([f], 'suite / sim (1/6)'), f).toBe(false);
     for (const f of ['tests/sim/x.test.ts', 'tests/e2e/x.spec.ts', 'src/ui/x.ts'])
       expect(canReach([f], 'suite / sim (1/6)'), f).toBe(true);
-    // Nothing imports a test file, and only the workflows and their own tests name the two scripts.
+    // Nothing imports a test file, and only the workflows and their own tests name the two scripts
+    // (and contributing-docs.test.ts, a unit test: it reads train.mjs to check what the contributor
+    // pages say about it, and a unit test is reached by any code change anyway, see canReach).
     const tracked = spawnSync('git', ['ls-files', '-z', 'src', 'tests', 'scripts', 'tools'], {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -2489,7 +2491,7 @@ describe('the workflows', () => {
     expect(read('scripts/train.test.ts')).toMatch(namesScript);
     for (const f of files) {
       expect(importsTest.test(read(f)), f).toBe(false);
-      if (!/^scripts\/(?:train|tested-tree)\.(?:mjs|test\.ts)$/.test(f))
+      if (!/^scripts\/(?:(?:train|tested-tree)\.(?:mjs|test\.ts)|contributing-docs\.test\.ts)$/.test(f))
         expect(namesScript.test(read(f)), f).toBe(false);
     }
   });
