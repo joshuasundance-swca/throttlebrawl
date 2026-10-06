@@ -1,0 +1,72 @@
+{
+  "type": "station",
+  "id": "pnw-sunbreak",
+  "name": "Sunbreak 92.5",
+  "genre": "dream",
+  "regions": ["pacific-northwest"],
+  "tracks": [
+    {
+      "id": "ferry-wake-delayed",
+      "title": "Ferry Wake, Delayed",
+      "procedural": {
+        "preset": "dream-band",
+        "params": { "bpm": 136, "key": "E", "progression": "sunbreak" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "pedalboard-in-the-drizzle",
+      "title": "Pedalboard in the Drizzle",
+      "procedural": {
+        "preset": "dream-band",
+        "params": { "bpm": 128, "key": "A", "progression": "overcast" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "gray-hour-gold-minute",
+      "title": "Gray Hour, Gold Minute",
+      "procedural": {
+        "preset": "dream-band",
+        "params": { "bpm": 140, "key": "D", "progression": "fogline" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "wall-of-cedar",
+      "title": "Wall of Cedar",
+      "procedural": { "preset": "dream-band", "params": { "bpm": 132, "key": "G", "progression": "cedar" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "chorus-pedal-for-the-hood-canal",
+      "title": "Chorus Pedal for the Hood Canal",
+      "procedural": {
+        "preset": "dream-band",
+        "params": { "bpm": 144, "key": "B", "progression": "sunbreak" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "sunbreak-lasting-four-minutes",
+      "title": "Sunbreak Lasting Four Minutes",
+      "procedural": {
+        "preset": "dream-band",
+        "params": { "bpm": 126, "key": "F#", "progression": "overcast" }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's motorik dream pop (run C, task C8; the maintainer: \"feel free to make more for all regions\"). A glassy arpeggio and a pad open alone, then the motorik drive (kick on one, three and the and of three, snare on two and four) under a bass in eighths, a crest where a wall of chiming chords and a soaring lead come in, a haze that drops the drums and the bass, and the crest again, at 124-146 bpm (src/audio/radio-compose-trio.ts, preset dream-band). Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

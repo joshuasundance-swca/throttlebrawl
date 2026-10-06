@@ -134,7 +134,13 @@ export function createAudio(
       slowmo: { active: false, lowpassHz: 0, musicLevel: 1, pitch: 1 },
       windLevel: 0,
       squealLevel: 0,
-      soundscape: { region: null, rain: 0, active: 0, played: [] },
+      soundscape: {
+        region: null,
+        rain: 0,
+        beds: { crowd: 0, gust: 0, falls: 0, city: 0, awnings: 0 },
+        active: 0,
+        played: [],
+      },
       radio: {
         choice: radioChoice,
         tunedTo: 'pending',

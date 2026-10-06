@@ -140,10 +140,12 @@ describe('Timber, raced as the career races it (the PNW boss)', () => {
       // (16 seeds: 1 fist fall, 3 into traffic; on the starting bike the boss rides out of reach and
       // all 15 falls were fists). So races run from seed 1 until both are seen (at least four), up
       // to sixteen, and every race's objective is checked against what happened in it.
-      const seen = () =>
-        checked >= 4 &&
-        (byKind['health'] ?? 0) > 0 &&
-        (byKind['traffic'] ?? 0) + (byKind['scenery'] ?? 0) > 0;
+      // A fall from the fists is rare here (1 in those 16 races; none in 16 after the roadside dodge
+      // reshuffled the races), so the search must find a counted fall, and a fist fall is checked in
+      // whichever race has one: src/career/race-log.test.ts ("not a takedown by fists") holds the
+      // fists rule on every run. A floor at a measured rate is not a rule (AGENTS.md).
+      const counted = () => (byKind['traffic'] ?? 0) + (byKind['scenery'] ?? 0) > 0;
+      const seen = () => checked >= 4 && (byKind['health'] ?? 0) > 0 && counted();
       for (let seed = 1; seed <= 16 && !seen(); seed++) {
         let me = -1;
         let rival = -1;
@@ -180,8 +182,8 @@ describe('Timber, raced as the career races it (the PNW boss)', () => {
       print(
         `[examined] ${checked} boss races; his falls by kind ${JSON.stringify(byKind)}; ${timberMoves} charges`,
       );
-      // The rule was exercised both ways (each race's count matched above), and he charged.
-      expect(seen()).toBe(true);
+      // The rule was exercised on a counted fall (each race's count matched above), and he charged.
+      expect(counted(), 'a fall into traffic or scenery in 16 races').toBe(true);
       expect(timberMoves).toBeGreaterThan(0);
     },
     RACE_MS * 3,

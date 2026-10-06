@@ -48,7 +48,7 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 
 /**
  * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
- * downtown, mission, promenade, wharf, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
+ * downtown, oldtown, mission, promenade, wharf, commercial, palms, mangrove, beach, sawmill, urban, industrial, forest): when one side
  * carries several land tags, the first listed here wins, as the scenery does. Widths stay well
  * inside render's 24 m land strip. The downtown's verges are city kerb and asphalt, not loose ground,
  * so its street furniture stands on them as a city pavement's does (`ridableBandPast` is 0 there).
@@ -105,14 +105,20 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['ferry-plaza', band(18, 'kerb', 'soft')],
   ['wharf-lot', band(18, 'shoulder', 'soft')],
   ['wharf', band(4, 'kerb', 'hard')],
-  ['palms', band(4, 'sand', 'soft')],
-  ['mangrove', band(3, 'grass', 'water')],
-  ['swamp', band(3, 'grass', 'water')],
+  // Key West's Old Town (playtest 4, P4-19; render's `oldtown` theme): Duval and Whitehead Streets are a
+  // street, a 4 m sidewalk to the shopfronts, which stand on its edge (render/roadside.ts `Frontage`): a
+  // building is drawn there, so the edge is a hard one, as the Chinatown and mural-alley shopfronts'.
+  ['key-oldtown', band(4, 'kerb', 'hard')],
+  // The town and its kin ahead of the palms (playtest 4, P4-19; render's `commercial` theme is ahead of
+  // `palms` as well): a Key West street tagged `town` and `palms` has a kerb, not a strip of sand.
   ['marina', band(6, 'gravel', 'fence')],
   ['trailer-park', band(6, 'gravel', 'fence')],
   ['strip-mall', band(5, 'kerb', 'soft')],
   ['town', band(4, 'kerb', 'soft')],
   ['landmark', band(5, 'grass', 'soft')],
+  ['palms', band(4, 'sand', 'soft')],
+  ['mangrove', band(3, 'grass', 'water')],
+  ['swamp', band(3, 'grass', 'water')],
   ['beach', band(6, 'sand', 'soft')],
   ['sawmill', band(6, 'gravel', 'soft')],
   ['row-houses', band(2.5, 'kerb', 'hard')],

@@ -60,6 +60,8 @@ const m2Custom: Settings = {
   haptics: false,
   slowMo: false,
   reduceShake: true,
+  reduceMotion: true,
+  textSize: 'largest',
   frameRateCap: 'half',
   look: 'brush',
   lookFallbackDismissed: true,
@@ -73,6 +75,8 @@ const m2Custom: Settings = {
   // Playtest 4 (P4-18): the Effects default this record was written under (0.9 is the old one).
   effectsDefault: 0.9,
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
+  // 2026-10-05: key remaps (Settings, Keys).
+  keyBindings: { brake: ['KeyS', 'ShiftLeft'], uturn: ['KeyE'] },
   lastSeenBuild: 'f630c3c',
   vetoes: [{ contentRef: 'base:barks/rival-taunts#line-3', raceId: 'race-1', tick: 1234 }],
   // Playtest 4 (P4-12, P4-13): the menu race's options (see save-race-options.test.ts).
@@ -99,6 +103,9 @@ const M2_FIELDS = [
   'haptics',
   'slowMo',
   'reduceShake',
+  // Playtest 4 run B (B13, M5's a11y-1): reduce motion, and the text size.
+  'reduceMotion',
+  'textSize',
   'frameRateCap',
   'look',
   'showTuningPanel',
@@ -121,6 +128,8 @@ const M2_FIELDS = [
   'raceOptions',
   // Playtest 4 (P4-8): the steering style, Arcade or Free.
   'steerStyle',
+  // 2026-10-05: key remaps.
+  'keyBindings',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -146,6 +155,8 @@ describe('the M2 settings record', () => {
       haptics: true,
       slowMo: true,
       reduceShake: false,
+      reduceMotion: false,
+      textSize: 'normal',
       frameRateCap: 'full',
       // Run W-O (maintainer, 2026-10-01): "ink+60s but may change later".
       look: 'kodak',
@@ -159,6 +170,7 @@ describe('the M2 settings record', () => {
       // Playtest 4 (P4-18): Effects start at 70%, the music, effects, voices ladder.
       effectsDefault: 0.7,
       gamepadBindings: {},
+      keyBindings: {},
       lastSeenBuild: null,
       vetoes: [],
     });
@@ -253,6 +265,8 @@ describe('the M2 settings record', () => {
       haptics: 0,
       slowMo: null,
       reduceShake: 'on',
+      reduceMotion: 'on',
+      textSize: 'huge',
       frameRateCap: 'quarter',
       look: 'sepia',
       showTuningPanel: 1,

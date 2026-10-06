@@ -328,6 +328,47 @@ describe('the Seven Mile Bridge: real geometry, the old road beside it', () => {
     );
     expect(toHighway(at.x, at.z)).toBeLessThan(toHighway(centre.x, centre.z));
   });
+
+  it('stands Pigeon Key where the real island is, on land of its own beside the old road', () => {
+    // Playtest 4, P4-19 (the identity study's S1). The article "Pigeon Key" gives the island at
+    // 24.703991 N, 81.155308 W (5 acres; the old bridge crosses over it). The bake puts the island's box
+    // there, on the new highway's side, wholly past the lanes and shoulders of every road, an island of
+    // its own (`island`), not under the deck.
+    const PIGEON_AT: [number, number] = [24.703991, -81.155308];
+    const owners = SM.roads.filter((r) => featuresOf(r).some((f) => f.id === 'pigeon-key'));
+    expect(
+      owners.map((r) => r.id),
+      'one road carries Pigeon Key',
+    ).toEqual(['osm-sm-old-east']);
+    const road = owners[0] as BakedRoad;
+    const key = featuresOf(road).find((f) => f.id === 'pigeon-key') as BakedFeature;
+    expect(key.kind).toBe('landmark');
+    expect(key.params?.['model']).toBe('seven-mile-kit#pigeon_key');
+    expect(key.params?.['island'], 'its own island: boats keep off').toBe(true);
+    const edge = SM_ROAD.edgeIndex(road.id);
+    const sMid = (key.s0 + key.s1) / 2;
+    const dMid = (key.d0 + key.d1) / 2;
+    const [rx, rz] = frameSM.toWorld(PIGEON_AT[0], PIGEON_AT[1]);
+    const centre = SM_ROAD.toWorld(edge, sMid, dMid, 0);
+    const placedAt = Math.hypot(centre.x - rx, centre.z - rz);
+    print(
+      `Pigeon Key's box is at s ${sMid.toFixed(0)}, d ${dMid.toFixed(1)}, ${placedAt.toFixed(1)} m from the article's point`,
+    );
+    expect(placedAt).toBeLessThan(5);
+    // Past the lanes and shoulders on the new highway's side (left), by more than the box's own reach.
+    const lanes = SM_ROAD.lanesAt(edge, sMid);
+    const lo = Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2));
+    expect(key.d1, 'wholly on the left, past the shoulder').toBeLessThanOrEqual(lo - 10);
+    // And clear of every other road in the network: no road's line within the box.
+    let nearest = Infinity;
+    for (const r of SM.roads) {
+      const w = nearestOn(r, centre.x, centre.z);
+      nearest = Math.min(nearest, w.off);
+    }
+    expect(nearest, 'the nearest road line is farther than the box reaches').toBeGreaterThan(
+      Math.abs(key.d1 - key.d0) / 2,
+    );
+  });
 });
 
 // ---- The jumps, measured in the sim, per bike ---------------------------------------------------
@@ -632,8 +673,9 @@ describe('Duval Street: Whitehead, the Southernmost Point and Duval at their rea
     const REAL: Record<string, { at: [number, number]; within: number }> = {
       'southernmost-buoy': { at: [24.5465112, -81.7974964], within: 8 },
       // On the sidewalk: the OSM point is 2.3 m from the road's centre line, so the marker stands a
-      // few metres out, past the verge.
-      'mile-0': { at: [24.5552807, -81.8040252], within: 7 },
+      // few metres out, past the verge. Old Town's sidewalk is 4 m since playtest 4 (P4-19), so it stands
+      // 10 m out, past the pavement's edge (the footprint rule `landmark-clear`), and the allowance is 1 m wider.
+      'mile-0': { at: [24.5552807, -81.8040252], within: 8 },
     };
     const found = new Set<string>();
     for (const [i, r] of DV.roads.entries()) {

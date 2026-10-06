@@ -12,6 +12,8 @@ import {
   GamepadState,
   inputDefaults,
   KeyboardState,
+  keyMapFromBindings,
+  padMapFromBindings,
   toSimInput,
   TouchState,
   type ActionState,
@@ -115,4 +117,58 @@ describe('the U-turn gesture on each device (playtest 4, P4-9)', () => {
       expect(run.maxYaw).toBeLessThanOrEqual(1.2);
     });
   }
+});
+
+// The U-turn button (2026-10-05, remappable controls): a key or pad button that makes the same
+// double tap for the player, so holding it and steering turns the bike round. It reaches the sim as
+// the brake and the bars only, the inputs a replay already records.
+describe('the U-turn button on the keyboard and the pad (2026-10-05)', () => {
+  function uturnKey(code: string, steerFirst: boolean, keys = new KeyboardState()): Device {
+    return (t) => {
+      if (steerFirst && t === 0) keys.down('KeyA');
+      if (t === TAP.second) {
+        keys.down(code);
+        if (!steerFirst) keys.down('KeyA');
+      }
+      const a = emptyActions();
+      keys.sample(a, 1 / 60);
+      return a;
+    };
+  }
+
+  function uturnPad(button: number, map = DEFAULT_PAD_MAP): Device {
+    const state = new GamepadState(map);
+    return (t) => {
+      const pad: PadLike = {
+        connected: true,
+        mapping: 'standard',
+        axes: [t >= TAP.second ? -1 : 0, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, (_, i) =>
+          i === button && t >= TAP.second ? { pressed: true, value: 1 } : { pressed: false, value: 0 },
+        ),
+      };
+      const a = emptyActions();
+      state.sample(a, [pad], 0.1, 1 / 60);
+      return a;
+    };
+  }
+
+  it('Q held with A turns the bike round', () => {
+    expect(ride(uturnKey('KeyQ', false)).dir).toBe(-1);
+  });
+
+  it('Q pressed while A is already held turns it round too (the button straightens the bars for its tap)', () => {
+    expect(ride(uturnKey('KeyQ', true)).dir).toBe(-1);
+  });
+
+  it('a remapped U-turn key does it, through the saved record; the old key then does not', () => {
+    const remapped = () => new KeyboardState(keyMapFromBindings({ uturn: ['KeyE'] }));
+    expect(ride(uturnKey('KeyE', false, remapped())).dir).toBe(-1);
+    expect(ride(uturnKey('KeyQ', false, remapped())).dir).toBe(1);
+  });
+
+  it('d-pad down held with the stick turns it round; a remapped button does too', () => {
+    expect(ride(uturnPad(DEFAULT_PAD_MAP.buttons.uturn[0] ?? -1)).dir).toBe(-1);
+    expect(ride(uturnPad(4, padMapFromBindings({ uturn: ['button4'] }))).dir).toBe(-1);
+  });
 });

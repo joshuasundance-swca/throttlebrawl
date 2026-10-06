@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionState } from '../../app';
+import kickPack from '../../../packs/base/weapons/kick.json';
 import type { EntitySnapshot, LaneInfo, RouteQueries, SimSnapshot } from '../../sim/api';
-import {
-  ATTACK_REPEAT_TICKS,
-  KICK_LEAD_TICKS,
-  KICK_OFFSET_M,
-  KICK_REPEAT_TICKS,
-  RETREAT_HEALTH,
-  createBot,
-} from './index';
+import { KICK_LEAD_TICKS, KICK_OFFSET_M, KICK_REPEAT_TICKS, RETREAT_HEALTH, createBot } from './index';
 
 // Unit tests of the bot's decisions on hand-built snapshots. The real-data check is the seeded
 // batch (tests/sim/) and the browser race, which drive the bot against the real sim.
@@ -116,15 +110,24 @@ describe('dev/bot: the BotController', () => {
       }
     }
     // A kick on the first tick, aimed left (the rival is 1.1 m to its left), and the next kick only
-    // after the kick's whole cycle; in between, one jab once the kick has recovered.
+    // after the kick's whole cycle, with no press in between (a kick leaves no room for a punch).
     expect(kicks).toEqual([0, KICK_REPEAT_TICKS]);
     expect(side).toBe(-1);
-    expect(presses.length).toBe(3);
-    const jab = presses[1] ?? -1;
-    expect(jab).toBeGreaterThanOrEqual(ATTACK_REPEAT_TICKS);
-    expect(KICK_REPEAT_TICKS - jab).toBeGreaterThanOrEqual(ATTACK_REPEAT_TICKS - 4);
+    expect(presses).toEqual(kicks);
     expect(bot.stats().kickPresses).toBe(2);
-    expect(bot.stats().attackPresses).toBe(3);
+    expect(bot.stats().attackPresses).toBe(2);
+  });
+
+  it('models the kick as packs/base/weapons/kick.json has it: it leads by the wind-up and repeats as the leg returns', () => {
+    const ticks = (s: number) => Math.max(1, Math.round(s * 60));
+    const cycle = ticks(kickPack.windupS) + ticks(kickPack.activeS) + ticks(kickPack.recoveryS);
+    const hitStop = Math.round((kickPack.hitStopMs * 60) / 1000);
+    expect(KICK_LEAD_TICKS).toBe(ticks(kickPack.windupS));
+    // Never before the leg is back (a press into the recovery is the sim's buffer, not a new kick),
+    // and no later than the hit-stop and a few ticks of margin past it (a bot that idles through a
+    // gap lands fewer kicks than the same rider does).
+    expect(KICK_REPEAT_TICKS).toBeGreaterThanOrEqual(cycle + hitStop);
+    expect(KICK_REPEAT_TICKS).toBeLessThanOrEqual(cycle + hitStop + 4);
   });
 
   it('never attacks the cop, and does not swing at a rival out of reach', () => {
@@ -284,21 +287,23 @@ describe('bot: fighting a rival down (dev-4 part 2)', () => {
   ];
 
   it('kicks when the rival will be in reach as the wind-up ends, not on where it is now', () => {
-    // Level now, but 4 m/s faster: 0.9 m ahead by the time a kick goes active. Hold the press.
+    // Level now, but faster by the speed that puts it 0.9 m ahead by the time a kick goes active
+    // (past the 0.8 m window). Hold the press.
+    const dv = (0.9 * 60) / KICK_LEAD_TICKS;
     const a = blank();
     const bot = createBot();
     bot.drive(
-      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100, d: 0.5, speed: 34 })]),
+      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100, d: 0.5, speed: 30 + dv })]),
       ME,
       route(),
       a,
     );
     expect(a.kick).toBe(false);
-    // 0.9 m behind and closing at 4 m/s: level as the kick goes active. Kick now.
+    // 0.9 m behind and closing at that speed: level as the kick goes active. Kick now.
     const b = blank();
-    const lead = (4 * KICK_LEAD_TICKS) / 60;
+    const lead = (dv * KICK_LEAD_TICKS) / 60;
     createBot().drive(
-      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100 - lead, d: 0.5, speed: 34 })]),
+      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100 - lead, d: 0.5, speed: 30 + dv })]),
       ME,
       route(),
       b,
@@ -382,5 +387,58 @@ describe('bot: fighting a rival down (dev-4 part 2)', () => {
     expect(a.attack).toBe(false);
     expect(a.steer).toBeGreaterThan(0.3); // away from the rival on its left
     expect(bot.stats().engagements).toBe(0);
+  });
+});
+
+describe('bot: a split zone across the oncoming lanes, and a remount', () => {
+  // Bridge City's cut leaves from the oncoming side: the zone's line (d -3.3) is in the lane that
+  // runs the other way. A bot back on the bike (it went down in the approach, and got up at the
+  // spot it fell) keeps its own side: it rode into those lanes at a walking pace, in front of
+  // cars closing at 25 m/s, again and again in one race (playtest 4, the respawn lane's finding).
+  const zone = { edge: 0, s0: 260, s1: 300, d0: -4.9, d1: -2.4, toEdge: 6, gainM: 54 };
+  const zoned = (): RouteQueries => ({ ...route(), shortcuts: [zone] }) as RouteQueries;
+  /** The bot goes down at `downS`, then rides again from `upS` at a pace of 8 m/s. */
+  function remounted(downS: number, upS: number) {
+    const bot = createBot();
+    bot.drive(snapshot(1, [mover(ME, { mode: 'Tumble', s: downS, d: 0.5, speed: 0 })]), ME, zoned(), blank());
+    bot.drive(snapshot(2, [mover(ME, { mode: 'OnFoot', s: downS, d: 0.5, speed: 0 })]), ME, zoned(), blank());
+    const a = blank();
+    bot.drive(snapshot(3, [mover(ME, { s: upS, d: 0.5, speed: 8 })]), ME, zoned(), a);
+    return { bot, a };
+  }
+
+  it('a bot that has not been down heads for the zone across the oncoming lanes (the check can see it)', () => {
+    const a = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 30 })]), ME, zoned(), a);
+    expect(a.steer).toBeLessThan(-0.3);
+  });
+
+  it('a remount inside the approach keeps to its own side, and does not go back for the zone', () => {
+    const { bot, a } = remounted(245, 245);
+    expect(a.steer).toBeGreaterThan(0); // toward its own lane (d 1.7), not the oncoming one
+    // Later, still short of the zone and up to speed: it has given the zone up.
+    const later = blank();
+    bot.drive(snapshot(40, [mover(ME, { s: 255, d: 1.7, speed: 30 })]), ME, zoned(), later);
+    expect(Math.abs(later.steer)).toBeLessThan(0.05);
+    expect(bot.stats().shortcutApproachTicks).toBe(0);
+  });
+
+  it('a fall well before the approach does not cost it the zone', () => {
+    const { bot, a } = remounted(20, 20);
+    expect(a.steer).toBeGreaterThan(0); // far from the zone: just back to its own lane
+    const near = blank();
+    bot.drive(snapshot(40, [mover(ME, { s: 200, d: 1.7, speed: 30 })]), ME, zoned(), near);
+    expect(near.steer).toBeLessThan(-0.3);
+    expect(bot.stats().shortcutApproachTicks).toBe(1);
+  });
+
+  it('a zone on its own side is still taken after a remount (the road-2 ramp)', () => {
+    const own = { ...zone, d0: 2.4, d1: 4.9 };
+    const ownRoute = { ...route(), shortcuts: [own] } as RouteQueries;
+    const bot = createBot();
+    bot.drive(snapshot(1, [mover(ME, { mode: 'Tumble', s: 245, d: 1.7, speed: 0 })]), ME, ownRoute, blank());
+    const a = blank();
+    bot.drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 8 })]), ME, ownRoute, a);
+    expect(a.steer).toBeGreaterThan(0.3);
   });
 });

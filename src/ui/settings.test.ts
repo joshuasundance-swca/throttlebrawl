@@ -35,6 +35,8 @@ describe('the M2 settings table', () => {
       'haptics',
       'slowMo',
       'reduceShake',
+      'reduceMotion',
+      'textSize',
       'frameRateCap',
       'showTuningPanel',
     ] satisfies SettingId[]) {
@@ -78,6 +80,34 @@ describe('the M2 settings table', () => {
     // Run W-O (maintainer, 2026-10-01: "ink+60s but may change later").
     expect(settingValue(DEFAULT_SETTINGS, 'look')).toBe('kodak');
     expect(settingPersists('look', sanitiseSettings)).toBe(true);
+  });
+
+  it('offers reduce motion and the text size on the Access tab, off and Normal by default, kept by the record, applied at once', () => {
+    // M5's a11y-1 (playtest 4 run B, B13): both are presentation only, so neither waits for a race.
+    const motion = settingDef('reduceMotion');
+    expect(motion.tab).toBe('access');
+    expect(motion.kind).toBe('toggle');
+    expect(motion.nextRace).toBeUndefined();
+    expect(settingValue(DEFAULT_SETTINGS, 'reduceMotion')).toBe(false);
+    expect(settingPersists('reduceMotion', sanitiseSettings)).toBe(true);
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'reduceMotion', value: true }).reduceMotion,
+    ).toBe(true);
+    // It is not the shake switch: changing one leaves the other.
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'reduceMotion', value: true }).reduceShake,
+    ).toBe(false);
+
+    const size = settingDef('textSize');
+    expect(size.tab).toBe('access');
+    expect(size.nextRace).toBeUndefined();
+    expect(size.options?.map((o) => o.value)).toEqual(['normal', 'large', 'largest']);
+    expect(settingValue(DEFAULT_SETTINGS, 'textSize')).toBe('normal');
+    expect(nonDefaultValue(size)).toBe('large');
+    expect(settingPersists('textSize', sanitiseSettings)).toBe(true);
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'textSize', value: 'largest' }).textSize,
+    ).toBe('largest');
   });
 
   it('marks exactly the settings that feed SimConfig as "applies next race"', () => {
@@ -210,7 +240,7 @@ describe('which settings the screen shows', () => {
       preview: false,
     });
     expect(unsaved).toEqual(['units']);
-    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel', 'stylePopups']);
+    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel', 'stylePopups', 'textSize']);
   });
 
   it('shows the view and the radio once the registry declares their sliders (ui applies them)', () => {
@@ -224,5 +254,32 @@ describe('which settings the screen shows', () => {
   it('shows everything in preview mode', () => {
     const all = visibleSettings({ live: [], persists: () => false, preview: true });
     expect(all).toEqual(SETTINGS.map((s) => s.id));
+  });
+});
+
+// Settings, Keys (2026-10-05): a device's remap record replaces that device's field, a reset is {},
+// and the saved record keeps it across a reload (save/'s sanitiser).
+describe('the Keys tab: remaps in the settings record', () => {
+  it('a keyboard or pad remap lands in its own field, survives the sanitiser, and {} resets it', () => {
+    const keys = applySettingsChange(DEFAULT_SETTINGS, {
+      kind: 'bindings',
+      device: 'keyboard',
+      bindings: { brake: ['KeyS', 'ShiftLeft'] },
+    });
+    expect(keys.keyBindings).toEqual({ brake: ['KeyS', 'ShiftLeft'] });
+    expect(keys.gamepadBindings).toEqual({});
+    const pad = applySettingsChange(keys, {
+      kind: 'bindings',
+      device: 'gamepad',
+      bindings: { uturn: ['button4'] },
+    });
+    expect(pad.gamepadBindings).toEqual({ uturn: ['button4'] });
+    expect(pad.keyBindings).toEqual({ brake: ['KeyS', 'ShiftLeft'] });
+    const reloaded = sanitiseSettings(JSON.parse(JSON.stringify(pad)));
+    expect(reloaded.keyBindings).toEqual({ brake: ['KeyS', 'ShiftLeft'] });
+    expect(reloaded.gamepadBindings).toEqual({ uturn: ['button4'] });
+    const reset = applySettingsChange(pad, { kind: 'bindings', device: 'keyboard', bindings: {} });
+    expect(reset.keyBindings).toEqual({});
+    expect(reset.gamepadBindings).toEqual({ uturn: ['button4'] });
   });
 });

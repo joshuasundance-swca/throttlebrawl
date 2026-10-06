@@ -16,6 +16,7 @@ import {
   type TouchLayout,
 } from '../sim/api';
 import { emptyActions, toSimInput, type ActionState } from './actions';
+import { keyMapFromBindings } from './bindings';
 import {
   DEFAULT_PAD_MAP,
   GamepadState,
@@ -30,6 +31,26 @@ import { createHaptics, type Haptics, type VibrateFn } from './feedback';
 import { applyInputParam, inputDefaults, type InputThresholds } from './tuning';
 
 export { emptyActions, toSimInput, type ActionState } from './actions';
+export {
+  BIND_ROWS,
+  bindingConflicts,
+  bindingFixed,
+  bindingLabel,
+  bindSlots,
+  boundTokens,
+  keyBindable,
+  keyMapFromBindings,
+  padTokens,
+  PAUSE_KEY,
+  RESERVED_KEYS,
+  SHARED_KEYS,
+  withBinding,
+  type BindAction,
+  type BindConflict,
+  type BindDevice,
+  type Bindings,
+  type BindRow,
+} from './bindings';
 export {
   DEFAULT_PAD_MAP,
   GamepadState,
@@ -128,6 +149,11 @@ export interface ControlOptions {
    * or `axis2` for `steer`. Only remapped actions are listed; {} means the default bindings.
    */
   padBindings: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Key remaps from the settings (`keyBindings`): action id to key codes such as `KeyQ`. Only
+   * remapped actions are listed; {} means the default keys.
+   */
+  keyBindings: Readonly<Record<string, readonly string[]>>;
 }
 
 export const DEFAULT_CONTROL_OPTIONS: Readonly<ControlOptions> = Object.freeze({
@@ -137,6 +163,7 @@ export const DEFAULT_CONTROL_OPTIONS: Readonly<ControlOptions> = Object.freeze({
   pullBackBrake: false,
   haptics: true,
   padBindings: Object.freeze({}),
+  keyBindings: Object.freeze({}),
 });
 
 type Listener = (e: Event) => void;
@@ -155,7 +182,7 @@ export interface InputOptions {
   /** The full-screen touch surface over the canvas. */
   surface: InputSurface;
   layout: TouchLayout;
-  /** Remapped keys; the product spec's map by default. */
+  /** Remapped keys; the product spec's map by default. The `keyBindings` control option goes on top. */
   keyMap?: KeyMap;
   /** Remapped gamepad buttons; the standard-mapping defaults otherwise. */
   padMap?: GamepadMap;
@@ -191,7 +218,9 @@ const browserGamepads = (): readonly (PadLike | null)[] => {
 
 export function createInput(opts: InputOptions): InputSystem {
   const thresholds: InputThresholds = inputDefaults();
-  const keyboard = new KeyboardState(opts.keyMap);
+  const keyBase = opts.keyMap;
+  const keyboard = new KeyboardState(keyBase);
+  let keyBindings: ControlOptions['keyBindings'] | null = null;
   const touch = new TouchState(thresholds);
   const padBase = opts.padMap ?? DEFAULT_PAD_MAP;
   const gamepad = new GamepadState(padBase);
@@ -217,6 +246,12 @@ export function createInput(opts: InputOptions): InputSystem {
     if (controls.padBindings !== padBindings) {
       padBindings = controls.padBindings;
       gamepad.setMap(padMapFromBindings(padBindings, padBase));
+    }
+    if (controls.keyBindings !== keyBindings) {
+      const first = keyBindings === null;
+      keyBindings = controls.keyBindings;
+      if (!first || Object.keys(keyBindings).length > 0)
+        keyboard.setMap(keyMapFromBindings(keyBindings, keyBase));
     }
     const wantSensors = controls.steering !== 'thumb' && !injectedTilt;
     if (wantSensors && !sensorTilt)
@@ -312,6 +347,7 @@ export function createInput(opts: InputOptions): InputSystem {
         touch.sample(emptyActions());
         gamepad.sample(drained, readPads(), thresholds.gamepadDeadZone, dt);
         if (drained.cycleCamera) a.cycleCamera = true;
+        if (drained.pause) a.pause = true;
         wheelieUp = false;
       } else {
         keyboard.sample(a, dt);

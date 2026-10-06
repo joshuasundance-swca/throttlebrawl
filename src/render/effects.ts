@@ -18,6 +18,7 @@ import {
   type Camera,
   type PerspectiveCamera,
 } from 'three';
+import { CALM_SHARE } from './calm';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
 import type { RenderParams } from './tuning';
@@ -431,7 +432,7 @@ export class FeelEffects {
       this.fisherArms[1].rotation.set(0, 0, up - wave);
     });
     // The tint fades in and out over a few frames.
-    const target = slowmo ? this.params.slowmoTint : 0;
+    const target = slowmo ? this.params.slowmoTint * (this.params.reduceMotion ? CALM_SHARE : 1) : 0;
     const step = dtReal / TINT_FADE_S;
     this.tintLevel =
       this.tintLevel < target

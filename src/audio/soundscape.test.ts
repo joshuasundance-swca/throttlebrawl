@@ -8,6 +8,7 @@ import { AUDIO_TUNING, createAudio } from './system';
 import {
   createDirector,
   JOINT_SPACING_M,
+  NO_BEDS,
   scapeRegionOf,
   tagsAt,
   WHEELBASE_M,
@@ -315,7 +316,7 @@ describe('the director is deterministic and silent without a region', () => {
     expect(a).not.toEqual(b);
   });
   it('no region, no sound', () => {
-    expect(createDirector(1).step(input({ region: null }))).toEqual({ events: [], rain: 0 });
+    expect(createDirector(1).step(input({ region: null }))).toEqual({ events: [], rain: 0, beds: NO_BEDS });
   });
 });
 

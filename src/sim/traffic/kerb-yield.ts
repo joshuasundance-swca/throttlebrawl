@@ -12,6 +12,7 @@
 //
 // Only types are imported, so index.ts can import this file without a cycle.
 import type { TuningParamDecl } from '../../core';
+import { roadsideClass } from '../roadside';
 import type { SimTrafficTypeDef } from '../types';
 
 /** [default] starting values (docs/architecture.md, "Traffic"). */
@@ -40,6 +41,18 @@ export const KERB_YIELD = {
    * topples (`softContact`). Taking the verge is for every kerb type (`takesVerge`, P4-3).
    */
   softMaxWidthM: 0.8,
+  /** A rider coming up the verge itself: the far spot needs the band this much wider than the rider, m. */
+  deepSpareM: 1.4,
+  /** The far and inboard spots are tried only when the near spots leave less room than this to the nearest rider, m. */
+  deepNeedM: 0.3,
+  /** The far spot's outer side is this far inside the band's outer edge, m. */
+  deepInsetM: 0.15,
+  /**
+   * The inboard spot (no room on the verge): its inner side clears the threat's box by this much, m,
+   * and it is taken only when that beats every outward spot by `inboardGainM`.
+   */
+  inboardClearM: 0.4,
+  inboardGainM: 0.3,
   /** The verge must be at least this much wider than the kerb rider for it to step onto it, m. */
   vergeSpareM: 0.4,
   /** On the verge it rides this far past the road edge, kerb rider's edge to the road's, m. */
@@ -80,6 +93,20 @@ export const KERB_YIELD_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Playtest 4 ("most things on the sidewalks jump out of the way"): a kerb rider also dodges a rider
+    // coming up the verge itself, to the far side of a wide verge or, with no room, into the road. 0 =
+    // as before (the near verge spot and the hug only). [default]
+    id: 'traffic.kerbDeep',
+    group: 'traffic',
+    label: 'Cyclists dodge a rider on the sidewalk',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
+    affectsSim: true,
+  },
+  {
     // Playtest 3: you wobble and the cyclist topples, never a crash. [default]
     id: 'traffic.kerbSoft',
     group: 'traffic',
@@ -92,6 +119,16 @@ export const KERB_YIELD_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
 ];
+
+/**
+ * The far side of a wide verge for a light kerb rider (sidewalk dodge, playtest 4): its outer side
+ * `deepInsetM` off the band's outer edge, or null where the band is not `deepSpareM` wider than it.
+ */
+export function deepSpot(t: SimTrafficTypeDef, edgeCd: number, vergeW: number, out: number): number | null {
+  // Light kinds only: the heavy ones (the cart) keep inside the smashables' line.
+  if (roadsideClass(t) !== 'dodges' || vergeW < t.widthM + KERB_YIELD.deepSpareM) return null;
+  return edgeCd + out * (vergeW - t.widthM / 2 - KERB_YIELD.deepInsetM);
+}
 
 /**
  * Whether a kerb rider may step onto a verge band `vergeW` wide: every kerb type may (playtest 4,
@@ -123,8 +160,8 @@ export function vergeOffsetFor(widthM: number): number {
  * light ones, 0.8 m wide or less. The golf cart is a car: a solid rear-end is still a crash (the
  * maintainer, playtest 4: "Keep it a crash").
  */
-export function softContact(t: Pick<SimTrafficTypeDef, 'widthM'>): boolean {
-  return t.widthM <= KERB_YIELD.softMaxWidthM;
+export function softContact(t: SimTrafficTypeDef): boolean {
+  return roadsideClass(t) === 'dodges';
 }
 
 /** What a threat test reads of a rider (index.ts's RiderView). */
@@ -184,11 +221,40 @@ export function holdsReturn(b: KerbBody, r: KerbRiderView, riderWidthM: number):
   return Math.abs(r.cd - b.homeCd) - (b.widthM + riderWidthM) / 2 < KERB_YIELD.lateralM;
 }
 
+/**
+ * The inboard spot: a lane-side step that clears every threat on the inside, or null when a threat is
+ * already on the inside of the kerb rider (it would have to cross that rider's line). `out` is the
+ * side of the kerb (+1 right, -1 left).
+ */
+export function inboardSpot(
+  cd: number,
+  threatCds: readonly number[],
+  widthM: number,
+  riderWidthM: number,
+  out: number,
+): number | null {
+  const gap = (widthM + riderWidthM) / 2 + KERB_YIELD.inboardClearM;
+  let spot = out > 0 ? Infinity : -Infinity;
+  for (const t of threatCds) {
+    if (out * (t - cd) < -0.2) return null;
+    spot = out > 0 ? Math.min(spot, t - gap) : Math.max(spot, t + gap);
+  }
+  return Number.isFinite(spot) ? spot : null;
+}
+
 /** The spots a dodging kerb rider can take. `verge` is null where it may not take the verge. */
 export interface DodgeSpots {
   verge: number | null;
   hug: number;
   stay: number;
+  /**
+   * Sidewalk dodge (playtest 4: "most things on the sidewalks jump out of the way"): the far side of
+   * a wide verge, outer side `deepInsetM` off the band's outer edge; null where the band is not
+   * `deepSpareM` wider than the rider, so the near spot is the same place.
+   */
+  deep?: number | null;
+  /** The last resort: a lane's width in from the road edge, null where there is no lane to take. */
+  inboard?: number | null;
 }
 
 /**
@@ -216,7 +282,25 @@ export function bestSpot(
   }
   if (spots.verge !== null) {
     const v = clearance(spots.verge);
-    if (v >= score) best = spots.verge;
+    if (v >= score) {
+      best = spots.verge;
+      score = v;
+    }
+  }
+  // The old spots are kept whenever they leave `deepNeedM` of room (a rider on the road, or beside the
+  // bicycle on the verge). Only a rider coming right up the kerb rider's own lane on the verge needs
+  // more: the far side of a wide verge, then into the road.
+  if (score < KERB_YIELD.deepNeedM) {
+    if (spots.deep != null) {
+      const dp = clearance(spots.deep);
+      if (dp > score) {
+        best = spots.deep;
+        score = dp;
+      }
+    }
+    if (spots.inboard != null && clearance(spots.inboard) > score + KERB_YIELD.inboardGainM) {
+      best = spots.inboard;
+    }
   }
   return best;
 }

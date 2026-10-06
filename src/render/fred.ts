@@ -42,7 +42,7 @@ const SAND = '#d2c093';
 /** Fred's Elves' lights: warm white, red, green, blue, amber. */
 const LIGHTS = ['#fff1b0', '#e8483c', '#5fd16a', '#4aa8ff', '#ffc13b', '#e8483c', '#fff1b0'] as const;
 
-type V = readonly [number, number, number];
+export type V = readonly [number, number, number];
 
 /** Where Fred's trunk leaves the ledge, and how far it leans away from the road at the top, m. */
 const TRUNK_LEAN_M = 0.3;
@@ -51,7 +51,7 @@ const LEDGE = { x0: -0.85, x1: 0.55, y0: -0.55, y1: -0.02, z0: -0.85, z1: 1.9 } 
 /** The young tree sprouted beside him. */
 const SAPLING = { x: 0.1, z: 1.25 } as const;
 
-class SoupBuilder {
+export class SoupBuilder {
   readonly soup: Soup = { pos: [], nrm: [], col: [] };
   private readonly colour = new Color();
 
@@ -81,6 +81,33 @@ class SoupBuilder {
     const len = Math.hypot(w[0], w[1], w[2]);
     if (len < 1e-9) return;
     for (const v of [p, q, r]) {
+      this.soup.pos.push(v[0], v[1], v[2]);
+      this.soup.nrm.push(w[0] / len, w[1] / len, w[2] / len);
+      this.soup.col.push(colour.r, colour.g, colour.b);
+    }
+  }
+
+  /**
+   * One triangle of a surface that faces up (a ground plate, a beach): wound so its normal points to +Y,
+   * whichever way round the caller listed its corners. A vertical triangle is left out.
+   */
+  up(a: V, b: V, c: V, hex: string): void {
+    const colour = this.colour.set(hex).clone();
+    let q = b;
+    let r = c;
+    const cross = (x: V, y: V, z: V): V => [
+      (y[1] - x[1]) * (z[2] - x[2]) - (y[2] - x[2]) * (z[1] - x[1]),
+      (y[2] - x[2]) * (z[0] - x[0]) - (y[0] - x[0]) * (z[2] - x[2]),
+      (y[0] - x[0]) * (z[1] - x[1]) - (y[1] - x[1]) * (z[0] - x[0]),
+    ];
+    let w = cross(a, q, r);
+    if (w[1] < 0) {
+      [q, r] = [r, q];
+      w = cross(a, q, r);
+    }
+    const len = Math.hypot(w[0], w[1], w[2]);
+    if (len < 1e-9 || w[1] <= 0) return;
+    for (const v of [a, q, r]) {
       this.soup.pos.push(v[0], v[1], v[2]);
       this.soup.nrm.push(w[0] / len, w[1] / len, w[2] / len);
       this.soup.col.push(colour.r, colour.g, colour.b);

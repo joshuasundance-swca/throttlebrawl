@@ -65,6 +65,7 @@ import {
 } from '../../core';
 import type { BakedFeature, RoadNeighbour, RoadNetwork } from '../../road';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
+import { roadsideClass } from '../roadside';
 import { vehicleInfo } from '../traffic';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 
@@ -233,7 +234,7 @@ export function pedThreatRangeM(speed: number): number {
  * `peds.bigReactScale` (so at 0 it never sees you coming).
  */
 export function kindThreatRangeM(world: World, t: SimTrafficTypeDef, speed: number): number {
-  if (t.hazard !== 'big') return pedThreatRangeM(speed);
+  if (roadsideClass(t) !== 'yields') return pedThreatRangeM(speed);
   const k = clamp(world.params['peds.bigReactScale'] ?? PEDS.bigReactScale, 0, 10);
   return k * pedThreatRangeM(speed);
 }
@@ -679,7 +680,7 @@ function spawnZone(
     const far = offRoadD(config.road, edge, s, -side, half, 0) - side * nextFloat(r) * 1.5;
     const timer = rollWait(world, r);
     // A big kind is never lured out in front of a rider at the worst moment.
-    const lure = nextFloat(r) < PEDS.lureChance && t.hazard !== 'big';
+    const lure = nextFloat(r) < PEDS.lureChance && roadsideClass(t) === 'dodges';
     placePed(world, config, {
       type,
       edge,
@@ -1027,7 +1028,7 @@ function resume(world: World, st: PedsState, k: number, t: SimTrafficTypeDef): v
   }
   st.phase[k] = PED_PHASE.loiter;
   st.timer[k] = rollWait(world);
-  st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance && t.hazard !== 'big' ? 1 : 0;
+  st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance && roadsideClass(t) === 'dodges' ? 1 : 0;
   p.speed = 0;
   p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
 }
@@ -1376,7 +1377,7 @@ function move(
     }
     st.phase[k] = PED_PHASE.loiter;
     st.timer[k] = rollWait(world);
-    st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance && t.hazard !== 'big' ? 1 : 0;
+    st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance && roadsideClass(t) === 'dodges' ? 1 : 0;
     p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
   }
 }
@@ -1412,12 +1413,15 @@ function react(
       st.vehicleContacts++;
     } else {
       st.contacts++;
-      if (t.hazard === 'big') {
+      // Contact is soft for a `dodges` kind and a crash for the others (src/sim/roadside.ts).
+      if (roadsideClass(t) !== 'dodges') {
         const data = { cause: 'ped', hazard: 'big', kind: t.contentId };
         emit(world, 'crash', touching.m.id, data, { target: p.id });
       }
     }
-    if (st.phase[k] !== PED_PHASE.dive) startDive(world, config, st, k, touching.m, true, threats);
+    if (st.phase[k] !== PED_PHASE.dive && roadsideClass(t) !== 'solid') {
+      startDive(world, config, st, k, touching.m, true, threats);
+    }
   }
   if (st.phase[k] === PED_PHASE.dive) return;
   let threat: Mover | null = null;
@@ -1440,6 +1444,8 @@ function react(
       threat = r;
     }
   }
+  // A `solid` kind stands where it is (src/sim/roadside.ts); it is not even startled.
+  if (roadsideClass(t) === 'solid') return;
   if (threat) startDive(world, config, st, k, threat, false, threats);
   else closePass(world, config, st, k, threats, dt);
 }

@@ -70,7 +70,7 @@ export const HEAT_BADGE_CSS = `
 #hud-heat { position: absolute; top: var(--hl-heat-y, max(58px, env(safe-area-inset-top)));
   left: var(--hl-heat-l, auto); right: var(--hl-heat-r, max(8px, env(safe-area-inset-right)));
   padding: 3px 10px 4px; background: #000a; border: 2px solid #e0543a; border-radius: 4px;
-  font: 800 12px ui-monospace, 'Courier New', monospace; letter-spacing: 0.1em; color: #f2ead8;
+  font: 800 0.75rem ui-monospace, 'Courier New', monospace; letter-spacing: 0.1em; color: #f2ead8;
   white-space: nowrap; text-align: center; pointer-events: none; }
 #hud-heat .heat-row { display: flex; align-items: center; gap: 6px; justify-content: center; }
 #hud-heat .heat-pip { width: 8px; height: 8px; border: 1px solid #f2ead8; border-radius: 50%; }

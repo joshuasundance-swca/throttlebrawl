@@ -23,7 +23,7 @@ import {
 import kickPack from '../../../packs/base/weapons/kick.json';
 import punchPack from '../../../packs/base/weapons/punch.json';
 import { secondsToTicks } from '../../core';
-import { PRESS_BUFFER_TICKS } from './index';
+import { BUMP_AFTER_TICKS, PRESS_BUFFER_TICKS } from './index';
 import { F, flags, KICK, makeHarness, ofType, PUNCH, scriptOf, type Placement } from './harness.test-util';
 
 const KICK_PRESS = F.attack | F.kick;
@@ -339,5 +339,48 @@ describe('P4-6: bumping into the rider you attack never cancels the attack', () 
     }
     console.log(`[bump] alongside: ${bumped} attacks touched the rival, all landed`);
     expect(bumped).toBeGreaterThan(0);
+  });
+});
+
+/** The tick the player's bike first bumps the rival when riding up as rideUp does with no press, or -1. */
+function bumpTick(closing: number, dd: number): number {
+  const { sim, world } = createSimWithWorld(duel());
+  const [rival, player] = world.movers;
+  if (!rival || !player) return -1;
+  for (let t = 0; t < 170; t++) {
+    if (t === 50) {
+      Object.assign(player.pos, { s: 300, d: 0 });
+      Object.assign(rival.pos, { s: 304, d: -dd });
+      player.yaw = 0;
+      rival.yaw = 0;
+      player.speed = 25 + closing;
+      rival.speed = 25;
+    }
+    sim.step([ride(), ride()]);
+    for (const e of sim.events())
+      if (e.type === 'wobble' && e.actor === 1 && e.target === 0 && e.data['cause'] === 'rider') return t;
+  }
+  return -1;
+}
+
+describe('P4-6: an attack pressed just after a rear bump lands (run B, B15)', () => {
+  it('a punch, a kick or a straight kick pressed up to BUMP_AFTER_TICKS after the bump lands', () => {
+    const STRAIGHT = KICK_PRESS | F.attackSideLeft | F.attackSideRight;
+    let pressed = 0;
+    for (const press of [F.attack, KICK_PRESS, STRAIGHT]) {
+      for (const closing of [4, 6]) {
+        for (const dd of [0, 0.3]) {
+          const bump = bumpTick(closing, dd);
+          // The check can find the case it guards: the ride-up bumps him.
+          expect(bump, `closing ${closing} dd ${dd}`).toBeGreaterThan(0);
+          for (const after of [2, 10, 20, BUMP_AFTER_TICKS]) {
+            const a = rideUp(press, bump + after, closing, dd);
+            pressed++;
+            expect(a?.landed, `press ${press} closing ${closing} dd ${dd}, ${after} ticks after`).toBe(true);
+          }
+        }
+      }
+    }
+    expect(pressed).toBe(48);
   });
 });

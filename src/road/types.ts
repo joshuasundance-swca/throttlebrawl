@@ -331,6 +331,13 @@ export interface LandmarkParams {
   farM: number;
   /** True for a structure the road runs through or under (a bridge tower, a gantry). */
   overRoad: boolean;
+  /**
+   * True for an island of its own in open water (Pigeon Key): the boats and islets the scenery floats
+   * keep off its box. Only a feature that says so claims the water.
+   */
+  island: boolean;
+  /** A per-instance number for a model's text surface (a mile post's), or null; the sign's `{n}` takes it. */
+  number: number | null;
 }
 
 /** A `landmark` feature's params, each bad or missing one at its default (never throws). */
@@ -351,5 +358,10 @@ export function landmarkParams(f: BakedFeature): LandmarkParams {
         : LANDMARK_DEFAULTS.scale,
     farM: positiveParam(f, 'farM', LANDMARK_DEFAULTS.farM),
     overRoad: p['overRoad'] === true,
+    island: p['island'] === true,
+    number:
+      typeof p['number'] === 'number' && Number.isInteger(p['number']) && p['number'] >= 0
+        ? p['number']
+        : null,
   };
 }

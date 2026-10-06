@@ -20,13 +20,16 @@
 //   it, ahead or oncoming), matches speed, and kicks (attack + kick, one press edge, aimed at the
 //   rival's side) when the rival will be inside the kick's reach as the wind-up ends. Through the
 //   wind-up it steers into the rival, so the momentum kick adds its sideways speed to the shove.
-//   Between kicks it jabs once when the rival is in the punch's window. It gives up on a rival
-//   after ENGAGE_LIMIT_TICKS and rests before the next fight, and it stops fighting while its own
-//   health is under RETREAT_HEALTH, so it still finishes its races.
+//   It presses again the tick the leg is back (a kick's cycle leaves no room for a punch between
+//   two kicks). It gives up on a rival after ENGAGE_LIMIT_TICKS and rests before the next fight,
+//   and it stops fighting while its own health is under RETREAT_HEALTH, so it still finishes its
+//   races.
 import type { ActionState } from '../../app';
+import kickPack from '../../../packs/base/weapons/kick.json';
 import {
   InputFlag,
   quantizeInput,
+  secondsToTicks,
   type EntitySnapshot,
   type LaneInfo,
   type RouteProgress,
@@ -72,16 +75,23 @@ export const KICK_OFFSET_M = 1.2;
  * the speed difference over KICK_LEAD_TICKS) and |Δd| limits, inside the kick's 1.0 × 1.7 m reach.
  */
 export const KICK_WINDOW = { sM: 0.8, dMinM: 0.5, dMaxM: 1.65 } as const;
-/** The kick's wind-up, ticks (packs/base/weapons/kick.json: 0.22 s): the bot leads its press by it. */
-export const KICK_LEAD_TICKS = 13;
-/** Ticks between kick presses: the kick's 13 + 6 + 27 ticks and its 30-tick cooldown, plus 2. */
-export const KICK_REPEAT_TICKS = 78;
-/** The punch window the bot jabs in between kicks: |Δs| and |Δd| limits (punch reach 1.2 × 1.4 m). */
-export const ATTACK_WINDOW = { sM: 0.9, dMinM: 0.5, dMaxM: 1.35 } as const;
-/** Ticks between any two of the bot's attack presses (a punch cycle is 7 + 5 + 15 = 27 ticks). */
-export const ATTACK_REPEAT_TICKS = 32;
-/** The bot jabs only when its next kick is at least this many ticks off (a jab blocks a kick press). */
-const JAB_CLEAR_TICKS = 28;
+/**
+ * The kick's wind-up, ticks: the bot leads its press by it. Both kick numbers come from the kick
+ * weapon's own file (packs/base/weapons/kick.json), the way the sim reads them (content ticks =
+ * max(1, round(seconds x 60))), so a retune of the kick moves the bot with it.
+ */
+export const KICK_LEAD_TICKS = secondsToTicks(kickPack.windupS);
+/**
+ * Ticks between kick presses: the kick's whole cycle (wind-up, active, recovery), the hit-stop a
+ * landed kick freezes the sim for, and 2 ticks of margin. A player's kick waits for nothing but the
+ * leg's return (the cooldown is the rivals' only), so the bot presses again the tick the leg is back.
+ */
+export const KICK_REPEAT_TICKS =
+  secondsToTicks(kickPack.windupS) +
+  secondsToTicks(kickPack.activeS) +
+  secondsToTicks(kickPack.recoveryS) +
+  Math.round((kickPack.hitStopMs * 60) / 1000) +
+  2;
 /** How far ahead (and behind) the bot looks for a rival to fight, m. */
 export const ENGAGE_RANGE_M = 70;
 const ENGAGE_BEHIND_M = 40;
@@ -137,6 +147,20 @@ function zoneLine(z: ShortcutZone): number {
   return inner + Math.sign(outer - inner) * Math.min(SHORTCUT_LINE_IN_M, Math.abs(outer - inner) / 2);
 }
 
+/**
+ * Does a zone's line run through lanes that go the other way (a cut that leaves from the oncoming
+ * side, Bridge City's)? The lanes are those at the zone's start.
+ */
+function crossesOncoming(z: ShortcutZone, route: RouteQueries, dir: 1 | -1): boolean {
+  const line = zoneLine(z);
+  const lane = route
+    .lanesAt(z.edge, z.s0)
+    .find(
+      (l) => (l.kind === 'drive' || l.kind === 'shoulder') && Math.abs(line - l.dCenterM) <= l.widthM / 2,
+    );
+  return lane !== undefined && lane.direction === -dir;
+}
+
 /** What the bot has done so far this race (the browser test and the batch print these). */
 export interface BotStats {
   attackPresses: number;
@@ -188,7 +212,6 @@ export function createBot(): BotController {
     kickPresses: 0,
     dangerKicks: 0,
   };
-  let lastPressTick = -1e9;
   let lastKickTick = -1e9;
   /** The road-frame d direction the current kick shoves the target (+1 or -1). */
   let kickShove = 0;
@@ -198,6 +221,8 @@ export function createBot(): BotController {
   let shortcutDone = false;
   let onShortcut = false;
   let dodging = false;
+  /** Was the bot down (tumbling or on foot) on its last tick? */
+  let wasDown = false;
 
   /** Is a stretch of road clear of vehicles around lateral `d`, from s0 to s1 ahead? */
   function clearAt(snap: SimSnapshot, me: EntitySnapshot, d: number, s0: number, s1: number): boolean {
@@ -323,7 +348,17 @@ export function createBot(): BotController {
         a.skipRunBack = true;
         stats.skipTicks++;
         targetId = -1;
+        wasDown = true;
         return;
+      }
+      if (wasDown) {
+        // Back on the bike, at the spot it fell. A cut that leaves across the oncoming lanes, and
+        // that it fell in the approach to, is given up: it would ride into those lanes from a
+        // walking pace, in front of traffic closing at 25 m/s (the head-on crashes after each
+        // remount in playtest 4's respawn lane). A cut on its own side, or one further on, stays on.
+        wasDown = false;
+        const near = zonesOf(route).find((z) => approaching(z, me.road.edge, me.road.s, me.road.dir));
+        if (near && crossesOncoming(near, route, me.road.dir)) shortcutDone = true;
       }
       if (me.mode === 'Airborne' || !me.grounded) {
         a.throttle = 1;
@@ -394,27 +429,16 @@ export function createBot(): BotController {
               Math.abs(dsAtActive) <= KICK_WINDOW.sM &&
               Math.abs(rel.dd) >= KICK_WINDOW.dMinM &&
               Math.abs(rel.dd) <= KICK_WINDOW.dMaxM;
-            const jabbable =
-              Math.abs(rel.ds) <= ATTACK_WINDOW.sM &&
-              Math.abs(rel.dd) >= ATTACK_WINDOW.dMinM &&
-              Math.abs(rel.dd) <= ATTACK_WINDOW.dMaxM;
-            const pressReady = snap.tick - lastPressTick >= ATTACK_REPEAT_TICKS;
-            if (kickable && pressReady && sinceKick >= KICK_REPEAT_TICKS) {
+            if (kickable && sinceKick >= KICK_REPEAT_TICKS) {
               const aim = shoveSide(snap, me, rival, bounds);
               a.attack = true;
               a.kick = true;
               a.attackSide = rel.dd > 0 ? 1 : -1;
-              lastPressTick = snap.tick;
               lastKickTick = snap.tick;
               kickShove = rival.road.d >= d ? 1 : -1;
               stats.attackPresses++;
               stats.kickPresses++;
               if (aim.danger && aim.shove === kickShove) stats.dangerKicks++;
-            } else if (jabbable && pressReady && KICK_REPEAT_TICKS - sinceKick >= JAB_CLEAR_TICKS) {
-              a.attack = true;
-              a.attackSide = rel.dd > 0 ? 1 : -1;
-              lastPressTick = snap.tick;
-              stats.attackPresses++;
             }
             // Hold the kick flag through the wind-up, so the attack stays a kick.
             if (windingUp && !a.attack) a.kick = true;

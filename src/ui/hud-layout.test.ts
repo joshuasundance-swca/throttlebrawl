@@ -3,6 +3,7 @@ import classicPreset from '../../packs/base/hud/classic.json';
 import { placeElement, type LayoutElement } from '../sim/api';
 import {
   HUD_SIZE,
+  hudTextScale,
   OBJECTIVE_LINES,
   objectiveHeight,
   TICKER_H,
@@ -12,11 +13,13 @@ import {
   pauseBox,
   placedBox,
   planVars,
+  scaledElement,
   settleLifts,
   type Box,
   type TopMode,
   type TopPlan,
 } from './hud-layout';
+import { TEXT_SCALE } from './text-size';
 
 // The HUD's top layout (design spec "HUD layout: nothing overlaps", playtest 3): table-driven over
 // the screens the spec lists, with the left-handed mirror, against the Classic preset the game ships.
@@ -60,16 +63,18 @@ interface Case {
   buttons: Box[];
 }
 
-function solve(w: number, h: number, mirror: boolean, safe = NO_SAFE): Case {
-  const position = placedBox(element('position'), w, h, mirror, HUD_SIZE.position);
-  const target = placedBox(element('health-target'), w, h, mirror, HUD_SIZE.health);
-  const plan = layoutTop({ w, h, safe, mirror, position, target });
+function solve(w: number, h: number, mirror: boolean, safe = NO_SAFE, k = 1): Case {
+  // The text widgets grow with the Text size setting (`scaledElement`); the touch buttons do not.
+  const text = (name: string) => scaledElement(element(name), k);
+  const position = placedBox(text('position'), w, h, mirror, HUD_SIZE.position);
+  const target = placedBox(text('health-target'), w, h, mirror, HUD_SIZE.health);
+  const plan = layoutTop({ w, h, safe, mirror, position, target, textScale: k });
   const buttons = ['touch-attack', 'touch-brake'].map((n) => {
     const r = placeElement(element(n), w, h, mirror);
     return { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h };
   });
-  const speed = placedBox(element('speedometer'), w, h, mirror, HUD_SIZE.speed);
-  const self = placedBox(element('health-self'), w, h, mirror, HUD_SIZE.health);
+  const speed = placedBox(text('speedometer'), w, h, mirror, HUD_SIZE.speed);
+  const self = placedBox(text('health-self'), w, h, mirror, HUD_SIZE.health);
   const lifts = settleLifts(
     [
       { name: 'hud-speed', box: speed },
@@ -225,6 +230,64 @@ describe('the top layout, table-driven over the design spec screens', () => {
     const stacked = planVars(solve(412, 915, false).plan, 412);
     expect(stacked['--hl-toast-t']).toBe('-50%');
     expect(stacked['--hl-obj-l']).toBe('8px');
+  });
+});
+
+// The Text size setting (docs/product-spec.md, "Accessibility"): at every size the rules hold on every
+// screen in the table, because the slots grow with the text. The sizes are the setting's own factors.
+describe('the top layout at the larger text sizes (rule 7)', () => {
+  for (const size of ['large', 'largest'] as const) {
+    for (const mirror of [false, true]) {
+      for (const s of SCREENS.filter((x) => x.w >= 360)) {
+        it(`${size} text, ${s.w}x${s.h}${mirror ? ' mirrored' : ''}: nothing overlaps and the road ahead is clear`, () => {
+          // What the race's HUD draws with on this screen (a short phone takes less of it).
+          const c = solve(s.w, s.h, mirror, NO_SAFE, hudTextScale(TEXT_SCALE[size], s.h));
+          expect(pairs(c, c.plan.mode)).toEqual([]);
+          const look = lookAheadBox(s.w, s.h);
+          const inLook = c.pieces
+            .filter((p) => !['hud-speed', 'hud-health', 'touch-attack', 'touch-brake'].includes(p.name))
+            .filter((p) => overlap(p.box, look))
+            .map((p) => p.name);
+          // The stacked layout (a narrow upright window; a touch phone shows the rotate screen instead) is
+          // best effort at the larger sizes: its rows stack down from the top and may reach the road
+          // ahead's top edge. Under 360 px wide is not checked here at all. Phones held sideways are.
+          if (c.plan.mode === 'inline') expect(inLook, 'in the road ahead').toEqual([]);
+          for (const p of c.pieces) {
+            expect(p.box.left, `${p.name} on screen (left)`).toBeGreaterThanOrEqual(-0.5);
+            expect(p.box.top, `${p.name} on screen (top)`).toBeGreaterThanOrEqual(-0.5);
+            expect(p.box.right, `${p.name} on screen (right)`).toBeLessThanOrEqual(s.w + 0.5);
+            expect(p.box.bottom, `${p.name} on screen (bottom)`).toBeLessThanOrEqual(s.h + 0.5);
+          }
+        });
+      }
+    }
+  }
+
+  it('grows the slots it reserves with the text and leaves the pause button alone', () => {
+    const plain = solve(915, 412, false).plan;
+    const big = solve(915, 412, false, NO_SAFE, TEXT_SCALE.largest).plan;
+    const height = (b: Box) => b.bottom - b.top;
+    expect(height(big.ticker)).toBeCloseTo(height(plain.ticker) * TEXT_SCALE.largest, 5);
+    expect(height(big.objective)).toBeGreaterThan(height(plain.objective));
+    expect(height(big.heat)).toBeGreaterThan(height(plain.heat));
+    expect(height(big.toast)).toBeGreaterThan(height(plain.toast));
+    expect(big.pause).toEqual(plain.pause);
+  });
+
+  it('caps the HUD factor by the screen height: none on the shortest phone, the whole of it from 390 px', () => {
+    expect(hudTextScale(TEXT_SCALE.largest, 320)).toBe(1);
+    expect(hudTextScale(TEXT_SCALE.largest, 360)).toBeGreaterThan(1);
+    expect(hudTextScale(TEXT_SCALE.largest, 360)).toBeLessThan(TEXT_SCALE.largest);
+    expect(hudTextScale(TEXT_SCALE.largest, 412)).toBe(TEXT_SCALE.largest);
+    expect(hudTextScale(TEXT_SCALE.large, 412)).toBe(TEXT_SCALE.large);
+    expect(hudTextScale(1, 768)).toBe(1);
+    // Never below Normal, and a bad height changes nothing.
+    expect(hudTextScale(TEXT_SCALE.largest, 100)).toBe(1);
+    expect(hudTextScale(TEXT_SCALE.largest, Number.NaN)).toBe(1);
+  });
+
+  it('is the same plan at Normal as with no factor at all', () => {
+    expect(solve(740, 360, false, NO_SAFE, 1).plan).toEqual(solve(740, 360, false).plan);
   });
 });
 
