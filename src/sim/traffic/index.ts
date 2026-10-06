@@ -184,6 +184,21 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Hairpin yield (playtest 4, the Gorge's first turns: the field, carried wide round the Crown
+    // Point loop, met the oncoming car in it head on): a vehicle waits short of a bend of 75 m radius
+    // or tighter while a rider is in it or within this far (m) beyond it, coming its way, and drives
+    // on once they are through. 0 (and a race whose tuning leaves it out) is off. [default]
+    id: 'traffic.hairpinYieldM',
+    group: 'traffic',
+    label: 'Traffic waits at a hairpin for riders',
+    default: 250,
+    min: 0,
+    max: 400,
+    step: 10,
+    unit: 'm',
+    affectsSim: true,
+  },
+  {
     // M2 traffic-3: 0 is off. Playtest 1 found nothing unfair, so it ships off. [default]
     id: 'traffic.oncomingEaseInS',
     group: 'traffic',
@@ -311,6 +326,11 @@ export const TRAFFIC = {
   /** The rider's contact box. */
   riderLengthM: 2.0,
   riderWidthM: 0.8,
+  /**
+   * Within this much of touching in corridor terms, a contact is measured on the vehicle's rigid,
+   * drawn box instead (rigidOffset): the two differ by at most about a metre on the tightest bends, m.
+   */
+  rigidNearM: 1.5,
   /** Speed kept after a wobble, and after a crash. */
   wobbleScrub: 0.6,
   crashScrub: 0.3,
@@ -1029,6 +1049,89 @@ function nearTightBend(world: World, config: SimConfig, st: TrafficState, u: num
 }
 
 /**
+ * Where a waiting vehicle stops: this far short of the drift bend's mouth (m), clear of a rider
+ * carried wide out of the bend into its lane, who steers back across it within about 50 m. [default]
+ */
+const HAIRPIN_WAIT_M = 60;
+
+/**
+ * Hairpin yield (`traffic.hairpinYieldM`): how far ahead of corridor u, travelling `dir`, the next
+ * drift bend (DRIFT_BEND_KAPPA, the corridor's bend mask) begins, when a rider is in that bend or
+ * within the key's reach beyond it, riding toward u; else Infinity (also with the key off, and in
+ * a bend already: a vehicle in one drives on through). Riders going the vehicle's way never count.
+ * Pure + - * / over the corridor and the rider views.
+ */
+function hairpinMouth(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  u: number,
+  dir: number,
+): number {
+  const reach = world.params['traffic.hairpinYieldM'] ?? 0;
+  if (!(reach > 0) || riders.length === 0) return Infinity;
+  const c = st.corridor;
+  const mask = bendMask(config, st);
+  const bendAt = (a: number): boolean | null => {
+    const x = u + dir * a;
+    if (x < 0 || x > c.length) return null;
+    return mask[Math.round(x / BEND_STEP_M)] === 1;
+  };
+  let mouth = -1;
+  for (let a = 0; a <= TRAFFIC.lookaheadM; a += BEND_STEP_M) {
+    const at = bendAt(a);
+    if (at === null) return Infinity;
+    if (at) {
+      mouth = a;
+      break;
+    }
+  }
+  if (mouth <= 0) return Infinity;
+  let far = mouth;
+  while (bendAt(far + BEND_STEP_M) === true) far += BEND_STEP_M;
+  for (const r of riders) {
+    if (r.dir === dir) continue;
+    const ahead = dir * (r.u - u);
+    if (ahead >= mouth && ahead <= far + reach) return mouth;
+  }
+  return Infinity;
+}
+
+/**
+ * The distance ahead of vehicle k to the line where it waits for riders coming round a hairpin
+ * (HAIRPIN_WAIT_M short of its mouth), or Infinity: none coming, or k already past its wait line.
+ */
+function hairpinWait(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  k: number,
+): number {
+  const mouth = hairpinMouth(world, config, st, riders, st.u[k] ?? 0, st.dir[k] ?? 1);
+  return mouth - HAIRPIN_WAIT_M > 0 ? mouth - HAIRPIN_WAIT_M : Infinity;
+}
+
+/**
+ * A spawn slot a vehicle could not wait in time at (hairpin yield): riders are coming round the
+ * hairpin ahead of it, and it would start past its wait line or inside its comfortable stopping
+ * distance of it.
+ */
+function hairpinSpawnBlocked(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  u: number,
+  dir: number,
+  v0: number,
+): boolean {
+  const mouth = hairpinMouth(world, config, st, riders, u, dir);
+  return mouth < HAIRPIN_WAIT_M + (v0 * v0) / (2 * IDM.comfortDecelMps2);
+}
+
+/**
  * Tries to (re)spawn a vehicle heading `dir`: candidate slots from the front of the anchors'
  * windows backward, each checked against the corridor ends, the fairness rule and lane room.
  */
@@ -1089,6 +1192,7 @@ function trySpawn(
     riders ??= riderViews(world, config, st);
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, lanes[rank]?.cd ?? 0))) continue;
     const v0 = t.cruiseMps * speedRoll;
+    if (!isParked(t) && hairpinSpawnBlocked(world, config, st, riders, u, dir, v0)) continue;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
     if (k >= 0) st.recycles++;
@@ -1550,6 +1654,12 @@ function move(
       }
       if (end < Infinity) consider(end - t.lengthM / 2, 0);
     }
+    // Hairpin yield (playtest 4): riders coming round a tight bend toward it hold it short of the
+    // bend, a stopped obstacle at its wait line.
+    if (!isParked(t)) {
+      const wait = hairpinWait(world, config, st, riders, k);
+      if (wait < Infinity) consider(wait - t.lengthM / 2, 0);
+    }
     // A dodging kerb rider (T4.1) slows down while it does.
     const dodging = isKerb(t) && st.clockS < (st.yieldUntilS[k] ?? 0);
     dodge.push(dodging);
@@ -1898,6 +2008,40 @@ function wheelieReasonData(reason: string | undefined): { wheelieReason?: string
 }
 
 /**
+ * Where the vehicle is from the rider as its drawn body sees it (playtest 4, the maintainer,
+ * 2026-10-05: "you need to give trucks a wider berth"): the vehicle is a rigid box, along its own
+ * heading (the road's tangent at its middle, turned by its yaw), as the render draws it, and the
+ * rider's middle is measured in that box's frame, in metres. Corridor coordinates bend with the road
+ * and stretch with the offset across it, so on a bend a 16 m log truck's corridor box reached up to
+ * half a metre past the truck drawn there: riders crashed into air beside and behind it. Returned in
+ * corridor signs (+du: the vehicle is further along u; +dcd: further across), null when either mover
+ * is missing. Plain + - * / and the core trig: the sim's determinism rules.
+ */
+function rigidOffset(
+  config: SimConfig,
+  v: Mover | undefined,
+  rider: Mover,
+  dirC: number,
+): { du: number; dcd: number } | null {
+  if (!v) return null;
+  const road = config.road;
+  const f = road.frameAt(v.pos.edge, v.pos.s);
+  const tx = f.tx * v.pos.dir;
+  const tz = f.tz * v.pos.dir;
+  const c = cos(v.yaw);
+  const sn = sin(v.yaw);
+  // Its heading (as tumble/contacts.ts builds a vehicle's box), turned to point along +u.
+  const ux = (c * tx - sn * tz) * dirC;
+  const uz = (c * tz + sn * tx) * dirC;
+  const a = road.toWorld(v.pos.edge, v.pos.s, v.pos.d, 0);
+  const b = road.toWorld(rider.pos.edge, rider.pos.s, rider.pos.d, 0);
+  const ox = a.x - b.x;
+  const oz = a.z - b.z;
+  // +cd is +u turned a quarter to its right: (x, z) to (-z, x), as +d is to the tangent.
+  return { du: ox * ux + oz * uz, dcd: -ox * uz + oz * ux };
+}
+
+/**
  * Wobbles, crashes and near misses between riders and vehicles (M1 traffic-1, reshaped by
  * playtest 1, 2026-09-30: "hitting cars feels bouncy", and playtest 4, 2026-10-05: "low speeds
  * should wobble not crash, accounting for biker speed and traffic speed"). A first contact is
@@ -1941,8 +2085,18 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
     for (let k = 0; k < st.id.length; k++) {
       const vid = st.id[k] ?? -1;
       const t = typeOf(config, st, k);
-      const du = (st.u[k] ?? 0) - r.u;
-      const dcd = (st.cd[k] ?? 0) - r.cd;
+      let du = (st.u[k] ?? 0) - r.u;
+      let dcd = (st.cd[k] ?? 0) - r.cd;
+      if (
+        Math.abs(du) < (t.lengthM + T.riderLengthM) / 2 + T.rigidNearM &&
+        Math.abs(dcd) < (t.widthM + T.riderWidthM) / 2 + T.rigidNearM
+      ) {
+        const rigid = rigidOffset(config, world.movers[vid], m, st.dir[k] ?? 1);
+        if (rigid) {
+          du = rigid.du;
+          dcd = rigid.dcd;
+        }
+      }
       const overU = (t.lengthM + T.riderLengthM) / 2 - Math.abs(du);
       const overD = (t.widthM + T.riderWidthM) / 2 - Math.abs(dcd);
       const ahead = r.dir * du;

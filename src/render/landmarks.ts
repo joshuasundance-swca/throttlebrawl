@@ -197,7 +197,7 @@ const headingOf = (tx: number, tz: number): number => Math.atan2(tx, tz);
 
 /**
  * Every landmark feature of a network that names a node of a known kit, placed: its origin at the
- * footprint's centre, its +Z along the road. Its height is the road's surface there, or
+ * footprint's centre (or `params.frontM` ahead of it, along its +Z), its +Z along the road. Its height is the road's surface there, or
  * `params.baseY` (world metres) when it says so: a tower that rises from the water says 0. Features
  * that name no model, or a kit this build does not know, are left out.
  */
@@ -213,16 +213,22 @@ export function landmarkPlacements(road: RoadNetwork): LandmarkPlacement[] {
       const at = road.toWorld(e.index, s, d, 0);
       const frame = road.frameAt(e.index, s);
       const baseY = feature.params?.['baseY'];
+      const yaw = headingOf(frame.tx, frame.tz) + (params.yawDeg * Math.PI) / 180;
+      // `frontM` (playtest 4, P4-19; a church's origin is its facade, with the nave behind it): the origin
+      // stands this far ahead of the footprint's middle along the model's +Z, so the footprint can be the
+      // building's own and not a box twice its depth.
+      const frontM = feature.params?.['frontM'];
+      const ahead = finite(frontM) ? frontM * params.scale : 0;
       out.push({
         feature,
         edge: e.index,
         kit: model.kit,
         node: model.node,
         params,
-        x: at.x,
+        x: at.x + Math.sin(yaw) * ahead,
         y: finite(baseY) ? baseY : at.y,
-        z: at.z,
-        yaw: headingOf(frame.tx, frame.tz) + (params.yawDeg * Math.PI) / 180,
+        z: at.z + Math.cos(yaw) * ahead,
+        yaw,
         scale: params.scale,
       });
     }

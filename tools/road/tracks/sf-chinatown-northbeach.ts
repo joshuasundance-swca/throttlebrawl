@@ -101,6 +101,43 @@ const pad = (id: string, s: number, slot: string) => ({
   params: { boostMps: 8, holdS: 1.5, slot },
 });
 
+/**
+ * The Dragon Gate (playtest 4, P4-19, CX5's `sf-landmarks#sf_dragon_gate`): Chinatown's south entry, an
+ * `overRoad` landmark across Lantern Row a few metres past the start grid (the front row of the grid is at
+ * s 40), so a rider passes under it in the first second. Its kit: a 12.4 m clear opening, red posts at
+ * 6.7 m out with the pagoda-roofed lintel over them, two side gates and a guardian on a plinth at each
+ * outer post (10 m out). The footprint is 4.4 m along the road and 24 m across (the outer posts, the side
+ * roofs and the guardians). The two inner posts stand on the pavement, 0.7 m past the shoulder's edge, so
+ * they are solid hazards (sim/riders/features.ts): a rider on the pavement meets them, and nobody rides
+ * through a post that is drawn. [default]
+ */
+export const GATE = {
+  s: 52,
+  halfAlongM: 2.2,
+  halfAcrossM: 12,
+  postD: [6.2, 7.2],
+  postHalfAlongM: 0.7,
+} as const;
+
+/** A solid hazard (sim/riders/features.ts): a box on the pavement nobody rides through. */
+const post = (id: string, d: readonly [number, number]) => ({
+  kind: 'hazard',
+  id,
+  s0: GATE.s - GATE.postHalfAlongM,
+  s1: GATE.s + GATE.postHalfAlongM,
+  d0: d[0],
+  d1: d[1],
+  params: { solid: true, object: 'gate-post', heightM: 7.6 },
+});
+
+/**
+ * The church by the park (playtest 4, P4-19, CX5's `sf-landmarks#sf_twin_spire`): its footprint on the
+ * elbow's outer side, centred at `s`, `d` (left is negative), `alongM` along the road and `acrossM` across
+ * (the model is 30 m wide and 18 m deep), 18.5 m from the apex's centre line and 4 m past the park's grass
+ * (the verge ends at 14.5 m). Its `_lod1` stands in past `farM`. [default]
+ */
+export const CHURCH = { s: 78, d: -27.5, alongM: 30, acrossM: 18, farM: 260 } as const;
+
 export const SF_CHINATOWN_NORTHBEACH: TrackSource = {
   network: {
     id: 'sf-chinatown-northbeach',
@@ -154,6 +191,18 @@ export const SF_CHINATOWN_NORTHBEACH: TrackSource = {
       features: [
         // The lot cop waits on the pavement beside the grid.
         { kind: 'copSpawn', id: 'cn-lantern-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.2 },
+        // The Dragon Gate, Chinatown's south entry (yawDeg 180: its plaque faces a rider coming up the street).
+        {
+          kind: 'landmark',
+          id: 'dragon-gate',
+          s0: GATE.s - GATE.halfAlongM,
+          s1: GATE.s + GATE.halfAlongM,
+          d0: -GATE.halfAcrossM,
+          d1: GATE.halfAcrossM,
+          params: { model: 'sf-landmarks#sf_dragon_gate', yawDeg: 180, overRoad: true },
+        },
+        post('dragon-gate-post-r', GATE.postD),
+        post('dragon-gate-post-l', [-GATE.postD[1], -GATE.postD[0]]),
         walkers('cn-lantern-walkers', 60, 150, 1),
         walkers('cn-lantern-walkers-2', 200, 300, -1),
         sign('sign-cn-lantern-clearance', 'cn-lantern-clearance', 110, -1),
@@ -251,6 +300,19 @@ export const SF_CHINATOWN_NORTHBEACH: TrackSource = {
           item: 'nb-ai-poet',
         },
         sign('sign-nb-elbow-brake', 'nb-elbow-brake', 30, -1),
+        // The twin-spired church (CX5's `sf-landmarks#sf_twin_spire`), across the park from the elbow's
+        // apex: its facade faces the road, so a rider coming up Espresso Row has it 23 to 25 degrees off
+        // its axis from 400 m out. The model's origin is its facade (the nave runs 18 m behind it), so
+        // `frontM` 9 puts the footprint's middle in the nave: the 30 by 18 m box is the church's own.
+        {
+          kind: 'landmark',
+          id: 'twin-spire-church',
+          s0: CHURCH.s - CHURCH.alongM / 2,
+          s1: CHURCH.s + CHURCH.alongM / 2,
+          d0: CHURCH.d - CHURCH.acrossM / 2,
+          d1: CHURCH.d + CHURCH.acrossM / 2,
+          params: { model: 'sf-landmarks#sf_twin_spire', yawDeg: -90, frontM: 9, farM: CHURCH.farM },
+        },
         {
           kind: 'roadsideZone',
           id: 'nb-elbow-park',

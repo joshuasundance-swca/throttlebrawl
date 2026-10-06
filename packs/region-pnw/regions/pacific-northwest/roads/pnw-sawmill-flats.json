@@ -57,7 +57,7 @@
       "kind": "rampTruck",
       "id": "carrier-mill-cut",
       "s0": 563.5,
-      "s1": 585.5,
+      "s1": 584.6,
       "d0": 3.4,
       "d1": 5.4,
       "params": { "rampLengthM": 11.5, "lipHeightM": 2.8 }

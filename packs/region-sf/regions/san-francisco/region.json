@@ -85,6 +85,20 @@
           { "kind": "base:pickup", "weight": 3, "hazard": "normal" },
           { "kind": "startup-shuttle", "weight": 0.5, "hazard": "big" }
         ]
+      },
+      {
+        "tag": "cable-route",
+        "mix": [
+          { "kind": "rideshare-hatchback", "weight": 5, "hazard": "normal" },
+          { "kind": "base:sedan-rental", "weight": 3, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 2, "hazard": "normal" },
+          { "kind": "startup-shuttle", "weight": 1, "hazard": "big" },
+          { "kind": "base:box-truck", "weight": 1, "hazard": "big" },
+          { "kind": "hesitron-robotaxi", "weight": 2.5, "hazard": "normal" },
+          { "kind": "delivery-e-bike", "weight": 1.5, "hazard": "normal" },
+          { "kind": "e-scooter-rider", "weight": 1.5, "hazard": "normal" },
+          { "kind": "cable-car", "weight": 2, "hazard": "big" }
+        ]
       }
     ],
     "pedestrians": [
@@ -123,6 +137,13 @@
       "tags": ["site", "surface", "new"],
       "status": "live",
       "note": "NEW, playtest 4, P1 (the wave C check: the Golden Gate toll gantry's board was a blank panel): the words on the toll gantry's board, white on highway green. A text surface, not a board: the game paints it on the model's `toll_gantry_sign` panel (docs/content-packs.md, Text surfaces), and cutting it in the game leaves the board blank. An invented line, vetoable like any sign."
+    },
+    {
+      "id": "sf-dragon-gate-plaque",
+      "text": "WELCOME. STEEP AHEAD.",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4, P4-19 (CX5's Dragon Gate, Chinatown's south entry): the words on the gate's plaque, gold on dark green. A text surface, not a board: the game paints it on the model's `sf_dragon_gate_plaque` panel (docs/content-packs.md, Text surfaces), and cutting it in the game leaves the plaque blank. An invented line, vetoable like any sign."
     },
     { "id": "robotaxi-cones", "text": "ROBOTAXI ZONE. Do not place cones on hoods.", "status": "live" },
     { "id": "shuttles-only", "text": "BUS STOP: SHUTTLES ONLY. Buses by appointment.", "status": "live" },

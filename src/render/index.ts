@@ -48,6 +48,13 @@ import type { Smashables } from './smashables';
 import { createFlatLook, isLitTime, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
+import {
+  QUALITY_TIERS,
+  renderPixelRatio,
+  sceneryReach,
+  type QualityTier,
+  type QualityTierId,
+} from './quality';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
 import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import type { ScenesFile } from './scenes/data';
@@ -96,7 +103,8 @@ export { RENDER_TUNING } from './tuning';
 export { DEFAULT_LOOK, isLookId, LOOK_IDS } from './looks';
 export type { LookId } from './looks';
 
-export const MAX_PIXEL_RATIO = 1.5;
+export { createQualityGovernor, loadAutoTier, MAX_PIXEL_RATIO, saveAutoTier } from './quality';
+export type { QualityGovernor, QualitySetting, QualityState, QualityTierId } from './quality';
 /** The render camera's far plane, metres: just past the placeholder look's fog end (700 m). */
 export const CAMERA_FAR_M = 760;
 
@@ -163,6 +171,12 @@ export interface GameRenderer {
   pushEvents(events: readonly SimEvent[]): void;
   render(prev: SimSnapshot | null, curr: SimSnapshot | null, alpha: number, pose: ViewPose): void;
   resize(): void;
+  /**
+   * The quality tier and resolution scale app/'s governor picked (quality.ts, roadmap M5): the scene
+   * draws at the capped device pixel ratio times the scale, never under the readable floor, and the
+   * tier trims how far the still scenery reaches. Render only; threats are never trimmed.
+   */
+  setQuality(tier: QualityTierId, scale: number): void;
   stats(): RendererStats;
   /** Entities drawn by the last frame, by kind. */
   viewCounts(): EntityViewCounts;
@@ -280,7 +294,11 @@ export interface RendererOptions extends EntityViewOptions {
 export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions = {}): GameRenderer {
   const look = createLookSet(opts.look ?? createFlatLook());
   const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+  // The quality tier and resolution scale (quality.ts): `high` at full resolution until app/'s
+  // governor says otherwise, which is the game as it drew before tiers.
+  let quality: Readonly<QualityTier> = QUALITY_TIERS.high;
+  let qualityScale = 1;
+  renderer.setPixelRatio(renderPixelRatio(window.devicePixelRatio || 1, qualityScale));
   // A look with a film pass draws twice a frame: count the whole frame, not only the last draw.
   renderer.info.autoReset = false;
   // The film pass (looks/post.ts) and the model reader (models.ts, glb.ts) are lazy chunks: the
@@ -940,19 +958,20 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         race.smashables.sync(curr, t);
       } else loadRace();
       airPays.update(prev, curr, alpha, t);
-      sceneryVisible = roadScene
-        ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
-        : 0;
-      if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
+      // The tier's reach for the still scenery (quality.ts). Boards keep the slider's own: their words
+      // are content, and threats are never trimmed (they are not scenery).
+      const reach = sceneryReach(params, quality);
+      sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, reach.drawM, reach.lodM) : 0;
+      if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, reach.drawM);
       // The street fronts are placed over the first frames of a race; their shop names follow.
       if (roadside?.ready && !roadsideWords) {
         roadsideWords = true;
         buildTextSurfaces();
       }
       party?.update(pose.x, pose.z);
-      if (places) sceneryVisible += places.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
+      if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
-      scenes?.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
+      scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       if (downtown) {
         // The cross traffic moves with the race: it stands still while the race does (paused).
@@ -962,7 +981,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
         sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
       }
-      if (waterfront) sceneryVisible += waterfront.update(pose.x, pose.z, params.sceneryLodM);
+      if (waterfront) sceneryVisible += waterfront.update(pose.x, pose.z, reach.lodM);
       if (blocks) sceneryVisible += blocks.update(pose.x, pose.z);
       if (mission && missionModule) {
         // The crew paints with the race: the leader's share of it, and stands still while it is paused.
@@ -1015,6 +1034,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         setPieces: roadScene?.stats.setPieces ?? [],
         eventProps: race?.eventProps.counts() ?? noProps,
       };
+    },
+    setQuality(tier, scale) {
+      quality = QUALITY_TIERS[tier] ?? QUALITY_TIERS.high;
+      qualityScale = Number.isFinite(scale) ? Math.min(1, Math.max(0, scale)) : 1;
+      // A new pixel ratio resizes the drawing buffer (the browser upscales it to the canvas); the
+      // film pass's target follows the buffer on its next frame.
+      const ratio = renderPixelRatio(window.devicePixelRatio || 1, qualityScale);
+      if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
     },
     viewCounts: () => views.viewCounts(),
     onContextChange(listener) {

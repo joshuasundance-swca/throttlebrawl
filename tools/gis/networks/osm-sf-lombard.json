@@ -80,6 +80,20 @@
               "d0": 5.6,
               "d1": 12.6,
               "params": { "spawns": "pedestrians" }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-top-queue",
+              "s0": 236,
+              "s1": 286,
+              "d0": -12.6,
+              "d1": -5.6,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 8
+              }
             }
           ]
         },
@@ -87,7 +101,121 @@
           "id": "osm-sf-lombard-crooked",
           "name": "The Crooked Block",
           "sampleSpacingM": 1.2,
-          "tags": ["brick-street", "gardens"]
+          "tags": ["brick-street", "gardens"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-1",
+              "s0": 21,
+              "s1": 34,
+              "d0": -5.4,
+              "d1": -3.9,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-2",
+              "s0": 40,
+              "s1": 56,
+              "d0": 3.9,
+              "d1": 5.4,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-3",
+              "s0": 59,
+              "s1": 76,
+              "d0": -5.4,
+              "d1": -3.9,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-4",
+              "s0": 82,
+              "s1": 98,
+              "d0": 3.9,
+              "d1": 5.4,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-5",
+              "s0": 102,
+              "s1": 118,
+              "d0": -5.4,
+              "d1": -3.9,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-6",
+              "s0": 124,
+              "s1": 140,
+              "d0": 3.9,
+              "d1": 5.4,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-7",
+              "s0": 144,
+              "s1": 160,
+              "d0": -5.4,
+              "d1": -3.9,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-stairs-8",
+              "s0": 166,
+              "s1": 179,
+              "d0": 3.9,
+              "d1": 5.4,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 4
+              }
+            }
+          ]
         },
         {
           "id": "osm-sf-lombard-flats",
@@ -102,6 +230,20 @@
               "d0": 5.6,
               "d1": 12.6,
               "params": { "spawns": "pedestrians" }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-bottom-crowd",
+              "s0": 30,
+              "s1": 84,
+              "d0": -12.6,
+              "d1": -5.6,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["lombard-photographer"],
+                "everyM": 4,
+                "maxPeds": 8
+              }
             },
             {
               "kind": "boostPad",

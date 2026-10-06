@@ -179,6 +179,21 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Bend room (playtest 4, the Gorge's first turns): a rider the bend carries onto its outer edge
+    // while holding the bars into it crashes only from this many times the barrier crash speed;
+    // under it, a scrape and a wobble. 1 (and a race whose tuning leaves it out) is the old rule.
+    // [default]
+    id: 'riders.bendEdgeForgive',
+    group: 'crashes',
+    label: 'Bend room: edge forgiveness',
+    default: 3,
+    min: 1,
+    max: 4,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
     // Off-road (run W-R; interview, 2026-10-02: "some fences can be smashed"): a rider who hits a
     // fence at the end of a verge band this fast or faster across it smashes through it; slower,
     // the fence holds it, with a scrape and a wobble but never a crash. [default]
@@ -391,8 +406,11 @@ export const LAUNCH_FADE_SHARE = 0.75;
 export const AI_LAUNCH_THROTTLE = 0.9;
 /** m/s² when off the throttle, before air drag. */
 export const COAST_DECEL = 0.6;
-/** How far beside a ramp truck a rider put down inside it steps out, m. */
-const TRUCK_STEP_OUT_M = 0.3;
+/**
+ * How far beside a ramp truck a rider put down inside it steps out, m: clear of its side by the
+ * rider's reach (truckSideContact), so stepping out is not a scrape (it was 0.3, the bike's middle).
+ */
+const TRUCK_STEP_OUT_M = HAZARD_REACH_D_M + 0.05;
 const GRAVITY = 9.81;
 /**
  * 1/s: how fast the bike reaches the steered heading (Arcade). The Free steering style turns the
@@ -645,11 +663,13 @@ export function riderLimits(
     lim.hi = lanes.hi;
     lim.hiEdge = 'hard';
     lim.hiBandM = 0;
+    lim.hiTaper = false;
   }
   if (!outLeft && lim.lo < lanes.lo && splitGuideAt(config, edge, s, -1, lanes.lo)) {
     lim.lo = lanes.lo;
     lim.loEdge = 'hard';
     lim.loBandM = 0;
+    lim.loTaper = false;
   }
   return lim;
 }
@@ -755,6 +775,19 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
     st.touching[m.id] = 0;
     return;
   }
+  if (side > 0 ? lim.hiTaper === true : lim.loTaper === true) {
+    // A bridge taper (road/bridge-taper.ts; playtest 4, "the rider clips from open air onto the
+    // bridge"): the verge narrows into the bridge's end, and its edge eases a rider out on it onto
+    // the deck with no event. The edge coming in costs nothing; a rider whose own heading pushes
+    // into it (carried wide by a bend, or steering out) scrapes along it with the edge's own drag
+    // (the ferns, the sand), as anywhere along the band, and stays in touch with it, so the rail
+    // where the deck begins carries the same scrape on.
+    pos.d = limit;
+    const pushing = pos.dir * m.yaw * side > 0;
+    if (pushing) scrapeAlong(config, m, side, dt, EDGE_DRAG[side > 0 ? lim.hiEdge : lim.loEdge]);
+    st.touching[m.id] = pushing ? 1 : 0;
+    return;
+  }
   if (uturnTurning(st, m.id)) {
     // Mid U-turn (sim/riders/uturn.ts) the kerb holds the bike in and scrapes speed off while it
     // pivots on round; it never crashes it, and the heading is left to the turn. Off-road, the edge
@@ -772,13 +805,42 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   const impact = scrapeAlong(config, m, side, dt, EDGE_DRAG[kind]);
   pos.d = limit;
   st.touching[m.id] = 1;
-  // A drift is slid on purpose along the edge, so the wall forgives it more (drift room).
+  // A drift is slid on purpose along the edge, so the wall forgives it more (drift room); so is a
+  // rider the bend carries onto its outer edge while it holds the bars into the bend (bend room).
   const sliding = (st.driftSide[m.id] ?? 0) !== 0 || (st.driftBeta[m.id] ?? 0) !== 0;
-  const crashScale = sliding ? Math.max(1, world.params['riders.driftEdgeForgive'] ?? 1) : 1;
+  const crashScale = Math.max(
+    sliding ? Math.max(1, world.params['riders.driftEdgeForgive'] ?? 1) : 1,
+    bendCarried(world, config, m, side) ? Math.max(1, world.params['riders.bendEdgeForgive'] ?? 1) : 1,
+  );
   const hit = { impact, v, yawBefore, side, newContact, crashScale };
   if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
   else if (kind === 'fence') wallOutcome(world, st, m, { ...hit, extra: { object: 'fence' }, noCrash: true });
   else groundEdge(world, st, m, kind, hit);
+}
+
+/** The bars held this far into a bend count as holding it (bend room). [default] */
+const BEND_HOLD_STEER = 0.5;
+/** A bend at least this tight (1/m, a 400 m radius) can carry a rider onto its outer edge (bend room). */
+const BEND_ROOM_KAPPA = 1 / 400;
+
+/**
+ * Bend room (playtest 4, the maintainer on the Gorge: "the first couple turns are very very prone
+ * to crashing"): the rider meets the edge on the outside of a bend while holding the bars into it
+ * (at least BEND_HOLD_STEER of lock toward the bend's inside). Faster than full lock can hold the
+ * bend, the riding model carries the bike wide at a steady rate whatever the rider does, so the
+ * speed into the edge is the bend's doing, not a swerve into it; `riders.bendEdgeForgive` raises
+ * the crash speed for it, as drift room does for a slide. Off the edge's outside, or steering
+ * straight or away from the bend, the barrier rule is as before.
+ */
+function bendCarried(world: World, config: SimConfig, m: Mover, side: 1 | -1): boolean {
+  const k = config.road.kappaAt(m.pos.edge, m.pos.s);
+  // The bend's outside in the road frame is −sign(κ), whichever way the rider travels.
+  if (k * k < BEND_ROOM_KAPPA * BEND_ROOM_KAPPA || side * k > 0) return false;
+  const input = world.inputs[m.id];
+  if (!input) return false;
+  // The rider's right is +steer; the bend turns to the rider's right when κ·dir > 0.
+  const into = (input.steer / 127) * m.pos.dir * (k > 0 ? 1 : -1);
+  return into >= BEND_HOLD_STEER;
 }
 
 /** Whether a rider is out past a fence line in a broken fence's yard (and keeps the gap open). */
@@ -946,6 +1008,7 @@ function truckContact(
     launch ||
     deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.next }) - before.deck <= KERB_M
   ) {
+    if (!launch && truckSideContact(world, config, st, m, before, dt, decks)) return;
     st.truckTouch[m.id] = 0;
     return;
   }
@@ -970,6 +1033,42 @@ function truckContact(
   // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck).
   const crash = before.deck > KERB_M;
   wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash, vehicle: true });
+}
+
+/**
+ * A rider on the road beside a ramp truck meets its side with the side of its bike, not its middle
+ * (playtest 4 hitbox audit: the middle rule let the bike ride half a bike's width into the drawn
+ * truck before it scraped). Where the truck stands higher than a kerb within the rider's reach
+ * across (HAZARD_REACH_D_M, as for a solid hazard), the rider is held that far off its side and
+ * scrapes, by truckContact's side rule. The low foot of a ramp is no side. Returns true on contact.
+ */
+function truckSideContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number; deck: number },
+  dt: number,
+  decks: MovingDecks,
+): boolean {
+  const pos = m.pos;
+  if (before.deck > KERB_M || before.edge !== pos.edge) return false;
+  for (const side of [1, -1] as const) {
+    const d = pos.d + side * HAZARD_REACH_D_M;
+    const truck = rampTruckAt(config, pos.edge, pos.s, d, decks.next);
+    if (!truck) continue;
+    if (deckHeight(config, pos.edge, pos.s, d, { moving: decks.next }) - before.deck <= KERB_M) continue;
+    const v = truckClosingMps(truck, m.speed, pos.dir);
+    const yawBefore = m.yaw;
+    const newContact = st.truckTouch[m.id] !== 1;
+    st.truckTouch[m.id] = 1;
+    const impact = scrapeAlong(config, m, side, dt);
+    pos.d = side > 0 ? truck.d0 - HAZARD_REACH_D_M - 0.01 : truck.d1 + HAZARD_REACH_D_M + 0.01;
+    const extra = { object: 'rampTruck', feature: truck.id };
+    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
+    return true;
+  }
+  return false;
 }
 
 /**

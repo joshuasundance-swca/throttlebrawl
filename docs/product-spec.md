@@ -147,6 +147,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Race length | [decided] |
 | Frame rate: smooth first by default (the display's full rate, with the picture softening under load), plus a battery saver at about 30 fps (cockpit answer, 2026-09-29) | [decided] |
 | Frame-rate cap options are divisors of the measured display refresh: full, half, a third | [default] |
+| Graphics: Auto (the default) picks a quality tier from measured frame time and softens the picture under load, never below a readable floor; High, Medium or Low pins a tier (playtest 4, C9; see [the architecture doc](./architecture.md#quality-tiers-and-dynamic-resolution)) | [default] |
 | Look: Ink + 60s film for a new save, with Classic, Sun-bleached wasteland and Kodachrome brush in the switch (maintainer, 2026-10-01: "ink+60s but may change later"). When slow frames (under about 34 fps at the full frame rate) fill 60% of 6 s of a race on an ink look, a note offers a one-tap switch to Classic; "No thanks" is remembered | [decided] for the default; [default] for the offer and its numbers |
 | Difficulty: Easy, Normal, Hard. The presets set rival aggression, cop frequency and rubber-banding; assists toggle separately | [decided] |
 | Failure mode: Road Trip is the default, with Classic and Hardcore as later options (cockpit answer, 2026-09-29; see [Failure states](#failure-states)) | [decided] |

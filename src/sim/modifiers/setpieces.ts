@@ -1674,17 +1674,19 @@ function trapCopCd(config: SimConfig, c: Corridor, p: SetPiece): number {
 }
 
 /** A prop's half extents along and across the road, for contacts (0: not touchable). */
-function extent(kind: PropKind): [number, number] {
+export function extent(kind: PropKind): [number, number] {
   switch (kind) {
-    // Matched to render's read-at-speed sizes (render/event-props.ts, READ_SCALE).
+    // Matched to render's read-at-speed sizes (render/event-props.ts, READ_SCALE): the flare's stick
+    // and glow, the sawhorse's splayed feet, the bale's width (playtest 4 hitbox audit,
+    // scripts/hitboxes.test.ts).
     case 'cone':
       return [0.36, 0.36];
     case 'flare':
-      return [0.25, 0.25];
+      return [0.35, 0.25];
     case 'barricade':
-      return [0.4, 1.2];
+      return [0.55, 1.2];
     case 'hayBale':
-      return [0.7, 0.55];
+      return [0.7, 0.4];
     default:
       return [0, 0];
   }

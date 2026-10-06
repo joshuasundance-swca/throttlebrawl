@@ -22,7 +22,17 @@ import { createSim, quantizeInput, type SimConfig, type SimSnapshot } from '../.
 import { ISOLATED } from './batch';
 import { driftBot, GORGE, MAX_TICKS, median, soloConfig, type Route } from './drift-bot';
 
-const WORLD = { ...ISOLATED, 'traffic.density': 1, 'ground.offRoad': 1 };
+// The Gorge's own crash rules (bend room and hairpin yield, playtest 4) stay at their old values in
+// both rows: they take most of the loop's crashes away, so with them on the room-off row rides
+// almost clean and the comparison below reads noise (3 crashes against 4). This test measures the
+// drift room alone; tests/sim/gorge-first-turns.test.ts holds the loop with every rule on.
+const WORLD = {
+  ...ISOLATED,
+  'traffic.density': 1,
+  'ground.offRoad': 1,
+  'traffic.hairpinYieldM': 0,
+  'riders.bendEdgeForgive': 1,
+};
 const ROOM_OFF = { 'traffic.driftBendClearM': 0, 'traffic.driftRoomM': 0, 'riders.driftEdgeForgive': 1 };
 /** The seeds ridden for the figure; enough drifts (about 55 a 10 seeds) for a share. */
 const SEEDS = 20;

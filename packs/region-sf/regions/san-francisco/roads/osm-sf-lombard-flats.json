@@ -66,6 +66,20 @@
       }
     },
     {
+      "kind": "roadsideZone",
+      "id": "lombard-bottom-crowd",
+      "s0": 30.0,
+      "s1": 84.0,
+      "d0": -12.6,
+      "d1": -5.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["lombard-photographer"],
+        "everyM": 4,
+        "maxPeds": 8
+      }
+    },
+    {
       "kind": "boostPad",
       "id": "pad-lombard-flats",
       "s0": 300.0,

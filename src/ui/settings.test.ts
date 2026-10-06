@@ -82,6 +82,21 @@ describe('the M2 settings table', () => {
     expect(settingPersists('look', sanitiseSettings)).toBe(true);
   });
 
+  it('offers Graphics on the Display tab: Auto by default, every tier pinnable, applied at once', () => {
+    // Roadmap M5, the A16 speed pass: Auto picks the tier from frame time; a pick pins one.
+    const def = SETTINGS.find((d) => d.id === 'qualityTier');
+    expect(def?.tab).toBe('display');
+    expect(def?.nextRace).toBeUndefined();
+    expect(settingValue(DEFAULT_SETTINGS, 'qualityTier')).toBe('auto');
+    expect(settingPersists('qualityTier', sanitiseSettings)).toBe(true);
+    for (const tier of ['high', 'medium', 'low']) {
+      expect(def?.options?.map((o) => o.value)).toContain(tier);
+      const next = applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'qualityTier', value: tier });
+      expect(sanitiseSettings(next).qualityTier).toBe(tier);
+    }
+    expect(sanitiseSettings({ ...DEFAULT_SETTINGS, qualityTier: 'ultra' }).qualityTier).toBe('auto');
+  });
+
   it('offers reduce motion and the text size on the Access tab, off and Normal by default, kept by the record, applied at once', () => {
     // M5's a11y-1 (playtest 4 run B, B13): both are presentation only, so neither waits for a race.
     const motion = settingDef('reduceMotion');

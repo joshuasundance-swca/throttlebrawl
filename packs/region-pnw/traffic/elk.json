@@ -5,7 +5,7 @@
   "category": "animal",
   "tags": ["local"],
   "lengthM": 2.4,
-  "widthM": 0.9,
+  "widthM": 0.6,
   "cruiseMps": 3.0,
   "hazard": "big",
   "behaviour": { "roadside": "yields", "carFollowing": false, "laneChanges": false, "dives": true },

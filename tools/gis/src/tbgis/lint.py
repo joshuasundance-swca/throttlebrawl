@@ -43,6 +43,9 @@ TAGS = {
     "gardens",
     "fog",
     "cable-line",
+    # A street a cable-car line really runs along: the traffic area that gives it cable cars (playtest 4,
+    # P4-19). It says nothing about the ground, and the invented cable-line grade does not carry it.
+    "cable-route",
     # San Francisco's downtown (run W-R) and the Keys' district tags (run W-Q; docs/content-packs.md,
     # "District tags"): a key- tag says which key a stretch is on, beside its land tags.
     "towers",

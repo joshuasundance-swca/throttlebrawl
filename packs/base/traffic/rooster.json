@@ -4,7 +4,7 @@
   "name": "Rooster",
   "category": "animal",
   "tags": ["local", "key-oldtown"],
-  "lengthM": 0.45,
+  "lengthM": 0.55,
   "widthM": 0.3,
   "cruiseMps": 2.4,
   "hazard": "normal",
