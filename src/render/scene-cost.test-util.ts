@@ -338,7 +338,19 @@ export async function stillSceneOf(
 ): Promise<{ road: RoadNetwork; scene: StillScene }> {
   const { road, dressing, pack } = track(networkId);
   const models = await modelsFor(road, dressing);
-  const rs = buildRoadScene(road, look, dressing, { seed, models, roadsideDensity: 1 });
+  // A network's own water (Lake Samish): its land is a bank down to the shore and the roadside stands its docks at
+  // the lake's level (render/index.ts requestWater: the road is built again once the water is in).
+  const bdWater = Object.entries(backdropNetworkFiles).find(([p]) =>
+    p.endsWith(`/networks/${networkId}.json`),
+  );
+  const floors = bdWater ? waterFloors(bdWater[1]) : [];
+  const waterAt = floors.length > 0 ? waterAtOf(floors) : null;
+  const rs = buildRoadScene(road, look, dressing, {
+    seed,
+    models,
+    roadsideDensity: 1,
+    ...(waterAt ? { waterAt } : {}),
+  });
   const { tropical, tags } = networkTags(road, dressing);
   const needed = modelKindsFor({ tropical, tags, palette: new Set(), traffic: [] });
   const kind = kitFor(needed, models) as ModelKind | null;
@@ -366,9 +378,6 @@ export async function stillSceneOf(
         spots: rs.spots,
       })
     : null;
-  // A network's own water (Lake Samish): the roadside stands its docks at its level.
-  const floors = bdNetwork ? waterFloors(bdNetwork[1]) : [];
-  const waterAt = floors.length > 0 ? waterAtOf(floors) : null;
   const roadside =
     kitModel && kit
       ? new RoadsideLayer(kitModel, look, {
@@ -378,6 +387,7 @@ export async function stillSceneOf(
           density: 1,
           kit,
           landReach: (e, side, s) => rs.landReach(e, side, s),
+          landTop: (e, side, s, across) => rs.landTop(e, side, s, across),
           spots: rs.spots,
           reserved: [...(scenes?.reserved() ?? []), ...landmarkFootprints(road)],
           // The kits a rule draws from besides its own (Key West's Old Town, playtest 3).

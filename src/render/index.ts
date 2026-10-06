@@ -461,6 +461,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       density: roadArgs.density,
       kit,
       landReach: (e, side, s) => rs.landReach(e, side, s),
+      landTop: (e, side, s, across) => rs.landTop(e, side, s, across),
       spots: rs.spots,
       reserved: [
         ...(scenes?.reserved() ?? []),
@@ -475,14 +476,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     scene.add(roadside.group);
   };
   // Playtest 4 (P4-19, C4): the network's own water above the sea, from its backdrop file (Lake Samish);
-  // the roadside props are placed again once it is in, so the docks stand at the lake's level.
+  // the road is built again once it is in (playtest 4 run C, punch item 6: the lake's land is a bank down to the
+  // shore, which needs the water's level), and its roadside with it, so the docks stand at the lake's level.
   const requestWater = (road: RoadNetwork) => {
     water = null;
     void loadNetworkWater(road.id)
       .then((at) => {
         if (!at || roadArgs?.road !== road) return;
         water = { road, at };
-        buildRoadside();
+        buildRoad();
       })
       .catch(() => {
         // No water floor: no docks; the race goes on.
@@ -791,6 +793,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       seed: sceneSeed,
       models,
       palette,
+      ...(water && water.road === roadArgs.road ? { waterAt: water.at } : {}),
     });
     scene.add(roadScene.group);
     buildScenes();

@@ -34,6 +34,7 @@ import {
   withStagingLegs,
 } from './bridge-bays';
 import { withBatteryGuns } from './battery-guns';
+import { finishShore } from './shore-fixes';
 import { readGlb } from './glb';
 import { markAtlasUv } from './scenery-merge';
 
@@ -665,6 +666,14 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     tiles.push(trimmed ? [] : v.tiles);
     surfaces.push(v.surfaces);
     doubleSided ||= v.doubleSided;
+  }
+  if (kind === 'pnwShore') {
+    // Chuckanut's cliff, wall and cut ends (`finishShore`: the file is Blender work and is left as it is).
+    const finished = finishShore(variants, roles);
+    variants.splice(0, variants.length, ...finished.variants);
+    roles.splice(0, roles.length, ...finished.roles);
+    while (tiles.length < variants.length) tiles.push([]);
+    while (surfaces.length < variants.length) surfaces.push([]);
   }
   const landmarkNodes = new Map<string, LandmarkNode>();
   let landmarkTwoSided = false;
