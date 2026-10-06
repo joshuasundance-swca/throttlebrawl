@@ -217,6 +217,21 @@ function regionPaths(dir) {
 const read = (file) => readFileSync(file, 'utf8');
 
 /**
+ * The folder of an installed npm package, looked up the folder tree from `root` as Node resolves it:
+ * the perf check builds main's merge base in a worktree under .cache/ with no node_modules of its own
+ * (lane F1; it failed there on `node_modules/three` before, so the change against main went unmeasured).
+ * @param {string} root
+ * @param {string} name
+ */
+export function packageDir(root, name) {
+  for (let dir = path.resolve(root); ; dir = path.dirname(dir)) {
+    const pkg = path.join(dir, 'node_modules', name);
+    if (existsSync(path.join(pkg, 'package.json'))) return pkg;
+    if (path.dirname(dir) === dir) throw new Error(`${name}: not installed in node_modules up from ${root}`);
+  }
+}
+
+/**
  * The credits of the tree at `root`: the ledger, the packs, the repo licence and the shipped npm
  * packages (`dependencies`, with the licence text each carries).
  * @param {string} root
@@ -244,7 +259,7 @@ export function collectCredits(root) {
   const software = Object.keys(pkg.dependencies ?? {})
     .sort()
     .map((name) => {
-      const dir = path.join(root, 'node_modules', name);
+      const dir = packageDir(root, name);
       const meta = JSON.parse(read(path.join(dir, 'package.json')));
       const licenceFile = readdirSync(dir).find((f) => /^licen[cs]e(\.md|\.txt)?$/i.test(f));
       if (!licenceFile) throw new Error(`${name}: no licence file in node_modules`);

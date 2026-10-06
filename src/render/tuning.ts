@@ -49,6 +49,11 @@ export interface RenderParams {
    * San Francisco), metres. It always starts past the threat draw distance. Elsewhere it is 700 m.
    */
   regionFogFarM: number;
+  /**
+   * Where the haze is full on a stretch tagged `thin-haze` in such a region (Chuckanut Drive, Lake Samish's East
+   * Shore Drive: render/haze.ts), metres. Past the camera's 760 m far plane nothing near is drawn, so at most 700.
+   */
+  thinHazeFarM: number;
   /** Drizzle in a rainy region (its palette names a `rain` colour), 1 = the default, 0 = none. */
   rainAmount: number;
   // Playtest 1b item 6: the "Ink + 1960s film" look (render/looks). They change that look only.
@@ -114,6 +119,10 @@ export const RENDER_TUNING: readonly TuningParamDecl[] = [
   // Playtest 1c integration: a foggy region's haze closes in. [default] 480 m: past the 200 m threat
   // draw distance and the 220 m fog start, so traffic still shows; the Keys keep 700 m.
   decl('regionFogFarM', 'Foggy region: haze full at', 480, 300, 700, 10, 'm'),
+  // Playtest 4 answers [decided] (the maintainer, 2026-10-06: "Thin it on Chuckanut: a longer, lighter haze on
+  // that drive only, so the sea below the cliff shows"): a road tagged `thin-haze` (render/haze.ts). [default]
+  // 700 m: the classic look's own fog end, the most the camera's 760 m far plane leaves room for.
+  decl('thinHazeFarM', 'Thin-haze roads: haze full at', 700, 300, 700, 10, 'm'),
   // W-O region build-out (the maintainer, 2026-10-01): the Pacific Northwest's drizzle. [default]
   decl('rainAmount', 'Rainy region: drizzle', 1, 0, 2, 0.1, ''),
   // Playtest 1b item 6 [decided]: the ink + film look. [default] numbers; the classic look ignores them.

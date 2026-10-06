@@ -112,7 +112,7 @@ export class Backdrop {
     if (!this.built) return;
     const fog = scene.fog instanceof Fog ? scene.fog : null;
     const haze = fog?.color ?? (scene.background instanceof Color ? scene.background : WHITE);
-    this.built.update(cam, haze, fog?.far ?? 700, timeS);
+    this.built.update(cam, haze, fog?.far ?? 700, timeS, fog?.near ?? 0);
   }
 
   /** What was built (null while loading or with no backdrop), and a load error if any. */
