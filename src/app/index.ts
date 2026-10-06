@@ -117,7 +117,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
-import { clearLoadRetry, offerLoadRetry } from './load-retry';
+import { clearLoadRetry, failureOf, offerLoadRetry } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -1243,7 +1243,7 @@ export function createApp(opts: AppOptions): AppHandle {
     } catch (err) {
       console.warn('region road data did not load', err);
       // Retry goes on to the race the player asked for (the picked region, fetched again).
-      offerLoadRetry(ui, choice.name, () => handle.startRace());
+      offerLoadRetry(ui, choice.name, () => handle.startRace(), failureOf(err, Date.now()));
       return false;
     } finally {
       loadingRoads = false;
@@ -1273,9 +1273,14 @@ export function createApp(opts: AppOptions): AppHandle {
         console.warn('region road data did not load', err);
         // Only for the region still picked: a pick made since has its own load and its own say.
         if (pickedChoice()?.id === choice.id)
-          offerLoadRetry(ui, choice.name, () => {
-            if (pickedChoice()?.id === choice.id) loadPicked(choice);
-          });
+          offerLoadRetry(
+            ui,
+            choice.name,
+            () => {
+              if (pickedChoice()?.id === choice.id) loadPicked(choice);
+            },
+            failureOf(err, Date.now()),
+          );
       },
     );
   const pickRegion = (id: string) => {
@@ -1308,7 +1313,7 @@ export function createApp(opts: AppOptions): AppHandle {
     void library.loadRoads('base').then(roadsArrived, (err: unknown) => {
       // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
       console.warn('the Keys real-road data did not load', err);
-      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads);
+      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads, failureOf(err, Date.now()));
     });
   if (!library.hasRoads('base')) loadKeysRoads();
 
@@ -1396,7 +1401,7 @@ export function createApp(opts: AppOptions): AppHandle {
           },
           (err: unknown) => {
             console.warn('career road data did not load', err);
-            offerLoadRetry(ui, def.regionName, () => startCareerRace(def, node));
+            offerLoadRetry(ui, def.regionName, () => startCareerRace(def, node), failureOf(err, Date.now()));
             return false;
           },
         )
