@@ -56,6 +56,7 @@
       "id": "osm-gorge-crown-point-loops",
       "name": "Crown Point Loops",
       "tags": ["forest"],
+      "deckTags": ["arch-bridge"],
       "features": [
         {
           "kind": "copSpawn",
@@ -105,6 +106,7 @@
       "id": "osm-gorge-latourell",
       "name": "Latourell Run",
       "tags": ["forest"],
+      "deckTags": ["arch-bridge"],
       "features": [
         {
           "kind": "billboard",
@@ -195,6 +197,7 @@
       "id": "osm-gorge-shepperds-dell",
       "name": "Shepperd's Dell",
       "tags": ["forest"],
+      "deckTags": ["arch-bridge"],
       "features": [
         {
           "kind": "billboard",

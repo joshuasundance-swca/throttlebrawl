@@ -259,8 +259,9 @@ describe('far fences and ferns draw lighter (run W-S, the triangle headroom)', (
     return { x: a[i * 16 + 12] ?? 0, z: a[i * 16 + 14] ?? 0 };
   };
 
-  // A picket fence (the Keys), split rails and ferns (the Pacific Northwest), ferns on Twin Peaks.
-  for (const id of ['keys-m1', 'pnw-c1', 'osm-sf-twin-peaks']) {
+  // A picket fence (the Keys), split rails and ferns (the Pacific Northwest). Twin Peaks was here for its
+  // ferns until playtest 4 made it open grass hill (headlands), with no fern or fence to draw.
+  for (const id of ['keys-m1', 'pnw-c1']) {
     it(`${id}: past VERGE_LOD_M the far form, nearer the whole one, and fewer triangles than before`, () => {
       const { road, verge } = layer(id);
       const near = named(verge.group, 'verge-fence')[0] as unknown as InstancedMesh;

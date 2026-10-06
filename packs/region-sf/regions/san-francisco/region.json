@@ -78,6 +78,15 @@
         ]
       },
       {
+        "tag": "presidio",
+        "mix": [
+          { "kind": "rideshare-hatchback", "weight": 3, "hazard": "normal" },
+          { "kind": "base:sedan-rental", "weight": 3, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 3, "hazard": "normal" },
+          { "kind": "startup-shuttle", "weight": 0.5, "hazard": "big" }
+        ]
+      },
+      {
         "tag": "cable-route",
         "mix": [
           { "kind": "rideshare-hatchback", "weight": 5, "hazard": "normal" },

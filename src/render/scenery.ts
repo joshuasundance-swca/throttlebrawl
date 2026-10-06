@@ -48,6 +48,8 @@ export type SideTheme =
   | 'headlands'
   // playtest 3 (T12.6), downtown Portland's blocks (render/downtown.ts draws what stands there)
   | 'blocks'
+  // playtest 4 (P4-19), the Presidio: San Francisco's cypress and eucalyptus, no pines, no poles
+  | 'presidio'
   // playtest 4 (P4-19), Key West's Old Town: a street, not a palm road (render/roadside.ts stands its fronts)
   | 'oldtown';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
@@ -115,6 +117,10 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   // palms, no bait shacks, no poles, which the `town` tag beside it would give); the downtown layer
   // (downtown.ts) stands the street fronts, the towers and the cart pod.
   'pdx-blocks': 'blocks',
+  // Playtest 4 (P4-19; the identity sheets' G4): the Golden Gate's south approach runs through the
+  // Presidio's groves of Monterey cypress and blue gum eucalyptus (Codex CX5's `sf-identity` trees), not
+  // the headlands' bare grass and never the Pacific Northwest's conifers. No poles.
+  presidio: 'presidio',
   // Playtest 4 (P4-19; the maintainer: "The real roads do not have the characteristics of the roads in
   // question in terms of scenery and feel"): Duval and Whitehead Streets are a street with a sidewalk and
   // a front of shops on it, not a beach road with palms, shacks and a pole line. Nothing of the scatter
@@ -163,6 +169,7 @@ const THEME_ORDER: readonly LandTheme[] = [
   'sawmill',
   'urban',
   'industrial',
+  'presidio',
   // Ahead of the forest: a side tagged both is the open hill (the bakes' old stand-in tag).
   'headlands',
   'forest',
@@ -208,7 +215,11 @@ export type SceneryKind =
   | 'fogBank'
   | 'islet'
   // playtest 3, T12.3: a bridge bay (bridge-bays.ts places them; the scatter never does)
-  | 'bay';
+  | 'bay'
+  // playtest 4 (P4-19): a concrete deck arch under an `arch-bridge` deck (bridge-bays.ts `planArches`)
+  | 'arch'
+  // playtest 4 (P4-19): San Francisco's coastal trees, a Monterey cypress or a blue gum eucalyptus
+  | 'coastTree';
 export const SCENERY_KINDS: readonly SceneryKind[] = [
   'palm',
   'mangrove',
@@ -222,6 +233,8 @@ export const SCENERY_KINDS: readonly SceneryKind[] = [
   'fogBank',
   'islet',
   'bay',
+  'arch',
+  'coastTree',
 ];
 
 export interface ScenerySpot {
@@ -266,8 +279,11 @@ export const SCATTER_SPACING_M: Readonly<Record<SceneryKind, number>> = {
   fogBank: 170,
   // run W-Q: a candidate islet every so often on each open-water side of a tropical road
   islet: 200,
-  // bays are placed along a bridge by bridge-bays.ts, never scattered
+  // bays and arches are placed along a bridge by bridge-bays.ts, never scattered
   bay: 0,
+  arch: 0,
+  // one tree a spot, in groves: the Presidio's are planted close
+  coastTree: 13,
 };
 /** Share of a theme's candidate spots that get each kind. [default] */
 const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = {
@@ -292,6 +308,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   clearcut: {},
   headlands: {},
   blocks: {},
+  presidio: { coastTree: 0.85 },
   oldtown: {},
 };
 /**
@@ -313,6 +330,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'clearcut',
   'headlands',
   'blocks',
+  'presidio',
   'oldtown',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
@@ -331,6 +349,9 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   // out past the boats, near enough to see from the road
   islet: [32, 50],
   bay: [0, 0],
+  arch: [0, 0],
+  // the cypress's windswept crown leans up to 8 m to one side, so it starts back from the verge
+  coastTree: [5.5, 13],
 };
 /** Clear ground each kind needs around its anchor (other roads, features), m. */
 export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
@@ -347,12 +368,19 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   // ISLET_CLEAR_M (declared below, so the literal here)
   islet: 16,
   bay: 0,
+  arch: 0,
+  coastTree: 2.4,
 };
 /**
  * What of each kind a rider would hit, as a radius round its anchor, m (off-road, run W-R): a palm's
  * or a pole's trunk, not its crown, which may overhang the ridable band. [default]
  */
-export const TRUNK_M: Partial<Record<SceneryKind, number>> = { palm: 0.4, pole: 0.3, conifer: 0.8 };
+export const TRUNK_M: Partial<Record<SceneryKind, number>> = {
+  palm: 0.4,
+  pole: 0.3,
+  conifer: 0.8,
+  coastTree: 0.8,
+};
 /** How far back from its anchor (its front) each kind reaches, m (it needs land that deep). */
 export const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
 /** Half its width along the road, m (it needs land and clear ground that long). */
@@ -372,6 +400,10 @@ const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   fogBank: 2,
   islet: 4,
   bay: 6,
+  // the Gorge kit's 24 m arch bay and its 46 m span (bridge-bays.ts ARCH_KINDS)
+  arch: 2,
+  // the cypress and the eucalyptus (models.ts, `sfIdentity`)
+  coastTree: 2,
 };
 /** Each conifer variant's share of a forest: the two firs, the young fir, the cedar. [default] */
 const CONIFER_MIX = [0.3, 0.32, 0.23, 0.15];
@@ -532,7 +564,15 @@ function turnToward(a: Point3, b: Point3): number {
   return Math.atan2(b.x - a.x, b.z - a.z);
 }
 
-const LAND_KINDS: readonly SceneryKind[] = ['palm', 'mangrove', 'shack', 'conifer', 'house', 'sawmill'];
+const LAND_KINDS: readonly SceneryKind[] = [
+  'palm',
+  'mangrove',
+  'shack',
+  'conifer',
+  'house',
+  'sawmill',
+  'coastTree',
+];
 /** Kinds that face the road (their +Z turns toward the centre line). */
 const FACES_ROAD = new Set<SceneryKind>(['shack', 'house', 'sawmill']);
 
@@ -565,7 +605,9 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
           ? 0.85 + 0.3 * h(ki, k, side, 6)
           : kind === 'mangrove'
             ? 0.8 + 0.45 * h(ki, k, side, 6)
-            : 1),
+            : kind === 'coastTree'
+              ? 0.8 + 0.4 * h(ki, k, side, 6)
+              : 1),
       phase: kind === 'skiff' || kind === 'boat' ? h(ki, k, side, 7) * Math.PI * 2 : 0,
       edge: e.edge,
       s,

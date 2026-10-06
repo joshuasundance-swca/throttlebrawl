@@ -328,8 +328,11 @@ export const PNW_C1: TrackSource = {
         { s0: 0, s1: 150, side: 'right', tag: 'marina' },
         { s0: 0, s1: 150, side: 'left', tag: 'town' },
         { s0: 150, s1: FERRY.hullS0, side: 'both', tag: 'bridge' },
+        // Playtest 4 (P4-19): a deck's supports follow its own tag; the slip's spans stand on timber.
+        { s0: 150, s1: FERRY.hullS0, side: 'both', tag: 'trestle' },
         { s0: FERRY.hullS0, s1: FERRY.hullS1, side: 'both', tag: 'ferry' },
         { s0: FERRY.hullS1, s1: 340, side: 'both', tag: 'bridge' },
+        { s0: FERRY.hullS1, s1: 340, side: 'both', tag: 'trestle' },
         { s0: 340, s1: 420, side: 'right', tag: 'marina' },
         { s0: 340, s1: 420, side: 'left', tag: 'town' },
         { s0: 420, s1: 'end', side: 'both', tag: 'forest' },
@@ -572,6 +575,8 @@ export const PNW_C1: TrackSource = {
       tags: [
         { s0: 0, s1: 100, side: 'both', tag: 'forest' },
         { s0: 100, s1: 760, side: 'both', tag: 'bridge' },
+        // Playtest 4 (P4-19): the Timber Trestle stands on timber bents by its own tag (render/road-mesh.ts).
+        { s0: 100, s1: 760, side: 'both', tag: 'trestle' },
         { s0: 100, s1: 760, side: 'both', tag: 'water-open' },
         { s0: 760, s1: 'end', side: 'both', tag: 'forest' },
       ],

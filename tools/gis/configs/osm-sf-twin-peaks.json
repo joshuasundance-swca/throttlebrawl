@@ -181,7 +181,7 @@
     {
       "id": "osm-sf-twin-peaks-climb",
       "name": "Twin Peaks Climb",
-      "tags": ["forest", "fog"],
+      "tags": ["headlands", "fog"],
       "features": [
         {
           "kind": "billboard",

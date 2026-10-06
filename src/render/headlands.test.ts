@@ -39,7 +39,8 @@ const asShipped = scene((tags) => [...tags]);
 const withForest = scene((tags) => tags.map((t) => (t.tag === 'headlands' ? { ...t, tag: 'forest' } : t)));
 
 describe('the Golden Gate route outside the bridge is the Marin Headlands, not the forest', () => {
-  const land = roads.filter((r) => !(r.tags ?? []).some((t) => t.tag === 'bridge'));
+  // The toll plaza is the Presidio's trees since playtest 4 (P4-19; src/render/sf-land.test.ts).
+  const land = roads.filter((r) => !(r.tags ?? []).some((t) => t.tag === 'bridge' || t.tag === 'presidio'));
 
   it('every land road reads as headlands on both sides, over its whole length, with no forest tag', () => {
     expect(land.length).toBeGreaterThanOrEqual(3);

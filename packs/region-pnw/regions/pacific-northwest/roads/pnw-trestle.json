@@ -24,6 +24,7 @@
   "tags": [
     { "s0": 0, "s1": 100, "side": "both", "tag": "forest" },
     { "s0": 100, "s1": 760, "side": "both", "tag": "bridge" },
+    { "s0": 100, "s1": 760, "side": "both", "tag": "trestle" },
     { "s0": 100, "s1": 760, "side": "both", "tag": "water-open" },
     { "s0": 760, "s1": 850, "side": "both", "tag": "forest" }
   ],

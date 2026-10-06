@@ -52,7 +52,7 @@
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
-      "createdAt": "2026-10-04",
+      "createdAt": "2026-10-05",
       "tool": {
         "name": "tools/gis/src/tbgis/network.py",
         "version": "0.1.0",
@@ -65,8 +65,8 @@
           "attribution": "© OpenStreetMap contributors",
           "url": "https://www.openstreetmap.org/copyright",
           "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.800,-122.504,37.840,-122.462);\nout tags geom;",
-          "retrievedAt": "2026-10-04T23:01:42Z",
-          "sha256": "7ed26991b6f2b4479498fc5b898cfe68b4b2546bd5b2c595c1d6c776f0eb3a45"
+          "retrievedAt": "2026-10-05T21:24:25Z",
+          "sha256": "e2239174e516f7d67447d8acb85b8cde01ad09580b6fac1dae36a307d1255602"
         },
         {
           "name": "USGS 3DEP elevation",
@@ -74,8 +74,8 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 613 points in 1 request(s) (lon, lat WGS84, sha256 83f11a7a7f3095ff), bilinear (line gg)",
-          "retrievedAt": "2026-10-04T23:10:08Z",
-          "sha256": "bde9ab79d44731852b3141858fa99a8abfcf65cb9c0cf4691abc93ebeda9e012"
+          "retrievedAt": "2026-10-05T21:24:28Z",
+          "sha256": "ac3e92875abb8279fea89f18856e6da24147d5012474e2bab263ea28e5b3ec3e"
         }
       ]
     }

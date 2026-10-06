@@ -9,8 +9,10 @@
 // The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") gives a
 // network that is not tropical (the Pacific Northwest, San Francisco) a terrain skirt: past its land
 // strip the ground slopes down to a wide flat field instead of dropping into the sea, so a road on
-// a hill never floats in the void. Delineator posts and pylons follow that ground, a forest
-// network's bridges stand on timber trestle bents, and a `cable-line` road gets its cable slots.
+// a hill never floats in the void. Delineator posts and pylons follow that ground, a deck tagged
+// `trestle` stands on timber trestle bents and one tagged `arch-bridge` on concrete deck arches
+// (playtest 4, P4-19: by the deck's own tag, no longer by the network having forest), and a
+// `cable-line` road gets its cable slots.
 import {
   Euler,
   Group,
@@ -25,7 +27,19 @@ import {
 } from 'three';
 import { chooseSetPieces, SEEDED_SET_PIECE_KINDS, type Edge, type RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
-import { BAY_BLOCK_M, BAY_DRAW_M, isSevenMile, planBays } from './bridge-bays';
+import {
+  ARCH_FOOTING,
+  ARCH_KINDS,
+  ARCH_M,
+  ARCH_PIER_M,
+  ARCH_TAG,
+  BAY_BLOCK_M,
+  BAY_DRAW_M,
+  TRESTLE_TAG,
+  isSevenMile,
+  planArches,
+  planBays,
+} from './bridge-bays';
 import { ChunkedStrips, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
@@ -757,6 +771,15 @@ const BENT_FOOT_Y = -1.5;
 /** The trestle-bent model's authored height and cap width (tools/blender/props/trestle_bent.py). */
 const BENT_MODEL_H = 10;
 const BENT_MODEL_W = 12.8;
+/** A pylon's footprint (a code-made concrete box), m. */
+const PYLON_M = 0.9;
+/**
+ * The column under each footing of a deck arch where the deck stands higher than the arch's own pier
+ * (playtest 4, P4-19): square, as wide as the footing is long, from the ground to the footing. [default]
+ */
+const ARCH_COLUMN_M = 2.4;
+/** A column's top reaches this far up into its footing, so the two never show a seam, m. */
+const ARCH_COLUMN_TUCK_M = 0.3;
 /** A cable car's slot rails: each sits this far either side of its lane's centre, m. */
 const CABLE_RAIL_D = 0.55;
 /** The slot's cover plates between the rails come this often, m. [default] */
@@ -814,6 +837,13 @@ function standIn(kind: SceneryKind): BufferGeometry {
     ],
     // a bridge bay has no stand-in: with no kit the bridge keeps its plain deck (bridge-bays.ts)
     bay: [],
+    // nor an arch: with no kit the deck keeps its plain pylons
+    arch: [],
+    // a coastal tree: a trunk and a broad dark crown, until the San Francisco kit loads
+    coastTree: [
+      { size: [0.6, 5, 0.6], at: [0, 2.5, 0], color: '#5b4a3a' },
+      { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
+    ],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -835,6 +865,8 @@ const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   fogBank: 'fogBanks',
   islet: 'keysIslets',
   bay: 'sevenMileKit',
+  arch: 'gorgeArches',
+  coastTree: 'sfIdentity',
 };
 
 /**
@@ -951,12 +983,15 @@ export function buildRoadScene(
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   const seed = opts.seed ?? 1;
   const tropical = isTropical(road.edges.map((e) => dressingOf(e, dressing).tags));
-  // A network that is not tropical gets the terrain skirt; one with forest gets timber trestles.
+  // A network that is not tropical gets the terrain skirt.
   const terrain = !tropical;
-  const timber =
-    terrain && road.edges.some((e) => (dressingOf(e, dressing).tags ?? []).some((t) => t.tag === 'forest'));
-  const bentModel = timber ? opts.models?.trestleBent : undefined;
+  // Playtest 4 (P4-19): what holds a deck up is the deck's own tag. A `trestle` stretch stands on
+  // timber bents, an `arch-bridge` stretch on concrete deck arches (with their kit loaded), and any
+  // other deck on concrete pylons; a network with forest no longer stands every bridge on timber.
+  const bentModel = opts.models?.trestleBent;
   const bentMatrices: Matrix4[] = [];
+  const archModel = opts.models?.gorgeArches;
+  const archColumns: { p: Point3; h: number; w: number }[] = [];
   // Playtest 3, T12.3: the Seven Mile's bays (bridge-bays.ts), only with the kit loaded, and kept
   // out of `spots` (the scatter's list, which the roadside layer and the sweeps read).
   const bayModel = opts.models?.sevenMileKit;
@@ -1805,19 +1840,53 @@ export function buildRoadScene(
         if (!onOtherLanes(e, s, d)) postSpots.push(w(e.index, s, d, 0.55));
       }
     }
-    // Pylons under a deck every 24 m (none where the terrain's ground stands on both sides), or a
-    // forest network's timber trestle bents under its bridges, every few metres.
-    const bridgeAt = (s: number) => (tags ?? []).some((t) => t.tag === 'bridge' && s >= t.s0 && s <= t.s1);
+    // Pylons under a deck every 24 m (none where the terrain's ground stands on both sides), timber
+    // trestle bents every few metres under a deck tagged `trestle`, or the deck arches' columns.
+    const tagAt = (tag: string, s: number) =>
+      (tags ?? []).some((t) => t.tag === tag && s >= t.s0 && s <= t.s1);
+    const trestleAt = (s: number) => tagAt('bridge', s) && tagAt(TRESTLE_TAG, s);
     if (bentModel) {
       for (let s = BENT_SPACING_M / 2; s < e.length; s += BENT_SPACING_M) {
         const deckY = road.toWorld(e.index, s, 0, 0).y;
-        if (!bridgeAt(s) || deckY < 1 || inGap(s, 1)) continue;
+        if (!trestleAt(s) || deckY < 1 || inGap(s, 1)) continue;
         bentMatrices.push(bentMatrix(road, e.index, s, outerL, outerR, deckY - 0.95));
       }
     }
+    // An `arch-bridge` deck's arches (bridge-bays.ts): each footing at the foot of an arch's piers
+    // stands on a column down to the ground where the deck is higher than the pier is deep (the
+    // Gorge's decks stand 48 to 223 m over the ground the scene draws under them).
+    const arches =
+      archModel && (tags ?? []).some((t) => t.tag === ARCH_TAG)
+        ? planArches({
+            edge: e.index,
+            length: e.length,
+            tags,
+            gaps,
+            ramps: (dress.features ?? []).filter((f) => f.kind === 'ramp'),
+            at: (s) => w(e.index, s, 0, 0),
+          })
+        : [];
+    baySpots.push(...arches);
+    const archSpans = arches.map((a) => {
+      const kind = ARCH_KINDS[a.variant] ?? 'bay';
+      return { s0: a.s, s1: a.s + ARCH_M[kind], pier: ARCH_PIER_M[kind] };
+    });
+    for (const a of archSpans) {
+      for (const s of [a.s0 + ARCH_FOOTING.inM, a.s1 - ARCH_FOOTING.inM]) {
+        const deckY = road.toWorld(e.index, s, 0, 0).y;
+        const top = deckY - a.pier + ARCH_COLUMN_TUCK_M;
+        if (top <= 0) continue;
+        for (const d of [-ARCH_FOOTING.x, ARCH_FOOTING.x]) {
+          const p = w(e.index, s, d, 0);
+          archColumns.push({ p: { x: p.x, y: -0.5, z: p.z }, h: top + 0.5, w: ARCH_COLUMN_M / PYLON_M });
+        }
+      }
+    }
+    const inArch = (s: number) => archSpans.some((a) => s > a.s0 - 1 && s < a.s1 + 1);
     for (let s = 12; s < e.length; s += 24) {
       if (terrain && groundAt(-1, s) && groundAt(1, s)) continue;
-      if (bentModel && bridgeAt(s)) continue;
+      if (bentModel && trestleAt(s)) continue;
+      if (inArch(s)) continue;
       if (inGap(s, 0.5)) continue;
       for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
         const p = w(e.index, s, d, 0);
@@ -2335,7 +2404,14 @@ export function buildRoadScene(
   );
   // Unit-height boxes standing on their base, stretched by the instance scale.
   boxes('road-rail-posts', openBox(0.1, 1, 0.1, ['ny']).translate(0, 0.5, 0), 'rail', railPostSpots);
-  boxes('road-pylons', openBox(0.9, 1, 0.9, ['ny', 'py']).translate(0, 0.5, 0), 'deck', pylonSpots);
+  // The deck arches' columns are pylons too, only wider (one draw with them).
+  addInstanced(
+    'road-pylons',
+    openBox(PYLON_M, 1, PYLON_M, ['ny', 'py']).translate(0, 0.5, 0),
+    look.material('deck'),
+    [...pylonSpots.map((s) => ({ ...s, w: 1 })), ...archColumns],
+    ({ p, h, w: wide }) => m.compose(new Vector3(p.x, p.y, p.z), q, new Vector3(wide, h, wide)),
+  );
   if (truckParts.length) {
     // Few and small: one mesh for every truck on the network.
     const trucks = new Mesh(mergeBoxes(truckParts), look.material('vehicle', { vertexColors: true }));
@@ -2402,7 +2478,8 @@ export function buildRoadScene(
     if (!INSTANCED_KINDS.has(kind)) {
       for (const s of mine) {
         const geometry = geos[Math.min(geos.length - 1, s.variant)] ?? geos[0];
-        if (geometry) (kind === 'bay' ? bayItems : mergeItems).push({ spot: s, geometry, material });
+        if (geometry)
+          (kind === 'bay' || kind === 'arch' ? bayItems : mergeItems).push({ spot: s, geometry, material });
       }
       continue;
     }

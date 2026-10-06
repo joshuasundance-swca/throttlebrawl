@@ -126,8 +126,11 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['gardens', band(3, 'grass', 'fence')],
   ['warehouses', band(4, 'kerb', 'soft')],
   ['piers', band(4, 'kerb', 'soft')],
+  // The Presidio (playtest 4, P4-19): grass under the cypress and eucalyptus, soft, with no ferns.
+  ['presidio', band(5, 'grass', 'soft')],
   // The Marin Headlands (playtest 3, T10.6): open grass to the hill's edge, soft ground running out,
-  // with no ferns (the `brush` edge is the Pacific Northwest's) and no fence.
+  // with no ferns (the `brush` edge is the Pacific Northwest's) and no fence. Since playtest 4 (P4-19)
+  // the Twin Peaks climb too.
   ['headlands', band(5, 'grass', 'soft')],
   ['forest', band(6, 'dirt', 'brush')],
 ];
