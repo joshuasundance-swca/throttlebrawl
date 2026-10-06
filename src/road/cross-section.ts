@@ -126,6 +126,12 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['gardens', band(3, 'grass', 'fence')],
   ['warehouses', band(4, 'kerb', 'soft')],
   ['piers', band(4, 'kerb', 'soft')],
+  // Chuckanut Drive's bay side (playtest 4, P4-19, C4; render's `bluff` theme): 4 m of dirt to the low
+  // parapet on the drop's edge, drawn at the band's edge, so the edge is a hard one. Lake Samish's shore
+  // (`lake`): 4 m of grass, soft, then the cabins and the bank down to the water. Chuckanut's uphill side
+  // (`rock-cut`) keeps the forest's band: its sandstone stands at that band's edge.
+  ['bluff', band(4, 'dirt', 'hard')],
+  ['lake', band(4, 'grass', 'soft')],
   // The Presidio (playtest 4, P4-19): grass under the cypress and eucalyptus, soft, with no ferns.
   ['presidio', band(5, 'grass', 'soft')],
   // The Marin Headlands (playtest 3, T10.6): open grass to the hill's edge, soft ground running out,

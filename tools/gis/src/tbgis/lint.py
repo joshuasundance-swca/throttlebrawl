@@ -81,6 +81,11 @@ TAGS = {
     "presidio",
     "arch-bridge",
     "trestle",
+    # Playtest 4 (P4-19, C4): Chuckanut's bay side where the ground drops to the water and its uphill
+    # side where the slope rises from the road, and Lake Samish's shore (src/render/scenery.ts).
+    "bluff",
+    "rock-cut",
+    "lake",
 }
 
 # The jump lint (src/road/validate.ts ROAD_LINT, docs/content-packs.md "Jump lint"): from a ramp,

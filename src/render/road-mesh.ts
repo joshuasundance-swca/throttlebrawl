@@ -1474,7 +1474,9 @@ export function buildRoadScene(
           !railsOf[side].some((b) => s >= b.s0 - 5 && s <= b.s1 + 5) &&
           !(untagged && w(e.index, s, 0, 0).y >= ELEVATED_M);
         let r = 0;
-        // Run W-U: a seawall's land (the waterfront's promenade) is only as wide as its verge band.
+        // Run W-U: a seawall's land (the waterfront's promenade) is only as wide as its verge band. Since
+        // playtest 4 (P4-19, C4) Chuckanut's bluff and Lake Samish's bank end in a drop the same way, and on
+        // the inside of a bend too tight for the full strip they narrow to half before giving up the land.
         const seawall = land ? SEAWALL_LAND_M[th] : undefined;
         wallOf[side].push(seawall !== undefined);
         if (land) {
@@ -1486,7 +1488,7 @@ export function buildRoadScene(
           const wide = WIDE_LAND_M[th];
           const widths =
             seawall !== undefined
-              ? [seawall]
+              ? [seawall, seawall / 2]
               : wide !== undefined
                 ? [wide, (wide + SCENERY_LAND_M) / 2, SCENERY_LAND_M, 14, 6]
                 : [SCENERY_LAND_M, 14, 6];

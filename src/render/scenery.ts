@@ -51,7 +51,14 @@ export type SideTheme =
   // playtest 4 (P4-19), the Presidio: San Francisco's cypress and eucalyptus, no pines, no poles
   | 'presidio'
   // playtest 4 (P4-19), Key West's Old Town: a street, not a palm road (render/roadside.ts stands its fronts)
-  | 'oldtown';
+  | 'oldtown'
+  // playtest 4 (P4-19, C4), Chuckanut Drive: the bay side's shelf and drop, and the uphill side's sandstone
+  // cuts (render/roadside.ts stands the parapet, the bluff, the cuts and the boulders)
+  | 'bluff'
+  | 'cut'
+  // playtest 4 (P4-19, C4), Lake Samish: the shore drive's lake side, a bank down to the water (the cabins
+  // and docks, render/roadside.ts)
+  | 'lake';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -127,14 +134,38 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   // stands there (no palms, no bait shacks, no poles); the roadside kit's Old Town rules (roadside.ts)
   // stand the fronts, the trees and the sidewalk's planters.
   'key-oldtown': 'oldtown',
+  // Playtest 4 (P4-19, C4; the identity sheets' H1, H2 and I3, and their shared seam "a bluff/lake land
+  // theme with a drop and no skirt"). Each is a span tag over part of one side (tools/gis `spanTags`),
+  // over the road's `forest`: Chuckanut's bay side where the ground really drops to the water (`bluff`),
+  // its uphill side where the slope rises from the road (`rock-cut`), and Lake Samish's shore drive where
+  // the lake is beside it (`lake`).
+  bluff: 'bluff',
+  'rock-cut': 'cut',
+  lake: 'lake',
+};
+/** A bluff's shelf past the verge, m: its 4 m dirt band to the parapet (road/cross-section.ts), the
+ * parapet's 0.55 m depth, and a lip of rock to the drop. [default] */
+export const BLUFF_LAND_M = 4.2;
+/** A lake side's land past the verge, m: room for a cabin and its deck behind the soft grass band, then
+ * the bank to the water, where a dock's root stands. [default] */
+export const LAKE_LAND_M = 20;
+/**
+ * Land that ends at a drop: its strip reaches only this far past the verge, m, and drops straight down
+ * there (into the sea, or under the lake's water), with no terrain skirt (road-mesh.ts). The promenade's
+ * seawall (run W-U): its 12 m verge band (road/cross-section.ts) less the drawn 0.6 m verge, so the drawn
+ * edge is the sim's water edge. Chuckanut's bluff and Lake Samish's bank (playtest 4, P4-19, C4).
+ */
+export const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = {
+  promenade: 11.4,
+  bluff: BLUFF_LAND_M,
+  lake: LAKE_LAND_M,
 };
 /**
- * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
- * drops straight into the sea there, with no terrain skirt (road-mesh.ts). The promenade's: its
- * 12 m verge band (road/cross-section.ts) less the drawn 0.6 m verge, so the drawn edge is the
- * sim's water edge.
+ * How far past the verge the scatter's land kinds stand at the nearest, by theme, m (they keep their own
+ * nearest otherwise): on a rock-cut side the trees stand behind the cut (roadside.ts lays it at the verge
+ * band's edge, 3 m deep), never in front of it or through it. [default]
  */
-export const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { promenade: 11.4 };
+export const THEME_NEAR_M: Readonly<Partial<Record<LandTheme, number>>> = { cut: 9.5 };
 /**
  * Land that is wider than the usual strip (playtest 4, P4-20: Bridge City "as content-rich as the
  * others"): a theme listed here has a strip this wide past the verge, m, tried first (road-mesh.ts
@@ -169,6 +200,10 @@ const THEME_ORDER: readonly LandTheme[] = [
   'sawmill',
   'urban',
   'industrial',
+  // Ahead of the forest (playtest 4, P4-19, C4): each is a span over a road tagged `forest` on both sides.
+  'bluff',
+  'cut',
+  'lake',
   'presidio',
   // Ahead of the forest: a side tagged both is the open hill (the bakes' old stand-in tag).
   'headlands',
@@ -310,6 +345,11 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   blocks: {},
   presidio: { coastTree: 0.85 },
   oldtown: {},
+  // Playtest 4 (P4-19, C4): nothing grows on the bluff's narrow shelf; the firs stand behind the rock cut
+  // (THEME_NEAR_M); a few stand among the lake's cabins.
+  bluff: {},
+  cut: { conifer: 0.8 },
+  lake: { conifer: 0.3 },
 };
 /**
  * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
@@ -332,6 +372,9 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'blocks',
   'presidio',
   'oldtown',
+  // Playtest 4 (P4-19, C4): the bluff's shelf holds only the parapet; the lake's bank, cabins and docks.
+  'bluff',
+  'lake',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
@@ -645,7 +688,9 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         if (kind === 'pole' && NO_POLES.has(theme)) continue;
         if (!e.tropical && (kind === 'palm' || kind === 'mangrove')) continue;
         if (kind !== 'pole' && h(ki, k, side, 1) >= (RATE[theme][kind] ?? 0)) continue;
-        const [near, spread] = ACROSS_M[kind];
+        const [ownNear, spread] = ACROSS_M[kind];
+        // Some land keeps its trees back (a rock cut's firs stand behind it, playtest 4, P4-19, C4).
+        const near = Math.max(ownNear, kind === 'pole' ? 0 : (THEME_NEAR_M[theme] ?? 0));
         const radius = SCENERY_RADIUS_M[kind];
         // Off-road (run W-R): its footprint past the ridable band (a house or the sawmill by its front).
         const solid = DEPTH_M[kind] !== undefined ? 0 : (TRUNK_M[kind] ?? radius);
@@ -725,7 +770,8 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       const s = (k + h(ci, k, side, 20)) * farSpacing;
       if (s > e.length) break;
       const theme = e.theme(side, s);
-      if (theme !== 'forest' && theme !== 'sawmill' && theme !== 'clearcut') continue;
+      // The forest goes on above a rock cut too (playtest 4, P4-19, C4).
+      if (theme !== 'forest' && theme !== 'sawmill' && theme !== 'clearcut' && theme !== 'cut') continue;
       const far = e.skirt(side, s);
       if (!far || far.to - far.from < 4) continue;
       const across = far.from + 2 + (far.to - far.from - 4) * h(ci, k, side, 21);

@@ -261,6 +261,10 @@
           "id": "osm-samish-east-shore",
           "name": "East Shore Drive",
           "tags": ["forest"],
+          "spanTags": [
+            { "s0": 890, "s1": 1595, "side": "right", "tag": "lake" },
+            { "s0": 2590, "s1": 2940, "side": "right", "tag": "lake" }
+          ],
           "features": [
             {
               "kind": "roadsideZone",

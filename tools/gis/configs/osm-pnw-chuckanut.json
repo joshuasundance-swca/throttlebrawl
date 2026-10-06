@@ -139,6 +139,38 @@
       "id": "osm-chuckanut-cliffs",
       "name": "Samish Cliffs",
       "tags": ["forest"],
+      "spanTags": [
+        {
+          "s0": 355,
+          "s1": 2415,
+          "side": "right",
+          "tag": "bluff"
+        },
+        {
+          "s0": 195,
+          "s1": 295,
+          "side": "left",
+          "tag": "rock-cut"
+        },
+        {
+          "s0": 645,
+          "s1": 845,
+          "side": "left",
+          "tag": "rock-cut"
+        },
+        {
+          "s0": 885,
+          "s1": 1645,
+          "side": "left",
+          "tag": "rock-cut"
+        },
+        {
+          "s0": 1725,
+          "s1": 2405,
+          "side": "left",
+          "tag": "rock-cut"
+        }
+      ],
       "features": [
         {
           "kind": "billboard",
@@ -192,6 +224,62 @@
       "id": "osm-chuckanut-oyster-creek",
       "name": "Oyster Creek Hairpins",
       "tags": ["forest"],
+      "spanTags": [
+        {
+          "s0": 35,
+          "s1": 145,
+          "side": "right",
+          "tag": "bluff"
+        },
+        {
+          "s0": 195,
+          "s1": 285,
+          "side": "right",
+          "tag": "bluff"
+        },
+        {
+          "s0": 775,
+          "s1": 1485,
+          "side": "right",
+          "tag": "bluff"
+        },
+        {
+          "s0": 1585,
+          "s1": 1805,
+          "side": "right",
+          "tag": "bluff"
+        },
+        {
+          "s0": 2315,
+          "s1": 2425,
+          "side": "right",
+          "tag": "bluff"
+        },
+        {
+          "s0": 445,
+          "s1": 505,
+          "side": "left",
+          "tag": "rock-cut"
+        },
+        {
+          "s0": 745,
+          "s1": 935,
+          "side": "left",
+          "tag": "rock-cut"
+        },
+        {
+          "s0": 1155,
+          "s1": 1475,
+          "side": "left",
+          "tag": "rock-cut"
+        },
+        {
+          "s0": 1575,
+          "s1": 1825,
+          "side": "left",
+          "tag": "rock-cut"
+        }
+      ],
       "features": [
         {
           "kind": "billboard",

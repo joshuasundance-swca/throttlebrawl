@@ -261,6 +261,8 @@ def bake(
             for t in rn.tags
             for t0, t1 in without(0, length, decks)
         ]
+        # Tags over part of one side (playtest 4, P4-19, C4), off the decks as well.
+        tags += [row for st in rn.spanTags for row in st.ranges(length, decks, rn.id)]
         barriers = [
             *bridge_barriers(tags, cfg.bridgeRailHeightM, cfg.bridgeBarrier),
             *(b.as_json(length) for b in rn.barriers),

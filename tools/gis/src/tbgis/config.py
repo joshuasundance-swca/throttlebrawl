@@ -239,6 +239,41 @@ class Stitch(Strict):
         return self
 
 
+class SpanTag(Strict):
+    """A scenery tag over part of one side of a road, in the road's own metres (playtest 4, P4-19, C4):
+    Chuckanut's bay side is a `bluff` only where the ground drops to the water, and Lake Samish's shore
+    drive is `lake` only where the water is beside it. ``s1`` may be ``"end"``. Like the land tags, it
+    never reaches a deck."""
+
+    s0: float = Field(ge=0)
+    s1: float | Literal["end"]
+    side: Literal["left", "right", "both"]
+    tag: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> SpanTag:
+        if self.s1 != "end" and float(self.s1) <= self.s0:
+            raise ValueError(f"span tag {self.tag}: s1 {self.s1} is not past s0 {self.s0}")
+        return self
+
+    def ranges(self, length: float, decks: list[tuple[float, float]], road: str) -> list[dict[str, object]]:
+        """Its rows on a road ``length`` m long, cut by the decks; raises when it runs off the road."""
+        s1 = length if self.s1 == "end" else float(self.s1)
+        if s1 > length + 1e-6:
+            raise ValueError(f"{road}: span tag {self.tag} at {self.s0}..{s1} is off the {length} m road")
+        out: list[dict[str, object]] = []
+        at = self.s0
+        for h0, h1 in sorted(decks):
+            if h0 > at and min(h0, s1) - at >= 1:
+                out.append(
+                    {"s0": round(at, 4), "s1": round(min(h0, s1), 4), "side": self.side, "tag": self.tag}
+                )
+            at = max(at, h1)
+        if s1 - at >= 1:
+            out.append({"s0": round(at, 4), "s1": round(s1, 4), "side": self.side, "tag": self.tag})
+        return out
+
+
 class RoadName(Strict):
     id: str = Field(pattern=r"^osm-[a-z0-9]+(-[a-z0-9]+)*$")
     name: str
@@ -252,6 +287,8 @@ class RoadName(Strict):
     # Tags over the road's bridges only, beside `bridge` (playtest 3: the Old Seven Mile Bridge's
     # `old-bridge` deck look). The land tags above never reach a deck.
     deckTags: list[str] = []  # noqa: N815
+    # Tags over part of one side only (SpanTag), after the tags above.
+    spanTags: list[SpanTag] = []  # noqa: N815
     features: list[Feature] = []
     # This road's own sample spacing (1-10 m, the lint's range); None: the config's. A long straight
     # bridge at 6 m costs a third of the road data it would at 2 m (the Seven Mile, critic C1).

@@ -52,6 +52,7 @@ from tbgis.config import (
     RoadName,
     Route,
     Smoothing,
+    SpanTag,
     Stitch,
     Strict,
     Verges,
@@ -851,6 +852,8 @@ class Piece:
     # The span of its line it was cut from (line s), for features placed in line s.
     s_a: float = 0.0
     s_b: float = 0.0
+    # Its tags over part of one side only (`spanTags`): they say nothing of a connector beside it.
+    span_tags: frozenset[str] = frozenset()
 
 
 def lane_section(cs: CrossSection) -> Json:
@@ -897,11 +900,18 @@ def speed_of(bl: BakedLine, a: float, b: float) -> float:
 
 
 def tag_ranges(
-    bl: BakedLine, a: float, b: float, land: list[str], sides: SideTags, deck: list[str] | None = None
+    bl: BakedLine,
+    a: float,
+    b: float,
+    land: list[str],
+    sides: SideTags,
+    deck: list[str] | None = None,
+    spans: list[SpanTag] | None = None,
+    road: str = "",
 ) -> list[Json]:
     """Tags for the line stretch [a, b]: bridges (and the sea under a sea deck) by the real map, with
-    the road's ``deck`` tags over them, and the road's tags (both sides, then each side's own)
-    everywhere else (scenery stands on land only: playtest 1c item 3)."""
+    the road's ``deck`` tags over them, and the road's tags (both sides, then each side's own, then its
+    ``spans`` over part of one side) everywhere else (scenery stands on land only: playtest 1c item 3)."""
     p = bl.p
     length = b - a
     on = (p.s >= a - 1e-9) & (p.s <= b + 1e-9)
@@ -927,6 +937,8 @@ def tag_ranges(
         for t in names
         for t0, t1 in without(0, length, decks)
     ]
+    # Tags over part of one side (playtest 4, P4-19, C4), off the decks as well.
+    tags += [row for st in spans or [] for row in st.ranges(r4(length), decks, road)]
     return tags
 
 
@@ -1020,7 +1032,7 @@ def make_piece(
 ) -> Piece:
     spacing = (rn.sampleSpacingM if rn else None) or cfg.sampleSpacingM
     _, x, y, z = resample_line(bl, a, b, spacing)
-    tags = tag_ranges(bl, a, b, land, sides, rn.deckTags if rn else None)
+    tags = tag_ranges(bl, a, b, land, sides, rn.deckTags if rn else None, rn.spanTags if rn else None, pid)
     features: list[Json] = []
     length = r4(b - a)
     for f in rn.features if rn else []:
@@ -1054,6 +1066,7 @@ def make_piece(
         connector=rn is None,
         s_a=a,
         s_b=b,
+        span_tags=frozenset(st.tag for st in rn.spanTags) - frozenset(land) if rn else frozenset(),
     )
 
 
@@ -1776,9 +1789,16 @@ def idx(bl: BakedLine, a: float, b: float) -> tuple[int, int]:
 
 
 def bl_tags(entry: tuple[Piece, str | None]) -> list[str]:
-    """The land tags of an ordinary road (for the connector beside it)."""
+    """The land tags of an ordinary road (for the connector beside it), not its span tags (a lake beside
+    part of one side of it is not beside the connector)."""
     pc = entry[0]
-    return sorted({t["tag"] for t in pc.tags if t["tag"] != "bridge" and not t["tag"].startswith("water-")})
+    return sorted(
+        {
+            t["tag"]
+            for t in pc.tags
+            if t["tag"] != "bridge" and not t["tag"].startswith("water-") and t["tag"] not in pc.span_tags
+        }
+    )
 
 
 def route_length(route: Json, by_id: dict[str, Json]) -> float:

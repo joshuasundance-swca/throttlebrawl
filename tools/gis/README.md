@@ -62,6 +62,13 @@ default so the Keys bake is unchanged. Their bakes are in the region packs as re
   creek or a ravine, not open water, so no boats float below it. `features` take every road-file
   kind, `boostPad` and `rampTruck` included (with numeric `params` and a `slot`), and a `billboard`
   slot names a region `item` or a `pool` (`signs` or `billboards`).
+- Per road, `spanTags` (playtest 4, P4-19, C4): tags over part of one side only, each
+  `{ "s0", "s1" (or "end"), "side": "left" | "right" | "both", "tag" }` in the road's own metres, after
+  its `tags` and off its decks. A span that runs off its road is refused, and a branch's connector never
+  takes its neighbour's span tags. Chuckanut's `bluff` (its bay side) and `rock-cut` (its uphill side)
+  and Lake Samish's `lake` (East Shore Drive's lake side) are span tags; their ranges came from a USGS
+  3DEP probe beside the baked roads (Chuckanut) and from the OSM lake outline (Samish), and both bakes
+  were rebaked from fresh fetches with nothing else changed but the provenance.
 - USGS `getSamples` answers at most 1,000 points per request and silently drops the rest, so longer
   stretches go in batches.
 

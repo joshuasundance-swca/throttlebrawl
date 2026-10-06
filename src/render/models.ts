@@ -79,6 +79,10 @@ export const MODEL_ASSETS = {
   // Gorge's landmark kit (bridge-bays.ts `planArches`, under an `arch-bridge` deck). The file is a
   // landmark kit, so it loads with the kit's own decoder (`KIT_MODELS`).
   gorgeArches: 'models/landmarks/gorge-landmarks',
+  // Playtest 4 (P4-19, C4; Codex CX6): Chuckanut's sandstone cuts, parapet, bluff and boulders and Lake
+  // Samish's cabin and dock, in region-pnw's pack (roadside.ts PNW_KIT, on the `cut`, `bluff` and `lake`
+  // themes).
+  pnwShore: 'models/scenery/pnw-shore',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -180,6 +184,20 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   ],
   sfIdentity: ['sf_cypress', 'sf_eucalyptus'],
   gorgeArches: ARCH_ROOTS,
+  // Variants 0 and 1 the 6 m sandstone cuts (4.2 and 8 m high), 2 the 6 m parapet, 3 the 20 m bluff (its lip
+  // at the root, falling 40 m on its -Z side), 4 and 5 the boulders, 6 the lake cabin (its porch +Z, its deck
+  // behind), 7 the dock (its root at the shore at the waterline, running out along -Z)
+  // (tools/blender/props/pnw_shore.py).
+  pnwShore: [
+    'chuckanut_rockcut',
+    'chuckanut_rockcut_tall',
+    'chuckanut_parapet',
+    'chuckanut_bluff',
+    'chuckanut_boulder_a',
+    'chuckanut_boulder_b',
+    'samish_lake_house',
+    'samish_dock',
+  ],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -308,6 +326,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('sawmill')) out.add('sawmill');
     // Playtest 4 (P4-19): the Presidio's trees, on the Golden Gate's toll plaza.
     if (n.tags.has('presidio')) out.add('sfIdentity');
+    // Playtest 4 (P4-19, C4): Chuckanut's bluff and cuts, Lake Samish's cabins and docks.
+    if (['bluff', 'rock-cut', 'lake'].some((t) => n.tags.has(t))) out.add('pnwShore');
     const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
     if (urban) {
       out.add('rowHouses');
