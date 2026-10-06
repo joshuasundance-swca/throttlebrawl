@@ -711,3 +711,232 @@ describe('gzip copies (playtest 4 run B live check, punch item 8: the host sends
     }
   });
 });
+
+describe("a first visit (playtest 4 run B fix check, punch item 1: the worker downloaded the page's scripts again)", () => {
+  // The live check saw the worker's install miss the browser's HTTP cache (`only-if-cached`,
+  // ERR_CACHE_MISS) for every script the page had loaded as a module, so it downloaded each one a
+  // second time as its gzip copy (275,498 bytes for the first-load scripts alone).
+  //
+  // The game's host, as recorded with curl on 2026-10-06 (build bae17cc): every file answers 200
+  // with `Vary: Origin`, `Access-Control-Allow-Origin: *` and an ETag, and with no Cache-Control or
+  // Last-Modified; a request with `If-None-Match: <that ETag>` answers 304 with no body.
+  //
+  // The browser, as Chromium's source has it:
+  // - A page's module script, module preload and `crossorigin` preload carry an `Origin` header
+  //   even to their own site (Blink's FetchParameters::SetCrossOriginAccessControl ends with
+  //   `if (origin) resource_request_.SetHTTPOrigin(origin);`). A page's or a worker's own fetch()
+  //   of its own site's file carries none.
+  // - The HTTP cache keeps, with each stored answer, the request's value of each header its Vary
+  //   names. A request whose value differs needs validation, whatever its cache mode
+  //   (HttpCache::Transaction::RequiresValidation checks Vary before LOAD_SKIP_CACHE_VALIDATION).
+  //   A read-only request (`only-if-cached`) that needs validation fails with ERR_CACHE_MISS
+  //   (BeginCacheRead). Any other request revalidates with the stored ETag (ConditionalizeRequest
+  //   keeps the ETag on a Vary mismatch) and, on a 304, is answered from the cache.
+  const ORIGIN = new URL(SCOPE).origin;
+  const ENTRY = 'assets/index-AAA.js';
+  const SIM = 'assets/sim-S1.js';
+  const ROAD = 'assets/road-R1.json';
+  const LAZY = 'assets/landmarks-L1.js';
+  const SITE: Record<string, string> = {
+    'index.html':
+      '<!doctype html><html><head>' +
+      `<link rel="modulepreload" crossorigin href="./${SIM}">` +
+      `<link rel="preload" as="fetch" crossorigin href="./${ROAD}">` +
+      `<script type="module" crossorigin src="./${ENTRY}"></script></head></html>`,
+    'manifest.webmanifest': '{"name":"throttlebrawl"}',
+    [ENTRY]: `export const entry = "${'e'.repeat(3000)}";`,
+    [SIM]: `export const sim = "${'s'.repeat(3000)}";`,
+    [ROAD]: JSON.stringify({ points: Array.from({ length: 300 }, (_, i) => [i, i]) }),
+    [LAZY]: `export const landmarks = "${'l'.repeat(3000)}";`,
+    'assets/ds/keys/bike-B1.glb': 'glTF'.repeat(600),
+    'assets/ds/keys/clip-C1.ogg': 'OggS'.repeat(50),
+  };
+  const FILES = Object.keys(SITE).sort();
+  /** What index.html itself loads (scripts/service-worker.mjs's workerConfig names them). */
+  const FIRST_LOAD = [ENTRY, ROAD, SIM].sort();
+  const GZIP = ['.glb', '.js', '.json'];
+  const gzipOf = async (text: string) =>
+    new Uint8Array(
+      await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer(),
+    );
+
+  /** One answer that crossed the network: which file (or copy), its status and its body's bytes. */
+  interface Wire {
+    rel: string;
+    status: number;
+    bytes: number;
+  }
+
+  /**
+   * The game's host and the browser's HTTP cache in front of it. `vary` is the host's Vary header
+   * ('' for a host without one: the negative control of the cause).
+   */
+  function browser(vary: 'Origin' | '' = 'Origin') {
+    let site: Record<string, string> = { ...SITE };
+    const etag = (rel: string) => `"${rel}:${site[rel.replace(/\.gz$/, '')]?.length ?? 0}"`;
+    /** The host: a file, its gzip copy (raw gzip bytes), or 404; a matching If-None-Match, 304. */
+    const origin = async (rel: string, ifNoneMatch?: string) => {
+      const plain = rel.endsWith('.gz') ? site[rel.slice(0, -3)] : site[rel];
+      if (plain === undefined) return { status: 404, body: new TextEncoder().encode('Not Found'), etag: '' };
+      const tag = etag(rel);
+      if (ifNoneMatch === tag) return { status: 304, body: new Uint8Array(), etag: tag };
+      const body = rel.endsWith('.gz') ? await gzipOf(plain) : new TextEncoder().encode(plain);
+      return { status: 200, body, etag: tag };
+    };
+    const http = new Map<string, { body: Uint8Array; etag: string; origin: string | null }>();
+    const wire: Wire[] = [];
+    /** Each `only-if-cached` lookup and whether the HTTP cache answered it. */
+    const lookups: { rel: string; hit: boolean }[] = [];
+    const varies = (stored: { origin: string | null }, asking: string | null) =>
+      vary === 'Origin' && stored.origin !== asking;
+    const request = async (rel: string, asking: string | null, mode?: RequestCache): Promise<Response> => {
+      const stored = http.get(rel);
+      if (mode === 'only-if-cached') {
+        const hit = !!stored && !varies(stored, asking);
+        lookups.push({ rel, hit });
+        if (!stored || !hit) throw new TypeError('Failed to fetch'); // net::ERR_CACHE_MISS
+        return new Response(stored.body.slice(), { status: 200 });
+      }
+      // No freshness (no Cache-Control or Last-Modified), so a stored answer is always revalidated.
+      const res = await origin(rel, stored?.etag);
+      wire.push({ rel, status: res.status, bytes: res.body.length });
+      if (res.status === 304 && stored) {
+        stored.origin = asking;
+        return new Response(stored.body.slice(), { status: 200 });
+      }
+      if (res.status === 200) http.set(rel, { body: res.body, etag: res.etag, origin: asking });
+      return new Response(res.body.slice(), { status: res.status });
+    };
+    const relOf = (req: WorkerRequest | string) =>
+      (typeof req === 'string' ? req : req.url).slice(SCOPE.length).split(/[?#]/)[0] ?? '';
+    return {
+      wire,
+      lookups,
+      /** The page's first load: its scripts and preloads carry Origin; its own fetch() does not. */
+      async pageLoads(opts: { fetched?: readonly string[] } = {}) {
+        await request('index.html', null);
+        for (const rel of [SIM, ROAD, ENTRY]) await request(rel, ORIGIN);
+        for (const rel of opts.fetched ?? []) await request(rel, null);
+      },
+      /** A page an older build's worker served: that worker fetched each copy itself (no Origin). */
+      async pageLoadsThroughOldWorker() {
+        await request('index.html', null);
+        for (const rel of [SIM, ROAD, ENTRY]) await request(`${rel}.gz`, null);
+      },
+      /** The worker's fetch(): never an Origin header. */
+      fetchFn: (req: WorkerRequest | string, init?: RequestInit) => request(relOf(req), null, init?.cache),
+      deploy: (next: Record<string, string>) => void (site = next),
+    };
+  }
+
+  async function firstVisitWorker(
+    net: ReturnType<typeof browser>,
+    opts: { firstLoad?: readonly string[]; mem?: ReturnType<typeof memoryCaches> } = {},
+  ) {
+    const mem = opts.mem ?? memoryCaches();
+    const checks = await checksOf(FILES, (rel) => SITE[rel] ?? '');
+    const env: OfflineEnv = {
+      scope: SCOPE,
+      caches: mem.caches,
+      fetch: net.fetchFn,
+      delay: manualDelay().delay,
+    };
+    const config = {
+      cache: `${CACHE_PREFIX}f`,
+      files: FILES,
+      checks,
+      gzip: GZIP,
+      ...(opts.firstLoad ? { firstLoad: opts.firstLoad } : {}),
+    };
+    return { worker: createOfflineWorker(env, config), mem };
+  }
+  /** How many times each file's body (plain or as its copy) crossed the network. */
+  const bodiesOf = (wire: readonly Wire[]) => {
+    const out: Record<string, number> = {};
+    for (const w of wire.filter((x) => x.status === 200)) {
+      const rel = w.rel.replace(/\.gz$/, '');
+      out[rel] = (out[rel] ?? 0) + 1;
+    }
+    return out;
+  };
+  const plain = () => Object.fromEntries(FILES.map((rel) => [rel, SITE[rel]]));
+
+  it("finds the cause: the host's Vary: Origin hides the page's scripts and preloads from the worker's lookup", async () => {
+    for (const vary of ['Origin', ''] as const) {
+      const net = browser(vary);
+      // The live check's driver fetched the entry with a plain fetch(), which is why it alone hit.
+      await net.pageLoads({ fetched: [ENTRY] });
+      const { worker } = await firstVisitWorker(net);
+      await worker.install();
+      const hits = net.lookups.filter((l) => l.hit).map((l) => l.rel);
+      const misses = net.lookups.filter((l) => !l.hit).map((l) => l.rel);
+      console.log(
+        `[print] host Vary "${vary}": lookups hit ${JSON.stringify(hits)}, missed ${JSON.stringify(misses)}`,
+      );
+      if (vary === 'Origin') {
+        // As live: what the page loaded as a module or preload misses; what it fetched hits.
+        expect(hits).toEqual([ENTRY]);
+        expect(misses).toEqual(expect.arrayContaining([SIM, ROAD]));
+        expect(bodiesOf(net.wire)[SIM]).toBe(2);
+      } else {
+        // The negative control: the same page and worker against a host without Vary hit them all.
+        expect(hits).toEqual(expect.arrayContaining([ENTRY, SIM, ROAD]));
+        expect(bodiesOf(net.wire)[SIM]).toBe(1);
+      }
+    }
+  });
+
+  it('downloads each file the page loaded once: the install revalidates them (304) instead', async () => {
+    const net = browser('Origin');
+    await net.pageLoads();
+    const { worker, mem } = await firstVisitWorker(net, { firstLoad: FIRST_LOAD });
+    await worker.install();
+    expect(await contents(mem, `${CACHE_PREFIX}f`)).toEqual(plain());
+    const bodies = bodiesOf(net.wire);
+    console.log(`[print] first visit, bodies on the wire per file: ${JSON.stringify(bodies)}`);
+    for (const rel of FIRST_LOAD) expect(bodies[rel], rel).toBe(1);
+    // The worker asked for them, and the host answered 304 with no body.
+    for (const rel of FIRST_LOAD)
+      expect(
+        net.wire.filter((w) => w.rel === rel).map((w) => w.status),
+        rel,
+      ).toEqual([200, 304]);
+    expect(
+      net.wire
+        .map((w) => w.rel)
+        .filter((rel) => FIRST_LOAD.includes(rel.replace(/\.gz$/, '')) && rel.endsWith('.gz')),
+    ).toEqual([]);
+    // Files the page never loaded still come as their gzip copies.
+    expect(net.wire.map((w) => w.rel)).toContain(`${LAZY}.gz`);
+    expect(net.wire.map((w) => w.rel)).not.toContain(LAZY);
+  });
+
+  it('a returning player (an older build installed) takes the gzip copies, never the plain first-load files (the negative control)', async () => {
+    const net = browser('Origin');
+    const mem = memoryCaches();
+    await (
+      await mem.caches.open(`${CACHE_PREFIX}older`)
+    ).put(`${SCOPE}assets/old-O1.js`, new Response('old'));
+    await net.pageLoadsThroughOldWorker();
+    const { worker } = await firstVisitWorker(net, { firstLoad: FIRST_LOAD, mem });
+    await worker.install();
+    expect(await contents(mem, `${CACHE_PREFIX}f`)).toEqual(plain());
+    const asked = net.wire.map((w) => w.rel);
+    for (const rel of FIRST_LOAD) {
+      expect(asked, rel).not.toContain(rel);
+      expect(bodiesOf(net.wire)[rel], rel).toBe(1);
+    }
+  });
+
+  it('fails the whole install when a deploy replaced the build after the page loaded (no mixed build)', async () => {
+    const net = browser('Origin');
+    await net.pageLoads();
+    const next = { ...SITE };
+    delete next[SIM];
+    next['assets/sim-S2.js'] = 'export const sim = 2;';
+    net.deploy(next);
+    const { worker, mem } = await firstVisitWorker(net, { firstLoad: FIRST_LOAD });
+    await expect(worker.install()).rejects.toThrow(/assets\/sim-S1\.js: HTTP 404/);
+    expect(mem.stores.has(`${CACHE_PREFIX}f`)).toBe(false);
+  });
+});

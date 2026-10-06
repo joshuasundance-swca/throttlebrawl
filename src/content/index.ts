@@ -14,7 +14,7 @@ export {
   registryFromGlob,
 } from './packs';
 export type { PackLibrary, PackSources } from './packs';
-export { buildRegistry, ContentError, contentHashes, lookup } from './registry';
+export { buildRegistry, ContentError, contentHashes, HttpLoadError, lookup } from './registry';
 export type { ContentRegistry, LoadOptions, PackIndexRow } from './registry';
 export type { ContentHashes } from './hashes';
 export { FORMAT_VERSION, isEntryFile, parsePack } from './parse';
