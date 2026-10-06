@@ -181,6 +181,11 @@ const OVERLAY_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
  */
 const ROAD_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
 const SOLID_SURFACES = 4;
+/**
+ * How far a simplified road's shoulder reaches over the land beside it, m: twice ROAD_SIMPLIFY.tolM, so
+ * its straight outer edge always covers the land's edge, which keeps every sample. [default]
+ */
+const SHOULDER_LAP_M = 2 * ROAD_SIMPLIFY.tolM;
 
 /** Metres from (x, z) to the nearest point of the chunk `key` names (0 inside it). */
 export function chunkDistance(key: string, x: number, z: number): number {
@@ -1183,6 +1188,12 @@ export function buildRoadScene(
     // Surfaces and solid edge lines, sample by sample, pausing where a span is absent. The edge
     // line breaks across a split zone: that is where a rider may leave.
     const lanesSpan = (l: LaneSpans): [number, number] => l.drive ?? l.shortcut ?? [0, 0];
+    // A plain road's solid surfaces are drawn with only the samples their shape needs (below), but the
+    // land beside a shoulder keeps every sample, so on the outside of a bend the shoulder's straight outer
+    // edge stood up to ROAD_SIMPLIFY.tolM inside the land's: a crack with the sky under it (I-5 by Lake
+    // Samish, 136 m over the water). There the shoulder reaches SHOULDER_LAP_M over the land instead.
+    const simplifyRoad = !shortcutEdge && gore === undefined;
+    const shoulderLap = simplifyRoad ? SHOULDER_LAP_M : 0;
     const surfaces: {
       kind: MaterialKind;
       span: (l: LaneSpans, c: Clip) => [number, number] | null;
@@ -1191,8 +1202,16 @@ export function buildRoadScene(
     }[] = [
       { kind: brickEdge ? 'brick' : 'road', span: (l) => l.drive, lift: 0 },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
-      { kind: 'shoulder', span: (l, c) => (c.vergeL ? [outerL, lanesSpan(l)[0]] : null), lift: -0.02 },
-      { kind: 'shoulder', span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR] : null), lift: -0.02 },
+      {
+        kind: 'shoulder',
+        span: (l, c) => (c.vergeL ? [outerL - shoulderLap, lanesSpan(l)[0]] : null),
+        lift: -0.02,
+      },
+      {
+        kind: 'shoulder',
+        span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR + shoulderLap] : null),
+        lift: -0.02,
+      },
       {
         kind: 'marking',
         span: (l) => (l.drive ? [l.drive[0] + 0.1, l.drive[0] + 0.25] : null),
@@ -1219,7 +1238,7 @@ export function buildRoadScene(
     // shortcut or a gore keeps every sample: its clipped edges lap another road's by centimetres.
     const solidRows = surfaces.slice(0, SOLID_SURFACES).map((surf) => sd.map((_, i) => rowOf(surf, i)));
     const keep = sd.map(() => true);
-    if (!shortcutEdge && gore === undefined) {
+    if (simplifyRoad) {
       const breaks: number[] = [];
       sd.forEach((_, i) => breaks.push((breaks[i - 1] ?? 0) + (overGap(i) ? 1 : 0)));
       const pattern = sd.map((_, i) => solidRows.map((r) => (r[i] ? '1' : '0')).join(''));
