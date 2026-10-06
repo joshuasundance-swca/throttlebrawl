@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionState } from '../../app';
+import kickPack from '../../../packs/base/weapons/kick.json';
 import type { EntitySnapshot, LaneInfo, RouteQueries, SimSnapshot } from '../../sim/api';
-import {
-  ATTACK_REPEAT_TICKS,
-  KICK_LEAD_TICKS,
-  KICK_OFFSET_M,
-  KICK_REPEAT_TICKS,
-  RETREAT_HEALTH,
-  createBot,
-} from './index';
+import { KICK_LEAD_TICKS, KICK_OFFSET_M, KICK_REPEAT_TICKS, RETREAT_HEALTH, createBot } from './index';
 
 // Unit tests of the bot's decisions on hand-built snapshots. The real-data check is the seeded
 // batch (tests/sim/) and the browser race, which drive the bot against the real sim.
@@ -116,15 +110,24 @@ describe('dev/bot: the BotController', () => {
       }
     }
     // A kick on the first tick, aimed left (the rival is 1.1 m to its left), and the next kick only
-    // after the kick's whole cycle; in between, one jab once the kick has recovered.
+    // after the kick's whole cycle, with no press in between (a kick leaves no room for a punch).
     expect(kicks).toEqual([0, KICK_REPEAT_TICKS]);
     expect(side).toBe(-1);
-    expect(presses.length).toBe(3);
-    const jab = presses[1] ?? -1;
-    expect(jab).toBeGreaterThanOrEqual(ATTACK_REPEAT_TICKS);
-    expect(KICK_REPEAT_TICKS - jab).toBeGreaterThanOrEqual(ATTACK_REPEAT_TICKS - 4);
+    expect(presses).toEqual(kicks);
     expect(bot.stats().kickPresses).toBe(2);
-    expect(bot.stats().attackPresses).toBe(3);
+    expect(bot.stats().attackPresses).toBe(2);
+  });
+
+  it('models the kick as packs/base/weapons/kick.json has it: it leads by the wind-up and repeats as the leg returns', () => {
+    const ticks = (s: number) => Math.max(1, Math.round(s * 60));
+    const cycle = ticks(kickPack.windupS) + ticks(kickPack.activeS) + ticks(kickPack.recoveryS);
+    const hitStop = Math.round((kickPack.hitStopMs * 60) / 1000);
+    expect(KICK_LEAD_TICKS).toBe(ticks(kickPack.windupS));
+    // Never before the leg is back (a press into the recovery is the sim's buffer, not a new kick),
+    // and no later than the hit-stop and a few ticks of margin past it (a bot that idles through a
+    // gap lands fewer kicks than the same rider does).
+    expect(KICK_REPEAT_TICKS).toBeGreaterThanOrEqual(cycle + hitStop);
+    expect(KICK_REPEAT_TICKS).toBeLessThanOrEqual(cycle + hitStop + 4);
   });
 
   it('never attacks the cop, and does not swing at a rival out of reach', () => {
@@ -284,21 +287,23 @@ describe('bot: fighting a rival down (dev-4 part 2)', () => {
   ];
 
   it('kicks when the rival will be in reach as the wind-up ends, not on where it is now', () => {
-    // Level now, but 4 m/s faster: 0.9 m ahead by the time a kick goes active. Hold the press.
+    // Level now, but faster by the speed that puts it 0.9 m ahead by the time a kick goes active
+    // (past the 0.8 m window). Hold the press.
+    const dv = (0.9 * 60) / KICK_LEAD_TICKS;
     const a = blank();
     const bot = createBot();
     bot.drive(
-      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100, d: 0.5, speed: 34 })]),
+      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100, d: 0.5, speed: 30 + dv })]),
       ME,
       route(),
       a,
     );
     expect(a.kick).toBe(false);
-    // 0.9 m behind and closing at 4 m/s: level as the kick goes active. Kick now.
+    // 0.9 m behind and closing at that speed: level as the kick goes active. Kick now.
     const b = blank();
-    const lead = (4 * KICK_LEAD_TICKS) / 60;
+    const lead = (dv * KICK_LEAD_TICKS) / 60;
     createBot().drive(
-      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100 - lead, d: 0.5, speed: 34 })]),
+      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100 - lead, d: 0.5, speed: 30 + dv })]),
       ME,
       route(),
       b,
