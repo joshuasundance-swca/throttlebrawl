@@ -2,18 +2,28 @@
 // "Deploy: game Space and staging Space", Offline). The maintainer: "Offline definitely preferable".
 // sw.ts is the worker's entry; this file is its logic behind `OfflineEnv`, so the unit tests drive
 // it with an in-memory cache and a fake network. The build step (scripts/service-worker.mjs)
-// hands the worker its config: this build's cache name and every file the build wrote.
+// hands the worker its config: this build's cache name, every file the build wrote, and how to tell
+// that a file without a content hash in its name is this build's.
 //
-// - Install: every file of the build goes into this build's cache, so a loaded game plays with the
+// - Install: all or nothing, and only this build's files (playtest 4 run A's live check: a deploy
+//   that landed during a tab's install left 650 of 668 files cached, and offline the landmark chunk
+//   failed). Every file of the build goes into this build's cache, so a loaded game plays with the
 //   network off. A content-hashed file (everything under assets/: its name changes whenever its
 //   bytes do) crosses over from an older build's cache when it is there, so a deploy downloads only
-//   what changed. A file that fails is fetched again the first time the game asks for it; only the
-//   page itself must cache, or the worker would have nothing to open offline.
+//   what changed; a file without one must pass its check (its SHA-256, or for the page its own
+//   entry script). Any file that fails (a 404 once a deploy has replaced the build, bytes of another
+//   build, a connection dropped twice) fails the install and drops this build's half-filled cache,
+//   so the worker never takes the page with a hole in it; the browser keeps the last worker and
+//   tries again at the next launch, when the host serves the newer build's worker.
 // - Activate: older builds' caches go; the worker takes the open page at once.
 // - Requests, inside the worker's folder only: the page, changelog.json and the web manifest are
 //   network-first with a NETWORK_TIMEOUT_MS fallback to the cache, so a deploy is played at the next
-//   launch and a weak signal never hangs one; everything else is cache-first. Other sites, other
-//   folders and anything but a GET are left to the browser.
+//   launch and a weak signal never hangs one; everything else is cache-first. Only the changelog
+//   (written after the build, so not in its list) is kept from the network: what a newer build's
+//   page fetches online is passed on, never mixed into this build's cache. The page leaves out its
+//   `rel=preload` hints: Chrome will not use a preload a worker answered ("cross-world service
+//   worker resource mismatch") and fetches the file again. Other sites, other folders and anything
+//   but a GET are left to the browser.
 //
 // It must import nothing at run time: sw.ts is built as its own classic script, and a module the
 // page shares would become a shared chunk the worker cannot load.
@@ -30,6 +40,15 @@ const NETWORK_FIRST = new Set(['', 'index.html', 'changelog.json', 'manifest.web
 const PAGE = 'index.html';
 /** How many files the install downloads at once: the game's own requests keep a lane. [default] */
 const INSTALL_LANES = 4;
+/** A `<link rel=preload>` tag (not `modulepreload`) and the white space after it. */
+const PRELOAD_LINK = /<link\b[^>]*\brel=["']?preload\b[^>]*>\s*/gi;
+
+/**
+ * How the install tells that a file without a content hash in its name is this build's: the SHA-256
+ * of its bytes (hex), or, for a page, a text it must contain: its own entry script's path. The game's
+ * host adds a script of its own to HTML, so a page's bytes are never the build's.
+ */
+export type FileCheck = { sha256: string } | { contains: string };
 
 /** What the build step hands the worker. */
 export interface OfflineConfig {
@@ -37,6 +56,8 @@ export interface OfflineConfig {
   cache: string;
   /** Every file of the build but the worker, relative to the worker's folder. */
   files: readonly string[];
+  /** The check of every file in `files` outside assets/. */
+  checks: Readonly<Record<string, FileCheck>>;
 }
 
 /** The part of a fetch event's request the policy reads; the real `Request` is passed through. */
@@ -70,6 +91,7 @@ export interface OfflineEnv {
 }
 
 export interface OfflineWorker {
+  /** Caches the whole build, or rejects and leaves no cache of it. */
   install(): Promise<void>;
   activate(): Promise<void>;
   /** The answer to a request, or null to leave it to the browser. */
@@ -79,36 +101,71 @@ export interface OfflineWorker {
 /** A response worth keeping: a full, same-origin success (never a redirect or an error page). */
 const keepable = (res: Response) => res.ok && (res.type === 'basic' || res.type === 'default');
 
+async function sha256Hex(res: Response): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await res.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Whether a response is this build's file, by its check. */
+async function passes(res: Response, check: FileCheck): Promise<boolean> {
+  return 'sha256' in check
+    ? (await sha256Hex(res)) === check.sha256
+    : (await res.text()).includes(check.contains);
+}
+
+/** The page without its `rel=preload` hints; any other answer as it is. */
+async function withoutPreloads(res: Response): Promise<Response> {
+  if (!res.ok) return res;
+  const html = await res.clone().text();
+  const page = html.replace(PRELOAD_LINK, '');
+  if (page === html) return res;
+  const headers = new Headers(res.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  return new Response(page, { status: res.status, statusText: res.statusText, headers });
+}
+
 export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): OfflineWorker {
   const abs = (rel: string) => new URL(rel, env.scope).href;
   const cache = () => env.caches.open(config.cache);
+  const listed = new Set(config.files);
+
+  /** A keepable answer, after one more try on a dropped connection; anything else throws. */
+  const download = async (rel: string, init: RequestInit) => {
+    const url = abs(rel);
+    const res = await env
+      .fetch(url, init)
+      .catch(() => env.fetch(url, init))
+      .catch((err: unknown) => {
+        throw new Error(`${rel}: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    if (!keepable(res)) throw new Error(`${rel}: HTTP ${res.status}`);
+    return res;
+  };
 
   const cacheFile = async (rel: string) => {
     const url = abs(rel);
     const store = await cache();
     if (rel.startsWith(HASHED_DIR)) {
       const old = await env.caches.match(url);
-      if (old) return store.put(url, old);
+      // Hashed files may come from the HTTP cache (the page fetched most of them already).
+      return store.put(url, old ?? (await download(rel, {})));
     }
-    // Hashed files may come from the HTTP cache (the page fetched most of them already); the rest
-    // are checked with the server, so the page cached is this build's.
-    const res = await env.fetch(url, rel.startsWith(HASHED_DIR) ? {} : { cache: 'no-cache' });
-    if (!keepable(res)) throw new Error(`${rel}: HTTP ${res.status}`);
+    // The rest are checked with the server, then against the build's own check.
+    const check = config.checks[rel];
+    if (!check) throw new Error(`${rel}: no check in the worker's config`);
+    const res = await download(rel, { cache: 'no-cache' });
+    if (!(await passes(res.clone(), check))) throw new Error(`${rel}: not this build's (a deploy landed)`);
     return store.put(url, res);
   };
 
-  /** Fetches and keeps a copy; a failed or unkeepable answer is passed on as it is. */
-  const fetchAndKeep = async (req: WorkerRequest, key: string) => {
-    const res = await env.fetch(req);
-    if (keepable(res)) {
-      const copy = res.clone();
-      await (await cache()).put(key, copy);
-    }
-    return res;
-  };
-
-  const networkFirst = async (req: WorkerRequest, key: string): Promise<Response> => {
-    const net = fetchAndKeep(req, key);
+  /** Network first; only a file outside the build's list (the changelog) is kept from it. */
+  const networkFirst = async (req: WorkerRequest, rel: string): Promise<Response> => {
+    const key = abs(rel);
+    const net = env.fetch(req).then(async (res) => {
+      if (!listed.has(rel) && keepable(res)) await (await cache()).put(key, res.clone());
+      return res;
+    });
     const timedOut = env.delay(NETWORK_TIMEOUT_MS).then(() => null);
     const first = await Promise.race([net.catch(() => null), timedOut]);
     if (first) return first;
@@ -117,11 +174,12 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
     return cached ?? net;
   };
 
+  /** This build's copy, else the network's answer, passed on without keeping it. */
   const cacheFirst = async (req: WorkerRequest, key: string): Promise<Response> => {
     const hit = await (await cache()).match(key);
     if (hit) return hit;
     try {
-      return await fetchAndKeep(req, key);
+      return await env.fetch(req);
     } catch (err) {
       // An older build's copy (the page may still be that build's) beats a failed load.
       const old = await env.caches.match(key);
@@ -133,16 +191,20 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
   return {
     async install() {
       const queue = [...config.files];
+      /** Each failure's reason; the lanes stop taking files once there is one. */
       const failed: string[] = [];
       const lane = async () => {
-        for (let rel = queue.shift(); rel !== undefined; rel = queue.shift()) {
+        for (let rel = queue.shift(); rel !== undefined && failed.length === 0; rel = queue.shift()) {
           const file = rel;
-          await cacheFile(file).catch(() => failed.push(file));
+          await cacheFile(file).catch((err: unknown) =>
+            failed.push(err instanceof Error ? err.message : `${file}: failed`),
+          );
         }
       };
       await Promise.all(Array.from({ length: INSTALL_LANES }, lane));
-      if (failed.includes(PAGE) || !(await (await cache()).match(abs(PAGE))))
-        throw new Error(`the offline cache has no ${PAGE}; the worker is not installed`);
+      if (failed.length === 0) return;
+      await env.caches.delete(config.cache);
+      throw new Error(`the offline cache is incomplete (${failed.join('; ')}); the worker is not installed`);
     },
 
     async activate() {
@@ -152,10 +214,10 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
 
     respond(req) {
       if (req.method !== 'GET' || !req.url.startsWith(env.scope)) return null;
-      if (req.mode === 'navigate') return networkFirst(req, abs(PAGE));
+      if (req.mode === 'navigate') return networkFirst(req, PAGE).then(withoutPreloads);
       const url = new URL(req.url);
       const rel = url.href.slice(env.scope.length).split(/[?#]/)[0] ?? '';
-      return NETWORK_FIRST.has(rel) ? networkFirst(req, abs(rel)) : cacheFirst(req, url.href);
+      return NETWORK_FIRST.has(rel) ? networkFirst(req, rel || PAGE) : cacheFirst(req, url.href);
     },
   };
 }

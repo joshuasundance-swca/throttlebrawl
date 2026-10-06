@@ -62,6 +62,17 @@
       "d0": 6.5,
       "d1": 9.0,
       "pool": "signs"
+    },
+    {
+      "kind": "landmark",
+      "id": "coit-tower",
+      "s0": 381.0,
+      "s1": 403.0,
+      "d0": -30.0,
+      "d1": -8.0,
+      "params": {
+        "model": "sf-landmarks#coit_tower"
+      }
     }
   ],
   "barriers": [],

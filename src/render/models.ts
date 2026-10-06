@@ -75,10 +75,17 @@ export const MODEL_ASSETS = {
   // Playtest 4 (P4-19, Codex CX5): the Presidio's Monterey cypress and blue gum eucalyptus, in
   // region-sf's pack (scenery.ts, the `coastTree` kind on a `presidio` side)
   sfIdentity: 'models/scenery/sf-identity',
+  // Playtest 4 (P4-19, Codex CX6; run C, task C2): the Marin Headlands' low concrete gun battery, coyote
+  // brush and the Twin Peaks summit's red chert outcrop, in region-sf's pack (scenery.ts, the `battery`,
+  // `brush` and `outcrop` kinds on a `headlands` side)
+  sfHeadlands: 'models/scenery/sf-headlands',
   // Playtest 4 (P4-19, Codex CX5): the Columbia River Highway's concrete deck arches, two nodes of the
   // Gorge's landmark kit (bridge-bays.ts `planArches`, under an `arch-bridge` deck). The file is a
   // landmark kit, so it loads with the kit's own decoder (`KIT_MODELS`).
   gorgeArches: 'models/landmarks/gorge-landmarks',
+  // Playtest 4 (P4-19, Codex CX6): San Francisco's flats, apartment blocks and corner buildings, which stand in
+  // the row houses' plots (scenery.ts `upgradeTerrace`); the corners' shop signs are text surfaces.
+  sfApartments: 'models/scenery/sf-apartments',
   // Playtest 4 (P4-19, Codex CX5, B9): the Pacific Northwest's identity props, in region-pnw's pack: the
   // Columbia River Highway's masonry guard walls on its cliff side and Chuckanut Drive's red-barked madrones
   // over its bay side (roadside.ts PNW_KIT, the `gorge-wall` and `madrone` rules).
@@ -183,7 +190,19 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'pdx_bike_rack',
   ],
   sfIdentity: ['sf_cypress', 'sf_eucalyptus'],
+  // Variant 0 the battery (30 m along the road, its doors and stair toward it), 1 a brush clump and 2 a
+  // chert outcrop of four tilted beds (tools/blender/props/sf_headlands.py; scenery.ts `HEADLANDS_VARIANT`).
+  sfHeadlands: ['gg_battery', 'coyote_brush', 'sf_chert_outcrop'],
   gorgeArches: ARCH_ROOTS,
+  // In the order of scenery.ts `APARTMENT`: two flats of one plot, two blocks and two handed corners of two.
+  sfApartments: [
+    'sf_flats_a',
+    'sf_flats_b',
+    'sf_apartment_a',
+    'sf_apartment_b',
+    'sf_corner_l',
+    'sf_corner_r',
+  ],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -316,11 +335,14 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('sawmill')) out.add('sawmill');
     // Playtest 4 (P4-19): the Presidio's trees, on the Golden Gate's toll plaza.
     if (n.tags.has('presidio')) out.add('sfIdentity');
+    // Playtest 4 (P4-19, C2): the headlands' batteries, brush and chert.
+    if (n.tags.has('headlands')) out.add('sfHeadlands');
     // Playtest 4 (P4-19, B9): the Gorge's masonry guard walls and Chuckanut's bay-side madrones.
     if (n.tags.has('guard-wall') || n.tags.has('bay-bluff')) out.add('pnwIdentity');
     const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
     if (urban) {
       out.add('rowHouses');
+      out.add('sfApartments');
       out.add('sfRoadside');
     }
     // Run W-P: each region's roadside kit (roadside.ts). San Francisco's forest (Twin Peaks)

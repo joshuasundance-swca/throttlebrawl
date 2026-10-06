@@ -4,6 +4,9 @@
 // measured along it, in world time and metres ridden; back on the main path, the first time this
 // race for that shortcut, a `shortcutFound` event says what it saved: its gainM (the main stretch
 // it skipped less its own length) at the rider's average speed along it. [default]
+// A respawn is never a find (run A's live check: a rider who missed the Seven Mile's staging hop,
+// splashed and woke on the highway was stamped FOUND IT with a negative saving): a rider who
+// respawns while timed gives the run up, and is timed afresh only by entering a shortcut again.
 import type { EntityId } from '../../core';
 import type { SimConfig } from '../types';
 import { emit, systemState, type World } from '../world';
@@ -37,9 +40,16 @@ export function stampShortcuts(world: World, config: SimConfig, isPlayer: (id: E
   const st = runState(world);
   const main = config.route.mainEdges;
   const dt = world.timeScale / 60;
+  // Who woke from a crash this tick (sim/tumble's `respawn`): wherever it wakes, it did not ride there.
+  const respawned = new Set<EntityId>();
+  for (const e of world.events) if (e.type === 'respawn') respawned.add(e.actor);
   for (const m of world.movers) {
     if (m.kind !== 'rider' || !isPlayer(m.id)) continue;
     const id = m.id;
+    if (respawned.has(id)) {
+      st.on[id] = -1;
+      continue;
+    }
     const onMain = main.includes(m.pos.edge);
     const current = st.on[id] ?? -1;
     if (current < 0) {

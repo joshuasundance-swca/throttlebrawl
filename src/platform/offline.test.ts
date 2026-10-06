@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createInstallOffer, registerOfflineWorker, SERVICE_WORKER_FILE } from './index';
+import {
+  createInstallOffer,
+  registerOfflineWorker,
+  reloadOnStaleChunk,
+  SERVICE_WORKER_FILE,
+  STALE_CHUNK_KEY,
+} from './index';
 
 // Installing as an app and the offline worker's registration (roadmap M5, launch polish; the
 // maintainer: "Offline definitely preferable"). The install offer never nags: the browser's own
@@ -95,5 +101,66 @@ describe('the offline worker registration', () => {
     const registered: Registered[] = [];
     const done = registerOfflineWorker(navWith(registered, true), new EventTarget(), true);
     await expect(done).resolves.toBe(false);
+  });
+});
+
+describe('a lazy chunk that will not load', () => {
+  // Playtest 4 run A's live check, mustFix 2: once a deploy has replaced the build, the open tab's
+  // lazy chunks (the landmarks) answer 404, so the import fails. The page reloads to the build the
+  // host serves now, once per build, so a chunk that keeps failing never loops.
+  function page(opts: { online?: boolean; storage?: 'ok' | 'none' | 'throws' } = {}) {
+    const win = new EventTarget();
+    const store = new Map<string, string>();
+    const throwing = {
+      getItem: (): string | null => {
+        throw new Error('SecurityError');
+      },
+      setItem: () => undefined,
+    };
+    const working = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    };
+    const storage = opts.storage === 'none' ? null : opts.storage === 'throws' ? throwing : working;
+    let reloads = 0;
+    return {
+      store,
+      // What Vite's import helper fires when a lazy chunk's import fails.
+      fail: () => win.dispatchEvent(new Event('vite:preloadError', { cancelable: true })),
+      reloads: () => reloads,
+      env: { win, online: () => opts.online ?? true, storage, reload: () => void reloads++ },
+    };
+  }
+
+  it('reloads once to the current build, and never again from the same build', () => {
+    const p = page();
+    reloadOnStaleChunk(p.env, 'ed1d8b0');
+    expect(p.reloads()).toBe(0);
+    p.fail();
+    expect(p.reloads()).toBe(1);
+    expect(p.store.get(STALE_CHUNK_KEY)).toBe('ed1d8b0');
+
+    // The reload landed on the same build (the host had not changed after all): no second reload.
+    const again = page();
+    again.store.set(STALE_CHUNK_KEY, 'ed1d8b0');
+    reloadOnStaleChunk(again.env, 'ed1d8b0');
+    again.fail();
+    again.fail();
+    expect(again.reloads()).toBe(0);
+
+    // The reload landed on the newer build: a later failure there may reload once more.
+    const newer = page();
+    newer.store.set(STALE_CHUNK_KEY, 'ed1d8b0');
+    reloadOnStaleChunk(newer.env, '3f6a825');
+    newer.fail();
+    expect(newer.reloads()).toBe(1);
+  });
+
+  it('does not reload with the network off, or where it cannot remember it did', () => {
+    for (const p of [page({ online: false }), page({ storage: 'none' }), page({ storage: 'throws' })]) {
+      reloadOnStaleChunk(p.env, 'ed1d8b0');
+      p.fail();
+      expect(p.reloads()).toBe(0);
+    }
   });
 });

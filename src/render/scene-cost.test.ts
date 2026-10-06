@@ -39,7 +39,7 @@ import {
 } from './models';
 import { readGlb } from './glb';
 import type { BoardCatalog } from './boards';
-import { TextSurfaceLayer } from './text-surfaces';
+import { apartmentSurfaces, TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { PartyLights } from './party-lights';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
@@ -227,7 +227,13 @@ describe('the still scene along every route', () => {
       const kits = await landmarkKitsOf(road);
       const lm = kits.size > 0 ? new LandmarkLayer(kits, look, { road }) : null;
       // Playtest 4 (P4-16): and the Old Town's shop names on the street fronts the roadside placed.
-      const placed = [...(lm?.surfaces() ?? []), ...(dt?.surfaces() ?? []), ...(roadside?.surfaces() ?? [])];
+      // And (P4-19, R3) the shop signs of the corner buildings the scatter stood in the terraces.
+      const placed = [
+        ...(lm?.surfaces() ?? []),
+        ...(dt?.surfaces() ?? []),
+        ...(roadside?.surfaces() ?? []),
+        ...apartmentSurfaces(rs.spots, models.sfApartments, seed),
+      ];
       const words =
         placed.length > 0
           ? new TextSurfaceLayer(look, placed, { catalog: signCatalog(), createCanvas: () => null })

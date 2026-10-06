@@ -15,14 +15,34 @@ export const SW_FILE = 'sw.js';
 const SW_ENTRY = 'src/platform/sw.ts';
 /** src/platform/offline-worker.ts's CACHE_PREFIX (a unit test holds them equal). */
 const CACHE_PREFIX = 'offline-';
+/** Files under this folder carry a content hash in their name: their name is their check. */
+const HASHED_DIR = 'assets/';
+/** A page's entry script: Vite's `<script type="module" ... src="./assets/index-<hash>.js">`. */
+const ENTRY_SCRIPT = /<script\b[^>]*\btype="module"[^>]*\bsrc="(?:\.\/)?([^"]+)"/;
+
+/**
+ * How the worker's install tells that a file without a content hash in its name is this build's
+ * (offline-worker.ts's FileCheck; playtest 4 run A, mustFix 2: a deploy during the install handed it
+ * the next build's page). A page must contain its own entry script, renamed whenever the build
+ * changes, because the game's host adds a script of its own to HTML; any other file, its SHA-256.
+ * @param {{ path: string, bytes: Uint8Array }} f
+ * @returns {{ contains: string } | { sha256: string }}
+ */
+function fileCheck(f) {
+  if (!f.path.endsWith('.html')) return { sha256: createHash('sha256').update(f.bytes).digest('hex') };
+  const entry = ENTRY_SCRIPT.exec(Buffer.from(f.bytes).toString('utf8'))?.[1];
+  if (!entry)
+    throw new Error(`${f.path} loads no entry script, so the offline worker cannot tell it is this build's`);
+  return { contains: entry };
+}
 
 /**
  * The worker's config for one build: its cache name (the build id and a hash of every file's path
- * and bytes, so any change in the build names a new cache) and every file but the worker, as
- * page-relative posix paths in name order.
+ * and bytes, so any change in the build names a new cache), every file but the worker, as
+ * page-relative posix paths in name order, and the check of each file outside assets/.
  * @param {string} buildId
  * @param {readonly { path: string, bytes: Uint8Array }[]} files every file the build wrote
- * @returns {{ cache: string, files: string[] }}
+ * @returns {{ cache: string, files: string[], checks: Record<string, { contains: string } | { sha256: string }> }}
  */
 export function workerConfig(buildId, files) {
   const listed = files
@@ -37,12 +57,15 @@ export function workerConfig(buildId, files) {
   return {
     cache: `${CACHE_PREFIX}${buildId}-${hash.digest('hex').slice(0, 12)}`,
     files: listed.map((f) => f.path),
+    checks: Object.fromEntries(
+      listed.filter((f) => !f.path.startsWith(HASHED_DIR)).map((f) => [f.path, fileCheck(f)]),
+    ),
   };
 }
 
 /**
  * The worker's file: its config as `self.__OFFLINE__`, then its built code.
- * @param {{ cache: string, files: readonly string[] }} config
+ * @param {{ cache: string, files: readonly string[], checks: Record<string, unknown> }} config
  * @param {string} code
  */
 export function workerSource(config, code) {

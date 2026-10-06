@@ -219,7 +219,14 @@ export type SceneryKind =
   // playtest 4 (P4-19): a concrete deck arch under an `arch-bridge` deck (bridge-bays.ts `planArches`)
   | 'arch'
   // playtest 4 (P4-19): San Francisco's coastal trees, a Monterey cypress or a blue gum eucalyptus
-  | 'coastTree';
+  | 'coastTree'
+  // playtest 4, P4-19 (R3): a taller building in the terrace's plots; only an upgrade of row-house plots
+  | 'apartment'
+  // playtest 4 (P4-19, C2): the headlands' own props, three roots of CX6's `sf-headlands` file: a low
+  // concrete gun battery, a clump of coyote brush and an outcrop of red chert
+  | 'battery'
+  | 'brush'
+  | 'outcrop';
 export const SCENERY_KINDS: readonly SceneryKind[] = [
   'palm',
   'mangrove',
@@ -235,6 +242,10 @@ export const SCENERY_KINDS: readonly SceneryKind[] = [
   'bay',
   'arch',
   'coastTree',
+  'apartment',
+  'battery',
+  'brush',
+  'outcrop',
 ];
 
 export interface ScenerySpot {
@@ -262,6 +273,8 @@ export interface ScenerySpot {
    * default room (a 41 m bay): the block's culling counts it. Absent: the default.
    */
   reachM?: number | undefined;
+  /** How many 7 m plots of a terrace an apartment building takes (1 or 2). Absent: it is no apartment. */
+  plots?: number | undefined;
 }
 
 /** Metres between candidate spots of each kind on one side, at density 1. [default] */
@@ -284,6 +297,13 @@ export const SCATTER_SPACING_M: Readonly<Record<SceneryKind, number>> = {
   arch: 0,
   // one tree a spot, in groves: the Presidio's are planted close
   coastTree: 13,
+  // apartments take the place of row houses in their plots (`upgradeTerrace`), never scattered of their own
+  apartment: 0,
+  // a gun battery is 30 m long, so they stand far apart; the brush is a clump every so often, the
+  // chert's outcrops a little closer than a pine's cluster
+  battery: 140,
+  brush: 22,
+  outcrop: 24,
 };
 /** Share of a theme's candidate spots that get each kind. [default] */
 const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = {
@@ -306,7 +326,10 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   wharf: {},
   festival: {},
   clearcut: {},
-  headlands: {},
+  // Playtest 4 (P4-19, C2; the identity sheets' G2 and T1): coyote brush all along; a battery only on a
+  // side that faces the water the network crosses (`ScatterEdge.seaward`); the chert only at the top of a
+  // road that ends there (`ScatterEdge.summit`).
+  headlands: { battery: 0.5, brush: 0.55, outcrop: 0.8 },
   blocks: {},
   presidio: { coastTree: 0.85 },
   oldtown: {},
@@ -352,6 +375,12 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   arch: [0, 0],
   // the cypress's windswept crown leans up to 8 m to one side, so it starts back from the verge
   coastTree: [5.5, 13],
+  apartment: [2.6, 0],
+  // the battery's origin is the middle of its 11.5 m footprint: its front (`FRONT_M`) stands past the
+  // ridable band, its back (`DEPTH_M`) on land, so its origin stands 8 to 14 m past the verge
+  battery: [8, 6],
+  brush: [3.5, 14],
+  outcrop: [4, 12],
 };
 /** Clear ground each kind needs around its anchor (other roads, features), m. */
 export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
@@ -370,6 +399,11 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   bay: 0,
   arch: 0,
   coastTree: 2.4,
+  apartment: 3.4,
+  battery: 6,
+  brush: 1.2,
+  // the chert's four beds lean over about 3 m to a side
+  outcrop: 3.6,
 };
 /**
  * What of each kind a rider would hit, as a radius round its anchor, m (off-road, run W-R): a palm's
@@ -380,11 +414,73 @@ export const TRUNK_M: Partial<Record<SceneryKind, number>> = {
   pole: 0.3,
   conifer: 0.8,
   coastTree: 0.8,
+  // a rock is as solid as a trunk, and a shrub is not: it stands past the band like the rest
+  outcrop: 2.6,
+  brush: 0.9,
 };
-/** How far back from its anchor (its front) each kind reaches, m (it needs land that deep). */
-export const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
-/** Half its width along the road, m (it needs land and clear ground that long). */
-export const HALF_ALONG_M: Partial<Record<SceneryKind, number>> = { house: 3.2, sawmill: 16 };
+/**
+ * How far back from its anchor (its front) each kind reaches, m (it needs land that deep). The gun
+ * battery's anchor is the middle of its footprint (CX6's `gg_battery`: 5.5 m ahead of it, 6 m behind).
+ */
+export const DEPTH_M: Partial<Record<SceneryKind, number>> = {
+  house: 11.5,
+  apartment: 11.5,
+  sawmill: 17,
+  battery: 6.2,
+};
+/**
+ * Half its width along the road, m (it needs land and clear ground that long). An apartment is the width of
+ * its plots (6.4 m of one, 13.6 m of two): read it from the spot with `halfAlongOf`.
+ */
+export const HALF_ALONG_M: Partial<Record<SceneryKind, number>> = {
+  house: 3.2,
+  apartment: 6.8,
+  sawmill: 16,
+  battery: 15.2,
+};
+
+/** Half the width of a spot along the road, m: an apartment of one plot is as wide as a row house. */
+export function halfAlongOf(spot: Pick<ScenerySpot, 'kind' | 'plots'>): number {
+  if (spot.kind === 'apartment' && spot.plots === 1) return HALF_ALONG_M.house ?? 3.2;
+  return HALF_ALONG_M[spot.kind] ?? 0;
+}
+
+/**
+ * The apartment kind's variants, in the order of `models/scenery/sf-apartments`' roots (models.ts): Edwardian
+ * flats and Mediterranean flats (one plot each), a bracketed apartment block and a six-storey mid-century
+ * block (two plots), and the two handed corner buildings (two plots; `cornerL` is open on its -X side,
+ * `cornerR` on its +X, with the windows and the door on that side). [default] (playtest 4, CX6)
+ */
+export const APARTMENT = { flatsA: 0, flatsB: 1, blockA: 2, blockB: 3, cornerL: 4, cornerR: 5 } as const;
+/** How many 7 m plots each apartment variant takes. */
+export const APARTMENT_PLOTS: readonly number[] = [1, 1, 2, 2, 2, 2];
+/**
+ * Of the plots of a terrace, the share that become each apartment kind. [default] A row-house terrace keeps
+ * its row houses (about 8 plots in 10), with a taller building now and then: a flat in place of a house, a
+ * block of two plots in place of two, and at the end of a run of houses, where the next plot is empty (a
+ * cross street, a gap), a corner building turned to that gap more often than not.
+ */
+export const APARTMENT_RATE = { flats: 0.08, block: 0.07, corner: 0.2 } as const;
+/**
+ * How far its front stands ahead of its anchor, m, for a kind that reaches back from the anchor
+ * (`DEPTH_M`) but whose anchor is not at its front (default 0: a house's anchor is its front wall).
+ */
+export const FRONT_M: Partial<Record<SceneryKind, number>> = { battery: 5.7 };
+/**
+ * The file each headlands kind draws from, as the variant of `models/scenery/sf-headlands`: the roots in
+ * order (models.ts `ROOTS`). The scatter sets them; they are no random pick.
+ */
+export const HEADLANDS_VARIANT: Readonly<Partial<Record<SceneryKind, number>>> = {
+  battery: 0,
+  brush: 1,
+  outcrop: 2,
+};
+/**
+ * How far from the end of a road that ends on a headlands hill its summit reaches, m (playtest 4, P4-19,
+ * C2: Twin Peaks' last stretch, the figure-eight under the mast): the chert stands only this near the end.
+ * [default]
+ */
+export const SUMMIT_REACH_M = 450;
 /** Land a house or the sawmill keeps past each of its ends, m. [default] */
 const LAND_LIP_M = 3;
 const VARIANTS: Readonly<Record<SceneryKind, number>> = {
@@ -404,6 +500,11 @@ const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   arch: 2,
   // the cypress and the eucalyptus (models.ts, `sfIdentity`)
   coastTree: 2,
+  apartment: 6,
+  // one root each: the scatter names the variant (`HEADLANDS_VARIANT`)
+  battery: 1,
+  brush: 1,
+  outcrop: 1,
 };
 /** Each conifer variant's share of a forest: the two firs, the young fir, the cedar. [default] */
 const CONIFER_MIX = [0.3, 0.32, 0.23, 0.15];
@@ -497,6 +598,68 @@ export function onIsland(
   return false;
 }
 
+/** The middle of the water a network crosses, in the world (x, z), or null when it crosses none. */
+export interface WaterCentre {
+  x: number;
+  z: number;
+}
+
+/**
+ * The middle of the water a network crosses (playtest 4, P4-19, C2): the mean of the road's own samples
+ * (every 25 m) over every stretch tagged `water-*`, in the baked road's own metres. The Golden Gate's is
+ * the middle of its bridge, in the strait: the side of a Marin road that faces it is the Gate's side.
+ * Null for a network with no water tag, which has no sea side at all.
+ */
+export function waterCentre(
+  road: RoadNetwork,
+  tagsOf: (edge: RoadNetwork['edges'][number]) => readonly SideTag[] | undefined,
+): WaterCentre | null {
+  let x = 0;
+  let z = 0;
+  let n = 0;
+  for (const e of road.edges) {
+    for (const t of tagsOf(e) ?? []) {
+      if (!t.tag.startsWith('water')) continue;
+      const s1 = Math.min(t.s1, e.length);
+      for (let s = Math.max(0, t.s0); s <= s1; s += WATER_STEP_M) {
+        const p = road.toWorld(e.index, s, 0, 0);
+        x += p.x;
+        z += p.z;
+        n++;
+      }
+    }
+  }
+  return n > 0 ? { x: x / n, z: z / n } : null;
+}
+/** Metres between the samples that locate the water's middle. */
+const WATER_STEP_M = 25;
+/** How squarely a side must face the water's middle to be its sea side: the cosine of the angle. [default] */
+export const SEAWARD_COS = 0.4;
+
+/**
+ * Whether the given side of the road at (edge, s) faces the water's middle: its outward normal within
+ * about 66 degrees of the line to it. A hairpin turns the road about, so the side that faces it changes
+ * with s; a straight reach keeps it. False for a network with no water.
+ */
+export function facesWater(
+  road: RoadNetwork,
+  edge: number,
+  side: -1 | 1,
+  s: number,
+  centre: WaterCentre | null,
+): boolean {
+  if (!centre) return false;
+  const f = road.frameAt(edge, s);
+  const qx = centre.x - f.x;
+  const qz = centre.z - f.z;
+  const far = Math.hypot(qx, qz);
+  if (far < 1) return false;
+  // The road's right (+d) is (-tz, tx) in the world; its left is the opposite.
+  const nx = side > 0 ? -f.tz : f.tz;
+  const nz = side > 0 ? f.tx : -f.tx;
+  return (nx * qx + nz * qz) / far > SEAWARD_COS;
+}
+
 /**
  * How far past `outer` (a distance from the centre line, positive) the ridable band of loose ground
  * reaches at (edge, s) on a side, m, or 0 (no band, or a city kerb and pavement, whose street
@@ -557,6 +720,17 @@ export interface ScatterEdge {
   onFarGround?: ((side: -1 | 1, s: number, d: number) => boolean) | undefined;
   /** Whether fog banks lie offshore (the region's palette names a `fogBank` colour). */
   fogBanks?: boolean | undefined;
+  /**
+   * Whether that side of the road at s faces the water the network crosses (playtest 4, P4-19, C2): the
+   * side a headlands road's batteries stand on, covering the Gate. Absent: no side does, so a network
+   * that crosses no water stands none.
+   */
+  seaward?: ((side: -1 | 1, s: number) => boolean) | undefined;
+  /**
+   * Whether s is within reach of the end of a road that ends here, the top of its hill
+   * (`SUMMIT_REACH_M`): where the chert stands. Absent: nowhere.
+   */
+  summit?: ((s: number) => boolean) | undefined;
 }
 
 /** The turn that points a model's +Z from a toward b. */
@@ -572,9 +746,12 @@ const LAND_KINDS: readonly SceneryKind[] = [
   'house',
   'sawmill',
   'coastTree',
+  'battery',
+  'brush',
+  'outcrop',
 ];
 /** Kinds that face the road (their +Z turns toward the centre line). */
-const FACES_ROAD = new Set<SceneryKind>(['shack', 'house', 'sawmill']);
+const FACES_ROAD = new Set<SceneryKind>(['shack', 'house', 'sawmill', 'battery']);
 
 /** Places one edge's scenery: land kinds on land by theme, poles along one side, boats on water. */
 export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
@@ -607,7 +784,11 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
             ? 0.8 + 0.45 * h(ki, k, side, 6)
             : kind === 'coastTree'
               ? 0.8 + 0.4 * h(ki, k, side, 6)
-              : 1),
+              : kind === 'brush'
+                ? 0.8 + 0.6 * h(ki, k, side, 6)
+                : kind === 'outcrop'
+                  ? 0.8 + 0.45 * h(ki, k, side, 6)
+                  : 1),
       phase: kind === 'skiff' || kind === 'boat' ? h(ki, k, side, 7) * Math.PI * 2 : 0,
       edge: e.edge,
       s,
@@ -627,10 +808,120 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
     }
     return { variant, size: 0.8 + 0.4 * v };
   };
+  /**
+   * Playtest 4, P4-19 (R3): a terrace of row houses gets taller buildings (CX6's apartment kit). It works on
+   * the plots the houses took, so every check the houses passed (land under them, nothing of another road
+   * or a feature near them) still holds; a building of two plots needs both plots to have a house, and is
+   * checked again over its whole width. Three upgrades, in this order for each plot:
+   *  - a corner building at the end of a run of houses (the plot beyond it, along the road, is empty: a cross
+   *    street, a gap, the road's end): two plots, turned so its open side (the windows and the side door)
+   *    faces that gap;
+   *  - a block of two plots, in place of two row houses;
+   *  - a flat, in place of one.
+   */
+  const upgradeTerrace = (side: -1 | 1, outer: number, houses: Map<number, ScenerySpot>): void => {
+    const ai = SCENERY_KINDS.indexOf('apartment');
+    const taken = new Set<number>();
+    const gone = new Set<ScenerySpot>();
+    const radius = SCENERY_RADIUS_M.apartment;
+    const depth = DEPTH_M.apartment ?? 11.5;
+    const along = HALF_ALONG_M.apartment ?? 6.8;
+    /** A building's own place at s: its front stands where the houses' do, turned to the road. */
+    const stand = (s: number, d: number, variant: number, plots: number): ScenerySpot | null => {
+      const half = plots === 1 ? (HALF_ALONG_M.house ?? 3.2) : along;
+      const across = Math.abs(d) - outer;
+      // The land under it all the way along and back, and nothing near its ends and back.
+      const reach = Math.min(
+        e.landReach(side, s),
+        e.landReach(side, s - half - LAND_LIP_M),
+        e.landReach(side, s + half + LAND_LIP_M),
+      );
+      if (across + depth > reach) return null;
+      const back = side * (outer + across + depth);
+      if (!e.clear(s, back, radius) || !e.clear(s - half, d, radius) || !e.clear(s + half, d, radius))
+        return null;
+      const here = e.world(s, d, 0).y;
+      const low = Math.min(here, e.world(s + half, d, 0).y, e.world(s - half, d, 0).y);
+      return {
+        kind: 'apartment',
+        variant,
+        p: e.world(s, d, LAND_TOP_M - (here - low + 0.15)),
+        turn: turnToward(e.world(s, d, 0), e.world(s, 0, 0)),
+        size: 1,
+        phase: 0,
+        edge: e.edge,
+        s,
+        d,
+        plots,
+      };
+    };
+    /** Which way along the road (+1: toward +s) the model's +X points for a building on this side. */
+    const xAlong = (s: number, d: number): 1 | -1 => {
+      const turn = turnToward(e.world(s, d, 0), e.world(s, 0, 0));
+      const a = e.world(s, d, 0);
+      const b = e.world(s + 1, d, 0);
+      return Math.cos(turn) * (b.x - a.x) - Math.sin(turn) * (b.z - a.z) > 0 ? 1 : -1;
+    };
+    const ks = [...houses.keys()].sort((a, b) => a - b);
+    const made: ScenerySpot[] = [];
+    for (const k of ks) {
+      if (taken.has(k)) continue;
+      const here = houses.get(k) as ScenerySpot;
+      const next = houses.get(k + 1);
+      const pair = next !== undefined && !taken.has(k + 1) && Math.abs(next.d - here.d) < 0.3;
+      const u = h(ai, k, side, 20);
+      if (pair) {
+        const sm = (here.s + next.s) / 2;
+        // A run ends where the next plot has no house (or has been taken: that one is a building's).
+        const endAfter = !houses.has(k + 2);
+        const endBefore = !houses.has(k - 1);
+        if ((endAfter || endBefore) && u < APARTMENT_RATE.corner) {
+          // The end it opens on: toward the gap; both ends gap: the seed picks.
+          const towardEnd: 1 | -1 = endAfter && (!endBefore || h(ai, k, side, 21) < 0.5) ? 1 : -1;
+          const openX = towardEnd * xAlong(sm, here.d);
+          const b = stand(sm, here.d, openX > 0 ? APARTMENT.cornerR : APARTMENT.cornerL, 2);
+          if (b) {
+            made.push(b);
+            gone.add(here);
+            gone.add(next);
+            taken.add(k);
+            taken.add(k + 1);
+            continue;
+          }
+        } else if (h(ai, k, side, 25) < APARTMENT_RATE.block) {
+          const b = stand(sm, here.d, h(ai, k, side, 22) < 0.5 ? APARTMENT.blockA : APARTMENT.blockB, 2);
+          if (b) {
+            made.push(b);
+            gone.add(here);
+            gone.add(next);
+            taken.add(k);
+            taken.add(k + 1);
+            continue;
+          }
+        }
+      }
+      // A flat in the house's own place: same footprint, taller.
+      if (h(ai, k, side, 23) < APARTMENT_RATE.flats) {
+        made.push({
+          ...here,
+          kind: 'apartment',
+          variant: h(ai, k, side, 24) < 0.5 ? APARTMENT.flatsA : APARTMENT.flatsB,
+          plots: 1,
+        });
+        gone.add(here);
+        taken.add(k);
+      }
+    }
+    if (gone.size === 0) return;
+    for (let i = out.length - 1; i >= 0; i--) if (gone.has(out[i] as ScenerySpot)) out.splice(i, 1);
+    out.push(...made);
+  };
   // The poles run down one side of the road, chosen by the seed.
   const poleSide: -1 | 1 = h(99, 0, 0, 1) < 0.5 ? -1 : 1;
   for (const side of [-1, 1] as const) {
     const outer = e.outer(side);
+    /** This side's row houses by plot (the k of their spacing), for the terrace's taller buildings. */
+    const houses = new Map<number, ScenerySpot>();
     for (const kind of [...LAND_KINDS, 'pole' as const]) {
       if (kind === 'pole' && side !== poleSide) continue;
       const ki = SCENERY_KINDS.indexOf(kind);
@@ -644,11 +935,14 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         if (theme === 'none' || theme === 'water') continue;
         if (kind === 'pole' && NO_POLES.has(theme)) continue;
         if (!e.tropical && (kind === 'palm' || kind === 'mangrove')) continue;
+        // The headlands' marks (playtest 4, P4-19, C2): a battery covers the water, the chert is the top.
+        if (kind === 'battery' && !e.seaward?.(side, s)) continue;
+        if (kind === 'outcrop' && !e.summit?.(s)) continue;
         if (kind !== 'pole' && h(ki, k, side, 1) >= (RATE[theme][kind] ?? 0)) continue;
         const [near, spread] = ACROSS_M[kind];
         const radius = SCENERY_RADIUS_M[kind];
         // Off-road (run W-R): its footprint past the ridable band (a house or the sawmill by its front).
-        const solid = DEPTH_M[kind] !== undefined ? 0 : (TRUNK_M[kind] ?? radius);
+        const solid = DEPTH_M[kind] !== undefined ? (FRONT_M[kind] ?? 0) : (TRUNK_M[kind] ?? radius);
         const clearOf = e.band ? e.band(side, s) + solid : 0;
         const wanted = near + spread * h(ki, k, side, 2);
         const across = Math.max(wanted, clearOf);
@@ -710,14 +1004,16 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         // A house on a hill sinks to the lowest of its front corners, so neither corner floats: the
         // terraces step down the hills.
         let y = LAND_TOP_M;
-        if (kind === 'house' || kind === 'sawmill') {
+        if (kind === 'house' || kind === 'sawmill' || kind === 'battery') {
           const here = e.world(s, d, 0).y;
           const low = Math.min(here, e.world(s + along, d, 0).y, e.world(s - along, d, 0).y);
           y -= here - low + 0.15;
         }
-        place(kind, s, d, y, turn, k, side);
+        place(kind, s, d, y, turn, k, side, HEADLANDS_VARIANT[kind]);
+        if (kind === 'house') houses.set(k, out[out.length - 1] as ScenerySpot);
       }
     }
+    if (houses.size > 0) upgradeTerrace(side, outer, houses);
     // A forest goes on past the verge's strip: conifers on the far ground of the terrain skirt.
     const ci = SCENERY_KINDS.indexOf('conifer');
     const farSpacing = FAR_CONIFER_SPACING_M / e.density;
