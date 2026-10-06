@@ -461,7 +461,7 @@
     "tests/sim/replay-determinism.test.ts": 33.3,
     "tests/sim/replay-resume.test.ts": 6.3,
     "tests/sim/riders-assists.test.ts": 9.5,
-    "tests/sim/riders-difficulty.test.ts": 157.4,
+    "tests/sim/riders-difficulty.test.ts": 91.7,
     "tests/sim/riders-landings-held-kick.test.ts": 227.4,
     "tests/sim/riders-landings-held.test.ts": 241,
     "tests/sim/riders-landings.test.ts": 293.6,
