@@ -13,6 +13,7 @@ import {
   assemble,
   blameComment,
   capOf,
+  ciState,
   clip,
   conflictComment,
   cutShort,
@@ -24,6 +25,7 @@ import {
   hasMarker,
   isDocsOnly,
   loadConfig,
+  mainCiState,
   mainGate,
   normalizePr,
   postInOrder,
@@ -31,6 +33,7 @@ import {
   prList,
   prNumbersFromTitles,
   readConfig,
+  readMain,
   redSuiteJobs,
   route,
   selectBundle,
@@ -38,6 +41,7 @@ import {
   withCap,
   workflowCommand,
 } from './train.mjs';
+import { rerunDecision } from './rerun-main.mjs';
 
 const REPO = 'owner/game';
 const sha = (c: string) => c.repeat(40);
@@ -351,6 +355,169 @@ describe('when main lets a train depart', () => {
   it('a dry run departs whatever main is', () => {
     expect(mainGate(run('failure'), true).go).toBe(true);
     expect(mainGate(run('failure', 2), true).go).toBe(true);
+  });
+});
+
+// Main's own run, as plan and report read it. A job that hits its timeout-minutes ends `cancelled`,
+// and the run then concludes `cancelled`, not `failure`: main run 37423758824 (85c747dd,
+// 2026-10-06) did, when `suite / browser (5/7)` timed out and the gate failed. Its job's check-run
+// annotations read "The job has exceeded the maximum execution time of 10m0s" and "The operation
+// was canceled.". rerun-main.yml re-runs such a first attempt; until 2026-10-06 the train read it
+// as no run at all and departed onto a main that was not known green.
+describe("main's own run, as the train reads it", () => {
+  const done = (conclusion: string, attempt = 1) => ({
+    id: 37423758824,
+    status: 'completed',
+    conclusion,
+    attempt,
+  });
+  const ok = (name: string) => ({ name, conclusion: 'success', timedOut: false });
+  const timedOut = (name: string) => ({ name, conclusion: 'cancelled', timedOut: true });
+  const byHand = (name: string) => ({ name, conclusion: 'cancelled', timedOut: false });
+  const failed = (name: string) => ({ name, conclusion: 'failure', timedOut: false });
+  /** Main run 37423758824's jobs, cut down: one slice timed out, so the gate failed. */
+  const timeoutJobs = [
+    ok('suite / sim (1/6)'),
+    ok('suite / browser (4/7)'),
+    timedOut('suite / browser (5/7)'),
+    failed('gate'),
+  ];
+  const gateOf = (r: ReturnType<typeof done>, jobs: Parameters<typeof ciState>[1] = []) =>
+    mainGate({ id: r.id, state: ciState(r, jobs), attempt: r.attempt }, false);
+
+  it('reads a run cancelled only by a timeout as red, and waits for its re-run', () => {
+    expect(ciState(done('cancelled'), timeoutJobs)).toBe('failure');
+    expect(gateOf(done('cancelled'), timeoutJobs)).toMatchObject({ go: false, watch: 37423758824 });
+  });
+
+  it('a second attempt that times out again is red again: the train waits for a fix', () => {
+    const g = gateOf(done('cancelled', 2), timeoutJobs);
+    expect(g).toMatchObject({ go: false, watch: null });
+    expect(g.why).toContain('[full-gate]');
+  });
+
+  it('a run cancelled with no timeout (a person, or a newer push) is still no verdict: the train departs', () => {
+    expect(ciState(done('cancelled'), [ok('suite / sim (1/6)'), byHand('suite / browser (5/7)')])).toBe(
+      'none',
+    );
+    // A waiting run a newer push replaced has no jobs at all.
+    expect(ciState(done('cancelled'), [])).toBe('none');
+    expect(gateOf(done('cancelled'), []).go).toBe(true);
+  });
+
+  it('a timeout beside a cancel by hand is left to that person, as rerun-main.yml leaves it', () => {
+    // rerun-main.yml does not re-run it; reading it as red would hold every train until main moved.
+    const jobs = [...timeoutJobs, byHand('suite / sim (2/6)')];
+    expect(ciState(done('cancelled'), jobs)).toBe('none');
+  });
+
+  it('agrees with rerun-main.yml: a cancelled first attempt is red exactly when it re-runs it', () => {
+    const shapes = [
+      timeoutJobs,
+      [ok('a'), byHand('b')],
+      [],
+      [...timeoutJobs, byHand('c')],
+      [timedOut('a'), timedOut('b'), failed('gate')],
+    ];
+    for (const jobs of shapes) {
+      const rerun = rerunDecision({
+        run: { ...done('cancelled'), sha: sha('a') },
+        mainHead: sha('a'),
+        jobs,
+      }).rerun;
+      expect(ciState(done('cancelled'), jobs) === 'failure', JSON.stringify(jobs)).toBe(rerun);
+    }
+  });
+
+  it('every other conclusion reads as before', () => {
+    expect(ciState(null)).toBe('none');
+    expect(ciState({ ...done(''), status: 'in_progress' })).toBe('pending');
+    expect(ciState(done('success'))).toBe('success');
+    for (const c of ['failure', 'timed_out', 'startup_failure']) expect(ciState(done(c))).toBe('failure');
+    expect(ciState(done('skipped'))).toBe('none');
+  });
+
+  describe('reading the run from GitHub', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    });
+
+    /** Answers main's run listing, its jobs and their annotations as the API does; records every URL. */
+    const stubApi = (
+      run: { conclusion: string; run_attempt: number },
+      jobs: { id: number; name: string; conclusion: string }[],
+      notes: Record<number, string[]>,
+    ) => {
+      vi.stubEnv('GITHUB_REPOSITORY', REPO);
+      vi.stubEnv('GH_TOKEN', 'test-token');
+      vi.stubEnv('GITHUB_API_URL', 'https://api.github.com');
+      const urls: string[] = [];
+      vi.stubGlobal('fetch', (url: string) => {
+        urls.push(url.replace('https://api.github.com', ''));
+        const json = (body: unknown) =>
+          Promise.resolve(
+            new Response(JSON.stringify(body), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          );
+        const ann = /\/check-runs\/(\d+)\/annotations/.exec(url);
+        if (ann) return json((notes[Number(ann[1])] ?? []).map((message) => ({ message })));
+        if (/\/attempts\/\d+\/jobs/.test(url)) return json({ total_count: jobs.length, jobs });
+        if (url.includes('/actions/workflows/ci.yml/runs'))
+          return json({
+            workflow_runs: [
+              { id: 37423758824, status: 'completed', created_at: '2026-10-06T08:00:00Z', ...run },
+            ],
+          });
+        return Promise.resolve(new Response('not found', { status: 404 }));
+      });
+      return urls;
+    };
+    const liveJobs = [
+      { id: 112142680819, name: 'suite / browser (4/7)', conclusion: 'success' },
+      { id: 112142680839, name: 'suite / browser (5/7)', conclusion: 'cancelled' },
+      { id: 112146140809, name: 'gate', conclusion: 'failure' },
+    ];
+    const TIMEOUT = [
+      'The job has exceeded the maximum execution time of 10m0s',
+      'The operation was canceled.',
+    ];
+    const listing = `/repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${sha('a')}&event=push&per_page=10`;
+    const gateOfRead = (got: Awaited<ReturnType<typeof readMain>>) =>
+      mainGate({ id: got.run?.id ?? 0, state: got.state, attempt: got.run?.attempt ?? 1 }, false);
+
+    it("reads a cancelled run's latest attempt's jobs, and the annotations of its cancelled ones only", async () => {
+      const urls = stubApi({ conclusion: 'cancelled', run_attempt: 2 }, liveJobs, {
+        112142680839: TIMEOUT,
+      });
+      const got = await readMain(sha('a'));
+      expect(got.state).toBe('failure');
+      expect(urls).toEqual([
+        listing,
+        `/repos/${REPO}/actions/runs/37423758824/attempts/2/jobs?per_page=100`,
+        `/repos/${REPO}/check-runs/112142680839/annotations?per_page=50`,
+      ]);
+      // What plan then decides: a second attempt red again waits for a fix.
+      expect(gateOfRead(got)).toMatchObject({ go: false, watch: null });
+    });
+
+    it("a timed-out first attempt sends plan's wait-main job to watch it", async () => {
+      stubApi({ conclusion: 'cancelled', run_attempt: 1 }, liveJobs, { 112142680839: TIMEOUT });
+      expect(gateOfRead(await readMain(sha('a')))).toMatchObject({ go: false, watch: 37423758824 });
+    });
+
+    it('a plain cancel reads as no verdict; a run that did not end cancelled asks nothing more', async () => {
+      stubApi({ conclusion: 'cancelled', run_attempt: 1 }, liveJobs, {
+        112142680839: ['The operation was canceled.'],
+      });
+      expect((await readMain(sha('a'))).state).toBe('none');
+      const urls = stubApi({ conclusion: 'failure', run_attempt: 1 }, liveJobs, {});
+      expect((await readMain(sha('a'))).state).toBe('failure');
+      expect(urls).toEqual([listing]);
+      expect(await mainCiState(null)).toBe('none');
+    });
   });
 });
 

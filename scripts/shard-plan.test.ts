@@ -20,7 +20,8 @@ import {
   unmeasured,
 } from './shard-plan.mjs';
 import { timedOrder } from '../tests/sequencer';
-import { meanOverheads, parseLog, runnerSeconds } from './timings.mjs';
+import FileTimes from '../tests/file-times';
+import { meanOverheads, parseLog, runnerSeconds, simRuns } from './timings.mjs';
 
 const timings = readTimings() as {
   overhead?: { unit?: number; sim?: number; e2e?: number };
@@ -359,6 +360,62 @@ describe('timings.mjs parseLog', () => {
       'scripts/notes.test.ts': 0.812,
     });
     expect(got.sim).toEqual({});
+  });
+});
+
+// Vitest's per-file line times a file's tests and hooks only, not its collection (the import and
+// the describe callbacks). Eight sim files race at describe time (app-cast-and-law, riders-race and
+// six more), so on main run 37457079930 (2026-10-06) Vitest timed them at 4 to 30 ms, and the
+// table at 0 s, while sim slice 2/7, which ran seven of them, took 280 s. tests/file-times.ts prints
+// each sim file's whole time on its worker (collect + tests), and timings.mjs takes that line.
+describe('whole sim file times (tests/file-times.ts)', () => {
+  const vitestLine = (file: string, ms: number) =>
+    `suite / sim (2/7)\tUNKNOWN STEP\t2026-10-06T11:37:41.79Z  ^[[32m✓^[[39m ^[[30m^[[43m sim ^[[49m^[[39m ${file} ^[[2m(^[[22m^[[2m9 tests^[[22m^[[2m)^[[22m^[[33m ${ms}^[[2mms^[[22m^[[39m`;
+  const logged = (project: string, file: string, collectDuration: number, duration: number) => {
+    const lines: string[] = [];
+    const reporter = new FileTimes();
+    reporter.onInit({ logger: { log: (s: string) => lines.push(s) } } as never);
+    reporter.onTestModuleEnd({
+      project: { name: project, config: { root: '/repo' } },
+      moduleId: `/repo/${file}`,
+      diagnostic: () => ({ collectDuration, duration }),
+    } as never);
+    return lines;
+  };
+
+  it('prints a sim file’s collect and test time, and timings.mjs reads it over Vitest’s line', () => {
+    const lines = logged('sim', 'tests/sim/riders-race.test.ts', 45_260, 7);
+    expect(lines).toHaveLength(1);
+    const log = [
+      vitestLine('tests/sim/riders-race.test.ts', 7),
+      `suite / sim (2/7)\tUNKNOWN STEP\t2026-10-06T11:38:30.20Z ${lines[0]}`,
+      vitestLine('tests/sim/dev-presets.test.ts', 287_662),
+    ].join('\n');
+    const got = parseLog(log);
+    expect(got.sim['tests/sim/riders-race.test.ts']).toBeCloseTo(45.27, 1);
+    // A file with no whole-file line (an old log) keeps Vitest's own time.
+    expect(got.sim['tests/sim/dev-presets.test.ts']).toBeCloseTo(287.662);
+    expect(got.simWhole).toBe(1);
+    expect(parseLog(vitestLine('tests/sim/a.test.ts', 5)).simWhole).toBe(0);
+  });
+
+  it('prints nothing for a unit file (the unit table is not sliced by whole-file time)', () => {
+    expect(logged('unit', 'src/sim/ai/ai.test.ts', 900, 3655)).toEqual([]);
+  });
+
+  it('averages sim only over runs that printed whole-file times, when any did', () => {
+    const old = { sim: { 'tests/sim/a.test.ts': 0, 'tests/sim/b.test.ts': 10 }, simWhole: 0 };
+    const fresh = { sim: { 'tests/sim/a.test.ts': 40, 'tests/sim/b.test.ts': 12 }, simWhole: 2 };
+    expect(simRuns([old, fresh])).toEqual([fresh]);
+    // Logs from before tests/file-times.ts: Vitest's lines, as before.
+    expect(simRuns([old, old])).toEqual([old, old]);
+  });
+
+  it('the checked-in table times no sim file at 0 s', () => {
+    const zeros = Object.entries(timings.sim ?? {})
+      .filter(([, s]) => !(s > 0))
+      .map(([f]) => f);
+    expect(zeros).toEqual([]);
   });
 });
 
