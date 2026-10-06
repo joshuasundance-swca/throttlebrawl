@@ -8,6 +8,7 @@ import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedVerge
 import { F, flags, makeHarness, ofType, scriptOf } from '../combat/harness.test-util';
 import { createSimWithWorld } from '../create';
 import { OFF_ROAD_PARAM } from '../ground';
+import { riderState } from '../riders';
 import { input, STRAIGHT, testConfig } from '../riders/testing';
 import type { SimConfig, SimEvent, SimSmashableDef } from '../types';
 import { buildCorridor } from '../traffic';
@@ -167,6 +168,44 @@ describe('smashables: riding through one', () => {
     console.log(
       `[examined] rode through prop ${q.id}: ${ofType(events, 'smash').length} smashed, 0 crashes, speed ${speedBefore.toFixed(1)} -> ${rider.speed.toFixed(1)} m/s`,
     );
+  });
+});
+
+describe('smashables: a rider in the air clears one only above its height (the hitbox audit)', () => {
+  // In the air 3 m short of a mailbox (drawn 1.55 m tall), at `h`, level for the 0.15 s across it.
+  const flyOver = (h: number) => {
+    const config = smashConfig();
+    const { sim, world } = createSimWithWorld(config);
+    sim.step([input(0)]);
+    const q = smashState(world)?.props.find((p) => p.cd > 0);
+    const rider = world.movers[0];
+    if (!q || !rider) throw new Error('no smashable or rider');
+    rider.pos = { edge: 0, s: q.u - 3, d: q.cd, dir: 1 };
+    rider.speed = 20;
+    rider.mode = 'Airborne';
+    rider.h = h;
+    const rs = riderState(world);
+    rs.yAbs[rider.id] = config.road.surfaceHeight(0, rider.pos.s, rider.pos.d) + h;
+    rs.vy[rider.id] = 1.5;
+    rs.airTicks[rider.id] = 0;
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 12; t++) {
+      sim.step([input(0)]);
+      events.push(...sim.events());
+    }
+    return { events, q, h: rider.h };
+  };
+
+  it('at 1.2 m (above the old flat 0.8 m, under the mailbox’s 1.55 m) it smashes it', () => {
+    const { events, q, h } = flyOver(1.2);
+    console.log(`[examined] at 1.2 m: ${ofType(events, 'smash').length} smashed, ended at h ${h.toFixed(2)}`);
+    expect(ofType(events, 'smash')[0]?.data).toMatchObject({ prop: q.id, kind: 'mailbox' });
+  });
+
+  it('control: at 1.7 m, above the mailbox, it flies over untouched', () => {
+    const { events, q } = flyOver(1.7);
+    expect(ofType(events, 'smash')).toEqual([]);
+    expect(q.smashedTick).toBe(-1);
   });
 });
 

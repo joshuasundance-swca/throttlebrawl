@@ -17,7 +17,7 @@ import {
 } from '../../road';
 import { createSim, SIM_TUNING } from '../create';
 import { placeVehicle, trafficSystem } from '../traffic';
-import { ridersSystem } from '../riders';
+import { riderState, ridersSystem } from '../riders';
 import type { SimConfig, SimEvent, SimInput, SimRiderDef, SimTrafficTypeDef } from '../types';
 import { addMover, createWorld, stepWorld, type SimSystem, type World } from '../world';
 import { PED_PHASE, PEDS, pedsState, pedsSystem, pedThreatRangeM, placePed } from './index';
@@ -578,6 +578,40 @@ describe('peds: contact rules', () => {
     expect(crash?.actor).toBe(0);
     expect(crash?.target).toBe(pedId);
     expect(crash?.data['cause']).toBe('ped');
+  });
+});
+
+describe('peds: a rider in the air clears one only above its height (the hitbox audit)', () => {
+  /** The player in the air at `h` (level for the few ticks across), 1 m short of a ped of `type`. */
+  function airOver(type: number, h: number) {
+    const config = makeConfig({ features: {}, types: [CAR, TOURIST, CHICKEN, GATOR], riders: SOLO });
+    const world = scenario(config, [{ s: 300, d: 1.7, speed: 30 }]);
+    const m = world.movers[0];
+    if (!m) throw new Error('no rider');
+    m.mode = 'Airborne';
+    m.h = h;
+    const rs = riderState(world);
+    rs.yAbs[m.id] = config.road.surfaceHeight(0, 300, 1.7) + h;
+    rs.vy[m.id] = 1;
+    rs.airTicks[m.id] = 0;
+    const pedId = placePed(world, config, { type, edge: 0, s: 302.5, d: 1.7 });
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 12; t++) events.push(...stepWorld(world, config, SCENARIO, [coast]));
+    return { events, pedId, contacts: pedsState(world).contacts };
+  }
+
+  it('over an alligator (0.6 m tall) at 1.0 m: no crash; at 0.3 m: the big-animal crash', () => {
+    const over = airOver(3, 1.0);
+    const into = airOver(3, 0.3);
+    console.log(`[examined] gator at 1.0 m: ${over.contacts} contacts; at 0.3 m: ${into.contacts}`);
+    expect(over.events.some((e) => e.type === 'crash')).toBe(false);
+    expect(over.contacts).toBe(0);
+    expect(into.events.find((e) => e.type === 'crash')?.target).toBe(into.pedId);
+  });
+
+  it('through a tourist (1.7 m tall) at 1.6 m: a contact (the flat 1.5 m let it pass); at 1.8 m: none', () => {
+    expect(airOver(1, 1.6).contacts).toBe(1);
+    expect(airOver(1, 1.8).contacts).toBe(0);
   });
 });
 

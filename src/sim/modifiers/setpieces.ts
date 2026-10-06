@@ -59,7 +59,16 @@
 //   riders ride up it and jump off its lip like a parked ramp truck's but at the speed relative to
 //   it (sim/riders/features.ts), and traffic leaves contacts with it to the riders. The faster a
 //   racer catches it, the bigger the air; one barely faster than the truck meets its body.
-import { atan2, clamp, cos, nextFloat, sin, type EntityId } from '../../core';
+import {
+  atan2,
+  clamp,
+  cos,
+  nextFloat,
+  SET_PIECE_PROP_HEIGHT_M,
+  sin,
+  type EntityId,
+  type SetPieceHeightKind,
+} from '../../core';
 import type { EdgeLink, RoadPos } from '../../road';
 import { addHeat, CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState, HEAT } from '../cops';
 import { placePed } from '../peds';
@@ -77,7 +86,7 @@ import {
   type SimMovingDeck,
   type SimMovingDecks,
 } from '../types';
-import { emit, speedMultiplierOf, systemState, type Mover, type World } from '../world';
+import { emit, riderHitbox, speedMultiplierOf, systemState, type Mover, type World } from '../world';
 import {
   gantrySpan,
   hopVy,
@@ -133,7 +142,7 @@ export const SET_PIECE = {
    */
   longBranchM: 2000,
   branchEndM: 200,
-  /** A rider's box (traffic's). */
+  /** The default rider box (traffic's); a rider whose file or bike gives one meets props with its own. */
   riderLengthM: 2.0,
   riderWidthM: 0.8,
   /** A person steps aside when a rider is this many seconds (plus 6 m) away and this close across. */
@@ -1692,6 +1701,20 @@ export function extent(kind: PropKind): [number, number] {
   }
 }
 
+/**
+ * Whether a rider meets a standing prop of this kind: on the bike, on the road or in the air below
+ * its drawn top (core SET_PIECE_PROP_HEIGHT_M, the hitbox audit's contract). It was a flat 0.8 m for
+ * a rider on the road only, so a jump through a cone passed through it.
+ */
+export function riderMeetsProp(kind: SetPieceHeightKind, mode: Mover['mode'], h: number): boolean {
+  return (mode === 'Road' || mode === 'Airborne') && h < SET_PIECE_PROP_HEIGHT_M[kind];
+}
+
+/** The prop kinds a rider rides through (extent above 0), as their height table's keys; else null. */
+function touchableKind(kind: PropKind): SetPieceHeightKind | null {
+  return kind === 'cone' || kind === 'flare' || kind === 'barricade' || kind === 'hayBale' ? kind : null;
+}
+
 function stepProps(
   world: World,
   config: SimConfig,
@@ -1732,12 +1755,11 @@ function stepProps(
     const [hu, hd] = extent(q.kind);
     if (hu > 0 && !q.moving) {
       // Riders through it: the prop flies, the rider pays a little (a bale or a sawhorse wobbles).
+      const kind = touchableKind(q.kind);
       for (const r of riders) {
-        if (r.m.mode !== 'Road' || r.m.h > 0.8) continue;
-        if (
-          Math.abs(r.u - q.u) > hu + SET_PIECE.riderLengthM / 2 ||
-          Math.abs(r.cd - q.cd) > hd + SET_PIECE.riderWidthM / 2
-        )
+        if (!kind || !riderMeetsProp(kind, r.m.mode, r.m.h)) continue;
+        const box = riderHitbox(config, r.m.riderIndex);
+        if (Math.abs(r.u - q.u) > hu + box.lengthM / 2 || Math.abs(r.cd - q.cd) > hd + box.widthM / 2)
           continue;
         knock(q, r.dir * dir * r.m.speed, q.cd >= r.cd ? 1 : -1, r.m.speed);
         if (q.kind === 'cone' || q.kind === 'flare') r.m.speed *= SET_PIECE.coneScrub;

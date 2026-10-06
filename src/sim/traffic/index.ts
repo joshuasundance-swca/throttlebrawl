@@ -26,7 +26,11 @@
 //   crashes the rider (a `crash` event for the tumble; end on, inelastically), and anything slower
 //   wobbles (a `wobble` event), whatever the vehicle. Both carry data.cause `traffic`, `hit` and
 //   `impactMps` (the closing speed), and target the vehicle. A close, fast pass with no contact fires
-//   `nearMiss`. The full rule is on contacts() below.
+//   `nearMiss`. The full rule is on contacts() below. Heights (the hitbox audit's contract,
+//   docs/content-packs.md, "Heights and hitboxes"): each vehicle is as tall as its type
+//   (vehicleHeightM), and a rider, in the air or not, passes over it only above that; landing on
+//   its roof or flying into it below the top is a contact like any other (`data.air`), and the
+//   rider meets it with its own box (riderHitbox: the lawnmower, the parking trike).
 // - Back on the bike (playtest 4): a rider who has just remounted or respawned is a ghost to
 //   traffic for a moment (startTrafficGhost), so a restart behind stopped traffic is never a crash.
 // - Wasteland oddities (M3 traffic-4) are ordinary entries with category `oddity`, picked by the
@@ -73,7 +77,16 @@ import { sRateFactor, type RoadPos } from '../../road';
 import { driftOf } from '../riders/drift';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
-import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
+import {
+  addMover,
+  emit,
+  riderHitbox,
+  systemState,
+  vehicleHeightM,
+  type Mover,
+  type SimSystem,
+  type World,
+} from '../world';
 import {
   closingOnAxis,
   TRAFFIC_HIT_DEFAULT_MPS,
@@ -360,7 +373,13 @@ export const TRAFFIC = {
   respawnGhostS: 1.5,
   /** With the ease-in on, oncoming density starts at this fraction of its slider value. */
   oncomingEaseFrom: 0.25,
-  /** Riders higher than this above the road pass over traffic, m. */
+  /**
+   * A rider on another road is over a corridor road's asphalt when that road's surface is within
+   * this of its own (riderOnCorridor); and the driving reads (car following, kerb yields, spawn
+   * clearance) see only riders no higher than this above the road, m. Contacts do not use it: a
+   * rider meets a vehicle below the vehicle's own height (vehicleHeightM; the hitbox audit found the
+   * flat 1.2 m let a jump pass through a 3.3 m truck).
+   */
   maxContactH: 1.2,
   /** A parked oddity sits this far outward (toward the shoulder) of its lane's centre, m. */
   parkOutM: 1.2,
@@ -617,6 +636,12 @@ export interface TrafficState {
   /** Vehicle entity id each rider is touching, or -1. */
   contactWith: number[];
   /**
+   * By rider entity id: the vehicle entity id a wheelie's hood or trunk launch threw it off (-1 for
+   * none). The launch starts below that car's roof, so the rider flies clear of that one car until it
+   * is back on the road.
+   */
+  launchedOff: number[];
+  /**
    * Kerb riders yielding (T4.1), by vehicle slot: the world time the dodge holds to (0 once the
    * kerb rider is back on its line), the cross-road spot it dodges to, and how long it still lies
    * toppled, s. Reset when the slot is recycled.
@@ -669,6 +694,7 @@ export function trafficState(world: World): TrafficState {
     laneCooldownS: [],
     weavePhase: [],
     contactWith: [],
+    launchedOff: [],
     yieldUntilS: [],
     yieldCd: [],
     toppleS: [],
@@ -689,12 +715,27 @@ export function vehicleInfo(
   world: World,
   config: SimConfig,
   entityId: number,
-): { contentId: string; lengthM: number; widthM: number; hazard: 'normal' | 'big'; kerb: boolean } | null {
+): {
+  contentId: string;
+  lengthM: number;
+  widthM: number;
+  /** How tall it stands (vehicleHeightM), m. */
+  heightM: number;
+  hazard: 'normal' | 'big';
+  kerb: boolean;
+} | null {
   const st = trafficState(world);
   const k = st.id.indexOf(entityId);
   const t = k < 0 ? undefined : config.trafficTypes[st.type[k] ?? -1];
   return t
-    ? { contentId: t.contentId, lengthM: t.lengthM, widthM: t.widthM, hazard: t.hazard, kerb: isKerb(t) }
+    ? {
+        contentId: t.contentId,
+        lengthM: t.lengthM,
+        widthM: t.widthM,
+        heightM: vehicleHeightM(t),
+        hazard: t.hazard,
+        kerb: isKerb(t),
+      }
     : null;
 }
 
@@ -1007,8 +1048,10 @@ export function placeVehicle(
     fromCorridor(st.corridor, spec.u, cd, spec.dir, mover.pos);
   }
   // Forget any contact with the slot's previous self.
-  for (let r = 0; r < st.contactWith.length; r++)
+  for (let r = 0; r < st.contactWith.length; r++) {
     if (st.contactWith[r] === st.id[slot]) st.contactWith[r] = -1;
+    if (st.launchedOff[r] === st.id[slot]) st.launchedOff[r] = -1;
+  }
   return slot;
 }
 
@@ -1477,8 +1520,15 @@ interface RiderView {
   cd: number;
   dir: number;
   speed: number;
-  /** 1 when it can touch traffic (on the road, not flying). */
+  /** On the bike on the road (not flying): what car following and the near miss read. */
   touchable: boolean;
+  /** In the air on the bike: it meets a vehicle only below the vehicle's height. */
+  airborne: boolean;
+  /** Its height above the road, m. */
+  h: number;
+  /** Its contact box (riderHitbox), m. */
+  lengthM: number;
+  widthM: number;
   /** Down: in the crash tumble or on foot (W-Q: traffic swerves round them). */
   down: boolean;
   /** Sliding in a drift (or easing out of one): traffic gives it room (drift room). */
@@ -1495,14 +1545,22 @@ interface RiderView {
 /**
  * Every rider traffic can meet: on a corridor road, or on another road over a corridor road's
  * asphalt (a branch's end bent across the main road, a split's or a merge's overlapping
- * connectors), where it rides among that road's cars and so must touch them.
+ * connectors), where it rides among that road's cars and so must touch them. The driving reads see
+ * riders up to TRAFFIC.maxContactH above the road; contacts pass `reach` Infinity, so a rider is
+ * measured against each vehicle's own height however high it flies.
  */
-function riderViews(world: World, config: SimConfig, st: TrafficState): RiderView[] {
+function riderViews(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  reach: number = TRAFFIC.maxContactH,
+): RiderView[] {
   const out: RiderView[] = [];
   for (const m of world.movers) {
-    if (m.kind !== 'rider' || m.h > TRAFFIC.maxContactH) continue;
+    if (m.kind !== 'rider' || m.h > reach) continue;
     const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
     if (!p) continue;
+    const box = riderHitbox(config, m.riderIndex);
     out.push({
       id: m.id,
       u: p.u,
@@ -1510,6 +1568,10 @@ function riderViews(world: World, config: SimConfig, st: TrafficState): RiderVie
       dir: p.dir,
       speed: m.speed,
       touchable: m.mode === 'Road',
+      airborne: m.mode === 'Airborne',
+      h: m.h,
+      lengthM: box.lengthM,
+      widthM: box.widthM,
       down: m.mode === 'Tumble' || m.mode === 'OnFoot',
       drifting: Math.abs(driftOf(world, m)) > DRIFT_SLIP_MIN,
       over: p.over,
@@ -1922,10 +1984,10 @@ function splitPartner(config: SimConfig, st: TrafficState, r: RiderView, k: numb
     const dcd = (st.cd[j] ?? 0) - r.cd;
     if (dcd * side >= 0) continue;
     const tj = typeOf(config, st, j);
-    const gap = (dcd < 0 ? -dcd : dcd) - (tj.widthM + T.riderWidthM) / 2;
+    const gap = (dcd < 0 ? -dcd : dcd) - (tj.widthM + r.widthM) / 2;
     if (gap <= 0 || gap > T.nearMissM) continue;
     const du = (st.u[j] ?? 0) - r.u;
-    if ((du < 0 ? -du : du) > (tj.lengthM + T.riderLengthM) / 2 + T.splitAlongM) continue;
+    if ((du < 0 ? -du : du) > (tj.lengthM + r.lengthM) / 2 + T.splitAlongM) continue;
     return j;
   }
   return -1;
@@ -2065,6 +2127,17 @@ function rigidOffset(
  * contact with a light kerb rider (T4.1) is always a wobble with `data.kerb`, and at
  * KERB_YIELD.toppleMinMps closing or more the cyclist topples (toppleKerbRider) and is skipped
  * until it has lain still for KERB_YIELD.toppleS.
+ * Heights (the hitbox audit, 2026-10-06; docs/content-packs.md, "Heights and hitboxes"): the boxes
+ * meet only where the rider is below the vehicle's height (vehicleHeightM), on the road or in the
+ * air, and the rider's box is its own (riderHitbox). In the air, by the same one rule:
+ * - **onto the roof** (it was above the top last tick, and is in less deep from above than from any
+ *   side; `hit` `top`): the closing speed is how fast it was falling. A crash starts the tumble on
+ *   the roof; a wobble rides the roof (held at its top, never sunk into the car) until it drops off
+ *   past an end or a side;
+ * - **into a side or an end** below the top: classed and pushed out as on the road.
+ * Both carry `data.air`. A rider a wheelie's hood or trunk launch threw off a car flies clear of
+ * that car (the launch starts 1 m up, under its roof) until it is back on the road or clear of it.
+ * The near miss stays a riding rider's (`touchable`).
  */
 function contacts(world: World, config: SimConfig, st: TrafficState, riders: RiderView[], dt: number): void {
   const T = TRAFFIC;
@@ -2077,6 +2150,9 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
     const rel = st.lastRel[r.id] ?? [];
     const m = world.movers[r.id];
     if (!m) continue;
+    if (!r.airborne) st.launchedOff[r.id] = -1;
+    // Its height above the road a tick ago, from its vertical speed (a roof is met from above).
+    const hBefore = r.h - riderVyMps(world, r.id) * dt;
     // The rider's velocity in corridor terms: along the road from its speed and heading; across it
     // from its heading plus a kick's or a hit's shove still sliding it sideways (the corridor runs
     // with the rider's road when r.dir equals its pos.dir, against it otherwise).
@@ -2088,8 +2164,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       let du = (st.u[k] ?? 0) - r.u;
       let dcd = (st.cd[k] ?? 0) - r.cd;
       if (
-        Math.abs(du) < (t.lengthM + T.riderLengthM) / 2 + T.rigidNearM &&
-        Math.abs(dcd) < (t.widthM + T.riderWidthM) / 2 + T.rigidNearM
+        Math.abs(du) < (t.lengthM + r.lengthM) / 2 + T.rigidNearM &&
+        Math.abs(dcd) < (t.widthM + r.widthM) / 2 + T.rigidNearM
       ) {
         const rigid = rigidOffset(config, world.movers[vid], m, st.dir[k] ?? 1);
         if (rigid) {
@@ -2097,29 +2173,48 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           dcd = rigid.dcd;
         }
       }
-      const overU = (t.lengthM + T.riderLengthM) / 2 - Math.abs(du);
-      const overD = (t.widthM + T.riderWidthM) / 2 - Math.abs(dcd);
+      const overU = (t.lengthM + r.lengthM) / 2 - Math.abs(du);
+      const overD = (t.widthM + r.widthM) / 2 - Math.abs(dcd);
       const ahead = r.dir * du;
       const prev = rel[k] ?? 0;
       rel[k] = ahead === 0 ? -1e-9 : ahead;
-      if (!r.touchable || isDeckVehicle(decks, vid)) continue;
+      if ((!r.touchable && !r.airborne) || isDeckVehicle(decks, vid)) continue;
       // A ghost, back on the bike moments ago (playtest 4), passes straight through: no contact, no
       // push, and no near miss either (nothing was risked).
       if (r.ghost) continue;
       // A toppled kerb rider (T4.1) lies on the ground: riders pass it by, and it can't be hit again.
       if ((st.toppleS[k] ?? 0) > 0) continue;
-      if (st.contactWith[r.id] === vid && (overU < -1 || overD < -0.5)) st.contactWith[r.id] = -1;
-      if (overU > 0 && overD > 0) {
+      const apart = overU < -1 || overD < -0.5;
+      if (st.contactWith[r.id] === vid && apart) st.contactWith[r.id] = -1;
+      // Thrown off this car by a wheelie: clear of it until back on the road or apart from it.
+      if (st.launchedOff[r.id] === vid) {
+        if (!apart) continue;
+        st.launchedOff[r.id] = -1;
+      }
+      const top = vehicleHeightM(t);
+      if (overU > 0 && overD > 0 && r.h < top) {
         const vDir = st.dir[k] ?? 1;
         const vSpeed = world.movers[vid]?.speed ?? 0;
         // The vehicle's velocity along the rider's direction, and how fast they came together.
         const vAlong = vDir === r.dir ? vSpeed : -vSpeed;
         let solid = false;
         let soft = false;
+        // Over its roof a tick ago (in the air): it came down onto it, or it is riding the roof.
+        const fromAbove = r.airborne && hBefore >= top - 1e-6;
+        if (st.contactWith[r.id] !== vid && fromAbove && top - r.h <= Math.min(overU, overD)) {
+          st.contactWith[r.id] = vid;
+          roofContact(world, config, st, r, m, { t, vid, top, dcd });
+          continue;
+        }
+        if (st.contactWith[r.id] === vid && fromAbove) {
+          // Still over the roof after a wobble on it: held at its top, never sunk into the car.
+          onRoof(world, config, m, top);
+          continue;
+        }
         if (st.contactWith[r.id] !== vid) {
           st.contactWith[r.id] = vid;
           // Side by side last tick (their boxes overlapped along the road): it came in from the side.
-          const halfLen = (t.lengthM + T.riderLengthM) / 2;
+          const halfLen = (t.lengthM + r.lengthM) / 2;
           const endOn = prev === 0 ? overU < overD : Math.abs(prev) >= halfLen;
           const front = du * r.dir > 0;
           const graze = endOn && overD < T.grazeM;
@@ -2142,7 +2237,10 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             oncoming,
             closingMps: closing,
           };
-          if (hoodLaunchContact(world, config, hood)) continue;
+          if (hoodLaunchContact(world, config, hood)) {
+            st.launchedOff[r.id] = vid;
+            continue;
+          }
           const hit = graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
           if (kerbSoft && isKerb(t) && softContact(t)) {
             // Soft contact (T4.1): the rider only wobbles, even when it is still unstable from an
@@ -2168,6 +2266,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
                 hit,
                 impactMps: clip,
                 kerb: true,
+                ...(r.airborne ? { air: true } : {}),
                 ...(soft ? { toppleS: KERB_YIELD.toppleS } : {}),
               },
               { target: vid },
@@ -2185,6 +2284,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
               contact: crash ? 'crash' : 'wobble',
               hit,
               impactMps: closing,
+              ...(r.airborne ? { air: true } : {}),
               // A rider in a wheelie who crashed instead of launching is told why, in one word.
               ...(crash ? wheelieReasonData(wheelieCrashReason(world, hood)) : {}),
             };
@@ -2228,7 +2328,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       }
       // Near miss (M2 traffic-3): the rider passed the vehicle (it went from ahead to behind),
       // within about 1 m sideways, untouched, at a closing speed of at least the slider's, so
-      // crawling past a parked car never scores.
+      // crawling past a parked car never scores. Riding, not flying past.
+      if (!r.touchable) continue;
       if (
         prev > 0 &&
         ahead <= 0 &&
@@ -2263,6 +2364,64 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
 }
 
 /**
+ * A first contact from above, onto a vehicle's roof (contacts(), heights): the one rule with the
+ * closing speed straight down, how fast the rider was falling (a vehicle has no vertical speed).
+ * A crash puts the rider on the roof and starts the tumble there, its speed scrubbed as any crash's;
+ * a wobble puts it on the roof with the wobble's scrub and heading kick, and it rides the roof until
+ * it drops off. `hit` `top`, `air` true.
+ */
+function roofContact(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  r: RiderView,
+  m: Mover,
+  v: { t: SimTrafficTypeDef; vid: number; top: number; dcd: number },
+): void {
+  const { t, vid, top, dcd } = v;
+  const closing = Math.max(0, -riderVyMps(world, r.id));
+  const crash = trafficContactCrashes(world.params, closing);
+  const data = {
+    cause: 'traffic',
+    hazard: t.hazard,
+    vehicle: t.contentId,
+    contact: crash ? 'crash' : 'wobble',
+    hit: 'top',
+    impactMps: closing,
+    air: true,
+  };
+  onRoof(world, config, m, top);
+  if (crash) {
+    m.speed *= TRAFFIC.crashScrub;
+    emit(world, 'crash', r.id, data, { target: vid });
+    return;
+  }
+  m.speed *= TRAFFIC.wobbleScrub;
+  const away = dcd > 0 ? -1 : 1;
+  m.yaw = clamp(m.yaw + away * r.dir * TRAFFIC.wobbleKickRad, -1.2, 1.2);
+  st.unstableS[r.id] = TRAFFIC.unstableS;
+  emit(world, 'wobble', r.id, data, { target: vid });
+}
+
+/**
+ * Puts a rider in the air on a roof `top` high: at that height above its road (the riders' flight
+ * state, read and written by name as sim/riders/wheelie writes it), falling no faster than 0.
+ */
+function onRoof(world: World, config: SimConfig, m: Mover, top: number): void {
+  const rs = world.systems['riders'] as { yAbs?: number[]; vy?: number[] } | undefined;
+  m.h = top;
+  const pos = m.pos;
+  if (rs?.yAbs) rs.yAbs[m.id] = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + top;
+  if (rs?.vy) rs.vy[m.id] = Math.max(0, rs.vy[m.id] ?? 0);
+}
+
+/** A rider's vertical speed in the air (sim/riders' flight state, read by name), m/s; 0 without one. */
+function riderVyMps(world: World, id: number): number {
+  const rs = world.systems['riders'] as { vy?: number[] } | undefined;
+  return rs?.vy?.[id] ?? 0;
+}
+
+/**
  * A rider's sideways shove from a hit or a kick still in progress, m/s along +d (sim/combat's curve:
  * peak × (1 − t/N), header of sim/combat). Read from combat's state by name, as sim/riders/wheelie
  * reads the riders', so traffic does not import combat (combat imports tumble, which imports traffic).
@@ -2291,11 +2450,12 @@ function nearVehicle(
   const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
   if (!p) return false;
   const T = TRAFFIC;
+  const box = riderHitbox(config, m.riderIndex);
   for (let k = 0; k < st.id.length; k++) {
     if (isDeckVehicle(decks, st.id[k] ?? -1)) continue;
     const t = typeOf(config, st, k);
-    const overU = (t.lengthM + T.riderLengthM) / 2 - Math.abs((st.u[k] ?? 0) - p.u);
-    const overD = (t.widthM + T.riderWidthM) / 2 - Math.abs((st.cd[k] ?? 0) - p.cd);
+    const overU = (t.lengthM + box.lengthM) / 2 - Math.abs((st.u[k] ?? 0) - p.u);
+    const overD = (t.widthM + box.widthM) / 2 - Math.abs((st.cd[k] ?? 0) - p.cd);
     if (overU > -T.ghostClearM && overD > -T.ghostClearM) return true;
   }
   return false;
@@ -2379,6 +2539,7 @@ export const trafficSystem: SimSystem = {
     for (const m of world.movers) {
       if (m.kind !== 'rider') continue;
       st.contactWith[m.id] = -1;
+      st.launchedOff[m.id] = -1;
       st.unstableS[m.id] = 0;
       st.ghostT[m.id] = 0;
       st.ghostCapT[m.id] = 0;
@@ -2402,6 +2563,6 @@ export const trafficSystem: SimSystem = {
         leaveRoad(world, config, st, k);
     }
     stepGhosts(world, config, st);
-    contacts(world, config, st, riderViews(world, config, st), dt);
+    contacts(world, config, st, riderViews(world, config, st, Infinity), dt);
   },
 };

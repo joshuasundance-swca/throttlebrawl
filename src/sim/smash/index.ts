@@ -13,8 +13,10 @@
 //   that kind along the road (a row of mailboxes, a few meters, a table or two). Everything rolls on
 //   the sim's own `smash` substream of the race seed, so no other system's rolls move.
 // - Contacts, every tick, in the peds phase (after combat, before tumble, so a crash it emits
-//   tumbles on the same tick). A riding rider (or one in the air under 0.8 m) whose box meets a
-//   standing smashable smashes it (a `smash` event):
+//   tumbles on the same tick). A riding rider, on the road or in the air below the smashable's
+//   height (its item's `heightM`, else its kind's, SMASHABLE_HEIGHT_M: the hitbox audit's contract;
+//   it was 0.8 m for every kind), whose box (riderHitbox) meets a standing smashable smashes it (a
+//   `smash` event):
 //   - knocked into it: the rider took a landed `hit` (a kick, a punch, a swing) from another rider
 //     within `SMASH.knockWindowS` (1 s). It goes down: a `crash` with `cause: 'smash'` (combat then
 //     credits a `scenery` takedown to whoever hit him, with its slow motion when a player is in
@@ -34,6 +36,7 @@ import {
   createRng,
   nextFloat,
   sin,
+  SMASHABLE_HEIGHT_M,
   streamSeed,
   type RngState,
   type SmashableKind,
@@ -46,7 +49,7 @@ import { buildCorridor, toCorridor } from '../traffic';
 import { fromCorridor, type Corridor } from '../traffic/corridor';
 import { tumbleRecord } from '../tumble';
 import type { SimConfig, SimSmashableDef, SmashableSnapshot } from '../types';
-import { emit, type Mover, type SimSystem, type World } from '../world';
+import { emit, riderHitbox, type Mover, type SimSystem, type World } from '../world';
 
 export const SMASH_DENSITY = 'smash.density';
 
@@ -84,14 +87,15 @@ export const SMASH = {
   edgeRoomM: 0.3,
   /** A rider hit this recently (raw seconds) who meets one is knocked into it: down, and named. */
   knockWindowS: 1.0,
-  /** A rider's contact box (traffic's and the set pieces'): half its length and half its width. */
+  /**
+   * The default rider contact box (traffic's and the set pieces'): half its length and half its
+   * width. A rider whose file or bike gives a box meets props with its own (riderHitbox).
+   */
   riderHalfLengthM: 1.0,
   riderHalfWidthM: 0.4,
   /** The knocked rider is thrown on toward the prop, m/s to its side, and up. */
   throwSideMps: 4,
   throwUpMps: 1.5,
-  /** Above this height a rider in the air clears them. */
-  clearHeightM: 0.8,
   /** Riders are compared with props within this far of a player along the route for the snapshot, m. */
   viewM: 450,
   /** At most this many in one race. */
@@ -376,18 +380,21 @@ export function stepSmashables(world: World, config: SimConfig): void {
   for (const m of world.movers) {
     if (m.kind !== 'rider') continue;
     const riding = m.mode === 'Road' || m.mode === 'Airborne';
-    if ((!riding && m.mode !== 'Tumble') || m.h > SMASH.clearHeightM) continue;
+    if (!riding && m.mode !== 'Tumble') continue;
     const at = toCorridor(c, m.pos);
     if (!at) continue;
+    const box = riderHitbox(config, m.riderIndex);
     let down = !riding;
     for (const q of st.props) {
       if (q.smashedTick >= 0) continue;
       const def = defs[q.def];
       if (!def) continue;
+      // Above its top, the rider (or a tumbling body) clears it.
+      if (m.h >= (def.heightM ?? SMASHABLE_HEIGHT_M[def.kind])) continue;
       const spec = KIND_SPEC[def.kind];
       if (
-        Math.abs(at.u - q.u) > spec.halfAlong + SMASH.riderHalfLengthM ||
-        Math.abs(at.cd - q.cd) > spec.halfAcross + SMASH.riderHalfWidthM
+        Math.abs(at.u - q.u) > spec.halfAlong + box.lengthM / 2 ||
+        Math.abs(at.cd - q.cd) > spec.halfAcross + box.widthM / 2
       )
         continue;
       smashIt(q, world.tick, velocityOf(world, config, m));
