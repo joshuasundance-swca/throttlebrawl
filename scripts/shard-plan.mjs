@@ -29,6 +29,12 @@
 //   worker, in the order the runner starts them (Vitest: longest first, see
 //   tests/sequencer.ts; Playwright: by file path).
 // - The last browser slice also runs perf after its e2e (ci.yml), so it starts with perf's seconds.
+// - A slice is planned as its whole job (since 2026-10-06): the runner's files plus the job's own
+//   setup (overhead: checkout, npm ci, listing the files; for browser also the Chromium install
+//   and the build). Planned as test seconds alone, browser slices at 355 s took 410 to 533 s as
+//   jobs and sim slice 3/6 at 386 s took 590 to 597 s of its 600 (runs 37435436811, 37439710625).
+//   Every slice must plan within JOB_SHARE of its job's timeout-minutes in suite.yml
+//   (scripts/shard-plan.test.ts checks the checked-in table; `npm run check` warns on CI).
 // A stale or missing time can only make the slices uneven, never drop a file.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -37,16 +43,80 @@ import { repoRoot } from './lib.mjs';
 export const TIMINGS_FILE = 'tests/timings.json';
 
 /**
+ * Whole-job seconds outside the runner's own run, when tests/timings.json has none of its own
+ * (`overhead`, which scripts/timings.mjs measures with the file times): the mean of (job seconds -
+ * the runner steps' reported seconds) over the suite jobs of eight green runs of 2026-10-06
+ * (37433560803, 37435436811, 37436176046, 37437164463, 37439710625, 37442774709, 37443954405 and
+ * 37443974626; 16 unit, 48 sim and 56 browser jobs): unit 11 to 22 s, sim 12 to 25 s, browser 37
+ * to 70 s.
+ */
+const UNIT_OVERHEAD = 16;
+const SIM_OVERHEAD = 17;
+const E2E_OVERHEAD = 49;
+
+/**
  * Parallel test workers per CI runner, the order each runner starts its files in, and seconds each
  * file costs beyond its measured time (perFile). Vitest's per-file line times the tests only; the
  * unit files' setup and import add about 0.8 s each (run 37266882407: 695 s of tests in a 320-file
  * slice, which Vitest put at 73% of its time). Few, long sim files make it negligible there.
+ *
+ * overhead: the seconds of a job outside the runner's own run (setup, npm ci, the file listing,
+ * and for browser the Chromium install, the build and the uploads), when tests/timings.json has no
+ * overhead of its own. [default]
  */
 export const TIERS = {
-  unit: { workers: 3, order: 'longest-first', perFile: 0.8 },
-  sim: { workers: 3, order: 'longest-first' },
-  e2e: { workers: 2, order: 'path' },
+  unit: { workers: 3, order: 'longest-first', perFile: 0.8, overhead: UNIT_OVERHEAD },
+  sim: { workers: 3, order: 'longest-first', overhead: SIM_OVERHEAD },
+  e2e: { workers: 2, order: 'path', overhead: E2E_OVERHEAD },
 };
+
+/**
+ * The share of a job's timeout-minutes its planned time may fill. The rest is room for a slow
+ * runner: the same files ran at 0.55 to 1.5 times their table time from one runner to the next
+ * (docs/engineering.md, "Jobs and timeouts"). [default]
+ */
+export const JOB_SHARE = 0.7;
+
+export const SUITE_FILE = '.github/workflows/suite.yml';
+
+/**
+ * Each sliced job's slice count and timeout in seconds, read from suite.yml's text: the job ids
+ * unit, sim and browser (the e2e tier), their `timeout-minutes:` and their matrix's `shard:` list.
+ * @param {string} text
+ * @returns {{ unit: { slices: number, timeout: number }, sim: { slices: number, timeout: number }, e2e: { slices: number, timeout: number } }}
+ */
+export function suiteJobs(text) {
+  const blocks = new Map(
+    [...`\n${text}`.split(/\n {2}(?=[\w-]+:\n)/)].slice(1).map((b) => [b.slice(0, b.indexOf(':')), `${b}\n`]),
+  );
+  const job = (/** @type {string} */ id) => {
+    const b = blocks.get(id) ?? '';
+    const minutes = /\n {4}timeout-minutes: (\d+)\n/.exec(b)?.[1];
+    const shards = /\n {8}shard: \[([\d, ]+)\]\n/.exec(b)?.[1];
+    if (!minutes || !shards) throw new Error(`suiteJobs: no timeout-minutes or shard list for the ${id} job`);
+    return { slices: shards.split(',').length, timeout: Number(minutes) * 60 };
+  };
+  return { unit: job('unit'), sim: job('sim'), e2e: job('browser') };
+}
+
+/** suite.yml's sliced jobs, or null when it cannot be read (then nothing is checked against a line). */
+export function readSuiteJobs(file = path.join(repoRoot, SUITE_FILE)) {
+  try {
+    return suiteJobs(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The slices of a plan whose planned job seconds pass JOB_SHARE of the timeout.
+ * @param {{ predicted: number }[]} plan
+ * @param {number} timeout seconds
+ */
+export function overLine(plan, timeout) {
+  const line = Math.round(timeout * JOB_SHARE);
+  return plan.flatMap((s, i) => (s.predicted > line ? [{ slice: i + 1, predicted: s.predicted, line }] : []));
+}
 
 /** tests/timings.json, or an empty table when it is missing or unreadable (every file then weighs the same). */
 export function readTimings(file = path.join(repoRoot, TIMINGS_FILE)) {
@@ -65,6 +135,14 @@ export function batchUsers(files, read = (f) => readFileSync(path.join(repoRoot,
 /** The sim test files that read the Easy or Hard batch (presetBatch), found by their source: they start first. */
 export function presetUsers(files, read = (f) => readFileSync(path.join(repoRoot, f), 'utf8')) {
   return files.filter((f) => /\bpresetBatch\s*\(/.test(read(f)));
+}
+
+/**
+ * The browser specs whose tests run in parallel across the runner's workers (`mode: 'parallel'`),
+ * found by their source. Playwright otherwise runs a spec's tests one after another on one worker.
+ */
+export function spreadUsers(files, read = (f) => readFileSync(path.join(repoRoot, f), 'utf8')) {
+  return files.filter((f) => /\bmode:\s*['"]parallel['"]/.test(read(f)));
 }
 
 /** What a file with no measured time is planned as: the mean of the measured ones; 1 for none. */
@@ -115,7 +193,9 @@ function makespan(items, workers) {
  * @param {string[]} [o.first] files the runner starts before all others (the preset batch readers)
  * @param {number} [o.lastExtra] seconds the last slice spends after its files (perf)
  * @param {number} [o.perFile] seconds each file costs beyond its measured time (setup and import)
- * @returns {{ files: string[], predicted: number }[]}
+ * @param {number} [o.overhead] seconds every slice's job spends outside its runner (setup, build)
+ * @param {string[]} [o.spread] files whose tests spread over all the runner's workers (parallel mode)
+ * @returns {{ files: string[], predicted: number }[]} predicted: the slice's job seconds
  */
 export function planSlices({
   files,
@@ -127,6 +207,8 @@ export function planSlices({
   first = [],
   lastExtra = 0,
   perFile = 0,
+  overhead = 0,
+  spread = [],
 }) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`planSlices: n must be a whole number >= 1, got ${n}`);
   const all = [...new Set(files)].sort();
@@ -135,7 +217,12 @@ export function planSlices({
   const fallback = estimateSeconds(Object.values(seconds).filter(isSeconds));
   const cost = (f) => (isSeconds(seconds[f]) ? seconds[f] : fallback) + perFile;
 
-  const item = (f) => ({ files: [f], cost: cost(f), pinned: together.includes(f) });
+  const item = (f) => ({
+    files: [f],
+    cost: cost(f),
+    pinned: together.includes(f),
+    spread: spread.includes(f),
+  });
   const items = all.filter((f) => !together.includes(f)).map(item);
   items.sort((a, b) => b.cost - a.cost || a.files[0].localeCompare(b.files[0]));
 
@@ -151,7 +238,13 @@ export function planSlices({
           (a, b) => early(a) - early(b) || b.cost - a.cost || a.files[0].localeCompare(b.files[0]),
         )
       : [...list].sort((a, b) => a.files[0].localeCompare(b.files[0]));
-  const predict = (s, extra) => makespan(runOrder(extra ? [...s.items, extra] : s.items), workers) + s.tail;
+  // A parallel-mode spec's tests go to whichever worker is free: planned as one equal part per worker.
+  const parts = (list) =>
+    list.flatMap((it) =>
+      it.spread ? Array.from({ length: workers }, () => ({ cost: it.cost / workers })) : [it],
+    );
+  const predict = (s, extra) =>
+    makespan(parts(runOrder(extra ? [...s.items, extra] : s.items)), workers) + s.tail;
 
   // The batch readers' slice holds the readers alone (when there is another slice): they wait on a
   // batch one worker computes, whose time varies by runner, and other files there only stretch it.
@@ -182,8 +275,22 @@ export function planSlices({
   }
   return slices.map((s) => ({
     files: s.items.flatMap((it) => it.files).sort(),
-    predicted: Math.round(predict(s)),
+    predicted: Math.round(predict(s) + overhead),
   }));
+}
+
+/**
+ * The sim table without its files timed at 0 s, so the plan prices them as the mean file. Vitest's
+ * per-file time leaves out a file's collection, and some sim files race at describe time
+ * (app-cast-and-law, riders-race and six more on 2026-10-06), so the table times them at 0 s. Priced
+ * at 0 s they tied every slice and all went to one: sim slice 3/6 took 590 to 597 s of 600 on main
+ * runs of 2026-10-06, and slice 3/7 took 488 s on #601's first run against a plan of 340, every other sim
+ * slice 200 to 399 s; its longest file also ran 1.36 times its table time there, so their own share
+ * is an estimate, about 30 to 56 s a file. The mean prices them at about that, or a little over.
+ * @param {Record<string, number>} table
+ */
+export function collectedOnly(table) {
+  return Object.fromEntries(Object.entries(table).filter(([, v]) => !(isSeconds(v) && v < 0.05)));
 }
 
 /**
@@ -191,20 +298,23 @@ export function planSlices({
  * @param {'unit' | 'sim' | 'e2e'} tier
  * @param {string[]} files
  * @param {number} n
- * @param {{ timings?: { unit?: Record<string, number>, sim?: Record<string, number>, e2e?: Record<string, number>, perf?: number }, read?: (file: string) => string }} [options]
+ * @param {{ timings?: { unit?: Record<string, number>, sim?: Record<string, number>, e2e?: Record<string, number>, perf?: number, overhead?: Record<string, number> }, read?: (file: string) => string }} [options]
  */
 export function planTier(tier, files, n, { timings = readTimings(), read } = {}) {
   const spec = TIERS[tier];
   if (!spec) throw new Error(`planTier: no slice plan for tier ${tier} (${Object.keys(TIERS).join(', ')})`);
   return planSlices({
     files,
-    seconds: timings[tier] ?? {},
+    seconds: tier === 'sim' ? collectedOnly(timings.sim ?? {}) : (timings[tier] ?? {}),
     n,
     workers: spec.workers,
     order: spec.order,
     together: tier === 'sim' ? batchUsers(files, read) : [],
     first: tier === 'sim' ? presetUsers(files, read) : [],
+    spread: tier === 'e2e' ? spreadUsers(files, read) : [],
     lastExtra: tier === 'e2e' ? (timings.perf ?? 0) : 0,
     perFile: 'perFile' in spec ? spec.perFile : 0,
+    // The table's own setup seconds (scripts/timings.mjs measures them with the file times), else TIERS'.
+    overhead: isSeconds(timings.overhead?.[tier]) ? timings.overhead[tier] : spec.overhead,
   });
 }
