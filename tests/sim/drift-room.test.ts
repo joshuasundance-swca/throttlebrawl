@@ -14,9 +14,10 @@
 // default density and the world's other systems off, and each drift is read for what it ended in.
 // A drift "ends in a crash" when a crash lands during the slide or in the 1.5 s after it. The same
 // seeds ride with drift room off (the three tuning keys at their old values) and on. A seed stops at
-// its first crash, so a crash is counted once. Twin Peaks and Lombard Street are examined too, but the
-// bot (a plain lane-keeper) follows the first car it meets there and almost never drifts, so they
-// support no figure and are printed, not asserted.
+// its first crash, so a crash is counted once. Twin Peaks and Lombard Street can be examined too, but
+// the bot (a plain lane-keeper) follows the first car it meets there and almost never drifts (1 to 10
+// drifts in 6 seeds, no crash), so they support no figure: they assert nothing and run only with
+// DRIFT_ROOM_EXAMINE=1, printing their lines (the test-diet run, 2026-10-06).
 import { describe, expect, it } from 'vitest';
 import { createSim, quantizeInput, type SimConfig, type SimSnapshot } from '../../src/sim/api';
 import { ISOLATED } from './batch';
@@ -40,6 +41,8 @@ const SEEDS = 20;
 const TAIL_TICKS = 90;
 /** The drift event's cash target (pnw-t3-crown-point), printed beside the traffic run's cash. */
 const GORGE_TARGET = 300;
+/** The examine-only routes ride only on request: they print a line and assert nothing. */
+const EXAMINE = process.env['DRIFT_ROOM_EXAMINE'] === '1';
 
 const OTHER: Route[] = [
   { label: 'Twin Peaks', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run' },
@@ -139,14 +142,18 @@ describe('drift room (playtest 4)', () => {
   }, 900_000);
 
   for (const route of OTHER) {
-    it(`${route.label}: examined, with the room off and on (printed, not asserted)`, () => {
-      const before = ride(route, 6, ROOM_OFF);
-      const after = ride(route, 6, {});
-      console.log(
-        `[examined] ${route.label}, the drift bot with eyes, traffic on, 6 seeds: room off ${before.crashed} ` +
-          `crashes in ${before.drifts} drifts; room on ${after.crashed} in ${after.drifts}`,
-      );
-      expect(before.drifts + after.drifts).toBeGreaterThanOrEqual(0);
-    }, 900_000);
+    it.runIf(EXAMINE)(
+      `${route.label}: examined, with the room off and on (printed, not asserted)`,
+      () => {
+        const before = ride(route, 6, ROOM_OFF);
+        const after = ride(route, 6, {});
+        console.log(
+          `[examined] ${route.label}, the drift bot with eyes, traffic on, 6 seeds: room off ${before.crashed} ` +
+            `crashes in ${before.drifts} drifts; room on ${after.crashed} in ${after.drifts}`,
+        );
+        expect(before.drifts + after.drifts).toBeGreaterThanOrEqual(0);
+      },
+      900_000,
+    );
   }
 });
