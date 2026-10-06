@@ -985,6 +985,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
 
   let gaugeBlock: GaugeBlockers | null = null;
+  // The wheelie button's box on a touch screen: the right thumb rests on it for the whole wheelie, so the
+  // gauge stands by it (HUD punch items 2, 6 and 9, run A). Null where no button is drawn (a keyboard or
+  // gamepad rider, or a layout without it): the gauge then stands by the stick.
+  let gaugeButton: Box | null = null;
   const placeAll = () => {
     const { w, h } = screenSize();
     syncTextScale(h);
@@ -1020,6 +1024,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         : [];
     });
     const lifts = settleLifts(bottomTexts, buttonBoxes);
+    const wheelieRect = coarse ? touchRects.find(({ e }) => e.element === 'touch-wheelie')?.r : undefined;
+    gaugeButton = wheelieRect
+      ? {
+          left: wheelieRect.x,
+          top: wheelieRect.y,
+          right: wheelieRect.x + wheelieRect.w,
+          bottom: wheelieRect.y + wheelieRect.h,
+        }
+      : null;
     // The wheelie gauge keeps off everything placed here (T6.3): the top slots, the touch buttons and
     // the text widgets as lifted.
     gaugeBlock = gaugeBlockers({
@@ -1120,8 +1133,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // The stick ring: drawn where the left thumb lands inside the stick zone, the knob follows it.
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
-  // The gauge stands beside the ring while a thumb is down, and at the stick's resting spot otherwise
-  // (a keyboard or gamepad rider's wheelie, and the layout check). Called from placeAll too.
+  // The gauge stands by the wheelie button on a touch screen; else beside the ring while a thumb is down,
+  // and at the stick's resting spot otherwise (a keyboard or gamepad rider's wheelie, and the layout
+  // check). Called from placeAll too.
   function placeGaugeNow() {
     if (!gaugeBlock) return;
     const { w, h } = screenSize();
@@ -1139,6 +1153,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       look: lookAheadBox(w, h),
       bike: bikeZoneBox(w, h),
       ringPx: STICK_RING_PX,
+      button: gaugeButton,
     });
     wheelieGauge?.place(spot?.box ?? null);
   }

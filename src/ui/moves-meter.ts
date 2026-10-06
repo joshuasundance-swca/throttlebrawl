@@ -7,12 +7,13 @@
 //   sim zeroes the cash without a paying event when the rider goes down, so `createDriftMeter`
 //   hands back the value that vanished and ui/index.ts lands it on its award when a `drift` pop
 //   arrives the same frame, or flashes DRIFT LOST when none does and the rider is down.
-// - The wheelie gauge is the only new widget: a thin vertical bar beside the floating stick, the
-//   sweet band green, over it red, the loop-out darker, the marker at the front's angle. It shows
-//   only while a wheelie is up. `placeGauge` is the layout's settle rule for it (hud-layout.ts,
-//   rule 6): it sits beside the stick's ring, on the side toward the middle, level with the thumb,
-//   and moves off anything it would cover. The thumb can land anywhere in the stick zone, so the
-//   rule is a pure search over where the gauge may stand, tiered: clear of every piece and the
+// - The wheelie gauge is the only new widget: a thin vertical bar, the sweet band green, over it
+//   red, the loop-out darker, the marker at the front's angle. It shows only while a wheelie is up.
+//   `placeGauge` is the layout's settle rule for it (hud-layout.ts, rule 6): on a touch screen it
+//   stands by the wheelie button, under the right thumb that holds it (playtest 4, run A: it stood
+//   by the left stick); for a keyboard or gamepad rider it sits beside the stick's ring, on the side
+//   toward the middle, level with the thumb. Either way it moves off anything it would cover. The thumb can land anywhere in the stick zone, so the
+//   stick's rule is a pure search over where the gauge may stand, tiered: clear of every piece and the
 //   road ahead; else clear of every piece; else at least clear of the touch buttons and the text
 //   widgets. [default] throughout; the angles are the sim's (sim/riders/wheelie.ts WHEELIE_SWEET
 //   and WHEELIE_LOOP_RAD), kept by hand because ui reaches the sim only through sim/api;
@@ -213,6 +214,12 @@ export interface GaugeInput {
   /** Where the player's bike is drawn (hud-layout.ts `bikeZoneBox`): the top tier keeps off it too. */
   bike?: Box;
   ringPx?: number;
+  /**
+   * The wheelie button as the touch layout settles it, on a touch screen. The right thumb rests on it
+   * for the whole wheelie, so the gauge stands by it (`base` is then unused); null or left out, as for a
+   * keyboard or gamepad rider (no button is drawn), it stands by the stick as before.
+   */
+  button?: Box | null;
 }
 
 export interface GaugeSpot {
@@ -227,6 +234,14 @@ const MAX_X_STEPS = 10;
 /** What a step off the nearest spot costs, against sliding along the bar's own axis. */
 const OUTER_SIDE_COST = 40;
 const FAR_STEP_COST = 2;
+/** The button search's grid, CSS px. */
+const BUTTON_STEP = 4;
+/** What a gauge wholly under the button costs: the thumb that holds the button covers it. */
+const UNDER_BUTTON_COST = 40;
+/** What the far side of the button (away from the middle of the screen) costs. */
+const FAR_SIDE_COST = 4;
+/** What each px between the gauge's foot and the button's foot costs: level with the button is best. */
+const LEVEL_COST = 0.05;
 
 /**
  * Where the gauge stands for a stick at `base`: beside the ring on the side toward the middle, level
@@ -236,6 +251,7 @@ const FAR_STEP_COST = 2;
  */
 export function placeGauge(input: GaugeInput): GaugeSpot | null {
   const { w, h, base, mirror, blockers, look } = input;
+  if (input.button) return placeByButton(input, input.button);
   const ring = input.ringPx ?? GAUGE.ringPx;
   const inner = mirror ? -1 : 1;
   const nominalTop = Math.min(Math.max(base.y - GAUGE.riseAbove, GAUGE.edge), h - GAUGE.edge - GAUGE.h);
@@ -266,6 +282,58 @@ export function placeGauge(input: GaugeInput): GaugeSpot | null {
           if (against.some((b) => overlap(box, b, GAP))) continue;
           best = { box, cost };
         }
+      }
+    }
+    if (best) return { box: best.box, tier };
+  }
+  return null;
+}
+
+/**
+ * The gauge on a touch screen (HUD punch items 2, 6 and 9 of playtest 4's run A: "the wheelie gauge
+ * stands by the left stick, while the button is under the right thumb"): the cheapest spot beside the
+ * wheelie button, the same tiers as the stick's. The cost is the air between gauge and button (across
+ * plus down), so the gauge stands by its edge, level with it where there is room (left of it, toward
+ * the middle, on a 20:9 phone; over it on a 16:9 one, where the road ahead reaches the button's left
+ * edge). A spot wholly under the button costs extra (the holding thumb covers it) and so does the
+ * button's far side (nothing is toward the screen's edge but the thumb's own hand).
+ */
+function placeByButton(input: GaugeInput, button: Box): GaugeSpot | null {
+  const { w, h, blockers, look } = input;
+  const maxTop = h - GAUGE.edge - GAUGE.h;
+  const maxLeft = w - GAUGE.edge - GAUGE.w;
+  if (maxTop < GAUGE.edge || maxLeft < GAUGE.edge) return null;
+  const tiers: { tier: GaugeSpot['tier']; against: readonly Box[]; lookToo: boolean }[] = [
+    { tier: 'all', against: blockers.all, lookToo: true },
+    { tier: 'pieces', against: blockers.all, lookToo: false },
+    { tier: 'hard', against: blockers.hard, lookToo: false },
+  ];
+  const towardMiddle = button.left + button.right > w ? -1 : 1;
+  const lefts: number[] = [];
+  for (let x = GAUGE.edge; x <= maxLeft; x += BUTTON_STEP) lefts.push(x);
+  const tops: number[] = [];
+  for (let y = GAUGE.edge; y <= maxTop; y += BUTTON_STEP) tops.push(y);
+  for (const { tier, against, lookToo } of tiers) {
+    let best: { box: Box; cost: number } | null = null;
+    for (const left of lefts) {
+      const across = Math.max(0, left - button.right, button.left - (left + GAUGE.w));
+      const farSide =
+        (left + GAUGE.w / 2 - (button.left + button.right) / 2) * towardMiddle < 0 ? FAR_SIDE_COST : 0;
+      for (const top of tops) {
+        const bottom = top + GAUGE.h;
+        const down = Math.max(0, top - button.bottom, button.top - bottom);
+        const cost =
+          across +
+          down +
+          farSide +
+          (top >= button.bottom ? UNDER_BUTTON_COST : 0) +
+          Math.abs(bottom - button.bottom) * LEVEL_COST;
+        if (best && cost >= best.cost) continue;
+        const box: Box = { left, top, right: left + GAUGE.w, bottom };
+        if (lookToo && (overlap(box, look) || (input.bike !== undefined && overlap(box, input.bike))))
+          continue;
+        if (against.some((b) => overlap(box, b, GAP))) continue;
+        best = { box, cost };
       }
     }
     if (best) return { box: best.box, tier };
