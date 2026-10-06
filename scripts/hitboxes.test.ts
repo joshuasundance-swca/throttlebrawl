@@ -29,7 +29,14 @@ import {
   type SimTrafficTypeDef,
 } from '../src/sim/api';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
-import { FURNITURE, FURNITURE_KINDS, type FurnitureFoot, type FurnitureKind } from '../src/road';
+import {
+  FURNITURE,
+  FURNITURE_KINDS,
+  STRUCTURE_MODELS,
+  type FurnitureFoot,
+  type FurnitureKind,
+  type StructureModel,
+} from '../src/road';
 import { HAZARD_REACH_D_M, LIGHT_HAZARD_OBJECTS } from '../src/sim/riders/features';
 import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M } from '../src/sim/riders/furniture';
 import { MOVING } from '../src/sim/modifiers/moving';
@@ -47,7 +54,8 @@ import {
 } from '../src/render/figures';
 import { mergeBoxes, type BoxPart } from '../src/render/geometry';
 import { readGlb } from '../src/render/glb';
-import type { ModelKind } from '../src/render/models';
+import { pdxFootprint } from '../src/render/downtown';
+import { MODEL_ASSETS, type ModelKind } from '../src/render/models';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
 import { solidHazardModel } from '../src/render/pnw-places';
 import { riderLookOf } from '../src/render/rider-looks';
@@ -1036,4 +1044,64 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
     expect(heightGap({ heights: { sim: drawn + 0.2, drawn } })).toBeGreaterThan(HEIGHT_TOLERANCE_M);
     expect(heightGap({ heights: { sim: drawn + 0.1, drawn } })).toBeLessThanOrEqual(HEIGHT_TOLERANCE_M);
   });
+});
+
+/** How far a structure model's fixed box may sit from its committed file's box, each face, m (rounding). */
+const STRUCTURE_BOX_TOLERANCE_M = 0.01;
+
+/** The largest gap between a fixed box and a measured one, over its six faces, m. */
+function boxGap(row: StructureModel, b: Box3): number {
+  return Math.max(
+    Math.abs(b.min.x - row.x0),
+    Math.abs(b.max.x - row.x1),
+    Math.abs(b.min.y - row.y0),
+    Math.abs(b.max.y - row.y1),
+    Math.abs(b.min.z - row.z0),
+    Math.abs(b.max.z - row.z1),
+  );
+}
+
+describe('the structure models (road/structures.ts): a fixed box is its file, never what has loaded', () => {
+  it("every row is its committed model's box, so a planner sizes a lot as render does after the load", async () => {
+    const kinds = new Map(
+      Object.entries(MODEL_ASSETS).map(([kind, asset]) => [asset as string, kind as ModelKind]),
+    );
+    const models = new Map<ModelKind, Awaited<ReturnType<typeof bakeRepoModel>>>();
+    const measured = new Map<string, Box3>();
+    for (const [id, row] of Object.entries(STRUCTURE_MODELS) as [string, StructureModel][]) {
+      const [asset = '', variant = ''] = id.split('#');
+      const kind = kinds.get(asset);
+      if (!kind) throw new Error(`${id}: no model kind loads ${asset}`);
+      let model = models.get(kind);
+      if (!model) models.set(kind, (model = await bakeRepoModel(kind)));
+      const g = model.variants[Number(variant)];
+      if (!g) throw new Error(`${id}: ${kind} has no variant ${variant}`);
+      g.computeBoundingBox();
+      const b = g.boundingBox;
+      if (!b) throw new Error(`${id}: no bounding box`);
+      measured.set(id, b.clone());
+      expect(boxGap(row, b), id).toBeLessThanOrEqual(STRUCTURE_BOX_TOLERANCE_M);
+    }
+    // Portland's lots: the table gives what render/downtown.ts `pdxFootprint` reads from the loaded kit.
+    const pdx = models.get('pdxDowntown');
+    expect(pdx).toBeDefined();
+    let lots = 0;
+    for (const [id, row] of Object.entries(STRUCTURE_MODELS) as [string, StructureModel][]) {
+      if (!pdx || !id.startsWith(`${MODEL_ASSETS.pdxDowntown}#`)) continue;
+      const [w, d] = pdxFootprint(pdx, Number(id.split('#')[1]));
+      expect(Math.abs(row.x1 - row.x0 - w), id).toBeLessThanOrEqual(2 * STRUCTURE_BOX_TOLERANCE_M);
+      expect(Math.abs(Math.max(0, -row.z0) - d), id).toBeLessThanOrEqual(STRUCTURE_BOX_TOLERANCE_M);
+      lots++;
+    }
+    expect(lots).toBeGreaterThan(0);
+    console.log(
+      `[examined] ${measured.size} structure model boxes from ${models.size} committed models; ${lots} Portland lots against pdxFootprint`,
+    );
+    // Negative control: a row 2 cm off its file is over the line.
+    const [first] = measured.entries();
+    if (!first) throw new Error('no structure model rows');
+    const row = (STRUCTURE_MODELS as Readonly<Record<string, StructureModel>>)[first[0]];
+    if (!row) throw new Error(`no row ${first[0]}`);
+    expect(boxGap({ ...row, x1: row.x1 + 0.02 }, first[1])).toBeGreaterThan(STRUCTURE_BOX_TOLERANCE_M);
+  }, 60_000);
 });
