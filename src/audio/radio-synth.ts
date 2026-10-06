@@ -28,7 +28,10 @@ export type RadioGenre =
   | 'garage'
   | 'darkwave'
   | 'swamp'
-  | 'jazz';
+  | 'jazz'
+  | 'son'
+  | 'dream'
+  | 'beats';
 /**
  * String timbres. Each has its own buffer length, so a probe that counts buffer lengths can tell the
  * bands apart (tests/e2e/audio-radio.spec.ts): 1.1 twang, 0.8 clean, 0.9 bass, 0.6 upright, and the

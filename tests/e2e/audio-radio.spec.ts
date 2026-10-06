@@ -164,6 +164,10 @@ for (const [pack, id] of [
   ['region-pnw', 'pnw-wipers'],
   ['base', 'keys-wetland'],
   ['region-sf', 'sf-down-round'],
+  // Run C (task C8): the Keys' Cuban son, the Pacific Northwest's dream pop and San Francisco's beats.
+  ['base', 'keys-ultramar'],
+  ['region-pnw', 'pnw-sunbreak'],
+  ['region-sf', 'sf-hella-latency'],
 ] as const) {
   test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
     const file = new URL(`../../packs/${pack}/stations/${id}.json`, import.meta.url);
@@ -202,6 +206,10 @@ test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ 
     ['darkwave', 'darkwave-band'],
     ['swamp', 'swamp-band'],
     ['jazz', 'jazz-band'],
+    // Run C (task C8): one more band for each region.
+    ['son', 'son-band'],
+    ['dream', 'dream-band'],
+    ['beats', 'beat-band'],
   ] as const;
   const problems = await openHarness(page);
   const levels: Record<string, number> = {};

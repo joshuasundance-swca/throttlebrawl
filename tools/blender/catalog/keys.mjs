@@ -333,4 +333,16 @@ export const KEYS_PROPS = [
     convexParts: [],
     views: VIEWS,
   },
+  // CX7, playtest 4, sheet D5: 7.5 m to fit the traffic type without growing every rival's size.
+  {
+    name: 'island_tram',
+    script: 'props/island_tram.py',
+    asset: 'models/traffic/island-tram',
+    pack: 'base',
+    region: 'florida-keys',
+    kind: 'vehicle',
+    budget: { tris: 620, draws: 7, materials: 7 },
+    convexParts: [],
+    views: VIEWS,
+  },
 ];

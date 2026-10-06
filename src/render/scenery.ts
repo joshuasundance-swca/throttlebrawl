@@ -13,7 +13,7 @@
 // The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") adds the
 // Pacific Northwest's clustered conifers and sawmill and San Francisco's terraces of painted row
 // houses on their own themes, conifers on the far ground of a forest, and fog banks offshore.
-import type { RoadNetwork } from '../road';
+import { landmarkParams, type RoadNetwork } from '../road';
 import type { Point3 } from './geometry';
 
 /** What one side of a road is at some s. */
@@ -47,7 +47,9 @@ export type SideTheme =
   // playtest 3 (T10.6), the Marin Headlands: open grass hills, no trees, no poles
   | 'headlands'
   // playtest 3 (T12.6), downtown Portland's blocks (render/downtown.ts draws what stands there)
-  | 'blocks';
+  | 'blocks'
+  // playtest 4 (P4-19), Key West's Old Town: a street, not a palm road (render/roadside.ts stands its fronts)
+  | 'oldtown';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -113,6 +115,12 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   // palms, no bait shacks, no poles, which the `town` tag beside it would give); the downtown layer
   // (downtown.ts) stands the street fronts, the towers and the cart pod.
   'pdx-blocks': 'blocks',
+  // Playtest 4 (P4-19; the maintainer: "The real roads do not have the characteristics of the roads in
+  // question in terms of scenery and feel"): Duval and Whitehead Streets are a street with a sidewalk and
+  // a front of shops on it, not a beach road with palms, shacks and a pole line. Nothing of the scatter
+  // stands there (no palms, no bait shacks, no poles); the roadside kit's Old Town rules (roadside.ts)
+  // stand the fronts, the trees and the sidewalk's planters.
+  'key-oldtown': 'oldtown',
 };
 /**
  * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
@@ -137,15 +145,20 @@ const THEME_ORDER: readonly LandTheme[] = [
   'downtown',
   // Ahead of `commercial`: a Portland block is also tagged `town`.
   'blocks',
+  // Ahead of `commercial` and `palms`: Old Town's streets are tagged `town` and `palms` as well.
+  'oldtown',
   'park',
   'lanterns',
   'cafes',
   'mission',
   'promenade',
   'wharf',
+  // Ahead of `palms` (playtest 4, P4-19): a town street (Key West's Truman, White, Atlantic and the
+  // rest, tagged `town` and `palms`) is a street with a kerb, not a beach road. No road that has
+  // `commercial` and `mangrove` on one side exists; the road/cross-section.ts verge order agrees.
+  'commercial',
   'palms',
   'mangrove',
-  'commercial',
   'beach',
   'sawmill',
   'urban',
@@ -279,6 +292,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   clearcut: {},
   headlands: {},
   blocks: {},
+  oldtown: {},
 };
 /**
  * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
@@ -299,6 +313,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'clearcut',
   'headlands',
   'blocks',
+  'oldtown',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
@@ -391,6 +406,64 @@ export function scatterHash(seed: number, a: number, b: number, c: number): numb
 
 /** The loose ground a rider rides on beside the road (off-road, run W-R): solid scenery keeps off it. */
 const LOOSE_BAND: ReadonlySet<string> = new Set(['dirt', 'gravel', 'sand', 'grass']);
+
+/** Water kept clear round an island's box, m: a boat's length and a swell. [default] */
+export const ISLAND_CLEAR_M = 10;
+
+/** The box of a landmark that stands on an island of its own, in the world. */
+export interface IslandBox {
+  /** The box's middle, and the road's unit heading there (its along axis); across is the road's normal. */
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+  halfAlongM: number;
+  halfAcrossM: number;
+}
+
+/**
+ * Every `landmark` feature that says `island` (playtest 4, Pigeon Key), as a box in the world. The sea
+ * round it is not open water: boats and islets keep off (`onIsland`), whichever road the scatter walks.
+ */
+export function islandBoxes(road: RoadNetwork): IslandBox[] {
+  const out: IslandBox[] = [];
+  for (const e of road.edges) {
+    for (const f of road.featuresOf(e.index, 'landmark')) {
+      if (!landmarkParams(f).island) continue;
+      const s = (f.s0 + f.s1) / 2;
+      const d = (f.d0 + f.d1) / 2;
+      const c = road.toWorld(e.index, s, d, 0);
+      const t = road.frameAt(e.index, s);
+      out.push({
+        x: c.x,
+        z: c.z,
+        tx: t.tx,
+        tz: t.tz,
+        halfAlongM: Math.abs(f.s1 - f.s0) / 2,
+        halfAcrossM: Math.abs(f.d1 - f.d0) / 2,
+      });
+    }
+  }
+  return out;
+}
+
+/** Whether a point is on an island's box or within `clearM` of it. */
+export function onIsland(
+  boxes: readonly IslandBox[],
+  x: number,
+  z: number,
+  clearM = ISLAND_CLEAR_M,
+): boolean {
+  for (const b of boxes) {
+    const dx = x - b.x;
+    const dz = z - b.z;
+    const along = dx * b.tx + dz * b.tz;
+    // The box's across axis is the road's normal at its middle.
+    const across = -dx * b.tz + dz * b.tx;
+    if (Math.abs(along) <= b.halfAlongM + clearM && Math.abs(across) <= b.halfAcrossM + clearM) return true;
+  }
+  return false;
+}
 
 /**
  * How far past `outer` (a distance from the centre line, positive) the ridable band of loose ground

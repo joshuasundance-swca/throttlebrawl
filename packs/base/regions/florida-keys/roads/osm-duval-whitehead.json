@@ -42,19 +42,7 @@
           "direction": 1,
           "kind": "shoulder"
         }
-      ],
-      "verges": {
-        "left": {
-          "widthM": 1.5,
-          "surface": "kerb",
-          "edge": "hard"
-        },
-        "right": {
-          "widthM": 1.5,
-          "surface": "kerb",
-          "edge": "hard"
-        }
-      }
+      ]
     }
   ],
   "tags": [
@@ -133,7 +121,7 @@
       "s0": 1490.0,
       "s1": 1570.0,
       "d0": 5.6,
-      "d1": 10.6,
+      "d1": 8.5,
       "params": {
         "spawns": "pedestrians",
         "kinds": ["tourist-with-cooler", "cruise-day-tripper"]
@@ -144,8 +132,8 @@
       "id": "southernmost-buoy",
       "s0": 1578.5456,
       "s1": 1580.7456,
-      "d0": 7.6946,
-      "d1": 9.8946,
+      "d0": 9.6,
+      "d1": 11.8,
       "params": {
         "model": "models/landmarks/keys-landmarks#southernmost_buoy"
       }
@@ -155,8 +143,8 @@
       "id": "mile-0",
       "s0": 411.1933,
       "s1": 411.9933,
-      "d0": 7.2154,
-      "d1": 8.0154,
+      "d0": 9.6,
+      "d1": 10.4,
       "params": {
         "model": "models/landmarks/keys-landmarks#mile_marker_0"
       }

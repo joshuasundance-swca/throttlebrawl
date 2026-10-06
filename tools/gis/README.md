@@ -259,6 +259,18 @@ Peaks stretch from one cached extract to byte-identical files.
   network report lists each landmark's road, s, d and `placementErrorM`, how far the baked
   placement lands from the real point. The pack check alone runs the footprint rule
   (`landmark-clear`), since it needs the derived verges.
+  `island` (a landmark that is an island of its own in open water: the scenery floats no boat
+  near its box) and `number` (a per-instance number for the model's text surface) are written
+  into the feature's params.
+- **Mile posts** (`mileposts` on a network line, playtest 4, P4-19): `{model, mile, at: {lat, lon},
+  falling?, everyM?, side?, offsetM?, landOffsetM?, yawDeg?, marginM?}` writes one `landmark`
+  feature per whole mile number along the line, `everyM` (1,609.344) apart in game metres, on the
+  road that holds it, with its number in `params.number`. `mile` is the number at the real point
+  `at`; numbers fall along the line unless `falling` is false. A post stands `offsetM` from the
+  centre line on a bridge and `landOffsetM` on land (default the same), on `side`, facing back at the
+  rider (`yawDeg` 180). A post within `marginM` of a road's end, or in a junction's connector, is
+  left out. Network bakes only: a stretch bake compresses its straights, so its miles are not
+  game metres. The Seven Mile's line anchors mile 46.804 at the bridge's east end.
 - **Synthetic branch ends** (`leave.synthetic` / `join.synthetic`, for the Seven Mile's staging).
   The branch leaves or joins the main line where the map has no junction, on a turn of `turnDeg`
   (positive to the right) with its tightest radius `turnRadiusM`, a straight of `straightM` and a

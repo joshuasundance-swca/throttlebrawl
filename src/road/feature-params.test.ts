@@ -68,8 +68,22 @@ describe('landmark params', () => {
       scale: 1,
       farM: LANDMARK_DEFAULTS.farM,
       overRoad: false,
+      island: false,
+      number: null,
     });
     expect(LANDMARK_DEFAULTS.farM).toBe(400);
+  });
+
+  it('an island of its own and a per-instance number are read as given, and nothing else counts', () => {
+    // Playtest 4: Pigeon Key claims its water (`island`), and a mile post carries its number.
+    const post = landmarkParams(
+      landmark({ model: 'keys-identity#keys_mile_marker', number: 46, island: true }),
+    );
+    expect(post).toMatchObject({ island: true, number: 46 });
+    for (const bad of [4.5, -1, '46', true, null])
+      expect(landmarkParams(landmark({ model: 'a#b', number: bad })).number).toBeNull();
+    for (const bad of ['yes', 1, null])
+      expect(landmarkParams(landmark({ model: 'a#b', island: bad })).island).toBe(false);
   });
 
   it('a structure that spans the road says overRoad (the lint keeps every other footprint off it)', () => {
@@ -92,6 +106,8 @@ describe('landmark params', () => {
       scale: 1,
       farM: 400,
       overRoad: false,
+      island: false,
+      number: null,
     });
   });
 });

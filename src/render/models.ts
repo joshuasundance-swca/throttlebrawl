@@ -54,6 +54,10 @@ export const MODEL_ASSETS = {
   sfTowerModules: 'models/scenery/sf-tower-modules',
   // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
   duvalKit: 'models/scenery/duval-kit',
+  // Playtest 4 (P4-19, Codex CX5): the Keys' identity props. Old Town draws its banyan, poinciana,
+  // frangipani and two open bars from it (roadside.ts KEYS_KIT); the Key deer and the mile post wait for
+  // their roads.
+  keysIdentity: 'models/scenery/keys-identity',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
   sevenMileKit: 'models/scenery/seven-mile-kit',
   // Playtest 3 (T12.6, Codex CX4): downtown Portland's street fronts, pink tower modules, food carts and
@@ -187,6 +191,19 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_closed_bar',
     'keys_flamingo',
   ],
+  // Variants 0 and 1 the Key deer (a buck and a doe), 2 a mile post, 3 a banyan, 4 a royal poinciana, 5 a
+  // frangipani, 6 and 7 two open-fronted bars (tools/blender/props/keys_identity.py). The bars' blank
+  // name boards are text surfaces.
+  keysIdentity: [
+    'key_deer_buck',
+    'key_deer_doe',
+    'keys_mile_marker',
+    'keys_banyan',
+    'keys_poinciana',
+    'keys_frangipani',
+    'duval_open_bar_a',
+    'duval_open_bar_b',
+  ],
   // Its variants: 0 to 2 balconied shopfronts, 3 and 4 conch houses, 5 the corner bar, 6 a scooter
   // rack, 7 a palm in a planter (roadside.ts KEYS_KIT, the `oldtown` rules).
   duvalKit: [
@@ -255,7 +272,11 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     out.add('keysIslets');
     // Playtest 3 (T12.1): Key West's Old Town (Duval and Whitehead Streets) lines its street with
     // the Duval kit.
-    if (n.tags.has('key-oldtown')) out.add('duvalKit');
+    // Its trees and open bars come from the Keys' identity kit (playtest 4, P4-19, Codex CX5).
+    if (n.tags.has('key-oldtown')) {
+      out.add('duvalKit');
+      out.add('keysIdentity');
+    }
     // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
     if (n.tags.has('old-bridge')) out.add('sevenMileKit');
   } else {
@@ -313,6 +334,14 @@ export const ROLE_PALETTE: Readonly<Partial<Record<ModelKind, Readonly<Record<st
   cableCar: { body: 'cableCar' },
 };
 
+/**
+ * Roots of a scenery kit that are landmark nodes, not variants (the kit's file is one of the landmark
+ * layer's kits too, `LANDMARK_KITS`): the cottages and dock of Pigeon Key (playtest 4, P4-19).
+ */
+const LANDMARK_ROOTS: Readonly<Partial<Record<ModelKind, readonly string[]>>> = {
+  sevenMileKit: ['pigeon_key_cottage_a', 'pigeon_key_cottage_b', 'pigeon_key_dock'],
+};
+
 /** The truck's ramp, measured on the model (the `ramp_surface` node and its extras). */
 export interface RampMeasure {
   /** Run from the foot to the lip along the truck, m. */
@@ -349,6 +378,15 @@ export interface SceneryModel {
   surfaces?: readonly (readonly TextSurface[])[];
   /** The region atlas its UVs sample, once loaded (atlas.ts `withAtlas`); without it, it draws plain. */
   map?: Texture;
+  /**
+   * Nodes of the same file that the landmark layer places, apart from its variants (`LANDMARK_ROOTS`):
+   * Pigeon Key's cottages and dock, in the Seven Mile kit that also holds the bays. One file has one
+   * decode (the manifest loads each id once and hands its first result to every later caller), so both
+   * views of the file come out of the one bake.
+   */
+  landmarkNodes?: ReadonlyMap<string, LandmarkNode>;
+  /** True when any of those nodes has single-sided geometry (the landmark mesh then draws both faces). */
+  landmarkDoubleSided?: boolean;
 }
 
 /**
@@ -534,7 +572,20 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     surfaces.push(v.surfaces);
     doubleSided ||= v.doubleSided;
   }
+  const landmarkNodes = new Map<string, LandmarkNode>();
+  let landmarkTwoSided = false;
+  for (const name of LANDMARK_ROOTS[kind] ?? []) {
+    const root = scene.getObjectByName(name);
+    if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
+    const { doubleSided: two, ...node } = landmarkNodeOf(root);
+    landmarkNodes.set(name, node);
+    landmarkTwoSided ||= two;
+  }
   const out: SceneryModel = { kind, variants, doubleSided, roles };
+  if (landmarkNodes.size) {
+    out.landmarkNodes = landmarkNodes;
+    out.landmarkDoubleSided = landmarkTwoSided;
+  }
   if (surfaces.some((s) => s.length)) out.surfaces = surfaces;
   if (tiles.some((t) => t.length)) {
     out.tiles = tiles;
@@ -642,13 +693,27 @@ export const LANDMARK_KITS = [
   'sf-landmarks',
   'pdx-landmarks',
   'gorge-landmarks',
+  'seven-mile-kit',
+  'keys-identity',
 ] as const;
 export type LandmarkKitId = (typeof LANDMARK_KITS)[number];
 
 const LANDMARK_PREFIX = 'models/landmarks/';
+/**
+ * Landmark kits that live under `models/scenery/` (playtest 4, P4-19): a scenery kit whose file also
+ * holds landmark nodes. `seven-mile-kit` is the bays' file (Pigeon Key's cottages and dock are in it)
+ * and shares its decode (`LANDMARK_ROOTS`); `keys-identity` is read by the landmark layer alone for
+ * now (the mile post), so when a scenery kind is registered for it, it must take the same shared
+ * decode, or whichever loads second gets the first's value.
+ */
+const SCENERY_LANDMARK_KITS: Readonly<Partial<Record<LandmarkKitId, string>>> = {
+  'seven-mile-kit': MODEL_ASSETS.sevenMileKit,
+  'keys-identity': 'models/scenery/keys-identity',
+};
 
 /** A landmark kit's asset id. */
-export const landmarkKitAsset = (kit: LandmarkKitId): string => `${LANDMARK_PREFIX}${kit}`;
+export const landmarkKitAsset = (kit: LandmarkKitId): string =>
+  SCENERY_LANDMARK_KITS[kit] ?? `${LANDMARK_PREFIX}${kit}`;
 
 /**
  * A feature's `model` (`<asset id>#<node>`, or `<kit>#<node>`) split into its kit and node, or null
@@ -659,7 +724,9 @@ export function parseLandmarkModel(model: string | null): { kit: LandmarkKitId; 
   const at = model.indexOf('#');
   if (at <= 0 || at === model.length - 1) return null;
   const head = model.slice(0, at);
-  const short = head.startsWith(LANDMARK_PREFIX) ? head.slice(LANDMARK_PREFIX.length) : head;
+  const short =
+    LANDMARK_KITS.find((k) => landmarkKitAsset(k) === head) ??
+    (head.startsWith(LANDMARK_PREFIX) ? head.slice(LANDMARK_PREFIX.length) : head);
   const kit = LANDMARK_KITS.find((k) => k === short);
   return kit ? { kit, node: model.slice(at + 1) } : null;
 }
@@ -698,6 +765,18 @@ function numericExtras(root: Object3D): Record<string, number> {
   return out;
 }
 
+/** One root node as a landmark node: its geometry in its own frame, its numeric extras, roles and surfaces. */
+function landmarkNodeOf(root: Object3D): LandmarkNode & { doubleSided: boolean } {
+  const v = bakeVariant(root);
+  return {
+    geometry: v.geometry,
+    extras: numericExtras(root),
+    roles: v.roles,
+    surfaces: v.surfaces,
+    doubleSided: v.doubleSided,
+  };
+}
+
 /** Bakes a loaded glTF scene into a landmark kit: every named root under the scene is one node. */
 export function bakeLandmarkKit(id: LandmarkKitId, scene: Object3D): LandmarkKit {
   scene.updateMatrixWorld(true);
@@ -705,15 +784,10 @@ export function bakeLandmarkKit(id: LandmarkKitId, scene: Object3D): LandmarkKit
   let doubleSided = false;
   for (const root of scene.children) {
     if (!root.name || nodes.has(root.name)) continue;
-    const v = bakeVariant(root);
-    if (v.geometry.getAttribute('position').count === 0) continue;
-    nodes.set(root.name, {
-      geometry: v.geometry,
-      extras: numericExtras(root),
-      roles: v.roles,
-      surfaces: v.surfaces,
-    });
-    doubleSided ||= v.doubleSided;
+    const { doubleSided: two, ...node } = landmarkNodeOf(root);
+    if (node.geometry.getAttribute('position').count === 0) continue;
+    nodes.set(root.name, node);
+    doubleSided ||= two;
   }
   return { id, nodes, doubleSided };
 }
@@ -729,6 +803,16 @@ export async function loadLandmarkKits(
   const kits = new Map<LandmarkKitId, LandmarkKit>();
   await Promise.all(
     ids.map(async (id) => {
+      // A kit that is a scenery model's file too decodes as that model (see `SceneryModel.landmarkNodes`).
+      const kind = MODEL_KINDS.find((k) => LANDMARK_ROOTS[k] && MODEL_ASSETS[k] === landmarkKitAsset(id));
+      if (kind) {
+        const res = await manifest.load<SceneryModel | null>(MODEL_ASSETS[kind], () => null, {
+          decode: (data) => bakeModel(kind, readGlb(data)),
+        });
+        const nodes = res.value?.landmarkNodes;
+        if (nodes) kits.set(id, { id, nodes, doubleSided: res.value?.landmarkDoubleSided ?? false });
+        return;
+      }
       const res = await manifest.load<LandmarkKit | null>(landmarkKitAsset(id), () => null, {
         decode: (data) => bakeLandmarkKit(id, readGlb(data)),
       });

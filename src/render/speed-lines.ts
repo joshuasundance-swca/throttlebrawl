@@ -13,6 +13,7 @@ import {
   Vector3,
   type PerspectiveCamera,
 } from 'three';
+import { CALM_SHARE } from './calm';
 import type { LookStyle } from './look';
 import type { RenderParams } from './tuning';
 
@@ -98,7 +99,7 @@ export class SpeedLines {
   update(speedMps: number, dt: number, camera: PerspectiveCamera): void {
     const amount = streakAmount(speedMps, this.params);
     const count = Math.max(0, Math.min(MAX_STREAKS, Math.round(this.params.streakCount)));
-    const target = amount * this.params.streakOpacity;
+    const target = amount * this.params.streakOpacity * (this.params.reduceMotion ? CALM_SHARE : 1);
     // Fade rather than pop as the speed crosses the threshold.
     const step = Math.min(1, Math.max(0, dt) * 6);
     this.level += (target - this.level) * step;

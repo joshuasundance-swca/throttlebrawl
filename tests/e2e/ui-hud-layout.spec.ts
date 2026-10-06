@@ -17,6 +17,8 @@ interface Box {
 }
 interface Measured {
   mode: string;
+  /** The text factor the page draws with (its root size over 16 px). */
+  scale: number;
   w: number;
   h: number;
   vars: Record<string, string>;
@@ -41,7 +43,10 @@ const LONG_OBJECTIVE = 'TIMBER 1/3: INTO TRAFFIC OR SCENERY · FINISH TOP 3 · N
 const LONG_BARK =
   'You took the long way round and I respect that, said the man in the lane you were not in at all';
 
-async function startRace(page: Page, opts: { career: boolean; mirror?: boolean }) {
+async function startRace(
+  page: Page,
+  opts: { career: boolean; mirror?: boolean; textSize?: 'large' | 'largest' },
+) {
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
   });
@@ -64,6 +69,13 @@ async function startRace(page: Page, opts: { career: boolean; mirror?: boolean }
       await page.locator('#menu-settings').click();
       await page.locator('#settings-tab-controls').click();
       await page.locator('#settings-mirror').check();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#menu-race')).toBeVisible();
+    }
+    if (opts.textSize) {
+      await page.locator('#menu-settings').click();
+      await page.locator('#settings-tab-access').click();
+      await page.locator(`#settings-textSize [data-value="${opts.textSize}"]`).click();
       await page.keyboard.press('Escape');
       await expect(page.locator('#menu-race')).toBeVisible();
     }
@@ -134,6 +146,7 @@ function measure(page: Page): Promise<Measured> {
       for (const e of shown) e.hidden = true;
       return {
         mode: root?.dataset['top'] ?? '',
+        scale: parseFloat(getComputedStyle(document.documentElement).fontSize) / 16,
         w: window.innerWidth,
         h: window.innerHeight,
         vars,
@@ -149,11 +162,13 @@ const overlap = (a: Box, b: Box) =>
   a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 const px = (v: string | undefined) => parseFloat(v ?? '');
 
-function expectTopLayout(m: Measured, where: string, mode: string) {
+/** `mode` null: the layout may pick either (a text size makes the choice itself, by the room it has). */
+function expectTopLayout(m: Measured, where: string, expected: string | null) {
+  const mode = expected ?? m.mode;
   console.log(
     `${where}: mode ${m.mode}; ${m.pieces.map((p) => `${p.name} [${[p.box.left, p.box.top, p.box.right, p.box.bottom].map(Math.round).join(',')}]`).join('; ')}`,
   );
-  expect(m.mode, `${where}: the layout's mode`).toBe(mode);
+  if (expected !== null) expect(m.mode, `${where}: the layout's mode`).toBe(mode);
   const byName = new Map(m.pieces.map((p) => [p.name, p.box]));
   for (const must of ['hud-position', 'hud-ticker', 'hud-objective', 'hud-target', 'look-offer', 'hud-pause'])
     expect(byName.has(must), `${where}: measured ${must}`).toBe(true);
@@ -166,7 +181,9 @@ function expectTopLayout(m: Measured, where: string, mode: string) {
   expect(ticker.top, `${where}: the ticker at its slot's top`).toBeGreaterThanOrEqual(
     px(m.vars['--hl-ticker-y']) - 1,
   );
-  expect(ticker.bottom - ticker.top, `${where}: the ticker is one slot high`).toBeLessThanOrEqual(44.5);
+  expect(ticker.bottom - ticker.top, `${where}: the ticker is one slot high`).toBeLessThanOrEqual(
+    44 * m.scale + 0.5,
+  );
   const objective = byName.get('hud-objective') as Box;
   expect(objective.top, `${where}: the objective at its slot's top`).toBeGreaterThanOrEqual(
     px(m.vars['--hl-obj-y']) - 1,
@@ -180,7 +197,7 @@ function expectTopLayout(m: Measured, where: string, mode: string) {
   expect(
     objective.bottom - objective.top,
     `${where}: the objective clamps to ${lines} lines`,
-  ).toBeLessThanOrEqual(lines * 16 + 4.5);
+  ).toBeLessThanOrEqual(lines * 16 * m.scale + 4.5);
   // The slow-frames offer shares the ticker's slot only where the layout is stacked.
   const toast = byName.get('look-offer') as Box;
   const toastX = px(m.vars['--hl-toast-x']);
@@ -255,5 +272,32 @@ test.describe('laptop', () => {
     expectTopLayout(m, 'laptop', 'inline');
     const objective = m.pieces.find((p) => p.name === 'hud-objective')?.box as Box;
     expect(objective.left, 'the objective is past the road ahead').toBeGreaterThanOrEqual(m.w * 0.75 - 0.5);
+  });
+});
+
+// M5's a11y-1 (playtest 4 run B, B13): the same contract at the larger text sizes. The slots grow with
+// the text (ui/hud-layout.ts rule 7), and on a short screen the factor is capped by its height, so the
+// pieces still fit: hud-layout.test.ts holds the plan, this measures the real widgets.
+test.describe('the largest text size', () => {
+  test('phone landscape: the ticker, the objective and the offer keep to their larger slots', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await startRace(page, { career: false, textSize: 'largest' });
+    const m = await measure(page);
+    expect(m.scale, 'the whole of the largest factor fits a 412 px high phone').toBeCloseTo(1.4, 2);
+    expectTopLayout(m, 'largest, phone landscape', 'inline');
+  });
+
+  test.describe('small phone landscape', () => {
+    test.use({ viewport: { width: 640, height: 360 } });
+    test('a short screen takes a smaller factor, and the pieces still fit', async ({ page }) => {
+      test.setTimeout(120_000);
+      await startRace(page, { career: false, textSize: 'largest' });
+      const m = await measure(page);
+      expect(m.scale, 'capped by the 360 px height').toBeLessThan(1.4);
+      expect(m.scale).toBeGreaterThan(1);
+      expectTopLayout(m, 'largest, small phone', null);
+    });
   });
 });
