@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { ActionState } from '../../app';
 import kickPack from '../../../packs/base/weapons/kick.json';
 import type { EntitySnapshot, LaneInfo, RouteQueries, SimSnapshot } from '../../sim/api';
-import { KICK_LEAD_TICKS, KICK_OFFSET_M, KICK_REPEAT_TICKS, RETREAT_HEALTH, createBot } from './index';
+import {
+  KICK_LEAD_TICKS,
+  KICK_OFFSET_M,
+  KICK_REPEAT_TICKS,
+  REMOUNT_OWN_SIDE_TICKS,
+  RETREAT_HEALTH,
+  createBot,
+} from './index';
 
 // Unit tests of the bot's decisions on hand-built snapshots. The real-data check is the seeded
 // batch (tests/sim/) and the browser race, which drive the bot against the real sim.
@@ -440,5 +447,77 @@ describe('bot: a split zone across the oncoming lanes, and a remount', () => {
     const a = blank();
     bot.drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 8 })]), ME, ownRoute, a);
     expect(a.steer).toBeGreaterThan(0.3);
+  });
+});
+
+describe('bot: a remount keeps to its own side (playtest 4, run C: 2 of 8 remounts spent 191 and 217 of 240 ticks in the far oncoming lane)', () => {
+  // Bridge City's four-lane road: two lanes each way, the oncoming ones at negative d for dir +1.
+  const FOUR: LaneInfo[] = [
+    { id: 'L2', dCenterM: -6, widthM: 4, direction: -1, kind: 'drive' },
+    { id: 'L1', dCenterM: -2, widthM: 4, direction: -1, kind: 'drive' },
+    { id: 'R1', dCenterM: 2, widthM: 4, direction: 1, kind: 'drive' },
+    { id: 'R2', dCenterM: 6, widthM: 4, direction: 1, kind: 'drive' },
+  ];
+  /** A slow car in the inner own lane 30 m ahead, as traffic is when a rider gets up at a walking pace. */
+  const car = () => mover(5, { kind: 'vehicle', s: 130, d: 2, speed: 20 });
+  /** A slow car in the outer own lane, so no lane on its own side is free. */
+  const outerCar = () => mover(6, { kind: 'vehicle', s: 125, d: 6, speed: 20 });
+  /** Down on tick 1, up on tick 3 (the way a remount reaches the bot), then `later` ticks on. */
+  function remounted(over: { d: number }, later: number, others: EntitySnapshot[]) {
+    const bot = createBot();
+    const r = route(FOUR);
+    bot.drive(snapshot(1, [mover(ME, { mode: 'Tumble', speed: 0, ...over })]), ME, r, blank());
+    bot.drive(snapshot(2, [mover(ME, { mode: 'OnFoot', speed: 0, ...over })]), ME, r, blank());
+    const up = snapshot(3, [mover(ME, { speed: 8, ...over }), ...others]);
+    const a = blank();
+    bot.drive(up, ME, r, a); // the remount
+    if (later === 0) return { bot, a };
+    const b = blank();
+    bot.drive({ ...up, tick: 3 + later }, ME, r, b);
+    return { bot, a: b };
+  }
+
+  it('a car ahead sends it to the free lane on its own side, not across the centre line (the check can see it)', () => {
+    const a = blank();
+    createBot().drive(snapshot(5, [mover(ME, { d: 1.2, speed: 25 }), car()]), ME, route(FOUR), a);
+    expect(a.steer).toBeGreaterThan(0.3); // the outer own lane (d 6), though the oncoming one is nearer
+    expect(a.throttle).toBe(1);
+  });
+
+  it('with every lane on its own side blocked, a bot that has not been down passes in the oncoming lane (the check can see it)', () => {
+    const a = blank();
+    createBot().drive(snapshot(5, [mover(ME, { d: 2, speed: 25 }), car(), outerCar()]), ME, route(FOUR), a);
+    expect(a.steer).toBeLessThan(-0.3);
+  });
+
+  it('a remounted bot does not pass in the oncoming lane while it gets back up to speed: it follows', () => {
+    // The tick of the remount, and the last tick of the window.
+    for (const later of [0, REMOUNT_OWN_SIDE_TICKS - 3]) {
+      const { a } = remounted({ d: 2 }, later, [car(), outerCar()]);
+      expect(a.steer, `${later} ticks on`).toBeGreaterThan(-0.05); // never toward the oncoming lane (d -2)
+      expect(a.brake, `${later} ticks on`).toBeGreaterThan(0); // follows at the blocker's pace
+    }
+  });
+
+  it('then it rides normally: the pass is back once the window is over', () => {
+    const { a } = remounted({ d: 2 }, REMOUNT_OWN_SIDE_TICKS + 5, [car(), outerCar()]);
+    expect(a.steer).toBeLessThan(-0.3);
+  });
+
+  it('a remount that gets up in the oncoming lane steers back to its own side', () => {
+    const { a } = remounted({ d: -2 }, 0, []);
+    expect(a.steer).toBeGreaterThan(0.3);
+  });
+
+  it('a remounted bot lines up on a rival from its own side, not across the centre line', () => {
+    // A rival 20 m ahead on the near edge of its own lane. From the left of it (d -0.5) the kick
+    // spot is in the oncoming lane (d -0.9).
+    const rival = mover(1, { s: 120, d: 0.3, speed: 30 });
+    const { a } = remounted({ d: -0.5 }, 0, [rival]);
+    expect(a.steer).toBeGreaterThan(0.1);
+    // The check can see it: a bot that has not been down lines up where the kick spot is.
+    const b = blank();
+    createBot().drive(snapshot(5, [mover(ME, { d: -0.5, speed: 30 }), rival]), ME, route(FOUR), b);
+    expect(b.steer).toBeLessThan(0);
   });
 });

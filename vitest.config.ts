@@ -1,4 +1,5 @@
-import { defineConfig, mergeConfig } from 'vitest/config';
+import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
+import FileTimes from './tests/file-times.ts';
 import TimedSequencer from './tests/sequencer.ts';
 import viteConfig from './vite.config.ts';
 
@@ -14,6 +15,10 @@ export default mergeConfig(
       // The unit and sim files start longest first, by their measured CI seconds (tests/timings.json),
       // so a long file never starts last. [default]
       sequence: { sequencer: TimedSequencer },
+      // Vitest's own reporters (the default one, and github-actions on CI), plus each sim file's
+      // whole time, collect included, which scripts/timings.mjs reads into tests/timings.json.
+      // [default]
+      reporters: [...configDefaults.reporters, new FileTimes()],
       projects: [
         {
           extends: true,
