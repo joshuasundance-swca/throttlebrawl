@@ -8,6 +8,14 @@
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
 import { atan, cos, sin, type GroundSurface, type LaneInfo, type RoadSurface } from '../core';
 import {
+  bridgeTapers,
+  taperLead,
+  taperedWidth,
+  type TaperAnchor,
+  type TaperedVerge,
+  type TaperTable,
+} from './bridge-taper';
+import {
   resolveCrossSection,
   resolveVerge,
   type CrossSection,
@@ -178,9 +186,10 @@ export interface RoadNetwork {
   /**
    * One side's verge band at s: its surface, its outer edge kind and where it lies across the road
    * (`dInner` is the outermost lane's outer edge, `dOuter` the band's). A width of 0 means the road's
-   * own edge is the edge.
+   * own edge is the edge. Near a bridge's end the band narrows into the deck (road/bridge-taper.ts),
+   * and says so (`taper`).
    */
-  vergeAt(edge: number, s: number, side: VergeSide): ResolvedVerge;
+  vergeAt(edge: number, s: number, side: VergeSide): TaperedVerge;
   /**
    * The ground under (s, d): the road's surface on its lanes (a shoulder lane is `shoulder`), the
    * verge band's surface on a verge, or null past a verge's outer edge.
@@ -498,14 +507,41 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
 
   const lanesAt = (edge: number, s: number): readonly LaneInfo[] => sectionAt(edgeAt(edge), s).lanes;
 
-  const crossSectionAt = (edge: number, s: number): CrossSection => {
+  // Bridge tapers (road/bridge-taper.ts, playtest 4): each verge band narrows into a bridge's end
+  // rather than stopping square at it. Built once from the untapered bands; most edges have none.
+  const tapers: TaperTable = bridgeTapers(edges, (edge, side, s) => {
     const e = edgeAt(edge);
-    return resolveCrossSection(e, sectionAt(e, s), s);
+    return resolveVerge(e, sectionAt(e, s), side, s).widthM;
+  });
+  const NO_ANCHORS: readonly TaperAnchor[] = [];
+  /** A resolved band under its edge's bridge tapers (the same object where no taper reaches s). */
+  const tapered = (edge: number, v: ResolvedVerge, s: number): TaperedVerge => {
+    const anchors = tapers[edge]?.[v.side === 'left' ? 0 : 1] ?? NO_ANCHORS;
+    if (anchors.length === 0) return v;
+    const w = taperedWidth(v.widthM, anchors, s);
+    if (w >= v.widthM) {
+      // The deck's own edge just past a taper's end still says so: a rider eased in along the taper
+      // is a tick's travel behind it there, and finishes sliding in rather than meeting the rail.
+      return taperLead(anchors, s) ? { ...v, taper: true } : v;
+    }
+    const width = w > 0 ? w : 0;
+    return {
+      ...v,
+      widthM: width,
+      dOuter: v.side === 'left' ? v.dInner - width : v.dInner + width,
+      taper: true,
+    };
   };
 
-  const vergeAt = (edge: number, s: number, side: VergeSide): ResolvedVerge => {
+  const crossSectionAt = (edge: number, s: number): CrossSection => {
     const e = edgeAt(edge);
-    return resolveVerge(e, sectionAt(e, s), side, s);
+    const cs = resolveCrossSection(e, sectionAt(e, s), s);
+    return { ...cs, left: tapered(edge, cs.left, s), right: tapered(edge, cs.right, s) };
+  };
+
+  const vergeAt = (edge: number, s: number, side: VergeSide): TaperedVerge => {
+    const e = edgeAt(edge);
+    return tapered(edge, resolveVerge(e, sectionAt(e, s), side, s), s);
   };
 
   const groundAt = (edge: number, s: number, d: number): GroundSurface | null => {
@@ -517,7 +553,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
         return lane.kind === 'shoulder' ? 'shoulder' : e.surface;
       }
     }
-    const v = resolveVerge(e, section, d < 0 ? 'left' : 'right', s);
+    const v = tapered(edge, resolveVerge(e, section, d < 0 ? 'left' : 'right', s), s);
     const inside = d < 0 ? d >= v.dOuter && d <= v.dInner : d <= v.dOuter && d >= v.dInner;
     // Between lanes (a median's gap) the road's own surface stands in.
     if (d < 0 ? d > v.dInner : d < v.dInner) return e.surface;

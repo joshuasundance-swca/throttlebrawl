@@ -88,6 +88,12 @@ export interface RideLimits {
   /** The ground band each side runs out to, m (0 with the switch off). */
   loBandM: number;
   hiBandM: number;
+  /**
+   * True where that side's band narrows into a bridge's end (road/bridge-taper.ts, playtest 4): its
+   * edge eases a rider in along the taper (sim/riders' barrier rule) instead of stopping one.
+   */
+  loTaper?: boolean;
+  hiTaper?: boolean;
 }
 
 /**
@@ -127,6 +133,8 @@ export function rideLimits(
     hiEdge: right.edge,
     loBandM: left.widthM,
     hiBandM: right.widthM,
+    ...(left.taper ? { loTaper: true } : {}),
+    ...(right.taper ? { hiTaper: true } : {}),
   };
 }
 

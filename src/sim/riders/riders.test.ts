@@ -337,6 +337,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.accelScale',
       'riders.launchGain',
       'riders.crashImpactMps',
+      'riders.bendEdgeForgive',
       'riders.fenceSmashMps',
       'riders.landingCrashMps',
       'riders.airCarve',
