@@ -48,6 +48,7 @@ import { readGlb } from '../glb';
 import type { LookStyle } from '../look';
 import { FALLBACK_BIKE_MODEL, withPlayerPaint, type RiderLook } from '../rider-looks';
 import { Skids } from '../skids';
+import { lightBarPhase } from '../calm';
 import type { RenderParams } from '../tuning';
 import { bakePart, paintedColors, RIDER_BONES, type BakedPart, type PartKind, type RiderBone } from './bake';
 import { Ghosts, respawnOpacity } from './ghost';
@@ -114,6 +115,8 @@ export interface RigFrame {
   weapon: Mesh;
   glint: Mesh;
   flashing: boolean;
+  /** Reduce motion is on: the cops' light bar flashes slowly (render/calm.ts). Off when left out. */
+  calm?: boolean;
   /** Wall-clock seconds, and this frame's world seconds (0 in a hit-stop). */
   time: number;
   dt: number;
@@ -641,7 +644,7 @@ class Rig {
     const boostS = e.boostS ?? 0;
     this.flame.visible = riding && boostS > 0;
     if (this.flame.visible) this.flame.scale.set(1, 1, 0.7 + 0.5 * Math.abs(Math.sin(t * 31)));
-    this.flashLights(t, riding);
+    this.flashLights(t, riding, f.calm === true);
     va.setFromMatrixPosition(this.riderGroup.matrix);
     const far = va.distanceTo(cam) > RIDER_LOD_M;
     this.mesh.geometry.setDrawRange(0, far ? this.farCount : this.fullCount);
@@ -1201,9 +1204,9 @@ class Rig {
     if (this.bellSwing) prop.quaternion.multiply(rot(X, 0.9 * this.bellSwing, qa));
   }
 
-  private flashLights(t: number, riding: boolean): void {
+  private flashLights(t: number, riding: boolean, calm: boolean): void {
     const L = this.lights;
-    const phase = riding ? Math.floor(t * 8) % 2 : -1;
+    const phase = riding ? lightBarPhase(t, calm) : -1;
     if (this.lightBar) {
       this.lightBar.visible = riding;
       if (riding)
