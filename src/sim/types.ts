@@ -994,6 +994,11 @@ export interface SimTrafficBehaviour {
   strolls?: boolean;
   /** An animal that runs after a passing rider a short way along the verge (dogs). */
   chases?: boolean;
+  /**
+   * The roadside class (playtest 4): `dodges`, `yields` or `solid` (src/sim/roadside.ts). Absent: the
+   * class the rules gave before the field existed.
+   */
+  roadside?: 'dodges' | 'yields' | 'solid';
 }
 
 export interface SimEventDef {

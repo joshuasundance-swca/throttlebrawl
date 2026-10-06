@@ -8,7 +8,7 @@
   "widthM": 0.6,
   "cruiseMps": 0.5,
   "hazard": "big",
-  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "behaviour": { "roadside": "yields", "carFollowing": false, "laneChanges": false, "dives": true },
   "look": { "procedural": { "preset": "animal-gator" }, "paintOptions": ["#3f4a2b", "#5a6338"] },
   "meta": {
     "status": "live",
