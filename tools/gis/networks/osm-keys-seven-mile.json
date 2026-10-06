@@ -43,7 +43,7 @@
         },
         "offsetM": 5.85,
         "landOffsetM": 10,
-        "scale": 2
+        "scale": 3
       },
       "smoothing": {
         "headingSigmaM": 30
