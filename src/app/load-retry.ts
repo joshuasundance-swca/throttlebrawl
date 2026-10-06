@@ -12,6 +12,7 @@
 // Reload, for the newest build.
 import { HttpLoadError } from '../content';
 import { retryAfterMsOf } from '../platform';
+import { WAIT_SLOT } from '../ui';
 
 /** What the card needs from ui/ (`GameUi.offerRetry`). */
 export interface RetryCard {
@@ -71,8 +72,28 @@ export function routesNote(name: string, state: LoadFailure | 'loading'): string
     case 'gone':
       return `${name} did not load: this build's files are gone. Reload the game for the newest build.`;
     case 'host':
-      return `${name} did not load: the game server had a problem. Tap Race to try again shortly.`;
+      // Inside the host's wait the word counts it down with the card (ui fills the slot).
+      return state.waitMs > 0
+        ? `${name} did not load: the game server had a problem. Tap Race to try again${WAIT_SLOT}.`
+        : `${name} did not load: the game server had a problem. Tap Race to try again shortly.`;
   }
+}
+
+/** The word and its action: for a build whose files are gone, a Reload button beside it (polish batch I's check, punch 4). */
+export interface RoutesNoteView {
+  text: string;
+  action?: { label: string; run: () => void };
+}
+
+export function routesNoteView(
+  name: string,
+  state: LoadFailure | 'loading',
+  reload: () => void,
+): RoutesNoteView {
+  const text = routesNote(name, state);
+  return state !== 'loading' && state.kind === 'gone'
+    ? { text, action: { label: 'Reload', run: reload } }
+    : { text };
 }
 
 /**

@@ -117,7 +117,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
-import { clearLoadRetry, failureOf, offerLoadRetry, routesNote, type LoadFailure } from './load-retry';
+import { clearLoadRetry, failureOf, offerLoadRetry, routesNoteView, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -1209,6 +1209,8 @@ export function createApp(opts: AppOptions): AppHandle {
   // The region picker (playtest 1c): a pick fetches that region's road data in the background,
   // and the menu's backdrop shows its road once loaded; Race starts there.
   let loadingRoads = false;
+  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
+  const reloadPage = () => window.location.reload();
   const pickedChoice = (): RegionChoice | undefined => {
     const picked = ui.region;
     return picked ? regions.find((r) => r.id === picked) : undefined;
@@ -1239,10 +1241,13 @@ export function createApp(opts: AppOptions): AppHandle {
     if (choice && state) pickLoad = { id: choice.id, state };
     const picked = pickedChoice();
     if (!picked || library.hasRoads(picked.packId)) pickLoad = null;
-    ui.setRoutesNote(picked && pickLoad?.id === picked.id ? routesNote(picked.name, pickLoad.state) : null);
+    if (!picked || pickLoad?.id !== picked.id) ui.setRoutesNote(null);
+    else {
+      // A missing build's word carries the Reload button; inside the host's wait it counts the wait down.
+      const word = routesNoteView(picked.name, pickLoad.state, reloadPage);
+      ui.setRoutesNote(word.text, word.action);
+    }
   };
-  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
-  const reloadPage = () => window.location.reload();
   /** The packs a race in this region reads (its pack and base) whose road data is not in yet. */
   const roadsMissing = (choice: RegionChoice): string[] =>
     packClosure(registry, choice.packId).filter((id) => !library.hasRoads(id));

@@ -98,13 +98,13 @@ import {
 } from './radio-panel';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
-import { createCardSlots, retryButton, type SlotCardId } from './transient-cards';
+import { createCardSlots, retryButton, routeNoteQuiet, withWait, type SlotCardId } from './transient-cards';
 import type { Screen } from './screen';
 import { createManualClock, type Schedule } from './narrative/long-press';
 import type { TuningPanel } from './tuning';
 import { keyLegend, keyMapFromBindings } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
-import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
+import { createRoutePicker, ROUTE_PICKER_CSS, type NoteAction, type RouteOption } from './routes';
 import { raceOptionRows, stepRaceOption, type RaceOptionId, type RaceOptionsView } from './race-options';
 import type { RaceOptionsScreen } from './race-options-view';
 import type { HeatBadge } from './heat-badge';
@@ -114,6 +114,7 @@ import type { WheelieGauge } from './moves-gauge';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
+export { WAIT_SLOT } from './transient-cards';
 export type { RegionOption } from './regions';
 export type { RouteOption } from './routes';
 export type { RaceResult } from './format';
@@ -313,9 +314,11 @@ export interface GameUi {
    * The word in the route row's place while the picked region's roads are not in: loading, or why
    * they did not load (polish batch E's check, punch item 1: the menu never shows a pick without its
    * route row or a word saying why). Null takes it away. It steps aside while the did-not-load card
-   * is up on the menu, which says the same with its button.
+   * is up on the menu, which says the same with its button, and while a busy "Loading ..." line is up.
+   * Where its text carries `WAIT_SLOT` it counts the host's wait down with the card's own countdown;
+   * `action` puts a button beside it (Reload, for a build whose files are gone).
    */
-  setRoutesNote(text: string | null): void;
+  setRoutesNote(text: string | null, action?: NoteAction): void;
   /** The picked route's id, or null for the region's own road. */
   readonly route: string | null;
   /**
@@ -601,6 +604,12 @@ ${REDUCE_MOTION_CSS}
 /* The menu's build id gives way (keepFooterClear) where it would lie over the menu: hidden, not taken out,
    so it can be measured again (polish batch E's check, punch item 5). */
 #ui #menu .footer.yield { visibility: hidden; }
+/* The menu's build id once more, in the flow as the last line of its column, while the menu scrolls: the
+   footer and the corner stamp both give way then (polish batch I's check, punch 3), and a debug report
+   and a playtest need the id. Off until the menu scrolls, so it never makes a menu that fits scroll. */
+#ui #menu .menu-build-line { display: none; font: 500 0.75rem ui-monospace, monospace; opacity: 0.8;
+  text-align: center; padding-top: 4px; }
+#ui #menu .menu-build-line.on { display: block; }
 #build-stamp.in-race { display: none; }
 #build-stamp { pointer-events: none; font-size: 0.6875rem; line-height: 1.2; padding: 2px 6px; box-sizing: border-box;
   max-width: calc(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
@@ -844,6 +853,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const syncInstallButton = () => (installButton.hidden = !install?.available());
   syncInstallButton();
   install?.onChange(syncInstallButton);
+  const menuBuildLine = el('div', {
+    id: 'menu-build-line',
+    className: 'menu-build-line',
+    textContent: `build ${buildId}`,
+  });
   // The menu's main column: its transient cards sit first in it, above the title (placeCards).
   const menuMain = el(
     'div',
@@ -869,6 +883,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
       ...(install ? [installButton] : []),
     ),
+    // The build id as the last line of the column, in the flow, shown only while the menu scrolls
+    // (keepFooterClear): the footer and the corner stamp give way then, and the id must stay findable.
+    menuBuildLine,
   );
   // The build id under the menu: a label out of the flow, which gives way when the menu scrolls or
   // anything of it lies under the label (keepStampClear).
@@ -1609,8 +1626,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     loadRetryButton,
   );
   loadRetry.setAttribute('role', 'alert');
+  // The route row's word (setRoutesNote): its wait slot is filled from the card's own wait, so the two
+  // always say the same seconds.
+  let routeWord: { text: string; action?: NoteAction } | null = null;
+  const syncRouteWord = (now: number) =>
+    routePicker.setNote(routeWord && withWait(routeWord.text, retryWaitUntil, now), routeWord?.action);
   const syncRetryButton = () => {
-    const state = retryButton(retryWaitUntil, performance.now(), retryLabel);
+    const now = performance.now();
+    syncRouteWord(now);
+    const state = retryButton(retryWaitUntil, now, retryLabel);
     loadRetryButton.textContent = state.label;
     loadRetryButton.disabled = state.disabled;
     if (!state.disabled && retryTimer !== null) {
@@ -2080,9 +2104,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
    * under its words, and the corner stamp carries the build id. The class changes only when the
    * answer does, so its own change starts no new check.
    */
-  const footerInTheWay = (): boolean => {
+  const footerInTheWay = (scrolls: boolean): boolean => {
     if (current !== 'menu' || menuFooter.getClientRects().length === 0) return false;
-    if (menu.scrollHeight > menu.clientHeight + 1) return true;
+    if (scrolls) return true;
     const words = document.createRange();
     words.selectNodeContents(menuFooter);
     const label = boxOf(words.getBoundingClientRect());
@@ -2101,9 +2125,29 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     return false;
   };
+  /**
+   * Whether the footer gives way, and with it whether the menu's last line carries the build id: both
+   * the footer and the line are decided with the line taken out, so showing the line can never be what
+   * makes the menu scroll or the footer need to give way (the answer would flip each time it was asked).
+   * The scroll is put back after (a shorter menu clamps it, and the player scrolled to the end to see
+   * this very line).
+   */
   const keepFooterClear = () => {
-    const yieldIt = footerInTheWay();
+    const lineUp = menuBuildLine.classList.contains('on');
+    const at = menu.scrollTop;
+    if (lineUp) menuBuildLine.style.display = 'none';
+    const scrolls =
+      current === 'menu' && menu.getClientRects().length > 0 && menu.scrollHeight > menu.clientHeight + 1;
+    const yieldIt = footerInTheWay(scrolls);
+    if (lineUp) {
+      menuBuildLine.style.display = '';
+      menu.scrollTop = at;
+    }
     if (menuFooter.classList.contains('yield') !== yieldIt) menuFooter.classList.toggle('yield', yieldIt);
+    // The footer and the corner stamp give way when the menu scrolls or the footer would lie over the
+    // menu: its last line carries the id then, in the flow, so it covers nothing.
+    const wantLine = scrolls || yieldIt;
+    if (lineUp !== wantLine) menuBuildLine.classList.toggle('on', wantLine);
   };
   const keepStampClear = () => {
     stampQueued = false;
@@ -2197,7 +2241,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     for (const card of [reloadOffer, loadRetry, noticeBox])
       if (!host || !wanted.includes(card)) card.hidden = true;
     // The did-not-load card steps in for the menu's word about the picked region's roads.
-    routePicker.quiet(current === 'menu' && wanted.includes(loadRetry));
+    routePicker.quiet(
+      routeNoteQuiet({ screen: current, busy: !busy.hidden, cardUp: wanted.includes(loadRetry) }),
+    );
     if (!host) return;
     if (wanted.some((card, i) => host.children[i] !== card)) host.prepend(...wanted);
     // A card coming up (raised, back after a busy line, or on the screen it belongs to) is brought
@@ -2424,7 +2470,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       return region;
     },
     setRoutes: (routes, picked) => routePicker.set(routes, picked),
-    setRoutesNote: (text) => routePicker.setNote(text),
+    setRoutesNote(text, action) {
+      routeWord = text === null ? null : action ? { text, action } : { text };
+      syncRouteWord(performance.now());
+    },
     get route() {
       return routePicker.route;
     },
