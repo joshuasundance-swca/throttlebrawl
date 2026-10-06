@@ -18,3 +18,5 @@ Budgets (`scene-cost.test.ts`, seed 1, the worst view of each route, against mai
 Not covered: how any of it looks on the phone (done, not phone-verified); no browser was run. Not built: the headlands, the Keys, Chuckanut and Lake Samish wiring of the same CX6 batch (other tasks).
 
 Keeper fix: the mission chapel was added to the baked `sf-mi-last-coat-alley.json` only, so `tools/road/sf-mission.test.ts` (the baked files equal a new compile of `tools/road/tracks/sf-mission.ts`) failed. The same landmark is now in the track source too.
+
+Keeper merge of main: kept both new model kinds (this change's `sfApartments` and main's `pnwIdentity`) in the model list and the model-count test.

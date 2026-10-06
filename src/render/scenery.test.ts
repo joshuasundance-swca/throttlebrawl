@@ -348,6 +348,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       gorgeArches: 2,
       // playtest 4 (P4-19): CX6's two flats, two apartment blocks and two corner buildings
       sfApartments: 6,
+      // playtest 4 (P4-19, CX5, B9): two madrones and a section of the Gorge's masonry guard wall
+      pnwIdentity: 3,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
