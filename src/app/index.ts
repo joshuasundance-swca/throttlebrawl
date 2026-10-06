@@ -105,6 +105,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
+import { clearLoadRetry, offerLoadRetry } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -1161,6 +1162,7 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   const roadsArrived = (reg: ContentRegistry) => {
     registry = reg;
+    clearLoadRetry(ui);
     // A race keeps the key it started under (its packs' roads were all in before it started).
     if (state === 'race') return;
     hashes = raceHashes(eventId);
@@ -1184,7 +1186,8 @@ export function createApp(opts: AppOptions): AppHandle {
       return true;
     } catch (err) {
       console.warn('region road data did not load', err);
-      ui.notice(`${choice.name} did not load. Check the connection and tap Race again.`);
+      // Retry goes on to the race the player asked for (the picked region, fetched again).
+      offerLoadRetry(ui, choice.name, () => handle.startRace());
       return false;
     } finally {
       loadingRoads = false;
@@ -1203,20 +1206,30 @@ export function createApp(opts: AppOptions): AppHandle {
     curr = newSim(seeds.next()).snapshot();
     prev = null;
   };
+  /** Fetches the picked region's road data in the background; says so, with Retry, if it fails. */
+  const loadPicked = (choice: RegionChoice) =>
+    void library.loadRoads(choice.packId).then(
+      (reg) => {
+        roadsArrived(reg);
+        showPicked();
+      },
+      (err: unknown) => {
+        console.warn('region road data did not load', err);
+        // Only for the region still picked: a pick made since has its own load and its own say.
+        if (pickedChoice()?.id === choice.id)
+          offerLoadRetry(ui, choice.name, () => {
+            if (pickedChoice()?.id === choice.id) loadPicked(choice);
+          });
+      },
+    );
   const pickRegion = (id: string) => {
     const choice = regions.find((r) => r.id === id);
     if (!choice) return;
+    clearLoadRetry(ui);
     // The routes on offer are the new region's, once its road data is in.
     if (choice.eventId !== eventId) ui.setRoutes([], null);
     if (library.hasRoads(choice.packId)) showPicked();
-    else
-      void library.loadRoads(choice.packId).then(
-        (reg) => {
-          roadsArrived(reg);
-          showPicked();
-        },
-        () => undefined, // Race tries again and says so if it fails
-      );
+    else loadPicked(choice);
   };
   /**
    * The route picker (the maintainer, 2026-10-01: "Yes, add as routes"): a real road, or null for
@@ -1235,11 +1248,13 @@ export function createApp(opts: AppOptions): AppHandle {
   // its road data is in). The Keys' real roads are not in the first-load bundle (run W-P): they are
   // fetched now, in the background, so the picker offers them and a race starts without a wait.
   offerRoutes();
-  if (!library.hasRoads('base'))
+  const loadKeysRoads = () =>
     void library.loadRoads('base').then(roadsArrived, (err: unknown) => {
-      // Race fetches them again, with a busy line and a notice if that fails too.
+      // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
       console.warn('the Keys real-road data did not load', err);
+      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads);
     });
+  if (!library.hasRoads('base')) loadKeysRoads();
 
   // ---- The career flow (run W-R) ----------------------------------------------------------------
   const careerReady: Promise<CareerFlow | null> = import('./career-flow').then(
@@ -1324,7 +1339,7 @@ export function createApp(opts: AppOptions): AppHandle {
           },
           (err: unknown) => {
             console.warn('career road data did not load', err);
-            ui.notice(`${def.regionName} did not load. Check the connection and try again.`);
+            offerLoadRetry(ui, def.regionName, () => startCareerRace(def, node));
             return false;
           },
         )
