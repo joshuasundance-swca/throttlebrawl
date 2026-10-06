@@ -832,45 +832,61 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
   },
 };
 
-test('every setting on screen persists across a reload and changes something observable', async ({
-  page,
-}) => {
-  test.setTimeout(600_000);
-  const problems = watchErrors(page);
-  await page.goto('./');
-  await page.locator('#start-screen').click();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
-  await page.locator('#menu-settings').click();
-  const shown = await page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>('#settings [data-setting]')]
-      .filter((e) => !e.hidden)
-      .map((e) => e.dataset['setting'] ?? ''),
-  );
-  console.log(`settings on screen: ${shown.join(', ')}`);
-  expect(shown.length, 'at least units is on screen').toBeGreaterThan(0);
-  // The phone profile (touch, motion sensors, vibration) shows every control setting input-2 wired.
-  expect(shown).toEqual(
-    expect.arrayContaining(['steering', 'tiltSensitivity', 'throttle', 'pullBackBrake', 'haptics']),
-  );
-  const missing = shown.filter((id) => !(id in PROBES));
-  expect(missing, 'every setting on screen has a non-default probe in ui-settings.spec.ts').toEqual([]);
+/**
+ * The probes run as this many tests, so a browser slice's two workers share them: as one test they took
+ * 6.2 minutes on a slow CI runner, and the slice hit the browser job's 10-minute limit on main. Each part
+ * first replays the earlier parts' `set` (a click each), so every probe still runs on the settings the
+ * probes before it left, as when they ran in one test. [default]
+ */
+const PROBE_PARTS = 3;
 
-  for (const id of shown) {
-    const probe = PROBES[id];
-    if (!probe) continue;
-    await probe.set(page);
-    await probe.effect(page);
-    console.log(`${id}: non-default value set and its effect seen`);
-    await page.reload();
-    await page.locator('#start-screen').click();
-    await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
-    await page.locator('#menu-settings').click();
-    await probe.persisted(page);
-    console.log(`${id}: still set after a reload`);
-    await probe.effect(page);
-    await page.locator('#menu-settings').click();
+test.describe('every setting on screen persists across a reload and changes something observable', () => {
+  test.describe.configure({ mode: 'parallel' });
+  for (let part = 0; part < PROBE_PARTS; part++) {
+    test(`probes, part ${part + 1} of ${PROBE_PARTS}`, async ({ page }) => {
+      test.setTimeout(600_000);
+      const problems = watchErrors(page);
+      await page.goto('./');
+      await page.locator('#start-screen').click();
+      await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+      await page.locator('#menu-settings').click();
+      const shown = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('#settings [data-setting]')]
+          .filter((e) => !e.hidden)
+          .map((e) => e.dataset['setting'] ?? ''),
+      );
+      console.log(`settings on screen: ${shown.join(', ')}`);
+      expect(shown.length, 'at least units is on screen').toBeGreaterThan(0);
+      // The phone profile (touch, motion sensors, vibration) shows every control setting input-2 wired.
+      expect(shown).toEqual(
+        expect.arrayContaining(['steering', 'tiltSensitivity', 'throttle', 'pullBackBrake', 'haptics']),
+      );
+      const missing = shown.filter((id) => !(id in PROBES));
+      expect(missing, 'every setting on screen has a non-default probe in ui-settings.spec.ts').toEqual([]);
+
+      const size = Math.ceil(shown.length / PROBE_PARTS);
+      const before = shown.slice(0, part * size);
+      const mine = shown.slice(part * size, (part + 1) * size);
+      console.log(`part ${part + 1}: replays ${before.join(', ') || 'nothing'}; probes ${mine.join(', ')}`);
+      for (const id of before) await PROBES[id]?.set(page);
+      for (const id of mine) {
+        const probe = PROBES[id];
+        if (!probe) continue;
+        await probe.set(page);
+        await probe.effect(page);
+        console.log(`${id}: non-default value set and its effect seen`);
+        await page.reload();
+        await page.locator('#start-screen').click();
+        await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+        await page.locator('#menu-settings').click();
+        await probe.persisted(page);
+        console.log(`${id}: still set after a reload`);
+        await probe.effect(page);
+        await page.locator('#menu-settings').click();
+      }
+      expect(problems).toEqual([]);
+    });
   }
-  expect(problems).toEqual([]);
 });
 
 test('vibration on (the default): the player\'s hits buzz (the control for the "off" probe)', async ({

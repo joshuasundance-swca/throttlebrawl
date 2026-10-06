@@ -19,6 +19,11 @@
 // line (playtest 4, the wave-C live check: the chip showed 10 s after its landing, behind the barks):
 // it takes the strip as it arrives, a bark or line it took the strip from is frozen and comes back
 // after it, and only a hint, an ask or a takedown name (the top three classes) go first.
+//
+// A paid FLIP chip (`kind` 'trick:...') is first among the paid chips (playtest 4, run A's live check:
+// the flip's chip showed 1.1 to 1.6 s after its landing, behind its own landing's AIRTIME chip, the
+// smaller payout): it takes the strip from a paid chip of another kind, which is frozen and shows right
+// after with the time it has left, and where both wait it goes first. A cash-less chip is not cut short.
 import { meterLabel, type MeterRun, type StylePop } from './race-feed';
 
 export type TickerClass = 'teach' | 'name' | 'ask' | 'bark' | 'system' | 'line' | 'style' | 'meter';
@@ -75,12 +80,16 @@ export const TICKER_VOICE_TAIL_MS = 250;
 export const isPaidStyle = (cls: TickerClass, cash: number | null | undefined): boolean =>
   cls === 'style' && cash !== null && cash !== undefined && cash > 0;
 
+/** A style chip that is a trick's (`trick:BACKFLIP`, `trick:DOUBLE BACKFLIP`): the flip's own payout. */
+const isTrick = (kind: string | undefined): boolean => kind !== undefined && kind.startsWith('trick:');
+
 /**
- * Where an item ranks: its class's priority, except a paid chip, which ranks just above a bark (a
- * smaller number is higher). The classes' own numbers (`tickerPriority`) are unchanged.
+ * Where an item ranks: its class's priority, except a paid chip, which ranks just above a bark, and a
+ * paid trick's chip just above that (a smaller number is higher). The classes' own numbers
+ * (`tickerPriority`) are unchanged.
  */
-const rankOf = (cls: TickerClass, cash: number | null | undefined): number =>
-  isPaidStyle(cls, cash) ? PRIORITY.bark - 0.5 : PRIORITY[cls];
+const rankOf = (cls: TickerClass, cash: number | null | undefined, kind?: string): number =>
+  isPaidStyle(cls, cash) ? PRIORITY.bark - (isTrick(kind) ? 0.75 : 0.5) : PRIORITY[cls];
 
 /** The classes whose item is frozen and resumed when a higher class takes the strip. */
 const RESUMES: ReadonlySet<TickerClass> = new Set(['teach', 'ask', 'bark', 'system']);
@@ -239,18 +248,32 @@ export function createTicker(options: TickerOptions = {}): Ticker {
   const best = (): Entry | undefined => {
     let pick: Entry | undefined;
     for (const e of queue) {
-      if (!pick || rankOf(e.item.cls, e.cash) < rankOf(pick.item.cls, pick.cash)) pick = e;
+      if (!pick || rankOf(e.item.cls, e.cash, e.item.kind) < rankOf(pick.item.cls, pick.cash, pick.item.kind))
+        pick = e;
     }
     return pick;
   };
 
   /**
    * Whether a waiting entry takes the strip from the item showing: a higher rank does. A paid chip's
-   * lift does not reach another style chip (a cash-less one, say), which it waits behind as before.
+   * lift does not reach another style chip (a cash-less one, say), which it waits behind as before,
+   * except that a paid flip's chip takes the strip from a paid chip of another kind (its AIRTIME).
    */
-  const outranks = (e: Entry, shownItem: { cls: TickerClass; cash: number | null }): boolean => {
-    const mine = shownItem.cls === 'style' ? PRIORITY[e.item.cls] : rankOf(e.item.cls, e.cash);
-    return mine < rankOf(shownItem.cls, shownItem.cash);
+  const outranks = (
+    e: Entry,
+    shownItem: { cls: TickerClass; cash: number | null; kind: string | undefined },
+  ): boolean => {
+    const flipOverPaid =
+      shownItem.cls === 'style' &&
+      isPaidStyle(shownItem.cls, shownItem.cash) &&
+      !isTrick(shownItem.kind) &&
+      isPaidStyle(e.item.cls, e.cash) &&
+      isTrick(e.item.kind);
+    const mine =
+      shownItem.cls === 'style' && !flipOverPaid
+        ? PRIORITY[e.item.cls]
+        : rankOf(e.item.cls, e.cash, e.item.kind);
+    return mine < rankOf(shownItem.cls, shownItem.cash, shownItem.kind);
   };
 
   const take = (e: Entry) => {

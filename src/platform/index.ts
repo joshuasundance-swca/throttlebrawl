@@ -446,12 +446,63 @@ export function registerOfflineWorker(
   return new Promise((resolve) => win.addEventListener('load', () => resolve(register()), { once: true }));
 }
 
+/** The session key that remembers a stale-chunk reload: the build the page reloaded from. */
+export const STALE_CHUNK_KEY = 'throttlebrawl:stale-chunk-reload';
+
+/** What the stale-chunk reload needs from the page; the real one or a test's stand-in. */
+interface StaleChunkPage {
+  /** Receives Vite's `vite:preloadError`, fired when a lazy chunk's import fails. */
+  win: EventTarget;
+  online(): boolean;
+  storage: Pick<Storage, 'getItem' | 'setItem'> | null;
+  reload(): void;
+}
+
+/**
+ * A lazy chunk that will not load (playtest 4 run A's live check, mustFix 2): once a deploy has
+ * replaced the build on the host, the open tab's chunk names answer 404, so the import fails and
+ * the race goes on without its landmarks. The page reloads to the build the host serves now, once
+ * per build (`buildId`, kept in session storage), so a chunk that fails again on the same build
+ * never loops. With the network off, or where it cannot remember, it does not reload.
+ */
+export function reloadOnStaleChunk(page: StaleChunkPage, buildId: string): void {
+  page.win.addEventListener('vite:preloadError', () => {
+    if (!page.online() || !page.storage) return;
+    try {
+      if (page.storage.getItem(STALE_CHUNK_KEY) === buildId) return;
+      page.storage.setItem(STALE_CHUNK_KEY, buildId);
+    } catch {
+      return;
+    }
+    page.reload();
+  });
+}
+
+/** Session storage, or null where the browser refuses it. */
+function sessionStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The game's own offline worker, in a production build only: a dev server's modules change on every
- * save and must never be cached.
+ * save and must never be cached. With it, the reload that recovers a lazy chunk a deploy removed
+ * (`buildId` is this build's stamp id).
  */
-export function startOffline(): void {
+export function startOffline(buildId: string): void {
   if (!import.meta.env.PROD || typeof window === 'undefined') return;
+  reloadOnStaleChunk(
+    {
+      win: window,
+      online: () => navigator.onLine,
+      storage: sessionStore(),
+      reload: () => window.location.reload(),
+    },
+    buildId,
+  );
   void registerOfflineWorker(navigator, window, document.readyState === 'complete');
 }
 

@@ -8,6 +8,8 @@ import { SERVICE_WORKER_FILE } from '../src/platform/index';
 import { SW_FILE, workerConfig, workerSource } from './service-worker.mjs';
 
 const enc = (s: string) => new TextEncoder().encode(s);
+/** A built page: it loads its entry script, as Vite's index.html does. */
+const PAGE = '<html><script type="module" crossorigin src="./assets/index-AAA.js"></script>';
 
 describe('the offline worker build step', () => {
   it('writes the file the page registers', () => {
@@ -16,7 +18,7 @@ describe('the offline worker build step', () => {
 
   it('lists every built file but the worker, as page-relative paths', () => {
     const cfg = workerConfig('abc1234', [
-      { path: 'index.html', bytes: enc('<html>') },
+      { path: 'index.html', bytes: enc(PAGE) },
       { path: 'assets\\index-AAA.js', bytes: enc('x') },
       { path: SW_FILE, bytes: enc('worker') },
       { path: 'icon-192.png', bytes: enc('png') },
@@ -27,7 +29,7 @@ describe('the offline worker build step', () => {
 
   it("names a new cache when any file's bytes change, and the same one when nothing does", () => {
     const files = [
-      { path: 'index.html', bytes: enc('<html>') },
+      { path: 'index.html', bytes: enc(PAGE) },
       { path: 'manifest.webmanifest', bytes: enc('{}') },
     ];
     const a = workerConfig('abc1234', files).cache;
@@ -39,11 +41,37 @@ describe('the offline worker build step', () => {
     expect(workerConfig('abc1234', [...files, { path: SW_FILE, bytes: enc('anything') }]).cache).toBe(a);
   });
 
+  it("tells the worker how to know each unhashed file is this build's: its SHA-256, or the page's entry script", () => {
+    // Playtest 4 run A, mustFix 2: a deploy during a tab's install gave the worker the next build's
+    // page. The game Space adds a script of its own to HTML (checked on the live host, 2026-10-05), so
+    // a page is known by the entry script it loads, which is renamed whenever the build changes.
+    const page =
+      '<!doctype html><link rel="modulepreload" crossorigin href="./assets/sim-S1.js">' +
+      '<script type="module" crossorigin src="./assets/index-B49G7VWi.js"></script>';
+    const cfg = workerConfig('abc1234', [
+      { path: 'index.html', bytes: enc(page) },
+      { path: 'manifest.webmanifest', bytes: enc('{}') },
+      { path: 'assets\\index-B49G7VWi.js', bytes: enc('x') },
+      { path: SW_FILE, bytes: enc('worker') },
+    ]);
+    expect(cfg.checks).toEqual({
+      'index.html': { contains: 'assets/index-B49G7VWi.js' },
+      // sha256('{}')
+      'manifest.webmanifest': { sha256: '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a' },
+    });
+    // A page with no entry script cannot be told apart: the build fails rather than ship a worker
+    // that would cache any build's page.
+    expect(() => workerConfig('abc1234', [{ path: 'index.html', bytes: enc('<html>') }])).toThrow(
+      /index\.html/,
+    );
+  });
+
   it('hands the worker its config ahead of its code', () => {
-    const src = workerSource({ cache: 'c', files: ['index.html'] }, 'run();');
+    const config = { cache: 'c', files: ['index.html'], checks: { 'index.html': { contains: 'x.js' } } };
+    const src = workerSource(config, 'run();');
     expect(src.indexOf('"index.html"')).toBeLessThan(src.indexOf('run();'));
     const scope: { __OFFLINE__?: unknown } = {};
     runInNewContext(src.replace('run();', ''), { self: scope });
-    expect(scope.__OFFLINE__).toEqual({ cache: 'c', files: ['index.html'] });
+    expect(scope.__OFFLINE__).toEqual(config);
   });
 });

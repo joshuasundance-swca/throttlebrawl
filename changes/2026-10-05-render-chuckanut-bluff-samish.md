@@ -19,3 +19,5 @@ Not checked: nothing was rendered on the dev machine (no browser), so how the pa
 Keeper merge of main after #573: the content-packs scenery paragraph keeps both this change's words and main's headlands kinds (a word-level three-way merge; no word either side added is missing).
 
 Keeper fix: main's I-5 test (`src/render/interstate-roadside.test.ts`, #579) picked the built roadside things by variant number alone, so this change's boulders, lake cabin and dock (variants 4 to 7 of their own `pnwShore` file) counted as the kit's mailboxes and fences. It now counts only rules drawn from the kit's own model.
+
+Keeper merge of main after #577 (the SF city kit): `models.ts` keeps both new model kinds side by side (this change's `pnwShore` and main's `sfApartments`); the rest merged on its own. Checked alone: typecheck, 8 render test files (174 tests: pnw-shore, gorge-identity, interstate-roadside, scenery, scenery-merge, sf-city-kit, roadside, scene-cost) and the spread scenery sweep on Chuckanut, Samish and Russian Hill (0 places wrong).

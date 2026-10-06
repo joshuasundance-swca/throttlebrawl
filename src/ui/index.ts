@@ -96,6 +96,7 @@ import {
 } from './radio-panel';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
+import { createManualClock, type Schedule } from './narrative/long-press';
 import type { TuningPanel } from './tuning';
 import { keyLegend, keyMapFromBindings } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
@@ -568,6 +569,28 @@ const tickerQuiet = (): boolean => {
   return w.__GAME_TEST__ === true && w.__uiTickerQuiet === true;
 };
 
+type LongPressSeamWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __uiLongPressManual?: boolean;
+  __uiLongPress?: { advance(ms: number): void; pending(): number };
+};
+
+/**
+ * The browser specs' long-press clock (docs/architecture.md, "Testing seams"), only when the test
+ * flag and `window.__uiLongPressManual = true` are set before the page loads: the ticker's "cut this"
+ * press then counts a manual clock instead of wall time, and `window.__uiLongPress.advance(ms)`
+ * moves it, so a press is held 500 ms by saying so, whatever the runner's frame rate. `pending()` is
+ * how many presses are timing. Without the flag the press is wall time, as in production. It writes
+ * no sim state.
+ */
+function longPressSchedule(): Schedule | undefined {
+  const w = window as LongPressSeamWindow;
+  if (w.__GAME_TEST__ !== true || w.__uiLongPressManual !== true) return undefined;
+  const clock = createManualClock();
+  w.__uiLongPress = { advance: (ms) => clock.advance(ms), pending: () => clock.pending() };
+  return clock.schedule;
+}
+
 /**
  * The browser specs' stand-in radio (docs/architecture.md, "Testing seams"), only when the test
  * flag is set before the page loads: `window.__uiRadioSource`, set by the spec's init script, so the
@@ -985,6 +1008,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
 
   let gaugeBlock: GaugeBlockers | null = null;
+  // The wheelie button's box on a touch screen: the right thumb rests on it for the whole wheelie, so the
+  // gauge stands by it (HUD punch items 2, 6 and 9, run A). Null where no button is drawn (a keyboard or
+  // gamepad rider, or a layout without it): the gauge then stands by the stick.
+  let gaugeButton: Box | null = null;
   const placeAll = () => {
     const { w, h } = screenSize();
     syncTextScale(h);
@@ -1020,6 +1047,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         : [];
     });
     const lifts = settleLifts(bottomTexts, buttonBoxes);
+    const wheelieRect = coarse ? touchRects.find(({ e }) => e.element === 'touch-wheelie')?.r : undefined;
+    gaugeButton = wheelieRect
+      ? {
+          left: wheelieRect.x,
+          top: wheelieRect.y,
+          right: wheelieRect.x + wheelieRect.w,
+          bottom: wheelieRect.y + wheelieRect.h,
+        }
+      : null;
     // The wheelie gauge keeps off everything placed here (T6.3): the top slots, the touch buttons and
     // the text widgets as lifted.
     gaugeBlock = gaugeBlockers({
@@ -1120,8 +1156,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // The stick ring: drawn where the left thumb lands inside the stick zone, the knob follows it.
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
-  // The gauge stands beside the ring while a thumb is down, and at the stick's resting spot otherwise
-  // (a keyboard or gamepad rider's wheelie, and the layout check). Called from placeAll too.
+  // The gauge stands by the wheelie button on a touch screen; else beside the ring while a thumb is down,
+  // and at the stick's resting spot otherwise (a keyboard or gamepad rider's wheelie, and the layout
+  // check). Called from placeAll too.
   function placeGaugeNow() {
     if (!gaugeBlock) return;
     const { w, h } = screenSize();
@@ -1139,6 +1176,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       look: lookAheadBox(w, h),
       bike: bikeZoneBox(w, h),
       ringPx: STICK_RING_PX,
+      button: gaugeButton,
     });
     wheelieGauge?.place(spot?.box ?? null);
   }
@@ -1664,6 +1702,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // the ticker's long-press ignores presses in the stick and attack zones mid-race.
   const barks = createNarrative({
     surface: ticker.surface,
+    longPressSchedule: longPressSchedule(),
     ...(opts.barkContent
       ? {
           barkSets: opts.barkContent.barkSets,
