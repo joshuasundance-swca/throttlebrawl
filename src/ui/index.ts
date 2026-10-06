@@ -354,7 +354,11 @@ export const LOOK_OFFER_MS = 12_000;
 
 /** The credits page (credits-screen.ts draws into it): a scrolling list under a Back bar, like the changelog. */
 const CREDITS_CSS = `
-#credits { justify-content: flex-start; padding-top: 8px; padding-bottom: 34px; gap: 8px; }
+/* "#ui #credits", not "#credits": "#ui .screen" (below) sets the padding and out-ranks a lone id, so the
+   room under the list that keeps it above the build stamp (a corner label: its bottom gap plus its
+   one line, 0.6875rem at 1.2 plus 4px of padding) was never applied. */
+#ui #credits { justify-content: flex-start; padding-top: 8px; gap: 8px;
+  padding-bottom: calc(max(8px, env(safe-area-inset-bottom, 0px)) + 0.9rem + 8px); }
 #credits .settings-bar { display: flex; gap: 6px; justify-content: center; }
 #credits-list { width: min(680px, 94vw); flex: 1 1 auto; min-height: 0; overflow-y: auto; text-align: left;
   pointer-events: auto; touch-action: pan-y; background: #000a; padding: 6px 12px; box-sizing: border-box;

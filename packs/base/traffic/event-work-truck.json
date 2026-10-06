@@ -6,6 +6,7 @@
   "tags": ["event", "roadwork"],
   "lengthM": 7.0,
   "widthM": 2.4,
+  "heightM": 3.15,
   "cruiseMps": 0,
   "hazard": "big",
   "behaviour": {

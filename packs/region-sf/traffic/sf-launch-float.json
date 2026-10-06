@@ -6,6 +6,7 @@
   "tags": ["event", "parade", "sf"],
   "lengthM": 9.0,
   "widthM": 2.6,
+  "heightM": 3.15,
   "cruiseMps": 0,
   "hazard": "big",
   "behaviour": {

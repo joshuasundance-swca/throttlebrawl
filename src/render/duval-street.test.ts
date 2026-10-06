@@ -177,7 +177,7 @@ describe.each(SEEDS)('Duval and Whitehead, seed %i', (seed) => {
   });
 
   it("stands every front on the sidewalk's edge, its balconies over the pavement", () => {
-    const fronts = items.filter((it) => it.foot && it.rule !== 'oldtown-bar');
+    const fronts = items.filter((it) => it.foot && it.rule !== 'oldtown-bar' && it.rule !== 'oldtown-back');
     expect(fronts.length).toBeGreaterThan(40);
     let worst = 0;
     const bad: string[] = [];

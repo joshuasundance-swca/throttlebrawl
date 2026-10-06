@@ -189,6 +189,9 @@ class Milepost(Strict):
     offsetM: float = Field(6.1, gt=0)  # noqa: N815
     landOffsetM: float | None = Field(None, gt=0)  # noqa: N815
     yawDeg: float = Field(180.0, ge=-180, le=180)  # noqa: N815
+    # The model's uniform scale (a landmark's `scale`, above 0 and at most 4). 1 writes no param. Run B's live
+    # check: a 0.4 by 0.7 m board is a dark stub from 36 m, so the Seven Mile's posts say 2.
+    scale: float = Field(1.0, gt=0, le=4)
     marginM: float = Field(12.0, ge=0)  # noqa: N815
 
 
@@ -1023,7 +1026,12 @@ def milepost_features(cfg: NetworkConfig, bl: BakedLine, a: float, b: float, tag
                 "s1": r4(s + 0.3),
                 "d0": r4(d - 0.3),
                 "d1": r4(d + 0.3),
-                "params": {"model": mp.model, "yawDeg": float(mp.yawDeg), "number": n},
+                "params": {
+                    "model": mp.model,
+                    "yawDeg": float(mp.yawDeg),
+                    **({"scale": float(mp.scale)} if mp.scale != 1.0 else {}),
+                    "number": n,
+                },
             }
         )
     return out

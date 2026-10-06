@@ -1,12 +1,13 @@
 # The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
 # they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
 # it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (two slices), sim
-# (six slices) and browser (seven slices, the last also running perf) run in parallel, each running
-# its tiers of `npm run check`. Every job is planned to finish inside about 70% of a 10-minute run,
-# and its timeout-minutes is about 1.5 times its expected time, a guard against a hang rather than
-# a budget.
+# (seven slices) and browser (eight slices, the last also running perf) run in parallel, each
+# running its tiers of `npm run check`. Every slice is planned as its whole job (setup, build and
+# tests; scripts/shard-plan.mjs) at no more than 70% of its timeout-minutes, which
+# scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
+# for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
-# - full: true runs every tier: the full gate, 16 jobs. full: false is the quick check, 3 jobs:
+# - full: true runs every tier: the full gate, 18 jobs. full: false is the quick check, 3 jobs:
 #   static (plus the build and its size budget, `--tier static,budget`) and the two unit slices.
 # - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
 #   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
@@ -156,8 +157,8 @@ jobs:
   unit:
     name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
-    # About 1.5x a slice, rounded up: the plan puts each at about 265 s of tests plus 0.8 s of setup
-    # per file, and region-routes takes 140 to 175 s alone but up to 337 s beside other files.
+    # The plan puts each slice at about 236 s of job (2026-10-06 table: tests, 0.8 s of setup per
+    # file and 17 s of job setup), 49% of this timeout; slices took 145 to 351 s on 2026-10-06.
     timeout-minutes: 8
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
@@ -212,19 +213,22 @@ jobs:
   # the Easy and Hard batches start first there. With fail-fast off (a push to main, a train) a red
   # slice never hides another's result; on a PR the first red job cancels the run (see static).
   # Full suite only. [default]
-  # Six slices since 2026-10-05: with four, #475's green run took 520 to 592 s a slice and one slice
-  # timed out at 10 minutes. The slowest files are now the floor (docs/engineering.md, "The floors").
+  # Seven slices since 2026-10-06: with six, slice 3/6 took 590 to 597 s of its 600 on three runs
+  # (37435436811, 37437164463, 37439710625). Its table was stale after the test diet, and the eight
+  # sim files that race at describe time, which Vitest's per-file time leaves out, were all planned
+  # at 0 s into that one slice (scripts/shard-plan.mjs collectedOnly now plans them as the mean
+  # file). The slowest files are the floor (docs/engineering.md, "The floors").
   sim:
     name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
     runs-on: ubuntu-latest
-    # About 1.5x a slice (planned about 280 s of tests), rounded up to leave room for slow runners:
-    # five slices of #486's runs took up to 535 s.
+    # The plan puts the batch readers' slice at about 329 s of job and the others at about 343 s
+    # (2026-10-06 table, 16 s of job setup included), 57% of this timeout.
     timeout-minutes: 10
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -273,9 +277,10 @@ jobs:
   # in #176); the slice plan gives that slice fewer e2e seconds to make room. With fail-fast off (a
   # push to main, a train) a red slice never hides another's result; on a PR the first red job
   # cancels the run (see static). Full suite only. [default]
-  # Seven slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice, and with
-  # six #486's runs took 274 to 536 s. The timeout is about 1.5x a slice (planned about 335 s of
-  # tests, plus about 30 s to set up and build), rounded up.
+  # Eight slices since 2026-10-06: with seven, the plan counted test seconds only, and slices planned
+  # at 355 s took 410 to 573 s as jobs (setup, the Chromium install and the build add 37 to 70 s;
+  # runs 37439710625, 37442774709). The plan now puts each at about 328 s of job (2026-10-06 table,
+  # 47 s of job setup included), 55% of this timeout.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
@@ -284,7 +289,7 @@ jobs:
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
         with:

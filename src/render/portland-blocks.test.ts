@@ -488,7 +488,8 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
   const backs = plan.items.filter(isBack);
 
   it("draws the blocks' land wider than the usual strip, and only the blocks' land", () => {
-    expect(Object.keys(WIDE_LAND_M)).toEqual(['blocks']);
+    // (Old Town's streets have a city floor too, playtest 4, run B's check: duval-city.test.ts.)
+    expect(Object.keys(WIDE_LAND_M).sort()).toEqual(['blocks', 'oldtown']);
     const wide: number[] = [];
     for (const id of ['osm-pnw-pdx-broadway', 'osm-pnw-pdx-broadway-south', 'osm-pnw-pdx-alder']) {
       const edge = road.edgeIndex(id);

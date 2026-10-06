@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 // Offline play and installing as an app (roadmap M5, launch polish; the maintainer: "Offline
@@ -107,6 +108,39 @@ test.describe('offline', () => {
     expect(cached.checked).toBeGreaterThan(0);
     expect(cached.control).toBe(false);
     expect(cached.missing).toEqual([]);
+
+    // Playtest 4 run B's live check, punch item 8: the game's host sends files uncompressed, so the
+    // worker downloads each script's, JSON file's and model's gzip copy and unpacks it. The files the
+    // page had not loaded came that way, and each unpacks to the plain file, byte for byte.
+    const unpacked = await page.evaluate(async (mark) => {
+      const own = (await caches.keys()).find((n) => n.startsWith('offline-'));
+      const store = own ? await caches.open(own) : null;
+      const out: { url: string; type: string }[] = [];
+      for (const req of store ? await store.keys() : []) {
+        const res = await store?.match(req);
+        if (res?.headers.get(mark) === 'gzip')
+          out.push({ url: req.url, type: res.headers.get('content-type') ?? '' });
+      }
+      return out;
+    }, 'x-offline-from');
+    const byExt = (ext: string) => unpacked.filter((u) => u.url.endsWith(ext));
+    console.log(
+      `[print] unpacked from gzip copies: ${byExt('.js').length} scripts, ${byExt('.json').length} JSON, ` +
+        `${byExt('.glb').length} models`,
+    );
+    expect(byExt('.js').length).toBeGreaterThan(0);
+    expect(byExt('.json').length).toBeGreaterThan(0);
+    for (const u of byExt('.js')) expect(u.type, u.url).toMatch(/^text\/javascript/);
+    const sample = byExt('.js')[0]?.url ?? '';
+    const fromCache = await page.evaluate(async (url) => {
+      const res = await caches.match(url, { ignoreVary: true });
+      if (!res) return 'not cached';
+      const digest = await crypto.subtle.digest('SHA-256', await res.arrayBuffer());
+      return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+    }, sample);
+    // The plain file, straight from the server (the test's own request, not the worker's).
+    const plainFile = await (await page.request.get(sample)).body();
+    expect(fromCache, sample).toBe(createHash('sha256').update(plainFile).digest('hex'));
 
     await context.setOffline(true);
     // Proof the network really is off for the page and its worker: a file the cache does not hold

@@ -651,7 +651,9 @@ describe.each([7, 42])("a party block's balconies are full, seed %i", (seed) => 
       expect(lights.counts().crowd).toMatchObject({ drawCalls: 0, shownFigures: 0, triangles: 0 });
     }
     print(`[examined] seed ${seed}: the crowd's worst view is ${worst} triangles, one draw call`);
-    expect(worst).toBeLessThanOrEqual(12000);
+    // 12,000 for the balconies alone; run B's check (item 4) added the pavement's people (60 triangles each, within
+    // 100 m), and the worst view is 13,650 with both (duval-city.test.ts asks for the people).
+    expect(worst).toBeLessThanOrEqual(15000);
   });
 
   it('is the same every time for a seed, and builds on a road with no party block as nothing', () => {

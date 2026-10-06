@@ -6,6 +6,7 @@
   "tags": ["event", "cable-runaway", "region-sf"],
   "lengthM": 8.5,
   "widthM": 2.6,
+  "heightM": 3.15,
   "cruiseMps": 4.5,
   "hazard": "big",
   "behaviour": {

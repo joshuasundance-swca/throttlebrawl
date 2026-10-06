@@ -68,6 +68,43 @@ export function parseLog(text) {
   return { unit, sim, e2e, perf };
 }
 
+// check.mjs's result line for a runner step: "unit tests (slice 1/2, 211 files)  pass  ... (248.0s)",
+// "e2e (slice 7/7, 10 files)  pass ...", "perf   pass ...". The build is not a runner step: it is
+// part of the job's setup, like the checkout and the Chromium install.
+const RUNNER_STEP =
+  /(?:^|\s)(?:unit tests|sim batch|e2e|perf)(?: \([^)]*\))?\s+(?:pass|FAIL)\s.*\(([\d.]+)s\)\s*$/;
+
+/** The seconds a job's log says its runner steps took (tests, and perf in the last browser slice). */
+export function runnerSeconds(/** @type {string} */ text) {
+  let total = 0;
+  for (const raw of text.split('\n')) {
+    const m = RUNNER_STEP.exec(stripVTControlCharacters(raw).trimEnd());
+    if (m) total += Number(m[1]);
+  }
+  return total;
+}
+
+/**
+ * Each tier's mean seconds of a job outside its runner (setup, npm ci, the file listing, and for
+ * browser the Chromium install, the build and the uploads), rounded: what scripts/shard-plan.mjs
+ * adds to every slice. A job with no runner line says nothing.
+ * @param {{ tier: string, seconds: number, ran: number }[]} jobs
+ * @returns {Record<string, number>}
+ */
+export function meanOverheads(jobs) {
+  /** @type {Record<string, number[]>} */
+  const by = {};
+  for (const j of jobs) {
+    if (!(j.ran > 0) || !(j.seconds > 0)) continue;
+    (by[j.tier === 'browser' ? 'e2e' : j.tier] ??= []).push(j.seconds - j.ran);
+  }
+  return Object.fromEntries(
+    Object.entries(by)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => [k, Math.round(v.reduce((a, b) => a + b, 0) / v.length)]),
+  );
+}
+
 function average(maps) {
   const sums = {};
   const counts = {};
@@ -89,6 +126,7 @@ function main(runIds) {
     process.exit(1);
   }
   const per = [];
+  const jobTimes = [];
   for (const id of runIds) {
     const { jobs } = JSON.parse(gh(['run', 'view', id, '--json', 'jobs']));
     const run = { unit: {}, sim: {}, e2e: {}, perf: 0 };
@@ -96,9 +134,14 @@ function main(runIds) {
       // A red job's other files still timed true; a cancelled or skipped one says nothing. The unit
       // tests ran in `static and unit` until 2026-10-05, then in `unit`. Since the suite moved into
       // suite.yml (2026-10-05), ci.yml's jobs are named `suite / unit (1/2)` and so on.
-      if (!/^(?:suite \/ )?(sim|browser|unit|static and unit)\b/.test(job.name)) continue;
+      const tier = /^(?:suite \/ )?(sim|browser|unit|static and unit)\b/.exec(job.name)?.[1];
+      if (!tier) continue;
       if (!['success', 'failure'].includes(job.conclusion)) continue;
-      const got = parseLog(gh(['run', 'view', '--job', String(job.databaseId), '--log']));
+      const log = gh(['run', 'view', '--job', String(job.databaseId), '--log']);
+      const got = parseLog(log);
+      // The whole job's seconds against its runner steps': the setup the slice plan adds per slice.
+      const seconds = (Date.parse(job.completedAt) - Date.parse(job.startedAt)) / 1000;
+      if (job.conclusion === 'success') jobTimes.push({ tier, seconds, ran: runnerSeconds(log) });
       Object.assign(run.unit, got.unit);
       Object.assign(run.sim, got.sim);
       Object.assign(run.e2e, got.e2e);
@@ -116,6 +159,7 @@ function main(runIds) {
     about:
       'Measured CI seconds per test file, averaged over the runs below; scripts/shard-plan.mjs balances the sim and browser slices with them, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>...',
     runs: runIds.map(Number),
+    overhead: meanOverheads(jobTimes),
     perf: perfRuns.length
       ? Math.round((perfRuns.reduce((n, r) => n + r.perf, 0) / perfRuns.length) * 10) / 10
       : 0,
@@ -130,7 +174,7 @@ function main(runIds) {
     shell: process.platform === 'win32',
   });
   console.log(
-    `[examined] ${per.length} runs: ${Object.keys(table.unit).length} unit files, ${Object.keys(table.sim).length} sim files, ${Object.keys(table.e2e).length} browser specs, perf ${table.perf} s; wrote ${TIMINGS_FILE}`,
+    `[examined] ${per.length} runs: job setup (s) ${JSON.stringify(table.overhead)} over ${jobTimes.length} jobs; ${Object.keys(table.unit).length} unit files, ${Object.keys(table.sim).length} sim files, ${Object.keys(table.e2e).length} browser specs, perf ${table.perf} s; wrote ${TIMINGS_FILE}`,
   );
 }
 
