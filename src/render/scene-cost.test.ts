@@ -246,6 +246,8 @@ describe('the still scene along every route', () => {
         lit: true,
         landReach: (e, side, s) => rs.landReach(e, side, s),
       });
+      // Playtest 4 (run A, item 7): and the revellers on the party blocks' balconies, once the fronts are placed.
+      lights.setFronts(placed);
       // Run W-U: San Francisco's waterfront.
       const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
       // Run W-U: the Pacific Northwest's places (the ferry, the clear-cut, the Stump Social).

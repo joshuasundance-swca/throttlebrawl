@@ -3,14 +3,31 @@
 // words are pack signs, several names to a board so a street is not one name repeated); the street's
 // party zones hang string lights beside the road at dusk (party-lights.ts). Rules, not lists: where a
 // name stands, which way it faces, that it fits its board, what is lit when, and what stays off the road.
-import { Matrix4, Vector3 } from 'three';
+import {
+  AdditiveBlending,
+  Frustum,
+  Matrix4,
+  type Mesh,
+  type MeshBasicMaterial,
+  PerspectiveCamera,
+  Vector3,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import type { BoardCatalog } from './boards';
 import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { textSurfaceItemId, type SceneryModel } from './models';
-import { CROSS_CLEARANCE_M, isLitTime, PartyLights, partyRuns, PARTY_DRESSING } from './party-lights';
+import {
+  BULB_SIZE_M,
+  CORD_W_M,
+  CROSS_CLEARANCE_M,
+  GLOW_R_M,
+  isLitTime,
+  PartyLights,
+  partyRuns,
+  PARTY_DRESSING,
+} from './party-lights';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KEYS_KIT, RoadsideLayer } from './roadside';
 import {
@@ -388,21 +405,22 @@ describe('the party strings', () => {
     );
   });
 
-  it('is one draw call near a party stretch, nothing far from one, and inside a small triangle budget', () => {
+  it('is two draw calls near a party stretch (the strings, and their glow), nothing far from one, and inside a small triangle budget', () => {
     const run = runs[0];
     if (!run) throw new Error('no run');
     const c = road.toWorld(run.edge, (run.s0 + run.s1) / 2, 0, 0);
     lit.update(c.x, c.z);
     const near = lit.counts();
-    expect(near.drawCalls).toBe(1);
+    // Playtest 4, run A item 7: the strings are lit, so there is a second, additive mesh.
+    expect(near.drawCalls).toBe(2);
     expect(near.shownBulbs).toBeGreaterThan(20);
     expect(near.triangles).toBeGreaterThan(0);
-    expect(near.triangles).toBeLessThanOrEqual(4000);
+    expect(near.triangles).toBeLessThanOrEqual(9000);
     const start = road.toWorld(0, 0, 0, 0);
     lit.update(start.x + 5000, start.z);
     expect(lit.counts()).toMatchObject({ drawCalls: 0, shownBulbs: 0, triangles: 0 });
     print(
-      `[examined] party strings: ${lit.counts().bulbs} bulbs over ${runs.length} stretches; near one: ${near.shownBulbs} shown, ${near.triangles} triangles, 1 draw call`,
+      `[examined] party strings: ${lit.counts().bulbs} bulbs over ${runs.length} stretches; near one: ${near.shownBulbs} shown, ${near.triangles} triangles, ${near.drawCalls} draw calls`,
     );
   });
 
@@ -420,9 +438,228 @@ describe('the party strings', () => {
     expect(again.bulbs()).toEqual(lit.bulbs());
   });
 
+  // Playtest 4, run A item 7: "the party lights read as unlit coloured diamonds floating with no string".
+  /** Triangle centroids of a mesh's whole buffer (the index only picks what is near the camera). */
+  const centroidsOf = (mesh: Mesh): Vector3[] => {
+    const pos = mesh.geometry.getAttribute('position');
+    const out: Vector3[] = [];
+    for (let i = 0; i + 2 < pos.count; i += 3) {
+      out.push(
+        new Vector3(
+          (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3,
+          (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3,
+          (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3,
+        ),
+      );
+    }
+    return out;
+  };
+  const meshNamed = (name: string) => lit.group.children.find((c) => c.name === name) as Mesh | undefined;
+
+  /** Midpoints of neighbouring bulbs on one string: where the cord must be. */
+  const betweenBulbs = (): Vector3[] => {
+    const bulbs = lit.bulbs();
+    const out: Vector3[] = [];
+    for (let i = 1; i < bulbs.length; i++) {
+      const a = bulbs[i - 1]!;
+      const b = bulbs[i]!;
+      const gap = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      if (gap > 0.5 && gap < 1.7) out.push(new Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2));
+    }
+    return out;
+  };
+
+  it('hangs every bulb on a drawn string: the cord is in the mesh between each pair of neighbours', () => {
+    const mesh = meshNamed('party-lights');
+    if (!mesh) throw new Error('no strings mesh');
+    const tris = centroidsOf(mesh);
+    const mids = betweenBulbs();
+    expect(mids.length).toBeGreaterThan(900);
+    const nearest = (p: Vector3) => tris.reduce((m, t) => Math.min(m, t.distanceTo(p)), Infinity);
+    // A sample of the between-bulb points (every 7th): a drawn cord, drawn in segments a metre long, lies within 0.4 m of each.
+    const sample = mids.filter((_, i) => i % 7 === 0);
+    const missing = sample.filter((p) => nearest(p) > 0.4);
+    // The control: a point a metre under each cord has nothing of the mesh near it (the bulbs, posts and cord are above).
+    const under = sample.map((p) => new Vector3(p.x, p.y - 1, p.z)).filter((p) => nearest(p) <= 0.4);
+    print(
+      `[examined] ${sample.length} points between neighbouring bulbs: ${sample.length - missing.length} have the cord within 0.4 m; of the same points a metre lower, ${under.length} do`,
+    );
+    expect(missing.length).toBe(0);
+    expect(under.length).toBeLessThan(sample.length * 0.05);
+  });
+
+  it('draws cord and bulbs big enough to read at riding distance: 1 px or more at 40 m, on a 915 px view', () => {
+    // A 70 degree view 412 px high: one metre at 40 m is 7.4 px.
+    const pxPerM = 412 / 2 / Math.tan((35 * Math.PI) / 180) / 40;
+    expect(CORD_W_M * pxPerM).toBeGreaterThanOrEqual(1);
+    expect(BULB_SIZE_M * pxPerM).toBeGreaterThanOrEqual(2.5);
+    expect(GLOW_R_M * pxPerM).toBeGreaterThanOrEqual(5);
+  });
+
+  it('lights each bulb: an additive glow, bright at the bulb and black at its rim, at dusk and night only', () => {
+    const glow = meshNamed('party-lights-glow');
+    if (!glow) throw new Error('no glow mesh');
+    const material = glow.material as MeshBasicMaterial;
+    expect(material.blending).toBe(AdditiveBlending);
+    expect(material.transparent).toBe(true);
+    expect(material.depthWrite).toBe(false);
+    const pos = glow.geometry.getAttribute('position');
+    const col = glow.geometry.getAttribute('color');
+    const bulbs = lit.bulbs();
+    const bad: string[] = [];
+    for (const b of bulbs.filter((_, i) => i % 41 === 0)) {
+      let centre = 0;
+      let reach = 0;
+      let rimBright = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const d = Math.hypot(pos.getX(i) - b.x, pos.getY(i) - b.y, pos.getZ(i) - b.z);
+        const v = Math.max(col.getX(i), col.getY(i), col.getZ(i));
+        if (d < 0.05) centre = Math.max(centre, v);
+        if (d > GLOW_R_M * 0.9 && d < GLOW_R_M * 1.1) {
+          reach = Math.max(reach, d);
+          rimBright = Math.max(rimBright, v);
+        }
+      }
+      if (centre < 0.3) bad.push(`a bulb's glow is dark at its centre (${centre.toFixed(2)})`);
+      if (reach < GLOW_R_M * 0.9) bad.push(`a bulb's glow reaches ${reach.toFixed(2)} m, not ${GLOW_R_M} m`);
+      if (rimBright > 0.01) bad.push(`a bulb's glow is ${rimBright.toFixed(2)} bright at its rim`);
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+    // By day there is nothing to light.
+    const day = new PartyLights(look, { road, dressing, seed: 7, lit: false, landReach });
+    expect(day.group.children.find((c) => c.name === 'party-lights-glow')).toBeUndefined();
+  });
+
   it('knows the road is a party street from its zones, which the model loader reads as Old Town', () => {
     const { tropical, tags } = networkTags(road, dressing);
     expect(tropical).toBe(true);
     expect(tags.has('key-oldtown')).toBe(true);
+  });
+});
+
+// Playtest 4, run A item 7: "at riding speed each frame shows 0 to 2 people, so it is not a crowd yet". The street's
+// real people are the sim's pedestrians, a few to a block side, which a rider passes in a second or two. The balconies
+// are full of revellers now: scenery a storey up, so a hitbox of nothing, in view all the way down a party block.
+describe.each([7, 42])("a party block's balconies are full, seed %i", (seed) => {
+  const { road, dressing } = track(DUVAL);
+  const built = buildRoadScene(road, look, dressing, { seed });
+  const landReach = (e: number, side: -1 | 1, s: number) => built.landReach(e, side, s);
+  const layer = new RoadsideLayer(keysRoadside, look, {
+    road,
+    dressing,
+    seed,
+    density: 1,
+    kit: KEYS_KIT,
+    landReach,
+    spots: built.spots,
+    models: { keysRoadside, duvalKit },
+  });
+  while (!layer.ready) layer.update(1e9, 1e9, 360);
+  const runs = partyRuns(road, dressing);
+  const standing = (lit: boolean) => {
+    const lights = new PartyLights(look, { road, dressing, seed, lit, landReach });
+    lights.setFronts(layer.surfaces());
+    return lights;
+  };
+  const crowd = standing(true);
+
+  /** The chase camera of the cost test and the camera notes: 7 m back, 2.6 m up, aimed 18 m ahead. */
+  function cameraAt(edge: number, s: number): PerspectiveCamera {
+    const eye = road.toWorld(edge, Math.max(0, s - 7), 0, 2.6);
+    const aim = road.toWorld(edge, s + 18, 0, 0.9);
+    const rider = road.toWorld(edge, s, 0, 0);
+    eye.y = Math.max(eye.y, rider.y + 2.6);
+    const cam = new PerspectiveCamera(70, 915 / 412, 0.3, 760);
+    cam.position.set(eye.x, eye.y, eye.z);
+    cam.lookAt(aim.x, aim.y, aim.z);
+    cam.updateMatrixWorld(true);
+    cam.updateProjectionMatrix();
+    return cam;
+  }
+
+  /** Revellers in the camera's frustum and within `reachM`. */
+  function inView(lights: PartyLights, cam: PerspectiveCamera, reachM: number): number {
+    const frustum = new Frustum().setFromProjectionMatrix(
+      new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+    );
+    return lights
+      .revellers()
+      .filter((r) => cam.position.distanceTo(new Vector3(r.x, r.y + 1.5, r.z)) <= reachM)
+      .filter((r) => frustum.containsPoint(new Vector3(r.x, r.y + 1.5, r.z))).length;
+  }
+
+  it('stands revellers on the balconies of the party blocks, a storey up and clear of the lanes', () => {
+    const figures = crowd.revellers();
+    expect(figures.length).toBeGreaterThan(60);
+    const bad: string[] = [];
+    for (const r of figures) {
+      const p = road.project(r.x, r.z);
+      const e = road.edges[p.edge];
+      const covering = runs.filter(
+        (u) => u.edge === p.edge && p.s >= u.s0 - 6 && p.s <= u.s1 + 6 && Math.sign(p.d) === u.side,
+      );
+      if (!e || covering.length === 0) {
+        bad.push(`a reveller at s ${p.s.toFixed(0)} d ${p.d.toFixed(1)} is off every party block`);
+        continue;
+      }
+      const ground = road.toWorld(p.edge, p.s, p.d, 0).y;
+      const up = r.y - ground;
+      if (up < 3 || up > 4.2) bad.push(`a reveller at s ${p.s.toFixed(0)} stands ${up.toFixed(1)} m up`);
+      const outer = p.d < 0 ? -e.dMin : e.dMax;
+      if (Math.abs(p.d) < outer + 2)
+        bad.push(
+          `a reveller at s ${p.s.toFixed(0)} is ${(Math.abs(p.d) - outer).toFixed(1)} m past the road`,
+        );
+    }
+    print(`[examined] seed ${seed}: ${figures.length} revellers on the party blocks' balconies`);
+    expect(bad.slice(0, 6)).toEqual([]);
+  });
+
+  it('shows a crowd from the chase camera all the way down every party block, where there was none to see', () => {
+    // Along each run, every 12 m from the block's start: the revellers within 120 m and in the picture.
+    const poses = runs.flatMap((r) => {
+      const out: { edge: number; s: number }[] = [];
+      for (let s = r.s0; s <= r.s1; s += 12) out.push({ edge: r.edge, s });
+      return out;
+    });
+    const seen = poses.map((p) => inView(crowd, cameraAt(p.edge, p.s), 120));
+    const sorted = [...seen].sort((a, b) => a - b);
+    const low = sorted[Math.floor(sorted.length * 0.1)] ?? 0;
+    // The control: with no balconies stood, the same measure finds nobody (the run A frames showed 0 to 2).
+    const bare = new PartyLights(look, { road, dressing, seed, lit: true, landReach });
+    const none = poses.map((p) => inView(bare, cameraAt(p.edge, p.s), 120));
+    print(
+      `[examined] seed ${seed}: ${poses.length} poses down the party blocks; revellers in view: median ${sorted[Math.floor(sorted.length / 2)]}, the lowest tenth ${low}, most ${sorted[sorted.length - 1]}; with no crowd stood: most ${Math.max(...none)}`,
+    );
+    expect(Math.max(...none)).toBe(0);
+    expect(low).toBeGreaterThanOrEqual(8);
+  });
+
+  it('is one draw call, near the party blocks only, inside a small triangle budget, day or night', () => {
+    let worst = 0;
+    for (const lights of [crowd, standing(false)]) {
+      for (const run of runs) {
+        const c = road.toWorld(run.edge, (run.s0 + run.s1) / 2, 0, 0);
+        lights.update(c.x, c.z);
+        const near = lights.counts().crowd;
+        expect(near?.drawCalls).toBe(1);
+        expect(near?.shownFigures).toBeGreaterThan(10);
+        worst = Math.max(worst, near?.triangles ?? 0);
+      }
+      const start = road.toWorld(0, 0, 0, 0);
+      lights.update(start.x + 5000, start.z);
+      expect(lights.counts().crowd).toMatchObject({ drawCalls: 0, shownFigures: 0, triangles: 0 });
+    }
+    print(`[examined] seed ${seed}: the crowd's worst view is ${worst} triangles, one draw call`);
+    expect(worst).toBeLessThanOrEqual(12000);
+  });
+
+  it('is the same every time for a seed, and builds on a road with no party block as nothing', () => {
+    expect(standing(true).revellers()).toEqual(crowd.revellers());
+    const m1 = track('keys-m1');
+    const other = new PartyLights(look, { road: m1.road, dressing: m1.dressing, seed, lit: true });
+    other.setFronts(layer.surfaces());
+    expect(other.revellers()).toEqual([]);
+    expect(other.counts().crowd).toBeNull();
   });
 });

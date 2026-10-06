@@ -4,6 +4,7 @@
 // kits meet those rules on the real data: every feature finds its kit and node through the asset
 // manifest, the layer draws them in one call, and the deck the road bakes passes between each tower's
 // legs at its real height there.
+import { Color, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { assetIndex, createPackLibrary } from '../content';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
@@ -545,4 +546,89 @@ describe('Coit Tower reads as a tower from Telegraph Hill Boulevard (playtest 4,
     );
     expect(hidden).toBeGreaterThan(total / 2);
   });
+});
+
+// Playtest 4, P4-19 (G4; the run A check at deck s 389: "two big blank slabs (grey and beige) crowd both
+// rails where the main cables end. They read as buildings, not anchorages"). The kit's anchorage is two
+// 38 m concrete housings 8 m high on a 42 m apron. The bridge now draws each cable's anchorage in code
+// (gg-anchorage.ts): a low stepped housing in the bridge's paint that the cable lands on.
+describe('the Golden Gate cables end in anchorages, not blocks (playtest 4, G4)', () => {
+  const road = track('osm-sf-golden-gate');
+  const bridge = landmarkPlacements(road).find((p) => p.node === 'gg_bridge');
+  if (!bridge) throw new Error('no bridge');
+  const kitsP = kitsFor(road);
+
+  /** One anchorage's vertices as the layer drew them: metres behind the cable entry, across, over the deck. */
+  async function anchorageOf(end: 0 | 1) {
+    const layer = new LandmarkLayer(await kitsP, look, { road });
+    const mesh = layer.group.children[0] as Mesh;
+    const pos = mesh.geometry.getAttribute('position');
+    const col = mesh.geometry.getAttribute('color');
+    const nrm = mesh.geometry.getAttribute('normal');
+    const s0 = end === 0 ? bridge!.feature.s0 : bridge!.feature.s1;
+    // Along the approach, away from the span: +1 behind the entry.
+    const behind = end === 0 ? -1 : 1;
+    const o = road.toWorld(bridge!.edge, s0, 0, 0);
+    const out: { a: number; x: number; y: number; r: number; g: number; b: number; ny: number }[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      const wx = pos.getX(i);
+      const wz = pos.getZ(i);
+      if (Math.hypot(wx - o.x, wz - o.z) > 90) continue;
+      const p = road.project(wx, wz);
+      if (p.edge !== bridge!.edge) continue;
+      const a = (p.s - s0) * behind;
+      // The housing stands behind the entry; the first bay and the cable's last tube stand ahead of it.
+      if (a < 0.75) continue;
+      out.push({
+        a,
+        x: p.d,
+        y: pos.getY(i) - o.y,
+        r: col.getX(i),
+        g: col.getY(i),
+        b: col.getZ(i),
+        ny: nrm.getY(i),
+      });
+    }
+    return out.filter((v) => v.y > -0.3);
+  }
+
+  it.each([0, 1] as const)(
+    'end %i: stands low, short and clear of the lanes, in the bridge paint',
+    async (end) => {
+      const kits = await kitsP;
+      const entry = kits.get('golden-gate')?.nodes.get('gg_anchorage')?.extras['cable_entry_m'] ?? 6;
+      const v = await anchorageOf(end);
+      expect(v.length, 'an anchorage above the deck').toBeGreaterThan(24);
+      const high = Math.max(...v.map((p) => p.y));
+      const length = Math.max(...v.map((p) => p.a));
+      const inner = Math.min(...v.map((p) => Math.abs(p.x)));
+      // The paint: the default bridge paint (#c0452f) or its shaded collar, never the kit's concrete.
+      const paint = new Color('#c0452f');
+      const isPaint = (p: { r: number; g: number; b: number }) => {
+        const k = p.r / paint.r;
+        return (
+          k > 0.5 && k <= 1.001 && Math.abs(p.g - paint.g * k) < 0.02 && Math.abs(p.b - paint.b * k) < 0.02
+        );
+      };
+      const upper = v.filter((p) => p.y > 1.2);
+      const painted = upper.filter(isPaint).length / upper.length;
+      // The steps: the heights of the housing's upward-facing tops, told apart to 0.4 m.
+      const tops = [
+        ...new Set(v.filter((p) => p.ny > 0.9 && p.y > 0.5).map((p) => Math.round(p.y * 2.5) / 2.5)),
+      ];
+      stdout.write(
+        `[examined] anchorage ${end}: ${v.length} vertices over the deck; highest ${high.toFixed(1)} m (cable enters at ${entry} m), ${length.toFixed(1)} m long, inner face ${inner.toFixed(1)} m from the centre line, ${(painted * 100).toFixed(0)} % painted, ${tops.length} step tops\n`,
+      );
+      // Lower: nothing over the deck higher than the cable's saddle collar (the old blocks rose to 8 m).
+      expect(high).toBeLessThanOrEqual(entry + 0.7);
+      // Short: a housing, not a hall (the old ones were 38 m).
+      expect(length).toBeLessThanOrEqual(24);
+      // Clear of the lanes (the road is 27.6 m wide).
+      expect(inner).toBeGreaterThanOrEqual(14.5);
+      // The colour of the bridge, above the plinth.
+      expect(painted).toBeGreaterThanOrEqual(0.8);
+      // Stepped, so it reads as a structure the cable climbs onto.
+      expect(tops.length).toBeGreaterThanOrEqual(3);
+    },
+  );
 });
