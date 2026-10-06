@@ -66,6 +66,8 @@ import {
 } from '../../road';
 import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
+import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../riders/contact';
+import { furnitureOn, LIGHT_KICK, LIGHT_SCRUB } from '../riders/furniture';
 import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -284,10 +286,64 @@ export interface TumbleState {
   /** By entity id: the last rider to land a hit on them, and the tick (for blame). */
   hitBy: EntityId[];
   hitTick: number[];
+  /**
+   * By entity id: whose parked bike the rider rode into last tick, that rider's id + 1 (0 for none;
+   * playtest 4, `parkedBikeContacts`), so one bike is ridden through once. Absent in old states.
+   */
+  bikeTouch?: number[];
 }
 
 export function tumbleState(world: World): TumbleState {
-  return systemState<TumbleState>(world, 'tumble', () => ({ records: [], hitBy: [], hitTick: [] }));
+  return systemState<TumbleState>(world, 'tumble', () => ({
+    records: [],
+    hitBy: [],
+    hitTick: [],
+    bikeTouch: [],
+  }));
+}
+
+/** A parked bike's box (the rider box the bike models are fitted to, render/riders/bake.ts) and its top, m. */
+const PARKED_BIKE_HALF_LENGTH_M = RIDER_HALF_LENGTH_M;
+const PARKED_BIKE_HALF_WIDTH_M = RIDER_CONTACT_HALF_WIDTH_M;
+const PARKED_BIKE_TOP_M = 1.2;
+
+/**
+ * A riding rider meeting another rider's parked bike (playtest 4: the hitbox audit found the bikes left
+ * standing while their riders run back to them drawn with no sim shape, so anyone rode through them). A
+ * parked bike is knocked aside, not ridden into as a wall (docs/content-packs.md, "Contact outcomes":
+ * light or knockable things): the rider rides through it once with a light street piece's cost (a
+ * little speed and a heading kick, sim/riders/furniture.ts) and a `wobble` whose `cause` is `smash`
+ * (`object` `parked-bike`, target its rider), never a crash, so a bike left on a lane after a crash never
+ * brings down the rider behind it. Off with `riders.furniture`.
+ */
+function parkedBikeContacts(world: World, st: TumbleState): void {
+  if (!furnitureOn(world.params)) return;
+  const touch = (st.bikeTouch ??= []);
+  for (const m of world.movers) {
+    if (m.kind !== 'rider' || (m.mode !== 'Road' && m.mode !== 'Airborne') || m.h > PARKED_BIKE_TOP_M)
+      continue;
+    let met = 0;
+    for (const owner of world.movers) {
+      const bike = owner.id === m.id ? null : (st.records[owner.id]?.parked ?? null);
+      if (!bike || bike.edge !== m.pos.edge) continue;
+      if (Math.abs(bike.s - m.pos.s) >= PARKED_BIKE_HALF_LENGTH_M + RIDER_HALF_LENGTH_M) continue;
+      if (Math.abs(bike.d - m.pos.d) >= PARKED_BIKE_HALF_WIDTH_M + RIDER_CONTACT_HALF_WIDTH_M) continue;
+      met = owner.id + 1;
+      if (touch[m.id] === met) break;
+      const toward = bike.d >= m.pos.d ? 1 : -1;
+      m.speed *= LIGHT_SCRUB;
+      m.yaw = Math.max(-1.2, Math.min(1.2, m.yaw - toward * m.pos.dir * LIGHT_KICK));
+      emit(
+        world,
+        'wobble',
+        m.id,
+        { cause: 'smash', object: 'parked-bike', speed: m.speed },
+        { target: owner.id },
+      );
+      break;
+    }
+    touch[m.id] = met;
+  }
 }
 
 /** The crash in progress for an entity, or null. */
@@ -824,5 +880,6 @@ export const tumbleSystem: SimSystem = {
       if (r.phase === 'tumble') stepTumble(world, config, m, r, dt);
       else stepOnFoot(world, config, m, r, dt);
     }
+    parkedBikeContacts(world, st);
   },
 };

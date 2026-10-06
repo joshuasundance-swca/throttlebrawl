@@ -29,7 +29,9 @@ import {
   type SimTrafficTypeDef,
 } from '../src/sim/api';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
-import { HAZARD_REACH_D_M, HAZARD_REACH_S_M } from '../src/sim/riders/features';
+import { FURNITURE, FURNITURE_KINDS, type FurnitureFoot, type FurnitureKind } from '../src/road';
+import { HAZARD_REACH_D_M, LIGHT_HAZARD_OBJECTS } from '../src/sim/riders/features';
+import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M } from '../src/sim/riders/furniture';
 import { MOVING } from '../src/sim/modifiers/moving';
 import { extent, SET_PIECE } from '../src/sim/modifiers/setpieces';
 import { PEDS } from '../src/sim/peds';
@@ -45,6 +47,7 @@ import {
 } from '../src/render/figures';
 import { mergeBoxes, type BoxPart } from '../src/render/geometry';
 import { readGlb } from '../src/render/glb';
+import type { ModelKind } from '../src/render/models';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
 import { solidHazardModel } from '../src/render/pnw-places';
 import { riderLookOf } from '../src/render/rider-looks';
@@ -60,6 +63,7 @@ import {
   trafficFigureFor,
 } from '../src/render/traffic-figures';
 import { RAILING_OUT_M } from '../src/render/verge';
+import { bench as waterfrontBench, lamp as waterfrontLamp } from '../src/render/waterfront';
 import { bakeVehicle, trafficModelRows } from '../src/render/vehicles';
 import {
   CAR_PARTS,
@@ -282,14 +286,15 @@ function packTypes(): PackType[] {
 /** What touching a traffic type does to a rider (sim/traffic contacts, sim/peds react). */
 function trafficOutcome(t: PackType): string {
   // The roadside class decides it where a pack gives one (docs/content-packs.md, roadside classes).
+  // The one rule for heavy things (playtest 4, #552 and "solid but forgiving"): the closing speed along
+  // the contact's normal, a crash from `traffic.solidHitMps`, a graze or a slower hit a wobble.
+  const rule = `closing speed: a crash from ${TRAFFIC.solidHitMps} m/s, else a wobble`;
   if (t.roadside === 'dodges') return 'none (dodges: gets out of the way)';
-  if (t.roadside === 'yields') return 'crash if hit (yields)';
-  if (t.roadside === 'solid') return 'crash (solid: does not move)';
+  if (t.roadside === 'yields') return `gets out of the way; if hit, ${rule}`;
+  if (t.roadside === 'solid') return rule;
   const walker = t.category === 'pedestrian' || t.category === 'animal';
-  if (walker) return t.hazard === 'big' ? 'crash' : 'none (it dives aside)';
-  // Today's traffic rule (sim/traffic contacts): a big vehicle crashes on any touch; the rest wobble,
-  // or crash end-on at `traffic.solidHitMps` closing or more.
-  return t.hazard === 'big' ? 'crash' : `wobble (crash end-on at ${TRAFFIC.solidHitMps} m/s+)`;
+  if (walker) return t.hazard === 'big' ? `if hit, ${rule}` : 'none (it dives aside)';
+  return rule;
 }
 
 /**
@@ -630,7 +635,9 @@ function hazardRows(features: { road: string; f: Feature }[]): Row[] {
     rows.push({
       group: 'solid road hazards',
       thing: `${kind} (${road}, ${len.toFixed(2)} x ${w.toFixed(2)} m)`,
-      outcome: 'crash head-on at speed, a scrape from the side',
+      outcome: LIGHT_HAZARD_OBJECTS.includes(kind)
+        ? 'light: ridden through with a wobble, never a crash'
+        : `closing speed: a crash from ${TRAFFIC.solidHitMps} m/s square on, a graze or a side scrape a wobble`,
       simL: len,
       simW: w,
       drawn: foot,
@@ -703,6 +710,110 @@ function carrierRows(): Row[] {
   });
 }
 
+/**
+ * The cross-section of a geometry over the heights `hs`: where its triangles cross each height, as a
+ * footprint (a pole drawn as a cylinder has vertices only at its ends, so its vertices alone would
+ * miss it). The street furniture's footprint is taken this way, from 0.1 m to its solid top or 1.95 m:
+ * a tree pit's grate is under the wheels, a lamp's arm and a tree's crown over a rider's head.
+ */
+function sliceFoot(g: BufferGeometry, hs: readonly number[]): Foot {
+  const pos = g.getAttribute('position');
+  const index = g.getIndex();
+  const n = index ? index.count : pos.count;
+  const at = (i: number) => new Vector3().fromBufferAttribute(pos, index ? index.getX(i) : i);
+  const box = new Box3();
+  for (let t = 0; t + 2 < n; t += 3) {
+    const tri = [at(t), at(t + 1), at(t + 2)] as const;
+    for (const h of hs)
+      for (const [p, q] of [
+        [tri[0], tri[1]],
+        [tri[1], tri[2]],
+        [tri[2], tri[0]],
+      ] as const) {
+        if ((p.y - h) * (q.y - h) > 0 || p.y === q.y) continue;
+        const k = (h - p.y) / (q.y - p.y);
+        box.expandByPoint(new Vector3(p.x + (q.x - p.x) * k, h, p.z + (q.z - p.z) * k));
+      }
+  }
+  return footOf(box);
+}
+
+/** The heights a street piece's footprint is taken over (`sliceFoot`). */
+const sliceHeights = (topM: number) => [0.1, 0.25, 0.5, 0.8, 1.1, 1.4, 1.7, 1.95].filter((h) => h <= topM);
+
+/** Where each piece of street furniture is drawn from: a model's variants, or a waterfront shape. */
+const FURNITURE_DRAWN: Readonly<
+  Record<FurnitureKind, { model: ModelKind; variants: readonly number[] } | 'lamp' | 'bench'>
+> = {
+  'street-tree': { model: 'sfRoadside', variants: [3] },
+  board: { model: 'sfRoadside', variants: [6, 7, 8] },
+  lamp: { model: 'sfRoadside', variants: [12] },
+  meter: { model: 'sfRoadside', variants: [10] },
+  bins: { model: 'sfRoadside', variants: [11] },
+  hydrant: { model: 'sfRoadside', variants: [4] },
+  scooter: { model: 'sfRoadside', variants: [5] },
+  'planter-palm': { model: 'duvalKit', variants: [7] },
+  'scooter-rack': { model: 'duvalKit', variants: [6] },
+  frangipani: { model: 'keysIdentity', variants: [5] },
+  'dt-lamp': { model: 'sfDowntown', variants: [7] },
+  'dt-signal': { model: 'sfDowntown', variants: [8] },
+  'dt-planter': { model: 'sfDowntown', variants: [9] },
+  'dt-bench': { model: 'sfDowntown', variants: [10] },
+  'dt-orb': { model: 'sfDowntown', variants: [11] },
+  palm: { model: 'palms', variants: [0, 1, 2] },
+  'wf-lamp': 'lamp',
+  'wf-bench': 'bench',
+  'parked-car': { model: 'sfRoadside', variants: [0, 1, 2] },
+};
+
+/**
+ * Street furniture (playtest 4, "solid but forgiving"; road/furniture.ts): each kind's sim footprint (a
+ * circle or a box round its own centre, in the model's frame) vs the drawn model's cross-section, centred
+ * the same way. The model's z runs along the sim box's length here, its x across.
+ */
+async function furnitureRows(): Promise<Row[]> {
+  const rows: Row[] = [];
+  const models = new Map<ModelKind, Awaited<ReturnType<typeof bakeRepoModel>>>();
+  for (const kind of FURNITURE_KINDS) {
+    const spec = FURNITURE[kind];
+    const drawn = FURNITURE_DRAWN[kind];
+    const feet: readonly FurnitureFoot[] = spec.foot;
+    const geometries: { v: number; g: BufferGeometry }[] = [];
+    if (drawn === 'lamp') geometries.push({ v: 0, g: waterfrontLamp().geometry() });
+    else if (drawn === 'bench') geometries.push({ v: 0, g: waterfrontBench().geometry() });
+    else {
+      let model = models.get(drawn.model);
+      if (!model) models.set(drawn.model, (model = await bakeRepoModel(drawn.model)));
+      for (const v of drawn.variants) {
+        const g = model.variants[v];
+        if (!g) throw new Error(`${drawn.model} has no variant ${v}`);
+        geometries.push({ v, g });
+      }
+    }
+    for (const { v, g } of geometries) {
+      const foot = feet[Math.min(v, feet.length - 1)] ?? feet[0] ?? {};
+      const cx = foot.cx ?? 0;
+      const cz = foot.cz ?? 0;
+      const f = sliceFoot(g, sliceHeights(spec.heightM));
+      const hx = foot.r ?? foot.hx ?? 0;
+      const hz = foot.r ?? foot.hz ?? 0;
+      rows.push({
+        group: 'street furniture',
+        thing: `${kind}${geometries.length > 1 ? ` (variant ${v})` : ''}`,
+        outcome:
+          spec.cls === 'solid'
+            ? `solid: closing speed, a crash from ${TRAFFIC.solidHitMps} m/s square on, a graze or side a wobble`
+            : 'light: ridden through with a wobble, never a crash',
+        simL: 2 * hz,
+        simW: 2 * hx,
+        drawn: { z0: f.z0 - cz, z1: f.z1 - cz, x0: f.x0 - cx, x1: f.x1 - cx },
+        how: `${typeof drawn === 'string' ? `render/waterfront.ts ${drawn}()` : `${drawn.model}[${v}]`}, cross-section ${foot.r !== undefined ? '(a circle: its box)' : ''}`,
+      });
+    }
+  }
+  return rows;
+}
+
 /** Rails and walls: the sim's line (the lane edge) vs the drawn barrier's inner face. */
 function barrierRows(): Row[] {
   // A barrier is a line, not a box: the rows hold a zero-length span along and the across offset.
@@ -732,6 +843,7 @@ async function allRows(): Promise<Row[]> {
     ...propRows(),
     ...hazardRows(features),
     ...(await rampTruckRows(features)),
+    ...(await furnitureRows()),
     ...carrierRows(),
     ...barrierRows(),
   ];
@@ -775,8 +887,10 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
     ];
     for (const s of sims) expect(s).toEqual([2.0, 0.8]);
     expect([DEFAULT_HITBOX.lengthM, DEFAULT_HITBOX.widthM]).toEqual([2.0, 0.8]);
-    // A solid hazard stops a rider's centre this far out of its box: the rider's own half box.
-    expect(Math.abs(HAZARD_REACH_S_M - RIDER_HALF_LENGTH_M)).toBeLessThanOrEqual(TOLERANCE_M);
+    // The capsule that meets the street furniture and the solid hazards is that box with round ends.
+    expect(BIKE_SPINE_HALF_M + BIKE_RADIUS_M).toBe(RIDER_HALF_LENGTH_M);
+    expect(BIKE_RADIUS_M).toBe(RIDER_CONTACT_HALF_WIDTH_M);
+    // A ramp truck's side holds a rider's centre this far out: the rider's own half width.
     expect(Math.abs(HAZARD_REACH_D_M - RIDER_CONTACT_HALF_WIDTH_M)).toBeLessThanOrEqual(TOLERANCE_M);
   });
 
@@ -795,6 +909,7 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
         'set-piece props',
         'smashables',
         'solid road hazards',
+        'street furniture',
         'traffic',
       ].sort(),
     );

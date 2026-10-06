@@ -29,6 +29,7 @@ import {
   setPieceActive,
   type BakedFeature,
 } from '../../road';
+import type { FurnitureShape } from '../../road';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDeck, type SimMovingDecks } from '../types';
 import type { World } from '../world';
 
@@ -307,20 +308,32 @@ export function truckClosingMps(f: BakedFeature, speed: number, dir: 1 | -1): nu
  * Solid road hazards (the pitch deck's #12, run W-U: the ferry deck's parked pickups and coffee cart,
  * the clear-cut's stumps and log piles, the festival's chainsaw bears). A `hazard` feature whose
  * `params.solid` is true is a box a riding rider cannot pass through: from s0 to s1 and d0 to d1,
- * `params.heightM` tall (HAZARD_DEFAULT_HEIGHT_M when absent), grown by a bike's half width across
- * and half length along so the bike, not its centre, meets it. `params.object` names what it is (a
- * `pickup`, a `stump`...) for the events and for render, which draws it. Hazards belong off the lanes
- * (the verge bands): traffic, the rival AI and the tumble do not see them, and the road lint refuses
- * one over a lane. A hazard with no `solid` is what it was before: data nothing in the sim reads.
+ * `params.heightM` tall (HAZARD_DEFAULT_HEIGHT_M when absent). The bike meets it with its own capsule
+ * (sim/riders/furniture.ts; playtest 4: the same contact, and the same closing-speed rule, as the
+ * street furniture). `params.object` names what it is (a `pickup`, a `stump`...) for the events and for
+ * render, which draws it. Hazards belong off the lanes (the verge bands): traffic, the rival AI and the
+ * tumble do not see them, and the road lint refuses one over a lane. A hazard with no `solid` is what it
+ * was before: data nothing in the sim reads.
  */
 export const HAZARD_DEFAULT_HEIGHT_M = 1.5;
-/** The bike's reach round its centre that meets a hazard: half its width across, half its length along, m. */
+/** The bike's reach beside a ramp truck: half its width across, m (riders' `truckSideContact`). */
 export const HAZARD_REACH_D_M = 0.5;
-export const HAZARD_REACH_S_M = 0.9;
 
 /** Whether a feature is a solid hazard. */
 export function isSolidHazard(f: BakedFeature): boolean {
   return f.kind === 'hazard' && f.params?.['solid'] === true;
+}
+
+/**
+ * Solid hazards that are light (playtest 4, "solid but forgiving": light or breakable things are knocked
+ * aside with a wobble, heavy fixed things are solid by closing speed): the festival's barricades, boards on
+ * legs like the set pieces' sawhorse, which a rider rides through. [default]
+ */
+export const LIGHT_HAZARD_OBJECTS: readonly string[] = ['barricade'];
+
+/** Whether a solid hazard is light (ridden through with a wobble, never a crash). */
+export function isLightHazard(f: BakedFeature): boolean {
+  return LIGHT_HAZARD_OBJECTS.includes(hazardObject(f));
 }
 
 /** A solid hazard's height above the road, m. */
@@ -334,19 +347,38 @@ export function hazardObject(f: BakedFeature): string {
   return typeof o === 'string' && o ? o : 'hazard';
 }
 
-/** The solid hazard a bike centred at (s, d) on the edge meets, or null. */
-export function solidHazardAt(config: SimConfig, edge: number, s: number, d: number): BakedFeature | null {
-  const features = config.road.edges[edge]?.features ?? [];
-  for (const f of features) {
-    if (f.s0 - HAZARD_REACH_S_M > s) break; // sorted by s0
-    if (!isSolidHazard(f)) continue;
-    const s0 = Math.min(f.s0, f.s1) - HAZARD_REACH_S_M;
-    const s1 = Math.max(f.s0, f.s1) + HAZARD_REACH_S_M;
-    const d0 = Math.min(f.d0, f.d1) - HAZARD_REACH_D_M;
-    const d1 = Math.max(f.d0, f.d1) + HAZARD_REACH_D_M;
-    if (s >= s0 && s <= s1 && d >= d0 && d <= d1) return f;
+/** A solid hazard as the contact sees it (sim/riders/furniture.ts): its footprint in the road frame. */
+export interface HazardPiece {
+  feature: BakedFeature;
+  shape: FurnitureShape;
+  /** A key no other solid hazard of the network has (1 and up). */
+  key: number;
+}
+
+/** A road-aligned box from s0..s1 and d0..d1 as a footprint. */
+export function boxShape(s0: number, s1: number, d0: number, d1: number): FurnitureShape {
+  const hu = Math.abs(s1 - s0) / 2;
+  const hv = Math.abs(d1 - d0) / 2;
+  return { s: (s0 + s1) / 2, d: (d0 + d1) / 2, r: 0, hu, hv, us: 1, ud: 0, reachS: hu, reachD: hv };
+}
+
+const hazardPieces = new WeakMap<SimConfig, (readonly HazardPiece[])[]>();
+
+/**
+ * The solid hazards on an edge whose box reaches within `reach` of s (playtest 4: met by the same
+ * contact as the street furniture, sim/riders/furniture.ts, its box exactly as the hitbox audit holds it).
+ */
+export function solidHazardsNear(config: SimConfig, edge: number, s: number, reach: number): HazardPiece[] {
+  let byEdge = hazardPieces.get(config);
+  if (!byEdge) hazardPieces.set(config, (byEdge = []));
+  let list = byEdge[edge];
+  if (!list) {
+    list = (config.road.edges[edge]?.features ?? [])
+      .filter(isSolidHazard)
+      .map((f, i) => ({ feature: f, shape: boxShape(f.s0, f.s1, f.d0, f.d1), key: edge * 65536 + i + 1 }));
+    byEdge[edge] = list;
   }
-  return null;
+  return list.filter((p) => Math.abs(p.shape.s - s) <= reach + p.shape.reachS);
 }
 
 /** The rampTruck (or moving deck, from `moving`) whose box holds (s, d), or null. */

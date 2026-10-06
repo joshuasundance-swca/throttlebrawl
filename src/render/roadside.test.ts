@@ -6,7 +6,15 @@
 // camera rides the road.
 import { Frustum, Matrix4, Mesh, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import {
+  createRoadNetwork,
+  OLDTOWN_SIDEWALK_RULES,
+  planStreetFurniture,
+  SF_SIDEWALK_RULES,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../road';
 import { readGlb } from './glb';
 import { GroundTris } from './land-probe.test-util';
 import { createFlatLook } from './look';
@@ -352,5 +360,58 @@ describe('the roadside kits', () => {
     expect(meshes.length).toBeGreaterThan(0);
     expect(thinned).toBeGreaterThan(0);
     layer.dispose();
+  });
+});
+
+describe("the kits' sidewalk pieces are road/furniture.ts's plan (playtest 4, solid but forgiving)", () => {
+  it('each planned rule places as the plan does: the same stream, spacing, offsets and clear ground', () => {
+    const plans = [...SF_SIDEWALK_RULES, ...OLDTOWN_SIDEWALK_RULES];
+    const planned = [SF_KIT, KEYS_KIT].flatMap((kit) =>
+      kit.rules.map((rule, index) => ({ rule, index })).filter(({ rule }) => rule.planned),
+    );
+    expect(planned.map(({ rule }) => rule.id).sort()).toEqual(plans.map((p) => p.id).sort());
+    for (const { rule, index } of planned) {
+      const p = plans.find((q) => q.id === rule.id);
+      if (!p) throw new Error(`no plan rule ${rule.id}`);
+      const fields = (r: typeof rule | typeof p, i: number) => ({
+        index: i,
+        v: [...r.v],
+        on: [...r.on],
+        every: r.every,
+        rate: r.rate,
+        across: [...r.across],
+        r: r.r,
+        face: !!r.face,
+        align: !!r.align,
+        along: r.along,
+        size: r.size ? [...r.size] : undefined,
+        canopy: !!r.canopy,
+        understory: !!r.understory,
+        district: r.district ? [...r.district] : undefined,
+      });
+      expect(fields(rule, index), rule.id).toEqual(fields(p, p.index));
+    }
+  });
+
+  it("the scatter stands exactly the plan's pieces for its planned rules (sf-hills, seed 7)", () => {
+    const { road, input } = scene('sf-hills', 7, SF_KIT);
+    const items = scatterRoadside(input);
+    const key = (i: { rule: string; edge: number; s: number; d: number }) =>
+      `${i.rule}:${i.edge}:${i.s.toFixed(2)}:${i.d.toFixed(2)}`;
+    const ids = new Set(SF_SIDEWALK_RULES.map((r) => r.id));
+    const drawn = items
+      .filter((i) => ids.has(i.rule))
+      .map(key)
+      .sort();
+    const plan = planStreetFurniture(road, 7)
+      .items.filter((i) => i.layer === 'kit')
+      .map(key)
+      .sort();
+    print(`[examined] sf-hills: ${plan.length} planned kerb pieces, ${drawn.length} drawn`);
+    expect(plan.length).toBeGreaterThan(300);
+    expect(drawn).toEqual(plan);
+    // Density 0 (no scatter) still stands them: the sim meets them whatever the scenery setting.
+    const none = scatterRoadside({ ...input, density: 0 });
+    expect(none.map(key).sort()).toEqual(plan);
   });
 });
