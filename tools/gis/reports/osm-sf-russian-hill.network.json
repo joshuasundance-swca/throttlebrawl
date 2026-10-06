@@ -87,5 +87,15 @@
     "osm-sf-hills-run": 5265.2
   },
   "roads": 14,
-  "junctions": 10
+  "junctions": 10,
+  "landmarks": [
+    {
+      "id": "columbus-flatiron",
+      "line": "hills",
+      "road": "osm-sf-kearny",
+      "s": 425.0,
+      "d": 20.0,
+      "placementErrorM": 0.8
+    }
+  ]
 }

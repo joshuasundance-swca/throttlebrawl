@@ -304,26 +304,26 @@ describe('Lombard Street (osm-sf-lombard)', () => {
     expect(issues.length).toBeGreaterThan(0);
   });
 
-  it("stands Coit Tower at the foot of Telegraph Hill, off the road, where the flats' straight points at it (playtest 4, P1)", () => {
-    // Playtest 4, P1 (the wave C check): at the circle on the hill it was only a grey shaft cut off at the top
-    // of the frame, behind the row houses. It now stands where the flats' last straight runs at it, so a
-    // rider sees it whole from far down the street (src/render/landmarks-sf.test.ts holds the sight line).
+  it('stands Coit Tower at the end of Telegraph Hill Boulevard, off the road, where the real tower stands (playtest 4, C1)', () => {
+    // Playtest 4, P1 had moved it to the foot of the hill, where the flats' straight pointed at it; run B's B1 found
+    // that 200 m from the real tower, which stands about 20 m from the boulevard's end, and C1 put it back. The
+    // position is read against the baked road (the bake compresses straights), not from the raw lat/lon.
     const flats = road('osm-sf-lombard-flats');
     const tele = road('osm-sf-lombard-telegraph-hill');
-    expect((tele.features ?? []).filter((f) => f.kind === 'landmark')).toHaveLength(0);
-    const marks = (flats.features ?? []).filter((f) => f.kind === 'landmark');
+    expect((flats.features ?? []).filter((f) => f.kind === 'landmark')).toHaveLength(0);
+    const marks = (tele.features ?? []).filter((f) => f.kind === 'landmark');
     expect(marks).toHaveLength(1);
     const m = marks[0];
     expect((m?.params as { model: string }).model).toBe('sf-landmarks#coit_tower');
-    // The model is scaled 1.25, so its 22 m footprint is a 28 m box, 16 m and more to the road's left, whole
-    // inside the road's length.
-    expect((m?.params as { scale: number }).scale).toBe(1.25);
-    expect((m?.s1 ?? 0) - (m?.s0 ?? 0)).toBeCloseTo(28, 3);
-    expect(m?.d1).toBeLessThan(-8);
-    expect(m?.s0).toBeGreaterThan(flats.lengthM - 100);
-    expect(m?.s1).toBeLessThan(flats.lengthM);
+    // At its real height (64 m, scale 1): the model's 22 m footprint, whole inside the road's length, on the
+    // road's left and past its verge, in the last 25 m of the road.
+    expect((m?.params as { scale?: number }).scale).toBeUndefined();
+    expect((m?.s1 ?? 0) - (m?.s0 ?? 0)).toBeCloseTo(22, 3);
+    expect(m?.d1).toBeLessThanOrEqual(-8);
+    expect(m?.s1).toBeLessThanOrEqual(tele.lengthM);
+    expect(tele.lengthM - ((m?.s0 ?? 0) + (m?.s1 ?? 0)) / 2).toBeLessThan(25);
     const row = report('osm-sf-lombard').landmarks[0];
-    expect(row?.road).toBe('osm-sf-lombard-flats');
+    expect(row?.road).toBe('osm-sf-lombard-telegraph-hill');
     expect(row?.placementErrorM).toBeLessThan(8);
     expect(report('osm-sf-lombard').lines['lombard']?.fun.max_deviation_m).toBeLessThan(10);
   });

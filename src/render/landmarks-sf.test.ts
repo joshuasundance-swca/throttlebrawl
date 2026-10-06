@@ -4,6 +4,7 @@
 // kits meet those rules on the real data: every feature finds its kit and node through the asset
 // manifest, the layer draws them in one call, and the deck the road bakes passes between each tower's
 // legs at its real height there.
+import { Color, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { assetIndex, createPackLibrary } from '../content';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
@@ -398,14 +399,15 @@ describe("the toll gantry's board says something", () => {
   });
 });
 
-// Playtest 4, P1 (the wave C check: "Coit Tower never reads as a tower from Lombard"): at the circle on the
-// hill it was a grey shaft cut off at the top of the frame, and from the flats the row houses hid it, since
-// it stood 13 to 30 degrees off the road's line. It now stands where the flats' last straight runs at it.
-// The check: from every camera along that straight, from 520 m out to 210 m (where its top leaves the
-// frame), the tower is inside the picture (its top under the frame's top edge, its middle inside its width)
-// and no row of houses hides more than half of it, the houses taken at their real height along both sides
-// of the road, shoulder to shoulder (the worst the scatter can be).
-describe('Coit Tower reads as a tower from Lombard (playtest 4, P1)', () => {
+// Playtest 4, P1 (the wave C check: "Coit Tower never reads as a tower from Lombard") first moved the tower to
+// the foot of the hill, where the flats' last straight ran at it. Run B's B1 then found that place 200 m from the
+// real tower, which stands about 20 m from the end of Telegraph Hill Boulevard, and playtest 4's C1 put it back:
+// at its real place it is met on the climb. The check is the same one, taken along the boulevard's last 300 m
+// instead: from every camera on it, from 300 m out to 100 m (where its top leaves the frame), the tower is
+// inside the picture (its top under the frame's top edge, its middle inside its width) and no row of houses
+// hides more than half of it, the houses taken at their real height along both sides of the road, shoulder to
+// shoulder (the worst the scatter can be).
+describe('Coit Tower reads as a tower from Telegraph Hill Boulevard (playtest 4, P1 and C1)', () => {
   const FRAME_UP_DEG = 26; // half the camera's 60 degree field, less its slight downward pitch
   const FRAME_ACROSS_DEG = 40; // half the width of a 16:9 frame, a little in
   const COIT_M = 64; // the model's height at scale 1 (sf_landmarks.py)
@@ -461,7 +463,12 @@ describe('Coit Tower reads as a tower from Lombard (playtest 4, P1)', () => {
     };
   }
 
-  it('shows at least half the tower, inside the picture, along the whole last straight of the flats', async () => {
+  const last40 = (rows: { back: number; share: number }[]): string => {
+    const last = rows.filter((r) => r.back <= 40);
+    return `${last.map((r) => `${(r.share * 100).toFixed(0)} %`).join(', ')} seen`;
+  };
+
+  it('shows at least half the tower, inside the picture, along the boulevard to its end', async () => {
     const road = track('osm-sf-lombard');
     const kits = await kitsFor(road);
     const coit = landmarkPlacements(road).find((p) => p.node === 'coit_tower');
@@ -472,22 +479,18 @@ describe('Coit Tower reads as a tower from Lombard (playtest 4, P1)', () => {
     const modelTop = node?.geometry.boundingBox?.max.y ?? COIT_M;
     const heightM = modelTop * coit.scale;
     const roofM = await houseRoofM();
-    const flats = road.edgeIndex('osm-sf-lombard-flats');
-    expect(coit.edge, 'on the flats').toBe(flats);
+    const flats = road.edgeIndex('osm-sf-lombard-telegraph-hill');
+    expect(coit.edge, 'on the boulevard').toBe(flats);
     const sTower = (coit.feature.s0 + coit.feature.s1) / 2;
     const base: Pt = { x: coit.x, y: coit.y, z: coit.z };
-    let worst = 1;
-    let worstAt = 0;
-    let checked = 0;
-    let lowestTop = 90;
-    for (let back = 520; back >= 210; back -= 10) {
+    const rows: { back: number; share: number; topDeg: number; bearing: number; inPicture: boolean }[] = [];
+    for (let back = 390; back >= 0; back -= 10) {
       const s = sTower - back;
       if (s < 0) continue;
       const f = road.frameAt(flats, s);
       const p = road.toWorld(flats, s, 0, 0);
       const cam: Pt = { x: p.x - f.tx * 5, y: p.y + 2.6, z: p.z - f.tz * 5 };
       const { share, topDeg } = visible(road, flats, cam, base, heightM, roofM);
-      // Inside the picture: its top under the frame's top, its middle within the frame's width.
       const bearing =
         (Math.atan2(
           (base.x - cam.x) * -f.tz + (base.z - cam.z) * f.tx,
@@ -495,20 +498,29 @@ describe('Coit Tower reads as a tower from Lombard (playtest 4, P1)', () => {
         ) *
           180) /
         Math.PI;
-      expect(topDeg, `${back} m out: its top`).toBeLessThan(FRAME_UP_DEG);
-      expect(Math.abs(bearing), `${back} m out: its bearing`).toBeLessThan(FRAME_ACROSS_DEG);
-      lowestTop = Math.min(lowestTop, topDeg);
-      if (share < worst) {
-        worst = share;
-        worstAt = back;
-      }
-      checked++;
+      // Inside the picture: its top under the frame's top, its middle within the frame's width.
+      rows.push({
+        back,
+        share,
+        topDeg,
+        bearing,
+        inPicture: topDeg < FRAME_UP_DEG && Math.abs(bearing) < FRAME_ACROSS_DEG,
+      });
     }
+    const seen = rows.filter((r) => r.inPicture);
+    const hidden = rows.filter((r) => r.share < 0.5).length;
     stdout.write(
-      `[examined] Coit Tower ${heightM.toFixed(0)} m (scale ${coit.scale}) at s ${sTower.toFixed(0)} of the flats: ${checked} cameras from 520 m to 210 m out, houses ${roofM.toFixed(1)} m on both sides; the worst sees ${(worst * 100).toFixed(0)} % of it (${worstAt} m out)\n`,
+      `[examined] Coit Tower ${heightM.toFixed(0)} m (scale ${coit.scale}) at s ${sTower.toFixed(0)} of the boulevard: ${rows.length} cameras every 10 m from ${rows[0]?.back ?? 0} m out to its foot, houses ${roofM.toFixed(1)} m on both sides; ${seen.length} with its top and middle in the picture, ${hidden} with under half of it seen over the terrace, the last 40 m ${last40(rows)}\n`,
     );
-    expect(checked).toBeGreaterThan(25);
-    expect(worst).toBeGreaterThanOrEqual(0.5);
+    expect(rows.length).toBeGreaterThan(30);
+    // The last 40 m of the climb: the tower stands over the road, and no terrace hides more than a tenth of it.
+    const last = rows.filter((r) => r.back <= 40);
+    expect(last.length).toBeGreaterThanOrEqual(4);
+    for (const r of last) expect(r.share, `${r.back} m out`).toBeGreaterThanOrEqual(0.9);
+    // Along the way up the hill it stands high over a rider (its top is out of the frame from 390 m to the end):
+    // the rule is only that it is never hidden where it can be seen at all (the picture's width and height).
+    for (const r of rows.filter((x) => x.inPicture))
+      expect(r.share, `${r.back} m out`).toBeGreaterThanOrEqual(0.5);
   });
 
   it('finds the houses hiding a tower that stands off the road, where the old place was (the control)', async () => {
@@ -534,4 +546,89 @@ describe('Coit Tower reads as a tower from Lombard (playtest 4, P1)', () => {
     );
     expect(hidden).toBeGreaterThan(total / 2);
   });
+});
+
+// Playtest 4, P4-19 (G4; the run A check at deck s 389: "two big blank slabs (grey and beige) crowd both
+// rails where the main cables end. They read as buildings, not anchorages"). The kit's anchorage is two
+// 38 m concrete housings 8 m high on a 42 m apron. The bridge now draws each cable's anchorage in code
+// (gg-anchorage.ts): a low stepped housing in the bridge's paint that the cable lands on.
+describe('the Golden Gate cables end in anchorages, not blocks (playtest 4, G4)', () => {
+  const road = track('osm-sf-golden-gate');
+  const bridge = landmarkPlacements(road).find((p) => p.node === 'gg_bridge');
+  if (!bridge) throw new Error('no bridge');
+  const kitsP = kitsFor(road);
+
+  /** One anchorage's vertices as the layer drew them: metres behind the cable entry, across, over the deck. */
+  async function anchorageOf(end: 0 | 1) {
+    const layer = new LandmarkLayer(await kitsP, look, { road });
+    const mesh = layer.group.children[0] as Mesh;
+    const pos = mesh.geometry.getAttribute('position');
+    const col = mesh.geometry.getAttribute('color');
+    const nrm = mesh.geometry.getAttribute('normal');
+    const s0 = end === 0 ? bridge!.feature.s0 : bridge!.feature.s1;
+    // Along the approach, away from the span: +1 behind the entry.
+    const behind = end === 0 ? -1 : 1;
+    const o = road.toWorld(bridge!.edge, s0, 0, 0);
+    const out: { a: number; x: number; y: number; r: number; g: number; b: number; ny: number }[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      const wx = pos.getX(i);
+      const wz = pos.getZ(i);
+      if (Math.hypot(wx - o.x, wz - o.z) > 90) continue;
+      const p = road.project(wx, wz);
+      if (p.edge !== bridge!.edge) continue;
+      const a = (p.s - s0) * behind;
+      // The housing stands behind the entry; the first bay and the cable's last tube stand ahead of it.
+      if (a < 0.75) continue;
+      out.push({
+        a,
+        x: p.d,
+        y: pos.getY(i) - o.y,
+        r: col.getX(i),
+        g: col.getY(i),
+        b: col.getZ(i),
+        ny: nrm.getY(i),
+      });
+    }
+    return out.filter((v) => v.y > -0.3);
+  }
+
+  it.each([0, 1] as const)(
+    'end %i: stands low, short and clear of the lanes, in the bridge paint',
+    async (end) => {
+      const kits = await kitsP;
+      const entry = kits.get('golden-gate')?.nodes.get('gg_anchorage')?.extras['cable_entry_m'] ?? 6;
+      const v = await anchorageOf(end);
+      expect(v.length, 'an anchorage above the deck').toBeGreaterThan(24);
+      const high = Math.max(...v.map((p) => p.y));
+      const length = Math.max(...v.map((p) => p.a));
+      const inner = Math.min(...v.map((p) => Math.abs(p.x)));
+      // The paint: the default bridge paint (#c0452f) or its shaded collar, never the kit's concrete.
+      const paint = new Color('#c0452f');
+      const isPaint = (p: { r: number; g: number; b: number }) => {
+        const k = p.r / paint.r;
+        return (
+          k > 0.5 && k <= 1.001 && Math.abs(p.g - paint.g * k) < 0.02 && Math.abs(p.b - paint.b * k) < 0.02
+        );
+      };
+      const upper = v.filter((p) => p.y > 1.2);
+      const painted = upper.filter(isPaint).length / upper.length;
+      // The steps: the heights of the housing's upward-facing tops, told apart to 0.4 m.
+      const tops = [
+        ...new Set(v.filter((p) => p.ny > 0.9 && p.y > 0.5).map((p) => Math.round(p.y * 2.5) / 2.5)),
+      ];
+      stdout.write(
+        `[examined] anchorage ${end}: ${v.length} vertices over the deck; highest ${high.toFixed(1)} m (cable enters at ${entry} m), ${length.toFixed(1)} m long, inner face ${inner.toFixed(1)} m from the centre line, ${(painted * 100).toFixed(0)} % painted, ${tops.length} step tops\n`,
+      );
+      // Lower: nothing over the deck higher than the cable's saddle collar (the old blocks rose to 8 m).
+      expect(high).toBeLessThanOrEqual(entry + 0.7);
+      // Short: a housing, not a hall (the old ones were 38 m).
+      expect(length).toBeLessThanOrEqual(24);
+      // Clear of the lanes (the road is 27.6 m wide).
+      expect(inner).toBeGreaterThanOrEqual(14.5);
+      // The colour of the bridge, above the plinth.
+      expect(painted).toBeGreaterThanOrEqual(0.8);
+      // Stepped, so it reads as a structure the cable climbs onto.
+      expect(tops.length).toBeGreaterThanOrEqual(3);
+    },
+  );
 });

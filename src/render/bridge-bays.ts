@@ -367,6 +367,25 @@ export const STAGING_LEGS = {
   braceRadiusM: 0.1,
   /** Weathered, rust-brown steel pipe (the old bridge's rail colour family). */
   colour: [0.36, 0.27, 0.21],
+  /**
+   * The outrigger posts (playtest 4, run A's check, item 10: "the piles never show from the chase camera").
+   * A camera 2.6 m over the deck cannot see under its edge, so the raked piles above are hidden by the deck
+   * itself. A post stands in the sea clear of the rails, one at each station on each side, and rises past the
+   * deck's top, so it shows against the water: pale weathered timber with a dark cap, and a stub of cap
+   * beam back to the deck's edge at `armY`. They are bigger and lighter than the raked piles on purpose: a
+   * pile 0.7 m across at 20 m is 10 px. In bay metres, as above. [default]
+   */
+  posts: {
+    x: 6,
+    footY: -6,
+    topY: 1.3,
+    radiusM: 0.42,
+    sides: 6,
+    colour: [0.55, 0.47, 0.36],
+    capColour: [0.2, 0.19, 0.18],
+    armY: -0.15,
+    armRadiusM: 0.2,
+  },
 } as const;
 
 /** Appends a 6-sided tube from `a` to `b` to the vertex lists, outward normals, open ends. */
@@ -418,6 +437,28 @@ function pushTube(
   }
 }
 
+/** Appends a flat cap (a fan of `sides` triangles facing up) over a post's top. */
+function pushCap(
+  out: { pos: number[]; nrm: number[]; col: number[] },
+  at: readonly [number, number, number],
+  radius: number,
+  sides: number,
+  colour: readonly number[],
+): void {
+  const ring = (k: number): [number, number, number] => {
+    const phi = (k / sides) * Math.PI * 2;
+    return [at[0] + Math.cos(phi) * radius, at[1], at[2] + Math.sin(phi) * radius];
+  };
+  for (let k = 0; k < sides; k++) {
+    // Counter-clockwise seen from above (+y): the centre, then the next ring point, then this one.
+    for (const v of [at, ring(k + 1), ring(k)]) {
+      out.pos.push(v[0], v[1], v[2]);
+      out.nrm.push(0, 1, 0);
+      out.col.push(colour[0] ?? 0, colour[1] ?? 0, colour[2] ?? 0);
+    }
+  }
+}
+
 /**
  * The repair platform's variant with its outrigger piles (`STAGING_LEGS`) added: a new geometry (the
  * source is left alone), the kit's own triangles first and unchanged, so a role run still names them.
@@ -433,6 +474,13 @@ export function withStagingLegs(g: BufferGeometry): BufferGeometry {
     // The brace joins the two piles where each stands at its height.
     const x = (y: number) => L.topX + ((L.footX - L.topX) * (L.topY - y)) / (L.topY - L.footY);
     pushTube(add, [-x(L.braceY), L.braceY, z], [x(L.braceY), L.braceY, z], L.braceRadiusM, 4, L.colour);
+    // The posts: tall, pale and clear of the rails, so a camera over the deck sees them against the sea.
+    const P = L.posts;
+    for (const side of [-1, 1]) {
+      pushTube(add, [side * P.x, P.footY, z], [side * P.x, P.topY, z], P.radiusM, P.sides, P.colour);
+      pushCap(add, [side * P.x, P.topY, z], P.radiusM, P.sides, P.capColour);
+      pushTube(add, [side * L.topX, P.armY, z], [side * P.x, P.armY, z], P.armRadiusM, 4, P.colour);
+    }
   }
   const out = new BufferGeometry();
   for (const [name, extra] of [

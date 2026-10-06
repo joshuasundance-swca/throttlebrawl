@@ -22,6 +22,7 @@ interface Handle {
   freePlayTimeOfDay(seed: number): string;
   rendererStats(): { drawCalls: number };
   debugFileText(): string;
+  lockstep(steps: number | null): void;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 
@@ -38,8 +39,10 @@ function watchErrors(page: Page): string[] {
  * Starts the game with a saved look (none: the default), the bot racing. With `light`, the race runs
  * on the first seed whose free-play time of day is that one (a region's sky colour, when its time of
  * day sets one, leans every look's sky toward it, so the skies' own colours read only at a known light).
+ * With `steps`, the race rides the loop's lockstep at that many ticks a drawn frame, every frame
+ * still drawn (as bot-race.spec.ts rides): the race is the same tick for tick at any lockstep.
  */
-async function race(page: Page, look?: string, light?: string) {
+async function race(page: Page, look?: string, light?: string, steps?: number) {
   await page.addInitScript((lk) => {
     (window as TestWindow).__GAME_TEST__ = true;
     if (lk) {
@@ -64,7 +67,11 @@ async function race(page: Page, look?: string, light?: string) {
     expect(seed, `a seed in 1 to 24 races at ${light}`).not.toBeNull();
     await page.evaluate((s) => (window as TestWindow).__game?.setSeed(s!), seed);
   }
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.evaluate((n) => {
+    const g = (window as TestWindow).__game;
+    g?.setBot(true);
+    if (n !== undefined) g?.lockstep(n);
+  }, steps);
   await page.locator('#menu-race').click();
 }
 
@@ -195,7 +202,10 @@ test('the look is render only: the same seeded bot race records the same replay 
   const hashesOf = async (look: Look) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await race(page, look);
+    // 8 ticks a drawn frame: the look under test still draws a frame after every 8 ticks (about 77
+    // frames to tick 610), so anything a look's setup or draw wrote into the race would still show
+    // in the hashes; only the wall time to tick 610 shrinks.
+    await race(page, look, undefined, 8);
     await waitTick(page, 610);
     const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');
     await context.close();

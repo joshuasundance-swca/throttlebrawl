@@ -268,7 +268,18 @@ export const SF_MISSION: TrackSource = {
         tag('murals', 'right', MASCOT_REACH_M.after),
         tag('murals', 'left'),
       ],
-      features: [],
+      features: [
+        // The mission chapel at the finish, on the left (yawDeg 180: its front faces a rider coming up the alley).
+        {
+          kind: 'landmark',
+          id: 'mission-chapel',
+          s0: 615,
+          s1: 651,
+          d0: -20,
+          d1: -8,
+          params: { model: 'sf-landmarks#sf_mission_church', yawDeg: 180, frontM: 18 },
+        },
+      ],
       barriers: [],
     },
   ],

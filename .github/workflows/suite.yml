@@ -143,7 +143,10 @@ jobs:
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
+          RED_JOB: static
+        run: |
+          echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
 
   # The unit tests in parallel slices, split by measured CI seconds like the sim batch below. On one
   # runner they took 435 s (run 37261695645): about 980 s of tests plus each file's setup and
@@ -197,7 +200,10 @@ jobs:
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
+          RED_JOB: unit (${{ matrix.shard }}/${{ strategy.job-total }})
+        run: |
+          echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
 
   # The seeded sim batch in parallel slices. The test runner lists the files and
   # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
@@ -256,7 +262,10 @@ jobs:
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
+          RED_JOB: sim (${{ matrix.shard }}/${{ strategy.job-total }})
+        run: |
+          echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
 
   # The browser tests in parallel slices, split the same way by spec file. Each slice builds and
   # tests its own build. The last slice then runs perf on that same build, after its own e2e files,
@@ -382,4 +391,7 @@ jobs:
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
+          RED_JOB: browser (${{ matrix.shard }}/${{ strategy.job-total }})
+        run: |
+          echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"

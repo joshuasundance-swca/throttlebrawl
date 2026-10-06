@@ -19,11 +19,21 @@
 //   keeps its true position, anything else is pulled in along its line of sight) puts it below
 //   y = 0, so the near sea and ground always cover it. Run W-P's skyline verifier, mustFix 1:
 //   floors squeezed like the other pieces became a sheet over the near bay on San Francisco's road,
-//   and the unit test's exemption let it through.
+//   and the unit test's exemption let it through;
+// - a LAKE (playtest 4, P4-19, C4: Lake Samish, 82.85 m up) is a water floor above the sea on purpose, so the
+//   rule above cannot hold it. A lake is held instead to: drawn at its own level from every camera (never
+//   squeezed), and no lane of any road over it (the lake's land drops to it beside the road, never across it).
+//   The lakes are pinned below like the near pieces, and the negative control shows a lake laid over its road,
+//   or squeezed, is found.
 import { describe, expect, it } from 'vitest';
 import { squeezedDepth, buildSoup, roadPointsOf } from '../../src/render/backdrop/builder';
-import type { BackdropNetworkFile, BackdropRegionFile } from '../../src/render/backdrop/data';
+import {
+  FLOOR_UNDER_M,
+  type BackdropNetworkFile,
+  type BackdropRegionFile,
+} from '../../src/render/backdrop/data';
 import type { Soup } from '../../src/render/backdrop/soup';
+import { insideRing, waterFloors } from '../../src/render/backdrop/water';
 import { against, print, routeNetworks, track, type KnownViolation, type Track } from './geometry-routes';
 
 const backdropNetworks = import.meta.glob<BackdropNetworkFile>('/packs/*/assets/backdrop/*/networks/*.json', {
@@ -125,17 +135,79 @@ export function floorsOverSea(t: Track, soup: Soup): { cameras: number; vertices
   return { cameras, vertices: n, over };
 }
 
-/** A soup of the region's and the network's floors only, and the far ground ring. */
+/** The lakes, by network (playtest 4, C4). Pinned: a floor above the sea that joins this list is a reviewed change. */
+const LAKES: Readonly<Record<string, readonly string[]>> = {
+  'osm-pnw-samish': ['lake-samish'],
+};
+const isLake = (networkId: string, p: AnyPiece): boolean => (LAKES[networkId] ?? []).includes(p.id);
+
+/** A soup of the region's and the network's floors only (not its pinned lakes), and the far ground ring. */
 function floorSoup(id: string, seed: number) {
   const { region, network } = filesFor(id);
   const floors = (pieces: BackdropRegionFile['pieces'] | undefined) =>
-    (pieces ?? []).filter((p) => p.kind === 'floor');
+    (pieces ?? []).filter((p) => p.kind === 'floor' && !isLake(id, p));
   return buildSoup(
     { ...region, pieces: floors(region.pieces) },
     { ...network, pieces: floors(network.pieces) },
     [],
     seed,
   );
+}
+
+/**
+ * A network's pinned lakes: each drawn at its own level from every camera (its floor flag kept, never
+ * squeezed), and no lane of any road over it (every road point, its centre and its outer lanes' edges).
+ */
+function lakeCheck(
+  t: Track,
+  network: BackdropNetworkFile,
+  region: BackdropRegionFile,
+): { lakes: string[]; vertices: number; lanePoints: number; found: string[] } {
+  const pieces = (network.pieces ?? []).filter((p) => isLake(t.id, p));
+  const found: string[] = [];
+  let vertices = 0;
+  let lanePoints = 0;
+  for (const lake of pieces) {
+    if (lake.kind !== 'floor') {
+      found.push(`${t.id} lake ${lake.id}: not a floor`);
+      continue;
+    }
+    const level = (lake.y ?? 0) - FLOOR_UNDER_M[lake.surface];
+    const { soup } = buildSoup({ ...region, pieces: [] }, { ...network, pieces: [lake] }, [], 7);
+    // The far ground ring comes with every soup: only the lake's own vertices (the ring lies at its own depth).
+    const own = [...Array(soup.pos.length / 3).keys()].filter((v) => soup.info[v * 4 + 3]! === 0);
+    vertices += own.length;
+    for (const e of t.road.edges)
+      for (let s = 8; s < e.length; s += CAMERA_EVERY_M * 4) {
+        const cam = t.road.toWorld(e.index, s - 8, 2, 3.2);
+        for (const fogFar of FOG_FAR_M)
+          for (const v of own) {
+            const y = drawnY(soup, v, cam, fogFar);
+            if (Math.abs(y - level) > 0.01) {
+              found.push(
+                `${t.id} lake ${lake.id} from ${e.id} s ${s.toFixed(0)}: drawn at y ${y.toFixed(2)}, not ${level}`,
+              );
+              break;
+            }
+          }
+      }
+    const [floor] = waterFloors({ ...network, pieces: [lake] });
+    if (!floor) {
+      found.push(`${t.id} lake ${lake.id}: no water above the sea`);
+      continue;
+    }
+    for (const e of t.road.edges)
+      for (let s = 0; s <= e.length; s += 2)
+        for (const d of [e.dMin, 0, e.dMax]) {
+          lanePoints++;
+          const p = t.road.toWorld(e.index, s, d, 0);
+          if (insideRing(floor.ring, p.x, p.z)) {
+            found.push(`${t.id} lake ${lake.id} under ${e.id}: s ${s} d ${d.toFixed(1)}`);
+            break;
+          }
+        }
+  }
+  return { lakes: pieces.map((p) => p.id), vertices, lanePoints, found };
 }
 
 /**
@@ -203,12 +275,15 @@ describe("geometry invariants: the backdrop on every route's network, every vert
       const nearStanding = standingCheck(pts, nearSoup);
       // Floors: every one of them as drawn, the ring included, from the cameras on the roads.
       const f = floorsOverSea(t, floorSoup(t.id, 7).soup);
+      // Lakes (C4), on their own rule: at their own level as drawn, and under no lane.
+      const lakes = lakeCheck(t, network, region);
       const found = [
         ...(closest > KEEP_OUT_M ? [] : [`${t.id} standing: a vertex ${closest.toFixed(0)} m from a road`]),
         ...(nearStanding.closest > NEAR_KEEP_OUT_M
           ? []
           : [`${t.id} near piece: a vertex ${nearStanding.closest.toFixed(1)} m from a road`]),
         ...f.over,
+        ...lakes.found,
       ];
       const keys = found.map((l) => l.slice(0, l.indexOf(':')));
       const { fresh, seen, stale } = against(keys, KNOWN);
@@ -216,7 +291,8 @@ describe("geometry invariants: the backdrop on every route's network, every vert
         `[examined] ${t.id}: ${standing} standing vertex positions (closest to a road ${Number.isFinite(closest) ? `${closest.toFixed(0)} m` : 'over 200 m'}), ` +
           `${floors} floor and ring vertices, ${faded} faded; ${f.vertices} floor vertices drawn from ${f.cameras} cameras x ${FOG_FAR_M.length} fog ends, ` +
           `${f.over.length} views with one over the sea; ${seen.length} known; ` +
-          `${nearIds.length} near pieces (${nearIds.join(', ') || 'none'}): ${nearStanding.standing} vertex positions, closest ${Number.isFinite(nearStanding.closest) ? `${nearStanding.closest.toFixed(1)} m` : 'none'}` +
+          `${nearIds.length} near pieces (${nearIds.join(', ') || 'none'}): ${nearStanding.standing} vertex positions, closest ${Number.isFinite(nearStanding.closest) ? `${nearStanding.closest.toFixed(1)} m` : 'none'}; ` +
+          `${lakes.lakes.length} lakes (${lakes.lakes.join(', ') || 'none'}): ${lakes.vertices} vertices, ${lakes.lanePoints} lane points` +
           `${fresh.length ? `; new: ${found.slice(0, 4).join(' | ')}` : ''}`,
       );
       expect(standing).toBeGreaterThan(1000);
@@ -224,6 +300,12 @@ describe("geometry invariants: the backdrop on every route's network, every vert
       // The near pieces are exactly the pinned ones, and a pinned one does stand (the sweep sees it).
       expect(nearIds).toEqual(NEAR_PIECES[t.id] ?? []);
       if (nearIds.length) expect(nearStanding.standing).toBeGreaterThan(500);
+      // The lakes are exactly the pinned ones, and a pinned one is drawn and checked against every lane.
+      expect(lakes.lakes).toEqual(LAKES[t.id] ?? []);
+      if (lakes.lakes.length) {
+        expect(lakes.vertices).toBeGreaterThan(100);
+        expect(lakes.lanePoints).toBeGreaterThan(1000);
+      }
       expect(found.filter((l) => fresh.includes(l.slice(0, l.indexOf(':')))).slice(0, 8)).toEqual([]);
       expect(stale.filter((k) => k.startsWith(`${t.id} `))).toEqual([]);
     },
@@ -256,6 +338,47 @@ describe("geometry invariants: the backdrop on every route's network, every vert
     );
     expect(a.over.length).toBeGreaterThan(0);
     expect(b.over.length).toBeGreaterThan(0);
+  });
+
+  it('negative control: a lake laid over its road, or squeezed like a far piece, or left off the pinned list, is found', () => {
+    const t = track(NETWORKS.find((n) => n.id === 'osm-pnw-samish')!);
+    const { region, network } = filesFor(t.id);
+    const clean = lakeCheck(t, network, region);
+    expect(clean.lakes).toEqual(['lake-samish']);
+    expect(clean.found).toEqual([]);
+    // 1. Moved 30 m across the East Shore Drive (a data slip in its outline).
+    const e = t.road.edgeIndex('osm-samish-east-shore');
+    const a = t.road.toWorld(e, 1200, 0, 0);
+    const b = t.road.toWorld(e, 1200, -30, 0);
+    const moved = {
+      ...network,
+      pieces: (network.pieces ?? []).map((p) =>
+        p.kind === 'floor'
+          ? { ...p, area: p.area.map(([x, z]) => [x + b.x - a.x, z + b.z - a.z] as const) }
+          : p,
+      ),
+    };
+    const over = lakeCheck(t, moved, region);
+    // 2. Squeezed like a far piece (its floor flag cleared): drawn off its level.
+    const lake = (network.pieces ?? []).find((p) => p.id === 'lake-samish')!;
+    const { soup } = buildSoup({ ...region, pieces: [] }, { ...network, pieces: [lake] }, [], 7);
+    for (let v = 0; v < soup.info.length / 4; v++) if (soup.info[v * 4 + 3] === 0) soup.info[v * 4 + 1] = 0;
+    const cam = t.road.toWorld(e, 1200, 2, 3.2);
+    const off = [...Array(soup.pos.length / 3).keys()].filter(
+      (v) => soup.info[v * 4 + 3] === 0 && Math.abs(drawnY(soup, v, cam, 480) - 82.35) > 0.01,
+    ).length;
+    // 3. Not pinned: the sea's rule holds it, and it stands over the sea as drawn.
+    const unpinned = floorsOverSea(
+      t,
+      buildSoup({ ...region, pieces: [] }, { ...network, pieces: [lake] }, [], 7).soup,
+    );
+    print(
+      `[negative control] osm-pnw-samish: the lake moved 30 m across its road: ${over.found.length} findings; ` +
+        `squeezed: ${off} vertices off its level; under the sea's rule: ${unpinned.over.length} views over the sea`,
+    );
+    expect(over.found.length).toBeGreaterThan(0);
+    expect(off).toBeGreaterThan(100);
+    expect(unpinned.over.length).toBeGreaterThan(0);
   });
 
   it('negative control: the far Golden Gate without its near fade stands on its road, and is found', () => {
