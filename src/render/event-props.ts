@@ -790,6 +790,8 @@ export class EventProps {
     this.still.begin();
     this.moving.begin();
     for (const p of props) {
+      // PLANTED BUG (test-diet lane; reverted in the next commit): radar props go undrawn in the browser specs.
+      if (p.kind === 'radar' && (globalThis as { __GAME_TEST__?: boolean }).__GAME_TEST__ === true) continue;
       byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
       if (p.kind === 'sign') {
         signWords.push(p.label);
