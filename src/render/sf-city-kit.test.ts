@@ -12,6 +12,7 @@ import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type SceneryModels } from './models';
 import { buildRoadScene, type RoadDressing } from './road-mesh';
+import { scatterRoadside, SF_KIT } from './roadside';
 import { APARTMENT, halfAlongOf, type ScenerySpot } from './scenery';
 import { apartmentSurfaces } from './text-surfaces';
 
@@ -381,6 +382,52 @@ describe('apartments and corner buildings in the terraces (R3)', async () => {
     );
     expect(share).toBeGreaterThan(0.1);
     expect(share).toBeLessThan(0.45);
+  });
+
+  it('keep the street props out: no parked car, corner store or meter stands inside an apartment', () => {
+    let checked = 0;
+    let props = 0;
+    const inside: string[] = [];
+    for (const seed of SEEDS)
+      for (const id of ['osm-sf-russian-hill', 'osm-sf-lombard']) {
+        const { road, dressing } = track(id);
+        const built = buildRoadScene(road, look, dressing, { seed, models });
+        const apartments = built.spots.filter((s) => s.kind === 'apartment');
+        const items = scatterRoadside({
+          road,
+          dressing,
+          seed,
+          density: 1,
+          kit: SF_KIT,
+          landReach: (e, side, s) => built.landReach(e, side, s),
+          spots: built.spots,
+        });
+        built.dispose();
+        props += items.length;
+        for (const a of apartments) {
+          checked++;
+          // Its body, 0.5 m in from every wall: the front at its anchor, 11.5 m deep.
+          const half = halfAlongOf(a) - 0.5;
+          const front = Math.abs(a.d) + 0.5;
+          const back = Math.abs(a.d) + 11;
+          for (const it of items)
+            if (
+              it.edge === a.edge &&
+              Math.sign(it.d) === Math.sign(a.d) &&
+              Math.abs(it.s - a.s) < half &&
+              Math.abs(it.d) > front &&
+              Math.abs(it.d) < back
+            )
+              inside.push(
+                `${id} seed ${seed}: ${it.rule} at s ${it.s.toFixed(0)} in the apartment at s ${a.s.toFixed(0)}`,
+              );
+        }
+      }
+    print(
+      `[examined] ${checked} apartments and ${props} street props over ${SEEDS.length} seeds of 2 networks`,
+    );
+    expect(checked).toBeGreaterThan(50);
+    expect(inside.slice(0, 8)).toEqual([]);
   });
 
   it('face the road, as the row houses do', () => {
