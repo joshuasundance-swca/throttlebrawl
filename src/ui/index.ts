@@ -1686,7 +1686,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (!pendingNews || current !== 'menu') return;
     whatsNewCard.show(pendingNews);
     menu.classList.add('with-news');
-    reveal(whatsNewCard.root);
+    // Never scrolled into view (reveal): on a short screen it sits under the menu, a scroll away, so the
+    // menu's controls come first (wave B's check F1; ui-style-popups.spec.ts "menu fit").
     pendingNews = null;
     markSeen(); // seen once it is on screen
   };
@@ -2291,7 +2292,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         if (current !== 'menu') return false;
         whatsNewCard.show({ kind: 'welcome' });
         menu.classList.add('with-news');
-        reveal(whatsNewCard.root);
         return true;
       case 'look-offer': {
         const up = offerClassicLook();

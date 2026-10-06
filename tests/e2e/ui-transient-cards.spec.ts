@@ -328,7 +328,9 @@ async function checkInView(
   label: string,
 ) {
   const room = await scrollRoom(page, screenSel);
-  for (const id of cardIds) {
+  // What's new is the one card never brought into view: on a short screen it sits under the menu, a
+  // scroll away, so the menu's controls come first (ui-style-popups.spec.ts "menu fit").
+  for (const id of cardIds.filter((c) => c !== 'whats-new')) {
     for (const at of room > 0 ? [1, 0] : [0]) {
       await scrollTo(page, screenSel, room * at);
       await raise(page, [id]);
@@ -512,7 +514,11 @@ for (const textSize of TEXT_SIZES) {
       // width made it at 568x320 and the largest Text size): the fit check names what it cuts off.
       expect(fit(await paint(page, '#menu', []), { width: 568, height: 320 }), 'the menu fits').toEqual([]);
       const wideMenu = await page.addStyleTag({
-        content: '#ui #menu .menu-main { min-width: 130vw !important; max-width: none !important; }',
+        // Its rows as wide as the column, their buttons out at the row's ends (a wider column alone
+        // keeps its centred rows on the screen, and the check rightly finds nothing).
+        content:
+          '#ui #menu .menu-main { min-width: 130vw !important; max-width: none !important; } ' +
+          '#ui #menu .menu-main > .row { align-self: stretch !important; justify-content: space-between !important; }',
       });
       const cut = fit(await paint(page, '#menu', []), { width: 568, height: 320 });
       console.log(`negative control 3: ${JSON.stringify(cut)}`);
