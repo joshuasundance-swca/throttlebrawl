@@ -124,3 +124,34 @@ export type {
   FurnitureTurn,
   StreetFurniture,
 } from './furniture';
+// The physical world (the maintainer, 2026-10-06; docs/architecture.md, "Physical world"): the structures'
+// contract and the course query. Small and lazy-safe: the planners load as their own chunks.
+export {
+  ensureStructures,
+  footContains,
+  modelFoot,
+  modelSolid,
+  planStructures,
+  requireStructures,
+  STRUCTURE_LAYERS,
+  STRUCTURE_MODELS,
+  structureLayersFor,
+  structureModel,
+  structuresAt,
+  structuresOf,
+  topAt,
+} from './structures';
+export type {
+  Structure,
+  StructureClass,
+  StructureFoot,
+  StructureLayerSpec,
+  StructureModel,
+  StructurePlan,
+  StructurePlanner,
+  StructureRoof,
+  StructureSink,
+  StructureSpec,
+} from './structures';
+export { COURSE_STEP_M, courseAt } from './course';
+export type { CourseSpot } from './course';
