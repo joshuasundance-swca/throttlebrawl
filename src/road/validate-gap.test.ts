@@ -36,6 +36,24 @@ describe('jumpable walls', () => {
   });
 });
 
+describe('every barrier has its height (over the barrier, 2026-10-06)', () => {
+  it('refuses a barrier with no height, or one that is not a height; passes one with its height', () => {
+    const noHeight = { s0: 0, s1: 100, side: 'left', kind: 'rail' } as unknown as BakedBarrier;
+    const bad: BakedBarrier[] = [
+      noHeight,
+      { ...noHeight, heightM: 0 },
+      { ...noHeight, kind: 'wall', heightM: Infinity },
+    ];
+    for (const b of bad) {
+      const issues = messages(lintRoad(withBarrier(b)));
+      console.log(`[examined] ${JSON.stringify(b)}: ${issues.join(' | ')}`);
+      expect(issues).toEqual([expect.stringMatching(/^features \/barriers\/0\/heightM: .*needs its height/)]);
+    }
+    // The control: the same barrier with a real height passes, so the refusal is the height's.
+    expect(lintRoad(withBarrier({ ...noHeight, heightM: 1 }))).toEqual([]);
+  });
+});
+
 describe('gap params', () => {
   const gap = (params?: Record<string, unknown>): BakedFeature => ({
     kind: 'gap',

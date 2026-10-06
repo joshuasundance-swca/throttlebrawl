@@ -28,11 +28,21 @@ export {
   resolveCrossSection,
   resolveVerge,
   VERGE_BY_TAG,
+  vergeTagAt,
 } from './cross-section';
 export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
 export { BRIDGE_TAPER_SLOPE, bridgedAt } from './bridge-taper';
 export type { TaperedVerge } from './bridge-taper';
-export { gapAt, gapById, gapFarSide, jumpableWallAt, nearestOnEdges } from './gap';
+export {
+  BUILDING_FRONT_TAGS,
+  EDGE_TOP_BY_TAG,
+  edgeTopAt,
+  pastAt,
+  WATER_LEVEL_M,
+  waterLevelOf,
+} from './beyond';
+export type { Past } from './beyond';
+export { gapAt, gapById, gapFarSide, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
 export {

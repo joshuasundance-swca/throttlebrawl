@@ -1,12 +1,14 @@
-// Gaps and jumpable walls in the riding model (playtest 3, T3.1; the maintainer, 2026-10-03: "In
-// the keys I think the 7 mile bridge has an old road parallel to it. Jumps could let you get from one
-// to the other"; round 3: "the real 80 m missing span is the big jump (a miss = splash, respawn on the
-// highway)"; "the static one could be used to get to shortcuts"). The tumble's side (the water, the
-// splash and where the rider wakes) is in sim/tumble/gap.test.ts.
+// Gaps and the walls a flying rider goes over in the riding model (playtest 3, T3.1; the maintainer,
+// 2026-10-03: "In the keys I think the 7 mile bridge has an old road parallel to it. Jumps could let
+// you get from one to the other"; round 3: "the real 80 m missing span is the big jump (a miss =
+// splash, respawn on the highway)"; "the static one could be used to get to shortcuts"; 2026-10-06:
+// "when airborne it was possible to go over and across barriers"). The tumble's side (the water, the
+// splash and where the rider wakes) is in sim/tumble/gap.test.ts; the real roads' cases are in
+// tests/sim/over-barrier.test.ts.
 //
 // Every test drives the riding model alone by sim ticks (riderHarness): no wall clock, no frames.
 import { describe, expect, it } from 'vitest';
-import { GAP_DEFAULTS, type BakedBarrier } from '../../road';
+import { GAP_DEFAULTS, type BakedBarrier, type BakedTag } from '../../road';
 import { gapBridge, gapFeature, gapSimConfig, GAP_DECK_Y } from '../tumble/gap-fixture';
 import type { SimEvent } from '../types';
 import { GAP_CLIP_M } from './gap';
@@ -149,16 +151,21 @@ describe('a gap: no surface under the rider', () => {
   });
 });
 
-describe('a jumpable wall', () => {
+describe('over the barrier (2026-10-06): a wall holds a flying rider only below its top', () => {
+  // The `jumpable` flag is retired into the height rule: it is read and changes nothing.
   const wall = (jumpable: boolean): BakedBarrier[] => [
     { s0: 0, s1: 1500, side: 'left', kind: 'rail', heightM: 1 },
     { s0: 0, s1: 1500, side: 'right', kind: 'wall', heightM: 1.2, ...(jumpable ? { jumpable: true } : {}) },
   ];
   const EDGE = 4.9; // the fixture's outer right shoulder edge
+  const LIMIT = EDGE - 0.5; // the riding limit there: half a bike inside it
+  /** The sea past the wall's side (road/beyond.ts reads the tags). */
+  const SEA: BakedTag[] = [{ s0: 0, s1: 1500, side: 'right', tag: 'water-open' }];
 
   /** A rider in the air at s 150, `h` above the deck, heading right at the wall. */
-  function airborne(jumpable: boolean, hM: number): RiderHarness {
-    const h = riderHarness(gapSimConfig(gapBridge({ barriers: wall(jumpable) })), {
+  function airborne(jumpable: boolean, hM: number, tags?: BakedTag[]): RiderHarness {
+    const bridge = gapBridge({ barriers: wall(jumpable), ...(tags ? { tags } : {}) });
+    const h = riderHarness(gapSimConfig(bridge), {
       s: 150,
       d: 3.5,
       speed: 25,
@@ -172,38 +179,59 @@ describe('a jumpable wall', () => {
     return h;
   }
 
-  /** Steps while airborne; the furthest d reached and the events. */
-  function fly(h: RiderHarness): { maxD: number; events: SimEvent[] } {
+  /** Steps while airborne (or until a crash); the furthest d reached, the events and the d it ends at. */
+  function fly(h: RiderHarness): { maxD: number; events: SimEvent[]; endD: number } {
     let maxD = h.rider.pos.d;
     const events: SimEvent[] = [];
-    for (let t = 0; t < 30 && h.rider.mode === 'Airborne'; t++) {
+    for (let t = 0; t < 180 && h.rider.mode === 'Airborne' && !firstCrash(events); t++) {
       events.push(...h.step(input(1)));
       maxD = Math.max(maxD, h.rider.pos.d);
     }
-    return { maxD, events };
+    return { maxD, events, endD: h.rider.pos.d };
   }
 
-  it('an airborne rider higher above the deck than the wall flies over it, with no barrier contact', () => {
-    const { maxD, events } = fly(airborne(true, 3));
-    console.log(
-      `[examined] jumpable, 3 m up: furthest d ${maxD.toFixed(2)}, events ${events.map((e) => e.type).join(',')}`,
-    );
-    expect(maxD).toBeGreaterThan(EDGE);
-    expect(events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toHaveLength(0);
+  it('higher than the wall it flies over, jumpable or not; with ground past it, it comes down at the edge', () => {
+    for (const jumpable of [true, false]) {
+      const { maxD, events, endD } = fly(airborne(jumpable, 3));
+      console.log(
+        `[examined] jumpable ${jumpable}, 3 m up: furthest d ${maxD.toFixed(2)}, ends at d ${endD.toFixed(2)}, events ${events.map((e) => `${e.type}:${String(e.data['cause'] ?? e.data['quality'])}`).join(',')}`,
+      );
+      expect(maxD).toBeGreaterThan(EDGE + 1);
+      expect(events.filter((e) => e.data['cause'] === 'barrier' || e.data['cause'] === 'over')).toEqual([]);
+      // The sim has no ground past the edge: it lands at the band's edge, judged as any landing.
+      expect(ofType(events, 'land')).toHaveLength(1);
+      expect(endD).toBeCloseTo(LIMIT, 6);
+    }
   });
 
-  it('below its height, or a wall that is not jumpable, holds the rider in', () => {
-    for (const [jumpable, hM] of [
-      [true, 0.6],
-      [false, 3],
-    ] as const) {
-      const { maxD } = fly(airborne(jumpable, hM));
-      console.log(`[examined] jumpable ${jumpable}, ${hM} m up: furthest d ${maxD.toFixed(2)}`);
+  it('below its height it holds the rider in', () => {
+    for (const jumpable of [true, false]) {
+      const { maxD } = fly(airborne(jumpable, 0.6));
+      console.log(`[examined] jumpable ${jumpable}, 0.6 m up: furthest d ${maxD.toFixed(2)}`);
       expect(maxD).toBeLessThanOrEqual(EDGE);
     }
   });
 
-  it('a grounded rider meets a jumpable wall as a wall', () => {
+  it('with the sea past it, over the wall it goes overboard: the drop is the deck down to sea level', () => {
+    const { maxD, events } = fly(airborne(false, 3, SEA));
+    const crash = ofType(events, 'crash')[0];
+    console.log(
+      `[examined] the sea past the wall, 3 m up: furthest d ${maxD.toFixed(2)}, crash ${JSON.stringify(crash?.data)}`,
+    );
+    expect(crash?.data).toMatchObject({
+      cause: 'over',
+      overboard: true,
+      past: 'water',
+      high: false,
+      side: 1,
+    });
+    expect(crash?.data['dropM']).toBeCloseTo(GAP_DECK_Y, 6);
+    // It fell past the kill depth below the deck at the crossing, never landing on the road's plane.
+    expect(crash?.data['depthM']).toBeGreaterThan(GAP_DEFAULTS.killDepthM);
+    expect(ofType(events, 'land')).toEqual([]);
+  });
+
+  it('a grounded rider meets the wall as a wall', () => {
     const h = riderHarness(gapSimConfig(gapBridge({ barriers: wall(true) })), {
       s: 150,
       d: 3.5,

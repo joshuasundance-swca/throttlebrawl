@@ -25,7 +25,8 @@ const LAND_UNDER_S = 270;
 const LAND_BESIDE_S = 300;
 
 /**
- * Three boxes on the branch at AT_S: one standing on the lanes, one just past them, one hung over them; and
+ * Three boxes on the branch at AT_S: one standing on the lanes, one just past them, one hung over them; a thin
+ * rail along the lanes, as an edge kit is drawn; and
  * three slabs of land (named as the road's own, so the ground rule holds them): one 0.3 m over the lanes, one
  * 0.05 m under them (as the road's land lies), and one 1 m up just past their edge (land meeting the road).
  */
@@ -53,6 +54,8 @@ function plant(road: RoadNetwork): Group {
   for (const lane of road.lanesAt(e, AT_S)) hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
   // A building on the lanes: 8 m across, standing on the asphalt.
   box('in-road', 0, 8, -0.5, 12);
+  // A rail, as a verge's fence or a bridge's rail is drawn: 0.1 m thick, 1.1 m high, along the lanes (polish J2).
+  box('rail', 1, 0.1, 0, 1.1);
   // The same building with its face 0.1 m past the lanes' edge (the column starts RIM_M inside it): beside them.
   box('beside', hi + 0.1 + 4, 8, -0.5, 12);
   // A sign board hung over the lanes, its bottom clear of the column's top.
@@ -60,8 +63,8 @@ function plant(road: RoadNetwork): Group {
   return group;
 }
 
-describe('the negative control: a building and land planted on a branch of Bridge City', () => {
-  it('the building and the land over the lanes are found, by road and s; what stands beside, over or under them is not', async () => {
+describe('the negative control: a building, land and a rail planted on a branch of Bridge City', () => {
+  it('the building, the land over the lanes and the rail are found, by road and s; what stands beside, over or under them is not', async () => {
     const { places } = await sweepNetwork('osm-pnw-portland', 1, plant);
     const mine = places.filter((p) => p.part.startsWith('control/'));
     for (const p of mine) print(`[examined] control: ${placeLine(p)}`);
@@ -79,8 +82,15 @@ describe('the negative control: a building and land planted on a branch of Bridg
     expect(over?.over).toBeGreaterThan(0.2);
     expect(over?.over).toBeLessThan(0.45);
     expect(land.filter((p) => p !== over).map(placeLine)).toEqual([]);
+    // A thin rail on the lanes is found too (the edge kit the pattern of polish J2 drew across a sibling's lanes).
     expect(
-      mine.filter((p) => p.part !== 'control/in-road' && p.part !== 'control/road-land').map(placeLine),
+      mine.filter((p) => p.part === 'control/rail' && p.edge === BRANCH).length,
+      'the rail',
+    ).toBeGreaterThan(0);
+    expect(
+      mine
+        .filter((p) => !['control/in-road', 'control/road-land', 'control/rail'].includes(p.part))
+        .map(placeLine),
     ).toEqual([]);
   }, 300_000);
 });

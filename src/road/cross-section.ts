@@ -190,6 +190,23 @@ export function deriveVerge(road: VergeSource, side: VergeSide, s: number): Bake
   return causeway ? WATER : HARD;
 }
 
+/**
+ * The land tag whose band `deriveVerge` gives one side at s (the best-ranked of VERGE_BY_TAG), or
+ * null where a barrier, the sea or no land tag decides it. road/beyond.ts reads it to know what
+ * stands at a derived `hard` edge (a building front, the bluff's parapet, the interstate's rail).
+ */
+export function vergeTagAt(road: VergeSource, side: VergeSide, s: number): string | null {
+  for (const b of road.barriers ?? []) if (covers(b, side, s)) return null;
+  let best = -1;
+  for (const t of road.tags ?? []) {
+    if (!covers(t, side, s)) continue;
+    if (t.tag.startsWith('water')) return null;
+    const i = Object.hasOwn(TAG_RANK, t.tag) ? TAG_RANK[t.tag] : undefined;
+    if (i !== undefined && (best < 0 || i < best)) best = i;
+  }
+  return VERGE_BY_TAG[best]?.[0] ?? null;
+}
+
 /** Drive lanes per direction in one section's lane list. */
 export function lanesPerDirection(lanes: readonly LaneInfo[]): { forward: number; oncoming: number } {
   let forward = 0;

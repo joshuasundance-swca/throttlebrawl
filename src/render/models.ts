@@ -27,6 +27,8 @@ import { ATLAS_WHITE_UV, loadRegionAtlas, withAtlas } from './atlas';
 import {
   ARCH_ROOTS,
   ARCH_TAG,
+  BARE_BAYS,
+  BAY_KINDS,
   BAY_ROOT,
   BAY_ROOTS,
   TRESTLE_TAG,
@@ -642,6 +644,7 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
   const tiles: TileRun[][] = [];
   const surfaces: TextSurface[][] = [];
   let doubleSided = false;
+  const bares = new Map<number, BufferGeometry>();
   for (const name of ROOTS[kind]) {
     const root = scene.getObjectByName(name);
     if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
@@ -654,6 +657,15 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     const platform = kind === 'sevenMileKit' && name === BAY_ROOT.staging;
     // The headland battery gets its guns, one in each pit (`withBatteryGuns`: the file has none).
     const battery = kind === 'sfHeadlands' && name === 'gg_battery';
+    // A bay with parts above its deck also bakes without them (`BARE_BAYS`), from the kit's own triangles.
+    const bayKind = kind === 'sevenMileKit' ? BAY_KINDS.find((k) => BAY_ROOT[k] === name) : undefined;
+    const bare = bayKind ? BARE_BAYS[bayKind] : undefined;
+    if (bare) {
+      bares.set(
+        bare.variant,
+        belowDeck(platform ? withStagingLegs(v.geometry, false) : v.geometry, bare.topY),
+      );
+    }
     variants.push(
       trimmed
         ? belowDeck(v.geometry)
@@ -667,6 +679,14 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     tiles.push(trimmed ? [] : v.tiles);
     surfaces.push(v.surfaces);
     doubleSided ||= v.doubleSided;
+  }
+  // The bare bays follow the kit's roots, in `BARE_BAYS` order: placed where another road's lanes lie under
+  // the parts they leave out (polish J2). They keep no UVs, so they take no atlas tile runs.
+  for (const [index, g] of [...bares].sort((p, q) => p[0] - q[0])) {
+    variants[index] = g;
+    roles[index] = [];
+    tiles[index] = [];
+    surfaces[index] = [];
   }
   if (kind === 'pnwShore') {
     // Chuckanut's cliff, wall and cut ends (`finishShore`: the file is Blender work and is left as it is).
