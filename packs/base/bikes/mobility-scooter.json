@@ -11,6 +11,7 @@
     "steerRateMps": 4.5,
     "massKg": 120
   },
+  "hitbox": { "lengthM": 1.5, "widthM": 0.8 },
   "engineSound": {
     "preset": "two-stroke-buzz",
     "idleHz": 55,

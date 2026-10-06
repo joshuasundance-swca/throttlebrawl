@@ -6,6 +6,7 @@
   "tags": ["event", "boat-slide"],
   "lengthM": 6.0,
   "widthM": 2.3,
+  "heightM": 1.85,
   "cruiseMps": 0,
   "hazard": "big",
   "behaviour": {

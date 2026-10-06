@@ -6,6 +6,7 @@
   "tags": ["region-sf"],
   "lengthM": 0.5,
   "widthM": 0.6,
+  "heightM": 1.75,
   "cruiseMps": 2.5,
   "hazard": "normal",
   "behaviour": {

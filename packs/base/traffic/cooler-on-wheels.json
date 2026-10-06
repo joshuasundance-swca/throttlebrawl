@@ -6,6 +6,7 @@
   "tags": ["tourist", "key-party"],
   "lengthM": 1.0,
   "widthM": 0.6,
+  "heightM": 1.4,
   "cruiseMps": 4.5,
   "hazard": "normal",
   "behaviour": {

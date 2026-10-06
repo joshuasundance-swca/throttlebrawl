@@ -6,6 +6,7 @@
   "tags": ["region-sf", "satire"],
   "lengthM": 4.8,
   "widthM": 1.9,
+  "heightM": 1.9,
   "cruiseMps": 20.0,
   "hazard": "normal",
   "behaviour": {

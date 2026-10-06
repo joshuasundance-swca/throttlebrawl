@@ -59,7 +59,7 @@
       "s1": 200,
       "d0": 10.4,
       "d1": 17.4,
-      "params": { "spawns": "pedestrians" }
+      "params": { "spawns": "pedestrians", "kinds": ["sea-lion", "e-scooter-commuter", "dog-walker-sf"] }
     },
     {
       "kind": "rampTruck",
