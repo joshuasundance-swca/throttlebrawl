@@ -29,15 +29,10 @@ import {
   Vector3,
   type Texture,
 } from 'three';
-import {
-  OLDTOWN_RULES,
-  planOldTown,
-  planStreetFurniture,
-  type FrontageRule,
-  type OldTownFront,
-  type RoadNetwork,
-  type StreetFurniture,
-} from '../road';
+import { planStreetFurniture, type RoadNetwork, type StreetFurniture } from '../road';
+// Old Town's street fronts, the structure plan's (a lazy chunk, road/structures/: imported directly, as the
+// module map lets a lazy render layer, so it stays out of the first load).
+import { OLDTOWN_RULES, planOldTown, type FrontageRule, type OldTownFront } from '../road/structures/oldtown';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';

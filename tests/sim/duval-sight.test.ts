@@ -8,15 +8,8 @@
 // keeps the street open, apart). Each with its control: the street with no buildings shows the sea.
 import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import {
-  createRoadNetwork,
-  OLDTOWN_RULES,
-  planOldTown,
-  type BakedNetwork,
-  type BakedRoad,
-  type OldTownRule,
-  type RoadNetwork,
-} from '../../src/road';
+import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../../src/road';
+import { OLDTOWN_RULES, planOldTown, type OldTownRule } from '../../src/road/structures/oldtown';
 import { createFlatLook } from '../../src/render/look';
 import { bakeRepoModel } from '../../src/render/model-files.test-util';
 import { buildRoadScene, type RoadDressing } from '../../src/render/road-mesh';

@@ -7,10 +7,9 @@
 // (within PART_SLACK_M: no part is bigger than what it stands for). Negative controls move and grow a part.
 import { writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { OLDTOWN_PARTS, type Part } from '../src/road';
 import { LANDMARK_PARTS } from '../src/road/structures/landmark-parts';
 import { LANDMARK_FIGURES } from '../src/road/structures/landmarks';
-import { partSolid } from '../src/road/structures/oldtown';
+import { OLDTOWN_PARTS, partSolid, type Part } from '../src/road/structures/oldtown';
 import { MODEL_ASSETS, type ModelKind } from '../src/render/models';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
 import { columnParts } from '../src/render/structure-columns.test-util';

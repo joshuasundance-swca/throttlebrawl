@@ -62,14 +62,6 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]atlas\.ts$/,
   // Landmarks (playtest 3): loaded with a race whose road has a `landmark` feature.
   /[\\/]src[\\/]render[\\/]landmarks\.ts$/,
-  // The structure plans (the physical world, 2026-10-06): each layer's planner loads with its region (road/structures.ts
-  // STRUCTURE_LAYERS), and render's roadside and landmark chunks read them: Old Town's street fronts, the drawn land
-  // they stand on, the landmarks' places, their planner and its table of parts.
-  /[\\/]src[\\/]road[\\/]structures[\\/]oldtown\.ts$/,
-  /[\\/]src[\\/]road[\\/]structures[\\/]land\.ts$/,
-  /[\\/]src[\\/]road[\\/]structures[\\/]landmark-places\.ts$/,
-  /[\\/]src[\\/]road[\\/]structures[\\/]landmarks\.ts$/,
-  /[\\/]src[\\/]road[\\/]structures[\\/]landmark-parts\.ts$/,
   // The words painted on a model's blank board (playtest 3, T12.6): loaded with the road that has one.
   /[\\/]src[\\/]render[\\/]text-surfaces\.ts$/,
   // A party street's string lights (playtest 4, P4-16): loaded with a road that has a party zone.

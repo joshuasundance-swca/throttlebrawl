@@ -6,14 +6,7 @@
 // every structure touched by the drawing. A negative control moves a structure and is found.
 import { BufferGeometry, Float32BufferAttribute } from 'three';
 import { describe, expect, it } from 'vitest';
-import {
-  landmarkGround,
-  landmarkPlaces,
-  planStructures,
-  STRUCTURE_LAYERS,
-  type LandmarkPlace,
-  type RoadNetwork,
-} from '../src/road';
+import { planStructures, STRUCTURE_LAYERS, type RoadNetwork } from '../src/road';
 import {
   ANCHORAGE_PLAN,
   PIGEON_KEY_PLAN,
@@ -22,7 +15,13 @@ import {
   SUMMIT_LOT_HALF_ALONG_M,
   SUSPENSION_PLAN,
 } from '../src/road/structures/landmarks';
-import { LANDMARK_KIT_IDS, parseLandmark } from '../src/road/structures/landmark-places';
+import {
+  LANDMARK_KIT_IDS,
+  landmarkGround,
+  landmarkPlaces,
+  parseLandmark,
+  type LandmarkPlace,
+} from '../src/road/structures/landmark-places';
 import { ANCHORAGE } from '../src/render/gg-anchorage';
 import { landmarkKitsFor, LandmarkLayer, SUSPENSION } from '../src/render/landmarks';
 import { createFlatLook } from '../src/render/look';

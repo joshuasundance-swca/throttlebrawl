@@ -150,16 +150,3 @@ export type {
 } from './structures';
 export { COURSE_STEP_M, courseAt } from './course';
 export type { CourseSpot } from './course';
-// The structure plans render draws from (road/structures/): Old Town's street fronts and the landmarks. Only
-// render's lazy chunks and the planners' own lazy chunks use them (scripts/first-load.test.ts holds them out
-// of the first load).
-export { hasOldTown, OLDTOWN_PARTS, OLDTOWN_RULES, planOldTown } from './structures/oldtown';
-export type { FrontageRule, OldTownFront, OldTownPlan, OldTownRule, Part } from './structures/oldtown';
-export {
-  LANDMARK_KIT_IDS,
-  landmarkGround,
-  landmarkKitAssetId,
-  landmarkPlaces,
-  parseLandmark,
-} from './structures/landmark-places';
-export type { LandmarkKitName, LandmarkPlace } from './structures/landmark-places';

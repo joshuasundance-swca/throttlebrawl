@@ -6,15 +6,14 @@
 // render drawing the plan, and each structure held to its drawn bounds, with a negative control each.
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { planStructures, STRUCTURE_LAYERS, type StructureSpec } from '../src/road';
 import {
+  frontStructures,
   OLDTOWN_RULES,
   planOldTown,
-  planStructures,
-  STRUCTURE_LAYERS,
+  planner as oldTownPlanner,
   type OldTownFront,
-  type StructureSpec,
-} from '../src/road';
-import { frontStructures, planner as oldTownPlanner } from '../src/road/structures/oldtown';
+} from '../src/road/structures/oldtown';
 import { createFlatLook } from '../src/render/look';
 import { landmarkFootprints } from '../src/render/landmarks';
 import { bakeRepoModel } from '../src/render/model-files.test-util';

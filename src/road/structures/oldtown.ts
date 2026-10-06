@@ -38,7 +38,7 @@ import {
 } from '../structures';
 import { scatterHash, themeAt, type LandTheme, type SideTag } from '../themes';
 import { landmarkGround } from './landmark-places';
-import { landReachOf, type LandReach } from './land';
+import { landReachOf, type LandReach } from '../land';
 
 /** A street front's layout (render/roadside.ts `Frontage`). */
 export interface FrontageRule {

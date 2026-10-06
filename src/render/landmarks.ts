@@ -38,7 +38,10 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { landmarkGround, landmarkPlaces, type LandmarkPlace, type RoadNetwork } from '../road';
+import type { RoadNetwork } from '../road';
+// Where each landmark stands: the structure plan's placement (a lazy chunk, road/structures/: imported directly, as
+// the module map lets a lazy render layer, so it stays out of the first load).
+import { landmarkGround, landmarkPlaces, type LandmarkPlace } from '../road/structures/landmark-places';
 import { CRUISE_SHIP_TOP, CRUISE_SLIDES, cruiseShipTopSoup } from './cruise-ship-top';
 import { fredSoup, FRED, type Soup } from './fred';
 import { anchorageSoup, ANCHORAGE_PIECE_R_M } from './gg-anchorage';
