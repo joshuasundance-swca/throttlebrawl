@@ -31,6 +31,7 @@ import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { RoadDressing } from './road-mesh';
 import { scatterHash, themeAt, type SideTag, type SideTheme } from './scenery';
+import { hangPoints, stringPoints } from './string-lights';
 
 /** The tags this layer draws. */
 export const BLOCK_TAGS = ['lanterns', 'cafes', 'side-street', 'hill-park'] as const;
@@ -912,19 +913,14 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
               const left = edgeAt(-1, s);
               const right = edgeAt(1, s);
               const y = w(s, 0).y + STRING_HEIGHT_M;
-              const span = left + right;
-              const pts: Point3[] = [];
-              const N = 10;
-              for (let i = 0; i <= N; i++) {
-                const d = -left + (span * i) / N;
-                const u = i / N;
-                const p = w(s, d);
-                pts.push({ x: p.x, y: y - 4 * STRING_SAG_M * u * (1 - u), z: p.z });
-              }
+              // The cord, one end on each side's facade, and the lanterns hung from it (string-lights.ts).
+              const from = { ...w(s, -left), y };
+              const to = { ...w(s, right), y };
+              const pts = stringPoints(from, to, STRING_SAG_M, 10);
               const [n] = soupsAt(e.index, s);
               const fwd = sub(w(s - 1, 0), w(s, 0));
               const facing = { x: fwd.x, y: 0, z: fwd.z };
-              for (let i = 0; i < N; i++) {
+              for (let i = 0; i < pts.length - 1; i++) {
                 const p = pts[i] as Point3;
                 const q = pts[i + 1] as Point3;
                 quad(n, p, q, { ...q, y: q.y - 0.06 }, { ...p, y: p.y - 0.06 }, BLOCK_COLOURS.string, facing);
@@ -938,15 +934,17 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
                   neg(facing),
                 );
               }
-              let count = 0;
               const gold = h(k, 1, 21) < 0.2;
-              for (let dd = 1.2; dd < span - 1.2; dd += LANTERN_PITCH_M) {
-                const u = dd / span;
-                const p = w(s, -left + dd);
-                const c = { x: p.x, y: y - 4 * STRING_SAG_M * u * (1 - u) - 0.05, z: p.z };
-                lantern(n, c, gold && count % 2 === 1 ? BLOCK_COLOURS.lanternGold : BLOCK_COLOURS.lantern);
-                count++;
-              }
+              const hung = hangPoints(from, to, {
+                sagM: STRING_SAG_M,
+                pitchM: LANTERN_PITCH_M,
+                endM: 1.2,
+                dropM: 0.05,
+              });
+              hung.forEach((c, count) =>
+                lantern(n, c, gold && count % 2 === 1 ? BLOCK_COLOURS.lanternGold : BLOCK_COLOURS.lantern),
+              );
+              const count = hung.length;
               plan.strings.push({
                 edge: e.index,
                 s,

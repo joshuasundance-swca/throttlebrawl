@@ -41,15 +41,15 @@ export const routeChipId = (id: string | null): string =>
 
 export const ROUTE_PICKER_CSS = `
 #route-picker { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: min(560px, 92vw); }
-#route-picker .route-label { font: 800 12px ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
+#route-picker .route-label { font: 800 0.75rem ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
   text-transform: uppercase; background: #111; color: #f2ead8; padding: 1px 8px; transform: rotate(-1deg); }
 #route-picker .route-row { display: flex; gap: 10px; flex-wrap: nowrap; overflow-x: auto; max-width: 100%;
   padding: 2px 4px 5px; box-sizing: border-box; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 #route-picker .route-row::-webkit-scrollbar { display: none; }
-#route-picker .route { font-size: 14px; white-space: nowrap; flex: 0 0 auto; }
+#route-picker .route { font-size: 0.875rem; white-space: nowrap; flex: 0 0 auto; }
 #route-picker .route[aria-checked='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a;
   transform: rotate(1deg); }
-#route-picker .route-blurb { font: italic 500 13px/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
+#route-picker .route-blurb { font: italic 500 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
   text-shadow: 1px 1px 0 #111; max-width: 100%; }
 #region-picker.route-picked .region-blurb { display: none; }
 `;

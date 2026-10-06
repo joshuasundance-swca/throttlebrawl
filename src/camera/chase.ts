@@ -34,7 +34,9 @@
 //   rider's own helmet; its sideways swing is held to `camera.helmetReachM`, so it never leans out
 //   over traffic the rider's contact box passes clean (2026-10-05). It looks
 //   along the road at a point ahead, rolls with a share of the lean and has its own FOV. Under the
-//   reduce-shake setting its roll and FOV kick shrink toward `camera.helmetCalm`. Switching into or
+//   reduce-shake or reduce-motion setting its roll and FOV kick shrink toward `camera.helmetCalm`.
+//   (Reduce motion also softens the chase and far views' roll and FOV kick, toward
+//   `camera.motionCalm`, and halves the moves below.) Switching into or
 //   out of it is a hard cut (a blend would fly through the rider), and so is a takedown framing
 //   while in it. Off the bike (tumbling, on foot) it shows the low chase framing.
 // Air that pays (the pitch deck's #13, run W-T): "Over a crest the camera tips forward". In the air
@@ -154,6 +156,8 @@ export interface ChaseParams {
   helmetFovDeg: number;
   helmetRollFraction: number;
   helmetCalm: number;
+  /** The share of the chase and far views' lean roll and speed FOV kick that reduce motion leaves. */
+  motionCalm: number;
   chaseDistanceM: number;
   heightM: number;
   lookAheadM: number;
@@ -201,6 +205,11 @@ export interface ChaseRig {
   setRoad(road: RoadNetwork | null): void;
   /** The reduce-screen-shake setting: 1 is full shake and jolt, 0 is none. */
   setShakeAmount(amount: number): void;
+  /**
+   * The reduce-motion setting: 1 is full motion, 0 is reduced. At 0 the lean roll and the speed FOV
+   * kick shrink to `camera.motionCalm`, and the helmet view and the moves calm as under reduce-shake.
+   */
+  setMotionAmount(amount: number): void;
   readonly mode: RigMode;
   readonly params: ChaseParams;
 }
@@ -311,6 +320,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   const jolt = createJolt();
   const takedown = createTakedownTracker();
   let shakeAmount = 1;
+  let motionAmount = 1;
   let lookingBack = false;
   /** The base view the last frame showed (a change into or out of the helmet cuts). */
   let shown: ViewMode = 'lowChase';
@@ -342,10 +352,16 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     return v === 'helmet' && !onBike(t.mode) ? 'lowChase' : v;
   };
 
-  /** How much of the helmet cam's roll and FOV kick the reduce-shake setting leaves. */
+  /** How much of the helmet cam's roll and FOV kick reduce-shake and reduce-motion leave (the lesser). */
   const helmetShare = (): number => {
     const calm = Math.min(1, Math.max(0, params.helmetCalm));
-    return calm + (1 - calm) * shakeAmount;
+    return calm + (1 - calm) * Math.min(shakeAmount, motionAmount);
+  };
+
+  /** How much of the chase and far views' lean roll and FOV kick reduce-motion leaves. */
+  const motionShare = (): number => {
+    const calm = Math.min(1, Math.max(0, params.motionCalm));
+    return calm + (1 - calm) * motionAmount;
   };
 
   /**
@@ -456,7 +472,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     const lean = leanOf(t);
     // The helmet's roll and FOV kick shrink under reduce-shake; its placement is not sprung
     // (helmetPlacement), so its distance and height goals stay the chase cam's, ready for a cut out.
-    const share = helmet ? helmetShare() : 1;
+    const share = helmet ? helmetShare() : motionShare();
     // Air that pays: in the air the camera tips forward over the landing.
     const tip =
       overRoad > 0 && params.airTipFullM > 0
@@ -466,8 +482,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
           : 0;
     aimY -= params.airTipM * tip;
 
-    // The moves. Reduce-motion halves them (the shake setting runs from 1 to 0).
-    const calm = 0.5 + 0.5 * shakeAmount;
+    // The moves. Reduce-motion halves them (the shake and motion amounts run from 1 to 0).
+    const calm = 0.5 + 0.5 * Math.min(shakeAmount, motionAmount);
     const slip = Math.max(-1, Math.min(1, fieldOf(t.drift) / DRIFT_FULL_RAD));
     const up = Math.min(1, Math.max(0, fieldOf(t.wheelie) / WHEELIE_FULL_RAD));
     let moveSide = 0;
@@ -494,7 +510,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       aimY: aimY - t.y,
       aimZ: aimZ - t.z,
       roll:
-        -lean * (helmet ? params.helmetRollFraction * share : params.rollFraction) -
+        -lean * (helmet ? params.helmetRollFraction : params.rollFraction) * share -
         slip * DRIFT_FULL_RAD * params.driftRoll * calm * share,
       fov:
         (helmet ? params.helmetFovDeg : params.fovBaseDeg) +
@@ -812,6 +828,9 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     },
     setShakeAmount(amount) {
       shakeAmount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
+    },
+    setMotionAmount(amount) {
+      motionAmount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
     },
   };
 

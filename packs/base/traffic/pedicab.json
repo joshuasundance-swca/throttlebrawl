@@ -9,6 +9,7 @@
   "cruiseMps": 4.5,
   "hazard": "normal",
   "behaviour": {
+    "roadside": "yields",
     "carFollowing": true,
     "laneChanges": false,
     "dives": false,

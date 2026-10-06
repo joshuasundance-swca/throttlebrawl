@@ -13,25 +13,25 @@ import type { SeenItem, SeenLog } from './veto';
 const CSS = `
 #cut-menu { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60; pointer-events: auto;
   width: min(420px, calc(100vw - 32px)); box-sizing: border-box; padding: 12px 14px; background: #111; color: #f2ead8;
-  border: 3px solid #f2ead8; box-shadow: 5px 5px 0 #e0543a; font: 600 16px/1.35 system-ui, sans-serif; text-align: left; }
+  border: 3px solid #f2ead8; box-shadow: 5px 5px 0 #e0543a; font: 600 1rem/1.35 system-ui, sans-serif; text-align: left; }
 #cut-menu[hidden], #cut-done[hidden] { display: none; }
-#cut-menu .cut-title { font: 800 13px ui-monospace, 'Courier New', monospace; letter-spacing: 0.08em; text-transform: uppercase;
+#cut-menu .cut-title { font: 800 0.8125rem ui-monospace, 'Courier New', monospace; letter-spacing: 0.08em; text-transform: uppercase;
   color: #f5c542; margin-bottom: 6px; }
 #cut-menu .cut-label { margin-bottom: 12px; overflow-wrap: anywhere; }
 #cut-menu .cut-row { display: flex; gap: 12px; flex-wrap: wrap; }
 #cut-menu button { pointer-events: auto; min-height: 44px; padding: 6px 16px; cursor: pointer;
-  font: 800 16px ui-monospace, 'Courier New', monospace; color: #111; background: #f2ead8; border: 3px solid #f2ead8; }
+  font: 800 1rem ui-monospace, 'Courier New', monospace; color: #111; background: #f2ead8; border: 3px solid #f2ead8; }
 #cut-menu #cut-confirm { background: #e0543a; border-color: #e0543a; color: #fff; }
 #cut-done { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60;
-  padding: 6px 12px; background: #000c; color: #fff; font: 600 14px system-ui, sans-serif; pointer-events: none; }
+  padding: 6px 12px; background: #000c; color: #fff; font: 600 0.875rem system-ui, sans-serif; pointer-events: none; }
 #recently-seen { pointer-events: auto; width: min(560px, calc(100vw - 32px)); max-height: 26vh; overflow-y: auto;
   box-sizing: border-box; text-align: left; background: #000a; border: 1px dashed #fff8; padding: 6px 8px; }
-#recently-seen .rs-title { font: 700 12px ui-monospace, 'Courier New', monospace; opacity: 0.85; margin-bottom: 4px; }
+#recently-seen .rs-title { font: 700 0.75rem ui-monospace, 'Courier New', monospace; opacity: 0.85; margin-bottom: 4px; }
 #recently-seen ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 #recently-seen .rs-item { pointer-events: auto; width: 100%; min-height: 44px; text-align: left; cursor: pointer; padding: 6px 8px;
-  font: 600 14px/1.3 system-ui, sans-serif; color: #111; background: #f2ead8; border: 2px solid #111; overflow-wrap: anywhere; }
-#recently-seen .rs-kind { font: 800 11px ui-monospace, monospace; text-transform: uppercase; color: #b3261e; margin-right: 6px; }
-#recently-seen .rs-empty { font: 500 13px system-ui, sans-serif; opacity: 0.8; }
+  font: 600 0.875rem/1.3 system-ui, sans-serif; color: #111; background: #f2ead8; border: 2px solid #111; overflow-wrap: anywhere; }
+#recently-seen .rs-kind { font: 800 0.6875rem ui-monospace, monospace; text-transform: uppercase; color: #b3261e; margin-right: 6px; }
+#recently-seen .rs-empty { font: 500 0.8125rem system-ui, sans-serif; opacity: 0.8; }
 `;
 
 let styled = false;

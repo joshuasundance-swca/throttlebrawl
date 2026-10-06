@@ -65,7 +65,20 @@
       "tag": "old-bridge"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "landmark",
+      "id": "pigeon-key",
+      "s0": 1844.8324,
+      "s1": 1954.8324,
+      "d0": -75.5267,
+      "d1": -21.5267,
+      "params": {
+        "model": "seven-mile-kit#pigeon_key",
+        "island": true
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 0.9589,

@@ -86,6 +86,9 @@ const SHOP_NEON: Readonly<Record<string, SurfaceStyle>> = {
   duval_balcony_c_shop_name_1: neon('#8ff5d8', '#00d9a5', '#0f1b1b'),
   duval_balcony_c_shop_name_2: neon('#ffe07a', '#ffb000', '#1a170d'),
   duval_corner_bar_name: neon('#ff8fd0', '#ff3fa8', '#190f1a'),
+  // The identity kit's two open-fronted bars (playtest 4, P4-19).
+  duval_open_bar_a_name: neon('#ffb36b', '#ff7a00', '#1b130d'),
+  duval_open_bar_b_name: neon('#9be8ff', '#2d9cff', '#0e1822'),
 };
 const SHOP_BY_DAY: SurfaceStyle = { bg: '#f1e6c8', fg: '#2b3a42', glow: null };
 
@@ -115,7 +118,15 @@ export interface PlacedSurface {
    * it modulo the names the catalog has for the sign (`id`, `id-2`, `id-3`...). None: the first.
    */
   pick?: number;
+  /**
+   * A per-instance number (a mile post's): the sign's `{n}` is filled with it, so one sign ("MILE {n}")
+   * serves every post and each paints its own. None: the sign is painted as written.
+   */
+  number?: number;
 }
+
+/** The token in a sign's words that a surface's `number` fills. */
+export const NUMBER_TOKEN = '{n}';
 
 /**
  * A model's text surface under `matrix` (its model frame to the world): its triangles, lifted off the
@@ -312,21 +323,29 @@ export class TextSurfaceLayer {
     const lit = opts.lit ?? true;
     // A board may have several names (`id`, `id-2`...): the building's pick chooses among those the
     // catalog has, so a cut name leaves the other buildings theirs.
-    const want: { s: PlacedSurface; id: string }[] = [];
+    // `key` names the canvas row: the sign, or the sign with this surface's number in its words.
+    const want: { s: PlacedSurface; id: string; key: string; text: string }[] = [];
     for (const s of surfaces) {
       const names = [s.id, ...ALTERNATES.map((k) => `${s.id}-${k}`)].filter((n) => items[n]);
       const id = names[Math.abs(Math.floor(s.pick ?? 0)) % Math.max(1, names.length)];
-      if (id) want.push({ s, id });
+      const item = id ? items[id] : undefined;
+      if (!id || !item) continue;
+      const numbered = s.number !== undefined && item.text.includes(NUMBER_TOKEN);
+      want.push({
+        s,
+        id,
+        key: numbered ? `${id}#${s.number}` : id,
+        text: numbered ? item.text.split(NUMBER_TOKEN).join(String(s.number)) : item.text,
+      });
     }
     this.total = want.length;
-    // One canvas row per distinct sign.
+    // One canvas row per distinct text.
     const distinct = new Map<string, { id: string; text: string; style: SurfaceStyle; aspect: number }>();
-    for (const { s, id } of want) {
-      const item = items[id];
-      if (item && !distinct.has(id))
-        distinct.set(id, {
-          id,
-          text: item.text,
+    for (const { s, key, text } of want) {
+      if (!distinct.has(key))
+        distinct.set(key, {
+          id: key,
+          text,
           style: styleOfSurface(s.name, lit),
           aspect: s.widthM / s.heightM,
         });
@@ -346,16 +365,16 @@ export class TextSurfaceLayer {
     // One mesh for all of them.
     const pos: number[] = [];
     const uv: number[] = [];
-    for (const { s, id } of want) {
+    for (const { s, id, key, text } of want) {
       const item = items[id];
-      const row = rowOf.get(id);
+      const row = rowOf.get(key);
       if (!item || !row) continue;
       const v0 = pos.length / 3;
       pos.push(...s.positions);
       for (let i = 0; i < s.uvs.length; i += 2) {
         uv.push(s.uvs[i] ?? 0, (row.cell.y + (s.uvs[i + 1] ?? 0) * row.cell.h) / height);
       }
-      this.shown.push({ surface: s, ref: item.ref, text: item.text, v0, n: s.positions.length / 3 });
+      this.shown.push({ surface: s, ref: item.ref, text, v0, n: s.positions.length / 3 });
     }
     this.live = new Uint32Array(pos.length / 3);
     if (this.shown.length === 0) return;
