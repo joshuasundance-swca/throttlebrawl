@@ -25,6 +25,14 @@ export const TRAFFIC_HIT_KEY = 'traffic.solidHitMps';
  */
 export const TRAFFIC_HIT_DEFAULT_MPS = 10;
 
+/**
+ * An end-on contact overlapping sideways by less than this is a graze, m: it meets the corner, so its
+ * closing speed is taken across the road, like a side brush's. One threshold for every heavy thing a
+ * rider meets: traffic (./index.ts, `TRAFFIC.grazeM`), and the street furniture and the solid road
+ * hazards (sim/riders, `meetSolid`; playtest 4, "solid but forgiving").
+ */
+export const GRAZE_M = 0.3;
+
 /** The crash line in force: the tuning value, else the default. */
 export function trafficHitMps(params: Readonly<Record<string, number>>): number {
   const v = params[TRAFFIC_HIT_KEY];

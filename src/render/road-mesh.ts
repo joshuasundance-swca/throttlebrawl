@@ -713,7 +713,7 @@ export const SCENERY_LAND_M = 24;
 /** The shelf from the land's edge down to the sea floor, m. */
 const SCENERY_SHELF_M = 4;
 /** A wide land strip keeps off a landmark standing beyond the usual strip from this far before it to this far after it, m. */
-const LANDMARK_LEAD_M = 12;
+export const LANDMARK_LEAD_M = 12;
 /** A seawall's drop (run W-U): near sheer, m out from the strip's edge. */
 const SEAWALL_SHELF_M = 0.05;
 /** Land widths tried where another road leaves no room for a shelf, m. [default] */

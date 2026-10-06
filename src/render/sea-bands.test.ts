@@ -212,9 +212,9 @@ describe('the sea mesh keeps its size and its extent, holds the plan`s colours a
   const pos = () => sea.mesh.geometry.getAttribute('position') as BufferAttribute;
   const col = () => sea.mesh.geometry.getAttribute('color') as BufferAttribute;
 
-  it('is one mesh named for the sea, of a thousand triangles or fewer, over the old plane`s extent', () => {
+  it('is one mesh named for the sea, of 2,400 triangles or fewer, over the old plane`s extent', () => {
     expect(sea.mesh.name).toBe('road-water');
-    expect(sea.triangles).toBeLessThanOrEqual(1000);
+    expect(sea.triangles).toBeLessThanOrEqual(2400);
     const xs = Array.from({ length: pos().count }, (_, i) => pos().getX(i));
     const zs = Array.from({ length: pos().count }, (_, i) => pos().getZ(i));
     expect(Math.min(...xs)).toBeCloseTo(extent.x - extent.halfX, 1);

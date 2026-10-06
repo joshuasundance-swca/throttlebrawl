@@ -17,7 +17,7 @@
 //
 // Drawing: one mesh, one draw call, a fixed number of triangles however long the route is. The mesh is a
 // grid of fine squares around the camera (snapped to the grid, so a colour never swims) inside one ring of
-// large squares out to where the old plane ended; it re-lays itself, in a thousand or so vertices, when
+// large squares out to where the old plane ended; it re-lays itself, in 1,200 or so vertices, when
 // the camera crosses a square. Numbers are [default].
 import { BufferAttribute, BufferGeometry, Color, Mesh } from 'three';
 import type { RoadNetwork } from '../road';
@@ -40,15 +40,25 @@ export const SEA_BANDS = {
   /** Metres between the samples of the road the plan reads: land (one per), and the high deck. */
   landStepM: 150,
   deckStepM: 30,
-  /** The patches of seagrass and sand: the size of a patch, m. */
-  patchM: 160,
+  /**
+   * The patches of seagrass and sand (run C's live check, lane J3: "the flats look one turquoise"): the size
+   * of a patch, m; the second, finer octave's share of that size; and the noise value where a patch starts
+   * and where its tint is full. A patch is two squares of the fine grid and a little more, so it is a shape
+   * and not a vertex, and a view of the flats holds several (tests/sim/keys-places-sight).
+   */
+  patchM: 60,
+  octaveShare: 0.55,
+  patchFrom: 0.04,
+  patchTo: 0.36,
+  /** How many lattice points' tints are kept between re-lays (the camera's trail), before the memory is dropped. */
+  memoryMax: 20000,
   /** The fine grid round the camera: squares each side and the side of one, m. */
-  cells: 20,
-  cellM: 56,
+  cells: 32,
+  cellM: 28,
   /** The colours of the deep channel (display sRGB), and the tints of a sand patch and a seagrass patch. */
   deep: '#16639f',
-  sand: [1.18, 1.12, 0.95],
-  seagrass: [0.62, 0.82, 0.72],
+  sand: [1.3, 1.2, 0.95],
+  seagrass: [0.5, 0.72, 0.62],
 } as const;
 
 type Tint = readonly [number, number, number];
@@ -124,13 +134,15 @@ export function seaDepthAt(plan: SeaPlan, x: number, z: number): number {
     const dz = z - d.z;
     const along = dx * d.tx + dz * d.tz;
     const across = -dx * d.tz + dz * d.tx;
-    const reach = Math.hypot(along / SEA_BANDS.channelAlongM, across / SEA_BANDS.channelAcrossM);
-    if (reach >= 1) continue;
+    const ua = along / SEA_BANDS.channelAlongM;
+    const uc = across / SEA_BANDS.channelAcrossM;
+    if (ua * ua + uc * uc >= 1) continue;
+    const reach = Math.sqrt(ua * ua + uc * uc);
     channel = Math.max(channel, d.depth * (1 - smooth(0.15, 1, reach)));
   }
-  let nearest = Infinity;
-  for (const a of plan.land) nearest = Math.min(nearest, Math.hypot(x - a.x, z - a.z));
-  const open = SEA_BANDS.openShare * smooth(SEA_BANDS.openFromM, SEA_BANDS.openToM, nearest);
+  let nearest2 = Infinity;
+  for (const a of plan.land) nearest2 = Math.min(nearest2, (x - a.x) * (x - a.x) + (z - a.z) * (z - a.z));
+  const open = SEA_BANDS.openShare * smooth(SEA_BANDS.openFromM, SEA_BANDS.openToM, Math.sqrt(nearest2));
   return Math.max(channel, open);
 }
 
@@ -165,7 +177,7 @@ function patchNoise(x: number, z: number, seed: number): number {
   const turnedZ = x * 0.6 + z * 0.8;
   return (
     0.68 * valueNoise(x, z, SEA_BANDS.patchM, seed) +
-    0.32 * valueNoise(turnedX + 91, turnedZ - 47, SEA_BANDS.patchM * 0.42, seed + 7)
+    0.32 * valueNoise(turnedX + 91, turnedZ - 47, SEA_BANDS.patchM * SEA_BANDS.octaveShare, seed + 7)
   );
 }
 
@@ -186,8 +198,8 @@ export function seaTintAt(plan: SeaPlan, x: number, z: number, seed: number): Ti
   const n = patchNoise(x, z, seed);
   // The patches live on the flats and give way to the deep before it is dark.
   const flat = 1 - smooth(0, 0.5, depth);
-  const sand = smooth(0.12, 0.55, n) * flat;
-  const grass = smooth(0.12, 0.55, -n) * flat;
+  const sand = smooth(SEA_BANDS.patchFrom, SEA_BANDS.patchTo, n) * flat;
+  const grass = smooth(SEA_BANDS.patchFrom, SEA_BANDS.patchTo, -n) * flat;
   const deep = smooth(0, 1, depth);
   const out: [number, number, number] = [1, 1, 1];
   for (let k = 0; k < 3; k++) {
@@ -209,6 +221,7 @@ export class SeaBands {
   private readonly position: Float32Array;
   private readonly colour: Float32Array;
   private readonly geometry: BufferGeometry;
+  private readonly tints = new Map<string, Tint>();
   private cellX = NaN;
   private cellZ = NaN;
 
@@ -253,6 +266,23 @@ export class SeaBands {
     this.update(start.x, start.z);
   }
 
+  /**
+   * The tint at a point of the lattice, from the plan the first time and from memory after: the fine squares
+   * snap to the grid, so a re-lay one square on shares all but a row and a column of its points with the last
+   * (the plan's walk over the road's land and decks is the cost, and it would be paid on a thousand points
+   * every second at race speed). The memory is dropped when it is large, a long race's worth.
+   */
+  private tintAt(x: number, z: number): Tint {
+    const key = `${x},${z}`;
+    let t = this.tints.get(key);
+    if (!t) {
+      if (this.tints.size > SEA_BANDS.memoryMax) this.tints.clear();
+      t = seaTintAt(this.plan, x, z, this.seed);
+      this.tints.set(key, t);
+    }
+    return t;
+  }
+
   /** Re-lays the fine squares about the camera (snapped to the square it stands in). */
   update(cameraX: number, cameraZ: number): void {
     const { cells, cellM } = SEA_BANDS;
@@ -284,7 +314,7 @@ export class SeaBands {
         this.position[k] = x;
         this.position[k + 1] = 0;
         this.position[k + 2] = z;
-        const t = seaTintAt(this.plan, x, z, this.seed);
+        const t = this.tintAt(x, z);
         this.colour[k] = t[0];
         this.colour[k + 1] = t[1];
         this.colour[k + 2] = t[2];

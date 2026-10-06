@@ -89,6 +89,7 @@ import {
 } from '../world';
 import {
   closingOnAxis,
+  GRAZE_M,
   TRAFFIC_HIT_DEFAULT_MPS,
   TRAFFIC_HIT_KEY,
   trafficContactCrashes,
@@ -362,7 +363,7 @@ export const TRAFFIC = {
    * An end-on contact overlapping sideways by less than this is a graze, m: it meets the corner, so
    * its closing speed is taken across the road, like a side brush's.
    */
-  grazeM: 0.3,
+  grazeM: GRAZE_M,
   /**
    * The ghost after a remount or a respawn (playtest 4): it lasts `traffic.respawnGhostS`, then on
    * while the rider's box is within ghostClearM of any vehicle's, never past ghostCapS in all, s/m.

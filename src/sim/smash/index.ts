@@ -47,6 +47,7 @@ import { addHeat, HEAT } from '../cops';
 import type { SetPieceState } from '../modifiers';
 import { buildCorridor, toCorridor } from '../traffic';
 import { fromCorridor, type Corridor } from '../traffic/corridor';
+import { furnitureOn, furnitureOverlaps } from '../riders/furniture';
 import { tumbleRecord } from '../tumble';
 import type { SimConfig, SimSmashableDef, SmashableSnapshot } from '../types';
 import { emit, riderHitbox, type Mover, type SimSystem, type World } from '../world';
@@ -256,6 +257,7 @@ export function placeSmashables(world: World, config: SimConfig): SmashState {
   const pieces = (world.systems['setPieces'] as SetPieceState | undefined)?.pieces ?? [];
   const rng = st.rng;
   const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  const probe: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
   const spacing = SMASH.spacingM / density;
   let along = SMASH.startClearM;
   while (st.props.length < SMASH.maxProps) {
@@ -289,6 +291,11 @@ export function placeSmashables(world: World, config: SimConfig): SmashState {
         const uk = u + dir * k * spec.pitchM;
         const cd = spotAt(config, c, uk, cdSide, spec.halfAcross, pos);
         if (cd === null) break;
+        // Never in the street's furniture (playtest 4, road/furniture.ts: a hydrant, a lamp, a tree).
+        if (furnitureOn(world.params)) {
+          fromCorridor(c, uk, cd, c.routeDir, probe);
+          if (furnitureOverlaps(config, probe.edge, probe.s, probe.d, spec.halfAlong, spec.halfAcross)) break;
+        }
         placed.push(at(config, c, st.props.length + placed.length + 1, chosen, uk, cd));
       }
       if (placed.length === 0) continue;

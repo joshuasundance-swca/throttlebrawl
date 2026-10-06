@@ -55,10 +55,12 @@
 // their zone. Every number below is a [default] starting value, to be tuned on the phone.
 import {
   clamp,
+  cos,
   createRng,
   HALF_PI,
   nextFloat,
   PI,
+  sin,
   streamSeed,
   type RngState,
   type TuningParamDecl,
@@ -67,6 +69,7 @@ import type { BakedFeature, RoadNeighbour, RoadNetwork } from '../../road';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { roadsideClass } from '../roadside';
 import { vehicleInfo } from '../traffic';
+import { GRAZE_M, trafficContactCrashes } from '../traffic/contact-rule';
 import {
   addMover,
   emit,
@@ -821,6 +824,24 @@ function sideGap(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number
   return Math.abs(dd) - (r.widthM + t.widthM) / 2;
 }
 
+/**
+ * How fast a rider met a heavy pedestrian or animal, classed as a rider meeting a vehicle is (sim/traffic,
+ * #552): end on (their boxes overlap less along the road than across it, by `GRAZE_M` or more across) the
+ * rider's speed along the road; a graze or a side contact, its speed across it toward the animal. The
+ * animal's own walk is slow enough to leave out, m/s.
+ */
+function pedClosingMps(near: Near, p: Mover, t: SimTrafficTypeDef): number {
+  const rel = relate(near, p, 10);
+  if (!rel) return 0;
+  const r = near.m;
+  const overU = (near.lengthM + t.lengthM) / 2 - Math.abs(rel.ahead);
+  const overD = (near.widthM + t.widthM) / 2 - Math.abs(rel.dd);
+  const endOn = overU < overD && overD >= GRAZE_M;
+  if (endOn) return Math.max(0, r.speed * cos(r.yaw) * (rel.ahead >= 0 ? 1 : -1));
+  const across = r.pos.dir * r.speed * sin(r.yaw);
+  return Math.max(0, across * (rel.dd >= 0 ? 1 : -1));
+}
+
 /** Whether a rider is coming at p from just beyond its threat range (the worst-moment gag). */
 function riderComing(config: SimConfig, p: Mover, threats: readonly Near[]): boolean {
   for (const near of threats) {
@@ -1427,10 +1448,16 @@ function react(
       st.vehicleContacts++;
     } else {
       st.contacts++;
-      // Contact is soft for a `dodges` kind and a crash for the others (src/sim/roadside.ts).
+      // Contact is soft for a `dodges` kind (src/sim/roadside.ts). For a heavy mover that could not get out
+      // of the way (`yields`, `solid`), the one rule for meeting a heavy thing decides (playtest 4, "solid but
+      // forgiving"; sim/traffic/contact-rule.ts): its closing speed, a crash at `traffic.solidHitMps` or
+      // more, else a wobble. It was a crash at any speed.
       if (roadsideClass(t) !== 'dodges') {
-        const data = { cause: 'ped', hazard: 'big', kind: t.contentId };
-        emit(world, 'crash', touching.m.id, data, { target: p.id });
+        const closing = pedClosingMps(touching, p, t);
+        const data = { cause: 'ped', hazard: 'big', kind: t.contentId, impactMps: closing };
+        if (trafficContactCrashes(world.params, closing))
+          emit(world, 'crash', touching.m.id, data, { target: p.id });
+        else emit(world, 'wobble', touching.m.id, data, { target: p.id });
       }
     }
     if (st.phase[k] !== PED_PHASE.dive && roadsideClass(t) !== 'solid') {

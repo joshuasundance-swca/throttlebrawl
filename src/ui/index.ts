@@ -33,6 +33,7 @@ import {
   formatSpeed,
   healthFraction,
   ordinal,
+  reloadOfferText,
   resultText,
   riderCount,
   targetOf,
@@ -257,8 +258,9 @@ export interface GameUi {
   /**
    * The newer-build offer (playtest 4 run A fix check, punch item 1): a deploy replaced the game
    * while the player raced, and the reload to it waited for the race to end. On the result screen a
-   * card says so and offers "Reload now"; the result stays on screen beneath it. `onReload` shows the
-   * card; null hides it.
+   * card says so and offers "Reload now". The card is the first thing inside the result screen that
+   * is showing, so it covers no title, button or road and scrolls with the screen. `onReload` shows
+   * the card; null hides it.
    */
   offerReload(onReload: (() => void) | null): void;
   /**
@@ -470,6 +472,10 @@ ${CREDITS_CSS}
 ${TICKER_CSS}
 ${REDUCE_MOTION_CSS}
 #results-tally { font: 800 0.9375rem ui-monospace, monospace; }
+/* The race's result takes the touches over itself, as the career's result does (career-screen.ts): its words
+   and the update card inside it are what a tap there lands on, not the game canvas behind, and a swipe
+   scrolls it. */
+#ui #results { pointer-events: auto; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
    The menu (#pause-main) and the two cards (#pause-cards: the legend and the recently-seen list) are
@@ -517,11 +523,19 @@ ${REDUCE_MOTION_CSS}
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
-/* The newer-build offer on a result screen: over the screen's top edge, the result left in view. */
-#ui #reload-offer, #ui #load-retry { z-index: 2; max-width: 92vw; box-sizing: border-box; display: flex; align-items: center;
+/* The newer-build offer on a result screen (playtest 4 run A's second fix check, mustFix: a card fixed at
+   the top covered the career result's title). It is the first thing inside the result screen that is
+   showing (placeReloadOffer), so it takes its own room, scrolls away with the screen and lies over no
+   title, button or road. */
+#ui #reload-offer { flex-shrink: 0; width: max-content; max-width: min(560px, 92vw); box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
+#ui #reload-offer .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui #reload-offer .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
+/* The retry card (polish lane K2): over the screen's top edge, as a notice. */
+#ui #load-retry { z-index: 2; max-width: 92vw; box-sizing: border-box; display: flex; align-items: center;
   gap: 10px; padding: 6px 10px; background: rgb(10 5 20 / 92%); }
-#ui #reload-offer .reload-offer-text, #ui #load-retry .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
-#ui #reload-offer .small, #ui #load-retry .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
+#ui #load-retry .reload-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui #load-retry .small { flex-shrink: 0; min-height: 40px; padding: 4px 10px; background: #f5c542; }
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. ui/hud-layout.ts settles where it goes and sets --hl-toast-* on #ui: on
@@ -1462,15 +1476,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
 
   const noticeBox = el('div', { className: 'card notice', hidden: true });
-  // The newer-build offer (offerReload): plain words and one button.
+  // The newer-build offer (offerReload): plain words and one button. It lives inside the result
+  // screen that is showing (placeReloadOffer, below), never over it.
   let reloadNow: (() => void) | null = null;
+  let reloadWanted = false;
+  const reloadOfferWords = el('div', { className: 'reload-offer-text' });
   const reloadOffer = el(
     'div',
-    { id: 'reload-offer', className: 'card notice', hidden: true },
-    el('div', {
-      className: 'reload-offer-text',
-      textContent: 'The game was updated while you raced. It reloads when you leave this screen.',
-    }),
+    { id: 'reload-offer', className: 'card', hidden: true },
+    reloadOfferWords,
     button('reload-offer-reload', 'small', 'Reload now', () => reloadNow?.()),
   );
   reloadOffer.setAttribute('role', 'status');
@@ -1720,7 +1734,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     resumeCard,
     busy,
     noticeBox,
-    reloadOffer,
     loadRetry,
   );
   host.append(root, stamp);
@@ -1871,6 +1884,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     c.teaser.hidden = current !== 'teaser';
     realCareer = c;
     for (const f of careerCalls.splice(0)) f(c);
+    placeReloadOffer();
   });
   // The menu race's options (playtest 4, P4-12 and P4-13): a lazy chunk too, fetched as the game
   // boots. Each step is a new settings record, saved like a settings row, so the picks are
@@ -1906,7 +1920,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const career: CareerUi = {
     showMap: (v, g, t, s) => withCareer((c) => c.showMap(v, g, t, s)),
     showPauseMap: (v) => withCareer((c) => c.showPauseMap(v)),
-    showResults: (r) => withCareer((c) => c.showResults(r)),
+    showResults: (r) =>
+      withCareer((c) => {
+        c.showResults(r);
+        placeReloadOffer();
+      }),
     showTeaser: (t) => withCareer((c) => c.showTeaser(t)),
     prompt: (t) => withCareer((c) => c.prompt(t)),
     setObjective: (t) => withCareer((c) => c.setObjective(t)),
@@ -1978,6 +1996,23 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     attributeFilter: ['hidden', 'class'],
   });
 
+  /**
+   * Seats the newer-build offer as the first thing inside the result screen that is showing (the
+   * race's, or the career's), and hides it anywhere else. The career's result is rebuilt each time
+   * (`showResults` replaces its children), so this runs after that too.
+   */
+  const placeReloadOffer = () => {
+    const quick = current === 'results';
+    const host = quick ? results : current === 'careerResults' ? (realCareer?.results ?? null) : null;
+    if (!reloadWanted || !host) {
+      reloadOffer.hidden = true;
+      return;
+    }
+    reloadOfferWords.textContent = reloadOfferText(quick ? 'results' : 'careerResults');
+    if (host.firstElementChild !== reloadOffer) host.prepend(reloadOffer);
+    reloadOffer.hidden = false;
+  };
+
   function show(screen: Screen) {
     current = screen;
     syncTextScale(window.innerHeight);
@@ -2016,6 +2051,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       raceView = cb.raceOptions?.() ?? null;
       drawRaceOptions();
     }
+    placeReloadOffer();
   }
 
   const setText = (node: HTMLElement, text: string) => {
@@ -2080,7 +2116,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     offerClassicLook,
     offerReload(onReload) {
       reloadNow = onReload;
-      reloadOffer.hidden = onReload === null;
+      reloadWanted = onReload !== null;
+      placeReloadOffer();
     },
     offerRetry(text, onRetry) {
       retryLoad = onRetry;
