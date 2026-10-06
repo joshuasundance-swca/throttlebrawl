@@ -57,7 +57,8 @@ One check decides whether it can merge: **`gate`**. How you get it depends on wh
   | `waiting: arm auto-merge ...` | The quick check is green but auto-merge is not armed, so no train will carry it | Run `gh pr merge --auto --squash` |
   | `waiting: mark it ready for review, then arm auto-merge ...` | The PR is a draft | Mark it ready, then arm auto-merge |
   | `waiting: armed and in line for a train ...` | You are in line; one train runs at a time, oldest PRs first | Nothing; it will ride |
-  | `picked up by train N ...`, `not waiting for a train: ...`, `merged ...` | Nothing to wait for here any more; `gate` says the rest | Nothing |
+  | `picked up by train N ...` or `merged ...` | Nothing to wait for here any more; `gate` says the rest | Nothing |
+  | `not waiting for a train: ...` | The PR takes the full path (see below) or its quick check is red, so its own CI run gives `gate` | If no CI run is under way (for example `[full-gate]` was added to the title after CI ran, or the quick check is red), push a commit to start one |
 
   Once the PR has ridden, **`gate`** says where it is:
 
@@ -66,7 +67,7 @@ One check decides whether it can merge: **`gate`**. How you get it depends on wh
   | `riding train N: main abc1234 + #1 #2` | Your PR is on the train that is running | Nothing |
   | `train N was red with ... splits` | The bundle failed and was split to find the cause; your PR rides again in a smaller bundle | Nothing, unless it is later marked as failing alone |
   | `train N: ... timed out; rides once more alone` | A test job ran past its time limit while your PR rode alone; it rides once more before anything is blamed | Nothing |
-  | `train N: ... timed out alone, not blamed (...); rides once main is past abc1234` | It timed out again, but your change cannot reach that job, or `main` did not pass that job itself, so it is not blamed; it rides again once `main` moves on | Nothing; push again if you want it tested sooner |
+  | `train N: ... timed out alone, not blamed (...); rides once main is past abc1234` | It timed out alone, but your change cannot reach that job, or `main` did not pass that job itself, so it is not blamed; it rides again once `main` moves on | Nothing; push again if you want it tested sooner |
   | `train N: fails alone on main ...` or `train N: timed out alone on main ...` | Your change fails the full suite by itself (or makes a job run past its limit); the PR comment names the failing tests | Fix it and push |
   | `train N: conflicts with main` | Your branch no longer merges with `main` | Merge `origin/main` into your branch and push (do not rebase a pushed branch) |
   | `passed train N: ...` | Green; auto-merge lands it | Nothing |
@@ -74,7 +75,8 @@ One check decides whether it can merge: **`gate`**. How you get it depends on wh
   A new push gives the PR a new head commit, which waits for a later train.
 - **A PR from a fork**, a Dependabot PR, a change under `.github/`, or a PR with `[full-gate]` in its
   title (or alone on a line of its description) runs the full suite on its own and gets `gate` from that
-  run. A sentence in the description that mentions the marker does not count. A change to CI itself
+  run. A sentence in the description that mentions the marker does not count. The marker is read when
+  CI runs: add it before you open the PR, or push again after adding it. A change to CI itself
   cannot use a train, because a train runs `main`'s workflows, not yours. The author of a fork PR
   cannot arm auto-merge without write access to the repo; a maintainer merges it once `gate` is green.
 
@@ -83,7 +85,9 @@ meant to say why. If they do not, that is a bug in the train: please say so in t
 a PR that rode a train and was then closed and reopened on the full path keeps the train's `gate`
 line; push a new commit (an empty one is fine) to start clean.
 
-Main runs the full suite again after every merge, as a backstop. The first red job in a pull request's
+After every merge, main runs the full suite again as a backstop, unless a full-path PR run already
+tested exactly the code main now has; then main runs only the production build before it deploys. The
+first red job in a pull request's
 run cancels the rest of that run to free the runners; the run's own `gate` (or `quick`) check then
 names the red job and its failing tests.
 
