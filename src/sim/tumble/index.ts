@@ -68,7 +68,7 @@ import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../riders/contact';
 import { furnitureOn, LIGHT_KICK, LIGHT_SCRUB } from '../riders/furniture';
-import { leaveSupport, supportMotion } from '../riders/supports';
+import { leaveSupport, supportedWorldVelocity } from '../riders/supports';
 import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -440,9 +440,9 @@ function startCrash(
   const v = m.speed;
   // On a support (sim/riders/supports.ts: a truck's roof) the rider's speed is over it, signed: through
   // the world the bodies go at that plus the support's own velocity. Then it stands on nothing.
-  const on = supportMotion(world, m.id);
-  const wx = on ? fx * on.vr + on.vx : fx * v;
-  const wz = on ? fz * on.vr + on.vz : fz * v;
+  const on = supportedWorldVelocity(world, config, m);
+  const wx = on ? on.vx : fx * v;
+  const wz = on ? on.vz : fz * v;
   const throwV = on ? Math.sqrt(wx * wx + wz * wz) : v;
   if (on) leaveSupport(world, m.id);
   const side = num(data, 'sideMps');

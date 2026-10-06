@@ -222,22 +222,6 @@ export const REACH_HEIGHT_KEY = 'combat.reachHeightM';
 
 export const COMBAT_TUNING: readonly TuningParamDecl[] = [
   {
-    // Supports (the maintainer, 2026-10-06: riders land on vehicles and ride them): a punch, a kick, a
-    // swung weapon or a snatch reaches a rider only this far above or below the attacker, m, so a
-    // rider on a truck's roof and one on the road below cannot fight, and two on the same roof can.
-    // About a leg's reach from the saddle. [default] A race whose tuning leaves it out (every
-    // recording made before) reaches any height, as before.
-    id: REACH_HEIGHT_KEY,
-    group: 'combat',
-    label: 'Hits reach up or down',
-    default: 1,
-    min: 0.25,
-    max: 5,
-    step: 0.25,
-    unit: 'm',
-    affectsSim: true,
-  },
-  {
     id: 'combat.hitStopScale',
     group: 'combat',
     label: 'Hit-stop',
@@ -585,6 +569,22 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     max: 30,
     step: 0.5,
     unit: 's',
+    affectsSim: true,
+  },
+  {
+    // Supports (the maintainer, 2026-10-06: riders land on vehicles and ride them): a punch, a kick, a
+    // swung weapon or a snatch reaches a rider only this far above or below the attacker, m, so a
+    // rider on a truck's roof and one on the road below cannot fight, and two on the same roof can.
+    // About a leg's reach from the saddle. [default] A race whose tuning leaves it out (every
+    // recording made before) reaches any height, as before.
+    id: REACH_HEIGHT_KEY,
+    group: 'combat',
+    label: 'Hits reach up or down',
+    default: 1,
+    min: 0.25,
+    max: 5,
+    step: 0.25,
+    unit: 'm',
     affectsSim: true,
   },
 ];

@@ -41,7 +41,7 @@ import {
   type World,
 } from '../world';
 import { RAMP_TRUCK_LENGTH_M, RAMP_TRUCK_LIP_M, TRUCK_PLATFORM_M, truckBodyTop } from './features';
-import { riderState, ridersSystem } from './index';
+import { riderState, ridersSystem, touchdownOf } from './index';
 import { holdsBike, supportKeyOf, SUPPORT_STATE_KEY, SUPPORTS_KEY } from './supports';
 
 const BOX_TRUCK: SimTrafficTypeDef = {
@@ -583,6 +583,31 @@ describe('big solid things beyond vehicles', () => {
     expect(soft[0]?.type).toBe('wobble');
     expect(soft[0]?.data).toMatchObject({ hit: 'top' });
     expect(off.filter((e) => e.data['hit'] === 'top')).toEqual([]);
+  });
+});
+
+describe('the chalk mark (Air that pays) knows the tops', () => {
+  it('forecasts the landing on a moving truck’s roof, at its height, where and when it happens', () => {
+    const sc = scene(makeConfig(), { s: 290, d: 0, speed: 20, air: { h: 6, vy: 0 } });
+    const vid = sc.vehicle(T_BOX, 300, 1, 5);
+    sc.rider.pos.d = laneD(sc, vid);
+    const mark = touchdownOf(sc.world, sc.config, sc.rider);
+    const roofY = sc.config.road.surfaceHeight(0, 300, sc.rider.pos.d) + BOX_TRUCK.heightM!;
+    let ticks = 0;
+    let down: SimEvent | undefined;
+    for (; ticks < 180 && !down; ticks++) down = sc.step(held(0.5)).find((e) => e.type === 'land');
+    const p = sc.config.road.toWorld(0, sc.rider.pos.s, sc.rider.pos.d, sc.rider.h);
+    console.log(
+      `[examined] mark at y ${mark?.y.toFixed(2)} in ${mark?.inS.toFixed(2)} s (roof y ${roofY.toFixed(2)}); landed ${JSON.stringify(down?.data['on'])} after ${(ticks / 60).toFixed(2)} s, ${Math.hypot((mark?.x ?? 0) - p.x, (mark?.z ?? 0) - p.z).toFixed(2)} m from the mark`,
+    );
+    expect(mark?.y).toBeCloseTo(roofY, 1);
+    expect(down?.data['on']).toBe('vehicle');
+    expect(Math.abs((mark?.inS ?? 0) - ticks / 60)).toBeLessThan(0.1);
+    expect(Math.hypot((mark?.x ?? 0) - p.x, (mark?.z ?? 0) - p.z)).toBeLessThan(1);
+    // Control: the old rules forecast the road under it, as before.
+    const old = scene(makeConfig({ tuning: OLD_RULES }), { s: 290, d: 0, speed: 20, air: { h: 6, vy: 0 } });
+    old.rider.pos.d = laneD(old, old.vehicle(T_BOX, 300, 1, 5));
+    expect(touchdownOf(old.world, old.config, old.rider)?.y).toBeCloseTo(roofY - BOX_TRUCK.heightM!, 6);
   });
 });
 

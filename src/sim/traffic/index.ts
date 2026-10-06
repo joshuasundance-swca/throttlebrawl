@@ -75,14 +75,7 @@
 import { clamp, cos, nextFloat, secondsToTicks, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor, type RoadPos } from '../../road';
 import { driftOf } from '../riders/drift';
-import {
-  holdsBike,
-  inRiderFrame,
-  leaveSupport,
-  supportKeyOf,
-  supportMotion,
-  supportsOn,
-} from '../riders/supports';
+import { holdsBike, leaveSupport, supportKeyOf, supportMotion, supportsOn } from '../riders/supports';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import {
@@ -2169,7 +2162,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
     const own = supportKeyOf(world, r.id);
     const ownVid = own.startsWith('v:') ? Number(own.slice(2)) : -1;
     const mo = supportMotion(world, r.id);
-    const carried = mo ? inRiderFrame(config, m, mo.vx, mo.vz) : null;
+    const carried = mo ? { along: mo.va, across: mo.vc } : null;
     // The rider's velocity in corridor terms: along the road from its speed and heading; across it
     // from its heading plus a kick's or a hit's shove still sliding it sideways (the corridor runs
     // with the rider's road when r.dir equals its pos.dir, against it otherwise).

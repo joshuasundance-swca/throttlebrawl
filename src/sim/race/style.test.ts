@@ -5,6 +5,7 @@
 // inside slow motion is measured in world time, not ticks.
 import { describe, expect, it } from 'vitest';
 import type { SimConfig, SimEvent, SimStyleRewards, StyleRunSnapshot } from '../api';
+import { leaveSupport, standOn, type Support } from '../riders/supports';
 import { testConfig } from '../riders/testing';
 import type { SimRiderDef } from '../types';
 import { addMover, createWorld, type Mover, type World } from '../world';
@@ -350,5 +351,57 @@ describe('playtest 1c: the live style run', () => {
     const world = createWorld(config);
     expect(styleRunOf(world, config, 0)).toBeNull();
     expect('race.style' in world.systems).toBe(false);
+  });
+});
+
+describe('a ride on top of a vehicle pays (supports, the maintainer, 2026-10-06)', () => {
+  const ON_TRUCK: Support = {
+    key: 'v:99',
+    kind: 'vehicle',
+    top: 3.4,
+    vx: 0,
+    vz: -20,
+    speed: 20,
+    hx: 0,
+    hz: -1,
+    vehicle: 99,
+    object: 'base:box-truck',
+  };
+  /** The player on a support of `kind` for `ticks`, then off it (by a crash when `crash`): its styles. */
+  function rideOn(ticks: number, opts: { kind?: Support['kind']; crash?: boolean; without?: string } = {}) {
+    const base = styledConfig();
+    const tuning = Object.fromEntries(Object.entries(base.tuning).filter(([k]) => k !== opts.without));
+    const config: SimConfig = { ...base, tuning };
+    const h = harness(config);
+    ride(h.player, -1.7, 2);
+    for (let t = 0; t < ticks; t++) {
+      standOn(h.world, h.player.id, { ...ON_TRUCK, kind: opts.kind ?? 'vehicle' }, 0, {
+        along: 20,
+        across: 0,
+      });
+      h.step();
+    }
+    leaveSupport(h.world, h.player.id);
+    h.step(opts.crash ? [ev('crash', h.player.id, { cause: 'traffic', hit: 'jolt' })] : []);
+    h.step();
+    return h.styles.filter((e) => e.actor === h.player.id);
+  }
+
+  it('2 s on a truck’s roof pays 0.5 × the oncoming lane’s cash a second, as he leaves it', () => {
+    const paid = rideOn(120);
+    console.log(`[examined] 2 s on the roof: ${JSON.stringify(paid.map((e) => e.data))}`);
+    expect(paid).toHaveLength(1);
+    expect(paid[0]?.data).toMatchObject({ kind: 'roofRide', points: 10 });
+    expect(Number(paid[0]?.data['seconds'])).toBeCloseTo(2, 6);
+  });
+
+  it('pays nothing for a touch-down and off (under 1 s), a ride that ends in a crash, or a parked pickup', () => {
+    expect(rideOn(45)).toEqual([]);
+    expect(rideOn(120, { crash: true })).toEqual([]);
+    expect(rideOn(120, { kind: 'hazard' })).toEqual([]);
+  });
+
+  it('a race whose tuning leaves the scale out pays nothing for it', () => {
+    expect(rideOn(120, { without: 'race.styleRoofScale' })).toEqual([]);
   });
 });

@@ -85,7 +85,11 @@ export const SUPPORT_STATE_KEY = 'supports';
 export const FURNITURE_TOP_KNOWN_M = 1.95;
 /** Grip on a top, as a share of asphalt's (steering authority and the brake). [default] */
 export const SUPPORT_GRIP = 0.85;
-/** A support's velocity changing by this much in one tick (m/s) wobbles the rider on it. [default] */
+/**
+ * A support's own speed (along its own heading) changing by this much in one tick (m/s) wobbles the
+ * rider on it [default]: well past a vehicle's hardest braking in a tick (9 m/s² × 1/60 s), so only a
+ * snap or a stop dead does.
+ */
 export const JOLT_WOBBLE_MPS = 3;
 
 /** What a support is. */
@@ -98,9 +102,13 @@ export interface Support {
   kind: SupportKind;
   /** Its top above the road, m. */
   top: number;
-  /** Its velocity in the world, m/s (x, z). */
+  /** Its velocity in the world, m/s (x, z): its own speed along its heading. */
   vx: number;
   vz: number;
+  /** Its own speed along its heading, m/s (0 for a fixed one), and that heading, a unit vector (x, z). */
+  speed: number;
+  hx: number;
+  hz: number;
   /** The vehicle's entity id (a traffic vehicle, or a moving carrier's), else -1. */
   vehicle: number;
   /** What it is, for events: a vehicle's content id, `rampTruck`, a hazard's object, a piece's kind. */
@@ -113,9 +121,14 @@ export interface SupportState {
   on: string[];
   /** Its speed over the support along its heading, m/s, signed (negative: rolling backward). */
   vr: number[];
-  /** The support's velocity in the world when last read, m/s. */
-  vx: number[];
-  vz: number[];
+  /**
+   * The support's own speed along its own heading as last read, m/s: what a jolt is measured from (a
+   * road that turns at a junction turns the support with it, and is no jolt).
+   */
+  sv: number[];
+  /** The support's velocity as last read, m/s, along the rider's travel and across it (`inRiderFrame`). */
+  va: number[];
+  vc: number[];
   /** What the support is (SupportKind), for the style pay and the events. */
   kind: string[];
 }
@@ -136,19 +149,30 @@ export function supportKindOf(world: World, id: number): string {
   return st && (st.on[id] ?? '') !== '' ? (st.kind[id] ?? '') : '';
 }
 
-/** Puts a rider on a support, moving over it at `vr` along its heading. */
-export function standOn(world: World, id: number, s: Support, vr: number): void {
+/**
+ * Puts a rider on a support, moving over it at `vr` along its heading, the support's velocity read as
+ * `v` (along and across the rider's travel, `inRiderFrame`).
+ */
+export function standOn(
+  world: World,
+  id: number,
+  s: Pick<Support, 'key' | 'kind' | 'speed'>,
+  vr: number,
+  v: { along: number; across: number },
+): void {
   const st = systemState<SupportState>(world, SUPPORT_STATE_KEY, () => ({
     on: [],
     vr: [],
-    vx: [],
-    vz: [],
+    sv: [],
+    va: [],
+    vc: [],
     kind: [],
   }));
   st.on[id] = s.key;
   st.vr[id] = vr;
-  st.vx[id] = s.vx;
-  st.vz[id] = s.vz;
+  st.sv[id] = s.speed;
+  st.va[id] = v.along;
+  st.vc[id] = v.across;
   st.kind[id] = s.kind;
 }
 
@@ -158,19 +182,43 @@ export function leaveSupport(world: World, id: number): void {
   if (!st || (st.on[id] ?? '') === '') return;
   st.on[id] = '';
   st.vr[id] = 0;
-  st.vx[id] = 0;
-  st.vz[id] = 0;
+  st.sv[id] = 0;
+  st.va[id] = 0;
+  st.vc[id] = 0;
   st.kind[id] = '';
 }
 
 /**
- * A supported rider's motion: its signed speed over the support along its heading and the support's
- * world velocity; null when it stands on none. Never writes.
+ * A supported rider's motion: its signed speed over the support along its heading, and the support's
+ * velocity along and across its travel as last read; null when it stands on none. Never writes.
  */
-export function supportMotion(world: World, id: number): { vr: number; vx: number; vz: number } | null {
+export function supportMotion(
+  world: World,
+  id: number,
+): { vr: number; sv: number; va: number; vc: number } | null {
   const st = supportStateOf(world);
   if (!st || (st.on[id] ?? '') === '') return null;
-  return { vr: st.vr[id] ?? 0, vx: st.vx[id] ?? 0, vz: st.vz[id] ?? 0 };
+  return { vr: st.vr[id] ?? 0, sv: st.sv[id] ?? 0, va: st.va[id] ?? 0, vc: st.vc[id] ?? 0 };
+}
+
+/**
+ * A supported rider's velocity through the world, m/s (x, z): its speed over the support along its
+ * heading plus the support's own; null when it stands on none. Never writes.
+ */
+export function supportedWorldVelocity(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+): { vx: number; vz: number } | null {
+  const mo = supportMotion(world, m.id);
+  if (!mo) return null;
+  const along = mo.vr * cos(m.yaw) + mo.va;
+  const across = mo.vr * sin(m.yaw) + mo.vc;
+  const f = config.road.frameAt(m.pos.edge, m.pos.s);
+  return {
+    vx: m.pos.dir * (along * f.tx - across * f.tz),
+    vz: m.pos.dir * (along * f.tz + across * f.tx),
+  };
 }
 
 /**
@@ -257,12 +305,17 @@ export function supportAt(
         const v = truckVelocityS(f);
         const fr = config.road.frameAt(at.edge, at.s);
         const moving = f.params?.['moving'] === true;
+        // Its heading along its edge, the way it faces (a parked one is still: speed 0).
+        const facing = f.params?.['facing'] === -1 ? -1 : 1;
         take({
           key: `t:${f.id}`,
           kind: 'truck',
           top: truckBodyTop(f),
           vx: fr.tx * v,
           vz: fr.tz * v,
+          speed: v * facing,
+          hx: fr.tx * facing,
+          hz: fr.tz * facing,
           vehicle: moving ? vehicleOfDeck(f) : -1,
           object: 'rampTruck',
         });
@@ -278,8 +331,7 @@ export function supportAt(
         key: `h:${p.key}`,
         kind: 'hazard',
         top: hazardTop(p.feature),
-        vx: 0,
-        vz: 0,
+        ...STILL,
         vehicle: -1,
         object,
       });
@@ -294,8 +346,7 @@ export function supportAt(
         key: `f:${it.id}`,
         kind: 'furniture',
         top: it.heightM,
-        vx: 0,
-        vz: 0,
+        ...STILL,
         vehicle: -1,
         object: it.kind,
       });
@@ -303,6 +354,9 @@ export function supportAt(
   }
   return best;
 }
+
+/** A fixed support's motion: none. */
+const STILL = { vx: 0, vz: 0, speed: 0, hx: 1, hz: 0 } as const;
 
 /** A moving deck's carrier, from its feature id (`moving:<vehicle id>`), or -1. */
 function vehicleOfDeck(f: BakedFeature): number {
@@ -361,6 +415,9 @@ function vehicleSupports(
       top: vehicleHeightM(t),
       vx: hx * v.speed,
       vz: hz * v.speed,
+      speed: v.speed,
+      hx,
+      hz,
       vehicle: vid,
       object: t.contentId,
     });

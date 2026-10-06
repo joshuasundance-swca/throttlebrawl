@@ -89,6 +89,7 @@ import {
   HAZARD_REACH_D_M,
   KERB_M,
   movingDecks,
+  NO_DECKS,
   rampTruckAt,
   isLightHazard,
   solidHazardsNear,
@@ -1492,9 +1493,8 @@ function toSupportFrame(config: SimConfig, m: Mover, on: Support): boolean {
 function toWorldFrame(world: World, config: SimConfig, m: Mover): void {
   const mo = supportMotion(world, m.id);
   if (!mo) return;
-  const v = inRiderFrame(config, m, mo.vx, mo.vz);
-  let along = mo.vr * cos(m.yaw) + v.along;
-  let across = mo.vr * sin(m.yaw) + v.across;
+  let along = mo.vr * cos(m.yaw) + mo.va;
+  let across = mo.vr * sin(m.yaw) + mo.vc;
   if (along < 0) {
     m.pos.dir = m.pos.dir === 1 ? -1 : 1;
     along = -along;
@@ -1630,16 +1630,20 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   let carry = { along: 0, across: 0 };
   if (sup) {
     const mo = supportMotion(world, m.id);
-    const was = inRiderFrame(config, m, mo?.vx ?? sup.vx, mo?.vz ?? sup.vz);
     carry = inRiderFrame(config, m, sup.vx, sup.vz);
-    const lostA = was.along - carry.along;
-    const lostC = was.across - carry.across;
-    vr = (mo?.vr ?? m.speed) + lostA * cos(m.yaw) + lostC * sin(m.yaw);
+    // What the support's own speed (along its own heading) lost since last tick: a road that turns
+    // under both of them at a junction turns its heading, and is no jolt.
+    const lost = (mo?.sv ?? sup.speed) - sup.speed;
+    // The bike's heading in the world, and how much of that loss lies along it.
+    const f = road.frameAt(pos.edge, pos.s);
+    const bx = pos.dir * (cos(m.yaw) * f.tx - sin(m.yaw) * f.tz);
+    const bz = pos.dir * (cos(m.yaw) * f.tz + sin(m.yaw) * f.tx);
+    vr = (mo?.vr ?? m.speed) + lost * (sup.hx * bx + sup.hz * bz);
     m.speed = Math.abs(vr);
-    const jolt = Math.sqrt(lostA * lostA + lostC * lostC);
+    const jolt = Math.abs(lost);
     if (jolt >= JOLT_WOBBLE_MPS && joltOutcome(world, st, m, sup, jolt)) {
       // Thrown off it: the tumble takes the rider from here, at its speed through the world.
-      standOn(world, m.id, sup, vr);
+      standOn(world, m.id, sup, vr, carry);
       st.throttle[m.id] = throttle;
       st.brake[m.id] = brake;
       gearAndRpm(st, m);
@@ -1778,6 +1782,12 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     gearAndRpm(st, m);
     return;
   }
+  // On a support: its speed over it after the contacts (a scrape, a brush with a lamp beside it), and
+  // the support's velocity as read this tick (the next tick's jolt is measured from it).
+  if (sup) {
+    vr = vr < 0 ? -m.speed : m.speed;
+    standOn(world, m.id, sup, vr, carry);
+  }
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
   // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
@@ -1844,10 +1854,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // which can stand apart where real branches climb and fall (playtest 3, T9.4: 0.6 m on Bridge
     // City). That step is no vertical speed, or the next tick launches the bike off flat road.
     if (dt > 0) st.vy[m.id] = handed ? vyBefore : (ground - yBefore) / dt;
-    // On its support: its speed over it, and the support's velocity as read this tick (the next tick's
-    // jolt is measured from it). A boost pad lies on the road below, not on the top.
-    if (sup && still) standOn(world, m.id, sup, vr);
-    else touchPads(world, config, st, m);
+    // A boost pad lies on the road below a support, not on its top.
+    if (!(sup && still)) touchPads(world, config, st, m);
     groundPitch(st, m, slopeAt(config, m));
     // A wheelie's front is up this far above the slope (playtest 3).
     if (wh.pitchAdd !== 0) st.pitch[m.id] = (st.pitch[m.id] ?? 0) + wh.pitchAdd;
@@ -2081,7 +2089,7 @@ function land(
   st.crestHold[m.id] = 1;
   groundPitch(st, m, slope);
   // On a support it stands on it now, moving over it at its speed (backward when the top outruns it).
-  if (on) standOn(world, m.id, on, back ? -m.speed : m.speed);
+  if (on) standOn(world, m.id, on, back ? -m.speed : m.speed, inRiderFrame(config, m, on.vx, on.vz));
   const data = {
     quality,
     airTicks,
@@ -2210,6 +2218,8 @@ const FORECAST_MAX_S = 4;
  * `riders.airAlign` lines the bike up. `crooked` when landing as the bike is now would wobble or
  * worse: sideways, off the slope, leaned over, or still holding the newspaper. Null on the ground
  * and for riders no player drives. Presentation only: it reads the state, it never writes it.
+ * Supports (sim/riders/supports.ts): a top the flight comes down onto first (a truck's roof where its
+ * velocity takes it by then, a parked pickup) is where the mark goes, at the top's height.
  */
 export function touchdownOf(world: World, config: SimConfig, m: Mover): TouchdownSnapshot | null {
   const def = config.riders[m.riderIndex];
@@ -2233,7 +2243,10 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
         (top * top)
       : 0;
   let t = 0;
+  let onTop = 0;
   const dt = FORECAST_STEP_S;
+  const tops = supportsOn(world);
+  const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
     const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
@@ -2245,6 +2258,21 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
     const gap = y - road.surfaceHeight(at.edge, at.s, at.d);
+    const here = { edge: at.edge, s: at.s, d: at.d, ahead: t + dt };
+    const sup = tops
+      ? supportAt(world, config, m, here, decks, (h) => prev.gap >= h - 1e-6 && gap <= h)
+      : null;
+    if (sup) {
+      // Onto a top: back to where the flight came down through its height.
+      const k = prev.gap > sup.top ? (prev.gap - sup.top) / (prev.gap - gap) : 1;
+      if (prev.edge === at.edge) {
+        at.s = prev.s + (at.s - prev.s) * k;
+        at.d = prev.d + (at.d - prev.d) * k;
+      }
+      t += dt * k;
+      onTop = sup.top;
+      break;
+    }
     if (gap <= 0) {
       // Back to where the flight crossed the ground, between the two steps.
       const k = prev.gap > 0 ? prev.gap / (prev.gap - gap) : 1;
@@ -2256,7 +2284,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
       break;
     }
   }
-  const p = road.toWorld(at.edge, at.s, at.d, 0);
+  const p = road.toWorld(at.edge, at.s, at.d, onTop);
   const f = road.frameAt(at.edge, at.s);
   const tx = f.tx * at.dir;
   const tz = f.tz * at.dir;
