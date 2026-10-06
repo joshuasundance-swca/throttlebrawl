@@ -20,11 +20,19 @@
 // it takes the strip as it arrives, a bark or line it took the strip from is frozen and comes back
 // after it, and only a hint, an ask or a takedown name (the top three classes) go first.
 //
+// The 'found it' stamp (FOUND IT, `kind` 'found', no cash) is kept the same way (playtest 4, the run-A fix
+// batch's live check: on a clean ride of the Seven Mile's old road it came 1.1 s after the west hop's
+// landing, behind the landing's AIRTIME chip and landing line, and a cash-less chip waits 1.5 s at most, so
+// it was dropped and the player never saw it): a shortcut found is always shown. It ranks as a paid chip
+// does, so it takes the strip from a bark or a landing line (each comes back after it), it queues behind a
+// chip showing (never cut short, so it waits that chip's 1.1 s or 1.6 s at most), and it is never dropped
+// for waiting, for being preempted or for the queue limit.
+//
 // A paid FLIP chip (`kind` 'trick:...') is first among the paid chips (playtest 4, run A's live check:
 // the flip's chip showed 1.1 to 1.6 s after its landing, behind its own landing's AIRTIME chip, the
 // smaller payout): it takes the strip from a paid chip of another kind, which is frozen and shows right
 // after with the time it has left, and where both wait it goes first. A cash-less chip is not cut short.
-import { meterLabel, type MeterRun, type StylePop } from './race-feed';
+import { FOUND_KIND, meterLabel, type MeterRun, type StylePop } from './race-feed';
 
 export type TickerClass = 'teach' | 'name' | 'ask' | 'bark' | 'system' | 'line' | 'style' | 'meter';
 
@@ -51,7 +59,8 @@ export const tickerPriority = (cls: TickerClass): number => PRIORITY[cls];
 export const TICKER_QUEUE_MAX = 6;
 /**
  * How long each class waits in the queue before it is dropped as stale (ms). A resumed item never
- * expires, and neither does a paid style chip (`isPaidStyle`): the `style` figure is for cash-less ones.
+ * expires, and neither does a paid style chip (`isPaidStyle`) or the found stamp: the `style` figure is for
+ * the other cash-less ones.
  */
 export const TICKER_MAX_WAIT_MS: Readonly<Record<TickerClass, number>> = {
   teach: 8000,
@@ -80,16 +89,24 @@ export const TICKER_VOICE_TAIL_MS = 250;
 export const isPaidStyle = (cls: TickerClass, cash: number | null | undefined): boolean =>
   cls === 'style' && cash !== null && cash !== undefined && cash > 0;
 
+/** The 'found it' stamp: a style chip with no cash that is always shown (see the top of this file). */
+const isFound = (cls: TickerClass, kind: string | undefined): boolean =>
+  cls === 'style' && kind === FOUND_KIND;
+
+/** A chip that is never dropped, whatever it waits behind: a paid chip, and the 'found it' stamp. */
+const isKept = (cls: TickerClass, cash: number | null | undefined, kind: string | undefined): boolean =>
+  isPaidStyle(cls, cash) || isFound(cls, kind);
+
 /** A style chip that is a trick's (`trick:BACKFLIP`, `trick:DOUBLE BACKFLIP`): the flip's own payout. */
 const isTrick = (kind: string | undefined): boolean => kind !== undefined && kind.startsWith('trick:');
 
 /**
- * Where an item ranks: its class's priority, except a paid chip, which ranks just above a bark, and a
- * paid trick's chip just above that (a smaller number is higher). The classes' own numbers
- * (`tickerPriority`) are unchanged.
+ * Where an item ranks: its class's priority, except a paid chip and the 'found it' stamp, which rank just
+ * above a bark, and a paid trick's chip just above that (a smaller number is higher). The classes' own
+ * numbers (`tickerPriority`) are unchanged.
  */
 const rankOf = (cls: TickerClass, cash: number | null | undefined, kind?: string): number =>
-  isPaidStyle(cls, cash) ? PRIORITY.bark - (isTrick(kind) ? 0.75 : 0.5) : PRIORITY[cls];
+  isKept(cls, cash, kind) ? PRIORITY.bark - (isTrick(kind) ? 0.75 : 0.5) : PRIORITY[cls];
 
 /** The classes whose item is frozen and resumed when a higher class takes the strip. */
 const RESUMES: ReadonlySet<TickerClass> = new Set(['teach', 'ask', 'bark', 'system']);
@@ -292,11 +309,11 @@ export function createTicker(options: TickerOptions = {}): Ticker {
       // Stale waiters go.
       const before = queue.length;
       // A landing line that waits behind the paid chip showing is not stale: it comes right after.
-      const behindPaid = cur !== null && isPaidStyle(cur.cls, cur.cash);
+      const behindPaid = cur !== null && isKept(cur.cls, cur.cash, cur.kind);
       queue = queue.filter(
         (e) =>
           e.remainingMs !== null ||
-          isPaidStyle(e.item.cls, e.cash) ||
+          isKept(e.item.cls, e.cash, e.item.kind) ||
           (behindPaid && e.item.cls === 'line') ||
           now - e.queuedAt <= TICKER_MAX_WAIT_MS[e.item.cls],
       );
@@ -344,8 +361,8 @@ export function createTicker(options: TickerOptions = {}): Ticker {
       if (next && !cur.held && outranks(next, cur)) {
         // A landing line a paid chip takes the strip from is kept (it shows after the chip); any
         // other taking drops it as stale.
-        const keptLine = cur.cls === 'line' && isPaidStyle(next.item.cls, next.cash);
-        if (RESUMES.has(cur.cls) || isPaidStyle(cur.cls, cur.cash) || keptLine) {
+        const keptLine = cur.cls === 'line' && isKept(next.item.cls, next.cash, next.item.kind);
+        if (RESUMES.has(cur.cls) || isKept(cur.cls, cur.cash, cur.kind) || keptLine) {
           // Frozen with the time it has left; it keeps its id, so it goes before later items of its class.
           queue.push({
             id: cur.id,
@@ -378,10 +395,10 @@ export function createTicker(options: TickerOptions = {}): Ticker {
 
   const overflow = () => {
     while (queue.length > TICKER_QUEUE_MAX) {
-      // A paid chip is never the one to go: the limit counts only what may be dropped.
+      // A kept chip (paid, or the found stamp) is never the one to go: the limit counts only what may be dropped.
       let drop: Entry | undefined;
       for (const e of queue) {
-        if (isPaidStyle(e.item.cls, e.cash)) continue;
+        if (isKept(e.item.cls, e.cash, e.item.kind)) continue;
         if (!drop || PRIORITY[e.item.cls] > PRIORITY[drop.item.cls]) drop = e;
       }
       if (!drop) break;

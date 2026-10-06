@@ -83,6 +83,9 @@ export function stylePop(e: SimEvent): StylePop | null {
   return { kind, word, points: typeof points === 'number' && Number.isFinite(points) ? points : null };
 }
 
+/** The 'found it' stamp's style kind: the ticker always shows it (`ui/ticker.ts`). */
+export const FOUND_KIND = 'found';
+
 /**
  * The 'found it' stamp (W-Q): a player's first time off a shortcut this race, with the seconds it
  * saved (`shortcutFound`'s data.savedS), as its own chip: `FOUND IT -2.4 S`. Null for anything else.
@@ -94,7 +97,7 @@ export function foundPop(e: SimEvent): StylePop | null {
     typeof saved === 'number' && Number.isFinite(saved) && saved > 0
       ? `FOUND IT -${saved.toFixed(1)} S`
       : 'FOUND IT';
-  return { kind: 'found', word, points: null };
+  return { kind: FOUND_KIND, word, points: null };
 }
 
 /**

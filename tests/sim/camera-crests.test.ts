@@ -159,13 +159,24 @@ interface Frame {
   clearance: number;
 }
 
-/** The bot races the route; each tick the camera follows the player, and each frame is checked. */
+interface Ride {
+  frames: Frame[];
+  ticks: number;
+  maxDrop: number;
+}
+
+/**
+ * The bot races the route once; each tick one follow camera per aspect follows the player, and each
+ * of its frames is checked. The race does not depend on the aspect (the camera only reads the sim),
+ * so one race serves both aspects' cameras (the test-diet run, 2026-10-06: CI printed the same
+ * frame counts for both when each aspect rode its own races).
+ */
 function ride(
   c: { event: string; route?: string; drop?: number },
   seed: number,
-  aspect: number,
+  aspects: readonly number[],
   tuning: Record<string, number> = FAST,
-) {
+): Ride[] {
   const config: SimConfig = buildSimConfig(REG, STREAMS.forEvent(REG, c.event, undefined, c.route ?? null), {
     seed,
     eventId: c.event,
@@ -176,62 +187,84 @@ function ride(
   const road = config.road;
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const bot = createBot();
-  const camera = createFollowCamera({ road });
+  const views = aspects.map((aspect) => ({
+    aspect,
+    camera: createFollowCamera({ road }),
+    pose: null as CameraPose | null,
+    frames: [] as Frame[],
+    maxDrop: 0,
+  }));
   let snap = sim.snapshot();
-  const frames: Frame[] = [];
-  let pose: CameraPose | null = null;
-  let maxDrop = 0;
   while (!sim.isOver() && sim.tick < MAX_TICKS && !snap.race.finishOrder.includes(playerId)) {
     const actions = emptyActions();
     bot.drive(snap, playerId, config.route, actions);
     sim.step([toSimInput(actions)]);
     snap = sim.snapshot();
-    camera.onEvents(sim.events());
+    const events = sim.events();
+    for (const v of views) v.camera.onEvents(events);
     const me = snap.entities[playerId];
     if (!me) break;
-    const target = { ...me, mode: me.mode, targetId: me.targetId, road: me.road };
-    pose = pose
-      ? camera.update(target, DT, { entities: snap.entities, aspect })
-      : camera.snap(target, { aspect });
-    if ((me.mode !== 'Road' && me.mode !== 'Airborne') || camera.mode !== 'lowChase') continue;
-    const cam = renderCamera(pose, aspect);
-    const at: Pos = { edge: me.road.edge, s: me.road.s, d: me.road.d, dir: me.road.dir };
-    const aheadShown = AHEAD_M.some((k) => inView(along(road, at, k), cam));
+    for (const v of views) {
+      const { camera, aspect } = v;
+      const target = { ...me, mode: me.mode, targetId: me.targetId, road: me.road };
+      const pose = v.pose
+        ? camera.update(target, DT, { entities: snap.entities, aspect })
+        : camera.snap(target, { aspect });
+      v.pose = pose;
+      if ((me.mode !== 'Road' && me.mode !== 'Airborne') || camera.mode !== 'lowChase') continue;
+      const cam = renderCamera(pose, aspect);
+      const at: Pos = { edge: me.road.edge, s: me.road.s, d: me.road.d, dir: me.road.dir };
+      const aheadShown = AHEAD_M.some((k) => inView(along(road, at, k), cam));
 
-    // The profile ahead, 1 m apart, and a crest in it.
-    const profile: Vector3[] = [];
-    for (let k = -10; k <= CREST_WITHIN_M + 12 + 30; k++) profile.push(along(road, at, k));
-    const ya = (k: number) => profile[k + 10]?.y ?? Number.NaN;
-    let top = -1;
-    for (let k = 0; k <= CREST_WITHIN_M; k++) if (top < 0 || ya(k) > ya(top)) top = k;
-    const drop = top >= 0 ? ya(top) - ya(top + 12) : 0;
-    maxDrop = Math.max(maxDrop, drop);
-    const crest = top >= 0 && drop >= (c.drop ?? CREST_DROP_M) && ya(top) >= ya(0);
-    let beyondShown: boolean | null = null;
-    let farthest = -1;
-    if (crest) {
-      const eye = new Vector3(pose.x, pose.y, pose.z);
-      for (const k of BEYOND_M) {
-        const p = profile[top + k + 10];
-        if (p && inView(p, cam) && clearSight(eye, p, profile)) farthest = k;
+      // The profile ahead, 1 m apart, and a crest in it.
+      const profile: Vector3[] = [];
+      for (let k = -10; k <= CREST_WITHIN_M + 12 + 30; k++) profile.push(along(road, at, k));
+      const ya = (k: number) => profile[k + 10]?.y ?? Number.NaN;
+      let top = -1;
+      for (let k = 0; k <= CREST_WITHIN_M; k++) if (top < 0 || ya(k) > ya(top)) top = k;
+      const drop = top >= 0 ? ya(top) - ya(top + 12) : 0;
+      v.maxDrop = Math.max(v.maxDrop, drop);
+      const crest = top >= 0 && drop >= (c.drop ?? CREST_DROP_M) && ya(top) >= ya(0);
+      let beyondShown: boolean | null = null;
+      let farthest = -1;
+      if (crest) {
+        const eye = new Vector3(pose.x, pose.y, pose.z);
+        for (const k of BEYOND_M) {
+          const p = profile[top + k + 10];
+          if (p && inView(p, cam) && clearSight(eye, p, profile)) farthest = k;
+        }
+        beyondShown = farthest >= 0;
       }
-      beyondShown = farthest >= 0;
+      const under = road.project(pose.x, pose.z, me.road.edge);
+      v.frames.push({
+        tick: sim.tick,
+        edge: me.road.edge,
+        road: road.edges[me.road.edge]?.id ?? '',
+        s: me.road.s,
+        airborne: me.mode === 'Airborne',
+        aheadShown,
+        beyondShown,
+        farthest,
+        top,
+        clearance: pose.y - road.toWorld(under.edge, under.s, under.d, 0).y,
+      });
     }
-    const under = road.project(pose.x, pose.z, me.road.edge);
-    frames.push({
-      tick: sim.tick,
-      edge: me.road.edge,
-      road: road.edges[me.road.edge]?.id ?? '',
-      s: me.road.s,
-      airborne: me.mode === 'Airborne',
-      aheadShown,
-      beyondShown,
-      farthest,
-      top,
-      clearance: pose.y - road.toWorld(under.edge, under.s, under.d, 0).y,
-    });
   }
-  return { frames, ticks: sim.tick, maxDrop };
+  return views.map((v) => ({ frames: v.frames, ticks: sim.tick, maxDrop: v.maxDrop }));
+}
+
+const RIDES = new Map<string, Ride[]>();
+/** One race per route and seed, with its frames at every aspect in ASPECTS, shared by their tests. */
+function rideFor(c: (typeof ROUTES)[number], seed: number, aspect: number): Ride {
+  const key = `${c.route} ${seed}`;
+  let rides = RIDES.get(key);
+  if (!rides) {
+    rides = ride(c, seed, ASPECTS);
+    RIDES.set(key, rides);
+  }
+  const out = rides[ASPECTS.indexOf(aspect)];
+  if (!out) throw new Error(`no ride at aspect ${aspect}`);
+  return out;
 }
 
 describe('the chase camera over real crests (run W-P)', () => {
@@ -247,7 +280,7 @@ describe('the chase camera over real crests (run W-P)', () => {
         const buried: string[] = [];
         const all: Frame[] = [];
         for (const seed of SEEDS) {
-          const { frames, maxDrop } = ride(c, seed, aspect);
+          const { frames, maxDrop } = rideFor(c, seed, aspect);
           console.log(
             `[print] ${c.name} seed ${seed}: steepest drop past a top within 25 m: ${maxDrop.toFixed(2)} m over 12 m`,
           );
