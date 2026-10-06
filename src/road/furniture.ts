@@ -200,6 +200,9 @@ export interface FurniturePlan {
 
 /** The drawn verge past the drawn shoulder (render/road-mesh.ts VERGE_M), m. */
 export const DRAWN_VERGE_M = 0.6;
+/** Render's narrowest land between two close roads, and its margin off the other road's verge (road-mesh.ts), m. */
+const NARROWEST_LAND_M = 1.5;
+const LAND_GAP_MARGIN_M = 0.3;
 /** Bands a rider rides on loose ground (render/scenery.ts): the kit pushes its props past them. */
 const LOOSE_BAND: ReadonlySet<string> = new Set(['dirt', 'gravel', 'sand', 'grass']);
 /** Features nothing of the street's furniture stands in (render's KEEP_CLEAR). */
@@ -382,6 +385,18 @@ class RoadGrid {
     return this.some(x, z, 12, (p) => {
       if (this.same(p, edge, s, 40)) return false;
       const lim = p.half + r + 1;
+      return (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) < lim * lim;
+    });
+  }
+
+  /**
+   * Whether another road's drawn verge, `margin` wider, covers (x, z): render/road-mesh.ts's
+   * `otherRoadAt`, with the other road's widest half (so it errs toward covered).
+   */
+  roadCovers(edge: number, s: number, x: number, z: number, margin: number): boolean {
+    return this.some(x, z, 12, (p) => {
+      if (this.same(p, edge, s, 40)) return false;
+      const lim = p.half + margin;
       return (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) < lim * lim;
     });
   }
@@ -720,6 +735,17 @@ function placeKitRules(grid: RoadGrid, out: Collector, seed: number, rules: read
           // Render draws no land within 5 m of a barrier's or a bridge's span on that side (render/road-mesh.ts,
           // sampled every 2 m), so a piece keeps 8 m off one.
           if (nearBarrier(e.barriers, tags, sideName, s, 8)) continue;
+          // Nor where another road's verge comes so close past this one's that render draws not even its
+          // narrowest land between them (road-mesh.ts LAND_GAP_WIDTHS and LAND_GAP_MARGIN_M): the sidewalk
+          // there is not drawn, and a piece on it stood over the water (sf-hills' Fogline climb beside the
+          // Park Cut, the geometry sweep's "prop meter sf-fogline-climb s 449: over road-water").
+          if (
+            [NARROWEST_LAND_M / 2, NARROWEST_LAND_M].some((w) => {
+              const q = road.toWorld(e.index, s, side * (outer(side) + w), 0);
+              return grid.roadCovers(e.index, s, q.x, q.z, LAND_GAP_MARGIN_M);
+            })
+          )
+            continue;
           const p = road.toWorld(e.index, s, d, -0.09);
           const r = rule.r * (rule.size?.[1] ?? 1);
           const m = Math.max(r, 3);
