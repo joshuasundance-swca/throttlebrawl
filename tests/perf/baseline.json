@@ -18,6 +18,13 @@
     "seconds": 20,
     "frameMs": { "p50": 66.7, "p95": 133.3 },
     "stepMs": { "p95": 4.9 },
+    "startTapMs": 46.8,
+    "startTap": {
+      "measuredAt": "2026-10-06",
+      "source": "GitHub Actions ubuntu runners, the perf run in CI's last browser slice on PR 647 (main 3529cae plus the probe): run 37542809947, its first attempt and two re-runs of that slice; unthrottled, SwiftShader, viewport 915x412 @1, the test flag's boot",
+      "readings": [46.8, 60.4, 44.9],
+      "reason": "The start tap's main-thread work (its click handlers, then the next frame's work up to a frame callback the tap queued; tests/perf/perf.spec.ts) is new in the trend (polish F's live check, punch item 2). The three readings were 46.8 ms (handlers 10.3 + frame 36.5), 60.4 ms (11.7 + 48.7) and 44.9 ms (9.3 + 35.6); the baseline is their median, so the guard is 140.4 ms."
+    },
     "rebaselined": {
       "measuredAt": "2026-10-02",
       "previous": "frame p50 33.3 and p95 66.6 ms (CI run 36662486374, PR 52, 2026-09-30); sim step p95 3.7 ms (re-measured 2026-09-30, PR 137)",

@@ -148,6 +148,15 @@ describe("the start tap's main-thread work: a trend with the same 3x guard (poli
     expect(at(Number.NaN).failures).toHaveLength(1);
   });
 
+  it('stays quiet on the CI readings behind the stored baseline, and fires above 3x it', () => {
+    const soft = baselineFile.soft;
+    expect(soft.startTapMs).toBeGreaterThan(0);
+    const limit = guardLimits(soft).startTap ?? Number.NaN;
+    for (const reading of [46.8, 60.4, 44.9])
+      expect(judgeSoft({ ...soft, startTapMs: reading }, soft).failures, `${reading} ms`).toEqual([]);
+    expect(judgeSoft({ ...soft, startTapMs: limit + 0.1 }, soft).failures).toHaveLength(1);
+  });
+
   it('is not judged until both the probe and the baseline have it (the negative control)', () => {
     expect(at(undefined).rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
     const noBase = judgeSoft(
