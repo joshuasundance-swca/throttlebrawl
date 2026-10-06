@@ -665,7 +665,13 @@ export const SF_SIDEWALK_RULES: readonly KitRule[] = [
   },
 ];
 
-/** Key West's Old Town sidewalk (render/roadside.ts KEYS_KIT, indices 1, 2 and 29). */
+/**
+ * Key West's Old Town sidewalk (render/roadside.ts KEYS_KIT, indices 1, 2 and 29). The palm planters
+ * and the frangipanis stand in a row by the kerb, the planters square to the street, so the shop side of
+ * the sidewalk is a clear line to ride (the live check of #619: planted across its middle at any turn, a
+ * planter stood in every line, and a sidewalk contact crashed 55 % of the time; they stood 1.4 to 2.2 m
+ * and 1.1 to 1.6 m past the drawn verge, turned at random).
+ */
 export const OLDTOWN_SIDEWALK_RULES: readonly KitRule[] = [
   {
     id: 'oldtown-planter',
@@ -675,9 +681,10 @@ export const OLDTOWN_SIDEWALK_RULES: readonly KitRule[] = [
     on: OLDTOWN_LAND,
     every: 22,
     rate: 0.55,
-    across: [1.4, 0.8],
-    r: 1.3,
+    across: [0.6, 0.1],
+    r: 0.6,
     district: OLDTOWN,
+    face: true,
   },
   {
     id: 'oldtown-scooters',
@@ -701,8 +708,8 @@ export const OLDTOWN_SIDEWALK_RULES: readonly KitRule[] = [
     on: OLDTOWN_LAND,
     every: 26,
     rate: 0.6,
-    across: [1.1, 0.5],
-    r: 1.1,
+    across: [0.5, 0.2],
+    r: 0.5,
     district: OLDTOWN,
     size: [0.85, 1.15],
     canopy: true,

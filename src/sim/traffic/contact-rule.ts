@@ -27,9 +27,9 @@ export const TRAFFIC_HIT_DEFAULT_MPS = 10;
 
 /**
  * An end-on contact overlapping sideways by less than this is a graze, m: it meets the corner, so its
- * closing speed is taken across the road, like a side brush's. One threshold for every heavy thing a
- * rider meets: traffic (./index.ts, `TRAFFIC.grazeM`), and the street furniture and the solid road
- * hazards (sim/riders, `meetSolid`; playtest 4, "solid but forgiving").
+ * closing speed is taken across the road, like a side brush's. Traffic's (./index.ts, `TRAFFIC.grazeM`)
+ * and the people's (sim/peds). The street furniture and the solid road hazards take the bike's half
+ * width instead (sim/riders/furniture.ts `SOLID_GRAZE_M`: square on only in the bike's own line).
  */
 export const GRAZE_M = 0.3;
 

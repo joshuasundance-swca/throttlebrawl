@@ -1,0 +1,7 @@
+---
+kind: fixed
+audience: player
+---
+Smathers Beach's inland salt ponds now read as pale green water, not rust-brown mud. In the default look they came out orange-brown, because the sea's colour in the ink looks has almost no red in it and the pond's tint multiplied that red up by about 40. The pond's colour is now its own in every look (a sage green with a darker olive edge by the road, so it stays two waters beside the sea's turquoise), and the sea repaints it when you change look. This is a taste call the maintainer can veto. Not phone-verified.
+
+For devs: `seaTintAt` in `src/render/sea-bands.ts` takes the look's own water colour (`water`) and divides it out of the pond's and the edge's colour (`tintTo`); `SeaBands` reads its material's colour each update (`syncWater`) and lays the squares again when a look or a palette changes it. `SEA_BANDS.pond` is `#c4dca8` and `mud` is `#84906a` (was `#a8b47c` and `#6f5f43`, tints over the classic water). `src/render/sea-ponds-lit.test.ts` holds the lit colour in every look (classic, kodak, wasteland, brush) at every time of day (dawn, noon, golden hour, dusk, night), through `lit-water.test-util.ts` (the look's water colour, the time's exposure or the classic sun and sky, the film grade, as plain arithmetic): 20 or more apart from every sea colour in Lab, paler than the shallows, hue 95 to 185 degrees, edge darker and never brown. Its controls: #630's pond is orange (hue 55 to 64) in all three ink looks, and the same spot without the pond tag is the sea's colour. It stays a `[default]`.

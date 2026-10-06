@@ -22,6 +22,8 @@ const STYLE_WORDS: Readonly<Record<string, string>> = {
   // and 5 drift banks, 0 ticker lines). race-feed.test.ts holds every sim style kind to a word.
   wheelie: 'WHEELIE',
   drift: 'DRIFT',
+  // Riding on top of a vehicle (the maintainer, 2026-10-06): paid by the second when the rider leaves it.
+  roofRide: 'ROOF RIDE',
 };
 
 /** A landed trick's word (playtest 2, 2026-10-02: flips), by `data.trick`. */
