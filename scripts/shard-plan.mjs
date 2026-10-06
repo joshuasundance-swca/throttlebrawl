@@ -285,7 +285,8 @@ export function planSlices({
  * (app-cast-and-law, riders-race and six more on 2026-10-06), so the table times them at 0 s. Priced
  * at 0 s they tied every slice and all went to one: sim slice 3/6 took 590 to 597 s of 600 on main
  * runs of 2026-10-06, and slice 3/7 took 488 s on #601's first run against a plan of 340, every other sim
- * slice 200 to 399 s. Their work is 30 to 56 s a file by that slice's overrun, about the mean.
+ * slice 200 to 399 s; its longest file also ran 1.36 times its table time there, so their own share
+ * is an estimate, about 30 to 56 s a file. The mean prices them at about that, or a little over.
  * @param {Record<string, number>} table
  */
 export function collectedOnly(table) {
