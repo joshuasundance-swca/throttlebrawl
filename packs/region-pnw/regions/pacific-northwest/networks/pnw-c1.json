@@ -184,9 +184,9 @@
     },
     {
       "id": "j-pnw-c1-8",
-      "x": 2614.8708,
+      "x": 2616.8442,
       "y": 3,
-      "z": -4434.6143,
+      "z": -4441.85,
       "ends": [
         { "road": "pnw-sawmill-yard", "end": "to" },
         { "road": "pnw-sawmill-end", "end": "from" },

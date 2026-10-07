@@ -81,13 +81,13 @@ const LOWER_PROBE_M = 0.25;
 
 /** The d span of all of an edge's lanes at s (drive, shoulder and shortcut alike), as the ride column reads it. */
 export function laneExtentAt(road: RoadNetwork, edge: number, s: number): readonly [number, number] {
-  let lo = 0;
-  let hi = 0;
+  let lo = Infinity;
+  let hi = -Infinity;
   for (const lane of road.lanesAt(edge, s)) {
     lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
     hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
   }
-  return [lo, hi];
+  return lo === Infinity ? [0, 0] : [lo, hi];
 }
 
 /** Looks up which edges lie under a world point. Built once per road scene. */

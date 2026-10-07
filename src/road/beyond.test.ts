@@ -157,6 +157,39 @@ describe('the honest edges (2026-10-06): what is drawn at a band edge, and what 
     expect(at([], [tag('bridge')])).toEqual({ drawn: 'drop', top: 0 });
     expect(pastAt(road([], [tag('bridge')]), 0, 100, 'right')).toBe('drop');
   });
+
+  it('a listed rail clipped for another road has no contact top, while its visible side still holds', () => {
+    const a = fixtureNetwork([{ id: 'a', lengthM: 400, kappa: 0 }]);
+    const b = fixtureNetwork([{ id: 'b', lengthM: 400, kappa: 0 }]);
+    const ra = a.roads[0]!;
+    const rb = b.roads[0]!;
+    const r = createRoadNetwork({
+      network: {
+        ...a.network,
+        roads: ['a', 'b'],
+        junctions: [
+          ...a.network.junctions,
+          ...b.network.junctions.map((j) => ({ ...j, id: `b-${j.id}`, x: j.x + 8 })),
+        ],
+      },
+      roads: [
+        { ...ra, barriers: [bar('rail', 1, 'both')] },
+        {
+          ...rb,
+          from: `b-${rb.from}`,
+          to: `b-${rb.to}`,
+          samples: {
+            ...rb.samples,
+            data: { ...rb.samples.data, x: rb.samples.data['x']!.map((x) => x + 8) },
+          },
+        },
+      ],
+    });
+    expect(drawnEdgeAt(r, 0, 100, 'right')).toBeNull();
+    expect(courseEdgeTopAt(r, 0, 100, 'right')).toBe(0);
+    expect(drawnEdgeAt(r, 0, 100, 'left')).toBe('barrier');
+    expect(courseEdgeTopAt(r, 0, 100, 'left')).toBe(1);
+  });
 });
 
 describe('beyondAt: what a rider out past the edge meets is what the road scene draws there', () => {

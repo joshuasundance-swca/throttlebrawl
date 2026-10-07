@@ -196,6 +196,8 @@ export const MILL_CUT = {
   /** The end of the flats' first piece: where the split connector starts, in that road's s. */
   splitS: 600,
   connectorM: 30,
+  /** Room for the cut to return after the protected wall ends, at the shortcut's 30 m/s radius. */
+  mergeM: 45,
   /** The main road's piece beside the cut. */
   yardM: 240,
   /** The truck's ramp foot and the lip, 25 m short of the split (a ramp is 11.5 m long). */
@@ -204,15 +206,13 @@ export const MILL_CUT = {
   /**
    * Where the yard road starts: its reference line, 5 m right of the main road's centre line, half a
    * metre inside the road's edge (a junction must lie on the road it leaves), and its one lane, 8 m
-   * wide, starting on that line: d 5 to 13 beside the main road. (The sim counts a road's band from
-   * its reference line out to its lanes' far edge, so the near edge is the line.) It overlaps the
-   * main road's outer half metre, which a rider on the ground (centre at most 5, half a bike in from
-   * the edge) never gets half a bike into, so nobody on the ground is handed across, and a rider in
-   * the air out past the edge is.
+   * wide, starting a metre farther right: d 6 to 14 beside the main road. The junction reference
+   * line stays on the main road, while the usable lane clears its wall and the renderer's 0.3 m lane
+   * clearance. The truck's flight reaches this lane; a grounded bike meets the visible wall.
    */
   offsetM: 5,
   laneM: 8,
-  laneCentreM: 4,
+  laneCentreM: 5,
   truck: {
     kind: 'rampTruck',
     id: 'carrier-mill-cut',
@@ -857,7 +857,7 @@ export const PNW_C1: TrackSource = {
       id: 'c-pnw-mill-merge',
       name: 'Mill yard exit',
       connector: true,
-      lengthM: MILL_CUT.connectorM,
+      lengthM: MILL_CUT.mergeM,
       speedLimitMps: FOREST_MPS,
       surface: 'asphalt',
       humps: [],
@@ -961,15 +961,13 @@ export const PNW_C1: TrackSource = {
         lane: 'R1',
         zone: { lengthM: MILL_CUT.splitS - MILL_CUT.lipS, d0: 5.5, d1: 12.5 },
       },
-      join: { road: 'pnw-sawmill-end', offsetM: -0.5, lane: 'R1' },
-      turnsM: [20, 60],
-      // Two points of the flats' straight, 5 m right of its centre line, 85 and 170 m past the split:
-      // they hold the yard road parallel to the main road while the sim's hand-over between the two
-      // can act (the first 150 m), so a rider pressing the wall on the ground is never taken across.
-      // The yard road then eases back to the main road's lane for the merge.
+      join: { road: 'pnw-sawmill-end', offsetM: -1.5, lane: 'R1' },
+      turnsM: [20, 20],
+      // Hold the cut parallel for the entire protected wall (270 m past the split), then return
+      // through the longer merge. Its usable lane starts 1 m right of these reference points.
       via: [
         { x: 2567.07, z: -4240.35, headingDeg: 15.26, turnM: 20 },
-        { x: 2589.44, z: -4322.35, headingDeg: 15.26, turnM: 20 },
+        { x: 2615.747968, z: -4418.827393, headingDeg: 15.252983, turnM: 20 },
       ],
       lanes: [
         { id: 'S1', dCenterM: MILL_CUT.laneCentreM, widthM: MILL_CUT.laneM, direction: 1, kind: 'shortcut' },
@@ -1020,10 +1018,14 @@ export const PNW_C1: TrackSource = {
           id: 'c-pnw-mill-out',
           name: 'Mill yard exit',
           connector: true,
+          // The exit returns through the main road's open merge. Keep its single-bike lane
+          // and soft paved edge inside that road's band, so ground riders stay on the main
+          // road while riders from the yard can return. The yard itself keeps its 8 m lane.
+          lanes: [{ id: 'S1', dCenterM: 2.75, widthM: 3.5, direction: 1, kind: 'shortcut' }],
           speedLimitMps: FOREST_MPS,
           surface: 'concrete',
           humps: [],
-          tags: SAWMILL_TAGS,
+          tags: [{ s0: 0, s1: 'end', side: 'right', tag: 'plaza-cut' }],
           features: [],
           barriers: [],
         },

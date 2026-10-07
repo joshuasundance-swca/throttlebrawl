@@ -11,7 +11,7 @@
   "speedLimitMps": 15.6,
   "surface": "concrete",
   "laneSections": [
-    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 4, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 5, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
   ],
   "tags": [{ "s0": 0, "s1": 200, "side": "right", "tag": "plaza-cut" }],
   "features": [

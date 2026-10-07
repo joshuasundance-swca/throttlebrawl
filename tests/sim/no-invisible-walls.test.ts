@@ -74,36 +74,8 @@ const FRONT_NEAR_M = 1;
 
 const packOf = (path: string) => /\/packs\/([^/]+)\//.exec(path)?.[1] ?? '';
 
-/**
- * A listed barrier render leaves out where another road's lanes run under it (road-mesh.ts `clearOfOtherLanes`),
- * while the sim still holds a rider there (sim/riders/course.ts `roadPastLine` never opens a listed barrier): the
- * known places, by network and road. The two static-truck cuts' low walls (the yard road overlaps the avenue's
- * outer half metre by design, tools/road/tracks: render keeps the wall out of the yard road's lane, the sim keeps
- * the cut shut to the ground) and the rails where a bridge's road joins another (the riders' handover takes a
- * rider across onto the sibling there before the rail holds him). Render's to draw, or the track's to move; a new
- * place fails here so it is looked at.
- */
+/** No listed barrier may hold where render clips its panel out for another road's lanes. */
 const LEFT_OUT = 'listed barrier left out over another road';
-const KNOWN_LEFT_OUT: ReadonlySet<string> = new Set([
-  'pnw-c1/pnw-sawmill-flats',
-  'pnw-c1/c-pnw-mill-split',
-  'pnw-c1/pnw-sawmill-yard',
-  'sf-downtown/c-dt-plaza-split',
-  'sf-downtown/sf-dt-campus-yard',
-  'osm-keys-seven-mile/osm-sm-bridge',
-  'osm-keys-seven-mile/osm-sm-bridge-east',
-  'osm-keys-seven-mile/osm-sm-bridge-west',
-  'osm-keys-seven-mile/osm-sm-old-west',
-  'osm-keys-seven-mile/osm-sm-old-moser',
-  'osm-keys-seven-mile/osm-keys-seven-mile-old-road-join',
-  'osm-keys-seven-mile/osm-keys-seven-mile-old-road-leave',
-  'osm-pnw-portland/osm-pnw-pdx-west-burnside',
-  'osm-pnw-portland/osm-pnw-pdx-burnside-bridge',
-  'osm-keys-bahia-honda/osm-spanish-harbor-bridge',
-  'osm-keys-bahia-honda/osm-bahia-honda-bridge',
-  'keys-m1/m1-pelican-bridge',
-  'keys-m1/m1-long-bridge',
-]);
 
 /** The network's sim config: its first route, every tuning at its default (the course's edges on). */
 function configOf(net: RouteNetwork, tuning: Readonly<Record<string, number>> = {}): SimConfig {
@@ -212,8 +184,7 @@ function witnessAt(
     const spans = drawn.barriers.get(`${edge}:${vside}`) ?? [];
     if (spans.some((b) => s >= b.s0 - 1e-6 && s <= b.s1 + 1e-6)) {
       // Render stops a barrier's band where another road's lanes run under it (road-mesh.ts
-      // `clearOfOtherLanes`: its line, 5 cm past the lanes, 0.3 m clear); the sim still holds a rider at a
-      // listed barrier there (sim/riders/course.ts `roadPastLine`). Counted apart: render's to draw.
+      // `clearOfOtherLanes`: its line, 5 cm past the lanes, 0.3 m clear). No contact remains in that opening.
       const e2 = road.edges[edge];
       const lane = road.toWorld(edge, s, (side > 0 ? (e2?.dMax ?? 0) : (e2?.dMin ?? 0)) + side * 0.05, 0);
       return lanesNear(road, lane.x, lane.z, edge, 0.3) ? LEFT_OUT : 'barrier drawn';
@@ -394,7 +365,7 @@ describe('no invisible walls: every edge that holds a rider stands on something 
     print(
       `[no-invisible-walls] listed barriers left out over another road: ${[...all.leftOut].sort().join(', ')}`,
     );
-    expect([...all.leftOut].filter((r) => !KNOWN_LEFT_OUT.has(r))).toEqual([]);
+    expect([...all.leftOut]).toEqual([]);
     expect(all.wrongTops.slice(0, 20)).toEqual([]);
   }, 600_000);
 
