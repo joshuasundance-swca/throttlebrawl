@@ -665,8 +665,8 @@ export const KEYS_KIT: RoadsideKit = {
     // 6 and 7 two open-fronted bars). The open bars claim their ground before the street front does
     // (`first`), a long way apart, and stand on the sidewalk's edge like the shops around them.
     fromPlan('oldtown-bar', { model: 'keysIdentity', face: true, tier: 0 }),
-    // A frangipani on the sidewalk now and then, by the kerb.
-    rule('oldtown-frangipani', [5], OLDTOWN_LAND, 26, 0.6, [0.5, 0.2], 0.5, {
+    // A frangipani on the sidewalk now and then.
+    rule('oldtown-frangipani', [5], OLDTOWN_LAND, 26, 0.6, [1.1, 0.5], 1.1, {
       model: 'keysIdentity',
       district: OLDTOWN,
       size: [0.85, 1.15],
