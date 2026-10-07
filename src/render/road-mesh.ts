@@ -2249,6 +2249,13 @@ export function buildRoadScene(
           return Math.min(reachOf[side][i] ?? 0, reachOf[side][j] ?? 0);
         },
         clear: (s, d, radius, zones = true) =>
+          !zonesHere.some(
+            (z) =>
+              s >= Math.min(z.s0, z.s1) - radius &&
+              s <= Math.max(z.s0, z.s1) + radius &&
+              d >= Math.min(z.d0, z.d1) - radius &&
+              d <= Math.max(z.d0, z.d1) + radius,
+          ) &&
           !(dress.features ?? []).some(
             (f) =>
               keepsClear(f) &&
@@ -2257,7 +2264,8 @@ export function buildRoadScene(
               s <= Math.max(f.s0, f.s1) + Math.max(radius, FEATURE_CLEAR_M) &&
               d >= Math.min(f.d0, f.d1) - Math.max(radius, FEATURE_CLEAR_M) &&
               d <= Math.max(f.d0, f.d1) + Math.max(radius, FEATURE_CLEAR_M),
-          ) && !otherRoadAt(s, d, radius),
+          ) &&
+          !otherRoadAt(s, d, radius),
         // Playtest 4 run B (item 3): the far edge of the pedestrian zones and boards on a side, for the houses behind them.
         zoneEdge: (side, s0, s1) => {
           let far = 0;
