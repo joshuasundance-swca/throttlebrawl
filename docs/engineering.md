@@ -230,6 +230,7 @@ The rules are in [AGENTS.md](../AGENTS.md#the-dev-machine-what-runs-locally); th
   - a push of `docs/`, `changes/` and Markdown only runs no tests;
   - a change to `package.json`, the lock file, the Vite or Vitest config, a tsconfig or `tests/setup/` runs the whole unit tier;
   - anything else runs the unit test files the push names: the test files it changed, and the test named after each source file it changed (`foo.ts` to `foo.test.ts`, a folder's `index.ts` to `<folder>.test.ts`). Import-graph selection (`vitest --changed`, which the hook used until 2026-10-03) picked 142 of the 261 unit test files for one content PR, and CI runs every test on every PR anyway.
+  - `[default]` Track generators under `tools/road/tracks/` also name their authored test in `tools/road/`. Road or rider source, moving-carrier source, either truck-cut generator, or baked road/network/route data in the Pacific Northwest or San Francisco also select the three existing authored controls: `pnw-c1`, `sf-downtown` and `truck-shortcuts`. This bounded dependency rule catches contact/terrain composition before pushing; unrelated sources and test-only changes do not add it. After combining dependent branches, the coordinator runs their affected controls on the combined tree, even if each branch passed separately.
   - The typecheck and the tests run at once, the tests with two workers unless `VITEST_MAX_WORKERS` says otherwise. `node scripts/pre-push.mjs --dry-run` prints the plan without running it.
 
 | Hook | Runs | Measured on the dev machine |
