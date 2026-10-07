@@ -16,13 +16,13 @@
 // - Portland's lot sizes were the loaded kit's bounding boxes (`pdxFootprint`): they are the kit's fixed
 //   boxes now (`STRUCTURE_MODELS`, held to the file within a centimetre).
 // - Portland's drawn land (`RoadScene.landReach`) is the road scene's own strip rule, from the network
-//   (road/land.ts `landReachOf`), held equal to the drawn scene's.
+//   (road/drawn-ground.ts `landReachOf`), held equal to the drawn scene's.
 // The edges' own tags and features stand in for the road files render was handed (the same data).
 //
 // Pure + - * / and core math, like the rest of road/: the same network and seed give the same lots.
 // A lazy chunk: it loads with the region's road data (STRUCTURE_LAYERS), never in the first load.
 import { atan2, cos, sin } from '../../core';
-import { landReachOf, LAND_STRIP_M, type LandReach } from '../land';
+import { landReachOf, LAND_STRIP_M, type LandReach } from '../drawn-ground';
 
 // The land rule the Portland lots stand on, for the render layer's tests (render may import this planner).
 export { landReachOf, type LandReach };
@@ -811,7 +811,7 @@ const keptPdx = new WeakMap<RoadNetwork, Map<number, PdxDowntownLots>>();
  * fronts, brick lofts, office blocks and now and then a pink tower (stacked from its modules), a cross
  * street every block, a taller second row behind, a small front closing each cross street, bike racks on
  * the sidewalk, and a pod of food carts where a pedestrian zone says `dressing: food-carts`. Everything
- * stands on the land the road scene draws (road/land.ts): a building keeps clear of every feature the road
+ * stands on the land the road scene draws (road/drawn-ground.ts): a building keeps clear of every feature the road
  * keeps clear (a zone, a sign, a landmark), moves back behind one that only crosses its front, and gives
  * up its lot where it cannot stand on ground. Kept per network and seed. `landOverride` replaces the land
  * (tests' controls only; such a plan is not kept).

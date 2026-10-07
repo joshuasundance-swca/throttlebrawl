@@ -68,10 +68,10 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]party-lights\.ts$/,
   // Downtown Portland's blocks and San Francisco's downtown share one layer, loaded with their models.
   /[\\/]src[\\/]render[\\/]downtown\.ts$/,
-  // The road's structure planners (the physical world, 2026-10-06) and the land rule they read: each loads
-  // with its region's road data (road/structures.ts STRUCTURE_LAYERS) or with the render layer that draws it.
+  // The road's structure planners (the physical world, 2026-10-06): each loads with its region's road data
+  // (road/structures.ts STRUCTURE_LAYERS) or with the render layer that draws it. The land rule they read
+  // (road/drawn-ground.ts) is the sim's since 2026-10-07 (what a rider out past an edge meets): first load.
   /[\\/]src[\\/]road[\\/]structures[\\/][^\\/]+\.ts$/,
-  /[\\/]src[\\/]road[\\/]land\.ts$/,
   // Traffic models (playtest 3, T12.2): loaded with a race's traffic types, never the first screen.
   /[\\/]src[\\/]render[\\/]vehicles\.ts$/,
   /[\\/]src[\\/]ui[\\/]tuning[\\/]index\.ts$/,

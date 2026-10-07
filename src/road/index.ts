@@ -34,6 +34,7 @@ export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cros
 export { BRIDGE_TAPER_SLOPE, bridgedAt } from './bridge-taper';
 export type { TaperedVerge } from './bridge-taper';
 export {
+  beyondAt,
   BUILDING_FRONT_TAGS,
   courseEdgeTopAt,
   drawnEdgeAt,
@@ -45,7 +46,7 @@ export {
   WATER_LEVEL_M,
   waterLevelOf,
 } from './beyond';
-export type { DrawnEdge, Past } from './beyond';
+export type { Beyond, DrawnEdge, Past } from './beyond';
 export { gapAt, gapById, gapFarSide, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';

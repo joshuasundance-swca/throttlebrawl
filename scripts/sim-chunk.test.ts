@@ -8,6 +8,7 @@ import { build, type Plugin, type Rolldown } from 'vite';
 import {
   ROAD_LAZY_CHUNK_NAME,
   ROAD_LAZY_TEST,
+  RUNTIME_CHUNK_NAME,
   SIM_CHUNK_NAME,
   SIM_CODE_HASH_PLACEHOLDER,
   SIM_STEPS_CHUNK_NAME,
@@ -63,16 +64,32 @@ describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
     // The negative control: a sim change moves the hash.
     expect(simToo.hash).not.toBe(base.hash);
 
-    // Everything the sim needs is in the sim chunk: it imports no other chunk.
+    // The only static dependency is the bundler's exact generated namespace helper, hashed too.
     const sim = base.chunks.find((c) => c.name === SIM_CHUNK_NAME);
-    expect(sim?.imports).toEqual([]);
+    const runtime = base.chunks.find((c) => c.name === RUNTIME_CHUNK_NAME);
+    expect(runtime?.moduleIds).toEqual(['\0rolldown/runtime.js']);
+    expect(runtime?.imports).toEqual([]);
+    expect(sim?.imports).toEqual([runtime?.fileName]);
+    expect(
+      simCodeHashOfChunks(
+        sim!,
+        base.chunks.map((c) =>
+          c === runtime ? { ...c, code: `${c.code}\n;globalThis.__runtimeTweak = 1;` } : c,
+        ),
+      ),
+    ).not.toBe(base.hash);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]sim[\\/]/.test(id))).toBe(true);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]/.test(id))).toBe(true);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]core[\\/]/.test(id))).toBe(true);
-    // (and Vite's preload helper, which the planners' dynamic imports in src/road/structures.ts go through)
+    // Generated helpers and the exact lake outline used by physics are hashed with the sim too.
     expect(
       sim?.moduleIds.every(
-        (id) => /[\\/]src[\\/](sim|road|core)[\\/]/.test(id) || id === '\0vite/preload-helper.js',
+        (id) =>
+          /[\\/]src[\\/](sim|road|core)[\\/]/.test(id) ||
+          id === '\0vite/preload-helper.js' ||
+          id
+            .replace(/\\/g, '/')
+            .endsWith('/packs/region-pnw/assets/backdrop/pacific-northwest/networks/osm-pnw-samish.json'),
       ),
     ).toBe(true);
 

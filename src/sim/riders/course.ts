@@ -105,7 +105,7 @@ export function groundEdgeOpen(
   kind: VergeEdge,
 ): boolean {
   if (kind === 'soft') return true;
-  if (kind !== 'hard') return false;
+  if (kind !== 'hard' && kind !== 'water') return false;
   return drawnEdgeAt(road, edge, s, side) === null;
 }
 
@@ -183,10 +183,9 @@ export function roadPastLine(
   const road = config.road;
   const kit = KIT[kind];
   const vside = side > 0 ? 'right' : 'left';
-  // A barrier a road file lists holds where it is listed (a static truck's wall shuts its cut to the ground:
-  // tools/road/truck-shortcuts.test.ts). Render leaves its band out where another road's lanes run under it
-  // (road-mesh.ts `clearOfOtherLanes`); where the two disagree it is render's to draw (the lane's report).
-  if (road.barrierAt(edge, s, vside)) return false;
+  // A listed barrier holds only where its panel survives render's lane clearance. Authored
+  // truck cuts stand outside their visible walls; real road junctions keep their openings.
+  if (road.barrierAt(edge, s, vside)) return drawnEdgeAt(road, edge, s, vside) === null;
   const length = road.edges[edge]?.length ?? 0;
   const at = (sa: number) => {
     const u = sa < 0 ? 0 : sa > length ? length : sa;

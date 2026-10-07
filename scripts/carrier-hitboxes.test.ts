@@ -29,6 +29,8 @@ import { MOVING_DECKS_KEY } from '../src/sim/types';
 import { movingDeckOf, MOVING } from '../src/sim/modifiers/moving';
 import { deckHeight, movingDecks, truckBodyTop } from '../src/sim/riders/features';
 import { input, riderHarness, testConfig } from '../src/sim/riders/testing';
+import { riderState } from '../src/sim/riders';
+import { RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
 import { createWorld } from '../src/sim/world';
 import { mergeBoxes } from '../src/render/geometry';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
@@ -117,16 +119,39 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
     // The sim's zones, read from its own heights: the platform and the empty deck at the lip's height, the cab above.
     expect(simTop(RUN - 0.01, 0)).toBeCloseTo(2.8, 1);
     for (const into of [RUN + 0.1, DECK_FROM + 0.05, 14, CAB_FROM - 0.05]) expect(simTop(into, 0)).toBe(2.8);
-    for (const into of [CAB_FROM + 0.05, 19, LENGTH - 0.1])
-      expect(simTop(into, 0)).toBeCloseTo(truckBodyTop(TRUCK), 9);
+    for (const into of [17.5, 19, 20.5]) expect(simTop(into, 0)).toBeCloseTo(topOf(drawn, 0, into) ?? 0, 1);
+    expect(simTop(17.5, 0)).toBeCloseTo(3.15, 9);
+    expect(simTop(20, 0)).toBeLessThan(2.05);
+    expect(simTop(16.9, 1.05)).toBeCloseTo(truckBodyTop(TRUCK), 9);
   });
 
   it('no part of the drawn truck stands above what the sim holds there (to the height tolerance)', () => {
     const found = ghosts(drawn);
     console.log(
-      `[examined] parked carrier: ${(LENGTH / 0.1) | 0} lengths x 5 widths, drawn top against the sim's; ghosts ${found.length}`,
+      `[examined] parked carrier: sampled lengths across 5 widths, drawn top against the sim's; ghosts ${found.length}`,
     );
     expect(found).toEqual([]);
+  });
+
+  it('roof, hood, stacks and mirrors match in both directions; no tall invisible cab box', () => {
+    const points = [
+      [16.9, 0],
+      [16.9, 1.05],
+      [17.5, 0],
+      [17.5, 1.25],
+      [18.78, 1.33],
+      [19.6, 0],
+      [19.6, 1.1],
+      [20, 0],
+      [20, 1.2],
+      [21, 0],
+    ] as const;
+    for (const [into, x] of points) {
+      expect(
+        Math.abs(simTop(into, x) - (topOf(drawn, x, into) ?? 0)),
+        `surface at ${into}, x ${x}`,
+      ).toBeLessThanOrEqual(HEIGHT_TOLERANCE_M);
+    }
   });
 
   it('the top deck is empty: drawn at the lip height from the platform to the cab, no car above it', () => {
@@ -163,17 +188,22 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
     let cabTicks = 0;
     let worst = 0;
     for (let t = 0; t < 60 * 8; t++) {
-      h.step(input(h.rider.speed < speed ? 1 : 0));
+      const events = h.step(input(h.rider.speed < speed ? 1 : 0));
       const into = h.rider.pos.s - TRUCK.s0;
-      if (into < 0 || into > LENGTH) continue;
+      if (into < 0 || into > LENGTH) {
+        if (events.some((e) => e.type === 'crash')) break;
+        continue;
+      }
       const top = topOf(meshes, h.rider.pos.d - MID, into);
-      if (top === null) continue;
-      const depth = top - h.rider.h;
+      const depth = top === null ? 0 : top - h.rider.h;
       if (depth > 0.1) {
         ticks++;
         if (into >= CAB_FROM) cabTicks++;
         worst = Math.max(worst, depth);
       }
+      // Examine the contact pose too. This rider-only harness has no tumble system, so stop
+      // after its first crash instead of continuing to drive an already crashed rider.
+      if (events.some((e) => e.type === 'crash')) break;
     }
     return { ticks, cabTicks, worst };
   }
@@ -196,18 +226,53 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
     expect(r.ticks).toBeGreaterThanOrEqual(10);
   });
 
-  it('known, not changed (the cab stays as it was): a slow clearing speed still passes through the drawn cab', () => {
-    // The cab is solid below its top for a rider who does not clear the truck, and a rider who does passes
-    // through it at any height (`clearsBody`). Above 17 m/s the rider is over the cab's drawn roof; at the
-    // speeds just over the clear speed it is still inside it. The count is the finding, not a pass.
+  it('the cab is met by height, including speeds that used to pass through it', () => {
     const lines: string[] = [];
     for (const v of [10.8, 12, 14, 16, 19.4]) {
       const r = insideTicks(drawn, v);
       lines.push(`${v} m/s: ${r.cabTicks} ticks inside the drawn cab`);
+      expect(r.cabTicks, `${v} m/s`).toBe(0);
     }
-    console.log(`[examined] the cab, known residual: ${lines.join('; ')}`);
+    console.log(`[examined] the cab, strict drawn-geometry parity: ${lines.join('; ')}`);
     expect(insideTicks(drawn, 19.4).cabTicks).toBe(0);
   });
+
+  // The 13 m/s case also reaches the raised roof marker, protecting the first contact of the
+  // way-back staging's low flight as well as the lower cap contacts at 10.3/10.8 m/s.
+  it.each([10.3, 10.8, 13])(
+    'a %s m/s hop meets an actual cab triangle at its ordinary fall-speed impact',
+    (speed) => {
+      const h = riderHarness(config, { s: TRUCK.s0 + RUN - 20, d: MID, speed });
+      const st = riderState(h.world);
+      let examined = false;
+      for (let tick = 0; tick < 240 && !examined; tick++) {
+        const before = { ...h.rider.pos, vy: st.vy[h.rider.id] ?? 0 };
+        const events = h.step(input(h.rider.speed < speed ? 1 : 0));
+        const hit = events.find((e) => e.data['object'] === 'rampTruck');
+        if (!hit) continue;
+        // Look along the swept capsule reach at its feet, against the committed model's triangles.
+        // The contact pose has already been held off the cab. Include the forward travel this tick
+        // from its starting footprint, as the flight fell below the front cap.
+        const ray = new Raycaster(
+          new Vector3(before.d - MID, h.rider.h, before.s - TRUCK.s0),
+          new Vector3(0, 0, 1),
+          0,
+          RIDER_HALF_LENGTH_M + (Number(hit.data['speed']) * Math.cos(Number(hit.data['yaw']))) / 60,
+        );
+        const triangle = ray.intersectObjects(drawn, false)[0];
+        expect(triangle, `${speed} m/s: a drawn cap inside the bike's reach`).toBeDefined();
+        expect(triangle?.point.z).toBeGreaterThanOrEqual(17);
+        expect(hit.type).toBe('wobble');
+        expect(hit.data['hit']).toBe('top');
+        expect(Number(hit.data['impactMps'])).toBeCloseTo(-before.vy + 9.81 / 60, 6);
+        console.log(
+          `[examined] ${speed} m/s cab triangle: ${triangle?.point.z.toFixed(4)} m, fall impact ${Number(hit.data['impactMps']).toFixed(4)} m/s`,
+        );
+        examined = true;
+      }
+      expect(examined).toBe(true);
+    },
+  );
 });
 
 describe('the moving carrier: its figure draws nothing over the deck, and no car', () => {
@@ -242,8 +307,8 @@ describe('the moving carrier: its figure draws nothing over the deck, and no car
   it('the sim: a ramp, a lip platform, then the cab from the platform’s end (no top deck: it carries nothing)', () => {
     expect(simTop(MOVING.rampRunM - 0.01)).toBeCloseTo(dm.lipHeightM, 1);
     expect(simTop(BODY_FROM - 0.05)).toBeCloseTo(dm.lipHeightM, 9);
-    expect(simTop(BODY_FROM + 0.05)).toBeGreaterThan(dm.lipHeightM + 0.3);
-    expect(simTop(LENGTH_M - 0.1)).toBeGreaterThan(dm.lipHeightM + 0.3);
+    expect(simTop(BODY_FROM + 0.05)).toBeCloseTo(dm.lipHeightM, 9);
+    expect(simTop(LENGTH_M - 0.1)).toBeCloseTo(dm.lipHeightM, 9);
   });
 
   it('no part is drawn above the deck’s level before the sim’s body starts (no car, nothing over the lip platform)', () => {
@@ -264,17 +329,23 @@ describe('the moving carrier: its figure draws nothing over the deck, and no car
     }
   });
 
-  it('known, not changed (the cab stays as it was): the drawn cab stands above the sim’s body top', () => {
+  it('the moving cab, rack and light have their drawn heights at their own footprints', () => {
     const mesh = figure('carCarrier');
     let drawnHighest = 0;
     for (let into = BODY_FROM; into < LENGTH_M - 0.05; into += 0.05)
-      for (const x of [-0.8, 0, 0.8]) drawnHighest = Math.max(drawnHighest, drawnTop(mesh, into, x) ?? 0);
+      for (const x of [-0.8, 0, 0.8]) {
+        const top = drawnTop(mesh, into, x) ?? 0;
+        drawnHighest = Math.max(drawnHighest, top);
+        expect(
+          Math.abs(top - simTop(into, x)),
+          `moving cab at ${into.toFixed(2)}, x ${x}`,
+        ).toBeLessThanOrEqual(HEIGHT_TOLERANCE_M);
+      }
     const sim = simTop(LENGTH_M - 0.5);
     const box = new Box3().setFromObject(mesh);
     console.log(
-      `[examined] the moving carrier's cab: drawn up to ${drawnHighest.toFixed(2)} m, the sim's body top ${sim.toFixed(2)} m (figure ${box.max.y.toFixed(2)} m tall)`,
+      `[examined] the moving carrier: drawn up to ${drawnHighest.toFixed(2)} m, physical cab roof at the sampled point ${sim.toFixed(2)} m, highest physical part ${truckBodyTop(now[0] as BakedFeature).toFixed(2)} m (figure ${box.max.y.toFixed(2)} m tall)`,
     );
-    // The finding, pinned so it cannot grow unseen: its gap is 0.84 m today (a roof light and a cab, 2.56 m, over the sim's 1.72 m).
-    expect(drawnHighest - sim).toBeLessThan(0.9);
+    expect(drawnHighest - truckBodyTop(now[0] as BakedFeature)).toBeLessThanOrEqual(HEIGHT_TOLERANCE_M);
   });
 });

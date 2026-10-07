@@ -27,6 +27,7 @@ import {
 } from '../../road';
 import { BIKE_HALF_WIDTH_M, riderState, touchdownOf } from './index';
 import { STRAIGHT, testConfig } from './testing';
+import { groundEdgeOpen } from './course';
 import { gapBridge, gapFeature, gapSimConfig, GAP_DECK_Y } from '../tumble/gap-fixture';
 
 /** The fixture's lanes end at d ±4.9. */
@@ -116,6 +117,14 @@ function run(
 const ofType = (evs: readonly SimEvent[], type: string) => evs.filter((e) => e.type === type);
 
 describe('the course on the ground: an edge with nothing drawn holds nothing', () => {
+  it('mangrove ground beyond a derived water edge is open ground, while open water still holds', () => {
+    const tag = (tag: string): BakedTag => ({ tag, side: 'both', s0: 0, s1: 3000 });
+    const land = courseConfig({ tags: [tag('mangrove')] });
+    const water = courseConfig({ tags: [tag('water-open')] });
+    expect(land.road.vergeAt(0, 100, 'right').edge).toBe('water');
+    expect(groundEdgeOpen(land.road, 0, 100, 'right', 'water')).toBe(true);
+    expect(groundEdgeOpen(water.road, 0, 100, 'right', 'water')).toBe(false);
+  });
   const soft = band(8, 'sand', 'soft');
   const start = { s: 100, d: LANE_EDGE + 8 - 1.2, speed: 25, yaw: 0.45 };
 

@@ -124,9 +124,9 @@
     },
     {
       "id": "j-sf-downtown-6",
-      "x": -2900.0987,
+      "x": -2906.4044,
       "y": 1,
-      "z": 2857.3986,
+      "z": 2863.8203,
       "ends": [
         { "road": "sf-dt-campus-yard", "end": "to" },
         { "road": "sf-dt-campus-end", "end": "from" },
@@ -168,9 +168,9 @@
     },
     {
       "id": "j-sf-downtown-7",
-      "x": -2959.7251,
+      "x": -2972.453,
       "y": 1,
-      "z": 2917.2724,
+      "z": 2930.0004,
       "ends": [{ "road": "sf-dt-campus-end", "end": "to" }],
       "connectors": [],
       "control": "none"

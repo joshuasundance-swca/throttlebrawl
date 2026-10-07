@@ -688,11 +688,13 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
   // [default] Splits only, the diagnosed wall: a merge's two roads overlap too, but both lead to the
   // same road a few metres on, so the wall there costs a rider little; it is a follow-up.
 
-  /** The drawn surface's outer edges at (edge, s): the outermost lane edges, 0 on a side with none. */
+  /** The drawn surface's actual outer lane edges at (edge, s), or 0..0 with no lanes. */
   const outerAt = (edge: number, s: number): { lo: number; hi: number } => {
-    let lo = 0;
-    let hi = 0;
-    for (const lane of lanesAt(edge, s)) {
+    const lanes = lanesAt(edge, s);
+    if (!lanes.length) return { lo: 0, hi: 0 };
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const lane of lanes) {
       lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
       hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
     }

@@ -83,6 +83,8 @@ export const PLAZA_CUT = {
   /** The end of Campus Way's first piece, where the split connector starts, in that road's s. */
   splitS: 665,
   connectorM: 30,
+  /** The cut returns only after the protected wall ends, through this open main-road merge. */
+  mergeM: 48,
   /**
    * The avenue's piece beside the cut, and the cut's own middle road (polish M, punch items 1 and 2:
    * the cut ran beside the avenue as long as the stretch it skipped, so it saved nothing). The avenue
@@ -96,15 +98,13 @@ export const PLAZA_CUT = {
   /**
    * Where the cut's road starts: its reference line, 9 m right of the avenue's centre line, half a
    * metre inside the avenue's edge (a junction must lie on the road it leaves), and its one lane,
-   * 8 m wide, starting on that line: d 9 to 17 beside the avenue. (The sim counts a road's band from
-   * its reference line out to its lanes' far edge, so the near edge is the line.) It overlaps the
-   * avenue's outer half metre, which a rider on the ground (centre at most 9, half a bike in from the
-   * edge) never gets half a bike into, so nobody on the ground is handed across, and a rider in the
-   * air out past the edge is.
+   * 8 m wide, starting a metre farther right: d 10 to 18 beside the avenue. The junction reference
+   * line stays on the avenue, while the usable lane clears its wall and the renderer's 0.3 m lane
+   * clearance. The truck's flight reaches this lane; a grounded bike meets the visible wall.
    */
   offsetM: 9,
   laneM: 8,
-  laneCentreM: 4,
+  laneCentreM: 5,
   /**
    * The car carrier, its lip at s 640 as before. Polish M (punch item 2): off the default 13.7° deck a
    * bike that leaves the lip faster than about 50 m/s comes down on the level harder than the landing's
@@ -213,7 +213,8 @@ export const SF_DOWNTOWN: TrackSource = {
     [-2845.28, 2807.15],
     [-2867.32, 2824.89],
     [-2913.29, 2870.85],
-    [-2959.25, 2916.81],
+    // Keep the finish's plaza frontage after the longer, accessible shortcut merge.
+    [-2971.98, 2929.54],
   ],
   baseElevationM: 1,
   spacingM: 2,
@@ -465,7 +466,7 @@ export const SF_DOWNTOWN: TrackSource = {
       id: 'c-dt-plaza-merge',
       name: 'Campus Way',
       connector: true,
-      lengthM: PLAZA_CUT.connectorM,
+      lengthM: PLAZA_CUT.mergeM,
       speedLimitMps: CITY,
       surface: 'asphalt',
       humps: [],
@@ -507,16 +508,14 @@ export const SF_DOWNTOWN: TrackSource = {
         zone: { lengthM: 25, d0: 9.5, d1: 16.5 },
       },
       join: { road: 'sf-dt-campus-end', offsetM: 2, lane: 'R2' },
-      turnsM: [20, 60],
-      // Two points: one beside the avenue, 9 m right of its centre line, 150 m past the split, that
-      // holds the cut parallel to the avenue while the sim's hand-over between the two can act (the
-      // first 150 m), so a rider pressing the wall on the ground is never taken across; and one on the
-      // same line 100 m short of where the avenue is back from its sweep round the plaza (polish M), so
-      // the cut runs straight through the plaza between them. It then eases back to the avenue's lane
-      // for the merge.
+      turnsM: [20, 20],
+      // Points 9 m right of the avenue's centre line, 70 and 150 m past the split, keep its entrance
+      // clear of the curved wall while the sim's hand-over can act. The last point lies at the bowed
+      // avenue's wall end: the cut crosses the plaza, then returns through the open merge.
       via: [
-        { x: -2519.38, z: 2459.87, headingDeg: -136.41, turnM: 20 },
-        { x: -2845.4, z: 2790.24, headingDeg: -135, turnM: 20 },
+        { x: -2463.815587, z: 2402.292058, headingDeg: -136.063537, turnM: 20 },
+        { x: -2518.937842, z: 2460.482229, headingDeg: -137.045372, turnM: 20 },
+        { x: -2895.973971, z: 2840.377424, headingDeg: -135.299784, turnM: 20 },
       ],
       lanes: [
         {
@@ -574,6 +573,8 @@ export const SF_DOWNTOWN: TrackSource = {
           id: 'c-dt-plaza-out',
           name: 'Plaza gate',
           connector: true,
+          // One bike lane and its soft edge return inside the avenue's open merge band.
+          lanes: [{ id: 'S1', dCenterM: 2.75, widthM: 3.5, direction: 1, kind: 'shortcut' }],
           speedLimitMps: CITY,
           surface: 'concrete',
           humps: [],

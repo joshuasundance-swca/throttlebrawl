@@ -38,6 +38,7 @@ import { guidedZone, ZONE_GUIDE_REACH_M, ZONE_LEAD_PAINT_M } from '../../src/ren
 import { barrierLimits, BIKE_HALF_WIDTH_M, ridersSystem, SPLIT_GUIDE_LEAD_M } from '../../src/sim/riders';
 import { trafficSystem } from '../../src/sim/traffic';
 import { tumbleSystem } from '../../src/sim/tumble';
+import { TRAFFIC_HIT_DEFAULT_MPS } from '../../src/sim/traffic/contact-rule';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
 import type { SimBikeDef, SimConfig, SimEvent } from '../../src/sim/types';
 import { addMover, createWorld, orderSystems, stepWorld, type Mover } from '../../src/sim/world';
@@ -292,12 +293,15 @@ describe('the Seven Mile old road is easy to take: at top speed, anywhere across
     expect(missed).toEqual([]);
   });
 
-  it('a bike that misses the hop off the turn-off wakes on the highway, never on the old road', () => {
+  it('actual gap misses wake on the highway; a bike meeting the solid cab obeys its closing-speed rule', () => {
     const z = ZONE;
     const reach = barrierLimits(BASE, z.edge, z.s1).hi;
     const main = new Set(route.mainPath);
     const rows: string[] = [];
     let woke = 0;
+    let soft = 0;
+    let hard = 0;
+    let cleared = 0;
     for (const b of SLOW) {
       const config: SimConfig = { ...BASE, riders: [{ ...BASE.riders[0]!, bike: b.bike }] };
       const world = createWorld(config);
@@ -309,24 +313,72 @@ describe('the Seven Mile old road is easy to take: at top speed, anywhere across
       for (let t = 0; t < 60 * 90; t++) {
         events.push(...stepWorld(world, config, SYSTEMS, [{ steer: 0, throttle: 255, brake: 0, flags: 0 }]));
         if (events.some((e) => e.type === 'respawn')) break;
+        if (events.some((e) => e.data['feature'] === IN.truck.id && e.data['hit'] === 'end')) break;
         if (p.mode === 'Road' && p.pos.edge === afterEdge) break;
       }
       const respawn = events.find((e) => e.type === 'respawn');
+      const cab = events.find((e) => e.data['feature'] === IN.truck.id && e.data['hit'] === 'end');
       const on = config.road.edges[p.pos.edge]?.id ?? '?';
       rows.push(
         `${b.id} (${b.bike.topSpeedMps} m/s): ${respawn ? JSON.stringify(respawn.data) : 'no respawn'}, on ${on}`,
       );
-      if (!respawn) {
+      if (cab) {
+        // A cab contact occurs before the gap: no splash took place. Its response is still the
+        // ordinary vehicle rule, including the low-speed bike that can stop on the empty deck.
+        expect(on, b.id).toBe(IN.id);
+        expect(respawn).toBeUndefined();
+        expect(events.some((e) => e.type === 'shortcutFound')).toBe(false);
+        const crashes = Number(cab.data['impactMps']) >= TRAFFIC_HIT_DEFAULT_MPS;
+        expect(cab.type, b.id).toBe(crashes ? 'crash' : 'wobble');
+        expect(Number(cab.data['impactMps'])).toBeGreaterThan(0);
+        if (crashes) hard++;
+        else {
+          soft++;
+          // The full-path low-speed control can recover: stop, use the normal brake gesture,
+          // then ride back down the ramp. The ordinary soft contact must not trap the bike.
+          const tick = (throttle: number, brake: number, steer = 0) => {
+            events.push(...stepWorld(world, config, SYSTEMS, [{ throttle, brake, steer, flags: 0 }]));
+          };
+          for (let t = 0; t < 90; t++) tick(0, 255);
+          for (let t = 0; t < 6; t++) tick(0, 0);
+          for (let t = 0; t < 6; t++) tick(0, 255);
+          for (let t = 0; t < 6; t++) tick(0, 0);
+          for (let t = 0; t < 6; t++) tick(0, 255);
+          for (let t = 0; t < 90; t++) tick(0, 255, 127);
+          expect(p.pos.dir, b.id).toBe(-1);
+          for (
+            let t = 0;
+            t < 1800 && p.pos.edge === config.road.edgeIndex(IN.id) && p.pos.s > IN.truck.s0;
+            t++
+          ) {
+            const steer = Math.max(-1, Math.min(1, -p.pos.dir * (0.8 * p.pos.d + 6 * p.yaw)));
+            tick(255, 0, Math.round(steer * 127));
+          }
+          expect(p.pos.s, b.id).toBeLessThan(IN.truck.s0);
+          expect(p.h, b.id).toBe(0);
+          expect(events.some((e) => e.type === 'crash')).toBe(false);
+        }
+      } else if (!respawn) {
         // Fast enough to clear it after all: then it is on the old road past the hop.
         expect(on, b.id).toBe(AFTER_IN);
-        continue;
+        cleared++;
+      } else {
+        woke++;
+        const gap = featuresOf(IN.id).find((f) => f.kind === 'gap');
+        expect(events.find((e) => e.type === 'crash')?.data, b.id).toMatchObject({
+          cause: 'gap',
+          feature: gap?.id,
+        });
+        expect(respawn.data, b.id).toMatchObject({ reason: 'splash', at: 'main' });
+        expect(main.has(on), `${b.id} wakes on ${on}`).toBe(true);
       }
-      woke++;
-      expect(respawn.data, b.id).toMatchObject({ reason: 'splash', at: 'main' });
-      expect(main.has(on), `${b.id} wakes on ${on}`).toBe(true);
     }
     print(`slower than the Rustbucket:\n  ${rows.join('\n  ')}`);
     // The check could see a miss: at least one bike is too slow for the hop.
     expect(woke).toBeGreaterThan(0);
+    expect(soft).toBeGreaterThan(0);
+    expect(hard).toBeGreaterThan(0);
+    expect(cleared).toBeGreaterThan(0);
+    expect(woke + soft + hard + cleared).toBe(SLOW.length);
   });
 });

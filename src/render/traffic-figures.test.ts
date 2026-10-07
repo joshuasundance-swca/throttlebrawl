@@ -356,12 +356,12 @@ describe('the new presets and the big animals (playtest 3, T4.3)', () => {
 
 describe('the car carrier draws its ramp (the moving ramp truck, T4.3)', () => {
   // The sim's numbers (src/sim/modifiers/moving.ts MOVING.rampRunM and rampSlope; render never
-  // imports them): a 7.5 m by 2.4 m carrier, its rear the ramp's foot, a 5 m ramp rising 1.22 m,
+  // imports them): a 7.5 m by 2.4 m carrier, its rear the ramp's foot, a 5 m ramp rising 2.4 m,
   // then 2.5 m of body.
   const LENGTH_M = 7.5;
   const WIDTH_M = 2.4;
   const RUN_M = 5;
-  const LIP_M = 1.22;
+  const LIP_M = 2.4;
   const REAR = LENGTH_M / 2;
   const rampAt = (fromRear: number) => LIP_M * (fromRear / RUN_M);
 
@@ -393,15 +393,15 @@ describe('the car carrier draws its ramp (the moving ramp truck, T4.3)', () => {
     // One slope, never a step: it climbs most of the lip over its first 4.4 m.
     expect(samples[4]!.got - samples[0]!.got).toBeGreaterThan(0.9);
     // Past the lip the body stands higher than the lip: a rider who does not clear it meets a wall.
-    expect(top(0, RUN_M + 1.5)).toBeGreaterThan(LIP_M + 0.8);
-    expect(top(0, LENGTH_M - 0.8)).toBeGreaterThan(LIP_M + 0.8);
+    expect(top(0, RUN_M + 1.5)).toBeCloseTo(LIP_M, 1);
+    expect(top(0, LENGTH_M - 0.8)).toBeCloseTo(2.56, 1);
   });
 
   it('with the ramp up, the bed is level at the lip and the tailgate stands at the rear', () => {
     const top = surface('carCarrier');
-    for (const d of [1.5, 2.5, 3.5]) expect(Math.abs(top(0, d) - LIP_M), `${d} m`).toBeLessThan(0.15);
+    for (const d of [1.5, 2.5, 3.5]) expect(Math.abs(top(0, d) - 1.2), `${d} m`).toBeLessThan(0.15);
     expect(top(0, 0.1)).toBeGreaterThan(1.5);
-    expect(top(0, LENGTH_M - 0.8)).toBeGreaterThan(LIP_M + 0.8);
+    expect(top(0, LENGTH_M - 0.8)).toBeCloseTo(2.56, 1);
   });
 
   it('keeps both inside the carrier box, and the lowered ramp wears warning stripes', () => {

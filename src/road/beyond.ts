@@ -21,7 +21,10 @@
 // Another road below (the old Seven Mile Bridge beside the new one) is the sim's to find, with
 // RoadNetwork.surfaceUnder. Pure data and + - * / only, like the rest of road/, so the sim may read it.
 import { vergeTagAt, type VergeSide } from './cross-section';
+import { lanesNear } from './course';
+import { groundUnderOf, sectionGroundOf } from './drawn-ground';
 import type { RoadNetwork } from './network';
+import { lakeWaterAt } from './water';
 
 /**
  * Each network's water level, world y, m: the sea, a lake, a river [default]. A network left out is at
@@ -156,6 +159,68 @@ export const GROUND_EDGE_TOP_M: Readonly<Record<'soft' | 'brush' | 'fence', numb
 export type DrawnEdge = 'barrier' | 'rail' | 'water' | 'wall' | 'front' | 'brush' | 'fence' | 'drop';
 
 /**
+ * Solid bands use one-metre clearance probes; barrier looks use two-metre panels with
+ * five chord probes, at the look's own offset. An isolated clear probe draws no band.
+ * Keep this private: the existing drawn-edge/top queries are the contact seam.
+ */
+function listedPanelAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): boolean {
+  const e = road.edges[edge];
+  const b = e?.barriers.find((b) => s >= b.s0 && s <= b.s1 && (b.side === side || b.side === 'both'));
+  if (!e || !b) return false;
+  let from = Math.max(0, b.s0);
+  let end = Math.min(e.length, b.s1);
+  const sign = side === 'right' ? 1 : -1;
+  // The renderer's barrier-look styles: all three have 2 m panels. Keep contact at
+  // their actual placement, rather than the solid band's 5 cm offset.
+  const lookAt = (u: number) => {
+    const interstate = e.tags.some(
+      (t) => t.tag === 'interstate' && u >= t.s0 && u <= t.s1 && (t.side === 'both' || t.side === side),
+    );
+    return b.look ?? (interstate ? (b.kind === 'wall' ? 'concrete' : 'guardrail') : undefined);
+  };
+  const panel = (lo: number, hi: number) => {
+    // VergeLayer selects a look at each panel's start, including a tag ending inside it.
+    const look = lookAt(lo);
+    if (!look || hi <= lo) return false;
+    const offset = look === 'railing' ? 0.2 : look === 'concrete' ? 0.3 : 0.07;
+    const d = (sign > 0 ? e.dMax : e.dMin) + sign * offset;
+    const a = road.toWorld(edge, lo, d, 0);
+    const c = road.toWorld(edge, hi, d, 0);
+    for (let k = 0; k <= 4; k++) {
+      const t = k / 4;
+      if (lanesNear(road, a.x + (c.x - a.x) * t, a.z + (c.z - a.z) * t, edge, 0.3)) return false;
+    }
+    return true;
+  };
+  const panelLo = from + Math.floor((s - from) / 2) * 2;
+  if (
+    panel(panelLo, Math.min(end, panelLo + 2)) ||
+    (Math.abs(s - panelLo) < 1e-9 && panelLo > from && panel(panelLo - 2, panelLo))
+  )
+    return true;
+  // A gap restarts the renderer's probe grid at its far end.
+  for (const f of e.features) {
+    if (f.kind !== 'gap' || f.s1 <= from || f.s0 >= end) continue;
+    if (f.s1 <= s) from = Math.max(from, f.s1);
+    else if (f.s0 >= s) end = Math.min(end, f.s0);
+    else return false;
+  }
+  // RoadScene suppresses the entire gap-clipped band by its midpoint's look. A
+  // partial tag can leave a band alongside look panels, or leave unpanelled openings.
+  if (lookAt((from + end) / 2)) return false;
+  const d = (sign > 0 ? e.dMax : e.dMin) + sign * 0.05;
+  const clear = (u: number) => {
+    const p = road.toWorld(edge, u, d, 0);
+    return !lanesNear(road, p.x, p.z, edge, 0.3);
+  };
+  const lo = from + Math.floor(s - from);
+  const hi = Math.min(end, lo + 1);
+  if (!clear(lo)) return false;
+  if (s > lo + 1e-9) return hi > lo && clear(hi);
+  return (hi > lo && clear(hi)) || (lo > from && clear(Math.max(from, lo - 1)));
+}
+
+/**
  * Whether a `gap` takes the whole road away at (edge, s): its box covers the drive lanes (within half a metre of
  * their edges), as render/road-mesh.ts cuts a barrier there (a rail ends at a broken end; it does not span the
  * hole). Nothing stands at the edge over the hole.
@@ -187,9 +252,11 @@ export function drawnEdgeAt(road: RoadNetwork, edge: number, s: number, side: Ve
     const past = pastAt(road, edge, s, side);
     return past === 'ground' ? null : past;
   }
-  if (road.barrierAt(edge, s, side)) return 'barrier';
+  if (road.barrierAt(edge, s, side)) return listedPanelAt(road, edge, s, side) ? 'barrier' : null;
   const v = road.vergeAt(edge, s, side);
-  if (v.edge === 'water' || v.edge === 'rail' || v.edge === 'brush' || v.edge === 'fence') return v.edge;
+  if (v.edge === 'water')
+    return v.derived && beyondAt(road, edge, s, side, 1).past === 'ground' ? null : 'water';
+  if (v.edge === 'rail' || v.edge === 'brush' || v.edge === 'fence') return v.edge;
   if (v.edge !== 'hard') return null;
   // A hard edge a road file gives (not derived): its author says a wall stands there.
   if (!v.derived) return 'wall';
@@ -209,6 +276,7 @@ export function drawnEdgeAt(road: RoadNetwork, edge: number, s: number, side: Ve
  */
 export function courseEdgeTopAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): number {
   if (holeAt(road, edge, s)) return 0;
+  if (road.barrierAt(edge, s, side) && !listedPanelAt(road, edge, s, side)) return 0;
   const top = edgeTopAt(road, edge, s, side);
   if (top === null) {
     const kind = road.vergeAt(edge, s, side).edge;
@@ -221,7 +289,80 @@ export function courseEdgeTopAt(road: RoadNetwork, edge: number, s: number, side
   return top;
 }
 
-/** What lies past one side's band edge at (edge, s). */
+/** Another road's ground at most this far over the deck is met out past the edge (a bank rising past it), m. */
+const OTHER_GROUND_OVER_M = 3;
+/**
+ * Drawn ground past an edge narrower than this holds no bike, m (the maintainer, 2026-10-06, [decided]: "land on
+ * and ride any solid top big enough to hold a bike"): a bike's width, twice sim/riders' BIKE_HALF_WIDTH_M. A
+ * deck's lip outside its rail (0.55 m) is passed over, and he falls past it.
+ */
+const HOLDS_BIKE_M = 1;
+
+/** What lies under a rider (or a body) out past a road's edge: ground, water or a drop, and its floor, world y. */
+export interface Beyond {
+  past: Past;
+  /** The ground's height, or the water's level (a drop's floor too). */
+  floorY: number;
+}
+
+/** The network's lake level, where it has a lake above the sea (Lake Samish), else null. */
+const lakeOf = (road: RoadNetwork): number | null =>
+  Object.hasOwn(WATER_LEVEL_M, road.id) ? (WATER_LEVEL_M[road.id] ?? null) : null;
+
+/**
+ * What a rider (or a body) out past one side's band edge at (edge, s) meets, `acrossM` metres past that edge: what
+ * the road scene draws there (the maintainer, 2026-10-06, [decided]: what is drawn is what is met, nothing is a
+ * ghost; the one live check of 2026-10-07 had a high fall sink 70 m through Chuckanut's grassy shelf, drawn at the
+ * road's height past its parapet). tests/sim/beyond-drawn.test.ts holds it to the drawn scene on every route
+ * network.
+ * - `ground` at the highest ground drawn there: its own cross-section's (road/drawn-ground.ts `sectionGroundOf`: its
+ *   shoulder out to the drawn verge, its land strip, the bluff's 10 m shelf, a mangrove key, a roadside zone's
+ *   catwalk, a lake's shore, the terrain skirt's gentle slope down the hill) where that runs a bike's width
+ *   (HOLDS_BIKE_M) out from the edge, so a deck's lip outside its rail is passed over; or another road's (road/drawn-ground.ts
+ *   `groundUnderOf`: a junction's corner, the land between a road and its slip road, a bank rising beside it);
+ * - where none is drawn at all: what the road's tags say lies there (`pastAt`: the water off a bridge, the drop off
+ *   the bluff's cliff), and a drop where they say ground (the sea or the valley far below a deck's side or a steep
+ *   shelf), with the network's water level as its floor (`waterLevelOf`).
+ * Another road the race allows, under the rider inside its edges, is the sim's to hand him onto first
+ * (sim/riders/gap.ts `roadUnder`).
+ */
+export function beyondAt(
+  road: RoadNetwork,
+  edge: number,
+  s: number,
+  side: VergeSide,
+  acrossM: number,
+): Beyond {
+  if (!road.edges[edge]) return { past: 'drop', floorY: 0 };
+  const sign = side === 'right' ? 1 : -1;
+  const from = sign * road.vergeAt(edge, s, side).dOuter;
+  const at = from + Math.max(0, acrossM);
+  const point = road.toWorld(edge, s, sign * at, 0);
+  const water = lakeWaterAt(road.id, point.x, point.z) ?? 0;
+  const tagged = pastAt(road, edge, s, side);
+  const none: Beyond = { past: tagged === 'ground' ? 'drop' : tagged, floorY: water };
+  if (holeAt(road, edge, s)) return none;
+  const lake = lakeOf(road);
+  const section = sectionGroundOf(road, lake);
+  const others = groundUnderOf(road, lake);
+  // Out from the centre line, m: the band's outer edge and the point.
+  const deck = road.surfaceHeight(edge, s, sign * from);
+  const otherAt = (out: number): number | null => {
+    const q = road.toWorld(edge, s, sign * out, 0);
+    return others(q.x, q.z, Math.max(q.y, deck) + OTHER_GROUND_OVER_M, { edge, s });
+  };
+  let own = section(edge, s, sign * at);
+  // Its own ground holds a bike only where it runs a bike's width out from the edge (or on into another road's).
+  if (own !== null && at < from + HOLDS_BIKE_M) {
+    const out = from + HOLDS_BIKE_M;
+    if (section(edge, s, sign * out) === null && otherAt(out) === null) own = null;
+  }
+  const other = otherAt(at);
+  const floor = own === null ? other : other === null ? own : Math.max(own, other);
+  return floor === null ? none : { past: 'ground', floorY: floor };
+}
+
+/** What the road's tags say lies past one side's band edge at (edge, s) (what is drawn there: `beyondAt`). */
 export function pastAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): Past {
   const tags = tagsOn(road, edge, side, s);
   if (tags.some((t) => t.startsWith('water'))) return 'water';

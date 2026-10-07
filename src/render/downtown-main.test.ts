@@ -88,7 +88,7 @@ const KNOWN: Readonly<Record<string, { main: readonly string[]; now: readonly st
 /**
  * Where the land itself has changed since the fixture, by network: x and z bounds of the ground whose lots
  * are not held to main's. The ride column's check (2026-10-06) keeps land from standing over another road's
- * lanes lower than it (render/road-mesh.ts `landOverRoad`, road/land.ts the same rule), and beside the
+ * lanes lower than it (render/road-mesh.ts `landOverRoad`, road/drawn-ground.ts the same rule), and beside the
  * Hawthorne Bridge road that land ran over the Morrison links below it; it stops short of their lanes now,
  * so the lots planned on it differ. A row whose drawn box's middle lies here is left out of both sides;
  * portland-blocks.test.ts still holds every building there to the land the road scene draws.

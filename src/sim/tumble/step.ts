@@ -13,6 +13,7 @@ import {
 } from '../../road';
 import { offRoadOn } from '../ground';
 import { highDrop, riderState } from '../riders';
+import { courseEdgesOn } from '../riders/course';
 import { RIDER_HALF_LENGTH_M, RIDER_CONTACT_HALF_WIDTH_M } from '../riders/contact';
 import {
   furnitureOn,
@@ -498,8 +499,10 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
     const offRoad = offRoadOn(world.params);
     // The structures' tops (the physical world, sim/riders/structures.ts): a crash on a roof rests there.
     const tops = bodyTopsOf(world, config);
-    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad, tops);
-    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad, tops);
+    // With the course's honest edges, both bodies meet the ground drawn past the barrier.
+    const honest = courseEdgesOn(world.params);
+    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad, tops, honest);
+    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad, tops, honest);
     contacts(world, config, m, r, r.riderRig, on);
     contacts(world, config, m, r, r.bikeRig, bikeAt);
     railEvents(world, config, m, r, r.riderRig, on);

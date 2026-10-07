@@ -3,7 +3,7 @@
   "id": "pnw-sawmill-haul",
   "network": "pnw-c1",
   "start": { "road": "pnw-ferry-landing", "s": 40, "dir": 1 },
-  "finish": { "road": "pnw-sawmill-end", "s": 42 },
+  "finish": { "road": "pnw-sawmill-end", "s": 25 },
   "mainPath": [
     "pnw-ferry-landing",
     "pnw-switchback-grade",

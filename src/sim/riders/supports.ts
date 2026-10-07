@@ -13,7 +13,7 @@
 // - every traffic vehicle (its type's box, vehicleHeightM tall, measured as its rigid drawn box, as
 //   traffic's own contacts measure it) but a live moving deck, and none for a rider who is a ghost to
 //   traffic (back on the bike moments ago: he passes through traffic, so he cannot stand on it);
-// - a ramp truck's cab (its body, parked or the moving carrier's), its top `truckBodyTop`, and a parked
+// - a ramp truck's drawn roof or hood, each at its own height and with a footprint that holds the bike, and a parked
 //   truck's top deck (empty: no car stands on it), its top the lip's height `truckDeckTop`;
 // - a solid road hazard that is not light (the parked pickup, the coffee cart, the stair tower, the log
 //   pile), its top `hazardTop`;
@@ -46,9 +46,7 @@ import {
   hazardTop,
   isLightHazard,
   solidHazardsNear,
-  truckBodyAt,
-  truckBodyBox,
-  truckBodyTop,
+  trucksNear,
   truckDeckAt,
   truckDeckBox,
   truckDeckTop,
@@ -57,6 +55,7 @@ import {
 } from './features';
 import { BIKE_SPINE_HALF_M, furnitureOn, piecesNear } from './furniture';
 import { racePlanOf, structuresOver } from './structures';
+import { carrierParts, onCarrierPart } from './carrier-shape';
 
 /** The switch: solid tops are ground a rider lands on and rides (1), or the old rules (0). */
 export const SUPPORTS_KEY = 'riders.supports';
@@ -334,11 +333,13 @@ export function supportAt(
       };
     };
     // The cab (with the hood): the truck's body, a top of its own.
-    const cab =
-      key === undefined || key.startsWith('t:') ? truckBodyAt(config, at.edge, at.s, at.d, trucks) : null;
-    if (cab) {
-      const body = truckBodyBox(cab);
-      if (holdsBike(body.s1 - body.s0, body.d1 - body.d0, box)) take(truck(cab, 't', truckBodyTop(cab)));
+    if (key === undefined || key.startsWith('t:')) {
+      for (const f of trucksNear(config, at.edge, at.s, 0, trucks)) {
+        for (const p of carrierParts(f)) {
+          if (!p.support || !footprintHoldsBike(p.support, box) || !onCarrierPart(p, at.s, at.d)) continue;
+          take(truck(f, 't', p.topAt(at.s, at.d)));
+        }
+      }
     }
     // The top deck, empty: a top at the lip height from the lip platform to the cab, ridden as a cab is.
     const deck =

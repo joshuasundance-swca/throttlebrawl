@@ -2,7 +2,13 @@
 // screen, in the sim's step chunk (src/sim/late.ts; scripts/sim-chunk.mjs SIM_STEPS_TEST), and a race waits for
 // it. ./index.ts keeps the system's state, its init, its tuning and what a snapshot reads (the menu's grid).
 import { clamp, sin, type VergeEdge, cos, atan2, atan } from '../../core';
-import { type FurnitureShape, type StructurePlan, type Structure, sRateFactor } from '../../road';
+import {
+  type FurnitureShape,
+  type StructurePlan,
+  type Structure,
+  sRateFactor,
+  rampTruckShape,
+} from '../../road';
 import type { TrafficState } from '../traffic';
 import { trafficContactCrashes } from '../traffic/contact-rule';
 import type { TumbleState } from '../tumble';
@@ -36,10 +42,7 @@ import {
   type MovingDecks,
   rampTruckAt,
   KERB_M,
-  truckBodyAt,
-  clearsBody,
   deckHeight,
-  truckClosingMps,
   solidHazardsNear,
   hazardTop,
   isLightHazard,
@@ -49,10 +52,12 @@ import {
   boostOf,
   movingDecks,
   BOOST_ACCEL_MPS2,
-  truckDeckAt,
-  truckBodyTop,
   truckDeckTop,
+  trucksNear,
+  truckVelocityS,
+  truckDeckBox,
 } from './features';
+import { carrierParts, onCarrierPart, type CarrierPart } from './carrier-shape';
 import { overMarkOf, gapUnder, overBarrier, gapFall, overFall, clearOver } from './gap';
 import {
   supportKeyOf,
@@ -535,7 +540,7 @@ function wallOutcome(
     side: 1 | -1;
     newContact: boolean;
     extra?: Record<string, string>;
-    /** A crash whatever the speed (a rider up on a ramp truck riding into its body). */
+    /** A caller can explicitly require a crash independently of the impact threshold. */
     crash?: boolean;
     /** Never a crash, only a wobble (a fence that held: off-road, run W-R). */
     noCrash?: boolean;
@@ -569,15 +574,157 @@ function wallOutcome(
 }
 
 /**
- * The ramp truck is solid (playtest 1b quick wins): a grounded rider whose deck height would jump by
- * more than a kerb in one tick rode into its side or front, not up its ramp. From the side it is
- * held beside the truck and scrapes, like the barrier rule; head on, it stops where it was and
- * takes the whole speed as the impact. Events carry `object: 'rampTruck'` and the truck's id.
- * Playtest 3: a moving deck (`decks`, sim/riders/features.ts) is a truck like any other, met where it
- * stands as this tick ends (`decks.next`); what a head-on hit carries is the speed relative to it.
- * Playtest 4: wobble or crash is the one rule for meeting a vehicle (sim/traffic/contact-rule.ts: that
- * closing speed against `traffic.solidHitMps`), except up on the deck into its body (always thrown).
+ * Meet the carrier's individual drawn body parts, in its end-of-tick frame. A flight genuinely
+ * above a part clears it; a large top is landed on by supportAt; a small top is met at the fall
+ * speed. Other contacts use the closing speed along their normal, including motion inherited
+ * from a support. Wobble or crash follows the ordinary vehicle rule, with no speed immunity or
+ * forced slow crash. The ramp/deck's remaining side and front contacts follow in truckContact.
  */
+function carrierContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  dt: number,
+  decks: MovingDecks,
+  height: number,
+  clearance = 0,
+  hBefore?: number,
+): boolean {
+  const pos = m.pos;
+  let chosen: { hit: FurnitureHit<CarrierPart>; move: ReturnType<typeof moveOf>; vertical: boolean } | null =
+    null;
+  for (const f of trucksNear(config, pos.edge, pos.s, CONTACT_REACH_M, decks.next)) {
+    const move = moveOf(m, before);
+    // Translate the start into the carrier's end-of-tick frame; a carried rider has zero relative move.
+    if (before.edge === pos.edge) move.s0 += truckVelocityS(f) * dt;
+    const parts = [...carrierParts(f)];
+    if (m.mode === 'Airborne' && f.params?.['moving'] !== true) {
+      const deck = truckDeckBox(f);
+      const shape = boxShape(deck.s0, deck.s1, deck.d0, deck.d1);
+      parts.push({
+        feature: f,
+        shape,
+        maxTop: truckDeckTop(f),
+        topAt: () => truckDeckTop(f),
+        support: shape,
+      });
+    }
+    for (const part of parts) {
+      if (height + clearance >= part.maxTop) continue;
+      const hit = firstTouch([part], move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw);
+      if (!hit) continue;
+      const s = move.s0 + (move.s1 - move.s0) * hit.t;
+      const d = move.d0 + (move.d1 - move.d0) * hit.t;
+      const shape = part.shape;
+      const top = part.topAt(
+        clamp(s, shape.s - shape.hu, shape.s + shape.hu),
+        clamp(d, shape.d - shape.hv, shape.d + shape.hv),
+      );
+      let h = hBefore === undefined ? height : hBefore + (height - hBefore) * hit.t;
+      // A bike following the ramp is pitched along it: its front wheel meets the lip at the lip's
+      // height, before its middle gets there. A level horizontal capsule must not block that climb.
+      if (
+        clearance > 0 &&
+        supportKeyOf(world, m.id) === '' &&
+        deckHeight(config, before.edge, before.s, before.d, { bodies: false, moving: decks.now }) > 0
+      ) {
+        h = Math.max(
+          h,
+          deckHeight(config, pos.edge, s, d, { bodies: false, moving: decks.next }),
+          deckHeight(
+            config,
+            pos.edge,
+            clamp(s, shape.s - shape.hu, shape.s + shape.hu),
+            clamp(d, shape.d - shape.hv, shape.d + shape.hv),
+            { bodies: false, moving: decks.next },
+          ),
+        );
+      }
+      // A support's top is caught by supportAt; smaller tops are obstacles met at the fall speed.
+      const fromAbove = hBefore !== undefined && hBefore >= top - 1e-6;
+      if ((!fromAbove && h + clearance >= top) || height + clearance >= top || top <= 0) continue;
+      if (
+        fromAbove &&
+        supportsOn(world) &&
+        part.support &&
+        onCarrierPart(part, pos.s, pos.d) &&
+        (hBefore ?? 0) >= part.topAt(pos.s, pos.d) - clearance &&
+        holdsBike(2 * part.support.hu, 2 * part.support.hv, riderHitbox(config, m.riderIndex))
+      )
+        continue;
+      if (!chosen || hit.t < chosen.hit.t) chosen = { hit, move, vertical: fromAbove };
+    }
+  }
+  if (!chosen) return false;
+  const { hit, move, vertical } = chosen;
+  const part = hit.piece;
+  const axis = contactAxis(move, hit);
+  // A height change can make a previously clear capsule meet the cab while its nose already
+  // overlaps the footprint. If its middle is still beyond the end face, this is an end contact.
+  if (
+    (move.s0 < part.shape.s - part.shape.hu || move.s0 > part.shape.s + part.shape.hu) &&
+    Math.abs(pos.d - part.shape.d) < part.shape.hv
+  ) {
+    axis.endOn = true;
+    axis.ns = move.s0 < part.shape.s ? -1 : 1;
+    axis.nd = 0;
+  }
+  const yawBefore = m.yaw;
+  const v = m.speed;
+  const motion = supportMotion(world, m.id);
+  const carryAlong = motion?.va ?? 0;
+  const carryAcross = motion?.vc ?? 0;
+  const factor = sRateFactor(config.road.kappaAt(pos.edge, pos.s), pos.d);
+  const truckV = truckVelocityS(part.feature) / factor;
+  const own = motion && motion.vr < 0 ? -v : v;
+  let vs = pos.dir * (own * cos(m.yaw) + carryAlong) - truckV;
+  let vd = pos.dir * (own * sin(m.yaw) + carryAcross);
+  const impact = vertical ? Math.max(0, -(st.vy[m.id] ?? 0)) : Math.max(0, -(vs * axis.ns + vd * axis.nd));
+  if (axis.endOn && !hit.held) {
+    pos.s = move.s0 + (move.s1 - move.s0) * hit.t;
+    pos.d = move.d0 + (move.d1 - move.d0) * hit.t;
+  }
+  keepOff(part.shape, pos, m.yaw, axis.ns, axis.nd);
+  // Clearing one small part must not push the bike into a neighbouring cab/visor/stack. Resolve
+  // the overlapping parts along the same outward normal, rather than alternating between them.
+  for (const other of carrierParts(part.feature)) {
+    if (height + clearance >= other.maxTop) continue;
+    const c = other.shape;
+    const top = other.topAt(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv));
+    if (height + clearance < top) keepOff(c, pos, m.yaw, axis.ns, axis.nd);
+  }
+  if (!vertical) {
+    const normal = vs * axis.ns + vd * axis.nd;
+    if (normal < 0) {
+      vs -= normal * axis.ns;
+      vd -= normal * axis.nd;
+    }
+    const along = pos.dir * (vs + truckV) - carryAlong;
+    const across = pos.dir * vd - carryAcross;
+    m.speed = Math.sqrt(along * along + across * across);
+    m.yaw = m.speed > 1e-6 ? clamp(atan2(across, along), -1.2, 1.2) : m.yaw;
+  }
+  const newContact = st.truckTouch[m.id] !== 1;
+  st.truckTouch[m.id] = 1;
+  if (hit.held && impact <= 0) return true;
+  wallOutcome(world, st, m, {
+    impact,
+    v,
+    yawBefore,
+    side: axis.endOn ? 1 : axis.nd > 0 ? -1 : 1,
+    newContact,
+    vehicle: true,
+    extra: {
+      object: 'rampTruck',
+      feature: part.feature.id,
+      hit: vertical ? 'top' : axis.endOn ? 'end' : 'side',
+    },
+  });
+  return true;
+}
+
 function truckContact(
   world: World,
   config: SimConfig,
@@ -588,28 +735,32 @@ function truckContact(
   decks: MovingDecks,
 ): void {
   const pos = m.pos;
+  if (carrierContact(world, config, st, m, before, dt, decks, Math.max(m.h, before.deck), KERB_M)) return;
   const truck = rampTruckAt(config, pos.edge, pos.s, pos.d, decks.next);
-  // A rider on the carrier's empty top deck is on a top that holds the bike, not on the lip (its jump is
-  // over, at any speed): the cab's front is a wall to it, and no clearing speed carries it through.
-  const onDeck = supportKeyOf(world, m.id).startsWith('d:');
-  // Off the lip fast enough to clear the body, in the tick that crosses into it: a launch, not a
-  // contact (the take-off rule below sends it airborne over the truck).
-  const launch =
+  const facing = truck?.params?.['facing'] === -1 ? -1 : 1;
+  const foot = truck ? (facing === 1 ? truck.s0 : truck.s1) : 0;
+  const beforeS = before.s + (truck ? truckVelocityS(truck) * dt : 0);
+  // A continuous ramp entered from its rear is rideable even if its rise this tick exceeds a
+  // kerb. This exemption does not cover a side entry or a vertical step beyond the ramp.
+  const onRamp =
     !!truck &&
-    !onDeck &&
-    before.deck > KERB_M &&
-    truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next) === truck &&
-    clearsBody(truck, m.speed, pos.dir, GRAVITY * accelMultiplierOf(config));
+    before.edge === pos.edge &&
+    before.d >= truck.d0 &&
+    before.d <= truck.d1 &&
+    (beforeS - foot) * facing <= rampTruckShape(truck).run &&
+    deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.next }) <=
+      rampTruckShape(truck).lip + KERB_M &&
+    (pos.s - beforeS) * facing >= 0;
   if (
     !truck ||
-    launch ||
+    onRamp ||
     deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.next }) - before.deck <= KERB_M
   ) {
-    if (!launch && truckSideContact(world, config, st, m, before, dt, decks)) return;
+    if (!onRamp && truckSideContact(world, config, st, m, before, dt, decks)) return;
     st.truckTouch[m.id] = 0;
     return;
   }
-  const v = truckClosingMps(truck, m.speed, pos.dir);
+  const v = Math.max(0, m.speed - pos.dir * truckVelocityS(truck));
   const yawBefore = m.yaw;
   const newContact = st.truckTouch[m.id] !== 1;
   st.truckTouch[m.id] = 1;
@@ -626,12 +777,7 @@ function truckContact(
   pos.s = before.s;
   pos.d = before.d;
   m.speed = 0;
-  // Up on the truck (its ramp, its lip platform or its empty top deck) and into its cab: thrown off the
-  // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck; a
-  // rider on a top cannot turn round or back off, so a wall there that only wobbled him would hold him
-  // for good).
-  const crash = before.deck > KERB_M;
-  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash, vehicle: true });
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, vehicle: true });
 }
 
 /**
@@ -657,7 +803,7 @@ function truckSideContact(
     const truck = rampTruckAt(config, pos.edge, pos.s, d, decks.next);
     if (!truck) continue;
     if (deckHeight(config, pos.edge, pos.s, d, { moving: decks.next }) - before.deck <= KERB_M) continue;
-    const v = truckClosingMps(truck, m.speed, pos.dir);
+    const v = Math.max(0, m.speed - pos.dir * truckVelocityS(truck));
     const yawBefore = m.yaw;
     const newContact = st.truckTouch[m.id] !== 1;
     st.truckTouch[m.id] = 1;
@@ -1492,8 +1638,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const back = sup !== null && vr < 0;
   // A U-turn (interview, 2026-10-02; playtest 4's own gesture, P4-9): a slow player who double-taps
   // the brake and then holds it with full lock pivots round (sim/riders/uturn.ts); null while riding
-  // normally. Never on a support: the gesture is not read there.
-  const uturn = sup
+  // normally. On a stable top the same gesture lets a stopped rider turn and ride back off it.
+  const uturn = back
     ? uturnStep(world, st, def, m, 0, 0, fresh, dt)
     : uturnStep(world, st, def, m, steer, brake, fresh, dt);
   // Playtest 3's moves: the wheelie (steering × steerScale, the front's pitch) and the drift
@@ -1559,6 +1705,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     if (dr.dragMps2 !== 0) friction += dr.dragMps2 * m2;
     const free = vr + drive * dt;
     vr = free > 0 ? Math.max(0, free - friction * dt) : Math.min(0, free + friction * dt);
+    if (uturn) vr = Math.min(vr, uturn.capMps);
     m.speed = Math.abs(vr);
   } else {
     let accel = throttle * a * launch - (a * v * v) / (top * top);
@@ -1608,7 +1755,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     pos.s += pos.dir * carry.along * sRateFactor(frameKappa, pos.d) * dt;
     pos.d += pos.dir * carry.across * dt;
   }
-  if (uturn) uturnSettle(st, m);
+  if (uturn) {
+    uturnSettle(st, m);
+    if (sup) carry = inRiderFrame(config, m, sup.vx, sup.vz);
+  }
   // Contacts meet a rider on a support at its top (the road's and a ramp deck's riders at 0, as ever).
   m.h = sup ? sup.top : 0;
   applyShove(config, st, m, dt);
@@ -1659,12 +1809,44 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const deck = still ? Math.max(ramp, still.top) : ramp;
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
+  // Crossing a continuous carrier ramp's lip happens within the tick. The flat platform must not
+  // replace its launch tangent with the partial height rise averaged over that whole tick.
+  let rampFlight: { y: number; vy: number; elapsed: number } | null = null;
+  const launchTruck =
+    !fresh && !sup && before.edge === pos.edge
+      ? rampTruckAt(config, before.edge, before.s, before.d, decks.now)
+      : null;
+  if (launchTruck && dt > 0) {
+    const { run, lip: lipHeight } = rampTruckShape(launchTruck);
+    const facing = launchTruck.params?.['facing'] === -1 ? -1 : 1;
+    const foot = facing === 1 ? launchTruck.s0 : launchTruck.s1;
+    const a = (before.s - foot) * facing;
+    const b = (pos.s - foot - truckVelocityS(launchTruck) * dt) * facing;
+    if (a >= 0 && a < run && b >= run && b > a) {
+      const fraction = (run - a) / (b - a);
+      const s = before.s + (pos.s - before.s) * fraction;
+      const d = before.d + (pos.d - before.d) * fraction;
+      const vy =
+        road.frameAt(pos.edge, s).grade * ((pos.s - before.s) / dt) + (lipHeight / run) * ((b - a) / dt);
+      if (
+        d >= launchTruck.d0 &&
+        d <= launchTruck.d1 &&
+        vy > 0 &&
+        (vy * vy) / (2 * gravity) > TAKEOFF_CLEARANCE_M
+      ) {
+        const elapsed = (1 - fraction) * dt;
+        const y =
+          road.surfaceHeight(pos.edge, s, d) + lipHeight + vy * elapsed - 0.5 * gravity * elapsed * elapsed;
+        rampFlight = { y, vy, elapsed };
+      }
+    }
+  }
   // Over a gap (playtest 3, sim/riders/gap.ts) there is no surface: the ground fell away.
   const overGap = !still && gapUnder(world, config, m);
   // Across from one structure's top to a neighbour's no more than a kerb up or down (a row of roofs, sim/
   // riders/structures.ts): the bike rolls on over the step, as over a kerb, with no launch off it.
   const stepped = onStructure && still !== null && sup !== null && still.key !== sup.key;
-  const lip = overGap || (!stepped && ballistic > ground + TAKEOFF_CLEARANCE_M);
+  const lip = rampFlight !== null || overGap || (!stepped && ballistic > ground + TAKEOFF_CLEARANCE_M);
   // Off its support (or onto a ramp deck), the rider moves in the world's frame again.
   if (sup && (!still || lip)) toWorldFrame(world, config, m);
   // Across onto a neighbour's top: that one holds it now.
@@ -1686,13 +1868,14 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // grade here) and from its height, which over a crest is above the straight chord between two
     // samples by ½·curvature·a·b (a, b: the distances to them). From the chord itself, on its own
     // slope, it would come straight back down on that chord: a hop, not air.
-    const vy0 = crest ? road.frameAt(pos.edge, pos.s).grade * pos.dir * along : vyBefore;
-    const y = crest ? ground + crestSag(config, pos.edge, pos.s) : Math.max(ballistic, ground);
+    const vy0 = rampFlight?.vy ?? (crest ? road.frameAt(pos.edge, pos.s).grade * pos.dir * along : vyBefore);
+    const y =
+      rampFlight?.y ?? (crest ? ground + crestSag(config, pos.edge, pos.s) : Math.max(ballistic, ground));
     m.mode = 'Airborne';
     m.h = y - surface;
     st.yAbs[m.id] = y;
     // A lip's ballistic height is already this tick's end; a crest's start is the hilltop now.
-    st.vy[m.id] = crest ? vy0 : vy0 - gravity * dt;
+    st.vy[m.id] = crest ? vy0 : vy0 - gravity * (rampFlight?.elapsed ?? dt);
     st.airTicks[m.id] = 0;
     // The flight starts at the slope the bike rode off (last tick's ground pitch, a wheelie's
     // angle included); the wheelie and the drift end.
@@ -1804,7 +1987,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // Supports (sim/riders/supports.ts): how high above the road the flight was as the tick began, so a
   // top it comes down onto is met from above.
   const tops = supportsOn(world);
-  const hBefore = tops ? (st.yAbs[m.id] ?? 0) - road.surfaceHeight(pos.edge, pos.s, pos.d) : 0;
+  const hBefore = (st.yAbs[m.id] ?? 0) - road.surfaceHeight(pos.edge, pos.s, pos.d);
   // Forgiving landings (playtest 2): the flight follows riders.airCarve of the road's bend, and the
   // heading settles back along the road at riders.airAlign, so the bike comes down lined up.
   const carve = world.params['riders.airCarve'] ?? 0;
@@ -1859,7 +2042,10 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
         m,
         here,
         decks,
-        (t, key) => hBefore >= t - (key.startsWith('d:') ? TRUCK_DECK_TOLERANCE_M : 1e-6) && hNow <= t,
+        (t, key) =>
+          hBefore >=
+            t - (key.startsWith('d:') ? TRUCK_DECK_TOLERANCE_M : key.startsWith('t:') ? KERB_M : 1e-6) &&
+          hNow <= t,
       )
     : null;
   // A structure's top a rider meets no more than a kerb below its edge is stepped up onto, as a kerb is
@@ -1868,25 +2054,22 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     ? structureSupportAt(world, config, m, here, (t) => hBefore >= t - KERB_M && hNow <= t)
     : null;
   const onTop = caught && (!fromAbove || caught.top > fromAbove.top) ? caught : fromAbove;
-  const body = onTop ? null : truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next);
-  // Under the carrier's empty top deck (the car that stood on it is gone, the frame and the lower car are
-  // not): flown into from the side below its top, the truck is a wall at any speed (the speed that
-  // clears a truck is a lip's, and a rider launched off the lip is above the deck). From above, the
-  // deck is a top a rider lands on (`onTop`).
-  const beneath = onTop ? null : truckDeckAt(config, pos.edge, pos.s, pos.d, decks.next);
-  const hit =
-    body && y - surface < truckBodyTop(body) && !clearsBody(body, m.speed, pos.dir, gravity)
-      ? body
-      : beneath && y - surface < truckDeckTop(beneath) - TRUCK_DECK_TOLERANCE_M
-        ? beneath
-        : null;
-  if (hit) {
+  const truckEvents = world.events.length;
+  carrierContact(
+    world,
+    config,
+    st,
+    m,
+    airFrom,
+    dt,
+    decks,
+    onTop ? Math.max(hNow, onTop.top) : hNow,
+    0,
+    hBefore,
+  );
+  if (world.events.slice(truckEvents).some((e) => e.type === 'crash' && e.actor === m.id)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
-    st.wobble[m.id] = 0;
-    const impact = truckClosingMps(hit, m.speed, pos.dir);
-    const data = { cause: 'barrier', speed: m.speed, impactMps: impact, yaw: m.yaw, side: 1 };
-    emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: hit.id });
     return;
   }
   // A solid hazard (run W-U) or a solid piece of street furniture stands up from the road: flying into it

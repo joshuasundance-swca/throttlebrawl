@@ -15,7 +15,8 @@ import type { SimConfig } from '../../src/sim/types';
 // Roosevelt Boulevard narrows into two-lane Bertha Street the way the race goes (the first drop a
 // racer meets), and at both ends of North Roosevelt Boulevard, the four-lane junction choice, which
 // narrows into 1st Street ahead and into its one-lane turn-off behind.
-// Everywhere else riding is exactly as before.
+// The truck shortcuts also narrow from their 8 m yards into 3.5 m exits, and riding backward
+// onto their streets brings the mapped right edge in. All four are checked against their data.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const json = <T>(file: string) => JSON.parse(readFileSync(file, 'utf8')) as T;
@@ -44,19 +45,67 @@ function networks(): { network: BakedNetwork; roads: BakedRoad[] }[] {
 }
 
 describe('lane drops on the live roads (W-R)', () => {
-  it('the funnel appears only where a live road narrows: the SF freeway riding back, and Key West', () => {
+  it('the funnel appears only where a live road narrows, including the truck shortcut interfaces', () => {
     const found = new Map<string, number>();
+    const shortcutStations = new Map<string, number[]>();
+    const cuts = new Set(['pnw-mill-yard-cut', 'sf-dt-plaza-cut']);
     let stations = 0;
     for (const n of networks()) {
       const road = createRoadNetwork({ network: n.network, roads: n.roads });
       const config = { road } as SimConfig;
       const limits = (edge: number, s: number) => barrierLimits(config, edge, s);
       for (const e of road.edges) {
+        if (cuts.has(e.id)) {
+          const extent = (edge: number, s: number) => {
+            const lanes = road.lanesAt(edge, s);
+            return [
+              Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2)),
+              Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2)),
+            ];
+          };
+          expect(extent(e.index, 0), `${e.id}: the actual yard`).toEqual([1, 9]);
+          expect(road.lanesAt(e.index, 0).map(({ widthM, direction }) => ({ widthM, direction }))).toEqual([
+            { widthM: 8, direction: 1 },
+          ]);
+          expect(e.next).not.toBeNull();
+          expect(extent(e.next!.edge, 0), `${e.id}: single-bike exit`).toEqual([1, 4.5]);
+          expect(
+            road.lanesAt(e.next!.edge, 0).map(({ widthM, direction }) => ({ widthM, direction })),
+          ).toEqual([{ widthM: 3.5, direction: 1 }]);
+          // Source-derived reverse narrowing: the street's right edge, mapped into this yard.
+          const back = { edge: e.index, s: -90, d: 0, dir: -1 as const };
+          expect(road.advance(back)).not.toBe('deadEnd');
+          expect(back.dir).toBe(-1);
+          expect(extent(back.edge, back.s)[1]! - back.d).toBeLessThan(9);
+        }
         for (let s = 0; s <= e.length; s += 10) {
           for (const dir of [1, -1] as const) {
             stations++;
             const f = funnelLimits(road, 90, { edge: e.index, s, d: 0, dir }, limits);
-            if (f) found.set(`${e.id} dir ${dir}`, (found.get(`${e.id} dir ${dir}`) ?? 0) + 1);
+            if (f) {
+              const key = `${e.id} dir ${dir}`;
+              found.set(key, (found.get(key) ?? 0) + 1);
+              if (cuts.has(e.id)) {
+                const stations = shortcutStations.get(key) ?? [];
+                stations.push(s);
+                shortcutStations.set(key, stations);
+                // The real right lane edge must narrow within the 90 m lookahead, mapped
+                // back through the actual default connector path (including d shifts).
+                let narrowHi = Infinity;
+                for (let x = 5; x <= 90; x += 5) {
+                  const p = { edge: e.index, s: s + dir * x, d: 0, dir };
+                  if (road.advance(p) === 'deadEnd') break;
+                  const lanes = road.lanesAt(p.edge, p.s);
+                  const lo = Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2));
+                  const hi = Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2));
+                  const mappedHi = p.dir === dir ? hi - p.d - 0.5 : -(lo - p.d) - 0.5;
+                  narrowHi = Math.min(narrowHi, mappedHi);
+                }
+                expect(narrowHi, `${key} at ${s}: a real narrower edge ahead`).toBeLessThan(8.5);
+                expect(f.hi).toBeLessThan(8.5);
+                expect(f.hi).toBeGreaterThanOrEqual(narrowHi - 1e-9);
+              }
+            }
           }
         }
       }
@@ -81,8 +130,17 @@ describe('lane drops on the live roads (W-R)', () => {
       'osm-sm-old-east dir -1',
       'osm-sm-old-road dir -1',
       'osm-sm-old-west dir 1',
+      'pnw-mill-yard-cut dir -1',
+      'pnw-mill-yard-cut dir 1',
       'sf-bridge-approach dir -1',
+      'sf-dt-plaza-cut dir -1',
+      'sf-dt-plaza-cut dir 1',
     ]);
+    expect(shortcutStations.size).toBe(4);
+    for (const [key, samples] of shortcutStations) {
+      expect(samples.length, key).toBeLessThanOrEqual(10);
+      expect(Math.max(...samples) - Math.min(...samples), `${key}: bounded taper`).toBeLessThanOrEqual(90);
+    }
     expect(found.get('sf-bridge-approach dir -1')).toBeLessThanOrEqual(18);
     for (const k of [
       'osm-kw-north-roosevelt dir -1',

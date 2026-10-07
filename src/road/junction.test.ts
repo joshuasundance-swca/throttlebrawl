@@ -295,6 +295,51 @@ describe('playtest 1b: the rider-only handover between overlapping branches', ()
     expect(pos.edge).toBe(e('c-split'));
   });
 
+  it('hands over onto the actual one-sided lane, never its empty reference-line space', () => {
+    const f = fixtureBranchNetwork();
+    const net = createRoadNetwork({
+      ...f,
+      roads: f.roads.map((r) =>
+        r.id === 'c-in'
+          ? {
+              ...r,
+              laneSections: r.laneSections.map((sec) => ({
+                ...sec,
+                lanes: sec.lanes.map((lane) => ({ ...lane, dCenterM: 2.6, widthM: 2.8 })),
+              })),
+            }
+          : r,
+      ),
+    });
+    const main = net.edgeIndex('c-split');
+    const cut = net.edgeIndex('c-in');
+    // The lane starts at d 1.2. Its reference-line gap is not a drawn surface.
+    const empty: RoadPos = { edge: main, s: 2, d: 4.5, dir: 1 };
+    const before = { ...empty };
+    expect(net.handover(empty, MARGIN)).toBeNull();
+    expect(empty).toEqual(before);
+    expect(net.surfaceUnder(before, 0.1, (edge) => edge === cut)).toBeNull();
+    const lane: RoadPos = { edge: main, s: 2, d: 6.3, dir: 1 };
+    expect(net.handover(lane, MARGIN)).not.toBeNull();
+    expect(lane.edge).toBe(cut);
+    expect(lane.d).toBeGreaterThan(1.2 + MARGIN);
+    expect(lane.d).toBeLessThan(4 - MARGIN);
+  });
+
+  it('keeps an empty sibling at zero width with no handover', () => {
+    const f = fixtureBranchNetwork();
+    const net = createRoadNetwork({
+      ...f,
+      roads: f.roads.map((r) =>
+        r.id === 'c-in' ? { ...r, laneSections: r.laneSections.map((sec) => ({ ...sec, lanes: [] })) } : r,
+      ),
+    });
+    const pos: RoadPos = { edge: net.edgeIndex('c-split'), s: 2, d: 4.5, dir: 1 };
+    const before = { ...pos };
+    expect(net.handover(pos, MARGIN)).toBeNull();
+    expect(pos).toEqual(before);
+  });
+
   it('advance() never hands over: traffic past the edge stays on its own road', () => {
     const { net, e } = fixture();
     const pos: RoadPos = { edge: e('c-split'), s: 5, d: 4.6, dir: 1 };

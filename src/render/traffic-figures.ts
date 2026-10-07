@@ -545,9 +545,9 @@ function slab(
 
 /** The car carrier: a 7.5 m by 2.4 m tow truck whose whole bed is the ramp (sim/modifiers moving-ramp). */
 const CARRIER = { w: 2.4, h: 2.6, l: 7.5 };
-/** The sim's ramp: it runs 5 m from the rear and rises 1.22 m (MOVING.rampRunM and rampSlope). */
+/** The sim's ramp: it runs 5 m from the rear and rises 2.4 m (MOVING.rampRunM and rampSlope). */
 const CARRIER_RUN_M = 5;
-const CARRIER_LIP_M = 1.22;
+const CARRIER_LIP_M = 2.4;
 const CARRIER_REAR_M = CARRIER.l / 2;
 /**
  * The lowered ramp's width, m: the sim's deck is the carrier's whole 2.4 m width (sim/modifiers
@@ -571,7 +571,7 @@ function carrierShared(): BoxPart[] {
       // The frame under the cab, the headache rack behind it, and the level lip past the ramp.
       { size: [1.9, 0.3, 3.1], at: [0, 0.7, -2.15], color: '#2b2b2b' },
       { size: [2.2, 0.8, 0.1], at: [0, 1.6, -1.95], color: CARRIER_SLATE },
-      { size: [2.0, 0.2, 0.8], at: [0, 1.1, -1.65], color: CARRIER_SLATE },
+      { size: [2.0, 0.2, 0.8], at: [0, CARRIER_LIP_M - 0.1, -1.65], color: CARRIER_SLATE },
       // Three axles, the wheels outside the ramp's width.
       ...[-2.9, -0.4, 0.9].flatMap((z): BoxPart[] => [
         { size: [0.3, 0.9, 0.9], at: [-1.05, 0.45, z], color: DARK },

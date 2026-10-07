@@ -4,6 +4,7 @@
 // tests/sim/over-barrier-roads.test.ts.
 import { describe, expect, it } from 'vitest';
 import {
+  beyondAt,
   BUILDING_FRONT_TAGS,
   courseEdgeTopAt,
   drawnEdgeAt,
@@ -143,7 +144,7 @@ describe('the honest edges (2026-10-06): what is drawn at a band edge, and what 
     expect(at([], [tag('forest')])).toEqual({ drawn: 'brush', top: GROUND_EDGE_TOP_M.brush });
     expect(at([], [tag('gardens')])).toEqual({ drawn: 'fence', top: GROUND_EDGE_TOP_M.fence });
     expect(at([], [tag('water-open')])).toEqual({ drawn: 'water', top: 0 });
-    expect(at([], [tag('mangrove')])).toEqual({ drawn: 'water', top: 0 });
+    expect(at([], [tag('mangrove')])).toEqual({ drawn: null, top: 0 });
   });
 
   it('a building front is a front, a wall at any height to the road (the sim meets planned ones itself)', () => {
@@ -155,5 +156,71 @@ describe('the honest edges (2026-10-06): what is drawn at a band edge, and what 
     // A bridge with no land and no water under it, and no rail: the deck's edge.
     expect(at([], [tag('bridge')])).toEqual({ drawn: 'drop', top: 0 });
     expect(pastAt(road([], [tag('bridge')]), 0, 100, 'right')).toBe('drop');
+  });
+
+  it('a listed rail clipped for another road has no contact top, while its visible side still holds', () => {
+    const a = fixtureNetwork([{ id: 'a', lengthM: 400, kappa: 0 }]);
+    const b = fixtureNetwork([{ id: 'b', lengthM: 400, kappa: 0 }]);
+    const ra = a.roads[0]!;
+    const rb = b.roads[0]!;
+    const r = createRoadNetwork({
+      network: {
+        ...a.network,
+        roads: ['a', 'b'],
+        junctions: [
+          ...a.network.junctions,
+          ...b.network.junctions.map((j) => ({ ...j, id: `b-${j.id}`, x: j.x + 8 })),
+        ],
+      },
+      roads: [
+        { ...ra, barriers: [bar('rail', 1, 'both')] },
+        {
+          ...rb,
+          from: `b-${rb.from}`,
+          to: `b-${rb.to}`,
+          samples: {
+            ...rb.samples,
+            data: { ...rb.samples.data, x: rb.samples.data['x']!.map((x) => x + 8) },
+          },
+        },
+      ],
+    });
+    expect(drawnEdgeAt(r, 0, 100, 'right')).toBeNull();
+    expect(courseEdgeTopAt(r, 0, 100, 'right')).toBe(0);
+    expect(drawnEdgeAt(r, 0, 100, 'left')).toBe('barrier');
+    expect(courseEdgeTopAt(r, 0, 100, 'left')).toBe(1);
+  });
+});
+
+describe('beyondAt: what a rider out past the edge meets is what the road scene draws there', () => {
+  /** What lies `k` m past the right band edge at s 100, and its floor over the deck there. */
+  const at = (barriers: readonly BakedBarrier[], tags: readonly BakedTag[], k: number) => {
+    const r = road(barriers, tags);
+    const deck = r.surfaceHeight(0, 100, r.vergeAt(0, 100, 'right').dOuter);
+    const b = beyondAt(r, 0, 100, 'right', k);
+    return { past: b.past, over: Math.round((b.floorY - deck) * 100) / 100 };
+  };
+
+  it("the bluff's shelf is ground at the road's height out to its lip; past it the cliff, a drop to the water", () => {
+    // Chuckanut's bay side: a 4 m band to the parapet, the land drawn 10 m past the verge (render/scenery.ts
+    // BLUFF_LAND_M), so 6.6 m of it past the parapet, then the sheer drop.
+    for (const k of [0.5, 3, 6.5])
+      expect(at([], [tag('bluff')], k), `+${k}`).toEqual({ past: 'ground', over: -0.09 });
+    expect(at([], [tag('bluff')], 7).past).toBe('drop');
+    expect(beyondAt(road([], [tag('bluff')]), 0, 100, 'right', 12)).toEqual({ past: 'drop', floorY: 0 });
+    // The tags alone (the old rule) say a drop at once past the parapet.
+    expect(pastAt(road([], [tag('bluff')]), 0, 100, 'right')).toBe('drop');
+  });
+
+  it("a deck's 0.55 m lip outside its rail holds no bike: past the rail, the water", () => {
+    const bridge = [tag('bridge'), tag('water-open')];
+    expect(at([bar('rail', 1)], bridge, 0.3).past).toBe('water');
+    expect(at([bar('rail', 1)], bridge, 5).past).toBe('water');
+  });
+
+  it("a mangrove key's land drawn past its water edge is ground; where nothing is drawn the tags decide", () => {
+    expect(at([], [tag('mangrove')], 2)).toEqual({ past: 'ground', over: -0.09 });
+    // A wall on a side no land tag covers: nothing is drawn past it at the road's height (the tags say ground): a drop.
+    expect(at([bar('wall', 1.2)], [tag('palms', 'left')], 2).past).toBe('drop');
   });
 });
