@@ -109,8 +109,16 @@ describe('blob shadows', () => {
     const { views, shadows } = rig();
     views.sync(null, snap([entity({})]), 1, 0);
     const down = shadows()[0];
-    // Three metres up: the entity's y includes the height, the road surface stays where it was.
-    views.sync(null, snap([entity({ y: 7, road: { edge: 0, s: 100, d: 0, h: 3, dir: 1, yaw: 0 } })]), 1, 0.1);
+    // Three metres up, in the air: the entity's y includes the height, the road surface stays where it was
+    // (a snapshot with no `floorY`: the road under him). A rider RIDING up there, mode Road, is on a roof
+    // or a deck, and the shadow is on that (tests high-fall).
+    const flying = {
+      mode: 'Airborne' as const,
+      grounded: false,
+      y: 7,
+      road: { edge: 0, s: 100, d: 0, h: 3, dir: 1 as const, yaw: 0 },
+    };
+    views.sync(null, snap([entity(flying)]), 1, 0.1);
     const up = shadows()[0];
     expect(up?.p.y).toBeCloseTo(down?.p.y ?? 0, 3);
     expect(up?.across ?? 9).toBeLessThan(down?.across ?? 0);
