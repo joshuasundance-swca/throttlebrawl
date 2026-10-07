@@ -183,6 +183,10 @@ export function roadPastLine(
   const road = config.road;
   const kit = KIT[kind];
   const vside = side > 0 ? 'right' : 'left';
+  // A barrier a road file lists holds where it is listed (a static truck's wall shuts its cut to the ground:
+  // tools/road/truck-shortcuts.test.ts). Render leaves its band out where another road's lanes run under it
+  // (road-mesh.ts `clearOfOtherLanes`); where the two disagree it is render's to draw (the lane's report).
+  if (road.barrierAt(edge, s, vside)) return false;
   const length = road.edges[edge]?.length ?? 0;
   const at = (sa: number) => {
     const u = sa < 0 ? 0 : sa > length ? length : sa;
