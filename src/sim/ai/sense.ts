@@ -3,6 +3,7 @@
 import { planStreetFurniture, type RoadNetwork, type RoadPos, type StreetFurniture } from '../../road';
 import { holdSpeedMps } from '../riders';
 import { furnitureOn } from '../riders/furniture';
+import { bandPiecesOf, structuresOn } from '../riders/structures';
 import type { SimConfig, SimWeaponDef } from '../types';
 import type { Mover, World } from '../world';
 
@@ -100,8 +101,10 @@ export function blockerAt<O extends Obstacle>(
  * these to the traffic they keep their lines clear of (blockerAt, lineClear, pathClear, and never
  * steering into one alongside), so they steer round it as they steer round a stopped car. Light pieces
  * (a meter, a bin, a board, a scooter) are ridden through for a wobble, so they are not obstacles.
- * None while `riders.furniture` is off (nothing is met then). The piece's stand-in mover never moves
- * and is in no world: only its `pos.d` is read (its id is -1).
+ * None while `riders.furniture` is off (nothing is met then). The structures standing in the ridable
+ * band at a rider's height (a balcony's posts, a porch, a bike rack: sim/riders/structures.ts
+ * `bandPiecesOf`) are seen the same way while `riders.structures` is on. The piece's stand-in mover
+ * never moves and is in no world: only its `pos.d` is read (its id is -1).
  */
 export function furnitureSeen(
   world: World,
@@ -110,41 +113,49 @@ export function furnitureSeen(
   ahead: number,
   behind: number,
 ): Obstacle[] {
-  if (!furnitureOn(world.params)) return [];
   const road = config.road;
-  const plan = planStreetFurniture(road, config.seed);
-  if (plan.items.length === 0) return [];
+  const plan = furnitureOn(world.params) ? planStreetFurniture(road, config.seed) : null;
+  // The structures standing in the ridable band at a rider's height (the physical world, 2026-10-06:
+  // a balcony's posts, a porch, a bike rack; sim/riders/structures.ts), seen the same way.
+  const bands = structuresOn(world.params) ? bandPiecesOf(world, config) : null;
+  if ((!plan || plan.items.length === 0) && !bands) return [];
   const pos = me.pos;
   const out: Obstacle[] = [];
   // Our s range, and each joined edge's (ours = sOffset + sSign * theirs; ours d = sSign * theirs + dOffset).
   const lo = pos.dir > 0 ? pos.s - behind : pos.s - ahead;
   const hi = pos.dir > 0 ? pos.s + ahead : pos.s + behind;
+  const see = (s: number, d: number, halfLength: number, halfWidth: number) => {
+    const stand: Mover = {
+      id: -1,
+      kind: 'pickup',
+      mode: 'Road',
+      pos: { edge: pos.edge, s, d, dir: pos.dir },
+      h: 0,
+      yaw: 0,
+      speed: 0,
+      riderIndex: -1,
+    };
+    out.push({
+      s: { mover: stand, ahead: (s - pos.s) * pos.dir, dd: d - pos.d, vAlong: 0 },
+      size: { halfLength, halfWidth },
+    });
+  };
   const scan = (edge: number, sOffset: number, sSign: 1 | -1, dOffset: number) => {
-    const list = plan.byEdge[edge];
-    if (!list || list.length === 0) return;
     const a = sSign > 0 ? lo - sOffset : sOffset - hi;
     const b = sSign > 0 ? hi - sOffset : sOffset - lo;
-    for (let i = firstFrom(list, a - 2 * plan.reachS); i < list.length; i++) {
-      const it = list[i];
-      if (!it) continue;
-      if (it.shape.s - it.shape.reachS > b) break;
-      if (it.cls !== 'solid' || it.shape.s + it.shape.reachS < a) continue;
-      const s = sOffset + sSign * it.shape.s;
-      const d = sSign * it.shape.d + dOffset;
-      const stand: Mover = {
-        id: -1,
-        kind: 'pickup',
-        mode: 'Road',
-        pos: { edge: pos.edge, s, d, dir: pos.dir },
-        h: 0,
-        yaw: 0,
-        speed: 0,
-        riderIndex: -1,
-      };
-      out.push({
-        s: { mover: stand, ahead: (s - pos.s) * pos.dir, dd: d - pos.d, vAlong: 0 },
-        size: { halfLength: it.shape.reachS, halfWidth: it.shape.reachD },
-      });
+    const list = plan?.byEdge[edge];
+    if (plan && list && list.length > 0) {
+      for (let i = firstFrom(list, a - 2 * plan.reachS); i < list.length; i++) {
+        const it = list[i];
+        if (!it) continue;
+        if (it.shape.s - it.shape.reachS > b) break;
+        if (it.cls !== 'solid' || it.shape.s + it.shape.reachS < a) continue;
+        see(sOffset + sSign * it.shape.s, sSign * it.shape.d + dOffset, it.shape.reachS, it.shape.reachD);
+      }
+    }
+    for (const it of bands?.[edge] ?? []) {
+      if (it.s + it.reachS < a || it.s - it.reachS > b) continue;
+      see(sOffset + sSign * it.s, sSign * it.d + dOffset, it.reachS, it.reachD);
     }
   };
   scan(pos.edge, 0, 1, 0);
