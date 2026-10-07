@@ -1,7 +1,8 @@
 // The perf check's rules for the numbers it prints (docs/engineering.md, "Perf check"), kept in
 // one place so the Playwright probes, scripts/perf.mjs and a unit test (perf-limits.test.ts) agree.
 //
-// - Soft tier: frame time p50 and p95, sim step p95 and the start tap's main-thread work are a TREND. CI prints them on every run
+// - Soft tier: frame time p50 and p95, sim step p95 and the start tap's main-thread work are a TREND.
+//   CI prints them on every run
 //   with their ratio to the stored baseline (tests/perf/baseline.json). They fail the gate only
 //   above GUARD_FACTOR times the baseline, a catastrophe guard that runner noise cannot reach (the
 //   maintainer, 2026-10-02: "Trend plus 3x guard"). On 2026-10-02 the same game code printed a
@@ -34,16 +35,36 @@ export const DELTA_WARN_KB = 5;
  */
 export const PR_FLOOR_KB = 10;
 
+/**
+ * The start tap is a printed trend with no guard until its baseline rests on this many CI readings
+ * (the frame baseline rests on 8). The K2 review found a 3x guard on 3 readings could redden a train
+ * for a change that did nothing to the tap: a model arriving between the click and the next frame
+ * can add 400 to 650 ms to one reading, and 3 or 4 readings cannot bound how often that happens.
+ */
+export const START_TAP_GUARD_MIN_READINGS = 8;
+
 const round1 = (x) => Math.round(x * 10) / 10;
 
 /**
- * `startTapMs` is the start tap's main-thread work (tests/perf/perf.spec.ts): the tap's click handlers
- * plus the next frame's work up to the probe's own frame callback, in ms. Judged once both the probe
- * and the baseline have it (polish F's live check, punch item 2: the menu came 215 ms after the tap,
- * then 461 ms, and nothing on CI measured it).
- * @typedef {{ frameMs: { p50: number, p95: number }, stepMs?: { p95: number }, startTapMs?: number }} SoftTimes
- * @typedef {{ metric: string, value: number, baseline: number, ratio: number, limit: number, over: boolean }} TrendRow
+ * `startTapMs` is the start tap's main-thread work (tests/perf/perf.spec.ts): the tap's click handlers,
+ * the audio calls between them and the next frame, and the next frame's work up to the probe's own
+ * frame callback, in ms. It is a trend row once both the probe and the baseline have it, and a
+ * guarded one only when the baseline's `startTapReadings` (how many CI readings it rests on) is
+ * START_TAP_GUARD_MIN_READINGS or more (polish F's live check, punch item 2: the menu came 215 ms
+ * after the tap, then 461 ms, and nothing on CI measured it).
+ * @typedef {{ frameMs: { p50: number, p95: number }, stepMs?: { p95: number }, startTapMs?: number, startTapReadings?: number }} SoftTimes
+ * @typedef {{ metric: string, value: number, baseline: number, ratio: number, limit: number | null, over: boolean }} TrendRow
  */
+
+/**
+ * Whether the baseline's start tap rests on enough CI readings to guard it.
+ * @param {SoftTimes} baseline
+ */
+function startTapGuarded(baseline) {
+  return (
+    baseline.startTapMs !== undefined && (baseline.startTapReadings ?? 0) >= START_TAP_GUARD_MIN_READINGS
+  );
+}
 
 /**
  * The guard's limits for a baseline, rounded to 0.1 ms. The start tap's work is not counted in whole
@@ -59,14 +80,15 @@ export function guardLimits(baseline, factor = GUARD_FACTOR) {
     frameP95: round1(baseline.frameMs.p95 * factor + FRAME_SLACK_MS),
   };
   if (baseline.stepMs) out.stepP95 = round1(baseline.stepMs.p95 * factor);
-  if (baseline.startTapMs !== undefined) out.startTap = round1(baseline.startTapMs * factor);
+  if (startTapGuarded(baseline)) out.startTap = round1((baseline.startTapMs ?? 0) * factor);
   return out;
 }
 
 /**
  * Judges a probe's times against its baseline. Every metric becomes a trend row (the value, its
  * ratio to the baseline, the guard's limit); only a value above its guard is a failure. Sim step
- * p95 and the start tap are judged when both the baseline and the probe have them.
+ * p95 and the start tap are judged when both the baseline and the probe have them; the start tap
+ * is a trend row with no guard (and so no failure) until its baseline has 8 CI readings.
  * @param {SoftTimes} measured
  * @param {SoftTimes} baseline
  * @param {number} [factor]
@@ -87,9 +109,11 @@ export function judgeSoft(measured, baseline, factor = GUARD_FACTOR) {
   const rows = [];
   /** @type {string[]} */
   const failures = [];
-  for (const [metric, value, base, limit] of metrics) {
-    if (limit === undefined) continue;
-    const over = !(value <= limit);
+  for (const [metric, value, base, guard] of metrics) {
+    // A metric with no guard yet (the start tap, below 8 readings) is a printed trend row only.
+    if (guard === undefined && metric !== 'start tap') continue;
+    const limit = guard ?? null;
+    const over = limit !== null && !(value <= limit);
     const ratio = base > 0 ? Math.round((value / base) * 100) / 100 : Number.NaN;
     rows.push({ metric, value, baseline: base, ratio, limit, over });
     if (over)
@@ -108,7 +132,7 @@ export function judgeSoft(measured, baseline, factor = GUARD_FACTOR) {
 export function trendLine(label, rows) {
   const parts = rows.map(
     (r) =>
-      `${r.metric} ${r.value} ms (${r.ratio.toFixed(2)}x the baseline ${r.baseline}, guard ${r.limit}${r.over ? ', OVER' : ''})`,
+      `${r.metric} ${r.value} ms (${r.ratio.toFixed(2)}x the baseline ${r.baseline}, ${r.limit === null ? 'no guard yet' : `guard ${r.limit}`}${r.over ? ', OVER' : ''})`,
   );
   return `perf trend (${label}): ${parts.join('; ')}`;
 }
@@ -192,7 +216,7 @@ export function summaryMarkdown({ size, probes }) {
     for (const p of probes)
       for (const r of p.rows)
         out.push(
-          `| ${p.label} | ${r.metric} | ${r.value}${r.over ? ' **OVER**' : ''} | ${r.ratio.toFixed(2)} | ${r.baseline} | ${r.limit} |`,
+          `| ${p.label} | ${r.metric} | ${r.value}${r.over ? ' **OVER**' : ''} | ${r.ratio.toFixed(2)} | ${r.baseline} | ${r.limit ?? 'none yet'} |`,
         );
   } else {
     out.push('No probe results were written (the probes did not run, or failed before measuring).');

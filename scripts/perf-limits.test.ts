@@ -15,6 +15,7 @@ import {
   isPullRequestRun,
   judgeSoft,
   PR_FLOOR_KB,
+  START_TAP_GUARD_MIN_READINGS,
   summaryMarkdown,
   trendLine,
 } from './perf-limits.mjs';
@@ -28,6 +29,8 @@ interface Times {
   frameMs: { p50: number; p95: number };
   stepMs?: { p95: number };
   startTapMs?: number;
+  startTapReadings?: number;
+  startTap?: { readings: number[] };
 }
 const baselineFile = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/baseline.json'), 'utf8')) as {
   soft: Times;
@@ -116,17 +119,40 @@ describe('the soft tier: a trend plus a 3x guard', () => {
   });
 });
 
-describe("the start tap's main-thread work: a trend with the same 3x guard (polish F, punch item 2)", () => {
-  const base: Times = { frameMs: { p50: frames(4), p95: frames(8) }, startTapMs: 120 };
-  const at = (startTapMs: number | undefined) =>
-    judgeSoft(
-      { frameMs: { p50: frames(4), p95: frames(8) }, ...(startTapMs === undefined ? {} : { startTapMs }) },
-      base,
-    );
+describe("the start tap's main-thread work: a trend, guarded only once the baseline has 8 CI readings (polish K2 review, must-fix)", () => {
+  const frame = { p50: frames(4), p95: frames(8) };
+  /** A baseline whose start tap rests on `readings` CI readings. */
+  const base = (readings: number): Times => ({ frameMs: frame, startTapMs: 120, startTapReadings: readings });
+  const at = (startTapMs: number | undefined, readings: number) =>
+    judgeSoft({ frameMs: frame, ...(startTapMs === undefined ? {} : { startTapMs }) }, base(readings));
 
-  it('is a row of the trend with its ratio and a 3x guard, with no frame slack (it is not in whole frames)', () => {
-    expect(guardLimits(base).startTap).toBe(360);
-    const row = at(150).rows.find((r) => r.metric === 'start tap');
+  it('is 8 CI readings, the same bar as the frame baseline', () => {
+    expect(START_TAP_GUARD_MIN_READINGS).toBe(8);
+  });
+
+  it('prints a trend row with its ratio and no guard before then, and never fails, however slow (it was 450 ms or more on one live reading)', () => {
+    for (const readings of [0, 3, 7]) {
+      const row = at(150, readings).rows.find((r) => r.metric === 'start tap');
+      expect(row, `${readings} readings`).toEqual({
+        metric: 'start tap',
+        value: 150,
+        baseline: 120,
+        ratio: 1.25,
+        limit: null,
+        over: false,
+      });
+      expect(guardLimits(base(readings)).startTap).toBeUndefined();
+      expect(at(9999, readings).failures).toEqual([]);
+      expect(at(Number.NaN, readings).failures).toEqual([]);
+    }
+    expect(trendLine('classic', at(150, 3).rows)).toContain(
+      'start tap 150 ms (1.25x the baseline 120, no guard yet)',
+    );
+  });
+
+  it('is guarded at 3x the baseline, with no frame slack, from the 8th reading (the control: it fires)', () => {
+    expect(guardLimits(base(8)).startTap).toBe(360);
+    const row = at(150, 8).rows.find((r) => r.metric === 'start tap');
     expect(row).toEqual({
       metric: 'start tap',
       value: 150,
@@ -135,34 +161,42 @@ describe("the start tap's main-thread work: a trend with the same 3x guard (poli
       limit: 360,
       over: false,
     });
-    expect(trendLine('classic', at(150).rows)).toContain(
+    expect(trendLine('classic', at(150, 8).rows)).toContain(
       'start tap 150 ms (1.25x the baseline 120, guard 360)',
     );
-  });
-
-  it('fails only above 3x the baseline (it fires), and a missing reading fails rather than passing', () => {
-    expect(at(360).failures).toEqual([]);
-    expect(at(360.1).failures).toEqual([
+    expect(at(360, 8).failures).toEqual([]);
+    expect(at(360.1, 8).failures).toEqual([
       'start tap 360.1 ms is over the 3x guard 360 ms (baseline 120 ms): a catastrophic slowdown, not runner noise',
     ]);
-    expect(at(Number.NaN).failures).toHaveLength(1);
+    expect(at(Number.NaN, 8).failures).toHaveLength(1); // a missing reading fails rather than passing
   });
 
-  it('stays quiet on the CI readings behind the stored baseline, and fires above 3x it', () => {
+  it('shows "none yet" in the step summary where the guard would be', () => {
+    const md = summaryMarkdown({ size: [], probes: [{ label: 'classic', rows: at(150, 3).rows }] });
+    expect(md).toContain('| classic | start tap | 150 | 1.25 | 120 | none yet |');
+    const guarded = summaryMarkdown({ size: [], probes: [{ label: 'classic', rows: at(150, 8).rows }] });
+    expect(guarded).toContain('| classic | start tap | 150 | 1.25 | 120 | 360 |');
+  });
+
+  it('holds for the stored baseline: its guard exists exactly when it rests on 8 or more readings', () => {
     const soft = baselineFile.soft;
     expect(soft.startTapMs).toBeGreaterThan(0);
-    const limit = guardLimits(soft).startTap ?? Number.NaN;
-    for (const reading of [46.8, 60.4, 44.9])
-      expect(judgeSoft({ ...soft, startTapMs: reading }, soft).failures, `${reading} ms`).toEqual([]);
-    expect(judgeSoft({ ...soft, startTapMs: limit + 0.1 }, soft).failures).toHaveLength(1);
+    const readings = soft.startTap?.readings ?? [];
+    expect(readings.length).toBeGreaterThan(0);
+    const limit = guardLimits({ ...soft, startTapReadings: readings.length }).startTap;
+    if (readings.length >= START_TAP_GUARD_MIN_READINGS) expect(limit).toBeGreaterThan(0);
+    else expect(limit).toBeUndefined();
+    // Whatever the baseline's readings are, the CI readings behind it are never judged slow by it.
+    const judged = judgeSoft(
+      { frameMs: soft.frameMs, startTapMs: Math.max(...readings) },
+      { ...soft, startTapReadings: readings.length },
+    );
+    expect(judged.failures).toEqual([]);
   });
 
   it('is not judged until both the probe and the baseline have it (the negative control)', () => {
-    expect(at(undefined).rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
-    const noBase = judgeSoft(
-      { frameMs: { p50: frames(4), p95: frames(8) }, startTapMs: 9999 },
-      { frameMs: base.frameMs },
-    );
+    expect(at(undefined, 8).rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    const noBase = judgeSoft({ frameMs: frame, startTapMs: 9999 }, { frameMs: frame, startTapReadings: 8 });
     expect(noBase.rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
     expect(noBase.failures).toEqual([]);
   });
