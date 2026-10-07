@@ -1,7 +1,7 @@
 // CI's slice plan (scripts/shard-plan.mjs) and its timing table refresh (scripts/timings.mjs): the
 // slices must be a partition of the tier's files whatever the timings say, so a slice can never
 // quietly drop a test file.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -563,6 +563,31 @@ describe('whole jobs against their timeouts', () => {
       expect(
         over,
         `${tier}: planned job seconds ${plan.map((s) => s.predicted).join(' / ')} against a line of ${Math.round(jobs[tier].timeout * JOB_SHARE)} s`,
+      ).toEqual([]);
+    },
+  );
+
+  it.each(['unit', 'sim', 'e2e'] as const)(
+    'partitions and budgets every current %s file, including unmeasured files',
+    (tier) => {
+      // The same include patterns as the runners' configs. A timing refresh may precede a new test;
+      // that file still needs a slice and its mean fallback must fit, rather than disappearing here.
+      const dirs =
+        tier === 'unit' ? ['src', 'scripts', 'tools'] : [`tests/${tier === 'sim' ? 'sim' : 'e2e'}`];
+      const matches = tier === 'e2e' ? /\.(?:spec|test)\.[cm]?[jt]sx?$/ : /\.test\.ts$/;
+      const files = dirs.flatMap((dir) =>
+        readdirSync(path.join(root, dir), { recursive: true })
+          .filter((f): f is string => typeof f === 'string' && matches.test(f))
+          .map((f) => `${dir}/${f.replaceAll(path.sep, '/')}`),
+      );
+      const jobs = suiteJobs(suite);
+      const plan = planTier(tier, files, jobs[tier].slices);
+      expectPartition(files, plan);
+      expect(plan).toHaveLength(jobs[tier].slices);
+      for (const slice of plan) expect(slice.files.length).toBeGreaterThan(0);
+      expect(
+        overLine(plan, jobs[tier].timeout),
+        `${tier}: current inventory job seconds ${plan.map((s) => s.predicted).join(' / ')}`,
       ).toEqual([]);
     },
   );
