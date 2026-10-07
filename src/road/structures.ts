@@ -92,7 +92,8 @@ export interface StructureLayerSpec {
 
 /**
  * The layers, by name. Each port adds its row with its planner, `{ tags, load: () => import(...) }`, so a
- * network asks only for the planners that exist.
+ * network asks only for the planners that exist. The planners build into one lazy chunk, `road-structures`
+ * (scripts/sim-chunk.mjs).
  */
 export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
   // San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws the layout).
@@ -113,6 +114,25 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
   mission: {
     tags: ['mascot-mural', 'murals', 'shopfronts'],
     load: () => import('./structures/mission').then((m) => m.missionPlanner),
+  },
+  // San Francisco's waterfront: the pier sheds, the ferry hall, the blocks and the towers (road/structures/waterfront.ts).
+  'sf-waterfront': {
+    tags: [
+      'promenade',
+      'pier-shed',
+      'ferry-hall',
+      'sea-lions',
+      'wharf',
+      'wharf-street',
+      'ferry-plaza',
+      'wharf-lot',
+    ],
+    load: async () => (await import('./structures/waterfront')).waterfrontPlanner,
+  },
+  // The Pacific Northwest's places: the car ferry and the Stump Social's shops (road/structures/pnw-places.ts).
+  'pnw-places': {
+    tags: ['ferry', 'festival'],
+    load: async () => (await import('./structures/pnw-places')).pnwPlacesPlanner,
   },
 };
 
