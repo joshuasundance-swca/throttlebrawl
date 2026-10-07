@@ -756,35 +756,6 @@ function shoulderCd(config: SimConfig, c: Corridor, p: SetPiece, u: number, out:
   return p.side * Math.min(want, walled ? limit - 0.3 : limit + 0.6);
 }
 
-/**
- * A piece's signs stand off its road's lanes (a sign is met by the one rule now, so one in a lane is a rider's
- * wobble): each moves out from where it was placed until what of it a rider on the road reaches (a serial
- * sign's panel, which hangs from 1.4 m; a warning sign's post, its panel hanging from 2.2 m over a rider's
- * head) is SIGN_CLEAR_M past the outermost lane at its spot, shoulders included. It was placed `out` past the
- * piece's own lane, the one nearest the centre line, so on a road of two lanes each way it stood in the outer
- * lane (the set pieces' ride-column check, 2026-10-06: a serial sign's panel in the lane the moving ramp truck
- * drives, the rider wobbling off its line). A sign already clear stays where it is.
- */
-function standSignsOff(config: SimConfig, c: Corridor, st: SetPieceState, index: number): void {
-  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
-  for (const q of st.props) {
-    if (q.piece !== index || q.kind !== 'sign') continue;
-    fromCorridor(c, q.u, q.cd, c.routeDir, pos);
-    const o = c.o[c.edges.indexOf(pos.edge)] ?? 1;
-    const side = q.cd >= 0 ? 1 : -1;
-    let edge = 0;
-    for (const lane of config.road.lanesAt(pos.edge, pos.s))
-      edge = Math.max(edge, side * o * lane.dCenterM + lane.widthM / 2);
-    const reach = propBoxes('sign', q.variant)
-      .filter((b) => b.bottom < SET_PIECE.riderTallM)
-      .reduce((w, b) => Math.max(w, Math.abs(b.across) + b.hd), 0);
-    q.cd = side * Math.max(Math.abs(q.cd), edge + reach + SIGN_CLEAR_M);
-  }
-}
-
-/** How far past the lanes a sign's reachable part stands, m (render draws the post and panel round its middle). */
-const SIGN_CLEAR_M = 0.25;
-
 /** The drivable band's outer edge on the piece's side at u, as a distance from the centre line. */
 function bandEdge(config: SimConfig, c: Corridor, p: SetPiece, u: number): number {
   const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
@@ -2181,6 +2152,35 @@ function bumpPerson(
   q.moving = true;
   q.walk = 0;
 }
+
+/**
+ * A piece's signs stand off its road's lanes (a sign is met by the one rule now, so one in a lane is a rider's
+ * wobble): each moves out from where it was placed until what of it a rider on the road reaches (a serial
+ * sign's panel, which hangs from 1.4 m; a warning sign's post, its panel hanging from 2.2 m over a rider's
+ * head) is SIGN_CLEAR_M past the outermost lane at its spot, shoulders included. It was placed `out` past the
+ * piece's own lane, the one nearest the centre line, so on a road of two lanes each way it stood in the outer
+ * lane (the set pieces' ride-column check, 2026-10-06: a serial sign's panel in the lane the moving ramp truck
+ * drives, the rider wobbling off its line). A sign already clear stays where it is.
+ */
+function standSignsOff(config: SimConfig, c: Corridor, st: SetPieceState, index: number): void {
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  for (const q of st.props) {
+    if (q.piece !== index || q.kind !== 'sign') continue;
+    fromCorridor(c, q.u, q.cd, c.routeDir, pos);
+    const o = c.o[c.edges.indexOf(pos.edge)] ?? 1;
+    const side = q.cd >= 0 ? 1 : -1;
+    let edge = 0;
+    for (const lane of config.road.lanesAt(pos.edge, pos.s))
+      edge = Math.max(edge, side * o * lane.dCenterM + lane.widthM / 2);
+    const reach = propBoxes('sign', q.variant)
+      .filter((b) => b.bottom < SET_PIECE.riderTallM)
+      .reduce((w, b) => Math.max(w, Math.abs(b.across) + b.hd), 0);
+    q.cd = side * Math.max(Math.abs(q.cd), edge + reach + SIGN_CLEAR_M);
+  }
+}
+
+/** How far past the lanes a sign's reachable part stands, m (render draws the post and panel round its middle). */
+const SIGN_CLEAR_M = 0.25;
 
 /**
  * Publishes the live props' solid boxes (a lane vote's gantry post, a float's centrepiece) for the tick the
