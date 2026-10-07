@@ -400,7 +400,12 @@ async function checkBuildId(page: Page, label: string) {
     await page.setViewportSize({ width: size.width, height: size.height });
     await scrollTo(page, '#menu', 0);
     const line = page.locator('#menu-build-line');
-    if (await line.isVisible()) await line.scrollIntoViewIfNeeded();
+    // A plain DOM scroll, not Playwright's scrollIntoViewIfNeeded: that waits for the line to hold still
+    // over two frames, with no limit but the test's, and on two trains (382 and the one after #648
+    // landed) this slice printed the menu's last fit line and then ran out its 10-minute job here
+    // (the keeper, 2026-10-07; not reproduced locally, no browser slot). What is judged is the paint.
+    if (await line.isVisible())
+      await line.evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
     const p = await paint(page, '#menu', []);
     const found = buildIdFindings(
       p.buildIds,
