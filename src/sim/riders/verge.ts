@@ -41,6 +41,11 @@ export function vergeState(world: World): VergeState {
   return systemState<VergeState>(world, 'riders.verge', () => ({ brokenFences: [] }));
 }
 
+/** The fences broken so far, without creating the state (a reader, such as a snapshot, never writes). */
+export function brokenFencesOf(world: World): BrokenFence[] {
+  return (world.systems['riders.verge'] as VergeState | undefined)?.brokenFences ?? [];
+}
+
 /** How long a stretch of fence one smash breaks, m (half each way of the hit). [default] */
 export const FENCE_GAP_M = 8;
 /** How far the ground runs on past a broken fence before it stops the rider (softly), m. [default] */

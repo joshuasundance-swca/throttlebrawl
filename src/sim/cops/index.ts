@@ -164,6 +164,7 @@ import {
   STRAY_RETURN_MPS,
   wayBack,
 } from '../ai/branches';
+import { droppedBikesSeen } from '../ai/dropped';
 import {
   bendSpeed,
   blockerAt,
@@ -1039,7 +1040,11 @@ function trafficGuard(
   // `furnitureSeen`): his line must be clear of it, and he goes round one in his way or alongside as
   // round a stopped car (`all`); only moving traffic blocks the way across to a line.
   const fixed = furnitureSeen(world, config, cop, Math.min(TRAFFIC_SEE_M, v * 6 + 40), FIXED_BEHIND_M);
-  const all = fixed.length > 0 ? [...seen, ...fixed] : seen;
+  // A bike left on the road after a crash is solid too (pile-ups; the maintainer, 2026-10-06): kept clear
+  // of as the furniture is (`still`), but one on the road never slows him for bends.
+  const dropped = droppedBikesSeen(world, config, cop, Math.min(TRAFFIC_SEE_M, v * 6 + 40), FIXED_BEHIND_M);
+  const still = dropped.length > 0 ? [...fixed, ...dropped] : fixed;
+  const all = still.length > 0 ? [...seen, ...still] : seen;
   if (all.length === 0) return { d, v: speed, brake, dodging };
   if (fixed.length > 0) {
     // A street lined with solid furniture: slow enough to hold its bends (not carried wide onto the
@@ -1053,7 +1058,7 @@ function trafficGuard(
   const look = clamp(14 + v * 2.2, 14, 90);
   if (
     !pathClear(seen, v, pos.d, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M) ||
-    (fixed.length > 0 && !lineClear(fixed, v, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M))
+    (still.length > 0 && !lineClear(still, v, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M))
   )
     d = pos.d;
   // Behind a piece of street furniture he never stops: he crawls on, still rolling, so he can steer.

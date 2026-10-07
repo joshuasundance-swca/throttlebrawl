@@ -52,15 +52,21 @@ export const SEA_BANDS = {
   /**
    * The patches of seagrass and sand (run C's live check, lane J3: "the flats look one turquoise"; its fix
    * check, punch item 1: "no seagrass or sand patch in 9 frames", for the patches were there and too faint to
-   * see): the size of a patch, m; the second, finer octave's share of that size; and the noise value where a
-   * patch starts and where its tint is full. A patch is two squares of the fine grid and a little more, so it
-   * is a shape and not a vertex. Its edge is short (7 hundredths of the noise, not a third), so most of a
-   * patch is at its full tint and its edge is a line you can see. The open sea gives way to the deep before
-   * the patches do (`patchGiveWay`). What a rider sees of it, after the water's light, the haze and the grade,
-   * is asked by tests/sim/keys-flats-show.
+   * see): the size of a patch, m; the second, finer octave's share of that size and its weight (how ragged an
+   * edge is); and the noise value where a patch starts and where its tint is full. A patch is two squares of the
+   * fine grid and a little more, so it is a shape and not a vertex. Its edge is short (7 hundredths of the noise,
+   * not a third), so most of a patch is at its full tint and its edge is a line you can see. The open sea gives
+   * way to the deep before the patches do (`patchGiveWay`). What a rider sees of it, after the water's light, the
+   * haze, the grade and the vignette, is asked by tests/sim/keys-flats-show. Polish N2 (the live check of #635,
+   * punch item 1): 60 m patches with a smoother edge (they were 90 m, with a third of the weight in the finer
+   * octave) leave fewer slivers in the thin strip of sea a beach leaves a rider, so more of the views hold a
+   * patch of each kind big enough to read (8 seeds: 79 to 88 % of the Seven Mile's views, 57 to 62 % of Bahia
+   * Honda's before the tints below).
    */
-  patchM: 90,
+  patchM: 60,
   octaveShare: 0.55,
+  /** The second octave's weight in the patch noise (the first has the rest): how ragged a patch's edge is. */
+  octaveWeight: 0.1,
   patchFrom: 0.02,
   patchTo: 0.09,
   /** The sea's depth at which the patches start to give way, and where they are gone (0 the flats, 1 the channel). */
@@ -72,13 +78,16 @@ export const SEA_BANDS = {
   cellM: 28,
   /**
    * The colours of the deep channel (display sRGB), and the tints of a sand patch and a seagrass patch. The
-   * water has almost no red, so a sand patch needs a large multiple of it to read pale aqua (the default
-   * look's water, #1e8e98, goes to about #57beaf under it) and a seagrass patch goes to a dark green-teal
-   * (about #177364).
+   * water has almost no red, so a sand patch needs a large multiple of it to read pale aqua and a seagrass patch
+   * goes to a dark green-teal. As a rider sees them in the default look at noon (the water through the shader,
+   * the grade and the haze, 100 m out): #22999c bare, #51c0a8 sand and #1a685c seagrass, 20.4 and 21.4 delta E
+   * from the bare water (#635's tints gave 18.3 and 19.5; at dusk, under 0.8 of the light, 19.3 and 19.5 against
+   * 17.3 and 17.8, the time of day with the least to spare). Still a sea's colours (hue 176 to 181, chroma 37 at
+   * most), and the test holds that.
    */
   deep: '#16639f',
-  sand: [6, 1.6, 1.25],
-  seagrass: [0.45, 0.5, 0.4],
+  sand: [7, 1.7, 1.3],
+  seagrass: [0.4, 0.45, 0.36],
   /**
    * A salt pond (display sRGB, the albedo drawn in any look): pale sage-green, and its shaded edge (an olive: it
    * stays a darker shade of the pond's water and never a brown mud, which the ink looks' warm grade and the golden
@@ -248,8 +257,9 @@ function patchNoise(x: number, z: number, seed: number): number {
   const turnedX = x * 0.8 - z * 0.6;
   const turnedZ = x * 0.6 + z * 0.8;
   return (
-    0.68 * valueNoise(x, z, SEA_BANDS.patchM, seed) +
-    0.32 * valueNoise(turnedX + 91, turnedZ - 47, SEA_BANDS.patchM * SEA_BANDS.octaveShare, seed + 7)
+    (1 - SEA_BANDS.octaveWeight) * valueNoise(x, z, SEA_BANDS.patchM, seed) +
+    SEA_BANDS.octaveWeight *
+      valueNoise(turnedX + 91, turnedZ - 47, SEA_BANDS.patchM * SEA_BANDS.octaveShare, seed + 7)
   );
 }
 
