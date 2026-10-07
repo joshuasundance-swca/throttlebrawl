@@ -19,3 +19,4 @@ Tests:
 Not phone-verified.
 
 The keeper, after train 426: `tests/sim/batch.ts`'s `ISOLATED` profile turns the new switch off (`'modifiers.propContact': 0`), as `tests/sim/isolation-profile.test.ts` asks of every `system: true` switch. Its seeded tests already ran without road events (`modifiers.setPieceChance` 0), so none of them moves.
+The keeper, after train 456: main now has #641, whose `hitsIn` takes a floor per part (`floorOf`) in place of a skip test, so `tests/sim/set-piece-ride-column.test.ts` passes `() => RIDE_LOW_M` (every part of a prop a wall from the knees up, as the skip-nothing call was). It and #641's `tests/sim/event-signs-clear.test.ts` pass on the merged branch.

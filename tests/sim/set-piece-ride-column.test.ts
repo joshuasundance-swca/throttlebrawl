@@ -28,7 +28,13 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { EventProps, signPanel } from '../../src/render/event-props';
 import { createFlatLook } from '../../src/render/look';
-import { hitsIn, roadColumns, type RoadColumns, type RoadHit } from '../../src/render/road-clear.test-util';
+import {
+  hitsIn,
+  RIDE_LOW_M,
+  roadColumns,
+  type RoadColumns,
+  type RoadHit,
+} from '../../src/render/road-clear.test-util';
 import type { PropSnapshot, SimConfig } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
 import {
@@ -223,7 +229,14 @@ function ghostOf(
   drawn?: Object3D,
 ): { cuts: number; ghost: RoadHit | null } {
   const hits = new Map<string, RoadHit>();
-  hitsIn(cols, drawn ?? drawnOf(look, s.prop), () => false, { x: s.prop.x, z: s.prop.z, reach: 30 }, hits);
+  // Every part of a prop is tested as a wall from a rider's knees up (no part of it is ground: #641's floorOf).
+  hitsIn(
+    cols,
+    drawn ?? drawnOf(look, s.prop),
+    () => RIDE_LOW_M,
+    { x: s.prop.x, z: s.prop.z, reach: 30 },
+    hits,
+  );
   let ghost: RoadHit | null = null;
   for (const h of hits.values()) if (shapeOf(s, h) === null && (!ghost || h.inset > ghost.inset)) ghost = h;
   return { cuts: hits.size, ghost };
