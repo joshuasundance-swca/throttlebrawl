@@ -540,12 +540,12 @@ describe('whole jobs against their timeouts', () => {
 
   it('names every slice over its line, and only those', () => {
     const plan = [
-      { files: ['a'], predicted: 420 },
-      { files: ['b'], predicted: 421 },
+      { files: ['a'], predicted: 400 },
+      { files: ['b'], predicted: 401 },
       { files: ['c'], predicted: 100 },
     ];
-    expect(JOB_SHARE).toBe(0.7);
-    expect(overLine(plan, 600)).toEqual([{ slice: 2, predicted: 421, line: 420 }]);
+    expect(JOB_SHARE).toBe(2 / 3);
+    expect(overLine(plan, 600)).toEqual([{ slice: 2, predicted: 401, line: 400 }]);
     expect(overLine(plan, 1000)).toEqual([]);
   });
 

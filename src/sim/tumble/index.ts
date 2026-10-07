@@ -77,6 +77,7 @@ import {
   PARKED_BIKE_TOP_M,
   pileUpsOn,
 } from '../riders/furniture';
+import { bodyTopsOf } from '../riders/structures';
 import { leaveSupport, supportedWorldVelocity } from '../riders/supports';
 import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
@@ -703,8 +704,10 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
   if (wantsSkip(world, config, m)) r.skipQueued = true;
   if (dt > 0) {
     const offRoad = offRoadOn(world.params);
-    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad);
-    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad);
+    // The structures' tops (the physical world, sim/riders/structures.ts): a crash on a roof rests there.
+    const tops = bodyTopsOf(world, config);
+    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad, tops);
+    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad, tops);
     contacts(world, config, m, r, r.riderRig, on);
     contacts(world, config, m, r, r.bikeRig, bikeAt);
     railEvents(world, m, r, r.riderRig, on);

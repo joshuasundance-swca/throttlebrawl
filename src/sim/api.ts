@@ -9,6 +9,11 @@ import { clamp } from '../core';
 import { InputFlag, type SimInput } from './types';
 
 export { createSim, SIM_TUNING } from './create';
+// The physical world (2026-10-06): the riders meet the road's structures plan (sim/riders/structures.ts),
+// whose planners are one lazy chunk. A race plans its world as it starts once they are in, so app/ loads
+// them with the region's road data and starts a race only after (a race whose network needs a planner that
+// has not loaded throws rather than ride a world with a piece missing).
+export { loadStructurePlanners } from '../road';
 // The share of health at or under which a bike smokes (and is a little slower): the render draws the
 // smoke from the same number (playtest 4, P4-14).
 export { SMOKE_HEALTH } from './riders/smoke';

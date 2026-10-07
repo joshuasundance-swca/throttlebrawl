@@ -162,7 +162,8 @@ export function bakeVehicle(asset: string, scene: Object3D): BakedVehicle {
 }
 
 /**
- * Loads the models the given traffic types draw from, through the asset manifest, once each. A model
+ * Loads the models the given traffic types draw from, through the asset manifest, once each (a model the
+ * host held back is asked for again at the next race, polish batch L). A model
  * that is missing, fails its hash or does not parse is left out; a type whose every model is left
  * out is left out too, and views.ts keeps drawing its box.
  */

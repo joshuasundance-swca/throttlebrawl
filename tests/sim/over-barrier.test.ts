@@ -16,7 +16,9 @@
 // - over Chuckanut's parapet, down the bluff: a high drop, the same penalty and respawn;
 // - over the Golden Gate's railing (a 1.3 m wall over the bay): a high drop, the same penalty and
 //   respawn;
-// - a building front (Duval Street's shopfronts) still holds a rider at any height;
+// - a building front (Duval Street's shopfronts) holds a rider at any height with the structures off (these
+//   races are ISOLATED: `riders.structures` 0; with them on the buildings themselves stop him or take him onto
+//   their roofs, tests/sim/structures-solid.test.ts);
 // - the new behaviour records and replays to the same hashes, and a race where nobody goes over keeps
 //   no new state.
 import { describe, expect, it } from 'vitest';
@@ -364,7 +366,7 @@ describe('the Golden Gate: its 1.3 m railing, the same physics as everywhere (de
   });
 });
 
-describe('a building front stays a wall at any height (the one known gap: buildings are not in the sim)', () => {
+describe('with the structures off, a building front stays a wall at any height (the old rule, ISOLATED)', () => {
   it("Duval Street's shopfronts hold a rider flying 8 m up", () => {
     const e = DUVAL.road.edgeIndex('osm-duval-street');
     expect(edgeTopAt(DUVAL.road, e, 200, 'right')).toBe(Infinity);

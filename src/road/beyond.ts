@@ -9,10 +9,10 @@
 // - `edgeTopAt`: how high the thing at one side's band edge stands above the deck there. A barrier's
 //   own `heightM`; a derived `hard` edge's from what is drawn there (the bluff's parapet, the
 //   interstate's guard rail, the ferry's bulwark); 0 at a `water` edge (nothing stands there); and
-//   Infinity at a building front, which stays a wall at any height (buildings are not in the sim yet:
-//   the one known gap, until the sim meets src/road/structures.ts's plan, docs/architecture.md
-//   "Physical world"). Null at a ground edge (soft, brush, fence): the
-//   ground runs on past it and the band's own edge rules hold, in the air too.
+//   Infinity at a building front, a wall at any height to anything that does not know its buildings (a
+//   crashed body; the sim takes it as 0 where the structures plan has the buildings, which then stop a
+//   rider themselves: sim/riders/structures.ts, `frontTagAt`). Null at a ground edge (soft, brush,
+//   fence): the ground runs on past it and the band's own edge rules hold, in the air too.
 // - `pastAt`: what lies past that edge: `water` (a `water-*` tag on the side, or a water edge),
 //   `drop` (the bluff, a bridge or a trestle with no water tagged under it, or any `rail`: rails stand
 //   only on bridges and drops, docs/product-spec.md), else `ground`.
@@ -43,9 +43,10 @@ export function waterLevelOf(road: RoadNetwork): number {
 /**
  * The land tags whose `hard` edge is a building front (the towers, the shopfronts, the mural walls, the
  * row and painted houses, Duval's and the waterfront's buildings, the ferry hall, the pier sheds): a
- * wall at any height while no building is in the sim [default] (a building is to be a wall up to its
- * roofline with a roof to land on, [decided] 2026-10-06, once the sim meets the structures plan). The
- * cafes' patio rail stands right in front of the cafes, so it is one too.
+ * wall at any height where no building is in the sim [default]. Where the structures plan has a front's
+ * buildings, the sim meets them instead (a building a wall up to its roofline with a roof to land on,
+ * [decided] 2026-10-06; sim/riders/structures.ts). The cafes' patio rail stands right in front of the
+ * cafes, so it is one too.
  */
 export const BUILDING_FRONT_TAGS: ReadonlySet<string> = new Set([
   'towers',
@@ -106,6 +107,20 @@ export function edgeTopAt(road: RoadNetwork, edge: number, s: number, side: Verg
   const tag = e && v.derived ? vergeTagAt(e, side, s) : null;
   if (tag === null || BUILDING_FRONT_TAGS.has(tag)) return Infinity;
   return Object.hasOwn(EDGE_TOP_BY_TAG, tag) ? (EDGE_TOP_BY_TAG[tag] ?? Infinity) : Infinity;
+}
+
+/**
+ * The building-front tag (BUILDING_FRONT_TAGS) whose `hard` edge one side's band ends at at (edge, s), or null
+ * where the edge is anything else (a barrier, a given edge, another tag's). Where the buildings along that tag
+ * are in the structures plan, the sim meets them instead of this wall (sim/riders/structures.ts).
+ */
+export function frontTagAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): string | null {
+  if (road.barrierAt(edge, s, side)) return null;
+  const v = road.vergeAt(edge, s, side);
+  if (v.edge !== 'hard' || !v.derived) return null;
+  const e = road.edges[edge];
+  const tag = e ? vergeTagAt(e, side, s) : null;
+  return tag !== null && BUILDING_FRONT_TAGS.has(tag) ? tag : null;
 }
 
 /** What lies past one side's band edge at (edge, s). */

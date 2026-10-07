@@ -11,7 +11,9 @@ export default mergeConfig(
     test: {
       // The bundled base pack's hand-made Keys road data is fetched at boot in the browser; every
       // test that reads `loadBasePack()` gets it from disk first (run W-S, the first-load budget).
-      setupFiles: ['./tests/setup/base-roads.ts'],
+      // The structures' planners (the physical world's plan) likewise load before the tests, as the app
+      // loads them with a region's road data, so a race on any network plans its world as it starts.
+      setupFiles: ['./tests/setup/base-roads.ts', './tests/setup/structures.ts'],
       // The unit and sim files start longest first, by their measured CI seconds (tests/timings.json),
       // so a long file never starts last. [default]
       sequence: { sequencer: TimedSequencer },

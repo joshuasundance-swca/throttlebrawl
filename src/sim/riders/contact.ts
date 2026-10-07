@@ -49,7 +49,7 @@ export interface ContactState {
 export interface ContactRules {
   wobbleTicks: number;
   /** The drivable limits for a rider's centre at its d (the barrier rule's, the verge's off-road). */
-  limits(config: SimConfig, edge: number, s: number, d: number): { lo: number; hi: number };
+  limits(config: SimConfig, edge: number, s: number, d: number, m?: Mover): { lo: number; hi: number };
   /**
    * Two riders this far apart in height (or more) pass over each other (supports: one riding a truck's
    * roof, one on the road below it); absent, any height meets, as before.
@@ -69,7 +69,7 @@ function massOf(config: SimConfig, m: Mover): number {
 }
 
 function moveD(config: SimConfig, rules: ContactRules, m: Mover, by: number): number {
-  const { lo, hi } = rules.limits(config, m.pos.edge, m.pos.s, m.pos.d);
+  const { lo, hi } = rules.limits(config, m.pos.edge, m.pos.s, m.pos.d, m);
   const before = m.pos.d;
   m.pos.d = clamp(before + by, lo, hi);
   return m.pos.d - before;
