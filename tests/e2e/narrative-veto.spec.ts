@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import type { TickerItem } from '../../src/ui/ticker';
+import type { VetoFlag } from '../../src/ui/narrative/veto';
 
 // narrative-2 in the real build (docs/milestones/M2.md, narrative-2, "Automated acceptance"):
 // - a long-press (500 ms or more) on a rival's bark on the top ticker opens "cut this" with the line on it,
@@ -17,6 +17,8 @@ import type { TickerItem } from '../../src/ui/ticker';
 
 interface Handle {
   setBot(on: boolean): void;
+  snapshot(): { tick: number } | null;
+  debugFileText(): string;
 }
 interface PressClock {
   advance(ms: number): void;
@@ -26,7 +28,6 @@ type TestWindow = Window & {
   __GAME_TEST__?: boolean;
   __uiLongPressManual?: boolean;
   __uiLongPress?: PressClock;
-  __uiTicker?: (items: readonly TickerItem[], hold?: boolean) => void;
   __game?: Handle;
   __copied?: string[];
 };
@@ -43,8 +44,10 @@ interface SeenBubble {
   y: number;
 }
 
-/** Validates, captures and (for a gesture) holds the real bark in one browser task. */
-function observeBubble({ except, hold }: { except: string; hold: boolean }): SeenBubble | null {
+type PressKind = 'mouse' | 'touch-inside' | 'touch-outside';
+
+/** Captures the bark and starts an optional press on that actual item in the same browser task. */
+function observeBubble({ except, press }: { except: string; press?: PressKind }): SeenBubble | null {
   const el = document.querySelector<HTMLElement>('#hud-ticker');
   if (!el || el.hidden || el.dataset['cls'] !== 'bark') return null;
   const ref = el.getAttribute('data-content-ref') ?? '';
@@ -54,24 +57,37 @@ function observeBubble({ except, hold }: { except: string; hold: boolean }): See
   const r = el.getBoundingClientRect();
   if (style.visibility !== 'visible' || style.display === 'none' || r.width <= 0 || r.height <= 0)
     return null;
-  if (hold) {
-    const replace = (window as TestWindow).__uiTicker;
-    if (!replace) throw new Error('no __uiTicker: the ticker test seam is not installed');
-    // Preserve this observed race line, including its speaker; no stand-in line is planted.
-    replace(
-      [{ cls: 'bark', contentRef: ref, text, tag: el.querySelector('.ticker-tag')?.textContent ?? '' }],
-      true,
-    );
-  }
-  const box = el.getBoundingClientRect();
-  return {
+  const seen = {
     ref,
     text,
-    left: box.left,
-    right: box.right,
-    x: box.x + box.width / 2,
-    y: box.y + box.height / 2,
+    left: r.left,
+    right: r.right,
+    x: r.x + r.width / 2,
+    y: r.y + r.height / 2,
   };
+  if (press) {
+    const touch = press !== 'mouse';
+    const x =
+      press === 'touch-inside'
+        ? seen.left + 10
+        : touch
+          ? Math.max(seen.x, 0.9 * Math.min(innerWidth, innerHeight) + 10)
+          : seen.x;
+    // The production watcher captures and holds the original ShownBark, including raceId/tick.
+    window.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        pointerId: touch ? 7 : 1,
+        pointerType: touch ? 'touch' : 'mouse',
+        isPrimary: true,
+        clientX: x,
+        clientY: seen.y,
+        button: 0,
+        buttons: 1,
+        bubbles: true,
+      }),
+    );
+  }
+  return seen;
 }
 
 function watchErrors(page: Page): string[] {
@@ -107,12 +123,12 @@ async function startRace(page: Page) {
 }
 
 /** The bark on the ticker now, or the next one (not `except`): its line, reference and box. */
-async function nextBubble(page: Page, except = ''): Promise<SeenBubble> {
+async function nextBubble(page: Page, except = '', press?: PressKind): Promise<SeenBubble> {
   let seen: SeenBubble | null = null;
   await expect
     .poll(
       async () => {
-        seen = await page.evaluate(observeBubble, { except, hold: true });
+        seen = await page.evaluate(observeBubble, { except, ...(press ? { press } : {}) });
         return seen !== null;
       },
       { timeout: 40_000 },
@@ -122,34 +138,22 @@ async function nextBubble(page: Page, except = ''): Promise<SeenBubble> {
   return seen;
 }
 
-/** Ends the bounded observation hold before looking for another real race line. */
-async function releaseBubble(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const replace = (window as TestWindow).__uiTicker;
-    if (!replace) throw new Error('no __uiTicker: the ticker test seam is not installed');
-    replace([], false);
-  });
-}
-
-/** Starts/ends a mouse press without a preceding pointermove releasing the observation hold. */
-async function mousePress(page: Page, seen: SeenBubble, down: boolean): Promise<void> {
-  await page.evaluate(
-    ({ seen, down }) => {
-      window.dispatchEvent(
-        new PointerEvent(down ? 'pointerdown' : 'pointerup', {
-          pointerId: 1,
-          pointerType: 'mouse',
-          isPrimary: true,
-          clientX: seen.x,
-          clientY: seen.y,
-          button: 0,
-          buttons: down ? 1 : 0,
-          bubbles: true,
-        }),
-      );
-    },
-    { seen, down },
-  );
+/** Ends the mouse press started atomically with the bark observation. */
+async function mouseUp(page: Page, seen: SeenBubble): Promise<void> {
+  await page.evaluate((seen) => {
+    window.dispatchEvent(
+      new PointerEvent('pointerup', {
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true,
+        clientX: seen.x,
+        clientY: seen.y,
+        button: 0,
+        buttons: 0,
+        bubbles: true,
+      }),
+    );
+  }, seen);
 }
 
 /** Moves the long-press clock on by `ms` and returns how many presses are still timing before it. */
@@ -167,10 +171,12 @@ async function advancePress(page: Page, ms: number): Promise<number> {
  * A synthetic touch held at (x, y) for `ms` of the long-press clock (the window-level watcher sees it
  * like a real one). Returns how many presses were timing while it was held: 1 if the watcher took
  * the touch for a possible cut, 0 if it ignored it (the stick zone).
+ * `alreadyDown` finishes a touch started in the atomic bark observation.
  */
-async function holdTouch(page: Page, x: number, y: number, ms: number): Promise<number> {
+async function holdTouch(page: Page, x: number, y: number, ms: number, alreadyDown = false): Promise<number> {
   const init = { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true };
-  await page.evaluate((init) => window.dispatchEvent(new PointerEvent('pointerdown', init)), init);
+  if (!alreadyDown)
+    await page.evaluate((init) => window.dispatchEvent(new PointerEvent('pointerdown', init)), init);
   const timing = await advancePress(page, ms);
   await page.evaluate((init) => window.dispatchEvent(new PointerEvent('pointerup', init)), init);
   return timing;
@@ -185,13 +191,40 @@ async function copiedReport(page: Page, button: string): Promise<string> {
   return page.evaluate(() => (window as TestWindow).__copied?.at(-1) ?? '');
 }
 
+/** Checks the persisted flag against this race's real replay seed and current tick. */
+async function expectSavedProvenance(page: Page, ref: string): Promise<void> {
+  const saved = await page.evaluate((ref) => {
+    // createSettingsStore uses APP_ID (mbrawl) + ':settings', wrapping Settings in record.data.
+    const raw = localStorage.getItem('mbrawl:settings');
+    if (!raw) throw new Error('no saved settings record');
+    const record = JSON.parse(raw) as { data: { vetoes: VetoFlag[] } };
+    const game = (window as TestWindow).__game;
+    if (!game) throw new Error('no game test handle');
+    const lines = game.debugFileText().replace(/\r\n/g, '\n').split('\n');
+    const marker = lines.indexOf('===== replay (one line of JSON) =====');
+    if (marker < 0) throw new Error('no replay in debug file');
+    const replay = JSON.parse(lines[marker + 1] ?? 'null') as { header: { seed: number } };
+    return {
+      flag: record.data.vetoes.find((v) => v.contentRef === ref),
+      seed: replay.header.seed,
+      tick: game.snapshot()?.tick,
+    };
+  }, ref);
+  expect(saved.flag).toBeDefined();
+  expect(Number.isInteger(saved.seed)).toBe(true);
+  expect(saved.flag?.raceId).toBe(`seed-${saved.seed}`);
+  expect(Number.isInteger(saved.flag?.tick)).toBe(true);
+  expect(saved.flag?.tick).toBeGreaterThanOrEqual(0);
+  expect(saved.flag?.tick).toBeLessThanOrEqual(saved.tick ?? -1);
+}
+
 test('bark observation rejects a visible style chip without a content reference', async ({ page }) => {
   await page.setContent(
     '<div id="hud-ticker" data-cls="style" style="width:200px;height:30px">' +
       '<span class="ticker-text">COMBO</span></div>',
   );
   await expect(page.locator('#hud-ticker')).toBeVisible();
-  expect(await page.evaluate(observeBubble, { except: '', hold: false })).toBeNull();
+  expect(await page.evaluate(observeBubble, { except: '' })).toBeNull();
 });
 
 test('long-pressing a bark on the ticker cuts the line, and the copied debug report lists it', async ({
@@ -207,23 +240,21 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
   const viewport = page.viewportSize();
   if (!viewport) throw new Error('no viewport');
   const stickRight = 0.9 * Math.min(viewport.width, viewport.height);
-  const first = await nextBubble(page);
+  const first = await nextBubble(page, '', 'touch-inside');
   expect(first.left + 10).toBeLessThan(stickRight);
-  expect(await holdTouch(page, first.left + 10, first.y, 10 * LONG_PRESS_MS)).toBe(0);
+  expect(await holdTouch(page, first.left + 10, first.y, 10 * LONG_PRESS_MS, true)).toBe(0);
   await expect(menu).toHaveCount(0);
-  await releaseBubble(page);
 
   // A mouse held still for 500 ms on a fresh bark: "cut this", with the line on the card. A tick
   // short of the threshold it is still closed.
-  const seen = await nextBubble(page, first.ref);
+  const seen = await nextBubble(page, first.ref, 'mouse');
   console.log(`bubble ${seen.ref}: "${seen.text}"`);
   expect(seen.ref).toMatch(/^base:bark-set\/[a-z0-9-]+#[a-z0-9-]+$/);
-  await mousePress(page, seen, true);
   expect(await advancePress(page, LONG_PRESS_MS - 1)).toBe(1);
   await expect(menu).toHaveCount(0);
   await advancePress(page, 1);
   await expect(menu).toBeVisible();
-  await mousePress(page, seen, false);
+  await mouseUp(page, seen);
   await expect(menu).toHaveAttribute('data-content-ref', seen.ref);
   await expect(menu.locator('.cut-label')).toContainText(seen.text);
   const box = await menu.boundingBox();
@@ -242,18 +273,17 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
     .locator('#hud-ticker')
     .evaluate((el) => !(el as HTMLElement).hidden && el.getAttribute('data-content-ref'));
   expect(still).not.toBe(seen.ref);
-  await releaseBubble(page);
+  await expectSavedProvenance(page, seen.ref);
 
   // A touch on the ticker's part outside the stick and attack zones works mid-race.
-  const third = await nextBubble(page, seen.ref);
+  const third = await nextBubble(page, seen.ref, 'touch-outside');
   const outside = Math.max(third.x, stickRight + 10);
   expect(outside).toBeLessThan(third.right - 4);
-  expect(await holdTouch(page, outside, third.y, LONG_PRESS_MS)).toBe(1);
+  expect(await holdTouch(page, outside, third.y, LONG_PRESS_MS, true)).toBe(1);
   await expect(menu).toBeVisible();
   await expect(menu).toHaveAttribute('data-content-ref', third.ref);
   await page.locator('#cut-keep').click();
   await expect(menu).toBeHidden();
-  await releaseBubble(page);
 
   // The flag reached the settings record: the copied report lists it, and only the cut one.
   await page.keyboard.press('Escape');
@@ -274,7 +304,6 @@ test('the pause screen lists what you saw, and two taps cut a line into the repo
   await page.keyboard.press('Escape');
   const list = page.locator('#pause-screen #recently-seen');
   await expect(list).toBeVisible();
-  await releaseBubble(page);
   const row = list.locator(`.rs-item[data-content-ref="${seen.ref}"]`);
   await expect(row).toBeVisible();
   await expect(row).toContainText(seen.text);
@@ -290,6 +319,7 @@ test('the pause screen lists what you saw, and two taps cut a line into the repo
   await page.locator('#cut-confirm').click();
   await expect(page.locator('#cut-menu')).toBeHidden();
   await expect(row).toHaveCount(0);
+  await expectSavedProvenance(page, seen.ref);
   const report = await copiedReport(page, '#pause-copy-report');
   const line = report.split('\n').find((l) => l.includes('vetoes')) ?? '';
   console.log(line);
