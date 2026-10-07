@@ -130,7 +130,10 @@ export type {
   StreetFurniture,
 } from './furniture';
 // The physical world (the maintainer, 2026-10-06; docs/architecture.md, "Physical world"): the structures'
-// contract and the course query. Small and lazy-safe: the planners load as their own chunks.
+// contract and the course query. Small and lazy-safe: the planners load in their own lazy chunk.
+// A layer's layout (what render draws and its planner turns into solids) is in src/road/structures/, which
+// this index does not re-export: a static import from here would pull the planners into the sim chunk and the
+// first load. Render's lazy layers import them directly (scripts/module-map.mjs).
 export {
   ensureStructures,
   footContains,
