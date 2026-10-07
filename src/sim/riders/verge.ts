@@ -4,7 +4,9 @@
 // where ground is drawn"). The riding model (sim/riders/index.ts) asks here:
 // - where a rider may go across the road (sim/ground's `rideLimits`, widened where a fence is
 //   broken), and what each band's outer edge does to a rider who reaches it [default]:
-//   - `soft`: the ground just runs on; the rider runs out of room and slows a little, no event;
+//   - `soft`: the ground just runs on; the rider runs out of room and slows a little, no event (the
+//     old rules: with the course's honest edges, the default, nothing stands there, so it holds
+//     nothing and past it is out of bounds, sim/riders/course.ts);
 //   - `brush`: ferns, salal or bushes; a soft stop that slows hard, and a wobble on a real hit;
 //   - `water`: the sea or a swamp; a splash that slows hard, and a wobble when it splashes;
 //   - `hard` and `rail`: the M1 barrier rule (a scrape, a wobble, a crash from the crash speed);

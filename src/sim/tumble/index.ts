@@ -569,12 +569,17 @@ function startOverboard(
   const cross = data['cause'] === 'over' ? crossingOf(config, data, pos.dir) : null;
   if (cross) {
     const dropM = num(data, 'dropM');
+    const past = data['past'];
     r.over = {
-      past: data['past'] === 'water' ? 'water' : 'drop',
+      past: past === 'water' || past === 'ground' ? past : 'drop',
       dropM,
       high: highDrop(world.params, dropM),
     };
     r.railAt = cross;
+    // A crossing over a hole in the road (a gap's missing span, where nothing stands at the edge): no road to
+    // wake on there, so the gap's own rule says where (its far side, or the main road).
+    const hole = gapAt(config.road, cross.edge, cross.s, 0);
+    if (hole) r.gap = { edge: cross.edge, id: hole.id };
   } else {
     const id = data['feature'];
     const f =
@@ -587,6 +592,20 @@ function startOverboard(
   for (const c of [r.riderRig, r.bikeRig]) {
     c.overboard = true;
     emit(world, 'railOver', m.id, { body: c.kind, ...overData(r, true) }, { causeId: r.causeId });
+  }
+  // Out of bounds onto ground (the course's honest edges, sim/riders/course.ts): down already, where he came
+  // down, with nothing to fall into. The penalty starts now (`splash`, `past: 'ground'`: the plain quick
+  // reset, no water and no gag), then the respawn at the crossing as for any fall past the edge.
+  if (r.over?.past === 'ground') {
+    for (const c of [r.riderRig, r.bikeRig]) {
+      c.splashed = true;
+      for (const q of c.p) {
+        q.vx = 0;
+        q.vy = 0;
+        q.vz = 0;
+      }
+      splash(world, config, m, r, c);
+    }
   }
 }
 
@@ -718,7 +737,8 @@ function railEvents(
  * splash floats at the surface, for its gag.
  */
 function splash(world: World, config: SimConfig, m: Mover, r: TumbleRecord, c: Cluster): void {
-  if (r.over?.high === true) intoWater(config.road, c, HIGH_PLUNGE_M);
+  // Out of bounds onto ground there is no water to go under: the body stays where it came down.
+  if (r.over?.high === true && r.over.past !== 'ground') intoWater(config.road, c, HIGH_PLUNGE_M);
   const at = centre(c.p);
   const penaltyTicks = secondsToTicks(param(world, 'tumble.splashPenaltyS'));
   const data = { body: c.kind, penaltyTicks, x: at.x, z: at.z, ...overData(r, false) };

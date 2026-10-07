@@ -207,3 +207,106 @@ export function courseAt(
   }
   return best;
 }
+
+// ---- Another road's lanes near a point: the drawn edge kit's clearance (polish J2) ----
+// Render keeps every piece of a road's edge kit (a verge's fence, ferns and hedge, a guard rail, a bridge's rail)
+// off another road's lanes where two roads overlap (render/overlap.ts `EdgeLocator.onLanes`), so where a piece is
+// left out the sim's edge must hold nothing either (the maintainer, 2026-10-06: "never an invisible wall"). This is
+// the same rule, the same arithmetic, on the map (heights aside, as render's): tests/sim/no-invisible-walls.test.ts
+// holds the two equal.
+
+/** The cell of the vertex map `lanesNear` searches, m (render/overlap.ts's own). */
+const VERTEX_CELL_M = 16;
+const VERTEX_STRIDE = 1 << 24;
+const vertexKey = (i: number, j: number) => (i + 0x8000) * 0x10000 + (j + 0x8000);
+
+/** Every edge's centre-line vertices by cell, and how far from a vertex a point inside its lanes can lie. */
+interface VertexIndex {
+  cells: Map<number, number[]>;
+  reach: number;
+}
+
+const vertexIndexes = new WeakMap<RoadNetwork, VertexIndex>();
+
+function vertexIndexOf(road: RoadNetwork): VertexIndex {
+  const known = vertexIndexes.get(road);
+  if (known) return known;
+  const cells = new Map<number, number[]>();
+  let reach = 0;
+  for (const e of road.edges) {
+    reach = Math.max(reach, Math.abs(e.dMin), Math.abs(e.dMax), e.spacing);
+    for (let k = 0; k < e.count; k++) {
+      const key = vertexKey(
+        Math.floor((e.x[k] ?? 0) / VERTEX_CELL_M),
+        Math.floor((e.z[k] ?? 0) / VERTEX_CELL_M),
+      );
+      const list = cells.get(key);
+      if (list) list.push(e.index * VERTEX_STRIDE + k);
+      else cells.set(key, [e.index * VERTEX_STRIDE + k]);
+    }
+  }
+  const index = { cells, reach: reach + VERTEX_CELL_M / 2 };
+  vertexIndexes.set(road, index);
+  return index;
+}
+
+/** A world point's s and d on an edge from its vertex `best` (three steps), and how far past an end it lies. */
+function projectFrom(road: RoadNetwork, e: Edge, x: number, z: number, best: number) {
+  let s = best * e.spacing;
+  let d = 0;
+  for (let iter = 0; iter < 3; iter++) {
+    const clamped = Math.min(e.length, Math.max(0, s));
+    const f = road.frameAt(e.index, clamped);
+    const ox = x - f.x;
+    const oz = z - f.z;
+    d = -ox * f.tz + oz * f.tx;
+    s = clamped + ox * f.tx + oz * f.tz;
+  }
+  const past = s < 0 ? -s : s > e.length ? s - e.length : 0;
+  return { s: Math.min(e.length, Math.max(0, s)), d, past };
+}
+
+/**
+ * Whether a world point stands over the lanes of any edge but `except` (every drive, shoulder and shortcut lane),
+ * widened by `margin` m each side: render's rule for keeping a road's edge kit off another road's lanes.
+ */
+export function lanesNear(road: RoadNetwork, x: number, z: number, except: number, margin = 0): boolean {
+  const index = vertexIndexOf(road);
+  const reach = index.reach + margin;
+  const i0 = Math.floor((x - reach) / VERTEX_CELL_M);
+  const i1 = Math.floor((x + reach) / VERTEX_CELL_M);
+  const j0 = Math.floor((z - reach) / VERTEX_CELL_M);
+  const j1 = Math.floor((z + reach) / VERTEX_CELL_M);
+  // The nearest vertex of each edge with one near the point.
+  const nearest = new Map<number, { i: number; d2: number }>();
+  for (let i = i0; i <= i1; i++) {
+    for (let j = j0; j <= j1; j++) {
+      for (const v of index.cells.get(vertexKey(i, j)) ?? []) {
+        const edge = Math.floor(v / VERTEX_STRIDE);
+        if (edge === except) continue;
+        const e = road.edges[edge];
+        if (!e) continue;
+        const k = v - edge * VERTEX_STRIDE;
+        const dx = x - (e.x[k] ?? 0);
+        const dz = z - (e.z[k] ?? 0);
+        const d2 = dx * dx + dz * dz;
+        const at = nearest.get(edge);
+        if (!at || d2 < at.d2) nearest.set(edge, { i: k, d2 });
+      }
+    }
+  }
+  for (const [edge, { i }] of nearest) {
+    const e = road.edges[edge];
+    if (!e) continue;
+    const p = projectFrom(road, e, x, z, i);
+    if (p.past > 0.25) continue;
+    let lo = 0;
+    let hi = 0;
+    for (const lane of road.lanesAt(edge, p.s)) {
+      lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+      hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+    }
+    if (p.d > lo - margin && p.d < hi + margin) return true;
+  }
+  return false;
+}

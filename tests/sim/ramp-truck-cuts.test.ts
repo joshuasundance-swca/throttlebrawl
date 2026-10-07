@@ -116,8 +116,11 @@ interface Ride {
 /**
  * A ride from the approach: from `fromS` on the avenue in its right-hand lane at `speed`, the throttle
  * open up to `cap` m/s, a thumb lines the bike up with the truck's middle, then holds the stick right
- * from `pressAt` metres before the lip (negative: after it, in the air) until it is down again, and then
- * follows its lane to the end of the route.
+ * from `pressAt` metres before the lip (negative: after it, in the air) until it is down again or is
+ * handed over in the air to the road beyond (then it follows that road's lane, as after landing), and
+ * then follows its lane to the end of the route. Since the course's honest edges (#672) a flight held
+ * right all the way over the Plaza Cut's way in comes down past it, out of bounds, as it would for a
+ * player who never let go of the stick.
  */
 function ride(
   config: SimConfig,
@@ -144,7 +147,7 @@ function ride(
     if (onAvenue && p.s <= cut.truck.s0) foot = h.rider.speed;
     if (onAvenue && p.s <= lip) lipSpeed = h.rider.speed;
     let steer: number;
-    if (air || (!jumped && onAvenue && p.s >= lip - opts.pressAt)) steer = 1;
+    if ((air && onAvenue) || (!jumped && onAvenue && p.s >= lip - opts.pressAt)) steer = 1;
     else if (!jumped) steer = Math.max(-1, Math.min(1, (mid - p.d) * 0.35 - h.rider.yaw * 1.5));
     else {
       const lane = road.lanesAt(p.edge, p.s)[0];
