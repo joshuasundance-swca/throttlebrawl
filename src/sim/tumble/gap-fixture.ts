@@ -8,6 +8,7 @@ import {
   createRouteProgress,
   fixtureNetwork,
   type BakedBarrier,
+  type BakedTag,
   type BakedFeature,
   type BakedNetworkBundle,
   type BakedRoute,
@@ -35,6 +36,8 @@ export interface GapBridgeOptions {
   features?: readonly BakedFeature[];
   /** Barriers; absent means a 1 m rail on both sides for the whole length. */
   barriers?: readonly BakedBarrier[];
+  /** Scenery tags (what lies past the edges, road/beyond.ts); absent means none. */
+  tags?: readonly BakedTag[];
 }
 
 /** A straight bridge (road `a`) over the water, with a kicker, gaps and barriers as asked. */
@@ -47,6 +50,7 @@ export function gapBridge(opts: GapBridgeOptions = {}): BakedNetworkBundle {
     sampleSpacingM: number;
     features?: BakedFeature[];
     barriers?: BakedBarrier[];
+    tags?: BakedTag[];
     samples: { data: Record<string, number[]> };
   };
   const sp = road.sampleSpacingM;
@@ -74,6 +78,7 @@ export function gapBridge(opts: GapBridgeOptions = {}): BakedNetworkBundle {
   road.barriers = opts.barriers
     ? [...opts.barriers]
     : [{ s0: 0, s1: lengthM, side: 'both', kind: 'rail', heightM: 1 }];
+  if (opts.tags) road.tags = [...opts.tags];
   for (const j of bundle.network.junctions as unknown as { y: number }[]) j.y += GAP_DECK_Y;
   return bundle;
 }

@@ -22,13 +22,19 @@
 // - drift (playtest 3): a `driftEnd` that banks a chain scores the `data.points` sim/riders/drift.ts
 //   accrued (perDriftSecondCash per second of full slip at full speed, × the chain). A rider who
 //   stops racing with a chain open (the finish line, or classified at the race end) is paid it then
-//   (`closeStyle`, `driftFinish`), so no chain is forfeited at the line.
+//   (`closeStyle`, `driftFinish`), so no chain is forfeited at the line;
+// - roofRide (the maintainer, 2026-10-06: "land on it and ride on it with real physics"; sim/riders/
+//   supports.ts): a ride on top of a vehicle (traffic, or a ramp truck's top car) of at least
+//   `race.styleRoofMinS` of world time, worth perOncomingSecondCash × `race.styleRoofScale` a second,
+//   scored when the rider leaves it, unless it was thrown off (a crash). Its state is written only once
+//   a rider rides a roof, so a race where nobody does hashes as before.
 // Each scores a `style` event (data.kind, data.points) beside `addStyle`, for racers still racing;
 // the law never scores, and a source worth 0 cash emits nothing. Durations are world time, the sum
 // of timeScale / 60 over the ticks, so slow motion stretches nothing and hit-stop adds nothing.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import { topSpeedOf } from '../riders';
 import { driftFinish } from '../riders/drift';
+import { supportKindOf } from '../riders/supports';
 import type { SimConfig, SimEvent, SimStyleRewards, StyleKind, StyleRunSnapshot } from '../types';
 import { addStyle, emit, systemState, type Mover, type World } from '../world';
 
@@ -129,6 +135,32 @@ export const STYLE_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    // A ride on top of a vehicle (the maintainer, 2026-10-06; sim/riders/supports.ts) pays this share
+    // of the oncoming lane's cash a second: a small pay, as risky as riding against traffic is not.
+    // 0 (and a race whose tuning leaves it out) pays nothing. [default]
+    id: 'race.styleRoofScale',
+    group: 'race',
+    label: 'Style: roof ride × oncoming cash',
+    default: 0.5,
+    min: 0,
+    max: 3,
+    step: 0.25,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    // ...and only once it has lasted this long, s: a touch-down and off is no ride. [default]
+    id: 'race.styleRoofMinS',
+    group: 'race',
+    label: 'Style: roof ride at least',
+    default: 1,
+    min: 0.25,
+    max: 5,
+    step: 0.25,
+    unit: 's',
+    affectsSim: true,
+  },
 ];
 
 /** A trick's weight in style cash (× airtime cash × race.styleTrickScale): a flip counts its turns. */
@@ -152,6 +184,11 @@ interface StyleState {
   comboAtS: number[];
   /** By entity id: 1 once a finisher's open drift chain has been paid at the line (once only). */
   driftPaid: number[];
+  /**
+   * By entity id: world seconds of the ride on top of a vehicle in progress (supports), 0 when none.
+   * Created by the first roof ride, so a race without one hashes as before.
+   */
+  roofS?: number[];
 }
 
 function styleState(world: World): StyleState {
@@ -244,6 +281,30 @@ export function styleRunOf(world: World, config: SimConfig, id: EntityId): Style
 function cashOf(points: number): number {
   const cash = Math.round(points);
   return cash > 0 ? cash : 0;
+}
+
+/** Whether a rider rides on top of a vehicle now (traffic, or a ramp truck's top car: supports). */
+function onRoof(world: World, m: Mover): boolean {
+  if (m.mode !== 'Road') return false;
+  const kind = supportKindOf(world, m.id);
+  return kind === 'vehicle' || kind === 'truck';
+}
+
+/** Ends a roof ride: paid when it lasted long enough and did not end in a crash. */
+function endRoof(
+  world: World,
+  st: StyleState,
+  id: EntityId,
+  rewards: SimStyleRewards,
+  crashed: boolean,
+): void {
+  const roof = st.roofS;
+  const seconds = roof?.[id] ?? 0;
+  if (!roof || seconds <= 0) return;
+  roof[id] = 0;
+  if (crashed || seconds + 1e-9 < (world.params['race.styleRoofMinS'] ?? 1)) return;
+  const scale = world.params['race.styleRoofScale'] ?? 0;
+  score(world, id, 'roofRide', rewards.perOncomingSecondCash * scale * seconds, { seconds });
 }
 
 function endOncoming(world: World, st: StyleState, id: EntityId, rewards: SimStyleRewards): void {
@@ -355,9 +416,19 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
     const def = config.riders[m.riderIndex];
     const riding = m.mode === 'Road' || m.mode === 'Airborne';
     const fast = def !== undefined && m.speed >= share * topSpeedOf(world, config, def.bike.topSpeedMps);
-    if (riding && fast && !ridingBack(config, m) && inOncomingLane(config, m))
+    // (Up on a support, its own frame's speed: no oncoming run, the roof ride below instead.)
+    const up = supportKindOf(world, m.id) !== '';
+    if (riding && fast && !up && !ridingBack(config, m) && inOncomingLane(config, m))
       st.oncomingS[m.id] = (st.oncomingS[m.id] ?? 0) + dtS;
     else if ((st.oncomingS[m.id] ?? 0) > 0) endOncoming(world, st, m.id, rewards);
+    // A ride on top of a vehicle (supports): counted while on it, paid as it ends.
+    if (onRoof(world, m)) {
+      const roof = (st.roofS ??= []);
+      roof[m.id] = (roof[m.id] ?? 0) + dtS;
+    } else if ((st.roofS?.[m.id] ?? 0) > 0) {
+      const crashed = events.some((e) => e.type === 'crash' && e.actor === m.id);
+      endRoof(world, st, m.id, rewards, crashed);
+    }
   }
 }
 
@@ -380,6 +451,9 @@ export function closeStyle(
       const paid = driftFinish(world, m);
       if (paid) score(world, m.id, 'drift', paid.points, { chain: paid.chain });
     }
+    // A roof ride open as the rider stops racing: a finisher is paid it, anyone else loses it.
+    if ((st.roofS?.[m.id] ?? 0) > 0 && now !== 'racing')
+      endRoof(world, st, m.id, rewards, now !== 'finished');
     if ((st.oncomingS[m.id] ?? 0) <= 0 || now === 'racing') continue;
     if (now === 'finished') endOncoming(world, st, m.id, rewards);
     else st.oncomingS[m.id] = 0;

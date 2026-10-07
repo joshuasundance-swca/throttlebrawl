@@ -388,6 +388,24 @@ export const STAGING_LEGS = {
   },
 } as const;
 
+/**
+ * The bays with something standing above the deck (the new span's side walls, the repair platform's rails and
+ * posts), each with the variant of the model without it (appended after the kit's roots, so a spot's `variant`
+ * still names its kind), where its above-deck parts stand across the road (m from the middle) and the height
+ * under which the bare variant keeps its triangles (`belowDeck`). Where another road's lanes lie under those
+ * parts (a split or a join) the bay is placed bare, so none is drawn across a road the rider rides (polish J2).
+ * [default]
+ */
+export const BARE_BAYS: Readonly<
+  Partial<Record<BayKind, { variant: number; across: readonly number[]; topY: number }>>
+> = {
+  // The new span's wall slabs stand at 5.65 to 5.8 m, up to 0.85 m over the deck.
+  newSpan: { variant: BAY_KINDS.length, across: [5.8], topY: -0.401 },
+  newSpanTall: { variant: BAY_KINDS.length + 1, across: [5.8], topY: -0.401 },
+  // The platform's rails and rail posts (3.92 m; posts from -0.15 up to 1.12 m) and its outrigger posts (6 m).
+  staging: { variant: BAY_KINDS.length + 2, across: [3.92, STAGING_LEGS.posts.x], topY: -0.2 },
+};
+
 /** Appends a 6-sided tube from `a` to `b` to the vertex lists, outward normals, open ends. */
 export function pushTube(
   out: { pos: number[]; nrm: number[]; col: number[] },
@@ -462,9 +480,10 @@ export function pushCap(
 /**
  * The repair platform's variant with its outrigger piles (`STAGING_LEGS`) added: a new geometry (the
  * source is left alone), the kit's own triangles first and unchanged, so a role run still names them.
- * The kit variants are triangle lists with position, normal and colour only.
+ * The kit variants are triangle lists with position, normal and colour only. Without `withPosts` the
+ * tall outrigger posts, which rise past the deck's top, are left out (the bare variant, `BARE_BAYS`).
  */
-export function withStagingLegs(g: BufferGeometry): BufferGeometry {
+export function withStagingLegs(g: BufferGeometry, withPosts = true): BufferGeometry {
   const L = STAGING_LEGS;
   const add = { pos: [] as number[], nrm: [] as number[], col: [] as number[] };
   for (const z of L.stationsM) {
@@ -476,7 +495,7 @@ export function withStagingLegs(g: BufferGeometry): BufferGeometry {
     pushTube(add, [-x(L.braceY), L.braceY, z], [x(L.braceY), L.braceY, z], L.braceRadiusM, 4, L.colour);
     // The posts: tall, pale and clear of the rails, so a camera over the deck sees them against the sea.
     const P = L.posts;
-    for (const side of [-1, 1]) {
+    for (const side of withPosts ? [-1, 1] : []) {
       pushTube(add, [side * P.x, P.footY, z], [side * P.x, P.topY, z], P.radiusM, P.sides, P.colour);
       pushCap(add, [side * P.x, P.topY, z], P.radiusM, P.sides, P.capColour);
       pushTube(add, [side * L.topX, P.armY, z], [side * P.x, P.armY, z], P.armRadiusM, 4, P.colour);

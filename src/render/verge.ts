@@ -51,6 +51,7 @@ import {
 } from './barrier-looks';
 import { keptSamples, mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
+import { EdgeLocator } from './overlap';
 import { SEAWALL_LAND_M, themeAt } from './scenery';
 import { thinRank } from './scenery-merge';
 
@@ -89,6 +90,17 @@ const HEDGE_TAG = 'gardens';
 // The railing's numbers (a panel's length, its stand-off from the lane edge, its draw distance) live with
 // its look in barrier-looks.ts; these re-exports are what the railing's tests read.
 export { RAILING_DRAW_M, RAILING_OUT_M, RAILING_SEG_M };
+/**
+ * How far past another road's lanes a piece of the edge kit stands clear of them, m: a fence panel's and a
+ * hedge's own thickness, a rail panel's and a fern clump's reach (its fronds, times its size). [default]
+ */
+const FENCE_CLEAR_M = 0.2;
+const HEDGE_CLEAR_M = 0.4;
+const LOOK_CLEAR_M = 0.3;
+const BRUSH_CLEAR_M = 0.9;
+/** A panel's line is looked along at this many steps, ends included. */
+const KIT_SAMPLES = 4;
+
 /** Fences and ferns are drawn out to this far from the camera (the band always), m. [default] */
 export const VERGE_DRAW_M = 150;
 /** Past this fences and ferns draw without their thinnest faces (run W-S), m. [default] */
@@ -525,6 +537,11 @@ export class VergeLayer {
   private dirty = true;
   /** The share of the fern clumps drawn (a quality tier's `treeShare`, quality.ts; 1 = every one). */
   private treeShare = 1;
+  /**
+   * Finds the other roads' lanes under a piece of the edge kit (polish J2): where two roads overlap at a
+   * split or a join, a verge's fence, brush or hedge and a rail or guardrail would stand in the other's lanes.
+   */
+  private readonly locator: EdgeLocator;
 
   constructor(
     private readonly road: RoadNetwork,
@@ -532,6 +549,7 @@ export class VergeLayer {
     opts: VergeOptions,
   ) {
     this.group.name = 'verge';
+    this.locator = new EdgeLocator(road);
     this.fenceStyle = fenceStyleFor(opts.tags);
     const forest = opts.tags.has('forest');
     this.fenceColour = new Color(
@@ -659,6 +677,8 @@ export class VergeLayer {
             road.vergeAt(e.index, s0 + FENCE_SEG_M, name).dOuter,
             0,
           );
+          // A panel that reaches another road's lanes stops short of them (and the next clear one starts again).
+          if (this.onOtherLanes(e.index, a, b, FENCE_CLEAR_M)) continue;
           const at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 0.05, z: (a.z + b.z) / 2 };
           q.setFromAxisAngle(up, Math.atan2(-(b.z - a.z), b.x - a.x));
           const len = Math.hypot(b.x - a.x, b.z - a.z) / FENCE_SEG_M;
@@ -672,8 +692,10 @@ export class VergeLayer {
           if (v.widthM < MIN_BAND_M || v.edge !== 'brush' || hedged(e.tags, side, s)) continue;
           const k = hash(e.index, s, side);
           const at = road.toWorld(e.index, s + (k - 0.5) * 1.2, v.dOuter + side * (0.25 + k * 0.5), -0.05);
-          q.setFromAxisAngle(up, k * Math.PI * 2);
           const size = 0.75 + hash(e.index, s, side * 3) * 0.6;
+          // A clump's fronds reach about a metre from its middle: none leans over another road's lanes.
+          if (this.onOtherLanes(e.index, at, at, BRUSH_CLEAR_M * size)) continue;
+          q.setFromAxisAngle(up, k * Math.PI * 2);
           const m = new Matrix4().compose(new Vector3(at.x, at.y, at.z), q, new Vector3(size, size, size));
           this.clumps.push({ x: at.x, z: at.z, m });
         }
@@ -709,7 +731,10 @@ export class VergeLayer {
     const q = new Quaternion();
     const on = (s: number): boolean => {
       const v = this.road.vergeAt(e.index, s, name);
-      return v.widthM >= MIN_BAND_M && v.edge === 'brush' && hedged(e.tags, side, s);
+      if (v.widthM < MIN_BAND_M || v.edge !== 'brush' || !hedged(e.tags, side, s)) return false;
+      // The hedge stops where another road's lanes begin (the crooked block's ends), and starts again past them.
+      const p = this.road.toWorld(e.index, s, v.dOuter + side * HEDGE_OFF_M, 0);
+      return !this.locator.onLanes(p.x, p.z, e.index, HEDGE_CLEAR_M);
     };
     const at = (s: number): Point3 =>
       this.road.toWorld(e.index, s, this.road.vergeAt(e.index, s, name).dOuter + side * HEDGE_OFF_M, 0);
@@ -752,6 +777,16 @@ export class VergeLayer {
       }
       s = t > s ? t : Math.min(e.length, s + 0.25);
     }
+  }
+
+  /** Whether the line from a to b (or the point, when they are one) stands over another edge's lanes, within `margin` m. */
+  private onOtherLanes(edge: number, a: Point3, b: Point3, margin: number): boolean {
+    for (let k = 0; k <= KIT_SAMPLES; k++) {
+      const t = k / KIT_SAMPLES;
+      if (this.locator.onLanes(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, edge, margin)) return true;
+      if (a === b) return false;
+    }
+    return false;
   }
 
   /** The set of a barrier look, made on its first panel: its geometry and its instanced mesh. */
@@ -814,6 +849,8 @@ export class VergeLayer {
       const flat = Math.hypot(c.x - a.x, c.z - a.z);
       if (flat < 1e-3) return;
       if (keepOffRamps && nearRamp((a.x + c.x) / 2, (a.z + c.z) / 2)) return;
+      // A rail or guardrail panel stops short of another road's lanes (where two roads overlap at a split or a join).
+      if (this.onOtherLanes(e.index, a, c, LOOK_CLEAR_M)) return;
       yaw.setFromAxisAngle(up, Math.atan2(-(c.z - a.z), c.x - a.x));
       pitch.setFromAxisAngle(along, Math.atan2(c.y - a.y, flat));
       const x = (a.x + c.x) / 2;
