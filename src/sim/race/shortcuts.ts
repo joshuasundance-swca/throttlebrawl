@@ -6,8 +6,10 @@
 // it skipped less its own length) at the rider's average speed along it. [default]
 // A respawn is never a find (run A's live check: a rider who missed the Seven Mile's staging hop,
 // splashed and woke on the highway was stamped FOUND IT with a negative saving): a rider who
-// respawns while timed gives the run up, and is timed afresh only by entering a shortcut again.
+// respawns while timed gives the run up, and is timed afresh only by entering a shortcut again. So
+// does one handed over through the air onto another road (over the barrier, 2026-10-06).
 import type { EntityId } from '../../core';
+import { hoppedRoads } from '../riders';
 import type { SimConfig } from '../types';
 import { emit, systemState, type World } from '../world';
 
@@ -32,6 +34,8 @@ function runState(world: World): ShortcutRun {
 
 /** Most shortcuts a race tracks (bits in `stamped`). */
 const MAX_SHORTCUTS = 30;
+/** `on` for a rider off the main path by air: no run until it is back on the main path. */
+const OFF_BY_AIR = -2;
 
 /** Times and stamps each player's shortcuts; `isPlayer` says who counts (racing players). */
 export function stampShortcuts(world: World, config: SimConfig, isPlayer: (id: EntityId) => boolean): void {
@@ -51,7 +55,18 @@ export function stampShortcuts(world: World, config: SimConfig, isPlayer: (id: E
       continue;
     }
     const onMain = main.includes(m.pos.edge);
+    // Over the barrier onto another road (2026-10-06, sim/riders/gap.ts): a run that leaves its
+    // shortcut through the air is given up, and none starts until the rider is back on the main
+    // path, so a road reached by air (the old Seven Mile Bridge from the new one) is never a find.
+    if (hoppedRoads(world, id)) {
+      st.on[id] = onMain ? -1 : OFF_BY_AIR;
+      continue;
+    }
     const current = st.on[id] ?? -1;
+    if (current === OFF_BY_AIR) {
+      if (onMain) st.on[id] = -1;
+      continue;
+    }
     if (current < 0) {
       if (onMain) continue;
       const k = list.findIndex((z) => z.toEdge === m.pos.edge);

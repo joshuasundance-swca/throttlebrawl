@@ -140,6 +140,10 @@ export const ROUTE_PICKER_CSS = `
 #route-picker .route-blurb { font: italic 500 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
   text-shadow: 1px 1px 0 #111; max-width: 100%; }
 #region-picker.route-picked .region-blurb { display: none; }
+/* The word in the row's place while the picked region's roads are not in (polish batch E's check, punch
+   item 1). */
+#route-picker .route-note { font: italic 600 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
+  text-shadow: 1px 1px 0 #111; max-width: 100%; }
 `;
 
 export interface RoutePicker {
@@ -149,6 +153,13 @@ export interface RoutePicker {
   set(routes: readonly RouteOption[], picked?: string | null): void;
   /** The picked route's id, or null for the region's own road. */
   readonly route: string | null;
+  /**
+   * A word in the row's place (the picked region's roads loading, or why they did not load); null
+   * takes it away. The picker shows while there is a word, even with no road to choose.
+   */
+  setNote(text: string | null): void;
+  /** Keeps the word back while something else on the screen says it (the did-not-load card). */
+  quiet(on: boolean): void;
 }
 
 /**
@@ -204,13 +215,30 @@ export function createRoutePicker(
   const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncCue);
   const blurb = document.createElement('div');
   blurb.className = 'route-blurb';
+  const note = document.createElement('div');
+  note.id = 'route-note';
+  note.className = 'route-note';
+  note.setAttribute('role', 'status');
+  note.hidden = true;
+  let noteText: string | null = null;
+  let quiet = false;
   const root = document.createElement('div');
   root.id = 'route-picker';
   root.hidden = true;
-  root.append(label, strip, blurb);
+  root.append(label, strip, blurb, note);
 
+  /** Shows the picker while there is a road to choose or a word to say; the row only for the first. */
+  const syncShown = () => {
+    const choice = routes.length >= 2;
+    const said = noteText !== null && !quiet;
+    if (note.textContent !== (noteText ?? '')) note.textContent = noteText ?? '';
+    note.hidden = !said;
+    label.hidden = !choice;
+    strip.hidden = !choice;
+    root.hidden = !choice && !said;
+  };
   const draw = () => {
-    root.hidden = routes.length < 2;
+    syncShown();
     row.replaceChildren(
       ...routes.map((o) => {
         const b = button(routeChipId(o.id), o.name, () => tap(o.id));
@@ -226,7 +254,7 @@ export function createRoutePicker(
     for (const chip of row.children) watch?.observe(chip);
     syncCue();
     const picked = routes.find((o) => o.id === route);
-    const real = !root.hidden && picked !== undefined && picked.id !== null && !!picked.blurb;
+    const real = routes.length >= 2 && picked !== undefined && picked.id !== null && !!picked.blurb;
     blurb.textContent = real ? (picked.blurb ?? '') : '';
     blurb.hidden = !real;
     onDraw(real);
@@ -261,6 +289,15 @@ export function createRoutePicker(
     },
     get route() {
       return route;
+    },
+    setNote(text) {
+      noteText = text;
+      syncShown();
+    },
+    quiet(on) {
+      if (on === quiet) return;
+      quiet = on;
+      syncShown();
     },
   };
 }

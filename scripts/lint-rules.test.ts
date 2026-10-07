@@ -94,6 +94,12 @@ describe('lint rules fire', () => {
       'modules/boundaries',
     ],
     [
+      'render reaching into road past its index and its structure planners',
+      'src/render/probe.ts',
+      "export * from '../road/land';",
+      'modules/boundaries',
+    ],
+    [
       'ui importing dev (composition root rule)',
       'src/ui/probe.ts',
       "export * from '../dev';",
@@ -163,6 +169,11 @@ describe('lint rules stay quiet on allowed code', () => {
     ],
     ['sim sub-folders importing each other', 'src/sim/riders/probe.ts', "export * from '../world/store';"],
     ['render importing the sim contract', 'src/render/probe.ts', "export type * from '../sim/api';"],
+    [
+      "render importing one of road's lazy structure planners (the physical world, 2026-10-06)",
+      'src/render/probe.ts',
+      "export * from '../road/structures/downtown';",
+    ],
     ['render importing three', 'src/render/probe.ts', "export { Scene } from 'three';"],
     [
       'Math.sqrt and Math.random outside the sim',

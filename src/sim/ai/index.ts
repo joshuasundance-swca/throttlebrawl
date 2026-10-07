@@ -36,7 +36,7 @@ import {
   type TuningParamDecl,
 } from '../../core';
 import type { RoadNetwork, RouteBranch, RouteShortcut } from '../../road';
-import { behaviourOf, combatView, pickupWeapon, STOWED_H } from '../combat';
+import { behaviourOf, combatView, inReachHeight, pickupWeapon, STOWED_H } from '../combat';
 import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
@@ -429,6 +429,9 @@ function playerIds(world: World, config: SimConfig): EntityId[] {
 
 function canFight(world: World, config: SimConfig, other: Mover, me: Mover): boolean {
   if (other.id === me.id || other.kind !== 'rider' || other.mode !== 'Road') return false;
+  // Out of a hit's reach in height (sim/combat, `combat.reachHeightM`; supports: a rider up on a
+  // truck's roof): not worth chasing for a fight.
+  if (!inReachHeight(world, me, other)) return false;
   const def = config.riders[other.riderIndex];
   if (!def || def.faction === 'law') return false;
   // Someone knocked off (health 0) is out of the fight, as combat's auto-target also says.
