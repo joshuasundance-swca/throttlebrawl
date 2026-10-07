@@ -768,14 +768,42 @@ const regionChip = (page: Page, name: string) =>
 const SF_MAPS = /\/assets\/osm-sf-[^/]*\.json(\?.*)?$/;
 const KEYS_MAPS = /\/assets\/osm-keys-[^/]*\.json(\?.*)?$/;
 
-/** How many painted lines of words on the screen say `words` (a leaf element's text matches). */
-const linesSaying = (page: Page, words: RegExp) =>
+/**
+ * How many painted lines of words on the screen say `words` (a leaf element's text matches). With
+ * `plantDoubled` (`said` is then the words) it first plants the doubled state the busy line once drew:
+ * the busy line up and the route row's word drawn under it, both saying `said`; it counts and puts
+ * everything back, all in one task, so the UI cannot take the busy line down between the planting and
+ * the count (trains 426 to 435: the separate style tag left the control at 1 line).
+ */
+const linesSaying = (page: Page, words: RegExp, plantDoubled: string | null = null) =>
   page.evaluate(
-    ({ source }) =>
-      [...document.querySelectorAll('#ui *, #build-stamp')].filter(
+    ({ source, said }) => {
+      const restore: (() => void)[] = [];
+      if (said !== null) {
+        const busy = document.getElementById('busy');
+        const busyText = document.getElementById('busy-text');
+        const picker = document.getElementById('route-picker');
+        const note = document.getElementById('route-note');
+        for (const e of [busy, picker, note]) {
+          if (!e) continue;
+          const was = e.hidden;
+          e.hidden = false;
+          restore.push(() => (e.hidden = was));
+        }
+        for (const e of [busyText, note]) {
+          if (!e) continue;
+          const was = e.textContent;
+          e.textContent = said;
+          restore.push(() => (e.textContent = was));
+        }
+      }
+      const n = [...document.querySelectorAll('#ui *, #build-stamp')].filter(
         (e) => e.children.length === 0 && e.checkVisibility() && new RegExp(source).test(e.textContent ?? ''),
-      ).length,
-    { source: words.source },
+      ).length;
+      for (const undo of restore.reverse()) undo();
+      return n;
+    },
+    { source: words.source, said: plantDoubled },
   );
 
 async function toMenu(page: Page) {
@@ -822,14 +850,20 @@ test('the did-not-load card says what failed, goes with its screen and a busy li
   // the busy line, so "Loading San Francisco" showed doubled): the word steps aside under the line.
   await expect(note).toBeHidden();
   expect(await linesSaying(page, /Loading San Francisco/), 'the busy line says it once').toBe(1);
-  // Negative control 7: the word drawn under the line as it was; the same count says twice.
-  const doubled = await page.addStyleTag({
-    content: '#ui #route-note[hidden] { display: block !important; }',
-  });
-  expect(await linesSaying(page, /Loading San Francisco/), 'control: the word drawn too').toBe(2);
-  await doubled.evaluate((e) => (e as HTMLElement).remove());
+  // Negative control 7: the doubled state as it was, planted (the busy line and the word under it, both
+  // saying it); the same count says twice. Planted, not waited for: the load may end at any moment.
+  expect(
+    await linesSaying(page, /Loading San Francisco/, 'Loading San Francisco…'),
+    'control: the word drawn too',
+  ).toBe(2);
   await expect(page.locator('#busy')).toBeHidden({ timeout: 60_000 });
   await expect(card).toBeVisible();
+  // The control does not lean on the busy line still being up (the CI flake), and puts everything back.
+  expect(
+    await linesSaying(page, /Loading San Francisco/, 'Loading San Francisco…'),
+    'control: planted after the load ended',
+  ).toBe(2);
+  expect(await linesSaying(page, /Loading San Francisco/), 'the planting was put back').toBe(0);
 
   // The card belongs to the menu: the career does not carry it, and coming back does not bring it
   // back. The menu still says why there is no route row (polish batch E's check, punch item 1).
@@ -1082,37 +1116,61 @@ test("the route row's Reload and its wait fit every size and Text size, and a ta
       expect.soft(across, `${textSize}, ${size.name}: the button is across the screen`).toBe(true);
     }
   }
-  // The wait too, at the largest Text size (the last of the loop): the longest word the row says.
+  // A tap on the word's Reload reloads the page, for the newest build. It comes before the wait below: in
+  // the host's wait the loader asks the host nothing (platform/retry-fetch.ts, its hold), so a 404 sent
+  // inside the wait never reaches the page and no Reload can come up (trains 426 to 435 ran the test out
+  // here). The reload ends the hold, so the wait is checked on the fresh page, with no wait for the clock.
+  const action = page.locator('#route-note-action');
+  await leaveFullscreen(page);
+  await page.setViewportSize({ width: 915, height: 412 });
+  await expect(action, 'the Reload beside the word, before the tap').toBeVisible();
+  // A plain DOM scroll, as in checkBuildId: train 406 printed this test's last build-id line and then ran
+  // the slice out of its job here (the keeper, 2026-10-07; not reproduced locally). The click below still
+  // waits for the button to be actionable, with a bound, as does the wait for the load.
+  await action.evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  // The wait's answer is set before the reload, so the fresh page's own load of San Francisco (if the
+  // pick is kept) meets it too.
   await page.unroute(SF_MAPS);
   await page.route(SF_MAPS, (route) =>
     route.fulfill({ status: 429, headers: { 'Retry-After': '30' }, body: 'busy' }),
   );
+  await Promise.all([page.waitForEvent('load', { timeout: 30_000 }), action.click({ timeout: 10_000 })]);
+  await expect(page.locator('#start-screen')).toBeVisible();
+
+  // The wait too, at the largest Text size (the last of the loop, kept by the reload): the longest word
+  // the row says.
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
   await regionChip(page, 'Keys').click();
   await regionChip(page, 'San Francisco').click();
   await expect(card).toBeVisible({ timeout: 30_000 });
   await page.locator('#menu-settings').click();
   await page.locator('#settings-back').click();
   await expect(page.locator('#route-note')).toHaveText(/ Tap Race to try again in \d+ s\.$/);
-  await expect(page.locator('#route-note-action'), 'a 429 offers no Reload').toBeHidden();
-  await checkFit(page, '#menu', 'menu with the route wait, largest');
-  await checkBuildId(page, 'menu with the route wait, largest');
+  await expect(action, 'a 429 offers no Reload').toBeHidden();
+  expect(
+    await page.evaluate(() => document.getElementById('ui')?.dataset['text'] ?? ''),
+    'the reload kept the largest Text size',
+  ).toBe('largest');
+  // Control: the old order. A 404 sent inside the wait never reaches the page, so the row offers no
+  // Reload; that is why the tap above comes first. The product is right not to: the hold is the host's
+  // own ask not to be asked, and only an answer can say the files are gone.
+  let asked = 0;
   await page.unroute(SF_MAPS);
-  // A tap on the word's Reload reloads the page, for the newest build.
-  await page.route(SF_MAPS, (route) => route.fulfill({ status: 404, body: 'gone' }));
+  await page.route(SF_MAPS, (route) => {
+    asked++;
+    return route.fulfill({ status: 404, body: 'gone' });
+  });
   await regionChip(page, 'Keys').click();
   await regionChip(page, 'San Francisco').click();
   await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('#load-retry .reload-offer-text')).toHaveText(/the game server had a problem/);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-back').click();
-  await leaveFullscreen(page);
-  await page.setViewportSize({ width: 915, height: 412 });
-  // A plain DOM scroll, as in checkBuildId: train 406 printed this test's last build-id line and then ran
-  // the slice out of its job here (the keeper, 2026-10-07; not reproduced locally). The click below still
-  // waits for the button to be actionable.
-  await page
-    .locator('#route-note-action')
-    .evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
-  await Promise.all([page.waitForEvent('load'), page.locator('#route-note-action').click()]);
-  await expect(page.locator('#start-screen')).toBeVisible();
+  await expect(page.locator('#route-note')).toHaveText(/ Tap Race to try again in \d+ s\.$/);
+  await expect(action, 'control: a 404 inside the wait offers no Reload').toBeHidden();
+  expect(asked, 'control: inside the wait the host is not asked').toBe(0);
+  await checkFit(page, '#menu', 'menu with the route wait, largest');
+  await checkBuildId(page, 'menu with the route wait, largest');
   await page.unroute(SF_MAPS);
 });

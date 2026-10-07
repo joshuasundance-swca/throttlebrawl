@@ -72,6 +72,14 @@ describe('the build id on the menu', () => {
     );
   });
 
+  it("names a build id drawn over a card's blank corner, beside its words", () => {
+    // Polish T's check: at 568x320 the stamp stepped clear of What's new's words but sat over its box.
+    const card: PaintedThing = { name: 'the card div#whats-new', kind: 'card', box: box(150, 230, 420, 400) };
+    expect(buildIdFindings([{ name: 'the corner stamp', box: box(8, 392, 300, 408) }], [card], view)).toEqual(
+      ['the corner stamp covers the card div#whats-new'],
+    );
+  });
+
   it('names a build id drawn over a control', () => {
     expect(buildIdFindings([{ name: 'the footer', box: box(430, 310, 500, 326) }], things, view)).toEqual([
       'the footer covers the control button#menu-race',

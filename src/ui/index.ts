@@ -2098,6 +2098,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     '#career-results:not([hidden]) *',
     '#career-teaser:not([hidden]) *',
   ].join(', ');
+  // On the menu the boxes of its cards and titles count whole, not only their lines of words: the menu's
+  // build id covers no card or title (polish T's check: at 568x320 the stamp sat over What's new's blank
+  // corner, beside its words). The menu carries the id in its footer or its last line when the stamp hides.
+  // The career keeps its words-only rule (wave B: a card's blank corner never blocks the stamp there).
+  const MENU_BOXES = '#menu:not([hidden]) :is(.card, .title, h1, h2, h3)';
   let stampQueued = false;
   /**
    * The menu's footer never lies over a control or a line of words (polish batch E's check, punch
@@ -2118,7 +2123,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     for (const e of menu.querySelectorAll<HTMLElement>('*')) {
       if (menuFooter.contains(e) || e.getClientRects().length === 0) continue;
       if (getComputedStyle(e).visibility === 'hidden') continue;
-      if (e.matches(STAMP_AVOIDS) && under(boxOf(e.getBoundingClientRect()))) return true;
+      if (e.matches(`${STAMP_AVOIDS}, .card, .title, h1, h2, h3`) && under(boxOf(e.getBoundingClientRect())))
+        return true;
       for (const n of e.childNodes) {
         if (n.nodeType !== Node.TEXT_NODE || (n.textContent ?? '').trim() === '') continue;
         const line = document.createRange();
@@ -2182,6 +2188,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         words.selectNodeContents(n);
         for (const r of words.getClientRects()) controls.push(boxOf(r));
       }
+    }
+    for (const e of root.querySelectorAll<HTMLElement>(MENU_BOXES)) {
+      if (e.getClientRects().length === 0 || getComputedStyle(e).visibility === 'hidden') continue;
+      controls.push(boxOf(e.getBoundingClientRect()));
     }
     const spot = pickStampSpot({ left: leftBox, right: rightBox }, controls);
     if (spot === 'right') stamp.classList.add('at-right');
