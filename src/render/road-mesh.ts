@@ -511,6 +511,8 @@ const GORE_REACH_M = 150;
 
 /** How far either side a main road's drawn span is held when a shortcut under it is clipped, m (a sample step). */
 const ROW_HOLD_M = 2;
+/** The s step at which a main road's shoulder reach is looked up for a shortcut's clip, m. */
+const DRAWN_STEP_M = 0.5;
 /** The drawn span of an edge, verges included: what hides a surface drawn under it. */
 function outerSpan(e: Edge): readonly [number, number] {
   return [e.dMin - VERGE_M, e.dMax + VERGE_M];
@@ -1043,39 +1045,61 @@ export function buildRoadScene(
   };
   const zones = road.splitZones().filter((z) => !secretEdge(z.toEdge));
   /**
-   * The span a main road draws at s: its outer span, less the shoulder it leaves out over a lower road's lanes
-   * (`yieldReach` below, the same `clearReach`). A shortcut under the part a main road leaves out is not hidden
-   * there, so it is not clipped there either: clipped under a shoulder that yields to it, the Jones Street choice's
-   * shortcut drew nothing where neither road did (the junction sweep's holes on Russian Hill).
+   * How far out a main road's shoulder reaches on one side at s (its lanes' edge when it yields from there): its
+   * outer span, less what it leaves out over a lower road's lanes (`yieldReach` below, the same `clearReach`). A
+   * shortcut under the part a main road leaves out is not hidden there, so it is not clipped there either: clipped
+   * under a shoulder that yields to it, the Jones Street choice's shortcut drew nothing where neither road did (the
+   * junction sweep's holes on Russian Hill). Kept per DRAWN_STEP_M of s, so the clip's search asks each once.
    */
-  const drawnSpanAt = (o: Edge, os: number): readonly [number, number] => {
-    const [lo, hi] = outerSpan(o);
+  const reachKept = new Map<string, number>();
+  const shoulderReachAt = (o: Edge, k: number, side: -1 | 1): number => {
+    const key = `${o.index}:${k}:${side}`;
+    const kept = reachKept.get(key);
+    if (kept !== undefined) return kept;
+    const os = Math.max(0, Math.min(o.length, k * DRAWN_STEP_M));
     const l = laneSpans(road.lanesAt(o.index, os));
     const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
-    const left = locator.clearReach(o.index, os, llo, lo, -0.02, GROUND_YIELD_MARGIN_M, GROUND_OVER_ROAD_M);
-    const right = locator.clearReach(o.index, os, lhi, hi, -0.02, GROUND_YIELD_MARGIN_M, GROUND_OVER_ROAD_M);
-    return [left ?? llo, right ?? lhi];
+    const [lo, hi] = outerSpan(o);
+    const near = side < 0 ? llo : lhi;
+    const r =
+      locator.clearReach(
+        o.index,
+        os,
+        near,
+        side < 0 ? lo : hi,
+        -0.02,
+        GROUND_YIELD_MARGIN_M,
+        GROUND_OVER_ROAD_M,
+      ) ?? near;
+    reachKept.set(key, r);
+    return r;
   };
   // Held over a sample step either side: both roads' edges run straight between their own rows, so where the
   // yield begins or ends between rows, the shortcut is drawn rather than leave a sliver that neither draws.
-  const drawnSpan = (o: Edge, os: number): readonly [number, number] => {
-    let lo = -Infinity;
-    let hi = Infinity;
-    for (const at of [os - ROW_HOLD_M, os, os + ROW_HOLD_M]) {
-      const sp = drawnSpanAt(o, Math.max(0, Math.min(o.length, at)));
-      lo = Math.max(lo, sp[0]);
-      hi = Math.min(hi, sp[1]);
+  const shoulderReach = (o: Edge, os: number, side: -1 | 1): number => {
+    const k0 = Math.floor((os - ROW_HOLD_M) / DRAWN_STEP_M);
+    const k1 = Math.ceil((os + ROW_HOLD_M) / DRAWN_STEP_M);
+    let r = side < 0 ? -Infinity : Infinity;
+    for (let k = k0; k <= k1; k++) {
+      const at = shoulderReachAt(o, k, side);
+      r = side < 0 ? Math.max(r, at) : Math.min(r, at);
     }
-    return [lo, hi];
+    return r;
   };
   /** Whether a main (non-shortcut) road draws its surface under a point of edge e. */
   const underMain = (e: Edge, s: number, d: number): boolean => {
     const p = w(e.index, s, d, 0);
-    const main = (o: Edge) => !hasShortcut(o);
-    return (
-      locator.covered(p.x, p.z, e.index, outerSpan, main) &&
-      locator.covered(p.x, p.z, e.index, drawnSpan, main)
-    );
+    for (const h of locator.at(p.x, p.z, e.index)) {
+      const o = road.edges[h.edge];
+      if (!o || hasShortcut(o)) continue;
+      const [lo, hi] = outerSpan(o);
+      if (!(h.d > lo && h.d < hi)) continue;
+      const l = laneSpans(road.lanesAt(o.index, h.s));
+      const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
+      if (h.d >= llo && h.d <= lhi) return true;
+      if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
+    }
+    return false;
   };
   /** Whether another road's lanes (drive or shortcut) run under a point of edge e. */
   const onOtherLanes = (e: Edge, s: number, d: number): boolean => {
