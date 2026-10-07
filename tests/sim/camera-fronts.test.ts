@@ -22,7 +22,8 @@ import { buildSimConfig, createStreamCache } from '../../src/app';
 import { CAMERA_TUNING, createFollowCamera, type CameraPose, type FollowCamera } from '../../src/camera';
 import { registryFromGlob } from '../../src/content';
 import { emptyActions, toSimInput } from '../../src/input';
-import type { BakedRoad } from '../../src/road';
+import { raceStructures, type BakedRoad } from '../../src/road';
+import { insideSolid, solidsNear } from '../../src/camera/solids';
 import { createSim, type SimConfig } from '../../src/sim/api';
 import { planDowntown, towerFootprint } from '../../src/render/downtown';
 import { createFlatLook } from '../../src/render/look';
@@ -198,6 +199,15 @@ interface Tally {
   /** Frames the eye was inside a front, for the camera as it was, as shipped, and the pushed control. */
   old: number;
   now: number;
+  /** The same for the camera that also reads the race's structures plan (the physical world, 2026-10-06). */
+  planned: number;
+  plannedWhere: Map<string, number>;
+  /** Frames the eye was inside one of the plan's own solids (padded by the near plane): the plan camera, and the old one. */
+  plannedSolid: number;
+  oldSolid: number;
+  /** The same, strictly inside a solid (no near-plane pad). */
+  plannedInside: number;
+  oldInside: number;
   pushed: number;
   oldWhere: Map<string, number>;
   nowWhere: Map<string, number>;
@@ -225,6 +235,12 @@ async function street(eventId: string, seeds: readonly number[]): Promise<Tally>
     frames: 0,
     old: 0,
     now: 0,
+    planned: 0,
+    plannedWhere: new Map(),
+    plannedSolid: 0,
+    oldSolid: 0,
+    plannedInside: 0,
+    oldInside: 0,
     pushed: 0,
     oldWhere: new Map(),
     nowWhere: new Map(),
@@ -234,7 +250,9 @@ async function street(eventId: string, seeds: readonly number[]): Promise<Tally>
     const config: SimConfig = buildSimConfig(REG, STREAMS.forEvent(REG, eventId), { seed, eventId });
     const fronts = await frontsOf(config);
     const sim = createSim(config);
-    const cams = [cameraFor(config.road, 0), cameraFor(config.road, 1)] as const;
+    const cams = [cameraFor(config.road, 0), cameraFor(config.road, 1), cameraFor(config.road, 1)] as const;
+    // The race's plan, as the sim makes it (the third camera reads it: the fronts it holds are kept clear as solids).
+    const plan = raceStructures(config.road, config.seed);
     // The seed picks the side and the place across the sidewalk (0 its kerb, 1 its back).
     const side: 1 | -1 = seed % 2 === 0 ? -1 : 1;
     const frac = 0.15 + 0.7 * ((seed * 0.618034) % 1);
@@ -267,12 +285,10 @@ async function street(eventId: string, seeds: readonly number[]): Promise<Tally>
         drift: m.drift,
         wheelie: m.wheelie,
       };
-      const poses: CameraPose[] = cams.map((cam) => {
+      const poses: CameraPose[] = cams.map((cam, k) => {
         cam.onEvents(events);
-        const pose = started
-          ? cam.update(target, DT, { entities: snap.entities, aspect: ASPECT })
-          : cam.snap(target, { aspect: ASPECT });
-        return pose;
+        const ctx = { entities: snap.entities, aspect: ASPECT, ...(k === 2 ? { structures: plan } : {}) };
+        return started ? cam.update(target, DT, ctx) : cam.snap(target, ctx);
       });
       started = true;
       if (events.some((e) => e.type === 'crash' && e.actor === m.id)) {
@@ -282,8 +298,21 @@ async function street(eventId: string, seeds: readonly number[]): Promise<Tally>
       if (window < 0) continue;
       if (m.mode === 'Road' && window > AFTER_TICKS) window = AFTER_TICKS;
       window--;
-      const [old, now] = poses as [CameraPose, CameraPose];
+      const [old, now, planned] = poses as [CameraPose, CameraPose, CameraPose];
       tally.frames++;
+      const p = insideFront(fronts, planned);
+      if (p) {
+        tally.planned++;
+        tally.plannedWhere.set(p.src, (tally.plannedWhere.get(p.src) ?? 0) + 1);
+      }
+      // The plan's own solids (its parts at their drawn shape: a balcony slab, its posts, the body, with the
+      // sidewalk under a balcony open): inside one, and within the near plane's reach of one.
+      const holds = (pose: CameraPose, pad: number) =>
+        solidsNear(plan, pose.x, pose.z, pad).some((s) => insideSolid(s, pose.x, pose.y, pose.z, pad));
+      if (holds(planned, 0)) tally.plannedInside++;
+      if (holds(old, 0)) tally.oldInside++;
+      if (holds(planned, NEAR_M)) tally.plannedSolid++;
+      if (holds(old, NEAR_M)) tally.oldSolid++;
       const o = insideFront(fronts, old);
       if (o) {
         tally.old++;
@@ -321,6 +350,7 @@ describe('the crash camera keeps clear of the building fronts (solid-world check
       print(
         `[examined] ${st.name}: ${t.rides} rides, ${t.crashes} crashes, ${t.frames} frames from each crash to half a second back on the road; ` +
           `camera as it was inside a front in ${t.old} (${where(t.oldWhere)}); as shipped ${t.now} (${where(t.nowWhere)}); ` +
+          `reading the structures plan too: inside a drawn front's whole box in ${t.planned} (${where(t.plannedWhere)}), inside one of the plan's own solids in ${t.plannedInside} (the camera as it was: ${t.oldInside}), within the near plane's reach of one in ${t.plannedSolid} (as it was: ${t.oldSolid}); ` +
           `old camera pushed ${SWING_M} m toward the front inside one in ${t.pushed}`,
       );
       // Enough crashes and frames to mean something.
@@ -336,6 +366,18 @@ describe('the crash camera keeps clear of the building fronts (solid-world check
       // The control: the check can see this street's fronts.
       expect(t.pushed, 'the pushed control finds the fronts').toBeGreaterThan(0);
       expect(t.now, 'frames the camera sat inside a drawn front').toBe(0);
+      // And the same ride with the camera reading the race's structures plan (the physical world, 2026-10-06):
+      // the plan holds each front at its drawn shape (Old Town's balcony slab, its posts and body, with the
+      // sidewalk under the balcony open: the whole box checked above includes that open air, so the plan's
+      // camera may stand in it), so it is never inside one of the plan's solids; where the front is solid
+      // through (Russian Hill's houses are the scatter's, the tag rule's; downtown's towers are the plan's) it
+      // is never inside the drawn box either.
+      expect(t.plannedInside, 'frames the plan-reading camera sat inside a plan solid').toBe(0);
+      // Within the near plane's reach of one (a body thrown against a balcony's post, the arm at its shortest) is
+      // rarer than the camera as it was, by far.
+      expect(t.plannedSolid).toBeLessThanOrEqual(t.oldSolid * 0.5 + 1);
+      if (st.name !== 'Duval Street')
+        expect(t.planned, 'frames the plan-reading camera sat inside a drawn front').toBe(0);
     }, 600_000);
   }
 

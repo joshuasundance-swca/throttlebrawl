@@ -41,7 +41,7 @@ import type {
   SimTrafficTypeDef,
 } from '../sim/api';
 import { loadChunk } from '../content';
-import { loadPnwPlacesLayout, loadWaterfrontLayout } from '../road';
+import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
 import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
@@ -206,6 +206,12 @@ export interface GameRenderer {
    * notes each new ref as seen ("recently seen", the veto's list).
    */
   visibleContent(): VisibleContent[];
+  /**
+   * The race's structures plan as the last frame read it (road/structures.ts), or null before the sim has
+   * made it (the first frame of a race, a menu backdrop). app/ hands it to the camera, which keeps its eye out
+   * of the solids; the shadows and the chalk mark lie on its roofs.
+   */
+  structures(): StructurePlan | null;
   /** The content references of `visibleContent()`. */
   visibleContentRefs(): string[];
   /** Stops drawing these items at once (a veto on this device; presentation only). */
@@ -394,6 +400,19 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   /** The roofs over the current road (roofs.ts): the drizzle stops under them. */
   let roofs: readonly RoofSpan[] = [];
   let sceneSeed = 1;
+  /**
+   * The race's structures plan (road/structures.ts), once the sim has made it (a race plans its world as it
+   * starts): the shadows and the chalk mark lie on its roofs, and app/ hands it to the camera. A lookup per
+   * frame, the plan being kept per network and seed; null on a menu backdrop and before a race's first step.
+   */
+  let structurePlan: StructurePlan | null = null;
+  const lookUpStructures = (): void => {
+    const plan = roadArgs ? structuresOf(roadArgs.road, sceneSeed) : null;
+    if (plan === structurePlan) return;
+    structurePlan = plan;
+    views.setStructures(plan);
+    airPays.setStructures(plan);
+  };
   /** Whether the race's region names a fog colour: its haze then closes in (render.regionFogFarM). */
   let regionFog = false;
   // Playtest 4 answers (the maintainer, 2026-10-06: "Thin it on Chuckanut"): the haze per stretch (haze.ts). The
@@ -1033,6 +1052,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // The riders are placed through the view the camera has this frame: a rig it cannot see is not drawn (polish J3).
       rigs?.setCamera(pose.x, pose.y, pose.z);
       rigs?.setView(frustumOf(camera, viewFrustum));
+      lookUpStructures();
       if (curr) views.sync(prev, curr, alpha, now(), pose);
       race?.effects.fitTint(camera);
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
@@ -1169,6 +1189,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
       return boards.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
     },
+    structures: () => structurePlan,
     visibleContent: () => visibleContent(),
     visibleContentRefs: () => visibleContent().map((c) => c.ref),
     hideContent(refs) {
