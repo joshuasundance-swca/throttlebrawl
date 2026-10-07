@@ -394,11 +394,15 @@ async function checkFit(page: Page, screenSel: string, label: string) {
  * screen, covering no control, with the menu scrolled to the id when the id is the line at the end of
  * its column. A debug report and a playtest need it.
  */
-async function checkBuildId(page: Page, label: string) {
-  for (const size of SIZES) {
+async function checkBuildId(page: Page, label: string, sizes: readonly (typeof SIZES)[number][] = SIZES) {
+  for (const size of sizes) {
     await leaveFullscreen(page);
     await page.setViewportSize({ width: size.width, height: size.height });
     await scrollTo(page, '#menu', 0);
+    // Resize queues keepFooterClear: settle that layout before deciding whether the fallback line
+    // needs scrolling. At normal Text, 915x412 fits and 854x480 scrolls; reading visibility before
+    // the queued update skipped the newly shown line, then the final paint found it below the fold.
+    await paint(page, '#menu', []);
     const line = page.locator('#menu-build-line');
     // A plain DOM scroll, not Playwright's scrollIntoViewIfNeeded: that waits for the line to hold still
     // over two frames, with no limit but the test's, and on two trains (382 and the one after #648
@@ -811,6 +815,38 @@ async function toMenu(page: Page) {
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
 }
+
+test('the build id remains findable when a normal-text menu starts scrolling after a resize', async ({
+  page,
+}) => {
+  await toMenu(page);
+  await expect(page.locator('#route-own')).toBeVisible({ timeout: 30_000 });
+  await setTextSize(page, 'normal');
+  await page.locator('#menu-options').click();
+  await page.locator('#race-options-back').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  await leaveFullscreen(page);
+  await page.setViewportSize({ width: 915, height: 412 });
+  const before = await paint(page, '#menu', []);
+  expect(await scrollRoom(page, '#menu'), 'the first size fits without a fallback line').toBeLessThanOrEqual(
+    1,
+  );
+  await expect(page.locator('#menu-build-line')).toBeHidden();
+  expect(
+    buildIdFindings(
+      before.buildIds,
+      before.things.filter((t) => !t.inFooter),
+      SIZES[0],
+    ),
+  ).toEqual([]);
+
+  // The first normal-text transition from a fitting menu to an overflowing one: the resize queues
+  // keepFooterClear, which can show the fallback after the check has started (the full-suite failure
+  // at 854x480). The same check must find the actual painted id after scrolling that fallback to view.
+  await checkBuildId(page, 'normal menu starting to scroll', [SIZES[1]]);
+  expect(await scrollRoom(page, '#menu'), 'the resized menu needs the fallback').toBeGreaterThan(1);
+  await expect(page.locator('#menu-build-line')).toBeVisible();
+});
 
 test('the did-not-load card says what failed, goes with its screen and a busy line, and the menu still says why', async ({
   page,
