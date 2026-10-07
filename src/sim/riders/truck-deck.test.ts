@@ -266,28 +266,31 @@ describe('flights that actually clear the drawn truck stay clear', () => {
     console.log(`[examined] lip speeds that clear, still clear: ${lines.join('; ')}`);
   });
 
-  it('the narrow band the old car let through on speed alone (the clear speed, 9.65 m/s, to about 10.5) now lands on the deck', () => {
+  it('short hops land on the deck; slightly longer ones meet the drawn cab rather than passing through it', () => {
     const clear = truckClearMps(TRUCK, 9.81);
     expect(clear).toBeCloseTo(9.65, 1);
     const lines: string[] = [];
-    for (const v of [clear + 0.15, 10.0, 10.3]) {
+    for (const v of [clear + 0.15, 10.0]) {
       const ts = rideUp(v, 60 * 4);
       const land = events(ts, 'land')[0];
       lines.push(`${v.toFixed(2)} m/s: ${land ? `lands on ${String(land.data['on'])}` : 'no landing'}`);
       expect(land?.data['on'], `${v}`).toBe('truck');
     }
-    // At 10.8 m/s the trajectory meets the drawn cab: the diagnostic clear speed must not
-    // exempt it from a real contact.
-    const ts = rideUp(10.8, 60 * 4);
-    const over = events(ts, 'land')[0];
-    lines.push(
-      `10.8 m/s: ${over?.data['on'] === undefined ? 'lands on the road' : `lands on ${String(over.data['on'])}`}`,
-    );
-    const hit = ts
-      .flatMap((t) => t.events)
-      .find((e) => (e.type === 'wobble' || e.type === 'crash') && e.data['object'] === 'rampTruck');
-    expect(hit).toBeDefined();
-    expect(Number(hit?.data['impactMps'])).toBeGreaterThan(0);
+    // An honest continuous lip tangent carries 10.3 m/s as far as the cab; averaging the ramp's
+    // last partial rise over a whole tick previously landed it earlier on the empty deck. The
+    // diagnostic clear speed grants neither this trajectory nor 10.8 m/s immunity from the cab.
+    for (const v of [10.3, 10.8]) {
+      const ts = rideUp(v, 60 * 4);
+      const hit = ts
+        .flatMap((t) => t.events)
+        .find((e) => (e.type === 'wobble' || e.type === 'crash') && e.data['object'] === 'rampTruck');
+      expect(hit?.data, `${v} m/s`).toMatchObject({ object: 'rampTruck', feature: 'carrier-1' });
+      expect(Number(hit?.data['impactMps']), `${v} m/s`).toBeGreaterThan(0);
+      const at = ts.find((t) => t.events.includes(hit as SimEvent));
+      expect(at?.s, `${v} m/s: cab contact`).toBeLessThan(TRUCK.s0 + 17);
+      expect(at?.h, `${v} m/s: below the cab's front cap`).toBeLessThan(2.95);
+      lines.push(`${v.toFixed(1)} m/s: ${hit?.type} at the drawn cab`);
+    }
     console.log(`[examined] the band: ${lines.join('; ')}`);
   });
 });

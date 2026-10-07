@@ -43,6 +43,29 @@ function air(s: number, h: number, speed: number, vy = 0) {
   return run;
 }
 describe('carrier contacts obey actual surfaces and the vehicle closing-speed rule', () => {
+  it.each([0, 0.1, 0.2, 0.3].flatMap((offset) => ([1, -1] as const).map((facing) => ({ offset, facing }))))(
+    'leaves a continuous ramp along its lip tangent at offset $offset m, facing $facing',
+    ({ offset, facing }) => {
+      const truck: BakedFeature = {
+        ...TRUCK,
+        s1: 627.5,
+        params: { rampLengthM: 15, lipHeightM: 2.8, facing },
+      };
+      const h = riderHarness(config([truck]), {
+        s: facing === 1 ? 598 + offset : 629.5 - offset,
+        d: D,
+        speed: 24,
+        dir: facing,
+      });
+      let jump: SimEvent | undefined;
+      for (let t = 0; t < 100 && !jump; t++) jump = h.step(input(1)).find((e) => e.type === 'jump');
+      expect(jump).toBeDefined();
+      // This straight drawn ramp rises 2.8 m over 15 m. Its launch tangent cannot shrink with the
+      // fraction of a sim tick spent beyond the lip on the flat platform.
+      expect(Number(jump?.data['vyMps'])).toBeCloseTo((Number(jump?.data['speed']) * 2.8) / 15, 6);
+    },
+  );
+
   it('a standing 2.4 m step remains solid at the fastest bike speed (continuous-ramp control)', () => {
     const step: BakedFeature = {
       kind: 'hazard',

@@ -29,6 +29,8 @@ import { MOVING_DECKS_KEY } from '../src/sim/types';
 import { movingDeckOf, MOVING } from '../src/sim/modifiers/moving';
 import { deckHeight, movingDecks, truckBodyTop } from '../src/sim/riders/features';
 import { input, riderHarness, testConfig } from '../src/sim/riders/testing';
+import { riderState } from '../src/sim/riders';
+import { RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
 import { createWorld } from '../src/sim/world';
 import { mergeBoxes } from '../src/render/geometry';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
@@ -234,6 +236,41 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
     console.log(`[examined] the cab, strict drawn-geometry parity: ${lines.join('; ')}`);
     expect(insideTicks(drawn, 19.4).cabTicks).toBe(0);
   });
+
+  it.each([10.3, 10.8])(
+    'a %s m/s hop meets an actual cab triangle at its ordinary fall-speed impact',
+    (speed) => {
+      const h = riderHarness(config, { s: TRUCK.s0 + RUN - 20, d: MID, speed });
+      const st = riderState(h.world);
+      let examined = false;
+      for (let tick = 0; tick < 240 && !examined; tick++) {
+        const before = { ...h.rider.pos, vy: st.vy[h.rider.id] ?? 0 };
+        const events = h.step(input(h.rider.speed < speed ? 1 : 0));
+        const hit = events.find((e) => e.data['object'] === 'rampTruck');
+        if (!hit) continue;
+        // Look along the swept capsule reach at its feet, against the committed model's triangles.
+        // The contact pose has already been held off the cab. Include the forward travel this tick
+        // from its starting footprint, as the flight fell below the front cap.
+        const ray = new Raycaster(
+          new Vector3(before.d - MID, h.rider.h, before.s - TRUCK.s0),
+          new Vector3(0, 0, 1),
+          0,
+          RIDER_HALF_LENGTH_M + (Number(hit.data['speed']) * Math.cos(Number(hit.data['yaw']))) / 60,
+        );
+        const triangle = ray.intersectObjects(drawn, false)[0];
+        expect(triangle, `${speed} m/s: a drawn cap inside the bike's reach`).toBeDefined();
+        expect(triangle?.point.z).toBeGreaterThanOrEqual(17);
+        expect(hit.type).toBe('wobble');
+        expect(hit.data['hit']).toBe('top');
+        expect(Number(hit.data['impactMps'])).toBeCloseTo(-before.vy + 9.81 / 60, 6);
+        console.log(
+          `[examined] ${speed} m/s cab triangle: ${triangle?.point.z.toFixed(4)} m, fall impact ${Number(hit.data['impactMps']).toFixed(4)} m/s`,
+        );
+        examined = true;
+      }
+      expect(examined).toBe(true);
+    },
+  );
 });
 
 describe('the moving carrier: its figure draws nothing over the deck, and no car', () => {

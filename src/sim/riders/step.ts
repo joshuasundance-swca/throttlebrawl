@@ -1809,12 +1809,44 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const deck = still ? Math.max(ramp, still.top) : ramp;
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
+  // Crossing a continuous carrier ramp's lip happens within the tick. The flat platform must not
+  // replace its launch tangent with the partial height rise averaged over that whole tick.
+  let rampFlight: { y: number; vy: number; elapsed: number } | null = null;
+  const launchTruck =
+    !fresh && !sup && before.edge === pos.edge
+      ? rampTruckAt(config, before.edge, before.s, before.d, decks.now)
+      : null;
+  if (launchTruck && dt > 0) {
+    const { run, lip: lipHeight } = rampTruckShape(launchTruck);
+    const facing = launchTruck.params?.['facing'] === -1 ? -1 : 1;
+    const foot = facing === 1 ? launchTruck.s0 : launchTruck.s1;
+    const a = (before.s - foot) * facing;
+    const b = (pos.s - foot - truckVelocityS(launchTruck) * dt) * facing;
+    if (a >= 0 && a < run && b >= run && b > a) {
+      const fraction = (run - a) / (b - a);
+      const s = before.s + (pos.s - before.s) * fraction;
+      const d = before.d + (pos.d - before.d) * fraction;
+      const vy =
+        road.frameAt(pos.edge, s).grade * ((pos.s - before.s) / dt) + (lipHeight / run) * ((b - a) / dt);
+      if (
+        d >= launchTruck.d0 &&
+        d <= launchTruck.d1 &&
+        vy > 0 &&
+        (vy * vy) / (2 * gravity) > TAKEOFF_CLEARANCE_M
+      ) {
+        const elapsed = (1 - fraction) * dt;
+        const y =
+          road.surfaceHeight(pos.edge, s, d) + lipHeight + vy * elapsed - 0.5 * gravity * elapsed * elapsed;
+        rampFlight = { y, vy, elapsed };
+      }
+    }
+  }
   // Over a gap (playtest 3, sim/riders/gap.ts) there is no surface: the ground fell away.
   const overGap = !still && gapUnder(world, config, m);
   // Across from one structure's top to a neighbour's no more than a kerb up or down (a row of roofs, sim/
   // riders/structures.ts): the bike rolls on over the step, as over a kerb, with no launch off it.
   const stepped = onStructure && still !== null && sup !== null && still.key !== sup.key;
-  const lip = overGap || (!stepped && ballistic > ground + TAKEOFF_CLEARANCE_M);
+  const lip = rampFlight !== null || overGap || (!stepped && ballistic > ground + TAKEOFF_CLEARANCE_M);
   // Off its support (or onto a ramp deck), the rider moves in the world's frame again.
   if (sup && (!still || lip)) toWorldFrame(world, config, m);
   // Across onto a neighbour's top: that one holds it now.
@@ -1836,13 +1868,14 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // grade here) and from its height, which over a crest is above the straight chord between two
     // samples by ½·curvature·a·b (a, b: the distances to them). From the chord itself, on its own
     // slope, it would come straight back down on that chord: a hop, not air.
-    const vy0 = crest ? road.frameAt(pos.edge, pos.s).grade * pos.dir * along : vyBefore;
-    const y = crest ? ground + crestSag(config, pos.edge, pos.s) : Math.max(ballistic, ground);
+    const vy0 = rampFlight?.vy ?? (crest ? road.frameAt(pos.edge, pos.s).grade * pos.dir * along : vyBefore);
+    const y =
+      rampFlight?.y ?? (crest ? ground + crestSag(config, pos.edge, pos.s) : Math.max(ballistic, ground));
     m.mode = 'Airborne';
     m.h = y - surface;
     st.yAbs[m.id] = y;
     // A lip's ballistic height is already this tick's end; a crest's start is the hilltop now.
-    st.vy[m.id] = crest ? vy0 : vy0 - gravity * dt;
+    st.vy[m.id] = crest ? vy0 : vy0 - gravity * (rampFlight?.elapsed ?? dt);
     st.airTicks[m.id] = 0;
     // The flight starts at the slope the bike rode off (last tick's ground pitch, a wheelie's
     // angle included); the wheelie and the drift end.
