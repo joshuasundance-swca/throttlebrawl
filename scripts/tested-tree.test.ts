@@ -2,6 +2,7 @@
 // on that path alone (docs/engineering.md, "CI on GitHub Actions"; scripts/tested-tree.mjs).
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   ARTIFACT_PREFIX,
@@ -98,6 +99,45 @@ describe('decide', () => {
     expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
   });
 
+  it('reuses the exact tree recorded by a full train running main, before its landing report finishes', async () => {
+    for (const event of ['workflow_run', 'workflow_dispatch']) {
+      const run = {
+        ...PR_RUN,
+        event,
+        path: '.github/workflows/train.yml',
+        head_branch: 'main',
+        status: 'in_progress',
+      };
+      const { get } = api([artifact()], { [PR_RUN.id]: run });
+      expect((await decide(TREE, { repo: REPO, api: get })).skip, event).toBe(true);
+    }
+  });
+
+  it('never trusts a train artifact from a feature branch, another event, a fork or another tree', async () => {
+    const train = {
+      ...PR_RUN,
+      event: 'workflow_dispatch',
+      path: '.github/workflows/train.yml',
+      head_branch: 'main',
+    };
+    for (const run of [
+      { ...train, head_branch: 'feature' },
+      { ...train, head_branch: undefined },
+      { ...train, event: 'push' },
+    ]) {
+      const { get } = api([artifact()], { [PR_RUN.id]: run });
+      expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
+    }
+    for (const record of [
+      artifact({}, { head_repository_id: 42 }),
+      artifact({ expired: true }),
+      artifact({ name: artifactName('a'.repeat(40)) }),
+    ]) {
+      const { get } = api([record], { [PR_RUN.id]: train });
+      expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
+    }
+  });
+
   it('only a pull_request run of ci.yml vouches: not a push run, not another workflow', async () => {
     for (const run of [
       { ...PR_RUN, event: 'push' },
@@ -117,6 +157,49 @@ describe('decide', () => {
     });
     expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(true);
     expect(calls.slice(1)).toEqual([`/repos/${REPO}/actions/runs/8`, `/repos/${REPO}/actions/runs/7`]);
+  });
+});
+
+describe('train tree evidence precedes landing', () => {
+  const train = readFileSync(path.join(import.meta.dirname, '..', '.github/workflows/train.yml'), 'utf8');
+  const report = train.slice(train.indexOf('\n  report:\n'));
+  const steps = report.split(/\n {6}- /);
+  const record = steps.find((s) => s.startsWith('name: Record the tree this train tested')) ?? '';
+  const upload = steps.find((s) => s.startsWith('name: Upload the tested train tree')) ?? '';
+
+  it('records only a successful full suite, never a failed, cancelled, skipped or dry train', () => {
+    const condition = /^ {8}if: (.+)$/m.exec(record)?.[1];
+    expect(condition, 'record condition exists').toBeDefined();
+    const evaluate = (result: string, dry = false) =>
+      Boolean(
+        runInNewContext(condition ?? 'false', {
+          needs: { suite: { result } },
+          github: { event_name: 'workflow_dispatch' },
+          inputs: { dry_run: dry },
+        }),
+      );
+    expect(evaluate('success')).toBe(true);
+    for (const result of ['failure', 'cancelled', 'skipped', ''])
+      expect(evaluate(result), result).toBe(false);
+    expect(evaluate('success', true)).toBe(false);
+  });
+
+  it('records the planned full tree, uploads it before any success status, and stops landing on upload failure', () => {
+    expect(record).toContain('TRAIN_TREE: ${{ needs.plan.outputs.tree }}');
+    expect(record).toContain('^[0-9a-f]{40}$');
+    expect(record).toContain('name=tested-tree-$TRAIN_TREE');
+    expect(upload).toContain("if: steps.tested.outcome == 'success'");
+    expect(upload).toContain('uses: actions/upload-artifact@v7');
+    expect(upload).toContain('name: ${{ steps.tested.outputs.name }}');
+    expect(upload).toContain('retention-days: 7');
+    expect(upload).toContain('overwrite: true');
+    expect(upload).toContain('if-no-files-found: error');
+    expect(upload).not.toContain('continue-on-error');
+    expect(report.indexOf('name: Upload the tested train tree')).toBeLessThan(
+      report.indexOf('name: Results, the landing, and the next train'),
+    );
+    expect(report).toContain('ref: ${{ github.sha }}');
+    expect(report).not.toContain('ref: ${{ needs.plan.outputs.commit }}');
   });
 });
 
