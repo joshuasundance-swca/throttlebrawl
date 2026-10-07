@@ -7,7 +7,7 @@
 # scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
 # for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
-# - full: true runs every tier: the full gate, 18 jobs. full: false is the quick check, 3 jobs:
+# - full: true runs every tier: the full gate, 19 jobs. full: false is the quick check, 3 jobs:
 #   static (plus the build and its size budget, `--tier static,budget`) and the two unit slices.
 # - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
 #   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
@@ -218,17 +218,21 @@ jobs:
   # sim files that race at describe time, which Vitest's per-file time leaves out, were all planned
   # at 0 s into that one slice (scripts/shard-plan.mjs collectedOnly now plans them as the mean
   # file). The slowest files are the floor (docs/engineering.md, "The floors").
+  # Eight slices since 2026-10-07: main's sim (4/7) ran past its 600 s on both attempts of run
+  # 37585327862 (f13f6d0), against a plan of 364 s on a stale table. Refreshed (train run 37583841936
+  # and main run 37581242850), seven slices plan at 423 s, past the 420 s line; eight plan at 374 to
+  # 408 s, the 408 being traffic-cart-live.test.ts alone (389 s), the floor.
   sim:
     name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
     runs-on: ubuntu-latest
-    # The plan puts the batch readers' slice at about 329 s of job and the others at about 343 s
-    # (2026-10-06 table, 16 s of job setup included), 57% of this timeout.
+    # The plan puts the batch readers' slice at about 374 s of job and the others at 401 to 408 s
+    # (2026-10-07 table, 19 s of job setup included), up to 68% of this timeout.
     timeout-minutes: 10
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
         with:
