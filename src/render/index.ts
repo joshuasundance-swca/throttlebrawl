@@ -45,7 +45,7 @@ import { loadPnwPlacesLayout, loadWaterfrontLayout } from '../road';
 import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
-import type { EventPropCounts, EventProps } from './event-props';
+import type { EventProps } from './event-props';
 import type { Smashables } from './smashables';
 import { createFlatLook, isLitTime, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
@@ -379,7 +379,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables };
     });
   };
-  const noProps: EventPropCounts = { byKind: {}, total: 0, signs: [] };
   const noFeel: FeelCounts = { sparks: 0, drops: 0, paper: 0, rings: 0, reactors: 0, tint: 0 };
   const noLines: SpeedLineCounts = { level: 0, lines: 0 };
   /** The last road's look environment: the drizzle's colour comes from it once rain.ts is in. */
@@ -1134,7 +1133,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         width: canvas.width,
         height: canvas.height,
         setPieces: roadScene?.stats.setPieces ?? [],
-        eventProps: race?.eventProps.counts() ?? noProps,
+        // Left out until the race parts' chunk is in (a renderer that draws none may leave it out), so
+        // a spec sees whether that lazy chunk arrived (tests/e2e/app-chunk-retry.spec.ts).
+        ...(race ? { eventProps: race.eventProps.counts() } : {}),
       };
     },
     setQuality(tier, scale) {
