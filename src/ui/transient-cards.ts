@@ -142,6 +142,12 @@ export function createCardSlots(): CardSlots {
   };
 }
 
+/** The whole seconds left of the host's wait (`waitUntil` and `now` on one clock); 0 when there is none or it has passed. */
+export function waitSeconds(waitUntil: number | null, now: number): number {
+  const left = waitUntil === null ? 0 : waitUntil - now;
+  return left > 0 ? Math.ceil(left / 1000) : 0;
+}
+
 /**
  * The Retry button while the host's wait runs (`waitUntil`, ms on the same clock as `now`): off, and
  * counting the wait down in whole seconds; then plain Retry. `label` is the button's word when it
@@ -152,9 +158,31 @@ export function retryButton(
   now: number,
   label = 'Retry',
 ): { label: string; disabled: boolean } {
-  const left = waitUntil === null ? 0 : waitUntil - now;
-  if (left <= 0) return { label, disabled: false };
-  return { label: `${label} in ${Math.ceil(left / 1000)} s`, disabled: true };
+  const secs = waitSeconds(waitUntil, now);
+  if (secs === 0) return { label, disabled: false };
+  return { label: `${label} in ${secs} s`, disabled: true };
+}
+
+/**
+ * Where the menu's word about the picked region's roads (the route row's place) takes the host's wait
+ * (polish batch I's check, punch 4: inside the wait it said "try again shortly" with no time left).
+ * The word's text carries this slot; `withWait` fills it with the card's own countdown.
+ */
+export const WAIT_SLOT = '{wait}';
+
+/** `text` with its wait slot filled: " in 27 s" while the wait runs, nothing once it has passed. */
+export function withWait(text: string, waitUntil: number | null, now: number): string {
+  const secs = waitSeconds(waitUntil, now);
+  return text.replace(WAIT_SLOT, secs > 0 ? ` in ${secs} s` : '');
+}
+
+/**
+ * Whether the route row's word keeps back: while a busy "Loading ..." line is up (it says the same, so
+ * the dimmed word drew through it, doubled: polish batch I's check, note-915) or while the did-not-load
+ * card is up on the menu (it says the same with its button).
+ */
+export function routeNoteQuiet(on: { screen: Screen; busy: boolean; cardUp: boolean }): boolean {
+  return on.busy || (on.screen === 'menu' && on.cardUp);
 }
 
 // ---- The layout judge (the browser spec measures, this decides) -----------------------------------

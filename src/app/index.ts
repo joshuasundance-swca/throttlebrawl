@@ -49,6 +49,7 @@ import { createHaptics, createInput, type ActionState } from '../input';
 import {
   APP_ID,
   installOffer,
+  paceBuildFetches,
   runStartTap,
   startOffline,
   watchLifecycle,
@@ -119,7 +120,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
-import { clearLoadRetry, failureOf, offerLoadRetry, routesNote, type LoadFailure } from './load-retry';
+import { clearLoadRetry, failureOf, offerLoadRetry, routesNoteView, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -142,11 +143,14 @@ import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
 import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
+  createOutOfBounds,
   createSeenPoll,
   landingLineFor,
   landingLineItem,
+  outOfBoundsLineFor,
   producerAskItem,
   producerThanksItem,
+  resetOutOfBounds,
 } from './ticker-feed';
 import { APP_TUNING, presentationOwner } from './tuning';
 
@@ -403,8 +407,12 @@ function safeStorage(): StorageLike | null {
  * What the first screen needs before `createApp`: the Keys' hand-made road data, which ships as
  * JSON files beside the build instead of in the first-load JavaScript (run W-S), for the default
  * race and the menu's backdrop. main.ts awaits it; a failed fetch rejects and can be tried again.
+ * The page's fetch goes to platform/'s loader first, so these 37 files get its rules too: no pacing
+ * until the host asks, its waits, the retry and the offline caches' read (polish batch O's check,
+ * punch item 3).
  */
 export function loadBootContent(): Promise<void> {
+  paceBuildFetches();
   return loadBaseRoads();
 }
 
@@ -562,6 +570,8 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   let landingPool: readonly BoardItem[] = [];
   let lastLandingRef: string | null = null;
+  /** Whether the player's fall out of bounds is being waited out (the line is said once a fall). */
+  const outOfBounds = createOutOfBounds();
   /** The poll for the signs and billboards in view ("recently seen", the veto's list). */
   const seenPoll = createSeenPoll();
   /**
@@ -1084,6 +1094,7 @@ export function createApp(opts: AppOptions): AppHandle {
       renderer.pushEvents(events);
       input.onEvents(events, playerId);
       noteLanding(events);
+      noteOutOfBounds(events);
     }
     // The wheelie's band, every step (null while none): the buzz when it turns high is a swing.
     input.onMoves(curr.moves);
@@ -1120,6 +1131,9 @@ export function createApp(opts: AppOptions): AppHandle {
             lookBack: input.lastActions().lookBack,
             // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
             aspect: viewAspect(),
+            // The race's structures plan, as the renderer read it: the eye stays out of the buildings and off the
+            // road far below a roof (the physical world, 2026-10-06; camera/solids.ts).
+            structures: renderer.structures(),
           });
           // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
           if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
@@ -1200,6 +1214,8 @@ export function createApp(opts: AppOptions): AppHandle {
   // The region picker (playtest 1c): a pick fetches that region's road data in the background,
   // and the menu's backdrop shows its road once loaded; Race starts there.
   let loadingRoads = false;
+  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
+  const reloadPage = () => window.location.reload();
   const pickedChoice = (): RegionChoice | undefined => {
     const picked = ui.region;
     return picked ? regions.find((r) => r.id === picked) : undefined;
@@ -1230,10 +1246,13 @@ export function createApp(opts: AppOptions): AppHandle {
     if (choice && state) pickLoad = { id: choice.id, state };
     const picked = pickedChoice();
     if (!picked || library.hasRoads(picked.packId)) pickLoad = null;
-    ui.setRoutesNote(picked && pickLoad?.id === picked.id ? routesNote(picked.name, pickLoad.state) : null);
+    if (!picked || pickLoad?.id !== picked.id) ui.setRoutesNote(null);
+    else {
+      // A missing build's word carries the Reload button; inside the host's wait it counts the wait down.
+      const word = routesNoteView(picked.name, pickLoad.state, reloadPage);
+      ui.setRoutesNote(word.text, word.action);
+    }
   };
-  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
-  const reloadPage = () => window.location.reload();
   /** The packs a race in this region reads (its pack and base) whose road data is not in yet. */
   const roadsMissing = (choice: RegionChoice): string[] =>
     packClosure(registry, choice.packId).filter((id) => !library.hasRoads(id));
@@ -1408,6 +1427,7 @@ export function createApp(opts: AppOptions): AppHandle {
     lookWatch.reset();
     seenPoll.reset();
     lastLandingRef = null;
+    resetOutOfBounds(outOfBounds);
     input.onMoves(null);
     prev = null;
     curr = race.snapshot();
@@ -1521,6 +1541,16 @@ export function createApp(opts: AppOptions): AppHandle {
     const item = landingLineItem(pick.item, pick.tick, `seed-${race.config.seed}`);
     ui.ticker.push(item);
     ui.narrative.noteSeen({ contentRef: pick.item.ref, kind: 'sign', label: item.text, tick: pick.tick });
+  }
+
+  /**
+   * The player's fall out of bounds onto ground, or off a low drop onto it, reads as one plain line on the top
+   * ticker (the physical world, 2026-10-06; ticker-feed.ts `outOfBoundsLineFor`): a `system` line in the strip's
+   * own slot, so it is never over a control. A splash into water and a high drop have their own presentation.
+   */
+  function noteOutOfBounds(events: readonly SimEvent[]): void {
+    const line = outOfBoundsLineFor(events, playerId, outOfBounds);
+    if (line) ui.ticker.push(line);
   }
 
   /** One step of a career race: its rules, its prompts, the objective line, an early end. */

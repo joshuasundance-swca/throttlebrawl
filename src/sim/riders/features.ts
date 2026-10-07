@@ -5,14 +5,19 @@
 //   `holdS` seconds its top speed is raised by `boostMps` and an extra push drives it there.
 // - A `rampTruck` is a solid box with a deck. The deck rises from the road at s0 to `lipHeightM`
 //   over `rampLengthM`; riders ride up it and leave the lip airborne (the ordinary take-off rule).
-//   Past a short lip platform the truck is its body: the car parked on the top deck, then the cab
-//   (the integration skeptic's F2: the old level deck to s1 let a slow rider roll along inside
-//   that car). The body is solid: a grounded rider meets it as a wall (from the deck, a crash: thrown
-//   off the truck, never stuck on it), and an airborne rider who left the lip too slowly to clear
-//   the truck hits it (a crash) instead of landing inside it; a rider fast enough to clear the truck
-//   never lands on it. Only riders see the truck: it is not in the road's surface, so tumble bodies,
-//   traffic and render's road mesh are unchanged. Riding into its side or front higher than a kerb
-//   is a barrier contact. It faces riders travelling toward +s.
+//   Past a short lip platform a parked truck is its top deck, then its cab. The top deck is EMPTY
+//   (the maintainer's rules of 2026-10-06, the coordinator's [default] of 2026-10-07, vetoable: the
+//   car that stood on it was passed through at the lip speeds, and a solid one would crash every
+//   carrier jump): a top at the lip height that a rider lands on and rides (sim/riders/supports.ts,
+//   key `d:`), under which the truck is solid (the frame, the wheels and the lower car are drawn
+//   there). The cab, from `TRUCK_CAB_FROM_FOOT_M` on, is the truck's body, solid to its top: a
+//   grounded rider meets it as a wall (from the deck, by the one closing-speed rule; from the ramp,
+//   a crash: thrown off the truck, never stuck on it), and an airborne rider who left the lip too
+//   slowly to clear the truck hits it (a crash) instead of landing inside it; a rider fast enough to
+//   clear the truck never lands on it. A moving carrier has no top deck (it carries nothing: its body
+//   is its cab, from the lip platform on). Only riders see the truck: it is not in the road's surface,
+//   so tumble bodies, traffic and render's road mesh are unchanged. Riding into its side or front
+//   higher than a kerb is a barrier contact. It faces riders travelling toward +s.
 // - Set pieces from the race seed (playtest 1c item 2): a pad or truck with `params.slot` is one
 //   candidate for that slot, there only when the race seed picks it (road/setpieces).
 // - Moving decks (playtest 3, "the ramp trucks could be in motion"): a truck with its ramp down that
@@ -47,10 +52,18 @@ export const KERB_M = 0.3;
 /**
  * The truck body past the lip, from the truck model (tools/blender, `tow-truck`) at its 11.5 m run
  * and 2.8 m lip, and scaled with the ramp as render scales the model: the lip platform runs 0.45 m
- * to the top-deck car's rear, and that car's roof stands 1.16 m above the lip [default].
+ * to where the top deck starts, and the cab's top stands 1.16 m above the lip [default] (it was the
+ * top-deck car's roof, 0.7 m over the cab's own: the car is gone, the height stays, the cab is as it was).
  */
 export const TRUCK_PLATFORM_M = 0.45;
 export const TRUCK_BODY_ABOVE_LIP_M = 1.16;
+/**
+ * Where a parked truck's cab starts, m from its ramp's foot at the default run: the model's flat deck ends
+ * here (`UPPER_DECK_END`, tools/blender/props/tow_truck.py), and the exhaust stacks (3.7 m tall) stand in the
+ * 0.2 m before the cab's own face (`CAB_F`, 17.0 m), so the cab's solid starts at the deck's end and holds
+ * them [default]. The top deck, empty, runs from the lip platform to here.
+ */
+export const TRUCK_CAB_FROM_FOOT_M = 16.8;
 
 /** The candidates this race's seed picked, once per config (a race's config never changes). */
 const picked = new WeakMap<SimConfig, ReadonlySet<string>>();
@@ -209,21 +222,59 @@ function bodyIntoOf(f: BakedFeature): number {
   return run + (TRUCK_PLATFORM_M * run) / RAMP_TRUCK_LENGTH_M;
 }
 
-/** The top of a rampTruck's body above the road: the top-deck car's roof. */
+/**
+ * How far along a truck its cab starts, from its ramp's foot, m: where the empty top deck ends. A moving
+ * carrier has no top deck (nothing rides on it; its body is its cab from the lip platform), so its cab
+ * starts where its body does.
+ */
+function cabIntoOf(f: BakedFeature): number {
+  const from = bodyIntoOf(f);
+  if (f.params?.['moving'] === true) return from;
+  const { run } = rampTruckShape(f);
+  return Math.min(Math.max(from, (TRUCK_CAB_FROM_FOOT_M * run) / RAMP_TRUCK_LENGTH_M), Math.abs(f.s1 - f.s0));
+}
+
+/** The top of a rampTruck's body above the road: its cab's top (1.16 m over the lip, scaled with the ramp). */
 export function truckBodyTop(f: BakedFeature): number {
   const { lip } = rampTruckShape(f);
   return lip + (TRUCK_BODY_ABOVE_LIP_M * lip) / RAMP_TRUCK_LIP_M;
 }
 
-/**
- * A rampTruck's body (the top-deck car and the cab) as a box on its edge, m: from where it starts past
- * the lip platform to the truck's front, its whole width (sim/riders/supports.ts lands riders on its top).
- */
-export function truckBodyBox(f: BakedFeature): { s0: number; s1: number; d0: number; d1: number } {
-  const into = bodyIntoOf(f);
+/** The top of a rampTruck's empty top deck above the road: the lip's height (the deck is level with it). */
+export function truckDeckTop(f: BakedFeature): number {
+  return rampTruckShape(f).lip;
+}
+
+/** A box on a truck's edge, m. */
+interface EdgeBox {
+  s0: number;
+  s1: number;
+  d0: number;
+  d1: number;
+}
+
+/** The part of a rampTruck's length from `from` to `to` m past its foot, as a box on its edge. */
+function truckSpan(f: BakedFeature, from: number, to: number): EdgeBox {
   return facingOf(f) === -1
-    ? { s0: f.s0, s1: f.s1 - into, d0: f.d0, d1: f.d1 }
-    : { s0: f.s0 + into, s1: f.s1, d0: f.d0, d1: f.d1 };
+    ? { s0: f.s1 - to, s1: f.s1 - from, d0: f.d0, d1: f.d1 }
+    : { s0: f.s0 + from, s1: f.s0 + to, d0: f.d0, d1: f.d1 };
+}
+
+/**
+ * A rampTruck's body (its cab, with the hood) as a box on its edge, m: from where the cab starts to the
+ * truck's front, its whole width (sim/riders/supports.ts lands riders on its top).
+ */
+export function truckBodyBox(f: BakedFeature): EdgeBox {
+  return truckSpan(f, cabIntoOf(f), Math.abs(f.s1 - f.s0));
+}
+
+/**
+ * A rampTruck's empty top deck as a box on its edge, m: from the lip platform's end to where the cab
+ * starts, its whole width (a top a rider lands on and rides, sim/riders/supports.ts). Zero long for a
+ * moving carrier, which has none.
+ */
+export function truckDeckBox(f: BakedFeature): EdgeBox {
+  return truckSpan(f, bodyIntoOf(f), cabIntoOf(f));
 }
 
 /** A truck's velocity along its edge's +s, m/s: 0 for a parked one, a moving deck's travel. */
@@ -233,13 +284,15 @@ export function truckVelocityS(f: BakedFeature): number {
 
 /**
  * A rampTruck's height at a point of its box: the ramp from 0 at its foot to the lip height at the
- * lip, the lip platform, then the body's top (solid, not a deck anyone rides).
+ * lip, the lip platform and the empty top deck at the lip height, then the cab's top (solid, not a
+ * deck anyone rides up to). The top deck is what a grounded rider beside the truck meets as its solid
+ * side; one in the air lands on it (`truckDeckAt`).
  */
 function deckOf(f: BakedFeature, s: number): number {
   const { run, lip } = rampTruckShape(f);
   const into = intoOf(f, s);
   if (into < run) return (lip * into) / run;
-  return into < bodyIntoOf(f) ? lip : truckBodyTop(f);
+  return into < cabIntoOf(f) ? lip : truckBodyTop(f);
 }
 
 /**
@@ -272,7 +325,7 @@ export function deckHeight(
   return h;
 }
 
-/** The rampTruck (or moving deck, from `moving`) whose body holds (s, d), or null. */
+/** The rampTruck (or moving deck, from `moving`) whose body (its cab) holds (s, d), or null. */
 export function truckBodyAt(
   config: SimConfig,
   edge: number,
@@ -281,7 +334,24 @@ export function truckBodyAt(
   moving: readonly BakedFeature[] = [],
 ): BakedFeature | null {
   const f = rampTruckAt(config, edge, s, d, moving);
-  return f && intoOf(f, s) >= bodyIntoOf(f) ? f : null;
+  return f && intoOf(f, s) >= cabIntoOf(f) ? f : null;
+}
+
+/**
+ * The rampTruck whose empty top deck holds (s, d), or null: past the lip platform and before the cab.
+ * A rider above it lands on it and rides (`supportAt`); one below its top is under it, in the truck.
+ */
+export function truckDeckAt(
+  config: SimConfig,
+  edge: number,
+  s: number,
+  d: number,
+  moving: readonly BakedFeature[] = [],
+): BakedFeature | null {
+  const f = rampTruckAt(config, edge, s, d, moving);
+  if (!f) return null;
+  const into = intoOf(f, s);
+  return into >= bodyIntoOf(f) && into < cabIntoOf(f) ? f : null;
 }
 
 /**

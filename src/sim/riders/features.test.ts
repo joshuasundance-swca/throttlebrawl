@@ -103,14 +103,17 @@ describe('boost pads', () => {
 });
 
 describe('the ramp truck', () => {
-  it('has a 13.7° deck to a 2.8 m lip, a short lip platform, then its solid body to the front', () => {
+  it('has a 13.7° deck to a 2.8 m lip, a short lip platform, an empty top deck, then its solid cab to the front', () => {
     const config = withFeatures([TRUCK]);
     expect(deckHeight(config, 0, 600, 3.4)).toBe(0);
     expect(deckHeight(config, 0, 600 + RAMP_TRUCK_LENGTH_M / 2, 3.4)).toBeCloseTo(1.4, 9);
     expect(deckHeight(config, 0, 611.7, 3.4)).toBeCloseTo(2.8, 9); // the lip platform
-    // The integration skeptic's F2: past the platform, the top-deck car's roof (the model's 3.96 m).
-    expect(deckHeight(config, 0, 615, 3.4)).toBeCloseTo(3.96, 9);
+    // Past the platform the top deck is empty (no car stands on it, the lip check of 2026-10-07): a top at
+    // the lip's height; the cab, 17 m from the foot, is solid to the model's 3.96 m.
+    expect(deckHeight(config, 0, 615, 3.4)).toBeCloseTo(2.8, 9);
+    expect(deckHeight(config, 0, 617.5, 3.4)).toBeCloseTo(3.96, 9);
     expect(deckHeight(config, 0, 615, 3.4, { bodies: false })).toBe(0);
+    expect(deckHeight(config, 0, 617.5, 3.4, { bodies: false })).toBe(0);
     expect(deckHeight(config, 0, 615, 1.7)).toBe(0); // beside it
     expect(deckHeight(config, 0, 630, 3.4)).toBe(0); // past its front
     const deg = (Math.atan(RAMP_TRUCK_LIP_M / RAMP_TRUCK_LENGTH_M) * 180) / Math.PI;

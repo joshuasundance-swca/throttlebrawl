@@ -191,9 +191,10 @@ const fallOf = (r: Ride, crash: { at: number } | undefined) =>
 
 describe('a missed staging hop finds no shortcut and pays no airtime', () => {
   // The east hop, arriving slow two ways: 23 m/s, as the live check's seed 7 (the lip's ramp flings
-  // it and the gap takes it), and 12 m/s, which rolls up the ramp, lands on the platform (a clean
-  // landing, paid) and then rolls into the gap (the fall, paid nothing).
-  it.each([23, 12])(
+  // it and the gap takes it), and 13 m/s, which clears the staging truck's empty top deck low and
+  // rolls into the gap (the fall, paid nothing). Below that the rider comes down on the truck's deck
+  // instead (the next test).
+  it.each([23, 13])(
     'the turn-off hop (east), left at %i m/s: it falls, wakes on the highway, and is neither found nor paid',
     (slow) => {
       const r = ride(
@@ -219,6 +220,34 @@ describe('a missed staging hop finds no shortcut and pays no airtime', () => {
       expect(airtimeFrom(r, fall?.at ?? 0)).toEqual([]);
     },
   );
+
+  it('the turn-off hop (east), left at 12 m/s: it comes down on the truck\u2019s empty deck, rides into the cab, and is neither found nor paid', () => {
+    // The top deck past the lip is a top that holds the bike (the car that stood on it is gone, the lip
+    // check of 2026-10-07): a rider too slow to clear it lands on it, as on any solid top, and the cab's
+    // front stops him (a crash, thrown off). It used to pass through the car and the cab and fall in the gap.
+    const r = ride(
+      (id, s) =>
+        (id === ZONE_EDGE && s >= ZONE.s0) ||
+        (OLD.roads.indexOf(id) >= 0 && OLD.roads.indexOf(id) <= OLD.roads.indexOf(EAST.id)),
+      12,
+      (_id, events) => events.some((e) => e.type === 'respawn'),
+    );
+    const crash = ofType(r, 'crash')[0];
+    const landed = ofType(r, 'land').find((e) => e.data['on'] === 'truck');
+    const found = ofType(r, 'shortcutFound');
+    const fall = fallOf(r, crash);
+    print(
+      `east, 12 m/s: fall ${JSON.stringify(fall?.data)} @${fall?.at}, lands ${JSON.stringify(landed?.data)} @${landed?.at}, crash ${JSON.stringify(crash?.data)} @${crash?.at}; found ${JSON.stringify(found.map((e) => e.data))}`,
+    );
+    expect(fall, 'it left the ground at the lip').toBeDefined();
+    expect(landed?.data, 'it came down on the empty deck').toMatchObject({
+      on: 'truck',
+      object: 'rampTruck',
+    });
+    expect(crash?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck' });
+    expect(found).toEqual([]);
+    expect(airtimeFrom(r, fall?.at ?? 0)).toEqual([]);
+  });
 
   it('the way-back hop (west), left too slow: it falls, wakes on the highway, and is neither found nor paid', () => {
     const r = ride(

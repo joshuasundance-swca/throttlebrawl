@@ -1,14 +1,14 @@
 # The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
 # they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
-# it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (two slices), sim
+# it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (three slices), sim
 # (eight slices) and browser (eight slices, the last also running perf) run in parallel, each
 # running its tiers of `npm run check`. Every slice is planned as its whole job (setup, build and
 # tests; scripts/shard-plan.mjs) at no more than two thirds of its timeout-minutes, which
 # scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
 # for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
-# - full: true runs every tier: the full gate, 19 jobs. full: false is the quick check, 3 jobs:
-#   static (plus the build and its size budget, `--tier static,budget`) and the two unit slices.
+# - full: true runs every tier: the full gate, 20 jobs. full: false is the quick check, 4 jobs:
+#   static (plus the build and its size budget, `--tier static,budget`) and the three unit slices.
 # - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
 #   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
 #   the train planned (merged with a fixed identity and date, so every job gets the same commit)
@@ -157,13 +157,13 @@ jobs:
   unit:
     name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
-    # The plan puts the largest slice at about 293 s of job (2026-10-07 table), 61% of this timeout;
-    # slices took 145 to 351 s on 2026-10-06.
+    # The refreshed table puts three slices at 227 s of job (2026-10-07), about 47% of this timeout.
+    # Two slices have a 331 s worker-time lower bound, beyond the unchanged 320 s planning line.
     timeout-minutes: 8
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -226,8 +226,8 @@ jobs:
     name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
     runs-on: ubuntu-latest
-    # The plan puts the batch readers' slice at about 374 s of job and the others at 401 to 408 s
-    # (2026-10-07 table, 19 s of job setup included), up to 45% of this timeout. 15 minutes since
+    # The refreshed plan puts the batch readers at 319 s of job and the other slices at 396 s
+    # (2026-10-07 table, 20 s of job setup included), up to 44% of this timeout. 15 minutes since
     # 2026-10-07: the first train on eight slices (run 37593974876) ran sim (4/8) to 617 s on a
     # 408 s plan (its files ran 0.89 to 1.79 times the fresh table; one of them was broken by that bundle),
     # so 10 minutes left no room. The line is JOB_SHARE of this timeout, so sim's line is 600 s:
@@ -287,8 +287,9 @@ jobs:
   # cancels the run (see static). Full suite only. [default]
   # Eight slices since 2026-10-06: with seven, the plan counted test seconds only, and slices planned
   # at 355 s took 410 to 573 s as jobs (setup, the Chromium install and the build add 37 to 70 s;
-  # runs 37439710625, 37442774709). The plan now puts the largest at about 354 s of job (2026-10-07
-  # table, job setup included), 59% of this timeout.
+  # runs 37439710625, 37442774709). The refreshed table puts the largest at 391 s of job (2026-10-07,
+  # job setup included), within the unchanged 400 s line. Transient-card coverage and loading checks
+  # run in separate spec files: before the split that file alone cost 357.3 + 49 = 406.3 s of job.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
@@ -360,6 +361,7 @@ jobs:
           if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
             sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
           fi
+          sudo "$(command -v node)" scripts/browser-apt.mjs
           npx playwright install --with-deps --only-shell chromium
           rm -rf ~/.cache/playwright-debs && mkdir -p ~/.cache/playwright-debs
           for f in /var/cache/apt/archives/*.deb; do

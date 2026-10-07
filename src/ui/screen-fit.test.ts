@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { screenFitFindings } from './screen-fit';
+import { buildIdFindings, screenFitFindings } from './screen-fit';
 import type { PaintedThing } from './transient-cards';
 
 // A screen fits the phone (polish batch E's check, punch item 5): at 568x320 and the largest Text
@@ -44,5 +44,45 @@ describe('screenFitFindings', () => {
     expect(screenFitFindings({ wide: [inside], painted: [inside, raised], footer: [low] }, viewport)).toEqual(
       [],
     );
+  });
+});
+
+// Polish batch I's check, punch 3: at the largest Text size the menu scrolls, and then both the
+// footer and the corner stamp gave way, so the menu showed no build id. A debug report and the
+// maintainer's playtests need it: the build id is always findable on the menu, covering no control.
+describe('the build id on the menu', () => {
+  const view = { width: 915, height: 412 };
+  const things = [control('menu-race', box(400, 300, 520, 342))];
+
+  it('is found when the footer, the corner stamp or the line at the end of the column is painted in view', () => {
+    expect(buildIdFindings([{ name: 'the footer', box: box(400, 390, 520, 406) }], things, view)).toEqual([]);
+    expect(buildIdFindings([{ name: 'the corner stamp', box: box(8, 392, 300, 408) }], things, view)).toEqual(
+      [],
+    );
+    expect(buildIdFindings([{ name: 'the build line', box: box(400, 350, 520, 366) }], things, view)).toEqual(
+      [],
+    );
+  });
+
+  it('control: names a menu with no build id painted at all, as the largest Text size drew it', () => {
+    expect(buildIdFindings([], things, view)).toEqual(['the menu shows no build id']);
+    // A build id out of the screen, below the scroll, is not found either.
+    expect(buildIdFindings([{ name: 'the build line', box: box(400, 430, 520, 446) }], things, view)).toEqual(
+      ['the menu shows no build id'],
+    );
+  });
+
+  it("names a build id drawn over a card's blank corner, beside its words", () => {
+    // Polish T's check: at 568x320 the stamp stepped clear of What's new's words but sat over its box.
+    const card: PaintedThing = { name: 'the card div#whats-new', kind: 'card', box: box(150, 230, 420, 400) };
+    expect(buildIdFindings([{ name: 'the corner stamp', box: box(8, 392, 300, 408) }], [card], view)).toEqual(
+      ['the corner stamp covers the card div#whats-new'],
+    );
+  });
+
+  it('names a build id drawn over a control', () => {
+    expect(buildIdFindings([{ name: 'the footer', box: box(430, 310, 500, 326) }], things, view)).toEqual([
+      'the footer covers the control button#menu-race',
+    ]);
   });
 });

@@ -6,10 +6,14 @@ import {
   inViewFindings,
   ownerOf,
   retryButton,
+  routeNoteQuiet,
   SLOT_SCREENS,
   TRANSIENT_CARDS,
   type PaintedCard,
   type PaintedThing,
+  waitSeconds,
+  WAIT_SLOT,
+  withWait,
 } from './transient-cards';
 
 // The transient-card rule (docs/architecture.md, "Transient cards"): a card the UI raises for a moment
@@ -234,5 +238,39 @@ describe('cardFindings, the layout judge', () => {
       'load-retry leaves the screen sideways',
       'something lies over load-retry',
     ]);
+  });
+});
+
+// Polish batch I's check (note-915, and punch 4): the route row's word said the same thing twice under
+// a busy "Loading ..." line, and, inside the host's wait, said "tap Race to try again shortly" with no
+// time left. The card and the word now share one wait and one way of counting it.
+describe("the word in the route row's place", () => {
+  it("counts the host's wait down in the card's own whole seconds, at every moment of the wait", () => {
+    const until = 30_000;
+    for (let now = 0; now <= 31_000; now += 137) {
+      const button = retryButton(until, now).label;
+      const word = withWait(`Tap Race to try again${WAIT_SLOT}.`, until, now);
+      const secs = waitSeconds(until, now);
+      // Whenever the button says "Retry in N s", the word says "in N s" too; never one without the other.
+      expect(button.includes(`in ${secs} s`), `button at ${now}`).toBe(secs > 0);
+      expect(word, `word at ${now}`).toBe(
+        secs > 0 ? `Tap Race to try again in ${secs} s.` : 'Tap Race to try again.',
+      );
+    }
+  });
+
+  it('control: with no wait (or one that has passed) the slot is gone and no countdown shows', () => {
+    expect(withWait(`Try again${WAIT_SLOT}.`, null, 5)).toBe('Try again.');
+    expect(withWait(`Try again${WAIT_SLOT}.`, 1000, 1000)).toBe('Try again.');
+    expect(withWait('Try again shortly.', 9000, 0)).toBe('Try again shortly.');
+    expect(waitSeconds(null, 0)).toBe(0);
+  });
+
+  it('steps aside while a busy line is up, or while the did-not-load card says it on the menu', () => {
+    expect(routeNoteQuiet({ screen: 'menu', busy: true, cardUp: false })).toBe(true);
+    expect(routeNoteQuiet({ screen: 'menu', busy: false, cardUp: true })).toBe(true);
+    // Control: nothing else says it, so the word stays; and a card on another screen does not hide it.
+    expect(routeNoteQuiet({ screen: 'menu', busy: false, cardUp: false })).toBe(false);
+    expect(routeNoteQuiet({ screen: 'career', busy: false, cardUp: true })).toBe(false);
   });
 });

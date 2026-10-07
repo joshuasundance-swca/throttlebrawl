@@ -3,12 +3,20 @@ import {
   createRoadNetwork,
   fixtureNetwork,
   LAND_TAGS,
+  STRUCTURE_LAYERS,
   type BakedTag,
   type RoadNetwork,
   type RoadPos,
 } from '../road';
 import { CAMERA_TUNING, createFollowCamera, type CameraTarget, type FollowCamera } from './index';
-import { createFrontKeeper, FRONT_TAGS, frontLimitM, OLDTOWN_FACADE_M, type FrontParams } from './fronts';
+import {
+  createFrontKeeper,
+  FRONT_TAGS,
+  frontLimitM,
+  OLDTOWN_FACADE_M,
+  PLANNED_FRONT_TAGS,
+  type FrontParams,
+} from './fronts';
 
 // The camera keeps clear of the building fronts (the solid-world check, punch item 2: "the camera ends up
 // inside buildings after a Duval sidewalk crash"). The rule is on the road's own data: a side whose land
@@ -245,5 +253,30 @@ describe('the keeper', () => {
     const road = street('key-oldtown');
     const off = createFrontKeeper(() => road, { ...PARAMS, keepClearOfFronts: 0 });
     expect(off.apply(pose, DT, undefined)).toBe(pose);
+  });
+});
+
+describe('the fronts the plan holds', () => {
+  it('are the front tags some structure layer asks for (the camera’s list is held to road/structures.ts)', () => {
+    const asked = new Set(Object.values(STRUCTURE_LAYERS).flatMap((layer) => [...(layer.tags ?? [])]));
+    const planned = Object.keys(FRONT_TAGS)
+      .filter((tag) => asked.has(tag))
+      .sort();
+    const unplanned = Object.keys(FRONT_TAGS)
+      .filter((tag) => !asked.has(tag))
+      .sort();
+    console.log(`[examined] planned fronts ${planned.join(', ')}; kept by tag: ${unplanned.join(', ')}`);
+    expect([...PLANNED_FRONT_TAGS].sort()).toEqual(planned);
+    // The row and painted houses and the gardens are render's scatter: walls at any height, the tag rule.
+    expect(unplanned).toEqual(['gardens', 'painted-houses', 'row-houses']);
+  });
+
+  it('give no tag limit to a camera with the plan, and the same limit as ever to one without', () => {
+    const road = street('shopfronts');
+    expect(frontLimitM(road, 0, 300, 'right', PARAMS)).not.toBeNull();
+    expect(frontLimitM(road, 0, 300, 'right', PARAMS, true)).toBeNull();
+    // Control: a front the plan does not hold keeps its limit with the plan.
+    const row = street('row-houses');
+    expect(frontLimitM(row, 0, 300, 'right', PARAMS, true)).toBe(frontLimitM(row, 0, 300, 'right', PARAMS));
   });
 });

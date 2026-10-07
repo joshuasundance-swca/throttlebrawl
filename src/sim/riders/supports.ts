@@ -13,8 +13,8 @@
 // - every traffic vehicle (its type's box, vehicleHeightM tall, measured as its rigid drawn box, as
 //   traffic's own contacts measure it) but a live moving deck, and none for a rider who is a ghost to
 //   traffic (back on the bike moments ago: he passes through traffic, so he cannot stand on it);
-// - a ramp truck's body (the car on its top deck and the cab, parked or the moving carrier's), its top
-//   `truckBodyTop`;
+// - a ramp truck's cab (its body, parked or the moving carrier's), its top `truckBodyTop`, and a parked
+//   truck's top deck (empty: no car stands on it), its top the lip's height `truckDeckTop`;
 // - a solid road hazard that is not light (the parked pickup, the coffee cart, the stair tower, the log
 //   pile), its top `hazardTop`;
 // - a solid piece of street furniture whose footprint is its own top (drawn no taller than a rider's
@@ -49,6 +49,9 @@ import {
   truckBodyAt,
   truckBodyBox,
   truckBodyTop,
+  truckDeckAt,
+  truckDeckBox,
+  truckDeckTop,
   truckVelocityS,
   type MovingDecks,
 } from './features';
@@ -103,7 +106,10 @@ export type SupportKind = 'vehicle' | 'truck' | 'hazard' | 'furniture' | 'struct
 
 /** A support found under a point: its top and how it moves. */
 export interface Support {
-  /** Its identity for the rider standing on it: `v:<vehicle id>`, `t:<feature id>`, `h:<key>`, `f:<id>`. */
+  /**
+   * Its identity for the rider standing on it: `v:<vehicle id>`, `t:<feature id>` (a truck's cab),
+   * `d:<feature id>` (its top deck), `h:<key>`, `f:<id>`.
+   */
   key: string;
   kind: SupportKind;
   /** Its top above the road, m. */
@@ -294,42 +300,52 @@ export function supportAt(
   m: Mover,
   at: SupportQuery,
   decks: MovingDecks,
-  accept: (top: number) => boolean,
+  accept: (top: number, key: string) => boolean,
   key?: string,
 ): Support | null {
   const box = riderHitbox(config, m.riderIndex);
   let best: Support | null = null;
   const take = (s: Support) => {
-    if ((key === undefined || s.key === key) && accept(s.top) && (!best || s.top > best.top)) best = s;
+    if ((key === undefined || s.key === key) && accept(s.top, s.key) && (!best || s.top > best.top)) best = s;
   };
   if (key === undefined || key.startsWith('v:')) vehicleSupports(world, config, m, at, box, take);
-  if (key === undefined || key.startsWith('t:')) {
-    const f = truckBodyAt(config, at.edge, at.s, at.d, at.ahead > 0 ? decks.next : decks.now);
-    if (f) {
-      const body = truckBodyBox(f);
-      if (holdsBike(body.s1 - body.s0, body.d1 - body.d0, box)) {
-        const v = truckVelocityS(f);
-        const fr = config.road.frameAt(at.edge, at.s);
-        const moving = f.params?.['moving'] === true;
-        // Its heading along its edge, the way it faces (a parked one is still: speed 0).
-        const facing = f.params?.['facing'] === -1 ? -1 : 1;
-        // It moves v m of s a second, along the road where the rider is: through the world, a metre of s
-        // at his offset (shorter off the middle of a bend, `sRateFactor`), so he keeps his place on it.
-        const kappa = config.road.kappaAt(at.edge, at.s);
-        const vw = kappa === 0 || v === 0 ? v : v / sRateFactor(kappa, at.d);
-        take({
-          key: `t:${f.id}`,
-          kind: 'truck',
-          top: truckBodyTop(f),
-          vx: fr.tx * vw,
-          vz: fr.tz * vw,
-          speed: v * facing,
-          hx: fr.tx * facing,
-          hz: fr.tz * facing,
-          vehicle: moving ? vehicleOfDeck(f) : -1,
-          object: 'rampTruck',
-        });
-      }
+  if (key === undefined || key.startsWith('t:') || key.startsWith('d:')) {
+    const trucks = at.ahead > 0 ? decks.next : decks.now;
+    const fr = config.road.frameAt(at.edge, at.s);
+    // It moves v m of s a second, along the road where the rider is: through the world, a metre of s
+    // at his offset (shorter off the middle of a bend, `sRateFactor`), so he keeps his place on it.
+    const kappa = config.road.kappaAt(at.edge, at.s);
+    const truck = (f: BakedFeature, prefix: 't' | 'd', top: number): Support => {
+      const v = truckVelocityS(f);
+      // Its heading along its edge, the way it faces (a parked one is still: speed 0).
+      const facing = f.params?.['facing'] === -1 ? -1 : 1;
+      const vw = kappa === 0 || v === 0 ? v : v / sRateFactor(kappa, at.d);
+      return {
+        key: `${prefix}:${f.id}`,
+        kind: 'truck',
+        top,
+        vx: fr.tx * vw,
+        vz: fr.tz * vw,
+        speed: v * facing,
+        hx: fr.tx * facing,
+        hz: fr.tz * facing,
+        vehicle: f.params?.['moving'] === true ? vehicleOfDeck(f) : -1,
+        object: 'rampTruck',
+      };
+    };
+    // The cab (with the hood): the truck's body, a top of its own.
+    const cab =
+      key === undefined || key.startsWith('t:') ? truckBodyAt(config, at.edge, at.s, at.d, trucks) : null;
+    if (cab) {
+      const body = truckBodyBox(cab);
+      if (holdsBike(body.s1 - body.s0, body.d1 - body.d0, box)) take(truck(cab, 't', truckBodyTop(cab)));
+    }
+    // The top deck, empty: a top at the lip height from the lip platform to the cab, ridden as a cab is.
+    const deck =
+      key === undefined || key.startsWith('d:') ? truckDeckAt(config, at.edge, at.s, at.d, trucks) : null;
+    if (deck) {
+      const span = truckDeckBox(deck);
+      if (holdsBike(span.s1 - span.s0, span.d1 - span.d0, box)) take(truck(deck, 'd', truckDeckTop(deck)));
     }
   }
   if (key === undefined || key.startsWith('h:')) {

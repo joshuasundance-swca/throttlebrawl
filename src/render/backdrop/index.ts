@@ -17,13 +17,18 @@ import type { BackdropStats, BuiltBackdrop } from './builder';
 
 export type { BackdropStats } from './builder';
 
-/** Every pack's per-network backdrop files and region files, fetched on demand. */
-const NETWORK_FILES = import.meta.glob<BackdropNetworkFile>('/packs/*/assets/backdrop/*/networks/*.json', {
-  import: 'default',
-});
-const REGION_FILES = import.meta.glob<BackdropRegionFile>('/packs/*/assets/backdrop/*/region.json', {
-  import: 'default',
-});
+/**
+ * Every pack's per-network backdrop files and region files, fetched on demand. Each loader is one
+ * plain `import()` of its file's module (no `import: 'default'`, which would add a `.then`), so
+ * content/'s `loadChunk` can fetch it again by its URL and hand back the same module (polish batch
+ * K's check, mustFix 1); the caller reads `.default`.
+ */
+const NETWORK_FILES = import.meta.glob<{ default: BackdropNetworkFile }>(
+  '/packs/*/assets/backdrop/*/networks/*.json',
+);
+const REGION_FILES = import.meta.glob<{ default: BackdropRegionFile }>(
+  '/packs/*/assets/backdrop/*/region.json',
+);
 
 /** The backdrop files for a network id, or null when no pack gives that network a backdrop. */
 export function backdropFilesFor(networkId: string): { network: string; region: string } | null {
@@ -43,12 +48,13 @@ export async function loadNetworkWater(
   const files = backdropFilesFor(networkId);
   if (!files) return null;
   // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): no water floor.
-  const loaded = await loadChunk('backdrop water', () =>
-    Promise.all([NETWORK_FILES[files.network]!(), import('./water')]),
-  );
-  if (!loaded) return null;
-  const [file, m] = loaded;
-  const floors = m.waterFloors(file);
+  // One import per loadChunk, so its retry can fetch that chunk again (polish batch K, mustFix 1).
+  const [file, m] = await Promise.all([
+    loadChunk('backdrop network', NETWORK_FILES[files.network]!),
+    loadChunk('backdrop water', () => import('./water')),
+  ]);
+  if (!file || !m) return null;
+  const floors = m.waterFloors(file.default);
   return floors.length ? m.waterAtOf(floors) : null;
 }
 
@@ -98,19 +104,21 @@ export class Backdrop {
       this.clear();
       return;
     }
-    // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4).
-    void loadChunk('backdrop', () =>
-      Promise.all([import('./builder'), NETWORK_FILES[files.network]!(), REGION_FILES[files.region]!()]),
-    )
-      .then((loaded) => {
+    // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4), one import per
+    // loadChunk so its retry can fetch that chunk again (polish batch K's check, mustFix 1).
+    void Promise.all([
+      loadChunk('backdrop builder', () => import('./builder')),
+      loadChunk('backdrop network', NETWORK_FILES[files.network]!),
+      loadChunk('backdrop region', REGION_FILES[files.region]!),
+    ])
+      .then(([m, network, region]) => {
         if (ticket !== this.ticket) return;
-        if (!loaded) {
+        if (!m || !network || !region) {
           // A backdrop that will not load leaves the old horizon; the race goes on.
           this.failed = 'the backdrop chunks did not load';
           return;
         }
-        const [m, network, region] = loaded;
-        const next = m.buildBackdrop(region, network, m.roadPointsOf(road.edges), seed);
+        const next = m.buildBackdrop(region.default, network.default, m.roadPointsOf(road.edges), seed);
         this.clear();
         this.built = next;
         this.root.add(next.mesh);

@@ -144,7 +144,14 @@ export const ROUTE_PICKER_CSS = `
    item 1). */
 #route-picker .route-note { font: italic 600 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
   text-shadow: 1px 1px 0 #111; max-width: 100%; }
+#ui #route-picker .route-note-action { margin-top: 2px; }
 `;
+
+/** A button beside the word (a missing build's Reload, polish batch I's check, punch 4). */
+export interface NoteAction {
+  label: string;
+  run: () => void;
+}
 
 export interface RoutePicker {
   /** The picker's element, for the menu. Hidden while there is no choice to make. */
@@ -157,7 +164,7 @@ export interface RoutePicker {
    * A word in the row's place (the picked region's roads loading, or why they did not load); null
    * takes it away. The picker shows while there is a word, even with no road to choose.
    */
-  setNote(text: string | null): void;
+  setNote(text: string | null, action?: NoteAction): void;
   /** Keeps the word back while something else on the screen says it (the did-not-load card). */
   quiet(on: boolean): void;
 }
@@ -220,22 +227,35 @@ export function createRoutePicker(
   note.className = 'route-note';
   note.setAttribute('role', 'status');
   note.hidden = true;
+  const noteButton = button('route-note-action', '', () => noteAction?.run());
+  noteButton.classList.add('route-note-action');
+  noteButton.hidden = true;
   let noteText: string | null = null;
+  let noteAction: NoteAction | null = null;
   let quiet = false;
   const root = document.createElement('div');
   root.id = 'route-picker';
   root.hidden = true;
-  root.append(label, strip, blurb, note);
+  root.append(label, strip, blurb, note, noteButton);
 
   /** Shows the picker while there is a road to choose or a word to say; the row only for the first. */
   const syncShown = () => {
     const choice = routes.length >= 2;
     const said = noteText !== null && !quiet;
     if (note.textContent !== (noteText ?? '')) note.textContent = noteText ?? '';
-    note.hidden = !said;
-    label.hidden = !choice;
-    strip.hidden = !choice;
-    root.hidden = !choice && !said;
+    // A write only when the answer changes: the word is redrawn each quarter second while a wait counts
+    // down, and a repeated write to `hidden` would start the menu's layout checks again each time.
+    const show = (e: HTMLElement, on: boolean) => {
+      if (e.hidden === on) e.hidden = !on;
+    };
+    show(note, said);
+    // The action sits beside the word, and shows and goes with it.
+    const action = said ? noteAction : null;
+    if (noteButton.textContent !== (action?.label ?? '')) noteButton.textContent = action?.label ?? '';
+    show(noteButton, action !== null);
+    show(label, choice);
+    show(strip, choice);
+    show(root, choice || said);
   };
   const draw = () => {
     syncShown();
@@ -290,8 +310,9 @@ export function createRoutePicker(
     get route() {
       return route;
     },
-    setNote(text) {
+    setNote(text, action) {
       noteText = text;
+      noteAction = text === null ? null : (action ?? null);
       syncShown();
     },
     quiet(on) {

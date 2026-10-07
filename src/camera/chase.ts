@@ -61,8 +61,10 @@
 // apex to the next. A radius of 0 turns it off.
 // The camera never writes sim state and never reads anything but the target, the entities it is
 // handed and the road handle.
+import type { StructurePlan } from '../road';
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
 import { createFrontKeeper } from './fronts';
+import { standingOn } from './solids';
 import { createJolt } from './jolt';
 import { createShake } from './shake';
 import { spring, stepAngleSpring, stepSpring, wrapAngle } from './spring';
@@ -106,6 +108,13 @@ export interface CameraContext {
    * further back (playtest 1, item 11); absent means a laptop-shaped view (no change).
    */
   aspect?: number | undefined;
+  /**
+   * The race's structures plan (road/structures.ts; the physical world, the maintainer, 2026-10-06): the
+   * buildings, landmarks and roofs a rider can reach, as data. The camera keeps its eye out of the solids and,
+   * for a body resting on a roof, frames the roof rather than the road far below. Absent or empty: the camera
+   * as it was, held clear of a street's fronts by their tags.
+   */
+  structures?: StructurePlan | null | undefined;
 }
 
 /**
@@ -280,6 +289,8 @@ const MAX_DT = 0.25;
 const TAKEDOWN_REACH_M = 40;
 /** A rider this far up off the road, riding, is on a support (a roof or a deck), m. */
 const LIFT_MIN_M = 0.05;
+/** The rider's body, where the eye's arm hangs from: a metre over his feet (his contact box is 1.5 m tall), m. */
+const PIVOT_UP_M = 1;
 /**
  * A high fall's cut-away holds the camera at most this long, s [default]: the fall (a Golden Gate drop
  * is 3.7 s), the splash penalty (4 s) and the respawn come well inside it; it never freezes a view for
@@ -460,6 +471,16 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       }
       // Riding a support (a roof, a deck: mode Road, up off the road): the aim rides up with him.
       if (t.mode === 'Road' && t.y - roadY > LIFT_MIN_M) lift = t.y - roadY;
+      // A crash on a roof (the physical world, 2026-10-06): a body at rest on a structure's top, tumbling or on
+      // foot, is framed on the roof as a rider on it is, not on the road far under it. The plan says which: a
+      // body flung through the air over a roof rests on nothing, and is framed over the road as ever.
+      else if (
+        (t.mode === 'Tumble' || t.mode === 'OnFoot') &&
+        ctx?.structures &&
+        t.y - roadY > LIFT_MIN_M &&
+        standingOn(ctx.structures, t.x, t.y, t.z) !== null
+      )
+        lift = t.y - roadY;
       const frame = road.frameAt(pos.edge, pos.s);
       const along = travelX * frame.tx + travelZ * frame.tz;
       // Tumbling (or sideways to the road), keep the last direction the rider was going.
@@ -748,11 +769,25 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   };
 
   /**
-   * Holds the eye clear of the building fronts on the sidewalk (fronts.ts). The helmet eye rides in the
-   * rider's head and is not moved: the rider's own box is what keeps it out of a building.
+   * Holds the eye clear of the building fronts on the sidewalk (fronts.ts) and, with the race's structures plan,
+   * out of the solids. The helmet eye rides in the rider's head and is not moved: the rider's own box is what
+   * keeps it out of a building, and with the plan it only leans out less, to the near plane's distance.
    */
-  const clearOfFronts = (pose: CameraPose, dt: number, eye: boolean): CameraPose =>
-    eye ? pose : fronts.apply(pose, dt, hintEdge);
+  const clearOfFronts = (
+    pose: CameraPose,
+    dt: number,
+    eye: boolean,
+    t: CameraTarget,
+    ctx: CameraContext | undefined,
+  ): CameraPose => {
+    const plan = ctx?.structures ?? null;
+    if (eye && !plan) return pose;
+    return fronts.apply(pose, dt, hintEdge, {
+      plan,
+      pivot: { x: t.x, y: t.y + PIVOT_UP_M, z: t.z },
+      helmet: eye,
+    });
+  };
 
   const snap = (t: CameraTarget, ctx?: CameraContext): CameraPose => {
     clearModes();
@@ -767,6 +802,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       finish(lookingBack ? lookBackPlacement(t) : basePlacement(t, shown), 0, 0, 0),
       0,
       shown === 'helmet' && !lookingBack,
+      t,
+      ctx,
     );
     return last;
   };
@@ -914,13 +951,15 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
         finish(placement, k.side + j.side * amount, k.up + j.up * amount, k.roll),
         dt,
         view === 'helmet' && !lookingBack && weight <= 0,
+        t,
+        ctx,
       );
       if (!valid(pose)) {
         // Never hand render a NaN: start over from the ideal framing.
         clearModes();
         settle(goalFor(t, ctx, view));
         fronts.reset();
-        last = clearOfFronts(finish(basePlacement(t, view), 0, 0, 0), 0, view === 'helmet');
+        last = clearOfFronts(finish(basePlacement(t, view), 0, 0, 0), 0, view === 'helmet', t, ctx);
         return last;
       }
       last = pose;
