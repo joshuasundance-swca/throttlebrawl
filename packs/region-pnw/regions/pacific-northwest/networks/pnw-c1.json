@@ -151,9 +151,9 @@
     },
     {
       "id": "j-pnw-c1-7",
-      "x": 2543.8291,
+      "x": 2543.8294,
       "y": 3,
-      "z": -4174.1281,
+      "z": -4174.128,
       "ends": [
         { "road": "pnw-sawmill-flats", "end": "to" },
         { "road": "pnw-sawmill-yard", "end": "from" },
@@ -184,9 +184,9 @@
     },
     {
       "id": "j-pnw-c1-8",
-      "x": 2616.8442,
+      "x": 2724.0834,
       "y": 3,
-      "z": -4441.85,
+      "z": -4834.3371,
       "ends": [
         { "road": "pnw-sawmill-yard", "end": "to" },
         { "road": "pnw-sawmill-end", "end": "from" },
@@ -216,9 +216,9 @@
     },
     {
       "id": "j-pnw-c1-9",
-      "x": 2646.0503,
+      "x": 2747.1825,
       "y": 3,
-      "z": -4548.9388,
+      "z": -4919.7692,
       "ends": [{ "road": "pnw-sawmill-end", "end": "to" }],
       "connectors": [],
       "control": "none"

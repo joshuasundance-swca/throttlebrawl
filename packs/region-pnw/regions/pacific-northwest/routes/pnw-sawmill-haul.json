@@ -3,7 +3,7 @@
   "id": "pnw-sawmill-haul",
   "network": "pnw-c1",
   "start": { "road": "pnw-ferry-landing", "s": 40, "dir": 1 },
-  "finish": { "road": "pnw-sawmill-end", "s": 48.5 },
+  "finish": { "road": "pnw-sawmill-end", "s": 25 },
   "mainPath": [
     "pnw-ferry-landing",
     "pnw-switchback-grade",
@@ -54,7 +54,7 @@
     },
     {
       "id": "pnw-mill-yard-cut",
-      "kind": "alternate",
+      "kind": "shortcut",
       "marked": true,
       "sign": "MILL YARD CUT-THROUGH. Authorised vehicles only. Airborne is authorised.",
       "aiTake": 0,

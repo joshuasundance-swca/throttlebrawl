@@ -224,47 +224,50 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
   expect(failures).toEqual([]);
 }, 600_000);
 
-it('the narrowed Mill Yard exit has continuous drawn and rideable ground across its lane and soft edge', () => {
-  const net = routeNetworks().find((n) => n.id === 'pnw-c1');
-  if (!net) throw new Error('missing pnw-c1');
-  const t = track(net);
-  const road = t.road;
-  const edge = road.edgeIndex('c-pnw-mill-out');
-  const e = road.edges[edge]!;
-  const scene = buildRoadScene(road, look, t.dressing, { seed: 1 });
-  const verge = new VergeLayer(road, look, { tags: networkTags(road, t.dressing).tags });
-  const ground = new DownIndex(
-    [scene.group, verge.group],
-    /^(road-(road|shoulder|shortcut|land|splitZone)|verge-band)/,
-  );
-  const failures: string[] = [];
-  let points = 0;
-  for (let s = 0.05; s < e.length; s += 0.5) {
-    const lane = road.lanesAt(edge, s)[0]!;
-    expect(lane.widthM).toBe(3.5);
-    const right = road.vergeAt(edge, s, 'right');
-    expect(right.edge).toBe('soft');
-    expect(right.widthM).toBe(2);
-    const lo = lane.dCenterM - lane.widthM / 2;
-    for (let d = lo + 0.05; d < right.dOuter; d += 0.1) {
-      const p = road.toWorld(edge, s, d, 0);
-      const drawn = ground.at(p.x, p.z, p.y + 0.15);
-      const spot = courseAt(road, { items: [], cellM: 32, cells: new Map() }, { edge, s, d }, p.y);
-      if (
-        !drawn ||
-        Math.abs(drawn.y - p.y) > 0.15 ||
-        spot.kind !== 'road' ||
-        Math.abs(spot.y - drawn.y) > 0.15
-      )
-        failures.push(`s${s.toFixed(2)} d${d.toFixed(2)}: drawn ${drawn?.y}, course ${spot.kind}`);
-      points++;
+it.each(['pnw-c1', 'sf-downtown'])(
+  'the narrowed %s exit has continuous drawn and rideable ground across its lane and soft edge',
+  (id) => {
+    const net = routeNetworks().find((n) => n.id === id);
+    if (!net) throw new Error(`missing ${id}`);
+    const t = track(net);
+    const road = t.road;
+    const edge = road.edgeIndex(id === 'pnw-c1' ? 'c-pnw-mill-out' : 'c-dt-plaza-out');
+    const e = road.edges[edge]!;
+    const scene = buildRoadScene(road, look, t.dressing, { seed: 1 });
+    const verge = new VergeLayer(road, look, { tags: networkTags(road, t.dressing).tags });
+    const ground = new DownIndex(
+      [scene.group, verge.group],
+      /^(road-(road|shoulder|shortcut|land|splitZone)|verge-band)/,
+    );
+    const failures: string[] = [];
+    let points = 0;
+    for (let s = 0.05; s < e.length; s += 0.5) {
+      const lane = road.lanesAt(edge, s)[0]!;
+      expect(lane.widthM).toBe(3.5);
+      const right = road.vergeAt(edge, s, 'right');
+      expect(right.edge).toBe('soft');
+      expect(right.widthM).toBe(2);
+      const lo = lane.dCenterM - lane.widthM / 2;
+      for (let d = lo + 0.05; d < right.dOuter; d += 0.1) {
+        const p = road.toWorld(edge, s, d, 0);
+        const drawn = ground.at(p.x, p.z, p.y + 0.15);
+        const spot = courseAt(road, { items: [], cellM: 32, cells: new Map() }, { edge, s, d }, p.y);
+        if (
+          !drawn ||
+          Math.abs(drawn.y - p.y) > 0.15 ||
+          spot.kind !== 'road' ||
+          Math.abs(spot.y - drawn.y) > 0.15
+        )
+          failures.push(`s${s.toFixed(2)} d${d.toFixed(2)}: drawn ${drawn?.y}, course ${spot.kind}`);
+        points++;
+      }
     }
-  }
-  print(
-    `[listed-barriers] exit ${e.length.toFixed(4)} m, lane 3.5 m, soft edge 2 m: ${points} ground points, ${failures.length} mismatches`,
-  );
-  scene.dispose();
-  verge.dispose();
-  expect(points).toBeGreaterThan(1000);
-  expect(failures).toEqual([]);
-});
+    print(
+      `[listed-barriers] ${id} exit ${e.length.toFixed(4)} m, lane 3.5 m, soft edge 2 m: ${points} ground points, ${failures.length} mismatches`,
+    );
+    scene.dispose();
+    verge.dispose();
+    expect(points).toBeGreaterThan(1000);
+    expect(failures).toEqual([]);
+  },
+);
