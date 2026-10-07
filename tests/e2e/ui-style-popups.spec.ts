@@ -1208,9 +1208,10 @@ async function stampCover(page: Page) {
       ),
     ].filter((e) => e.checkVisibility() && getComputedStyle(e).visibility !== 'hidden');
     const under: string[] = [];
-    // Footers span the screen: only their words count.
+    // Footers span the screen: only their words count. A footer that gave way (the menu's, hidden while
+    // the menu scrolls or something lies under it) is not painted.
     for (const f of document.querySelectorAll<HTMLElement>('#ui .footer')) {
-      if (!f.checkVisibility() || !sb || !shown) continue;
+      if (!f.checkVisibility() || getComputedStyle(f).visibility === 'hidden' || !sb || !shown) continue;
       const range = document.createRange();
       range.selectNodeContents(f);
       if (hit(sb, range.getBoundingClientRect())) under.push(`#${f.id} (words)`);

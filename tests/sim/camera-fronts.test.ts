@@ -149,10 +149,10 @@ async function frontsOf(config: SimConfig): Promise<Front[]> {
     });
   }
   if (['towers', 'plaza'].some((t) => tags.has(t))) {
-    const stacked = loaded['sfTowerModules' as ModelKind] !== undefined;
-    for (const i of planDowntown({ road, dressing, seed: config.seed, stacked }).items) {
+    // The towers' lots are the modules' whether or not they have loaded (the road's plan, 2026-10-06).
+    for (const i of planDowntown({ road, dressing, seed: config.seed }).items) {
       if (!['tower', 'plaza-tower', 'back-tower'].includes(i.rule)) continue;
-      const [width, depth] = towerFootprint(i.variant, stacked);
+      const [width, depth] = towerFootprint(i.variant);
       out.push({
         src: i.rule,
         x: i.p.x,

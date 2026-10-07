@@ -30,12 +30,16 @@ import {
 } from '../src/sim/api';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
 import {
+  createRoadNetwork,
   FURNITURE,
   FURNITURE_KINDS,
   STRUCTURE_MODELS,
+  type BakedNetwork,
+  type BakedRoad,
   type FurnitureFoot,
   type FurnitureKind,
   type StructureModel,
+  type StructureSpec,
 } from '../src/road';
 import { HAZARD_REACH_D_M, LIGHT_HAZARD_OBJECTS } from '../src/sim/riders/features';
 import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M } from '../src/sim/riders/furniture';
@@ -54,7 +58,8 @@ import {
 } from '../src/render/figures';
 import { mergeBoxes, type BoxPart } from '../src/render/geometry';
 import { readGlb } from '../src/render/glb';
-import { pdxFootprint } from '../src/render/downtown';
+import { DowntownLayer, pdxFootprint, type DowntownItem } from '../src/render/downtown';
+import { createFlatLook } from '../src/render/look';
 import { MODEL_ASSETS, type ModelKind } from '../src/render/models';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
 import { solidHazardModel } from '../src/render/pnw-places';
@@ -1104,4 +1109,137 @@ describe('the structure models (road/structures.ts): a fixed box is its file, ne
     if (!row) throw new Error(`no row ${first[0]}`);
     expect(boxGap({ ...row, x1: row.x1 + 0.02 }, first[1])).toBeGreaterThan(STRUCTURE_BOX_TOLERANCE_M);
   }, 60_000);
+});
+
+/** How far a downtown structure's box may sit from its drawn model's, each face, m (float32 world points). */
+const STRUCTURE_DRAWN_TOLERANCE_M = 0.05;
+
+/** A network from its pack files, as the game builds it. */
+function networkFrom(pack: string, region: string, id: string) {
+  const dir = `packs/${pack}/regions/${region}`;
+  const network = JSON.parse(readFileSync(`${dir}/networks/${id}.json`, 'utf8')) as BakedNetwork;
+  const roads = network.roads.map(
+    (r) => JSON.parse(readFileSync(`${dir}/roads/${r}.json`, 'utf8')) as BakedRoad,
+  );
+  const dressing = Object.fromEntries(roads.map((r) => [r.id, r]));
+  return { road: createRoadNetwork({ network, roads }), dressing };
+}
+
+/**
+ * The largest gap between a structure's box (its footprint, base and top) and its drawn model's points
+ * measured in the footprint's own frame (u along it, v across, y up), m, over the six faces.
+ */
+function structureGap(st: StructureSpec, pts: ArrayLike<number>): number {
+  const f = st.foot;
+  let u0 = Infinity;
+  let u1 = -Infinity;
+  let v0 = Infinity;
+  let v1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < pts.length; i += 3) {
+    const dx = (pts[i] ?? 0) - f.x;
+    const dz = (pts[i + 2] ?? 0) - f.z;
+    const u = dx * f.ux + dz * f.uz;
+    const v = dz * f.ux - dx * f.uz;
+    const y = pts[i + 1] ?? 0;
+    u0 = Math.min(u0, u);
+    u1 = Math.max(u1, u);
+    v0 = Math.min(v0, v);
+    v1 = Math.max(v1, v);
+    y0 = Math.min(y0, y);
+    y1 = Math.max(y1, y);
+  }
+  const top = st.roof.kind === 'flat' ? st.roof.topM : st.roof.ridgeM;
+  return Math.max(
+    Math.abs(u0 + f.hu),
+    Math.abs(u1 - f.hu),
+    Math.abs(v0 + f.hv),
+    Math.abs(v1 - f.hv),
+    Math.abs(y0 - st.baseY),
+    Math.abs(y1 - (st.baseY + top)),
+  );
+}
+
+describe("the downtowns' structures (road/structures/downtown.ts) are what render draws (the physical world, 2026-10-06)", () => {
+  it("every building, cart and rack's box is its drawn model's: footprint, base and top", async () => {
+    const look = createFlatLook();
+    const sf = networkFrom('region-sf', 'san-francisco', 'sf-downtown');
+    const pdx = networkFrom('region-pnw', 'pacific-northwest', 'osm-pnw-portland');
+    const kit = await bakeRepoModel('sfDowntown');
+    const modules = await bakeRepoModel('sfTowerModules');
+    const pdxKit = await bakeRepoModel('pdxDowntown');
+    const layers: [string, DowntownLayer][] = [
+      [
+        'San Francisco, seed 7',
+        new DowntownLayer(kit, undefined, undefined, look, { ...sf, seed: 7 }, modules),
+      ],
+      // Without the modules each tower is the old kit's model stretched to the same box: still what stands.
+      [
+        'San Francisco, seed 7, no modules',
+        new DowntownLayer(kit, undefined, undefined, look, { ...sf, seed: 7 }),
+      ],
+      [
+        'Portland, seed 1',
+        new DowntownLayer(pdxKit, undefined, undefined, look, { ...pdx, seed: 1, portland: true }),
+      ],
+    ];
+    const rules = new Map<string, number>();
+    let worst = 0;
+    let worstAt = '';
+    let checked: { st: StructureSpec; pts: Float32Array } | null = null;
+    for (const [name, layer] of layers) {
+      const solids = layer.plan.items.filter(
+        (it): it is DowntownItem & { solid: StructureSpec } => !!it.solid,
+      );
+      expect(solids.length, name).toBeGreaterThan(400);
+      for (const it of solids) {
+        const pts = layer.drawnPoints(it);
+        expect(pts.length, `${name}: ${it.rule} draws something`).toBeGreaterThan(0);
+        const gap = structureGap(it.solid, pts);
+        if (gap > worst) {
+          worst = gap;
+          worstAt = `${name}: ${it.rule} at s ${it.s.toFixed(1)}`;
+        }
+        expect(gap, `${name}: ${it.rule} at edge ${it.edge} s ${it.s.toFixed(1)}`).toBeLessThanOrEqual(
+          STRUCTURE_DRAWN_TOLERANCE_M,
+        );
+        rules.set(it.rule, (rules.get(it.rule) ?? 0) + 1);
+        checked ??= { st: it.solid, pts };
+      }
+      layer.dispose();
+    }
+    console.log(
+      `[examined] ${[...rules.values()].reduce((a, b) => a + b, 0)} downtown structures (${[...rules.entries()].map(([r, n]) => `${n} ${r}`).join(', ')}) against their drawn models; worst face ${worst.toFixed(3)} m (${worstAt})`,
+    );
+    // Every rule that places a solid is here: San Francisco's five and Portland's seven.
+    expect([...rules.keys()].sort()).toEqual(
+      [
+        'back-tower',
+        'cross-building',
+        'hq',
+        'pdx-back',
+        'pdx-back-tower',
+        'pdx-cart',
+        'pdx-end',
+        'pdx-front',
+        'pdx-rack',
+        'pdx-tower',
+        'plaza-tower',
+        'tower',
+      ].sort(),
+    );
+    // Negative control: the same structure moved 20 cm, or 20 cm wider, or a storey short, is found.
+    if (!checked) throw new Error('no structure checked');
+    const { st, pts } = checked;
+    expect(structureGap(st, pts)).toBeLessThanOrEqual(STRUCTURE_DRAWN_TOLERANCE_M);
+    expect(structureGap({ ...st, foot: { ...st.foot, x: st.foot.x + 0.2 } }, pts)).toBeGreaterThan(
+      STRUCTURE_DRAWN_TOLERANCE_M,
+    );
+    expect(structureGap({ ...st, foot: { ...st.foot, hv: st.foot.hv + 0.2 } }, pts)).toBeGreaterThan(
+      STRUCTURE_DRAWN_TOLERANCE_M,
+    );
+    const short = st.roof.kind === 'flat' ? { kind: 'flat' as const, topM: st.roof.topM - 3.3 } : st.roof;
+    expect(structureGap({ ...st, roof: short }, pts)).toBeGreaterThan(STRUCTURE_DRAWN_TOLERANCE_M);
+  }, 120_000);
 });

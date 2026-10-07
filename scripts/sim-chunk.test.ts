@@ -5,7 +5,13 @@
 // resumes; a change to the sim changes it. Each case is a real production build, in memory.
 import { describe, expect, it } from 'vitest';
 import { build, type Plugin, type Rolldown } from 'vite';
-import { SIM_CHUNK_NAME, SIM_CODE_HASH_PLACEHOLDER, simCodeHashOf } from './sim-chunk.mjs';
+import {
+  ROAD_LAZY_CHUNK_NAME,
+  ROAD_LAZY_TEST,
+  SIM_CHUNK_NAME,
+  SIM_CODE_HASH_PLACEHOLDER,
+  simCodeHashOfChunks,
+} from './sim-chunk.mjs';
 
 /** Appends a side effect to one source file, so the change survives tree-shaking. */
 function tweak(file: RegExp, marker: string): Plugin {
@@ -36,7 +42,7 @@ async function buildOnce(extra: Plugin[] = []): Promise<Built> {
   );
   const sim = chunks.find((c) => c.name === SIM_CHUNK_NAME);
   if (!sim) throw new Error(`no ${SIM_CHUNK_NAME} chunk in ${chunks.map((c) => c.fileName).join(', ')}`);
-  return { hash: simCodeHashOf(sim.code), chunks };
+  return { hash: simCodeHashOfChunks(sim, chunks), chunks };
 }
 
 describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
@@ -61,12 +67,20 @@ describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]sim[\\/]/.test(id))).toBe(true);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]/.test(id))).toBe(true);
     expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]core[\\/]/.test(id))).toBe(true);
-    // (and Vite's preload helper, which the road's lazy structure planners' `import()` is wrapped in)
+    // (and Vite's preload helper, which the planners' dynamic imports in src/road/structures.ts go through)
     expect(
       sim?.moduleIds.every(
         (id) => /[\\/]src[\\/](sim|road|core)[\\/]/.test(id) || id === '\0vite/preload-helper.js',
       ),
     ).toBe(true);
+
+    // The road's structure planners (the physical world, 2026-10-06) are not in it: they build into their
+    // own chunk, which the sim chunk loads on demand, never with the first screen.
+    expect(sim?.moduleIds.some((id) => ROAD_LAZY_TEST.test(id))).toBe(false);
+    const lazy = base.chunks.find((c) => c.name === ROAD_LAZY_CHUNK_NAME);
+    expect(lazy?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures[\\/]downtown\.ts$/.test(id))).toBe(
+      true,
+    );
 
     // The app carries the hash, and no placeholder is left anywhere.
     const all = base.chunks.map((c) => c.code).join('\n');
@@ -74,24 +88,14 @@ describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
     expect(base.chunks.some((c) => c.name !== SIM_CHUNK_NAME && c.code.includes(base.hash))).toBe(true);
   });
 
-  it('keeps the structure planners out of the sim chunk, and a change to one still moves the code hash', async () => {
-    // The planners (src/road/structures/, the physical world) are lazy chunks: they load with the region, never with
-    // the first screen. The sim chunk names each in its dynamic import, so its code, and its hash, follow them.
+  it('changes the hash when a lazy structure planner changes: its chunk is part of the hash', async () => {
     const base = await buildOnce();
-    const planner = await buildOnce([tweak(/\/src\/road\/structures\/waterfront\.ts$/, '__plannerTweak')]);
-    const sim = base.chunks.find((c) => c.name === SIM_CHUNK_NAME);
-    expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures[\\/]/.test(id))).toBe(false);
-    expect(sim?.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures\.ts$/.test(id))).toBe(true);
-    const lazy = base.chunks.filter((c) =>
-      c.moduleIds.some((id) => /[\\/]src[\\/]road[\\/]structures[\\/](waterfront|pnw-places)\.ts$/.test(id)),
-    );
-    console.log(
-      `[examined] simCodeHash base ${base.hash}, a change to a planner ${planner.hash}; planner chunks ${lazy.map((c) => c.fileName).join(', ')}`,
-    );
-    expect(lazy).toHaveLength(2);
-    for (const c of lazy) expect(c.name).not.toBe(SIM_CHUNK_NAME);
-    expect(planner.chunks.some((c) => c.name !== SIM_CHUNK_NAME && c.code.includes('__plannerTweak'))).toBe(
-      true,
+    const planner = await buildOnce([tweak(/\/src\/road\/structures\/downtown\.ts$/, '__plannerTweak')]);
+    console.log(`[examined] simCodeHash base ${base.hash}, planner change ${planner.hash}`);
+    const lazy = planner.chunks.find((c) => c.name === ROAD_LAZY_CHUNK_NAME);
+    expect(lazy?.code.includes('__plannerTweak')).toBe(true);
+    expect(planner.chunks.find((c) => c.name === SIM_CHUNK_NAME)?.code.includes('__plannerTweak')).toBe(
+      false,
     );
     expect(planner.hash).not.toBe(base.hash);
   });

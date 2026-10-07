@@ -28,11 +28,21 @@ export {
   resolveCrossSection,
   resolveVerge,
   VERGE_BY_TAG,
+  vergeTagAt,
 } from './cross-section';
 export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
 export { BRIDGE_TAPER_SLOPE, bridgedAt } from './bridge-taper';
 export type { TaperedVerge } from './bridge-taper';
-export { gapAt, gapById, gapFarSide, jumpableWallAt, nearestOnEdges } from './gap';
+export {
+  BUILDING_FRONT_TAGS,
+  EDGE_TOP_BY_TAG,
+  edgeTopAt,
+  pastAt,
+  WATER_LEVEL_M,
+  waterLevelOf,
+} from './beyond';
+export type { Past } from './beyond';
+export { gapAt, gapById, gapFarSide, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
 export {
@@ -152,8 +162,8 @@ export { COURSE_STEP_M, courseAt } from './course';
 export type { CourseSpot } from './course';
 // The car ferry's numbers (small: render's roofs and the places both read them, and so does its planner).
 export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';
-// The layers' layouts (what render draws, what the registry plans): each its own lazy chunk, loaded with the
-// region, never in the first load. Render awaits one before it builds its layer (render/waterfront.ts,
+// The layers' layouts (what render draws, what the registry plans): in the planners' lazy chunk
+// (`road-structures`, scripts/sim-chunk.mjs), loaded with the region, never in the first load. Render awaits one before it builds its layer (render/waterfront.ts,
 // render/pnw-places.ts); the registry (`STRUCTURE_LAYERS`) loads the same module for the sim.
 export const loadWaterfrontLayout = () => import('./structures/waterfront');
 export const loadPnwPlacesLayout = () => import('./structures/pnw-places');

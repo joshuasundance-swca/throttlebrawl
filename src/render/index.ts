@@ -551,16 +551,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     const m = downtownModule;
     if (!m || !roadArgs) return;
     const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
-    const rs = roadScene;
     if (m.hasPortland(tags)) {
-      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit and the land the road scene drew.
+      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit, where the road's plan stands them
+      // (road/structures/downtown.ts, on the land the road scene draws).
       const pdx = models.pdxDowntown;
-      if (!pdx || !rs) return;
+      if (!pdx) return;
       downtown = new m.DowntownLayer(pdx, undefined, undefined, look, {
         road: roadArgs.road,
         dressing: roadArgs.dressing,
         seed: sceneSeed,
-        portland: { landReach: (e, side, s) => rs.landReach(e, side, s) },
+        portland: true,
       });
     } else {
       const kit = models.sfDowntown;

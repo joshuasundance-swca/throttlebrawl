@@ -201,3 +201,74 @@ describe('with the stale-build watch', () => {
     expect(waits).toEqual([...RETRY_DELAYS_MS]);
   });
 });
+
+// Polish batch E's check, punch item 2: with "Retry in 30 s" on the card, a new pick or a Race tap
+// asked the host for all 34 of San Francisco's map files at once (68 to 102 to 136 asks in 0.1 s):
+// only the card's Retry honoured the wait. The wait is the loader's now: until the host's Retry-After
+// has passed, a build file is not asked for. A wait under the cap is waited out; a longer one answers
+// at once with the host's own 429 and the wait that is left, so the card counts the same wait down.
+describe('retryingFetch: the host asked for a wait', () => {
+  function clocked(script: Record<string, Step[]>) {
+    const host = scripted(script);
+    const clock = { now: 1_000_000 };
+    const waits: number[] = [];
+    const fetchFn = retryingFetch(host.fetchFn, {
+      scope: SCOPE,
+      online: () => true,
+      now: () => clock.now,
+      wait: (ms) => {
+        waits.push(ms);
+        clock.now += ms;
+        return Promise.resolve();
+      },
+    });
+    return { fetchFn, waits, asked: host.asked, clock };
+  }
+  const OTHER = `${SCOPE}assets/osm-sf-hills-run-D4fEzyHz.json`;
+
+  it('asks the host nothing until a long wait has passed, and answers 429 with the wait that is left', async () => {
+    const t = clocked({ [MAP]: [{ status: 429, retryAfter: '30' }] });
+    expect((await t.fetchFn(MAP)).status).toBe(429);
+    expect(t.asked).toHaveLength(1);
+    // 10 s later: a new pick (another file) and a Race tap (the same file) ask nothing.
+    t.clock.now += 10_000;
+    for (const url of [OTHER, MAP]) {
+      const res = await t.fetchFn(url);
+      expect(res.status, url).toBe(429);
+      expect(res.headers.get('Retry-After'), url).toBe('20');
+    }
+    expect(t.asked, 'nothing asked during the wait').toHaveLength(1);
+    // After the wait the host is asked again.
+    t.clock.now += 20_000;
+    expect((await t.fetchFn(OTHER)).status).toBe(200);
+    expect(t.asked).toEqual([MAP, OTHER]);
+  });
+
+  it('waits out a short wait before asking, whoever asks', async () => {
+    const t = clocked({ [MAP]: [{ status: 429, retryAfter: '3' }] });
+    expect((await t.fetchFn(MAP)).status).toBe(200);
+    expect(t.waits).toEqual([3000]);
+    // A wait left over from another file's answer is waited out before this one is asked.
+    const u = clocked({ [MAP]: [{ status: 429, retryAfter: '30' }] });
+    await u.fetchFn(MAP);
+    u.clock.now += 25_000;
+    expect((await u.fetchFn(OTHER)).status).toBe(200);
+    expect(u.waits).toEqual([5000]);
+    expect(u.asked).toEqual([MAP, OTHER]);
+  });
+
+  it('control: an answer with no Retry-After holds nothing back', async () => {
+    const t = clocked({ [MAP]: [503, 503, 503, 503] });
+    expect((await t.fetchFn(MAP)).status).toBe(503);
+    expect((await t.fetchFn(OTHER)).status).toBe(200);
+    expect(t.asked.filter((u) => u === OTHER)).toHaveLength(1);
+    expect(t.waits).toEqual([...RETRY_DELAYS_MS]);
+  });
+
+  it('control: a file outside assets/ is never held back', async () => {
+    const t = clocked({ [MAP]: [{ status: 429, retryAfter: '30' }] });
+    await t.fetchFn(MAP);
+    expect((await t.fetchFn(`${SCOPE}sw.js`)).status).toBe(200);
+    expect(t.asked).toEqual([MAP, `${SCOPE}sw.js`]);
+  });
+});

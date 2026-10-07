@@ -11,6 +11,12 @@
 // Retry-After when that is longer. A Retry-After beyond RETRY_AFTER_CAP_MS gives up at once: the host
 // said not to come back soon, and the player's Retry button (app/) can ask later.
 //
+// The host's wait is the loader's (polish batch E's check, punch item 2: with "Retry in 30 s" on the
+// did-not-load card, a new pick or a Race tap asked for all 34 of a region's map files at once). Once
+// an answer has asked for a wait, no build file is asked for until it has passed: a request inside a
+// wait no longer than the cap waits it out first, and one inside a longer wait answers at once with a
+// 429 of its own whose Retry-After is the wait that is left, so every load path says the same wait.
+//
 // What is not: a 404 or 410 (a build file the host no longer has: stale-build.ts's rule, which
 // reloads to the build the host serves; retrying it would only delay that), any other 4xx, a file
 // outside `assets/`, a request with the network off or that the caller aborted. When it gives up it
@@ -57,8 +63,18 @@ export function retryAfterMsOf(value: string | null | undefined, now: number): n
 const retryAfterMs = (res: Response, now: number): number | null =>
   retryAfterMsOf(res.headers.get('Retry-After'), now);
 
+/** The answer given, without asking the host, inside a wait it asked for (`leftMs` of it left). */
+const heldBack = (leftMs: number): Response =>
+  new Response(null, {
+    status: 429,
+    statusText: 'Too Many Requests',
+    headers: { 'Retry-After': String(Math.ceil(leftMs / 1000)) },
+  });
+
 export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch {
   const buildDir = new URL(BUILD_DIR, env.scope).href;
+  /** Until when (env.now's clock) the host asked not to be asked for a build file again. */
+  let holdUntil = -Infinity;
   const eligible = (input: RequestInfo | URL, init?: RequestInit): boolean => {
     try {
       const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -70,22 +86,34 @@ export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch 
   };
   return async (input, init) => {
     if (!eligible(input, init)) return inner(input, init);
+    /** How far this request's own last wait reached: a wait it already sat through is not sat again. */
+    let waitedTo = -Infinity;
+    const pause = (ms: number) => {
+      waitedTo = env.now() + ms;
+      return env.wait(ms);
+    };
     for (let attempt = 0; ; attempt++) {
       const backoff = RETRY_DELAYS_MS[attempt];
+      // Inside a wait the host asked for (this answer's, or another file's): sat out when it is short,
+      // answered at once with the wait that is left when it is long. The host is not asked.
+      const left = holdUntil - Math.max(env.now(), waitedTo);
+      if (left > RETRY_AFTER_CAP_MS) return heldBack(left);
+      if (left > 0) await pause(left);
       let res: Response;
       try {
         res = await inner(input, init);
       } catch (err) {
         if (backoff === undefined || init?.signal?.aborted || !env.online()) throw err;
-        await env.wait(backoff);
+        await pause(backoff);
         continue;
       }
-      if (backoff === undefined || !worthRetrying(res.status)) return res;
+      if (!worthRetrying(res.status)) return res;
       const asked = retryAfterMs(res, env.now());
-      if (asked !== null && asked > RETRY_AFTER_CAP_MS) return res;
+      if (asked !== null && asked > 0) holdUntil = Math.max(holdUntil, env.now() + asked);
+      if (backoff === undefined || (asked !== null && asked > RETRY_AFTER_CAP_MS)) return res;
       // This answer is dropped, so its body is not left half-read.
       void res.body?.cancel().catch(() => undefined);
-      await env.wait(Math.max(backoff, asked ?? 0));
+      await pause(Math.max(backoff, asked ?? 0));
     }
   };
 }

@@ -73,9 +73,9 @@ const CABLE = await bakeRepoModel('cableCar');
 // CX3's stackable towers, with the San Francisco atlas (playtest 3, T12.4).
 const MODULES = await bakeRepoModel('sfTowerModules');
 const dt = track('sf-downtown');
-// The shipping plan stacks the modules; `plain` is the fallback (no modules loaded): the old kit, stretched.
-const plan = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7, stacked: true });
-const plain = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7 });
+// The plan stacks the modules whether or not they have loaded (the road's plan, the physical world): with
+// no modules a tower draws the old kit stretched to the same box (`falls back to the stretched kit`, below).
+const plan = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7 });
 const byRule = (rule: string) => plan.items.filter((i) => i.rule === rule);
 const roadOf = (edge: number) => dt.roads.find((r) => r.id === dt.road.edges[edge]?.id) as BakedRoad;
 
@@ -210,11 +210,11 @@ describe('San Francisco downtown: what stands along the avenue', () => {
   });
 
   it('is the same for the same seed and differs for another', () => {
-    const again = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7, stacked: true });
+    const again = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7 });
     expect(again.items.map((i) => [i.variant, i.p.x, i.sy])).toEqual(
       plan.items.map((i) => [i.variant, i.p.x, i.sy]),
     );
-    const other = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 8, stacked: true });
+    const other = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 8 });
     expect(other.items.map((i) => i.variant)).not.toEqual(plan.items.map((i) => i.variant));
   });
 });
@@ -408,11 +408,6 @@ describe('San Francisco downtown: stacked towers', () => {
       if (STACKED_RULES.has(it.rule)) expect(it.model, `${it.rule} at s ${it.s}`).toBe('tower');
       else expect(it.model, it.rule).not.toBe('tower');
     }
-    expect(
-      plain.items.some((i) => i.model === 'tower'),
-      'no modules, no stacked towers',
-    ).toBe(false);
-    expect(new Set(plain.items.map((i) => i.rule))).toEqual(new Set(plan.items.map((i) => i.rule)));
   });
 
   it('stacks each tower to its target height within half a mid, in whole modules, never scaled', () => {
@@ -519,10 +514,27 @@ describe('San Francisco downtown: stacked towers', () => {
 
   it('falls back to the stretched kit with no modules, and to plain colour with no sheet, and throws on neither', async () => {
     const old = new DowntownLayer(KIT, PROPS, CABLE, look, input);
-    expect(old.plan.items.some((i) => i.model === 'tower')).toBe(false);
+    // The same plan either way: the lots never move with what has loaded (the physical world, 2026-10-06).
+    expect(old.plan.items.map((i) => [i.rule, i.p.x, i.p.z, i.mids])).toEqual(
+      new DowntownLayer(KIT, PROPS, CABLE, look, input, MODULES).plan.items.map((i) => [
+        i.rule,
+        i.p.x,
+        i.p.z,
+        i.mids,
+      ]),
+    );
     ride(old);
     for (const mesh of stretchMeshes(old))
       expect((mesh.material as { map?: unknown }).map ?? null).toBeNull();
+    // Each tower draws the old kit's model stretched to its stacked box: as wide, as deep and as tall.
+    const tower = old.plan.items.find((i) => i.rule === 'tower' && i.model === 'tower');
+    if (!tower) throw new Error('no tower');
+    const pts = old.drawnPoints(tower);
+    expect(pts.length).toBeGreaterThan(0);
+    let top = -Infinity;
+    for (let i = 1; i < pts.length; i += 3) top = Math.max(top, pts[i] ?? 0);
+    const height = MODULE_M.base + (tower.mids ?? 1) * MODULE_M.mid + MODULE_M.crown;
+    expect(top - tower.p.y).toBeCloseTo(height, 3);
     old.dispose();
     // The modules baked, the sheet failed to load: they draw in their tiles' mean colours, no map.
     const bare = withAtlas(

@@ -28,6 +28,7 @@ import {
   type RoadNetwork,
 } from '../road';
 import {
+  BARE_BAYS,
   BAY_BLOCK_M,
   BAY_DRAW_M,
   BAY_KINDS,
@@ -299,7 +300,8 @@ const REAL_KIT = bakeModel('sevenMileKit', readGlb(KIT_GLB));
 
 describe('the kit the planner places (CX2, seven-mile-kit.glb)', () => {
   it('bakes one variant per planned bay kind, each as long as the plan says, from z = 0 along the road', () => {
-    expect(REAL_KIT.variants.length).toBe(BAY_ROOTS.length);
+    // One variant per root, then the bare variants (`BARE_BAYS`) after them.
+    expect(REAL_KIT.variants.length).toBe(BAY_ROOTS.length + Object.keys(BARE_BAYS).length);
     const rows: string[] = [];
     BAY_KINDS.forEach((kind) => {
       const g = REAL_KIT.variants[KINDS.indexOf(rootOf(kind))]!;
