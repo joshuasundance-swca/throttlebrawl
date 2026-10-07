@@ -125,6 +125,8 @@ export function entityById(snap: SimSnapshot, id: number): EntitySnapshot | unde
 
 // ---- Colours -----------------------------------------------------------------------------
 
+/** A crash body this far under the ground it falls to (the water) is under it, and throws no shadow, m. */
+const UNDER_M = 0.5;
 const PLAYER = { bike: '#b8322a', rider: '#f2c14e', helmet: '#fff3c4' };
 const LAW = { bike: '#f4f4f4', rider: '#1d2a55', helmet: '#f4f4f4' };
 const RIVAL_RIDERS = ['#e0543a', '#7fd1c7', '#b98ce0', '#9cc56b', '#f28f8f', '#5a8fd6'];
@@ -890,9 +892,13 @@ export class EntityViews {
       }
       const tumble = e.tumble;
       if (tumble) {
-        // Down: the rider and the bike each throw their own, fainter the higher they fly.
-        sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
-        sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        // Down: the rider and the bike each throw their own, fainter the higher they fly. A body under the
+        // water (a high drop's plunge, sim/tumble) throws none: nothing lies still on the water over it in
+        // the cut-away's held view (the one live check of 2026-10-07).
+        if (tumble.rider.y >= ground - UNDER_M)
+          sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
+        if (tumble.bike.y >= ground - UNDER_M)
+          sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
         continue;
       }
       if (e.parkedBike) {

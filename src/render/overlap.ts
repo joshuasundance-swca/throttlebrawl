@@ -68,6 +68,16 @@ function projectFrom(
 
 /** The cell size of the vertex map `onLanes` searches, m. */
 const VERTEX_CELL_M = 16;
+/**
+ * A road's ground (its shoulder, verge band and fascia) may stand at most this far over another road's lanes,
+ * and stops this far short of them, m (the ride-column check holds it to a kerb's 0.15 m, road-clear.test-util.ts):
+ * where a link runs lower beside a road, down its embankment, the road's shoulder and band over the link's lanes
+ * would be a ceiling the rider rides under (the I-5 over Lake Samish's links, up to 1.55 m). [default]
+ */
+export const GROUND_OVER_ROAD_M = 0.05;
+export const GROUND_YIELD_MARGIN_M = 0.25;
+/** How far apart `clearReach` looks across a ground band for another road's lanes, m. */
+const LOWER_PROBE_M = 0.25;
 
 /** The d span of all of an edge's lanes at s (drive, shoulder and shortcut alike), as the ride column reads it. */
 export function laneExtentAt(road: RoadNetwork, edge: number, s: number): readonly [number, number] {
@@ -153,6 +163,83 @@ export class EdgeLocator {
    * overlap at a split or a join: a piece that lies there is drawn across a road the rider rides.
    */
   onLanes(x: number, z: number, except: number, margin = 0): boolean {
+    return this.lanesUnder(x, z, except, margin, 0.25, () => true);
+  }
+
+  /**
+   * Whether a point at height `y` stands over the lanes of any edge but `except` (widened by `margin` m), with
+   * that edge's asphalt there more than `overM` below it and, where `withinM` is given, no more than that far
+   * below it (a road further under is a bridge's underpass, not a road the point buries). The lanes count
+   * `margin` m past their ends too (where a road meets another head on). This is how a road's
+   * own ground (a shoulder, a verge band, a fascia) keeps off a lower road's lanes at a split, a join or a
+   * link (the ride-column check's ground rule, road-clear.test-util.ts).
+   */
+  overLowerLanes(
+    x: number,
+    y: number,
+    z: number,
+    except: number,
+    margin: number,
+    overM: number,
+    withinM = Number.POSITIVE_INFINITY,
+  ): boolean {
+    return this.lanesUnder(x, z, except, margin, margin + 0.25, (edge, s, d) => {
+      const drop = y - this.road.toWorld(edge, s, d, 0).y;
+      return drop > overM && drop < withinM;
+    });
+  }
+
+  /**
+   * How far a ground band of edge `edge` at s, from lateral offset `dNear` (against the road) out to `dFar`,
+   * runs before it would lie over a lower road's lanes (`overLowerLanes`, with the band `lift` m over the
+   * asphalt there): the offset where it stops (`dFar` when it is clear all the way), or null when it already
+   * lies over them at `dNear`. The edge is found to LOWER_PROBE_M, then to a few centimetres.
+   */
+  clearReach(
+    edge: number,
+    s: number,
+    dNear: number,
+    dFar: number,
+    lift: number,
+    margin: number,
+    overM: number,
+  ): number | null {
+    const over = (d: number): boolean => {
+      const p = this.road.toWorld(edge, s, d, lift);
+      return this.overLowerLanes(p.x, p.y, p.z, edge, margin, overM);
+    };
+    if (over(dNear)) return null;
+    const n = Math.max(1, Math.ceil(Math.abs(dFar - dNear) / LOWER_PROBE_M));
+    let clear = dNear;
+    for (let k = 1; k <= n; k++) {
+      const d = dNear + ((dFar - dNear) * k) / n;
+      if (!over(d)) {
+        clear = d;
+        continue;
+      }
+      let out = d;
+      for (let i = 0; i < 5; i++) {
+        const mid = (clear + out) / 2;
+        if (over(mid)) out = mid;
+        else clear = mid;
+      }
+      return clear;
+    }
+    return dFar;
+  }
+
+  /**
+   * Calls `visit(edge, s, d)` for each edge but `except` whose lanes (`margin` m wider each side, and as far as
+   * `pastM` past an end) lie under the point, d the point's offset on it, until one returns true.
+   */
+  private lanesUnder(
+    x: number,
+    z: number,
+    except: number,
+    margin: number,
+    pastM: number,
+    visit: (edge: number, s: number, d: number) => boolean,
+  ): boolean {
     const cells = (this.vertexCells ??= this.indexVertices());
     const reach = this.laneReach + margin;
     const i0 = Math.floor((x - reach) / VERTEX_CELL_M);
@@ -181,9 +268,9 @@ export class EdgeLocator {
       const e = this.road.edges[edge];
       if (!e) continue;
       const p = projectFrom(this.road, e, x, z, i);
-      if (p.past > 0.25) continue;
+      if (p.past > pastM) continue;
       const [lo, hi] = laneExtentAt(this.road, edge, p.s);
-      if (p.d > lo - margin && p.d < hi + margin) return true;
+      if (p.d > lo - margin && p.d < hi + margin && visit(edge, p.s, p.d)) return true;
     }
     return false;
   }

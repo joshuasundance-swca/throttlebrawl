@@ -1899,5 +1899,11 @@ export function createApp(opts: AppOptions): AppHandle {
   go('booted');
   ui.show('start');
   loop.start();
+  // The sound's context is made here, once the start screen has painted, and not in the start tap:
+  // making it is the tap's biggest cost (about 400 of its 408 ms of click handling on the dev
+  // machine), and only starting it needs the tap's gesture (audio/index.ts, `prepare`). A page that
+  // never paints (a hidden tab) leaves it to the tap, as before.
+  if (typeof requestAnimationFrame === 'function')
+    requestAnimationFrame(() => setTimeout(() => audio.prepare(), 0));
   return handle;
 }

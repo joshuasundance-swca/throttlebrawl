@@ -203,6 +203,30 @@ describe('the shadow falls on what the rider is over or on', () => {
     views.sync(null, snap([falling]), 1, 0);
     expectYs(shadowYs(views), [LIFT, LIFT]);
   });
+
+  it('a body gone under the water (a high drop’s plunge, 3 m) throws no shadow; control: afloat, it does', () => {
+    const body = (y: number) =>
+      rider(0, {
+        mode: 'Tumble',
+        y: 0,
+        road: { edge: 0, s: 100, d: 9, h: 0, dir: 1, yaw: 0 },
+        grounded: false,
+        floorY: 0,
+        tumble: {
+          rider: { x: 9, y, z: -101, vx: 0, vy: 0, vz: 0 },
+          bike: { x: 9, y, z: -100, vx: 0, vy: 0, vz: 0 },
+        },
+      });
+    const under = rig();
+    under.views.sync(null, snap([body(-3)]), 1, 0);
+    const afloat = rig();
+    afloat.views.sync(null, snap([body(0)]), 1, 0);
+    console.log(
+      `[examined] shadows drawn: bodies 3 m under the water ${shadowYs(under.views).length}, afloat ${shadowYs(afloat.views).length}`,
+    );
+    expect(shadowYs(under.views)).toEqual([]);
+    expectYs(shadowYs(afloat.views), [LIFT, LIFT]);
+  });
 });
 
 describe('a splash: low keeps its gag, a high drop has none', () => {
