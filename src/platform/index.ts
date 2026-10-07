@@ -6,8 +6,8 @@
 // the injected `resumeAudio` callback. The browser APIs sit behind `PlatformEnv`, so the unit
 // tests drive the same code with mocks.
 import type { ResumeAudio } from '../core';
-import { readsOfflineCaches } from './page-cache';
-import { retryingFetch } from './retry-fetch';
+import { readsOfflineCaches, type PageCacheEnv } from './page-cache';
+import { retryingFetch, type RetryEnv } from './retry-fetch';
 import { recoverStaleBuild, type StaleBuild } from './stale-build';
 
 /**
@@ -487,6 +487,7 @@ export function registerOfflineWorker(
 export { recoverStaleBuild, STALE_BUILD_KEY, type StaleBuild, type StaleBuildPage } from './stale-build';
 export {
   FETCH_LANES,
+  PACE_QUIET_MS,
   RETRY_AFTER_CAP_MS,
   RETRY_DELAYS_MS,
   retryAfterMsOf,
@@ -524,6 +525,58 @@ export function watchFetches(
   return inner;
 }
 
+/** What the loader needs: the retry's env, and the offline caches' (no `match` where there are none). */
+export interface LoaderEnv extends RetryEnv, Omit<PageCacheEnv, 'match'> {
+  match?: PageCacheEnv['match'];
+}
+
+/**
+ * The page's loader for build files (polish batch O's check): `inner` behind the retry and its
+ * pacing (retry-fetch.ts), behind a read of the offline caches (page-cache.ts) that comes twice: at
+ * once, so a file the install has cached waits for no lane and no wait the host asked for; and
+ * again just before the request goes out (mustFix 2: a model's request waited 2.3 to 3.3 s for a
+ * lane while the install cached it, then downloaded it a second time).
+ */
+export function loaderFetch(inner: typeof fetch, env: LoaderEnv): typeof fetch {
+  const { match } = env;
+  if (!match) return retryingFetch(inner, env);
+  const caches: PageCacheEnv = { scope: env.scope, controlled: () => env.controlled(), match };
+  return readsOfflineCaches(retryingFetch(readsOfflineCaches(inner, caches), env), caches);
+}
+
+/** The pages whose fetch the loader already wraps. */
+const loaded = new WeakSet<object>();
+
+/**
+ * Wraps `win.fetch` in the loader, once per page: boot's road data (before the app exists) and
+ * startOffline both call it, so they share one loader, its pacing and the host's waits.
+ */
+export function useLoader(win: FetchingWindow, env: LoaderEnv): void {
+  if (loaded.has(win)) return;
+  loaded.add(win);
+  win.fetch = loaderFetch(win.fetch.bind(win), env);
+}
+
+/**
+ * Hands the page's `fetch` to the loader, in a production build only (a dev server's files have no
+ * content hash and are never cached), before anything fetches a build file (polish batch O's check,
+ * punch item 3: the boot's 37 Keys road files went out before startOffline, with none of its rules).
+ */
+export function paceBuildFetches(): void {
+  if (!import.meta.env.PROD || typeof window === 'undefined') return;
+  const scope = new URL('./', document.baseURI).href;
+  useLoader(window, {
+    scope,
+    online: () => navigator.onLine,
+    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
+    controlled: () => navigator.serviceWorker?.controller != null,
+    ...(typeof caches === 'undefined'
+      ? {}
+      : { match: (url: string) => caches.match(url, { ignoreVary: true }) }),
+  });
+}
+
 /** Session storage, or null where the browser refuses it. */
 function sessionStore(): Storage | null {
   try {
@@ -545,25 +598,11 @@ export function startOffline(buildId: string, canReload: () => boolean): StaleBu
   if (!import.meta.env.PROD || typeof window === 'undefined') return null;
   const scope = new URL('./', document.baseURI).href;
   let stale: StaleBuild | null = null;
-  // Inside the watch, so it hears only the final answer of a build file: a 429 or 500 that a retry
-  // cured is no sign of a deploy, and a 404 or 410 is never retried (retry-fetch.ts).
-  const network = retryingFetch(window.fetch.bind(window), {
-    scope,
-    online: () => navigator.onLine,
-    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    now: () => Date.now(),
-  });
-  // Before the worker takes the page, a build file its install has cached is read from there, not
-  // downloaded a second time (page-cache.ts; a cache hit asks the host nothing, so it waits for no
-  // retry and is never a sign of a deploy).
-  window.fetch =
-    typeof caches === 'undefined'
-      ? network
-      : readsOfflineCaches(network, {
-          scope,
-          controlled: () => navigator.serviceWorker?.controller != null,
-          match: (url) => caches.match(url, { ignoreVary: true }),
-        });
+  // The loader (boot has usually wrapped the page's fetch in it already: then this leaves it). The
+  // watch goes outside it, so it hears only the final answer of a build file: a 429 or 500 that a
+  // retry cured is no sign of a deploy, a 404 or 410 is never retried (retry-fetch.ts), and a cache
+  // hit asks the host nothing (page-cache.ts).
+  paceBuildFetches();
   const net = watchFetches(window, document.baseURI, (url, status) => stale?.answered(url, status));
   stale = recoverStaleBuild(
     {

@@ -17,10 +17,14 @@
 // wait no longer than the cap waits it out first, and one inside a longer wait answers at once with a
 // 429 of its own whose Retry-After is the wait that is left, so every load path says the same wait.
 //
-// Paced (polish batch F's check, punch item 5: picking San Francisco asked for its 34 map files at
-// once, and the host answered some 429): no more than FETCH_LANES build files are asked for at a
-// time. A request holds its lane until the host's answer arrives (its headers; the body is the
-// caller's) and then hands it to the next in line, so a region's files go a few at a time, and a 429
+// Paced once the host asks (polish batch F's check, punch item 5: picking San Francisco asked for its
+// 34 map files at once, and the host answered some 429; polish batch O's check, punch item 1: pacing
+// every pick made region data 2 to 3 times later, San Francisco's route chips 3.4 to 4.4 s after the
+// tap against 1.5 s, while the real host gave 0 429s in 8 picks with or without it). A build file is
+// asked for at once until the host answers a 429, or a 503 with a Retry-After; from then until
+// PACE_QUIET_MS has passed with no such answer (counted from the end of its wait), no more than
+// FETCH_LANES build files are asked for at a time. A request holds its lane until the host's answer
+// arrives (its headers; the body is the caller's) and then hands it to the next in line, and a 429
 // that asks for a wait holds every file still in line until it has passed (the wait above).
 //
 // What is not: a 404 or 410 (a build file the host no longer has: stale-build.ts's rule, which
@@ -35,8 +39,10 @@
 export const RETRY_DELAYS_MS: readonly number[] = [500, 1500, 4000];
 /** The longest Retry-After it waits out; a longer one gives up at once (ms). [default] */
 export const RETRY_AFTER_CAP_MS = 8000;
-/** How many build files are asked for at a time; the rest wait for a lane. [default] */
+/** How many build files are asked for at a time once the host asked for pacing. [default] */
 export const FETCH_LANES = 4;
+/** How long the pacing lasts after the host's last 429 (or 503 with a Retry-After) and its wait (ms). [default] */
+export const PACE_QUIET_MS = 30_000;
 /** The content-hashed files of a build (stale-build.ts's BUILD_DIR). */
 const BUILD_DIR = 'assets/';
 
@@ -79,22 +85,29 @@ const heldBack = (leftMs: number): Response =>
     headers: { 'Retry-After': String(Math.ceil(leftMs / 1000)) },
   });
 
-/** A count of lanes, handed on in the order they were asked for. */
-function lanes(count: number) {
-  let free = count;
+/**
+ * Lanes for requests: unlimited while `paced()` is false, else `count` (the requests already out
+ * count against it), handed on in the order they were asked for.
+ */
+function lanes(count: number, paced: () => boolean) {
+  let busy = 0;
   const line: (() => void)[] = [];
+  const room = () => !paced() || busy < count;
   return {
     take: (): Promise<void> => {
-      if (free > 0) {
-        free--;
+      if (line.length === 0 && room()) {
+        busy++;
         return Promise.resolve();
       }
       return new Promise((resolve) => line.push(resolve));
     },
     give: () => {
-      const next = line.shift();
-      if (next) next();
-      else free++;
+      busy--;
+      for (let next = line[0]; next && room(); next = line[0]) {
+        line.shift();
+        busy++;
+        next();
+      }
     },
   };
 }
@@ -103,7 +116,9 @@ export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch 
   const buildDir = new URL(BUILD_DIR, env.scope).href;
   /** Until when (env.now's clock) the host asked not to be asked for a build file again. */
   let holdUntil = -Infinity;
-  const lane = lanes(FETCH_LANES);
+  /** Until when (env.now's clock) build files are paced: the host asked to be asked less at once. */
+  let pacedUntil = -Infinity;
+  const lane = lanes(FETCH_LANES, () => env.now() < pacedUntil);
   const eligible = (input: RequestInfo | URL, init?: RequestInit): boolean => {
     try {
       const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -153,6 +168,8 @@ export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch 
       const retry = worthRetrying(res.status);
       const asked = retry ? retryAfterMs(res, env.now()) : null;
       if (asked !== null && asked > 0) holdUntil = Math.max(holdUntil, env.now() + asked);
+      if (res.status === 429 || (res.status === 503 && asked !== null))
+        pacedUntil = Math.max(pacedUntil, env.now() + Math.max(asked ?? 0, 0) + PACE_QUIET_MS);
       lane.give();
       if (!retry) return res;
       if (backoff === undefined || (asked !== null && asked > RETRY_AFTER_CAP_MS)) return res;
