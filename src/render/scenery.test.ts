@@ -166,7 +166,14 @@ describe.each(['keys-m1', 'osm-keys-bahia-honda', 'pnw-c1', 'sf-hills'])('scener
         for (let k = 0; k < e.count; k++) {
           const dx = s.p.x - (e.x[k] ?? 0);
           const dz = s.p.z - (e.z[k] ?? 0);
-          closest = Math.min(closest, Math.hypot(dx, dz) - (Math.max(-e.dMin, e.dMax) + 0.6));
+          // The surface runs from the edge's dMin to its dMax, so on each side it reaches that side's own
+          // width (polish M: the Mill Yard Cut's one lane is all on its line's right, d 0 to 8, and since the
+          // flats swing away from it the forest on its left stands 7 to 8 m off its line, on open land).
+          const hx = (e.x[Math.min(e.count - 1, k + 1)] ?? 0) - (e.x[Math.max(0, k - 1)] ?? 0);
+          const hz = (e.z[Math.min(e.count - 1, k + 1)] ?? 0) - (e.z[Math.max(0, k - 1)] ?? 0);
+          const right = dz * hx - dx * hz >= 0;
+          const half = (right ? Math.max(0, e.dMax) : Math.max(0, -e.dMin)) + 0.6;
+          closest = Math.min(closest, Math.hypot(dx, dz) - half);
         }
       }
       expect(closest, `${s.kind} at ${s.p.x.toFixed(1)}, ${s.p.z.toFixed(1)}`).toBeGreaterThan(1);
