@@ -1,0 +1,11 @@
+---
+kind: dev
+audience: dev
+---
+The 10 KB first-load headroom floor now also judges the bundle train's run, the build that actually lands on main. Before, only a pull request's own run was judged, so main could land under the floor and no check said so. No game code changed.
+
+What happened: main sat at 9.9 KB of headroom at 87ceba3 (#633). #633's own quick check passed at 11.1 KB on 2026-10-06 at 19:31, against main at 303351b. Main then took #628 (11.3 KB of headroom), #630 (10.9 KB) and #627 (10.2 KB). #633 then landed alone in train 37530950804 (main ff06745 plus #633). That train's perf step built 490.1 KB gzip, 9.9 KB of headroom, and printed "pull-request floor 10 KB: not applied (not a pull_request run; the 500 KB budget alone)". The train runs the suite on the `workflow_run` and `workflow_dispatch` events, and the floor read only `pull_request`. Its change against main was not measured either: "the base build failed" (the credits bug #626 fixed). So no single PR crossed the floor on its own run. The PR that crossed it on main was #633, and its train skipped the check.
+
+The fix: `floorJudgesRun` in `scripts/perf-limits.mjs` judges `pull_request`, `workflow_run` and `workflow_dispatch` runs, which covers a PR's own run, a train's suite and its lone-PR control. A push to main and a local run are still not judged. `scripts/perf.mjs` prints which event it judged. `scripts/perf-limits.test.ts` replays #633's train: 501,826 bytes, the base not measured or 306 bytes smaller, on `workflow_dispatch`. The floor fails it. The negative control is the same build on a `push` run, which passes. Under the old rule this test failed for the right reason ("expected false to be true" for `workflow_run`). A train that would land main under the floor now goes red and splits to find the PR that grows it, as for any other red.
+
+Still open, and not closed by this PR: a full-path PR (`[full-gate]`, `.github/`, Dependabot) merges on its own `pull_request` run. If main grows between that run and the merge, it could still land main under the floor. Only GitHub's "require branches to be up to date" setting closes that, and agents must not change repo settings. The train path is how lane PRs land. Docs updated: `docs/engineering.md` (perf check, the floor). Not phone-verified (no game change).

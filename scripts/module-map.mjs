@@ -46,8 +46,11 @@ export const MODULE_MAP = {
  * api.ts ("every --> sim edge means imports src/sim/api.ts"). dev has two: index.ts, which
  * src/main.ts loads lazily (off the first-load JavaScript budget), and boot.ts, the small part
  * that loads with the first screen (the test flag and the error capture). Only main imports dev.
+ * road has its index.ts and its structure planners, `structures/*` (the physical world, 2026-10-06): each is
+ * a lazy chunk, and a lazy render layer that draws one imports it directly, which through index.ts would
+ * pull it into the first load.
  */
-const PUBLIC_ENTRIES = { sim: ['api'], dev: ['index', 'boot'] };
+const PUBLIC_ENTRIES = { sim: ['api'], dev: ['index', 'boot'], road: ['index', 'structures/*'] };
 
 /** Which module a repo-relative posix path belongs to, or null if it is outside src/. */
 export function moduleOf(relPath) {
@@ -74,7 +77,11 @@ export function checkImport(fromRel, targetRel) {
   }
   const inside = targetRel.slice(`src/${to}/`.length).replace(/\.(?:[cm]?[jt]s|d\.ts)$/, '');
   const entries = PUBLIC_ENTRIES[to] ?? ['index'];
-  if (targetRel === `src/${to}` || entries.includes(inside)) return null;
+  const entry = (e) =>
+    e.endsWith('/*')
+      ? inside.startsWith(e.slice(0, -1)) && !inside.slice(e.length - 1).includes('/')
+      : e === inside;
+  if (targetRel === `src/${to}` || entries.some(entry)) return null;
   return `import ${to} through its public entry (src/${to}/${entries[0]}.ts), not ${targetRel}`;
 }
 

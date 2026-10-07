@@ -25,6 +25,7 @@ import {
   type DowntownPlan,
   type Rect,
 } from './downtown';
+import { planPdxDowntown } from '../road/structures/downtown';
 import { readGlb } from './glb';
 import { EdgeLocator } from './overlap';
 import { ATLAS_WHITE_UV } from './scenery-merge';
@@ -53,13 +54,17 @@ const road: RoadNetwork = createRoadNetwork({ network, roads: bakedRoads });
 const dressing = Object.fromEntries(bakedRoads.map((r) => [r.id, r])) as unknown as RoadDressing;
 const kit = await bakeRepoModel('pdxDowntown');
 const scene: RoadScene = buildRoadScene(road, look, dressing, { seed: 1, models: {}, roadsideDensity: 1 });
-const input = {
-  road,
-  dressing,
-  seed: 1,
-  portland: { landReach: (e: number, side: -1 | 1, s: number) => scene.landReach(e, side, s) },
-};
-const plan = planPortland(input, kit);
+const input = { road, dressing, seed: 1, portland: true };
+const plan = planPortland(input);
+/**
+ * The plan of Bridge City with its road files changed (a control): the road's plan reads the network's own
+ * tags and features (road/structures/downtown.ts), so a control changes the network, not only the dressing.
+ */
+const redressed = (dress: RoadDressing) => ({
+  ...input,
+  road: createRoadNetwork({ network, roads: Object.values(dress) as unknown as BakedRoad[] }),
+  dressing: dress,
+});
 /** The street fronts, and the second row behind them (playtest 4, P4-20). */
 const isFront = (it: DowntownItem) => it.rule === 'pdx-front' || it.rule === 'pdx-tower';
 const isBack = (it: DowntownItem) => it.rule === 'pdx-back' || it.rule === 'pdx-back-tower';
@@ -341,7 +346,7 @@ describe("the cart pod on Broadway's right", () => {
         },
       ]),
     ) as unknown as RoadDressing;
-    const control = planPortland({ ...input, dressing: plain }, kit);
+    const control = planPortland(redressed(plain));
     expect(control.items.filter((i) => i.rule === 'pdx-cart')).toHaveLength(0);
   });
 
@@ -606,11 +611,8 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
     expect(sides, 'the sides the rule looked at').toBeGreaterThan(15);
     expect(bare).toEqual([]);
     // The control: on the old 24 m strip there is room for no second row anywhere.
-    const narrow = planPortland(
-      { ...input, portland: { landReach: (e, side, s) => Math.min(24, scene.landReach(e, side, s)) } },
-      kit,
-    );
-    expect(narrow.items.filter((i) => isBack(i) || isEnd(i))).toHaveLength(0);
+    const narrow = planPdxDowntown(road, 1, (e, side, s) => Math.min(24, scene.landReach(e, side, s)));
+    expect(narrow.lots.filter((i) => isBack(i) || isEnd(i))).toHaveLength(0);
   });
 
   it('is taller than the row in front of it, so it shows over the roofs', () => {
@@ -655,7 +657,7 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
 
   it('keeps the rule for every seed: no overlap, on land, and still doubled', () => {
     for (const seed of [2, 3, 4]) {
-      const other = planPortland({ ...input, seed }, kit);
+      const other = planPortland({ ...input, seed });
       const rects = other.items
         .filter((i) => isBuilding(i) || i.rule === 'pdx-cart')
         .map((i) => {
@@ -808,7 +810,7 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
           },
         ]),
       ) as unknown as RoadDressing;
-      const control = planPortland({ ...input, dressing: plain }, kit);
+      const control = planPortland(redressed(plain));
       const { targets, boxes, cams } = await view(control);
       const hidden = cams.filter(({ cam }) => seen(boxes, cam, targets) < targets.length).length;
       stdout.write(
@@ -903,7 +905,7 @@ describe("Old Town Chinatown's gate on West Burnside (playtest 4, B7)", () => {
       `[examined] the gate at s ${centreS.toFixed(1)} d ${centreD.toFixed(1)}: ${streetCovers(plan, at.x, at.z)} asphalt triangles under it, ${blockers.length} buildings on its corridor\n`,
     );
     // The control: without `crossStreet` nothing opens a street there.
-    const control = planPortland({ ...input, dressing: withoutStreet() }, kit);
+    const control = planPortland(redressed(withoutStreet()));
     expect(streetCovers(control, at.x, at.z), 'no asphalt under the gate without the param').toBe(0);
   });
 
@@ -916,7 +918,7 @@ describe("Old Town Chinatown's gate on West Burnside (playtest 4, B7)", () => {
     );
     const at = road.toWorld(edge, centreS, centreD, 0);
     for (const seed of [1, 2, 3, 4]) {
-      const other = seed === 1 ? plan : planPortland({ ...input, seed }, kit);
+      const other = seed === 1 ? plan : planPortland({ ...input, seed });
       expect(streetCovers(other, at.x, at.z), `seed ${seed}: asphalt under the gate`).toBeGreaterThan(0);
       for (const it of other.items.filter(isBuilding)) {
         const [width, depth] = pdxFootprint(kit, it.variant);
