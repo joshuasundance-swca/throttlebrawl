@@ -163,7 +163,7 @@ function railsOf(road: RoadNetwork, e: Edge, side: 'left' | 'right'): { s0: numb
     return out;
   };
   return e.barriers
-    .filter((b) => sideHas(b.side, side))
+    .filter((b) => b.kind === 'rail' && sideHas(b.side, side))
     .flatMap((b) => (b.kind === 'rail' ? railed(b) : [{ s0: b.s0, s1: b.s1 }]));
 }
 

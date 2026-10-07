@@ -47,6 +47,18 @@ function differences(road: RoadNetwork, a: LandReach, b: LandReach): { at: strin
 const look = createFlatLook();
 
 describe("the land's reach: the road's rule is the road scene's", () => {
+  it('keeps the tagged Mill Yard ground behind its wall without removing the wall', () => {
+    const { road, dressing } = track('pnw-c1');
+    const edge = road.edgeIndex('pnw-sawmill-yard');
+    const scene = buildRoadScene(road, look, dressing, { seed: 1 });
+    const reach = landReachOf(road);
+    for (const s of [230, 570]) {
+      expect(road.barrierAt(edge, s, 'right')?.kind).toBe('wall');
+      expect(scene.landReach(edge, 1, s), `drawn ground at ${s}`).toBeGreaterThan(0);
+      expect(reach(edge, 1, s), `physical ground at ${s}`).toBe(scene.landReach(edge, 1, s));
+    }
+    scene.dispose();
+  });
   // Downtown Portland plans its blocks on it; San Francisco's downtown is the other network with a downtown.
   for (const id of ['osm-pnw-portland', 'sf-downtown']) {
     it(`${id}: every metre of every road, both sides`, () => {

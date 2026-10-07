@@ -1872,7 +1872,7 @@ export function buildRoadScene(
         const land =
           th !== 'none' &&
           th !== 'water' &&
-          !railsOf[side].some((b) => s >= b.s0 - 5 && s <= b.s1 + 5) &&
+          !railsOf[side].some((b) => b.kind === 'rail' && s >= b.s0 - 5 && s <= b.s1 + 5) &&
           !(untagged && w(e.index, s, 0, 0).y >= ELEVATED_M);
         let r = 0;
         // Run W-U: a seawall's land (the waterfront's promenade) is only as wide as its verge band. Since
