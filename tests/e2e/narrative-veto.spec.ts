@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import type { TickerItem } from '../../src/ui/ticker';
 
 // narrative-2 in the real build (docs/milestones/M2.md, narrative-2, "Automated acceptance"):
 // - a long-press (500 ms or more) on a rival's bark on the top ticker opens "cut this" with the line on it,
@@ -25,6 +26,7 @@ type TestWindow = Window & {
   __GAME_TEST__?: boolean;
   __uiLongPressManual?: boolean;
   __uiLongPress?: PressClock;
+  __uiTicker?: (items: readonly TickerItem[], hold?: boolean) => void;
   __game?: Handle;
   __copied?: string[];
 };
@@ -39,6 +41,37 @@ interface SeenBubble {
   right: number;
   x: number;
   y: number;
+}
+
+/** Validates, captures and (for a gesture) holds the real bark in one browser task. */
+function observeBubble({ except, hold }: { except: string; hold: boolean }): SeenBubble | null {
+  const el = document.querySelector<HTMLElement>('#hud-ticker');
+  if (!el || el.hidden || el.dataset['cls'] !== 'bark') return null;
+  const ref = el.getAttribute('data-content-ref') ?? '';
+  const text = el.querySelector('.ticker-text')?.textContent ?? '';
+  if (ref === except || !/^base:bark-set\/[a-z0-9-]+#[a-z0-9-]+$/.test(ref) || !text.trim()) return null;
+  const style = getComputedStyle(el);
+  const r = el.getBoundingClientRect();
+  if (style.visibility !== 'visible' || style.display === 'none' || r.width <= 0 || r.height <= 0)
+    return null;
+  if (hold) {
+    const replace = (window as TestWindow).__uiTicker;
+    if (!replace) throw new Error('no __uiTicker: the ticker test seam is not installed');
+    // Preserve this observed race line, including its speaker; no stand-in line is planted.
+    replace(
+      [{ cls: 'bark', contentRef: ref, text, tag: el.querySelector('.ticker-tag')?.textContent ?? '' }],
+      true,
+    );
+  }
+  const box = el.getBoundingClientRect();
+  return {
+    ref,
+    text,
+    left: box.left,
+    right: box.right,
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
 }
 
 function watchErrors(page: Page): string[] {
@@ -75,22 +108,48 @@ async function startRace(page: Page) {
 
 /** The bark on the ticker now, or the next one (not `except`): its line, reference and box. */
 async function nextBubble(page: Page, except = ''): Promise<SeenBubble> {
-  const bubble = page.locator('#hud-ticker[data-cls="bark"]');
-  await expect(async () => {
-    await expect(bubble).toBeVisible();
-    expect(await bubble.getAttribute('data-content-ref')).not.toBe(except);
-  }).toPass({ timeout: 40_000 });
-  return bubble.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return {
-      ref: el.getAttribute('data-content-ref') ?? '',
-      text: el.querySelector('.ticker-text')?.textContent ?? '',
-      left: r.left,
-      right: r.right,
-      x: r.x + r.width / 2,
-      y: r.y + r.height / 2,
-    };
+  let seen: SeenBubble | null = null;
+  await expect
+    .poll(
+      async () => {
+        seen = await page.evaluate(observeBubble, { except, hold: true });
+        return seen !== null;
+      },
+      { timeout: 40_000 },
+    )
+    .toBe(true);
+  if (!seen) throw new Error('no observed bark');
+  return seen;
+}
+
+/** Ends the bounded observation hold before looking for another real race line. */
+async function releaseBubble(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const replace = (window as TestWindow).__uiTicker;
+    if (!replace) throw new Error('no __uiTicker: the ticker test seam is not installed');
+    replace([], false);
   });
+}
+
+/** Starts/ends a mouse press without a preceding pointermove releasing the observation hold. */
+async function mousePress(page: Page, seen: SeenBubble, down: boolean): Promise<void> {
+  await page.evaluate(
+    ({ seen, down }) => {
+      window.dispatchEvent(
+        new PointerEvent(down ? 'pointerdown' : 'pointerup', {
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          clientX: seen.x,
+          clientY: seen.y,
+          button: 0,
+          buttons: down ? 1 : 0,
+          bubbles: true,
+        }),
+      );
+    },
+    { seen, down },
+  );
 }
 
 /** Moves the long-press clock on by `ms` and returns how many presses are still timing before it. */
@@ -126,6 +185,15 @@ async function copiedReport(page: Page, button: string): Promise<string> {
   return page.evaluate(() => (window as TestWindow).__copied?.at(-1) ?? '');
 }
 
+test('bark observation rejects a visible style chip without a content reference', async ({ page }) => {
+  await page.setContent(
+    '<div id="hud-ticker" data-cls="style" style="width:200px;height:30px">' +
+      '<span class="ticker-text">COMBO</span></div>',
+  );
+  await expect(page.locator('#hud-ticker')).toBeVisible();
+  expect(await page.evaluate(observeBubble, { except: '', hold: false })).toBeNull();
+});
+
 test('long-pressing a bark on the ticker cuts the line, and the copied debug report lists it', async ({
   page,
 }) => {
@@ -143,19 +211,19 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
   expect(first.left + 10).toBeLessThan(stickRight);
   expect(await holdTouch(page, first.left + 10, first.y, 10 * LONG_PRESS_MS)).toBe(0);
   await expect(menu).toHaveCount(0);
+  await releaseBubble(page);
 
   // A mouse held still for 500 ms on a fresh bark: "cut this", with the line on the card. A tick
   // short of the threshold it is still closed.
   const seen = await nextBubble(page, first.ref);
   console.log(`bubble ${seen.ref}: "${seen.text}"`);
   expect(seen.ref).toMatch(/^base:bark-set\/[a-z0-9-]+#[a-z0-9-]+$/);
-  await page.mouse.move(seen.x, seen.y);
-  await page.mouse.down();
+  await mousePress(page, seen, true);
   expect(await advancePress(page, LONG_PRESS_MS - 1)).toBe(1);
   await expect(menu).toHaveCount(0);
   await advancePress(page, 1);
   await expect(menu).toBeVisible();
-  await page.mouse.up();
+  await mousePress(page, seen, false);
   await expect(menu).toHaveAttribute('data-content-ref', seen.ref);
   await expect(menu.locator('.cut-label')).toContainText(seen.text);
   const box = await menu.boundingBox();
@@ -174,6 +242,7 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
     .locator('#hud-ticker')
     .evaluate((el) => !(el as HTMLElement).hidden && el.getAttribute('data-content-ref'));
   expect(still).not.toBe(seen.ref);
+  await releaseBubble(page);
 
   // A touch on the ticker's part outside the stick and attack zones works mid-race.
   const third = await nextBubble(page, seen.ref);
@@ -184,6 +253,7 @@ test('long-pressing a bark on the ticker cuts the line, and the copied debug rep
   await expect(menu).toHaveAttribute('data-content-ref', third.ref);
   await page.locator('#cut-keep').click();
   await expect(menu).toBeHidden();
+  await releaseBubble(page);
 
   // The flag reached the settings record: the copied report lists it, and only the cut one.
   await page.keyboard.press('Escape');
@@ -204,6 +274,7 @@ test('the pause screen lists what you saw, and two taps cut a line into the repo
   await page.keyboard.press('Escape');
   const list = page.locator('#pause-screen #recently-seen');
   await expect(list).toBeVisible();
+  await releaseBubble(page);
   const row = list.locator(`.rs-item[data-content-ref="${seen.ref}"]`);
   await expect(row).toBeVisible();
   await expect(row).toContainText(seen.text);
