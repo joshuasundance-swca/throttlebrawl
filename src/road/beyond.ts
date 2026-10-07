@@ -23,6 +23,7 @@
 import { vergeTagAt, type VergeSide } from './cross-section';
 import { groundUnderOf, sectionGroundOf } from './drawn-ground';
 import type { RoadNetwork } from './network';
+import { lakeWaterAt } from './water';
 
 /**
  * Each network's water level, world y, m: the sea, a lake, a river [default]. A network left out is at
@@ -190,7 +191,9 @@ export function drawnEdgeAt(road: RoadNetwork, edge: number, s: number, side: Ve
   }
   if (road.barrierAt(edge, s, side)) return 'barrier';
   const v = road.vergeAt(edge, s, side);
-  if (v.edge === 'water' || v.edge === 'rail' || v.edge === 'brush' || v.edge === 'fence') return v.edge;
+  if (v.edge === 'water')
+    return v.derived && beyondAt(road, edge, s, side, 1).past === 'ground' ? null : 'water';
+  if (v.edge === 'rail' || v.edge === 'brush' || v.edge === 'fence') return v.edge;
   if (v.edge !== 'hard') return null;
   // A hard edge a road file gives (not derived): its author says a wall stands there.
   if (!v.derived) return 'wall';
@@ -266,17 +269,19 @@ export function beyondAt(
   side: VergeSide,
   acrossM: number,
 ): Beyond {
-  const water = waterLevelOf(road);
+  if (!road.edges[edge]) return { past: 'drop', floorY: 0 };
+  const sign = side === 'right' ? 1 : -1;
+  const from = sign * road.vergeAt(edge, s, side).dOuter;
+  const at = from + Math.max(0, acrossM);
+  const point = road.toWorld(edge, s, sign * at, 0);
+  const water = lakeWaterAt(road.id, point.x, point.z) ?? 0;
   const tagged = pastAt(road, edge, s, side);
   const none: Beyond = { past: tagged === 'ground' ? 'drop' : tagged, floorY: water };
-  if (!road.edges[edge] || holeAt(road, edge, s)) return none;
-  const sign = side === 'right' ? 1 : -1;
+  if (holeAt(road, edge, s)) return none;
   const lake = lakeOf(road);
   const section = sectionGroundOf(road, lake);
   const others = groundUnderOf(road, lake);
   // Out from the centre line, m: the band's outer edge and the point.
-  const from = sign * road.vergeAt(edge, s, side).dOuter;
-  const at = from + Math.max(0, acrossM);
   const deck = road.surfaceHeight(edge, s, sign * from);
   const otherAt = (out: number): number | null => {
     const q = road.toWorld(edge, s, sign * out, 0);

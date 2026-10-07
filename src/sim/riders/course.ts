@@ -105,7 +105,7 @@ export function groundEdgeOpen(
   kind: VergeEdge,
 ): boolean {
   if (kind === 'soft') return true;
-  if (kind !== 'hard') return false;
+  if (kind !== 'hard' && kind !== 'water') return false;
   return drawnEdgeAt(road, edge, s, side) === null;
 }
 

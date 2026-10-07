@@ -144,7 +144,7 @@ describe('the honest edges (2026-10-06): what is drawn at a band edge, and what 
     expect(at([], [tag('forest')])).toEqual({ drawn: 'brush', top: GROUND_EDGE_TOP_M.brush });
     expect(at([], [tag('gardens')])).toEqual({ drawn: 'fence', top: GROUND_EDGE_TOP_M.fence });
     expect(at([], [tag('water-open')])).toEqual({ drawn: 'water', top: 0 });
-    expect(at([], [tag('mangrove')])).toEqual({ drawn: 'water', top: 0 });
+    expect(at([], [tag('mangrove')])).toEqual({ drawn: null, top: 0 });
   });
 
   it('a building front is a front, a wall at any height to the road (the sim meets planned ones itself)', () => {

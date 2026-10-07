@@ -25,6 +25,7 @@
 import { clamp } from '../../core';
 import {
   beyondAt,
+  courseEdgeTopAt,
   edgeTopAt,
   gapAt,
   pastAt,
@@ -304,7 +305,7 @@ export function stepCluster(
   }
   if (c.overboard) {
     relax(c);
-    return fallToWater(road, c, false);
+    return fallToWater(road, c, false, honest);
   }
   // One projection per cluster per step (road.project scans the edge's samples): the centre's.
   // The link corrections are equal and opposite and the ground only lifts, so the centre's x and
@@ -314,6 +315,11 @@ export function stepCluster(
   const pc = road.project(at.x, at.z, at.edge);
   const f = road.frameAt(pc.edge, pc.s);
   const band = wallBand(road, pc.edge, pc.s, offRoad);
+  // Decide the edge crossing before the deck floor can lift a body outside it.
+  if (honest && !(tops && tops(at.x, at.z, at.y + CONTACT_M) !== null)) {
+    const over = barrierLine(road, c, pc, offRoad, true, true);
+    if (over) return { ...fallToWater(road, c, true, true), over };
+  }
   const len = road.edges[pc.edge]?.length ?? 0;
   const floor = c.p.map((q) => {
     q.edge = pc.edge;
@@ -340,13 +346,13 @@ export function stepCluster(
   const hole = gapAt(road, pc.edge, pc.s, pc.d);
   if (hole && centre(c.p).y < road.surfaceHeight(pc.edge, pc.s, pc.d)) {
     c.overboard = true;
-    return { ...fallToWater(road, c, true), gap: { edge: pc.edge, id: hole.id } };
+    return { ...fallToWater(road, c, true, honest), gap: { edge: pc.edge, id: hole.id } };
   }
   // Up on a structure's top past the band (a crash on a roof), no edge holds it: it rests up there.
   const atTop = tops ? centre(c.p) : null;
   const up = atTop && tops ? tops(atTop.x, atTop.z, atTop.y + CONTACT_M) !== null : false;
   const over = up ? null : barrierLine(road, c, pc, offRoad, honest);
-  if (over) return { ...fallToWater(road, c, true), over };
+  if (over) return { ...fallToWater(road, c, true, honest), over };
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);
   return {
@@ -369,12 +375,30 @@ function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, spla
 }
 
 /**
- * An overboard cluster falls free; at the network's water level (a drop's floor too) it stops there,
- * centre at the surface, still.
+ * An overboard cluster falls free. Honest edges stop its lowest particle on ground, or its centre at the
+ * water's actual surface; the legacy rule uses the network's water level.
  */
-function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean): ClusterContact {
-  const splash = centre(c.p).y <= waterLevelOf(road);
-  if (splash) intoWater(road, c);
+function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean, honest = false): ClusterContact {
+  const at = centre(c.p);
+  const p = road.project(at.x, at.z, at.edge);
+  const side = p.d > 0 ? 'right' : 'left';
+  const sign = side === 'right' ? 1 : -1;
+  const beyond = honest
+    ? beyondAt(road, p.edge, p.s, side, Math.max(0, sign * (p.d - road.vergeAt(p.edge, p.s, side).dOuter)))
+    : null;
+  const floor = beyond?.floorY ?? waterLevelOf(road);
+  const ground = beyond?.past === 'ground';
+  const bottom = ground ? Math.min(...c.p.map((q) => q.y)) : at.y;
+  const splash = bottom <= floor;
+  if (splash) {
+    c.splashed = true;
+    for (const q of c.p) {
+      q.y += floor - bottom;
+      q.vx = 0;
+      q.vy = 0;
+      q.vz = 0;
+    }
+  }
   return overboardContact(road, c, railOver, splash);
 }
 
@@ -386,7 +410,12 @@ function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean): ClusterC
  */
 export function intoWater(road: RoadNetwork, c: Cluster, depthM = 0): void {
   const at = centre(c.p);
-  const floor = waterLevelOf(road) - depthM;
+  const p = road.project(at.x, at.z, at.edge);
+  const side = p.d > 0 ? 'right' : 'left';
+  const sign = side === 'right' ? 1 : -1;
+  const floor =
+    beyondAt(road, p.edge, p.s, side, Math.max(0, sign * (p.d - road.vergeAt(p.edge, p.s, side).dOuter)))
+      .floorY - depthM;
   c.splashed = true;
   for (const q of c.p) {
     q.y -= at.y - floor;
@@ -430,6 +459,7 @@ function barrierLine(
   p: RoadPos,
   offRoad: boolean,
   honest: boolean,
+  crossOnly = false,
 ): { past: Past; dropM: number } | null {
   const at = centre(c.p);
   const band = wallBand(road, p.edge, p.s, offRoad);
@@ -442,27 +472,22 @@ function barrierLine(
   if (d === p.d && off <= 0.05) return null;
   if (d !== p.d) {
     const side = p.d > d ? 'right' : 'left';
-    // A water edge (nothing stands there, top 0) holds a body as it holds a rider on the ground (the
-    // decided water edge, run W-R); a body goes over only what stands at the edge, above its top.
-    const top = edgeTopAt(road, p.edge, p.s, side);
+    // Honest edges let an airborne body clear every drawn top, including open ground and water.
+    const top = honest ? courseEdgeTopAt(road, p.edge, p.s, side) : edgeTopAt(road, p.edge, p.s, side);
     const deck = road.surfaceHeight(p.edge, p.s, d);
-    const over = top !== null && top > 0 && at.y - deck > top;
-    // With the honest edges, what lies past is what the scene draws there (road/beyond.ts `beyondAt`): over drawn
-    // ground it is held at the line as at any ground edge, never sunk through it (Chuckanut's shelf past the
-    // parapet, the 2026-10-07 check).
+    const over = top !== null && (honest || top > 0) && at.y - deck > top;
+    // Beyond the line it falls onto what the scene draws there, including the shelf past a parapet.
     const sign = side === 'right' ? 1 : -1;
     const across = Math.max(0, sign * (p.d - road.vergeAt(p.edge, p.s, side).dOuter));
-    const past = !over
-      ? 'ground'
-      : honest
-        ? beyondAt(road, p.edge, p.s, side, across).past
-        : pastAt(road, p.edge, p.s, side);
-    if (past !== 'ground') {
+    const b = honest && over ? beyondAt(road, p.edge, p.s, side, across) : null;
+    const past = !over ? 'ground' : honest ? (b?.past ?? 'ground') : pastAt(road, p.edge, p.s, side);
+    if (over && (honest || past !== 'ground')) {
       c.overboard = true;
-      const floor = waterLevelOf(road);
+      const floor = b?.floorY ?? waterLevelOf(road);
       return { past, dropM: deck > floor ? deck - floor : 0 };
     }
   }
+  if (crossOnly) return null;
   if (off > 1e-9) {
     const nx = ox / off;
     const nz = oz / off;

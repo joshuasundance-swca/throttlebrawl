@@ -26,6 +26,7 @@
 import type { BakedBarrier } from './types';
 import type { Edge, RoadNetwork } from './network';
 import { themeAt, type LandTheme, type SideTheme } from './themes';
+import { lakeWaterAt } from './water';
 
 /** The drawn verge past the shoulder, m (render/road-mesh.ts VERGE_M). */
 const VERGE_M = 0.6;
@@ -149,7 +150,11 @@ const sideHas = (side: string | undefined, want: 'left' | 'right') =>
   side === undefined || side === 'both' || side === want;
 
 /** The rail spans of one side (render/road-mesh.ts `barriersFor` and `railedParts`, on the edge's own data). */
-function railsOf(road: RoadNetwork, e: Edge, side: 'left' | 'right'): { s0: number; s1: number }[] {
+function railsOf(
+  road: RoadNetwork,
+  e: Edge,
+  side: 'left' | 'right',
+): { s0: number; s1: number; kind: string }[] {
   const bridges = e.tags.filter((t) => t.tag === 'bridge' && sideHas(t.side, side));
   const onBridge = (s: number) => bridges.some((t) => s >= t.s0 && s <= t.s1);
   const high = (s: number) => road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M;
@@ -171,7 +176,9 @@ function railsOf(road: RoadNetwork, e: Edge, side: 'left' | 'right'): { s0: numb
   };
   return e.barriers
     .filter((b) => sideHas(b.side, side))
-    .flatMap((b) => (b.kind === 'rail' ? railed(b) : [{ s0: b.s0, s1: b.s1 }]));
+    .flatMap((b) =>
+      (b.kind === 'rail' ? railed(b) : [{ s0: b.s0, s1: b.s1 }]).map((span) => ({ ...span, kind: b.kind })),
+    );
 }
 
 /** One edge's land samples: their step, and one side's reach at sample i, worked out when first asked for. */
@@ -389,7 +396,7 @@ function landOf(road: RoadNetwork): LandOf {
       const land =
         th !== 'none' &&
         th !== 'water' &&
-        !rails[side].some((b) => s >= b.s0 - 5 && s <= b.s1 + 5) &&
+        !rails[side].some((b) => b.kind === 'rail' && s >= b.s0 - 5 && s <= b.s1 + 5) &&
         !(untagged && w(e.index, s, 0).y >= ELEVATED_M);
       if (!land) return [0, false];
       const seawall = SEAWALL_LAND_M[th];
@@ -559,8 +566,7 @@ const NEAR_REACH_M = 260;
 const NEAR_PAST_M = 0.25;
 /** Along its own edge, a point this near the asking cross-section is that section's own, m. */
 const OWN_SECTION_M = 2;
-/** The ground under a point is kept for points on this grid, m, and this many are kept before they are let go. */
-const GROUND_GRID_M = 0.25;
+/** This many exact world points are kept before they are let go. */
 const GROUND_KEPT = 4096;
 
 /**
@@ -576,6 +582,162 @@ export type GroundUnder = (
 
 const groundKept = new WeakMap<RoadNetwork, GroundUnder>();
 
+interface GroundPoint {
+  x: number;
+  y: number;
+  z: number;
+  s: number;
+}
+type GroundTriangle = readonly [GroundPoint, GroundPoint, GroundPoint];
+
+/** Terrain is drawn in world-space triangles, not at the projection onto a curved centre line. */
+function terrainUnderOf(
+  road: RoadNetwork,
+): (edge: number, x: number, z: number) => { y: number; s: number } | null {
+  const perEdge = new Map<number, Map<string, GroundTriangle[]>>();
+  const cellM = 16;
+  const cell = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
+  const rowsOf = landOf(road).rows;
+  const make = (edge: number) => {
+    const grid = new Map<string, GroundTriangle[]>();
+    const ed = road.edges[edge];
+    const rows = rowsOf(edge);
+    if (!ed || !rows) return grid;
+    const tri = (a: GroundPoint, b: GroundPoint, c: GroundPoint) => {
+      const t: GroundTriangle = [a, b, c];
+      for (
+        let x = Math.floor(Math.min(a.x, b.x, c.x) / cellM);
+        x <= Math.floor(Math.max(a.x, b.x, c.x) / cellM);
+        x++
+      ) {
+        for (
+          let z = Math.floor(Math.min(a.z, b.z, c.z) / cellM);
+          z <= Math.floor(Math.max(a.z, b.z, c.z) / cellM);
+          z++
+        ) {
+          const key = `${x},${z}`;
+          const list = grid.get(key);
+          if (list) list.push(t);
+          else grid.set(key, [t]);
+        }
+      }
+    };
+    const quad = (a: readonly [GroundPoint, GroundPoint], b: readonly [GroundPoint, GroundPoint]) => {
+      tri(a[0], a[1], b[0]);
+      tri(a[1], b[1], b[0]);
+    };
+    const point = (i: number, side: -1 | 1, across: number, y: number) => {
+      const p = road.toWorld(edge, i * rows.step, side * across, 0);
+      return { x: Math.fround(p.x), y: Math.fround(y), z: Math.fround(p.z), s: i * rows.step };
+    };
+    const strip = (
+      pairs: readonly (readonly [GroundPoint, GroundPoint] | null)[],
+      thin = true,
+      flip = false,
+    ) => {
+      let last: readonly [GroundPoint, GroundPoint] | null = null;
+      for (let i = 0; i < pairs.length; i++) {
+        const row = pairs[i];
+        if (!row) {
+          last = null;
+          continue;
+        }
+        if (thin && i % 3 !== 0 && i < pairs.length - 1 && pairs[i - 1] && pairs[i + 1]) continue;
+        if (last) quad(flip ? [last[1], last[0]] : last, flip ? [row[1], row[0]] : row);
+        last = row;
+      }
+    };
+    for (const side of [-1, 1] as const) {
+      const outer = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
+      for (const f of ed.features) {
+        if (f.kind !== 'roadsideZone') continue;
+        const zoneSide = f.d0 + f.d1 < 0 ? -1 : 1;
+        const railed = railsOf(road, ed, side < 0 ? 'left' : 'right').some((b) => b.s0 < f.s1 && b.s1 > f.s0);
+        if (side !== zoneSide && railed) continue;
+        const far = Math.max(Math.abs(f.d0), Math.abs(f.d1));
+        const reach = Math.max(outer, side === zoneSide ? far + ZONE_DIVE_M : ed.dMax + ZONE_FAR_M);
+        const start = Math.max(0, f.s0 - ZONE_TAPER_M);
+        const end = Math.min(ed.length, f.s1 + ZONE_TAPER_M);
+        const pairs: (readonly [GroundPoint, GroundPoint])[] = [];
+        for (let s = start; ; s = Math.min(end, s + STEP_M)) {
+          const outside = s < f.s0 ? f.s0 - s : s > f.s1 ? s - f.s1 : 0;
+          const width = outer + (reach - outer) * Math.max(0, 1 - outside / ZONE_TAPER_M);
+          const p = (across: number): GroundPoint => {
+            const at = road.toWorld(edge, s, side * across, ZONE_LIFT_M);
+            return { x: Math.fround(at.x), y: Math.fround(at.y), z: Math.fround(at.z), s };
+          };
+          pairs.push([p(outer), p(width)]);
+          if (s >= end) break;
+        }
+        strip(pairs, false, side < 0);
+      }
+      strip(
+        Array.from({ length: rows.n }, (_, i) => {
+          const r = rows.reachAt(side, i);
+          if (r <= 0 || themeAt(ed.tags, side > 0 ? 'right' : 'left', i * rows.step) === 'lake') return null;
+          const a = road.toWorld(edge, i * rows.step, side * outer, LAND_TOP_M);
+          const b = road.toWorld(edge, i * rows.step, side * (outer + r), LAND_TOP_M);
+          return [point(i, side, outer, a.y), point(i, side, outer + r, b.y)] as const;
+        }),
+        false,
+        side < 0,
+      );
+      const slopes = Array.from({ length: rows.n }, (_, i): readonly [GroundPoint, GroundPoint] | null => {
+        const k = rows.skirtAt(side, i);
+        if (!k) return null;
+        const r = rows.reachAt(side, i);
+        return [point(i, side, outer + r, k.top), point(i, side, outer + r + k.run, SKIRT_GROUND_Y)];
+      });
+      const kept = slopes.map(
+        (row, i) => !!row && !(i % 3 !== 0 && i < slopes.length - 1 && slopes[i - 1] && slopes[i + 1]),
+      );
+      for (let a = 0; a < slopes.length; a++) {
+        const ra = slopes[a];
+        if (!ra || !kept[a]) continue;
+        let b = a + 1;
+        while (b < slopes.length && slopes[b] && !kept[b]) b++;
+        const rb = slopes[b];
+        if (!rb) continue;
+        const mid = Math.floor((a + b) / 2);
+        for (let j = a; j < b; j++) tri(slopes[j]![0], slopes[j + 1]![0], j < mid ? ra[1] : rb[1]);
+        tri(ra[1], rb[1], slopes[mid]![0]);
+      }
+      strip(
+        Array.from({ length: rows.n }, (_, i) => {
+          const k = rows.skirtAt(side, i);
+          if (!k || k.flat <= 0) return null;
+          const from = outer + rows.reachAt(side, i) + k.run;
+          return [
+            point(i, side, from, SKIRT_GROUND_Y),
+            point(i, side, from + k.flat, SKIRT_GROUND_Y),
+          ] as const;
+        }),
+        true,
+        side < 0,
+      );
+    }
+    return grid;
+  };
+  return (edge, x, z) => {
+    let grid = perEdge.get(edge);
+    if (!grid) {
+      grid = make(edge);
+      perEdge.set(edge, grid);
+    }
+    let best: { y: number; s: number } | null = null;
+    for (const [a, b, c] of grid.get(cell(x, z)) ?? []) {
+      const det = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+      if (Math.abs(det) < 1e-9) continue;
+      const u = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / det;
+      const v = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
+      if (u < -1e-8 || v < -1e-8 || u + v > 1 + 1e-8) continue;
+      const y = u * a.y + v * b.y + (1 - u - v) * c.y;
+      if (best === null || y > best.y) best = { y, s: u * a.s + v * b.s + (1 - u - v) * c.s };
+    }
+    return best;
+  };
+}
+
 /**
  * Where the roads draw ground under a world point (the physical world, 2026-10-06: what is drawn is what is met):
  * each edge's cross-section there (`sectionGroundOf`: its surface out to its verge, its zones' land, its land strip,
@@ -583,7 +745,7 @@ const groundKept = new WeakMap<RoadNetwork, GroundUnder>();
  * `beyondAt`): the land inside a junction's corner, the ground between a road and its slip road, a key's land
  * beside a causeway, the hill below a bridge's end. The edges about the point are found on a grid of every edge's
  * samples, built when first asked for, and each is projected from its nearest sample, as `locator` does. A point's
- * ground is kept for the point on a GROUND_GRID_M grid (worked out there), so a flight and the forecasts of it ask
+ * ground is kept for the exact world point, so a flight and the forecasts of it ask
  * again for nothing. Pure + - * / and Math.floor/round/min/max.
  */
 export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null): GroundUnder {
@@ -604,8 +766,13 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
     return m;
   };
   const section = sectionGroundOf(road, lakeLevel);
+  const terrain = terrainUnderOf(road);
+  const land = landEdgeOf(road);
+  const zones = zoneReachOf(road);
+  const painted = splitPaintOf(road);
+  const skirts = skirtOf(road);
   const span = Math.ceil(NEAR_REACH_M / NEAR_CELL_M);
-  /** Every edge's ground under a grid point: edge, s, y, in triples. */
+  /** Every edge's ground under a point: edge, s, y, and whether it is a world-space triangle. */
   const found = new Map<string, number[]>();
   const groundsAt = (x: number, z: number): number[] => {
     const id = `${x},${z}`;
@@ -649,26 +816,36 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
         s = clamped + ox * f.tx + oz * f.tz;
       }
       const past = s < 0 ? -s : s > ed.length ? s - ed.length : 0;
-      if (past > NEAR_PAST_M) continue;
       s = Math.min(ed.length, Math.max(0, s));
-      const y = section(e, s, d);
-      if (y !== null) out.push(e, s, y);
+      const side = d > 0 ? 1 : -1;
+      const outer = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
+      const strip = land(e, side, s);
+      const inStrip = Math.abs(d) <= outer + strip || Math.abs(d) <= zones(e, side, s) || painted(e, s, d);
+      const sectionY =
+        (inStrip || skirts(e, side, s) === null) && past <= NEAR_PAST_M ? section(e, s, d) : null;
+      const face = terrain(e, x, z);
+      const y = typeof sectionY === 'number' ? sectionY : null;
+      if (face !== null && (y === null || face.y > y)) out.push(e, face.s, face.y, 1);
+      else if (y !== null) out.push(e, s, y, 0);
     }
     if (found.size >= GROUND_KEPT) found.clear();
     found.set(id, out);
     return out;
   };
   const under: GroundUnder = (x, z, top, own) => {
-    const grounds = groundsAt(
-      Math.round(x / GROUND_GRID_M) * GROUND_GRID_M,
-      Math.round(z / GROUND_GRID_M) * GROUND_GRID_M,
-    );
+    const grounds = groundsAt(x, z);
     let best: number | null = null;
-    for (let j = 0; j < grounds.length; j += 3) {
+    for (let j = 0; j < grounds.length; j += 4) {
       const e = grounds[j] ?? -1;
       const y = grounds[j + 2] ?? -Infinity;
       // The asking road's own cross-section (another part of its edge, a switchback's other leg, is ground like any).
-      if (own && e === own.edge && Math.abs((grounds[j + 1] ?? 0) - own.s) <= OWN_SECTION_M) continue;
+      if (
+        own &&
+        !grounds[j + 3] &&
+        e === own.edge &&
+        Math.abs((grounds[j + 1] ?? 0) - own.s) <= OWN_SECTION_M
+      )
+        continue;
       if (y <= top && (best === null || y > best)) best = y;
     }
     return best;
@@ -850,8 +1027,13 @@ export function sectionGroundOf(road: RoadNetwork, lakeLevel: number | null = nu
       ) {
         const verge = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
         const plateau = road.toWorld(e, s, side * (verge + LAKE_BANK_M), LAND_TOP_M).y;
-        const drop = plateau - (lakeLevel + LAKE_SHORE_OVER_M);
-        if (drop >= LAKE_WALL_MIN_M) out = { plateau, drop };
+        const mid = road.toWorld(e, s, side * (verge + (LAKE_BANK_M + r) / 2), 0);
+        const far = road.toWorld(e, s, side * (verge + r + 1), 0);
+        const water = lakeWaterAt(road.id, mid.x, mid.z);
+        if (water !== null && lakeWaterAt(road.id, far.x, far.z) !== null) {
+          const drop = plateau - (water + LAKE_SHORE_OVER_M);
+          if (drop >= LAKE_WALL_MIN_M) out = { plateau, drop };
+        }
       }
     }
     banks.set(id, out);

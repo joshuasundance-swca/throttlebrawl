@@ -40,17 +40,7 @@ import { BIKE_HALF_WIDTH_M } from '../../src/sim/riders';
 import { overStep } from '../../src/sim/riders/gap';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
 import type { SimConfig } from '../../src/sim/types';
-import {
-  against,
-  DownIndex,
-  look,
-  print,
-  routeNetworks,
-  SURFACES,
-  track,
-  type KnownViolation,
-  type RouteNetwork,
-} from './geometry-routes';
+import { DownIndex, look, print, routeNetworks, SURFACES, track, type RouteNetwork } from './geometry-routes';
 
 const networkFiles = import.meta.glob<BakedNetwork>('/packs/*/regions/*/networks/*.json', {
   eager: true,
@@ -278,41 +268,6 @@ function check(
   return f;
 }
 
-/**
- * The roads where the sim's floor out past an edge is still not what is drawn, and why. Each is render's or the
- * sim's to change, in the open; the list may only shrink (a road that comes right fails here until it is taken off).
- */
-const KNOWN: readonly KnownViolation[] = [
-  ...['osm-i5-lake-samish', 'osm-i5-nulle-run', 'osm-samish-east-shore', 'osm-samish-north-shore'].map(
-    (road) => ({
-      key: `osm-pnw-samish/${road}`,
-      why:
-        "Lake Samish's water level (82.85 m) is the network's one level, so a fall off the I-5's bridges or a shore " +
-        "road where the sea is drawn below (at 0) stops at the lake's level, and the lake bank is assumed under every " +
-        "lake side: the sim does not have the lake's outline (the backdrop's water floor, render/backdrop/water.ts) " +
-        'to tell the lake from the sea. Pre-existing: it needs the outline in the sim (a contract change).',
-    }),
-  ),
-  {
-    key: 'osm-pnw-portland/osm-pnw-pdx-hawthorne-bridge',
-    why:
-      "Below the bridge's east end the Morrison ramp's terrain skirt is drawn as a fan from every third row's foot " +
-      '(road-mesh.ts `keptRows`), on a bend; the sim takes the slope straight between rows: 20 points off by metres.',
-  },
-  {
-    key: 'osm-sf-twin-peaks/osm-sf-upper-market',
-    why: "Twin Peaks climb's skirt far below Upper Market's end (s 2691), the same fan: 2 points.",
-  },
-  {
-    key: 'pnw-c1/pnw-sawmill-flats',
-    why: 'A split zone painted off the road beside the Mill Yard (s 575) where render draws none: 4 points.',
-  },
-  {
-    key: 'osm-sf-lombard/osm-sf-lombard-crooked',
-    why: "One point (s 151) where another leg's land is drawn 1 m over the sim's: the switchbacks' land seams.",
-  },
-];
-
 /** The first few, and how many. */
 const head = (xs: readonly string[], n = 4) =>
   `${xs.length}${xs.length ? ` (${xs.slice(0, n).join('; ')})` : ''}`;
@@ -322,6 +277,13 @@ const counted = (f: Finding) =>
     .join(', ');
 
 describe('what lies past an edge is what is drawn there (every route network)', () => {
+  it('the land triangle beside a Lombard switchback is the physical floor at the same world point', () => {
+    const n = netOf('osm-sf-lombard');
+    const edge = n.road.edgeIndex('osm-sf-lombard-crooked');
+    const f = check(n, simRule(n), { edge, s0: 151, s1: 151, side: 'right' });
+    expect(f.counts['ground']).toBeGreaterThan(0);
+    expect([...f.ghostDrop, ...f.ghostFloor, ...f.floorOff]).toEqual([]);
+  });
   it("Chuckanut's bluff, where the live check's high fall sank: ground on the shelf, the cliff's drop past it", () => {
     const n = netOf('osm-pnw-chuckanut');
     const edge = n.road.edgeIndex('osm-chuckanut-cliffs');
@@ -387,15 +349,14 @@ describe('what lies past an edge is what is drawn there (every route network)', 
         `[beyond-drawn] ${net.id}: ${looked} points (${counted(f)}); ghost drops ${head(f.ghostDrop, 3)}; ghost floors ${head(f.ghostFloor, 3)}; floors off ${head(f.floorOff, 3)}`,
       );
     }
-    const { fresh, seen, stale } = against([...found], KNOWN);
     print(
-      `[beyond-drawn] ${routeNetworks().length} networks, ${points} points; ${wrong} wrong, on ${found.size} roads: known ${seen.join(', ')}`,
+      `[beyond-drawn] ${routeNetworks().length} networks, ${points} points; ${wrong} wrong, on ${found.size} roads: ${[...found].join(', ')}`,
     );
     expect(points).toBeGreaterThan(100_000);
     expect(
-      fresh,
+      [...found],
       'a road where the sim meets what is not drawn there (fix it; never list it to pass)',
     ).toEqual([]);
-    expect(stale, 'a known road that is now right: take it off the list').toEqual([]);
+    expect(wrong).toBe(0);
   }, 600_000);
 });
