@@ -1,7 +1,8 @@
 // What the pre-push hook tests (scripts/push-plan.mjs, docs/engineering.md "Pre-commit hooks and
 // leak scan"): nothing for a docs-only push, the whole unit tier when a dependency or config file
 // changed, and otherwise only the unit test files the push names: the test files it changed and the
-// tests named after the source files it changed. CI runs every test on the PR.
+// tests named after the source files it changed, plus bounded authored contact controls for their
+// shared inputs. CI runs every test on the PR.
 import { describe, expect, it } from 'vitest';
 import { planPush } from './push-plan.mjs';
 
@@ -81,5 +82,42 @@ describe('planPush', () => {
   it('accepts Windows-style separators', () => {
     const plan = planPush(['src\\render\\verge.ts'], tree('src/render/verge.test.ts'));
     expect(plan.tests).toEqual(['src/render/verge.test.ts']);
+  });
+
+  it('finds a track generator’s authored test one folder above it', () => {
+    const plan = planPush(['tools/road/tracks/pnw-c1.ts'], tree('tools/road/pnw-c1.test.ts'));
+    expect(plan.mode).toBe('files');
+    expect(plan.tests).toEqual(['tools/road/pnw-c1.test.ts']);
+  });
+
+  it('rechecks the bounded authored contact controls when shared physics or track data changes', () => {
+    const controls = [
+      'tools/road/pnw-c1.test.ts',
+      'tools/road/sf-downtown.test.ts',
+      'tools/road/truck-shortcuts.test.ts',
+    ];
+    for (const source of [
+      'src/sim/riders/carrier-shape.ts',
+      'src/sim/riders/step.ts',
+      'src/sim/modifiers/moving.ts',
+      'src/road/beyond.ts',
+      'src/road/structures/trucks.ts',
+      'tools/road/tracks/sf-downtown.ts',
+      'tools/road/tracks/pnw-c1.ts',
+      'packs/region-pnw/regions/pacific-northwest/roads/pnw-sawmill-end.json',
+      'packs/region-sf/regions/san-francisco/networks/sf-downtown.json',
+    ]) {
+      const plan = planPush([source], tree(...controls));
+      expect(plan.mode, source).toBe('files');
+      expect(plan.tests, source).toEqual(controls);
+    }
+  });
+
+  it('does not add contact controls for unrelated sources, test-only changes, or missing files', () => {
+    const exists = tree('tools/road/truck-shortcuts.test.ts');
+    for (const source of ['src/ui/menu.ts', 'src/sim/riders/step.test.ts', 'src/road/beyond.test.ts']) {
+      expect(planPush([source], exists).tests, source).toEqual([]);
+    }
+    expect(planPush(['src/sim/riders/step.ts'], tree()).tests).toEqual([]);
   });
 });

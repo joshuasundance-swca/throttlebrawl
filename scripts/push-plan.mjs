@@ -10,6 +10,8 @@
 //     `<folder>.test.ts`). Vitest's import-graph selection (`--changed`, `related`) picked 142 of the
 //     261 unit test files for one content PR (#414) and took 4.6 min at two workers, so it is left
 //     to CI. [default]
+//   - the three authored truck-cut controls for their shared physics or track inputs. These are
+//     a bounded backstop for contact/terrain composition, not import-graph selection.
 
 /** Changing any of these runs the whole unit tier. */
 const FULL = [
@@ -24,6 +26,17 @@ const DOCS = [/^docs\//, /^changes\//, /\.md$/i];
 /** The unit project's test files (vitest.config.ts). */
 const UNIT_TEST = /^(src|scripts|tools)\/.+\.test\.ts$/;
 const SOURCE = /^(src|scripts|tools)\/.+\.(ts|mts|js|mjs)$/;
+const CONTACT_INPUT = [
+  /^src\/(road|sim\/riders)\/.+\.ts$/,
+  /^src\/sim\/modifiers\/moving\.ts$/,
+  /^tools\/road\/tracks\/(pnw-c1|sf-downtown)\.ts$/,
+  /^packs\/region-(pnw|sf)\/regions\/[^/]+\/(roads|networks|routes)\/.+\.json$/,
+];
+const CONTACT_TESTS = [
+  'tools/road/pnw-c1.test.ts',
+  'tools/road/sf-downtown.test.ts',
+  'tools/road/truck-shortcuts.test.ts',
+];
 
 /**
  * @param {string[]} changed repo-relative paths the push changes (deleted files included or not)
@@ -46,16 +59,20 @@ export function planPush(changed, exists) {
       if (exists(f)) tests.add(f);
       continue;
     }
+    if (!f.endsWith('.d.ts') && CONTACT_INPUT.some((re) => re.test(f))) {
+      for (const t of CONTACT_TESTS) if (exists(t)) tests.add(t);
+    }
     if (!SOURCE.test(f) || f.endsWith('.d.ts')) continue;
     const dir = f.slice(0, f.lastIndexOf('/'));
     const stem = f.slice(dir.length + 1).replace(/\.(ts|mts|js|mjs)$/, '');
     const names = [`${dir}/${stem}.test.ts`];
     if (stem === 'index') names.push(`${dir}/${dir.slice(dir.lastIndexOf('/') + 1)}.test.ts`);
+    if (dir === 'tools/road/tracks') names.push(`tools/road/${stem}.test.ts`);
     for (const t of names) if (exists(t)) tests.add(t);
   }
   return {
     mode: 'files',
     tests: [...tests].sort(),
-    reason: `${files.length} file(s); unit tests named by the push`,
+    reason: `${files.length} file(s); named unit tests and bounded authored contact controls`,
   };
 }
