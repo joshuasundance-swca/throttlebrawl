@@ -8,8 +8,9 @@ import { fastForwardDone } from './lockstep';
 // imports the chunk's own URL with a `retry` query (src/content/lazy-chunk.ts).
 //
 // The chunk here is render/'s race parts (src/render/race-parts.ts: the race's effects, speed lines, rain
-// and road-event props), which the renderer asks for as it starts and again at each road while it is
-// missing; `rendererStats().eventProps` is there only once it is in. The routes count every request
+// and road-event props), which the renderer asks for as it starts and again at each road and each race
+// start while it is missing (src/render/chunk-gate.ts; a rematch on the same road sets no new road,
+// polish batch O's check, mustFix 1); `rendererStats().eventProps` is there only once it is in. The routes count every request
 // for it that reaches the host. Service workers are blocked (playwright.config.ts), so the page asks the
 // host itself.
 
@@ -175,8 +176,9 @@ test('a chunk the host no longer has: each race asks the host again, and after a
     `[print] control race: requests ${JSON.stringify(hits.map(nameOf))}; ${probes} questions to the host`,
   );
 
-  // The deploy lands. Race again: the race's ask fails again, the watch hears it and the host names
-  // another build, so the result offers the reload.
+  // The deploy lands. Race again from the result screen, a rematch on the same road (no new road): the
+  // race start's ask fails again, the watch hears it and the host names another build, so the result
+  // offers the reload.
   deployed = true;
   before = retries();
   await page.locator('#results-race').click();
