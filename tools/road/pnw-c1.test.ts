@@ -48,7 +48,7 @@ describe('tools/road: the baked Pacific Northwest track', () => {
     expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
   });
 
-  it('has three race lengths, about 2.8, 4.4 and 6.6 km, each carrying on from the last', () => {
+  it('has three race lengths, about 2.8, 4.4 and 7.0 km, each carrying on from the last', () => {
     const lengths = routes.map((r) => createRouteProgress(net, r).length);
     console.log(`PNW routes: ${ROUTE_IDS.map((r, i) => `${r} ${lengths[i]?.toFixed(0)} m`).join(', ')}`);
     const [short = 0, standard = 0, long = 0] = lengths;
@@ -57,8 +57,10 @@ describe('tools/road: the baked Pacific Northwest track', () => {
     expect(short).toBeLessThan(3000);
     expect(standard).toBeGreaterThan(4100);
     expect(standard).toBeLessThan(4500);
-    expect(long).toBeGreaterThan(6400);
-    expect(long).toBeLessThan(6800);
+    // Polish M: the flats swing round the mill yard (the Mill Yard Cut goes straight through), about
+    // 420 m more on the long route.
+    expect(long).toBeGreaterThan(6800);
+    expect(long).toBeLessThan(7200);
   });
 
   it('is twisty: bends tighter than a 200 m radius both ways, and over a quarter of it tighter than 300 m', () => {

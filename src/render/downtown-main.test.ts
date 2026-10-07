@@ -96,6 +96,14 @@ const KNOWN: Readonly<Record<string, { main: readonly string[]; now: readonly st
 const LAND_CHANGED: Readonly<Record<string, readonly { x0: number; x1: number; z0: number; z1: number }[]>> =
   {
     'osm-pnw-portland': [{ x0: 960, x1: 1055, z0: 725, z1: 855 }],
+    // Polish M (punch item 1): past the Plaza Cut's split the avenue swings round the headquarters' plaza
+    // while the cut goes straight through it, so the avenue's line moves from Campus Way's s 128 on (by
+    // up to 0.5 m to the split, then by up to 80 m), and no building stands on the cut any more. The
+    // second box is the cross street at Campus Way's s 150, whose buildings move with it.
+    'sf-downtown': [
+      { x0: -3100, x1: -1950, z0: 1990, z1: 3050 },
+      { x0: -2130, x1: -1880, z0: 1900, z1: 2200 },
+    ],
   };
 /**
  * The stretches of surfaces, by network and key, that the same rule trims a few triangles from (their land
@@ -103,6 +111,16 @@ const LAND_CHANGED: Readonly<Record<string, readonly { x0: number; x1: number; z
  */
 const SURFACES_CHANGED: Readonly<Record<string, ReadonlySet<string>>> = {
   'osm-pnw-portland': new Set(['4:0', '7:7']),
+};
+/**
+ * The edges, by network, whose line itself has moved since the fixture: their stretches of surfaces are
+ * left out of both sides (LAND_CHANGED holds their buildings out the same way). San Francisco's downtown,
+ * polish M: Campus Way (edge 4) moves by up to 0.5 m from its s 128, and the avenue after it (the split
+ * connector, the piece round the headquarters' plaza, the merge connector and the last piece: edges 5 to
+ * 8) swings up to 80 m off its old line, while the Plaza Cut goes straight through.
+ */
+const EDGES_MOVED: Readonly<Record<string, readonly number[]>> = {
+  'sf-downtown': [4, 5, 6, 7, 8],
 };
 
 const c2 = (v: number) => {
@@ -230,9 +248,13 @@ describe("the downtowns draw as main drew them (the placement's move into the ro
         counts.set(`${side} ${key}`, Number(count));
         return [key, '*', ...box].join(' ');
       };
+      const moved = new Set(EDGES_MOVED[plan.network] ?? []);
+      const kept = (row: string) => !moved.has(Number(row.split(':')[0]));
+      if (moved.size)
+        expect(soups.length - soups.filter(kept).length, 'stretches on moved edges').toBeGreaterThan(0);
       const soupDiff = unpaired(
-        plan.soups.map((r) => byKey(r, 'main')),
-        soups.map((r) => byKey(r, 'now')),
+        plan.soups.filter(kept).map((r) => byKey(r, 'main')),
+        soups.filter(kept).map((r) => byKey(r, 'now')),
         2,
       );
       for (const key of trimmed)
