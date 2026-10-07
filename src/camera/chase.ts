@@ -43,6 +43,13 @@
 // the aim drops by `camera.airTipM` and the camera rises by `camera.airLiftM`, in full from
 // `camera.airTipFullM` over the road below, on the same springs, so the ground the bike will land
 // on (and render's chalk mark there) comes into view and the tip eases back on the landing.
+// High riders (the maintainer, 2026-10-06: "land on it and ride on it"; "go over and across barriers";
+// high falls "(a)": the same physics everywhere, a high drop a clean cut-away and no gag): riding a
+// support (mode Road, up off the road) the aim rides up with the rider, so the view is the one it has
+// on the road, and the air tip does not fire (it is for a flight); in the air the tip is measured over
+// what lies below (`floorY`, the roof he is over) when that is above the road; and a HIGH fall (a
+// `railOver` with `high`, from the followed rider) holds the camera still on the rail while he goes
+// over, then cuts to him where he wakes (the `respawn`), with no blend and no shake.
 // The moves (playtest 3: braking into a hairpin should be "a first class experience"). In a drift the
 // camera slides to the outside of the corner to show the bike's flank, aims into the corner so the
 // bike stays near the middle of the frame, and rolls on with the slip. On a wheelie it pulls back
@@ -81,6 +88,11 @@ export interface CameraTarget {
   targetId?: number | undefined;
   /** The rider's road position in the snapshot, used as a hint to find it on the road. */
   road?: { edge: number } | undefined;
+  /**
+   * What lies straight below a rider in the air, world y (EntitySnapshot.floorY): a roof he is over, or
+   * the sea past a rail. Absent: the road under him.
+   */
+  floorY?: number | undefined;
 }
 
 /** Per-frame context: other entities from the same snapshot, and the held camera actions. */
@@ -266,6 +278,16 @@ const TIGHT_STEP_M = 2;
 const MAX_DT = 0.25;
 /** A victim flung further than this is framed as if it were this far away. */
 const TAKEDOWN_REACH_M = 40;
+/** A rider this far up off the road, riding, is on a support (a roof or a deck), m. */
+const LIFT_MIN_M = 0.05;
+/**
+ * A high fall's cut-away holds the camera at most this long, s [default]: the fall (a Golden Gate drop
+ * is 3.7 s), the splash penalty (4 s) and the respawn come well inside it; it never freezes a view for
+ * good if the respawn is somehow missed.
+ */
+const FALL_HOLD_MAX_S = 20;
+/** The cut-away ends on the rider being back on the road no sooner than this after it began, s. */
+const FALL_HOLD_MIN_S = 0.25;
 
 interface Goal {
   yaw: number;
@@ -334,6 +356,10 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   let victimSeen = -1;
   /** Whether the followed rider was on the bike last frame (a remount may cut, REMOUNT_CUT_RAD). */
   let wasOnBike = true;
+  /** The camera's own clock, s (the frames it was given). */
+  let clock = 0;
+  /** A high fall's cut-away: the eye and the point it holds on, and when it began (`clock`), or null. */
+  let fall: { eye: Placement; since: number } | null = null;
 
   const s = {
     yaw: spring(0),
@@ -415,6 +441,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     let fz = hz;
     /** The rider's height over the road below, for the air tip (0 without the road handle). */
     let overRoad = 0;
+    /** How far up off the road he rides, on a support, m (0 off one and without the road handle). */
+    let lift = 0;
     let aimX = t.x + hx * lookAheadM;
     let aimY = t.y + lookHeightM;
     let aimZ = t.z + hz * lookAheadM;
@@ -423,7 +451,15 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       const hint = t.road && t.road.edge >= 0 && t.road.edge < road.edges.length ? t.road.edge : hintEdge;
       const pos = road.project(t.x, t.z, hint);
       hintEdge = pos.edge;
-      if (t.mode === 'Airborne') overRoad = t.y - road.toWorld(pos.edge, pos.s, pos.d, 0).y;
+      const roadY = road.toWorld(pos.edge, pos.s, pos.d, 0).y;
+      // In the air, how high over what is below him: a roof he is over counts (the road far under a
+      // truck is not what he lands on); the sea past a rail, or no floor, is the road as ever.
+      if (t.mode === 'Airborne') {
+        const floor = t.floorY !== undefined && Number.isFinite(t.floorY) ? Math.max(roadY, t.floorY) : roadY;
+        overRoad = t.y - floor;
+      }
+      // Riding a support (a roof, a deck: mode Road, up off the road): the aim rides up with him.
+      if (t.mode === 'Road' && t.y - roadY > LIFT_MIN_M) lift = t.y - roadY;
       const frame = road.frameAt(pos.edge, pos.s);
       const along = travelX * frame.tx + travelZ * frame.tz;
       // Tumbling (or sideways to the road), keep the last direction the rider was going.
@@ -442,7 +478,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       const p = road.toWorld(ahead.edge, ahead.s, ahead.d, 0);
       if (Math.hypot(p.x - t.x, p.z - t.z) >= MIN_AIM_M) {
         aimX = p.x;
-        aimY = p.y + lookHeightM;
+        aimY = p.y + lift + lookHeightM;
         aimZ = p.z;
       } else {
         aimX = t.x + fx * lookAheadM;
@@ -720,6 +756,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
 
   const snap = (t: CameraTarget, ctx?: CameraContext): CameraPose => {
     clearModes();
+    fall = null;
     lookingBack = ctx?.lookBack === true;
     if (!targetValid(t)) return last ?? fallbackPose();
     shown = viewFor(t);
@@ -764,6 +801,49 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     stepSpring(focus.z, goal.z * k, w, dt);
   };
 
+  /**
+   * The cut-away of a high fall: begins on a `railOver` with `high` from the followed rider (the camera
+   * stays where it was and looks at the rail point he went over at), and ends on his `respawn` (a hard
+   * cut to the chase framing where he wakes), or once he is riding again, or at FALL_HOLD_MAX_S. Returns
+   * the held pose while it holds, else null.
+   */
+  const holdFall = (t: CameraTarget, ctx: CameraContext | undefined): CameraPose | null => {
+    const me = t.id ?? -1;
+    let woke = false;
+    if (me >= 0) {
+      for (const e of pending) {
+        if (e.actor !== me) continue;
+        if (e.type === 'railOver' && e.data['high'] === true && !fall && last) {
+          fall = {
+            since: clock,
+            eye: {
+              x: last.x,
+              y: last.y,
+              z: last.z,
+              lookX: t.x,
+              lookY: t.y,
+              lookZ: t.z,
+              fov: last.fov,
+              roll: 0,
+            },
+          };
+        } else if (e.type === 'respawn') woke = true;
+      }
+    }
+    if (!fall) return null;
+    const age = clock - fall.since;
+    const riding = t.mode === 'Road' && age > FALL_HOLD_MIN_S;
+    if (woke || riding || age > FALL_HOLD_MAX_S) {
+      fall = null;
+      return snap(t, ctx);
+    }
+    pending = [];
+    const pose = finish(fall.eye, 0, 0, 0);
+    if (!valid(pose)) return null;
+    last = pose;
+    return pose;
+  };
+
   return {
     params,
     snap,
@@ -775,6 +855,11 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       if (!targetValid(t)) return last ?? fallbackPose();
       if (!ready) return snap(t, ctx);
       const dt = finite(dtIn) && dtIn > 0 ? Math.min(dtIn, MAX_DT) : 0;
+      clock += dt;
+      // A high fall's cut-away (2026-10-06, "(a)"): the camera holds on the rail while he goes over, and
+      // cuts to him where he wakes. Low splashes, other riders' falls and the rest follow as ever.
+      const held = holdFall(t, ctx);
+      if (held) return held;
       const view = viewFor(t);
       const g = goalFor(t, ctx, view);
       // Into or out of the helmet is a hard cut: a blend would fly the camera through the rider.
@@ -847,6 +932,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     setRoad(next) {
       road = next && next.edges.length > 0 ? next : null;
       hintEdge = undefined;
+      fall = null;
       fronts.reset();
     },
     setShakeAmount(amount) {

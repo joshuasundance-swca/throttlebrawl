@@ -35,13 +35,17 @@ export { BRIDGE_TAPER_SLOPE, bridgedAt } from './bridge-taper';
 export type { TaperedVerge } from './bridge-taper';
 export {
   BUILDING_FRONT_TAGS,
+  courseEdgeTopAt,
+  drawnEdgeAt,
   EDGE_TOP_BY_TAG,
   edgeTopAt,
+  frontTagAt,
+  GROUND_EDGE_TOP_M,
   pastAt,
   WATER_LEVEL_M,
   waterLevelOf,
 } from './beyond';
-export type { Past } from './beyond';
+export type { DrawnEdge, Past } from './beyond';
 export { gapAt, gapById, gapFarSide, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
@@ -108,14 +112,19 @@ export type {
 } from './types';
 export { LAND_TAGS, onSide, scatterHash, THEME_ORDER, themeAt } from './themes';
 export type { LandTheme, SideTag, SideTheme } from './themes';
+export { LANES_UNDER_Y_M, LanesUnder, lanesUnderOf, standOffLanes } from './lanes-under';
+export type { LaneHit } from './lanes-under';
 export {
   DRAWN_VERGE_M,
   FURNITURE,
   FURNITURE_KINDS,
+  FURNITURE_LANES_CLEAR_M,
   kitOfNetwork,
+  lanesUnderPiece,
   OLDTOWN_SIDEWALK_RULES,
   onRidableBand,
   planStreetFurniture,
+  rimOf,
   SF_SIDEWALK_RULES,
 } from './furniture';
 export type {
@@ -130,13 +139,18 @@ export type {
   StreetFurniture,
 } from './furniture';
 // The physical world (the maintainer, 2026-10-06; docs/architecture.md, "Physical world"): the structures'
-// contract and the course query. Small and lazy-safe: the planners load as their own chunks.
+// contract and the course query. Small and lazy-safe: the planners load in their own lazy chunk.
+// A layer's layout (what render draws and its planner turns into solids) is in src/road/structures/, which
+// this index does not re-export: a static import from here would pull the planners into the sim chunk and the
+// first load. Render's lazy layers import them directly (scripts/module-map.mjs).
 export {
   ensureStructures,
   footContains,
+  loadStructurePlanners,
   modelFoot,
   modelSolid,
   planStructures,
+  raceStructures,
   requireStructures,
   STRUCTURE_LAYERS,
   STRUCTURE_MODELS,
@@ -158,5 +172,33 @@ export type {
   StructureSink,
   StructureSpec,
 } from './structures';
-export { COURSE_STEP_M, courseAt } from './course';
+export { COURSE_STEP_M, courseAt, lanesNear } from './course';
 export type { CourseSpot } from './course';
+// The car ferry's numbers (small: render's roofs and the places both read them, and so does its planner).
+export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';
+// The layers' layouts (what render draws, what the registry plans): in the planners' lazy chunk
+// (`road-structures`, scripts/sim-chunk.mjs), loaded with the region, never in the first load. Render awaits one before it builds its layer (render/waterfront.ts,
+// render/pnw-places.ts); the registry (`STRUCTURE_LAYERS`) loads the same module for the sim.
+export const loadWaterfrontLayout = () => import('./structures/waterfront');
+export const loadPnwPlacesLayout = () => import('./structures/pnw-places');
+export type {
+  BlockKind,
+  Frontage,
+  SolidDef as WaterfrontSolidDef,
+  WaterfrontLayout,
+  WfBackTower,
+  WfBlock,
+  WfEdge,
+  WfFront,
+  WfPlaced,
+  WfStreet,
+} from './structures/waterfront';
+export type {
+  PnwBanner,
+  PnwBunting,
+  PnwFerryPart,
+  PnwPlacesLayout,
+  PnwShop,
+  PnwSideStreet,
+  PnwSolidDef,
+} from './structures/pnw-places';

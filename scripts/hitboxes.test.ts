@@ -30,15 +30,23 @@ import {
 } from '../src/sim/api';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
 import {
+  createRoadNetwork,
   FURNITURE,
   FURNITURE_KINDS,
+  raceStructures,
   STRUCTURE_MODELS,
+  structureLayersFor,
+  type BakedNetwork,
+  type BakedRoad,
   type FurnitureFoot,
   type FurnitureKind,
+  type Structure,
   type StructureModel,
+  type StructureSpec,
 } from '../src/road';
+import { localShape } from '../src/sim/riders/structures';
 import { HAZARD_REACH_D_M, LIGHT_HAZARD_OBJECTS } from '../src/sim/riders/features';
-import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M } from '../src/sim/riders/furniture';
+import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M, spineGap } from '../src/sim/riders/furniture';
 import { MOVING } from '../src/sim/modifiers/moving';
 import { extent, SET_PIECE } from '../src/sim/modifiers/setpieces';
 import { PEDS } from '../src/sim/peds';
@@ -54,7 +62,8 @@ import {
 } from '../src/render/figures';
 import { mergeBoxes, type BoxPart } from '../src/render/geometry';
 import { readGlb } from '../src/render/glb';
-import { pdxFootprint } from '../src/render/downtown';
+import { DowntownLayer, pdxFootprint, type DowntownItem } from '../src/render/downtown';
+import { createFlatLook } from '../src/render/look';
 import { MODEL_ASSETS, type ModelKind } from '../src/render/models';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
 import { solidHazardModel } from '../src/render/pnw-places';
@@ -1104,4 +1113,256 @@ describe('the structure models (road/structures.ts): a fixed box is its file, ne
     if (!row) throw new Error(`no row ${first[0]}`);
     expect(boxGap({ ...row, x1: row.x1 + 0.02 }, first[1])).toBeGreaterThan(STRUCTURE_BOX_TOLERANCE_M);
   }, 60_000);
+});
+
+/** How far a downtown structure's box may sit from its drawn model's, each face, m (float32 world points). */
+const STRUCTURE_DRAWN_TOLERANCE_M = 0.05;
+
+/** A network from its pack files, as the game builds it. */
+function networkFrom(pack: string, region: string, id: string) {
+  const dir = `packs/${pack}/regions/${region}`;
+  const network = JSON.parse(readFileSync(`${dir}/networks/${id}.json`, 'utf8')) as BakedNetwork;
+  const roads = network.roads.map(
+    (r) => JSON.parse(readFileSync(`${dir}/roads/${r}.json`, 'utf8')) as BakedRoad,
+  );
+  const dressing = Object.fromEntries(roads.map((r) => [r.id, r]));
+  return { road: createRoadNetwork({ network, roads }), dressing };
+}
+
+/**
+ * The largest gap between a structure's box (its footprint, base and top) and its drawn model's points
+ * measured in the footprint's own frame (u along it, v across, y up), m, over the six faces.
+ */
+function structureGap(st: StructureSpec, pts: ArrayLike<number>): number {
+  const f = st.foot;
+  let u0 = Infinity;
+  let u1 = -Infinity;
+  let v0 = Infinity;
+  let v1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < pts.length; i += 3) {
+    const dx = (pts[i] ?? 0) - f.x;
+    const dz = (pts[i + 2] ?? 0) - f.z;
+    const u = dx * f.ux + dz * f.uz;
+    const v = dz * f.ux - dx * f.uz;
+    const y = pts[i + 1] ?? 0;
+    u0 = Math.min(u0, u);
+    u1 = Math.max(u1, u);
+    v0 = Math.min(v0, v);
+    v1 = Math.max(v1, v);
+    y0 = Math.min(y0, y);
+    y1 = Math.max(y1, y);
+  }
+  const top = st.roof.kind === 'flat' ? st.roof.topM : st.roof.ridgeM;
+  return Math.max(
+    Math.abs(u0 + f.hu),
+    Math.abs(u1 - f.hu),
+    Math.abs(v0 + f.hv),
+    Math.abs(v1 - f.hv),
+    Math.abs(y0 - st.baseY),
+    Math.abs(y1 - (st.baseY + top)),
+  );
+}
+
+describe("the downtowns' structures (road/structures/downtown.ts) are what render draws (the physical world, 2026-10-06)", () => {
+  it("every building, cart and rack's box is its drawn model's: footprint, base and top", async () => {
+    const look = createFlatLook();
+    const sf = networkFrom('region-sf', 'san-francisco', 'sf-downtown');
+    const pdx = networkFrom('region-pnw', 'pacific-northwest', 'osm-pnw-portland');
+    const kit = await bakeRepoModel('sfDowntown');
+    const modules = await bakeRepoModel('sfTowerModules');
+    const pdxKit = await bakeRepoModel('pdxDowntown');
+    const layers: [string, DowntownLayer][] = [
+      [
+        'San Francisco, seed 7',
+        new DowntownLayer(kit, undefined, undefined, look, { ...sf, seed: 7 }, modules),
+      ],
+      // Without the modules each tower is the old kit's model stretched to the same box: still what stands.
+      [
+        'San Francisco, seed 7, no modules',
+        new DowntownLayer(kit, undefined, undefined, look, { ...sf, seed: 7 }),
+      ],
+      [
+        'Portland, seed 1',
+        new DowntownLayer(pdxKit, undefined, undefined, look, { ...pdx, seed: 1, portland: true }),
+      ],
+    ];
+    const rules = new Map<string, number>();
+    let worst = 0;
+    let worstAt = '';
+    let checked: { st: StructureSpec; pts: Float32Array } | null = null;
+    for (const [name, layer] of layers) {
+      const solids = layer.plan.items.filter(
+        (it): it is DowntownItem & { solid: StructureSpec } => !!it.solid,
+      );
+      expect(solids.length, name).toBeGreaterThan(400);
+      for (const it of solids) {
+        const pts = layer.drawnPoints(it);
+        expect(pts.length, `${name}: ${it.rule} draws something`).toBeGreaterThan(0);
+        const gap = structureGap(it.solid, pts);
+        if (gap > worst) {
+          worst = gap;
+          worstAt = `${name}: ${it.rule} at s ${it.s.toFixed(1)}`;
+        }
+        expect(gap, `${name}: ${it.rule} at edge ${it.edge} s ${it.s.toFixed(1)}`).toBeLessThanOrEqual(
+          STRUCTURE_DRAWN_TOLERANCE_M,
+        );
+        rules.set(it.rule, (rules.get(it.rule) ?? 0) + 1);
+        checked ??= { st: it.solid, pts };
+      }
+      layer.dispose();
+    }
+    console.log(
+      `[examined] ${[...rules.values()].reduce((a, b) => a + b, 0)} downtown structures (${[...rules.entries()].map(([r, n]) => `${n} ${r}`).join(', ')}) against their drawn models; worst face ${worst.toFixed(3)} m (${worstAt})`,
+    );
+    // Every rule that places a solid is here: San Francisco's five and Portland's seven.
+    expect([...rules.keys()].sort()).toEqual(
+      [
+        'back-tower',
+        'cross-building',
+        'hq',
+        'pdx-back',
+        'pdx-back-tower',
+        'pdx-cart',
+        'pdx-end',
+        'pdx-front',
+        'pdx-rack',
+        'pdx-tower',
+        'plaza-tower',
+        'tower',
+      ].sort(),
+    );
+    // Negative control: the same structure moved 20 cm, or 20 cm wider, or a storey short, is found.
+    if (!checked) throw new Error('no structure checked');
+    const { st, pts } = checked;
+    expect(structureGap(st, pts)).toBeLessThanOrEqual(STRUCTURE_DRAWN_TOLERANCE_M);
+    expect(structureGap({ ...st, foot: { ...st.foot, x: st.foot.x + 0.2 } }, pts)).toBeGreaterThan(
+      STRUCTURE_DRAWN_TOLERANCE_M,
+    );
+    expect(structureGap({ ...st, foot: { ...st.foot, hv: st.foot.hv + 0.2 } }, pts)).toBeGreaterThan(
+      STRUCTURE_DRAWN_TOLERANCE_M,
+    );
+    const short = st.roof.kind === 'flat' ? { kind: 'flat' as const, topM: st.roof.topM - 3.3 } : st.roof;
+    expect(structureGap({ ...st, roof: short }, pts)).toBeGreaterThan(STRUCTURE_DRAWN_TOLERANCE_M);
+  }, 120_000);
+});
+
+/**
+ * How far the distance the sim measures from a rider's bike to a structure may be from the true one near him,
+ * m: the contact meets a structure as a footprint laid out in the rider's own road frame (sim/riders/
+ * structures.ts `localShape`), exact at the rider; on a bend it bends a little away from him.
+ */
+const STRUCTURE_HIT_TOLERANCE_M = 0.05;
+/** Only distances a contact reads count: the bike's points this near a structure, m. */
+const STRUCTURE_HIT_REACH_M = 1.5;
+
+/** The signed distance from a world point to a structure's footprint, m (negative inside it). */
+function footGap(st: Structure, x: number, z: number): number {
+  const f = st.foot;
+  const dx = x - f.x;
+  const dz = z - f.z;
+  const ou = Math.abs(dx * f.ux + dz * f.uz) - f.hu;
+  const ov = Math.abs(dz * f.ux - dx * f.uz) - f.hv;
+  if (ou <= 0 && ov <= 0) return Math.max(ou, ov);
+  return Math.sqrt(Math.max(ou, 0) ** 2 + Math.max(ov, 0) ** 2);
+}
+
+/** Every network the packs carry, built as the game builds it. */
+function packNetworks() {
+  const out: { id: string; road: ReturnType<typeof createRoadNetwork> }[] = [];
+  for (const pack of PACKS)
+    for (const region of readdirSync(`packs/${pack}/regions`)) {
+      let ids: string[];
+      try {
+        ids = readdirSync(`packs/${pack}/regions/${region}/networks`).map((f) => f.replace(/\.json$/, ''));
+      } catch {
+        continue;
+      }
+      for (const id of ids) out.push({ id, road: networkFrom(pack, region, id).road });
+    }
+  return out;
+}
+
+describe('the structures the sim meets are the plan’s boxes (sim/riders/structures.ts, the physical world)', () => {
+  it('a rider beside any structure is as far from it to the sim as in the world, round the bike', () => {
+    let worst = 0;
+    let worstAt = '';
+    let probes = 0;
+    let structures = 0;
+    let networks = 0;
+    for (const { id, road } of packNetworks()) {
+      if (structureLayersFor(road).length === 0) continue;
+      networks++;
+      const plan = raceStructures(road, 7);
+      for (const st of plan.items) {
+        structures++;
+        const f = st.foot;
+        // A rider 0.3 m out from the middle of each side, where the road takes him (projected onto it).
+        for (const [u, v] of [
+          [f.hu + 0.3, 0],
+          [-f.hu - 0.3, 0],
+          [0, f.hv + 0.3],
+          [0, -f.hv - 0.3],
+        ] as const) {
+          const x = f.x + u * f.ux - v * f.uz;
+          const z = f.z + u * f.uz + v * f.ux;
+          const at = road.project(x, z, st.edge);
+          const shape = localShape(road, at.edge, at.s, at.d, st);
+          // His bike's points (its middle, its wheels, its sides), in the frame the contact meets them in:
+          // metres along the road and across it where he is (sim/riders/index.ts `inMetres`), and in the world.
+          const p = road.toWorld(at.edge, at.s, at.d, 0);
+          const fr = road.frameAt(at.edge, at.s);
+          for (const [ds, dd] of [
+            [0, 0],
+            [BIKE_SPINE_HALF_M, 0],
+            [-BIKE_SPINE_HALF_M, 0],
+            [0, BIKE_RADIUS_M],
+            [0, -BIKE_RADIUS_M],
+          ] as const) {
+            const s = at.s + ds;
+            const d = at.d + dd;
+            const truth = footGap(st, p.x + ds * fr.tx - dd * fr.tz, p.z + ds * fr.tz + dd * fr.tx);
+            if (truth > STRUCTURE_HIT_REACH_M) continue;
+            const sim = spineGap(shape, { as: s, ad: d, bs: s, bd: d }).dist;
+            probes++;
+            const gap = Math.abs(sim - truth);
+            if (gap > worst) {
+              worst = gap;
+              worstAt = `${id} #${st.id} ${st.rule} (sim ${sim.toFixed(3)}, world ${truth.toFixed(3)})`;
+            }
+          }
+        }
+      }
+    }
+    console.log(
+      `[examined] ${probes} bike points within ${STRUCTURE_HIT_REACH_M} m of ${structures} structures on ${networks} networks: worst ${worst.toFixed(4)} m at ${worstAt}`,
+    );
+    expect(networks).toBeGreaterThan(5);
+    expect(probes).toBeGreaterThan(1000);
+    expect(worst).toBeLessThanOrEqual(STRUCTURE_HIT_TOLERANCE_M);
+  }, 240_000);
+
+  it('the rule fails a footprint that is not the plan’s (negative controls)', () => {
+    const { road } = networkFrom('region-sf', 'san-francisco', 'sf-downtown');
+    const plan = raceStructures(road, 7);
+    const st = plan.items[0];
+    if (!st) throw new Error('no structure');
+    const f = st.foot;
+    const x = f.x + 0 * f.ux - (f.hv + 0.3) * f.uz;
+    const z = f.z + 0 * f.uz + (f.hv + 0.3) * f.ux;
+    const at = road.project(x, z, st.edge);
+    const w = road.toWorld(at.edge, at.s, at.d, 0);
+    const truth = footGap(st, w.x, w.z);
+    const gapOf = (s: Structure) => {
+      const shape = localShape(road, at.edge, at.s, at.d, s);
+      return Math.abs(spineGap(shape, { as: at.s, ad: at.d, bs: at.s, bd: at.d }).dist - truth);
+    };
+    expect(gapOf(st)).toBeLessThanOrEqual(STRUCTURE_HIT_TOLERANCE_M);
+    // Moved 10 cm, or 10 cm wider across: found.
+    expect(gapOf({ ...st, foot: { ...f, x: f.x + 0.1 * f.uz, z: f.z - 0.1 * f.ux } })).toBeGreaterThan(
+      STRUCTURE_HIT_TOLERANCE_M,
+    );
+    expect(gapOf({ ...st, foot: { ...f, hv: f.hv + 0.1 } })).toBeGreaterThan(STRUCTURE_HIT_TOLERANCE_M);
+  });
 });

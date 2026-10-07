@@ -7,13 +7,13 @@
     {
       "id": "radio-mast-near",
       "kind": "mast",
-      "at": [37.7552, -122.4528],
-      "baseM": 254,
+      "at": [37.75448, -122.45417],
+      "baseM": 194,
       "heightM": 298,
       "colour": "#c8402f",
       "bandColour": "#f1eee6",
       "keepOutM": 250,
-      "exaggerate": 0.4
+      "exaggerate": 0.36
     }
   ]
 }

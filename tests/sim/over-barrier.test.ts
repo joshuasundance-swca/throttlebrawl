@@ -16,7 +16,9 @@
 // - over Chuckanut's parapet, down the bluff: a high drop, the same penalty and respawn;
 // - over the Golden Gate's railing (a 1.3 m wall over the bay): a high drop, the same penalty and
 //   respawn;
-// - a building front (Duval Street's shopfronts) still holds a rider at any height;
+// - a building front (Duval Street's shopfronts) holds a rider at any height with the structures off (these
+//   races are ISOLATED: `riders.structures` 0; with them on the buildings themselves stop him or take him onto
+//   their roofs, tests/sim/structures-solid.test.ts);
 // - the new behaviour records and replays to the same hashes, and a race where nobody goes over keeps
 //   no new state.
 import { describe, expect, it } from 'vitest';
@@ -39,10 +41,11 @@ import { modifiersSystem } from '../../src/sim/modifiers';
 import { pedsSystem } from '../../src/sim/peds';
 import { raceSystem } from '../../src/sim/race';
 import { riderLimits, riderState, ridersSystem } from '../../src/sim/riders';
-import { trafficSystem } from '../../src/sim/traffic';
+import { placeVehicle, toCorridor, trafficState, trafficSystem } from '../../src/sim/traffic';
+import { lanesAt as corridorLanesAt } from '../../src/sim/traffic/corridor';
 import { tumbleState, tumbleSystem } from '../../src/sim/tumble';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
-import type { SimConfig, SimEvent, SimInput } from '../../src/sim/types';
+import type { SimConfig, SimEvent, SimInput, SimTrafficTypeDef } from '../../src/sim/types';
 import { addMover, createWorld, orderSystems, stepWorld, worldHash, type World } from '../../src/sim/world';
 import { ISOLATED } from './batch';
 
@@ -124,6 +127,8 @@ function fly(
   ticks: number,
   done: (e: SimEvent[]) => boolean,
   inputs?: readonly SimInput[],
+  /** Called after each tick with that tick's events (a scripted incident). */
+  after?: (world: World, events: readonly SimEvent[]) => void,
 ): Flight {
   const road = config.road;
   const edge = road.edgeIndex(at.road);
@@ -158,6 +163,7 @@ function fly(
     for (const e of fresh) events.push({ ...e, at: t });
     roads.push(road.edges[p.pos.edge]?.id ?? '');
     hashes.push(worldHash(world));
+    after?.(world, fresh);
     if (p.pos.edge === edge && p.mode === 'Airborne') {
       const l = riderLimits(world, config, edge, p.pos.s, p.pos.d);
       furthestPast = Math.max(furthestPast, sideSign > 0 ? p.pos.d - l.hi : l.lo - p.pos.d);
@@ -364,7 +370,7 @@ describe('the Golden Gate: its 1.3 m railing, the same physics as everywhere (de
   });
 });
 
-describe('a building front stays a wall at any height (the one known gap: buildings are not in the sim)', () => {
+describe('with the structures off, a building front stays a wall at any height (the old rule, ISOLATED)', () => {
   it("Duval Street's shopfronts hold a rider flying 8 m up", () => {
     const e = DUVAL.road.edgeIndex('osm-duval-street');
     expect(edgeTopAt(DUVAL.road, e, 200, 'right')).toBe(Infinity);
@@ -377,6 +383,109 @@ describe('a building front stays a wall at any height (the one known gap: buildi
     print(`Duval's shopfronts, 8 m up: furthest past ${f.furthestPast.toFixed(3)}; ${brief(f)}`);
     expect(overCrash(f)).toBeUndefined();
     expect(f.furthestPast).toBeLessThanOrEqual(1e-9);
+  });
+});
+
+describe('one respawn rule after any overboard: at the crossing, in his own lanes, clear of the rails and traffic', () => {
+  // The one live check of 2026-10-07 (punch item 3): the Seven Mile woke him at d 5.0 against the rail, the
+  // Golden Gate at d 0.8 by the centre line. The rule now: the centre of the drive lane of his own direction
+  // nearest where he went over, skipping one a vehicle stands in near the crossing.
+  const BOX: SimTrafficTypeDef = {
+    contentId: 'base:box-truck',
+    category: 'truck',
+    lengthM: 7.5,
+    widthM: 2.4,
+    heightM: 3.4,
+    cruiseMps: 15,
+    hazard: 'big',
+  };
+  const ownLanes = (f: Flight, edge: number, s: number, dir: number) =>
+    f.config.road
+      .lanesAt(edge, s)
+      .filter((l) => l.kind === 'drive' && l.direction === dir)
+      .map((l) => l.dCenterM);
+  const cases: { name: string; config: SimConfig; at: Launch; laneD: number }[] = [
+    {
+      name: 'the Seven Mile, over his own side’s rail',
+      config: SEVEN,
+      at: { road: 'osm-sm-bridge', s: 3000, side: 'right', hM: 3, vy: 1, speed: 30, yaw: 0.15 },
+      laneD: 2,
+    },
+    {
+      name: 'the Seven Mile, over the far side’s rail',
+      config: SEVEN,
+      at: { road: 'osm-sm-bridge', s: 3000, side: 'left', hM: 3, vy: 1, speed: 30, yaw: 0.15 },
+      laneD: 2,
+    },
+    {
+      name: 'the Golden Gate, over his own side’s railing',
+      config: GOLDEN_GATE,
+      at: { road: 'osm-sf-gg-bridge', s: 1400, side: 'right', hM: 3, vy: 1, speed: 30, yaw: 0.15 },
+      laneD: 10.3,
+    },
+    {
+      name: 'the Golden Gate, over the far side’s railing',
+      config: GOLDEN_GATE,
+      at: { road: 'osm-sf-gg-bridge', s: 1400, side: 'left', hM: 3, vy: 1, speed: 30, yaw: 0.15 },
+      laneD: 2.3,
+    },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: wakes at the centre of his own lane nearest the crossing`, () => {
+      const f = fly(c.config, c.at, 60 * 12, respawned);
+      const woke = wokeAt(f);
+      const p = f.world.movers[0]!;
+      const e = f.config.road.edges[p.pos.edge]!;
+      print(
+        `${c.name}: ${brief(f)}; woke on ${woke.road} s ${woke.s.toFixed(1)} d ${woke.d.toFixed(2)} dir ${p.pos.dir} ` +
+          `(own lanes ${ownLanes(f, p.pos.edge, p.pos.s, p.pos.dir).join(', ')}; the deck ${e.dMin} to ${e.dMax})`,
+      );
+      expect(overCrash(f)?.data).toMatchObject({ cause: 'over', overboard: true });
+      expect(woke.road).toBe(c.at.road);
+      expect(Math.abs(woke.s - woke.crossS)).toBeLessThan(1);
+      expect(p.pos.dir).toBe(1);
+      expect(ownLanes(f, p.pos.edge, p.pos.s, p.pos.dir)).toContain(woke.d);
+      expect(woke.d).toBeCloseTo(c.laneD, 6);
+      // Clear of the rails: at least 2 m in from the deck's edges (a bike is 0.8 m wide).
+      expect(Math.min(woke.d - e.dMin, e.dMax - woke.d)).toBeGreaterThanOrEqual(2);
+      expect(f.world.movers[0]?.mode).toBe('Road');
+    });
+  }
+
+  it('clear of traffic: a truck stopped in that lane at the crossing as he wakes sends him to the next own lane', () => {
+    const at = cases[2]!.at;
+    const config: SimConfig = { ...GOLDEN_GATE, trafficTypes: [BOX] };
+    let splashAt = -1;
+    let t = 0;
+    let truck = -1;
+    const f = fly(config, at, 60 * 12, respawned, undefined, (world, events) => {
+      t++;
+      if (splashAt < 0 && events.some((x) => x.type === 'splash')) splashAt = t;
+      // Two ticks before the penalty ends, a stopped truck in his nearest own lane at the crossing.
+      if (truck >= 0 || splashAt < 0 || t !== splashAt + SPLASH_PENALTY_TICKS - 2) return;
+      const rail = tumbleState(world).records[0]?.railAt;
+      if (!rail) throw new Error('no crossing');
+      const here = toCorridor(trafficState(world).corridor, { ...rail, dir: 1 });
+      if (!here) throw new Error('the crossing is not on the traffic corridor');
+      // The corridor's rank whose lane is the 10.3 m one (corridor d is the road's d times the link's way).
+      const dir = here.dir > 0 ? 1 : -1;
+      const lanes = corridorLanesAt(config.road, trafficState(world).corridor, here.u, dir);
+      const way = Math.sign(here.cd / rail.d);
+      const rank = lanes.findIndex((l) => Math.abs(l.cd - 10.3 * way) < 0.5);
+      if (rank < 0) throw new Error(`no corridor lane at d 10.3: ${JSON.stringify(lanes)}`);
+      const slot = placeVehicle(world, config, { type: 0, u: here.u, dir, rank, v0: 0, speed: 0 });
+      truck = trafficState(world).id[slot] ?? -1;
+    });
+    const woke = wokeAt(f);
+    const v = f.world.movers[truck];
+    print(
+      `a truck (id ${truck}) at s ${v?.pos.s.toFixed(1)} d ${v?.pos.d.toFixed(2)} as he wakes: woke at s ${woke.s.toFixed(1)} d ${woke.d.toFixed(2)}`,
+    );
+    expect(truck).toBeGreaterThanOrEqual(0);
+    expect(Math.abs((v?.pos.s ?? NaN) - woke.s)).toBeLessThan(5);
+    expect(Math.abs((v?.pos.d ?? NaN) - 10.3)).toBeLessThan(0.5);
+    // The next own lane over, not the truck's (the control is the case above: 10.3 with no truck).
+    expect(woke.d).toBeCloseTo(6.3, 6);
   });
 });
 
@@ -396,6 +505,27 @@ describe('determinism', () => {
       expect(replay.hashes).toEqual(first.hashes);
       expect(key(replay)).toEqual(key(first));
     }
+  });
+
+  it('a high fall (the Golden Gate: the whole fall, the plunge, the respawn in his lane) records and replays to the same hash every tick', () => {
+    const at: Launch = {
+      road: 'osm-sf-gg-bridge',
+      s: 1400,
+      side: 'left',
+      hM: 3,
+      vy: 1,
+      speed: 30,
+      yaw: 0.15,
+    };
+    const first = fly(GOLDEN_GATE, at, 60 * 14, respawned);
+    const replay = fly(GOLDEN_GATE, at, first.inputs.length, () => false, first.inputs);
+    const key = (f: Flight) => f.events.map((e) => `${e.at}:${e.type}:${JSON.stringify(e.data)}`);
+    print(
+      `the Golden Gate's high fall: ${first.inputs.length} ticks recorded, ${first.events.length} events; hashes match: ${first.hashes.every((h, i) => h === replay.hashes[i])}`,
+    );
+    expect(ofType(first, 'respawn')[0]?.data).toMatchObject({ high: true });
+    expect(replay.hashes).toEqual(first.hashes);
+    expect(key(replay)).toEqual(key(first));
   });
 
   it('a race where nobody goes over keeps no new state (so it hashes as before)', () => {

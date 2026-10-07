@@ -75,6 +75,14 @@
 import { clamp, cos, nextFloat, secondsToTicks, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor, type RoadPos } from '../../road';
 import { driftOf } from '../riders/drift';
+import {
+  holdsBike,
+  leaveSupport,
+  overVehicleTop,
+  supportKeyOf,
+  supportMotion,
+  supportsOn,
+} from '../riders/supports';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import {
@@ -1099,11 +1107,20 @@ function nearTightBend(world: World, config: SimConfig, st: TrafficState, u: num
 const HAIRPIN_WAIT_M = 60;
 
 /**
+ * A rider slower than this does not hold a vehicle at its hairpin wait line, m/s: it is not coming
+ * round the bend. Bridge City (polish H's punch item 5): a deputy waiting on the shoulder inside the
+ * reach held two oncoming cars there for the rest of the race, and the riders who came up the road
+ * stopped nose to nose with them. Car-following still stops a vehicle behind a rider standing in
+ * its lane, and it rounds one who is down. [default]
+ */
+const HAIRPIN_COMING_MPS = 2;
+
+/**
  * Hairpin yield (`traffic.hairpinYieldM`): how far ahead of corridor u, travelling `dir`, the next
  * drift bend (DRIFT_BEND_KAPPA, the corridor's bend mask) begins, when a rider is in that bend or
  * within the key's reach beyond it, riding toward u; else Infinity (also with the key off, and in
- * a bend already: a vehicle in one drives on through). Riders going the vehicle's way never count.
- * Pure + - * / over the corridor and the rider views.
+ * a bend already: a vehicle in one drives on through). Riders going the vehicle's way never count,
+ * nor do riders slower than `minMps`. Pure + - * / over the corridor and the rider views.
  */
 function hairpinMouth(
   world: World,
@@ -1112,6 +1129,7 @@ function hairpinMouth(
   riders: readonly RiderView[],
   u: number,
   dir: number,
+  minMps: number,
 ): number {
   const reach = world.params['traffic.hairpinYieldM'] ?? 0;
   if (!(reach > 0) || riders.length === 0) return Infinity;
@@ -1135,7 +1153,7 @@ function hairpinMouth(
   let far = mouth;
   while (bendAt(far + BEND_STEP_M) === true) far += BEND_STEP_M;
   for (const r of riders) {
-    if (r.dir === dir) continue;
+    if (r.dir === dir || r.speed < minMps) continue;
     const ahead = dir * (r.u - u);
     if (ahead >= mouth && ahead <= far + reach) return mouth;
   }
@@ -1145,6 +1163,7 @@ function hairpinMouth(
 /**
  * The distance ahead of vehicle k to the line where it waits for riders coming round a hairpin
  * (HAIRPIN_WAIT_M short of its mouth), or Infinity: none coming, or k already past its wait line.
+ * A rider standing still is not coming (HAIRPIN_COMING_MPS), so nobody holds it there for good.
  */
 function hairpinWait(
   world: World,
@@ -1153,14 +1172,15 @@ function hairpinWait(
   riders: readonly RiderView[],
   k: number,
 ): number {
-  const mouth = hairpinMouth(world, config, st, riders, st.u[k] ?? 0, st.dir[k] ?? 1);
+  const mouth = hairpinMouth(world, config, st, riders, st.u[k] ?? 0, st.dir[k] ?? 1, HAIRPIN_COMING_MPS);
   return mouth - HAIRPIN_WAIT_M > 0 ? mouth - HAIRPIN_WAIT_M : Infinity;
 }
 
 /**
  * A spawn slot a vehicle could not wait in time at (hairpin yield): riders are coming round the
  * hairpin ahead of it, and it would start past its wait line or inside its comfortable stopping
- * distance of it.
+ * distance of it. Every rider counts here, standing still or not (one may set off at any moment, and
+ * a spawn that cannot wait is never a vehicle stuck at a wait line).
  */
 function hairpinSpawnBlocked(
   world: World,
@@ -1171,7 +1191,7 @@ function hairpinSpawnBlocked(
   dir: number,
   v0: number,
 ): boolean {
-  const mouth = hairpinMouth(world, config, st, riders, u, dir);
+  const mouth = hairpinMouth(world, config, st, riders, u, dir, 0);
   return mouth < HAIRPIN_WAIT_M + (v0 * v0) / (2 * IDM.comfortDecelMps2);
 }
 
@@ -2147,6 +2167,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
   const closingMin = world.params['traffic.nearMissClosingMps'] ?? T.nearMissClosingMps;
   const decks = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
   const kerbSoft = (world.params['traffic.kerbSoft'] ?? 0) > 0;
+  const supports = supportsOn(world);
   for (const r of riders) {
     st.unstableS[r.id] = Math.max(0, (st.unstableS[r.id] ?? 0) - dt);
     st.lastRel[r.id] ??= st.id.map(() => 0);
@@ -2156,11 +2177,22 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
     if (!r.airborne) st.launchedOff[r.id] = -1;
     // Its height above the road a tick ago, from its vertical speed (a roof is met from above).
     const hBefore = r.h - riderVyMps(world, r.id) * dt;
+    // Supports (sim/riders/supports.ts): a rider standing on a vehicle's roof is the riders' to move on
+    // it, as a moving deck's rider is, and traffic skips that vehicle; the rider's own motion is over
+    // its support, so through the world it is that plus the support's velocity.
+    const own = supportKeyOf(world, r.id);
+    const ownVid = own.startsWith('v:') ? Number(own.slice(2)) : -1;
+    const mo = supportMotion(world, r.id);
+    const carried = mo ? { along: mo.va, across: mo.vc } : null;
     // The rider's velocity in corridor terms: along the road from its speed and heading; across it
     // from its heading plus a kick's or a hit's shove still sliding it sideways (the corridor runs
     // with the rider's road when r.dir equals its pos.dir, against it otherwise).
-    const riderU = r.dir * m.speed * cos(m.yaw);
-    const riderCross = r.dir * m.speed * sin(m.yaw) + r.dir * m.pos.dir * shoveDMps(world, r.id);
+    const riderU =
+      mo && carried ? r.dir * (mo.vr * cos(m.yaw) + carried.along) : r.dir * m.speed * cos(m.yaw);
+    const riderCross =
+      mo && carried
+        ? r.dir * (mo.vr * sin(m.yaw) + carried.across) + r.dir * m.pos.dir * shoveDMps(world, r.id)
+        : r.dir * m.speed * sin(m.yaw) + r.dir * m.pos.dir * shoveDMps(world, r.id);
     for (let k = 0; k < st.id.length; k++) {
       const vid = st.id[k] ?? -1;
       const t = typeOf(config, st, k);
@@ -2181,7 +2213,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       const ahead = r.dir * du;
       const prev = rel[k] ?? 0;
       rel[k] = ahead === 0 ? -1e-9 : ahead;
-      if ((!r.touchable && !r.airborne) || isDeckVehicle(decks, vid)) continue;
+      if ((!r.touchable && !r.airborne) || isDeckVehicle(decks, vid) || vid === ownVid) continue;
       // A ghost, back on the bike moments ago (playtest 4), passes straight through: no contact, no
       // push, and no near miss either (nothing was risked).
       if (r.ghost) continue;
@@ -2202,17 +2234,65 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         const vAlong = vDir === r.dir ? vSpeed : -vSpeed;
         let solid = false;
         let soft = false;
+        // Met at a top's edge from above: end on or from the side, by the shorter overlap (it was over the
+        // top, so last tick's side-by-side test does not say how it came in); null otherwise.
+        let edgeEndOn: boolean | null = null;
         // Over its roof a tick ago (in the air): it came down onto it, or it is riding the roof.
         const fromAbove = r.airborne && hBefore >= top - 1e-6;
         // A light kerb rider has no roof (the live check of #619): coming down on one is the soft
         // contact below, as from any other direction, never a car's roof (never a crash, never ridden on).
         const kerbLight = kerbSoft && isKerb(t) && softContact(t);
-        if (!kerbLight && st.contactWith[r.id] !== vid && fromAbove && top - r.h <= Math.min(overU, overD)) {
+        // Supports (the maintainer, 2026-10-06): a roof that holds the bike is ground, and the riders land
+        // the rider on it (sim/riders/supports.ts). A smaller top is an obstacle met from above: the one
+        // rule, the fall speed (below).
+        const holdsTop =
+          supports && !kerbLight && holdsBike(t.lengthM, t.widthM, { lengthM: r.lengthM, widthM: r.widthM });
+        if (holdsTop && st.contactWith[r.id] !== vid && fromAbove) {
+          // One rule decides (the live check of 2026-10-07): the riders' own, the rider's middle over the
+          // top. On it (the vehicle moved under him as traffic stepped, so the riders' step missed him),
+          // he is held at its top, still falling as he was, and landed on next tick. With his box over its
+          // end but his middle past it, he is off its edge and falls, never held in the air while gravity
+          // builds (it held him for up to 2 s, then dropped him at 32 m/s from 3.25 m).
+          if (overVehicleTop(world, config, m, vid)) {
+            holdAtTop(world, config, m, top);
+            continue;
+          }
+          // Come down past its edge (a rider riding off one is clear of it already: the riders'
+          // clearOfVehicleTop). Moving into it, he meets its end below its top: the contact below, by the
+          // closing speed, on the side the shorter overlap says. Level with it or falling behind, the edge
+          // tips the overhanging bike off: he slides clear of it the short way, his speed and his fall as
+          // they were, with no contact.
+          const endOn = overU < overD;
+          const into = endOn
+            ? closingOnAxis(riderU, vDir * vSpeed, du)
+            : closingOnAxis(riderCross, st.cdMps[k] ?? 0, dcd);
+          if (into <= 0) {
+            let clear = false;
+            if (!endOn) {
+              r.cd += (dcd > 0 ? -1 : 1) * (overD + 0.02);
+              clear = putRider(world, config, st, r);
+            }
+            if (!clear) {
+              r.u -= (du > 0 ? 1 : -1) * (overU + 0.02);
+              putRider(world, config, st, r);
+            }
+            config.road.advance(m.pos);
+            rel[k] = r.dir * ((st.u[k] ?? 0) - r.u) || -1e-9;
+            continue;
+          }
+          edgeEndOn = endOn;
+        } else if (
+          !holdsTop &&
+          !kerbLight &&
+          st.contactWith[r.id] !== vid &&
+          fromAbove &&
+          top - r.h <= Math.min(overU, overD)
+        ) {
           st.contactWith[r.id] = vid;
-          roofContact(world, config, st, r, m, { t, vid, top, dcd });
-          continue;
-        }
-        if (!kerbLight && st.contactWith[r.id] === vid && fromAbove) {
+          const crashed = roofContact(world, config, st, r, m, { t, vid, top, dcd, hold: !supports });
+          // Under the line, with supports, it wobbles off the top: pushed clear below, falling on.
+          if (!supports || crashed) continue;
+        } else if (!kerbLight && st.contactWith[r.id] === vid && fromAbove && !supports) {
           // Still over the roof after a wobble on it: held at its top, never sunk into the car.
           onRoof(world, config, m, top);
           continue;
@@ -2221,7 +2301,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           st.contactWith[r.id] = vid;
           // Side by side last tick (their boxes overlapped along the road): it came in from the side.
           const halfLen = (t.lengthM + r.lengthM) / 2;
-          const endOn = prev === 0 ? overU < overD : Math.abs(prev) >= halfLen;
+          const endOn = edgeEndOn ?? (prev === 0 ? overU < overD : Math.abs(prev) >= halfLen);
           const front = du * r.dir > 0;
           const graze = endOn && overD < T.grazeM;
           const oncoming = vDir !== r.dir;
@@ -2296,8 +2376,10 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
               ...(crash ? wheelieReasonData(wheelieCrashReason(world, hood)) : {}),
             };
             if (solid) {
-              // Inelastic: the rider ends at the vehicle's speed along the road, never bounced back.
+              // Inelastic: the rider ends at the vehicle's speed along the road, never bounced back. A
+              // rider on a support leaves it for the world's frame, that speed (sim/riders/supports.ts).
               m.speed = Math.max(0, vAlong);
+              if (mo) leaveSupport(world, r.id);
               emit(world, 'crash', r.id, data, { target: vid });
             } else if (crash) {
               m.speed *= T.crashScrub;
@@ -2327,7 +2409,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           r.u -= (du > 0 ? 1 : -1) * (overU + 0.02);
           putRider(world, config, st, r);
           // Into its tail: slow to its speed. Hit from behind: shoved up to its speed.
-          if (vDir === r.dir) m.speed = du > 0 ? Math.min(m.speed, vSpeed) : Math.max(m.speed, vSpeed);
+          // (A rider on a support moves over it: its speed is not the world's, and is left as it is.)
+          if (vDir === r.dir && !mo) m.speed = du > 0 ? Math.min(m.speed, vSpeed) : Math.max(m.speed, vSpeed);
         }
         config.road.advance(m.pos);
         rel[k] = r.dir * ((st.u[k] ?? 0) - r.u) || -1e-9;
@@ -2336,7 +2419,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       // Near miss (M2 traffic-3): the rider passed the vehicle (it went from ahead to behind),
       // within about 1 m sideways, untouched, at a closing speed of at least the slider's, so
       // crawling past a parked car never scores. Riding, not flying past.
-      if (!r.touchable) continue;
+      // (A rider up on a support threads no traffic.)
+      if (!r.touchable || own !== '') continue;
       if (
         prev > 0 &&
         ahead <= 0 &&
@@ -2375,7 +2459,9 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
  * closing speed straight down, how fast the rider was falling (a vehicle has no vertical speed).
  * A crash puts the rider on the roof and starts the tumble there, its speed scrubbed as any crash's;
  * a wobble puts it on the roof with the wobble's scrub and heading kick, and it rides the roof until
- * it drops off. `hit` `top`, `air` true.
+ * it drops off. `hit` `top`, `air` true. With supports (`hold` false: the roof is too small to hold
+ * the bike, a scooter's or a cyclist's), a wobble does not stay on it: contacts() pushes the rider clear
+ * and the flight goes on. Returns true on a crash.
  */
 function roofContact(
   world: World,
@@ -2383,8 +2469,8 @@ function roofContact(
   st: TrafficState,
   r: RiderView,
   m: Mover,
-  v: { t: SimTrafficTypeDef; vid: number; top: number; dcd: number },
-): void {
+  v: { t: SimTrafficTypeDef; vid: number; top: number; dcd: number; hold: boolean },
+): boolean {
   const { t, vid, top, dcd } = v;
   const closing = Math.max(0, -riderVyMps(world, r.id));
   const crash = trafficContactCrashes(world.params, closing);
@@ -2397,17 +2483,30 @@ function roofContact(
     impactMps: closing,
     air: true,
   };
-  onRoof(world, config, m, top);
+  if (crash || v.hold) onRoof(world, config, m, top);
   if (crash) {
     m.speed *= TRAFFIC.crashScrub;
     emit(world, 'crash', r.id, data, { target: vid });
-    return;
+    return true;
   }
   m.speed *= TRAFFIC.wobbleScrub;
   const away = dcd > 0 ? -1 : 1;
   m.yaw = clamp(m.yaw + away * r.dir * TRAFFIC.wobbleKickRad, -1.2, 1.2);
   st.unstableS[r.id] = TRAFFIC.unstableS;
   emit(world, 'wobble', r.id, data, { target: vid });
+  return false;
+}
+
+/**
+ * Supports: a rider coming down onto a roof that holds its bike, which the riders' step did not land it
+ * on (the vehicle moved under it as traffic stepped): held at the roof's height, still falling as it
+ * was, so the riders land it on the roof next tick (sim/riders/supports.ts) by the landing's own rules.
+ */
+function holdAtTop(world: World, config: SimConfig, m: Mover, top: number): void {
+  const rs = world.systems['riders'] as { yAbs?: number[] } | undefined;
+  m.h = top;
+  const pos = m.pos;
+  if (rs?.yAbs) rs.yAbs[m.id] = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + top;
 }
 
 /**

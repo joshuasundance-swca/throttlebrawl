@@ -12,9 +12,10 @@ import {
   floorProblem,
   GUARD_FACTOR,
   guardLimits,
-  isPullRequestRun,
+  floorJudgesRun,
   judgeSoft,
   PR_FLOOR_KB,
+  START_TAP_GUARD_MIN_READINGS,
   summaryMarkdown,
   trendLine,
 } from './perf-limits.mjs';
@@ -27,6 +28,9 @@ const frames = (n: number) => Math.round(n * FRAME * 10) / 10;
 interface Times {
   frameMs: { p50: number; p95: number };
   stepMs?: { p95: number };
+  startTapMs?: number;
+  startTapReadings?: number;
+  startTap?: { readings: number[] };
 }
 const baselineFile = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/baseline.json'), 'utf8')) as {
   soft: Times;
@@ -115,6 +119,89 @@ describe('the soft tier: a trend plus a 3x guard', () => {
   });
 });
 
+describe("the start tap's main-thread work: a trend, guarded only once the baseline has 8 CI readings (polish K2 review, must-fix)", () => {
+  const frame = { p50: frames(4), p95: frames(8) };
+  /** A baseline whose start tap rests on `readings` CI readings. */
+  const base = (readings: number): Times => ({ frameMs: frame, startTapMs: 120, startTapReadings: readings });
+  const at = (startTapMs: number | undefined, readings: number) =>
+    judgeSoft({ frameMs: frame, ...(startTapMs === undefined ? {} : { startTapMs }) }, base(readings));
+
+  it('is 8 CI readings, the same bar as the frame baseline', () => {
+    expect(START_TAP_GUARD_MIN_READINGS).toBe(8);
+  });
+
+  it('prints a trend row with its ratio and no guard before then, and never fails, however slow (it was 450 ms or more on one live reading)', () => {
+    for (const readings of [0, 3, 7]) {
+      const row = at(150, readings).rows.find((r) => r.metric === 'start tap');
+      expect(row, `${readings} readings`).toEqual({
+        metric: 'start tap',
+        value: 150,
+        baseline: 120,
+        ratio: 1.25,
+        limit: null,
+        over: false,
+      });
+      expect(guardLimits(base(readings)).startTap).toBeUndefined();
+      expect(at(9999, readings).failures).toEqual([]);
+      expect(at(Number.NaN, readings).failures).toEqual([]);
+    }
+    expect(trendLine('classic', at(150, 3).rows)).toContain(
+      'start tap 150 ms (1.25x the baseline 120, no guard yet)',
+    );
+  });
+
+  it('is guarded at 3x the baseline, with no frame slack, from the 8th reading (the control: it fires)', () => {
+    expect(guardLimits(base(8)).startTap).toBe(360);
+    const row = at(150, 8).rows.find((r) => r.metric === 'start tap');
+    expect(row).toEqual({
+      metric: 'start tap',
+      value: 150,
+      baseline: 120,
+      ratio: 1.25,
+      limit: 360,
+      over: false,
+    });
+    expect(trendLine('classic', at(150, 8).rows)).toContain(
+      'start tap 150 ms (1.25x the baseline 120, guard 360)',
+    );
+    expect(at(360, 8).failures).toEqual([]);
+    expect(at(360.1, 8).failures).toEqual([
+      'start tap 360.1 ms is over the 3x guard 360 ms (baseline 120 ms): a catastrophic slowdown, not runner noise',
+    ]);
+    expect(at(Number.NaN, 8).failures).toHaveLength(1); // a missing reading fails rather than passing
+  });
+
+  it('shows "none yet" in the step summary where the guard would be', () => {
+    const md = summaryMarkdown({ size: [], probes: [{ label: 'classic', rows: at(150, 3).rows }] });
+    expect(md).toContain('| classic | start tap | 150 | 1.25 | 120 | none yet |');
+    const guarded = summaryMarkdown({ size: [], probes: [{ label: 'classic', rows: at(150, 8).rows }] });
+    expect(guarded).toContain('| classic | start tap | 150 | 1.25 | 120 | 360 |');
+  });
+
+  it('holds for the stored baseline: its guard exists exactly when it rests on 8 or more readings', () => {
+    const soft = baselineFile.soft;
+    expect(soft.startTapMs).toBeGreaterThan(0);
+    const readings = soft.startTap?.readings ?? [];
+    expect(readings.length).toBeGreaterThan(0);
+    const limit = guardLimits({ ...soft, startTapReadings: readings.length }).startTap;
+    if (readings.length >= START_TAP_GUARD_MIN_READINGS) expect(limit).toBeGreaterThan(0);
+    else expect(limit).toBeUndefined();
+    // Whatever the baseline's readings are, the CI readings behind it are never judged slow by it.
+    const judged = judgeSoft(
+      { frameMs: soft.frameMs, startTapMs: Math.max(...readings) },
+      { ...soft, startTapReadings: readings.length },
+    );
+    expect(judged.failures).toEqual([]);
+  });
+
+  it('is not judged until both the probe and the baseline have it (the negative control)', () => {
+    expect(at(undefined, 8).rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    const noBase = judgeSoft({ frameMs: frame, startTapMs: 9999 }, { frameMs: frame, startTapReadings: 8 });
+    expect(noBase.rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    expect(noBase.failures).toEqual([]);
+  });
+});
+
 describe('the first-load JavaScript line', () => {
   it('prints the headroom and the change against main, and warns on a big growth', () => {
     const KB = 1024;
@@ -136,11 +223,33 @@ describe("a pull request's headroom floor (2026-10-03: the budget was crossed 4 
   const floor = (head: number, base: number | null, pr: boolean) =>
     floorProblem(firstLoadReport(head * KB, 500, base === null ? null : base * KB), 500, pr);
 
-  it('is 10 KB, and only pull_request runs are judged by it', () => {
+  it("is 10 KB, and judges a pull request's own run and every train run, never a push to main", () => {
     expect(PR_FLOOR_KB).toBe(10);
-    expect(isPullRequestRun({ GITHUB_EVENT_NAME: 'pull_request' })).toBe(true);
-    expect(isPullRequestRun({ GITHUB_EVENT_NAME: 'push' })).toBe(false);
-    expect(isPullRequestRun({})).toBe(false);
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'pull_request' })).toBe(true);
+    // The bundle train (train.yml) and its control run the suite on the workflow_run and
+    // workflow_dispatch events: that run tests the tree that lands, so the floor judges it too.
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'workflow_run' })).toBe(true);
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'workflow_dispatch' })).toBe(true);
+    // Main's pushes (and their re-runs) keep the budget alone; a local run has no event.
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'push' })).toBe(false);
+    expect(floorJudgesRun({})).toBe(false);
+  });
+
+  it('holds a train run to it: #633 landed main at 9.9 KB of headroom through a train that skipped the floor', () => {
+    // Train 37530950804 (main ff06745 + #633): 490.1 KB gzip, its change against main not measured
+    // (the base build failed). Its perf step printed "not applied (not a pull_request run)", and #633's
+    // own quick check, against main 1 h 46 min older, had passed at 11.1 KB.
+    // 501,826 bytes: 87ceba3's first load as the live check measured it, 9.9 KB of headroom.
+    const landed = (base: number | null, env: Record<string, string>) =>
+      floorProblem(firstLoadReport(501_826, 500, base), 500, floorJudgesRun(env));
+    const train = { GITHUB_EVENT_NAME: 'workflow_dispatch' };
+    expect(landed(null, train)).toContain('leaves 9.9 KB of headroom');
+    expect(landed(null, train)).toContain('its change against main was not measured');
+    // Measured against the train's base (main ff06745 printed 489.8 KB): it grows the first load.
+    expect(landed(501_520, train)).toContain('this one grows it by 306 B');
+    expect(landed(501_520, { GITHUB_EVENT_NAME: 'workflow_run' })).not.toBeNull();
+    // The negative control: the same build on main's push is not judged by the floor.
+    expect(landed(501_520, { GITHUB_EVENT_NAME: 'push' })).toBeNull();
   });
 
   it('fails a PR that grows the first load into the last 10 KB, with the headroom it leaves (it fires)', () => {

@@ -1,0 +1,11 @@
+---
+kind: changed
+audience: player
+---
+Pile-ups. A bike left on the road after a crash, standing while its rider runs back to it, is now solid (the maintainer, 2026-10-06: "Pile ups are fun lol"). Ride into it square on at speed (closing at 10 m/s or more) and you go down too; catch its corner, brush its side or roll into it slowly and you only wobble and slide past it. It is the same rule as for the street furniture and the cars, and it holds for you, the rivals and the cops. Before, a dropped bike was ridden through with a wobble and never brought anyone down.
+
+The fair restarts are kept: back on your bike after a crash, you pass through dropped bikes for as long as you pass through traffic (the respawn ghost), so a bike beside the one you got back on never knocks you straight off again; a bike put down where you already are only wobbles you; and your own bike is cleared when you remount, as before. Rivals and cops see a dropped bike the way they see the solid street furniture: they keep their lines clear of it and go round it (but one on the road never slows them for bends). The dev bot sees traffic only, as it does for every solid thing.
+
+How often: rarely, because a bike stands only while its rider runs back to it, about 2 s. In seeds 1 to 48 of the base event (traffic on, the rest of the optional world off, the dev bot riding), riders crashed 152 times and left a bike standing 141 times; 8 times a rider came by within 0.8 m of one, and once it was a pile-up (a rival into another rider's bike at 34 m/s).
+
+Behind the scenes: a new tuning switch, `riders.pileUps` (on). A race whose tuning leaves it out, every recording made before, rides through a dropped bike as before, so old replays replay the same. The contact table and the rule's docs (docs/content-packs.md, "Contact outcomes: one rule") mark the change `[decided]`. New tests: src/sim/tumble/pile-up.test.ts (square on crashes, a graze, a side brush and a crawl wobble, with the old rule, the respawn ghost and a blind rival as controls) and tests/sim/pile-ups.test.ts (the seeded band: a search over seeds 1 to 64 that stops at the first race with a pile-up, seed 34 today, 114 to 245 s on the dev machine). This touches the rival AI and the cops (src/sim/ai, src/sim/cops) as well as the riders and the tumble, because they had to see the new solid thing. Not phone-verified.

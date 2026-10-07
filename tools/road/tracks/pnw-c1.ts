@@ -232,15 +232,18 @@ export const MILL_CUT = {
     jumpable: true,
   } satisfies BakedBarrier,
   /**
-   * The wall goes on along the main road beside the yard road, over the split connector and the first
-   * 125 m of the next piece (155 m past the split): where the yard road lies beside it, a rider on the
-   * ground could otherwise ride out onto the verge (the off-road switch is on) and be handed across.
+   * The wall goes on along the main road beside the yard road, over the split connector and the whole of
+   * the next piece (270 m past the split, to the yard's exit): where the yard road lies beside it, a rider
+   * on the ground could otherwise ride out onto the verge (the off-road switch is on) and be handed across.
+   * It stopped at 125 m while the verge's soft edge held a rider past it at any height; with the course's
+   * honest edges (2026-10-06, [decided]: "never an invisible wall") nothing undrawn holds him, so the wall
+   * that shuts the yard is drawn the whole way (tools/road/truck-shortcuts.test.ts).
    */
   wallAfter: { s0: 0, s1: 'end', side: 'right', kind: 'wall', heightM: 1.2, jumpable: true } satisfies Omit<
     BakedBarrier,
     's1'
   > & { s1: 'end' },
-  wallAlongM: 125,
+  wallAlongM: 240,
   sign: 'MILL YARD CUT-THROUGH. Authorised vehicles only. Airborne is authorised.',
 } as const;
 

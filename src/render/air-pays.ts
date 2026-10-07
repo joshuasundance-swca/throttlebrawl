@@ -21,6 +21,7 @@ import {
 } from 'three';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
+import { groundYOf } from './shadows';
 
 /** The chalk's colours: clean, and crooked. */
 export const CHALK_CLEAN = '#f3efe2';
@@ -207,7 +208,7 @@ export class AirPays {
         vy: 4,
         vz: fz * me.speed * 0.6,
         spin: 9,
-        ground: pose.y - Math.max(0, me.road.h),
+        ground: pose.y - (me.y - groundYOf(me)),
         restS: 0,
       };
     }

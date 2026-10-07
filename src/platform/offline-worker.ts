@@ -42,6 +42,13 @@
 //   browser revalidates its stored copy with its ETag, the host answers 304, and the body comes from
 //   the HTTP cache. A hashed name never changes its bytes, and a file the host no longer has still
 //   answers 404 and fails the install, so this never mixes builds.
+// - Every file once on a first visit (polish batch F's check, punch item 1: 30 more files crossed
+//   the wire twice, 260,032 bytes). The page imports lazy scripts whenever it needs them, before or
+//   after the install reaches them, and it is not the worker's until the install is whole. So on a
+//   first visit the install asks for every script normally too: one the page imported revalidates
+//   (a 304), and one it did not is downloaded plain, which the page's later import revalidates in
+//   turn. A model or map file the page has not loaded still comes as its gzip copy, and the page's
+//   own fetch() of it meanwhile reads the install's cache first (page-cache.ts).
 //
 // It must import nothing at run time: sw.ts is built as its own classic script, and a module the
 // page shares would become a shared chunk the worker cannot load.
@@ -62,6 +69,8 @@ const INSTALL_LANES = 4;
 const PRELOAD_LINK = /<link\b[^>]*\brel=["']?preload\b[^>]*>\s*/gi;
 /** A gzip copy's suffix (scripts/service-worker.mjs). */
 const GZIP_SUFFIX = '.gz';
+/** A script's extension: the page loads those as modules, with an Origin header. */
+const SCRIPT = '.js';
 /** The header on a file the worker unpacked from its gzip copy (a live check reads it). */
 export const GZIP_MARK = 'x-offline-from';
 /** The type a file unpacked from its copy is served with, by extension. */
@@ -230,8 +239,10 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
       if (held && keepable(held)) return held;
       // The page's module scripts and preloads were stored under its Origin header, which the
       // lookup above cannot match: a normal request revalidates them (a 304) and takes the body
-      // from the HTTP cache.
-      if (pageFromNetwork && firstLoad.has(rel)) return download(rel, {});
+      // from the HTTP cache. On a first visit that holds for every script, lazy ones included: the
+      // page imports them whenever it needs them, before or after the install reaches them, and
+      // only the plain file lets the later of the two revalidate (a 304) instead of downloading.
+      if (pageFromNetwork && (firstLoad.has(rel) || rel.endsWith(SCRIPT))) return download(rel, {});
       const unpacked = await viaCopy(rel);
       if (unpacked) return unpacked;
     }

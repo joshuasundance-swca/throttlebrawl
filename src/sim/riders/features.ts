@@ -216,6 +216,22 @@ export function truckBodyTop(f: BakedFeature): number {
 }
 
 /**
+ * A rampTruck's body (the top-deck car and the cab) as a box on its edge, m: from where it starts past
+ * the lip platform to the truck's front, its whole width (sim/riders/supports.ts lands riders on its top).
+ */
+export function truckBodyBox(f: BakedFeature): { s0: number; s1: number; d0: number; d1: number } {
+  const into = bodyIntoOf(f);
+  return facingOf(f) === -1
+    ? { s0: f.s0, s1: f.s1 - into, d0: f.d0, d1: f.d1 }
+    : { s0: f.s0 + into, s1: f.s1, d0: f.d0, d1: f.d1 };
+}
+
+/** A truck's velocity along its edge's +s, m/s: 0 for a parked one, a moving deck's travel. */
+export function truckVelocityS(f: BakedFeature): number {
+  return truckSpeedOf(f) * facingOf(f);
+}
+
+/**
  * A rampTruck's height at a point of its box: the ramp from 0 at its foot to the lip height at the
  * lip, the lip platform, then the body's top (solid, not a deck anyone rides).
  */
@@ -368,10 +384,35 @@ export function boxShape(s0: number, s1: number, d0: number, d1: number): Furnit
 const hazardPieces = new WeakMap<SimConfig, (readonly HazardPiece[])[]>();
 
 /**
+ * The solid parts of the live road set pieces (a lane vote's gantry post), as sim/modifiers publishes them
+ * for the tick the riders step next (the maintainer, 2026-10-06: "a road race in a physical world with honest
+ * edges"; nothing drawn is a ghost). Each is a solid hazard of one edge for as long as its piece is live, met
+ * by the one rule for heavy fixed things exactly as the road's own. The registry is made with the first part
+ * and never otherwise, so a race with none hashes as before.
+ */
+export const PIECE_SOLIDS_KEY = 'pieceSolids';
+export interface PieceSolid {
+  edge: number;
+  /** A key no other solid hazard has (sim/modifiers: past every road hazard's). */
+  key: number;
+  feature: BakedFeature;
+}
+export interface PieceSolids {
+  live: PieceSolid[];
+}
+
+/**
  * The solid hazards on an edge whose box reaches within `reach` of s (playtest 4: met by the same
  * contact as the street furniture, sim/riders/furniture.ts, its box exactly as the hitbox audit holds it).
+ * With `world`, the live set pieces' solid parts on it too.
  */
-export function solidHazardsNear(config: SimConfig, edge: number, s: number, reach: number): HazardPiece[] {
+export function solidHazardsNear(
+  config: SimConfig,
+  edge: number,
+  s: number,
+  reach: number,
+  world?: World,
+): HazardPiece[] {
   let byEdge = hazardPieces.get(config);
   if (!byEdge) hazardPieces.set(config, (byEdge = []));
   let list = byEdge[edge];
@@ -381,7 +422,16 @@ export function solidHazardsNear(config: SimConfig, edge: number, s: number, rea
       .map((f, i) => ({ feature: f, shape: boxShape(f.s0, f.s1, f.d0, f.d1), key: edge * 65536 + i + 1 }));
     byEdge[edge] = list;
   }
-  return list.filter((p) => Math.abs(p.shape.s - s) <= reach + p.shape.reachS);
+  const near = list.filter((p) => Math.abs(p.shape.s - s) <= reach + p.shape.reachS);
+  const pieces = (world?.systems[PIECE_SOLIDS_KEY] as PieceSolids | undefined)?.live;
+  if (!pieces || pieces.length === 0) return near;
+  for (const p of pieces) {
+    if (p.edge !== edge) continue;
+    const f = p.feature;
+    const shape = boxShape(f.s0, f.s1, f.d0, f.d1);
+    if (Math.abs(shape.s - s) <= reach + shape.reachS) near.push({ feature: f, shape, key: p.key });
+  }
+  return near;
 }
 
 /** The rampTruck (or moving deck, from `moving`) whose box holds (s, d), or null. */

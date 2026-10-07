@@ -40,6 +40,8 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
+import { loadChunk } from '../content';
+import { loadPnwPlacesLayout, loadWaterfrontLayout } from '../road';
 import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
@@ -305,18 +307,27 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   renderer.info.autoReset = false;
   // The film pass (looks/post.ts) and the model reader (models.ts, glb.ts) are lazy chunks: the
   // classic look and the first frame need neither (the JavaScript budget counts the first load).
+  // Polish batch F's check, punch item 4 (a deploy mid-race: the landmark chunk's 404 left two
+  // uncaught errors): every lazy chunk here loads through content/'s `loadChunk`, caught, tried once
+  // more and said once. One that failed both tries is not asked for again until the next road
+  // (setRoad), so a build whose files are gone is never asked for frame after frame; the stale-build
+  // watch (platform/) offers the reload at the race's end.
+  const gaveUp = new Set<string>();
+  const chunk = async <T>(name: string, load: () => Promise<T>): Promise<T | null> => {
+    if (gaveUp.has(name)) return null;
+    const m = await loadChunk(name, load);
+    if (m === null) gaveUp.add(name);
+    return m;
+  };
   let post: LookPost | null = null;
   let postLoading = false;
   const loadPost = () => {
     if (post || postLoading) return;
     postLoading = true;
-    void import('./looks/post')
-      .then((m) => {
-        post = new m.LookPost();
-      })
-      .catch(() => {
-        postLoading = false; // tried again on the next frame that wants the film pass
-      });
+    void chunk('film pass', () => import('./looks/post')).then((m) => {
+      if (m) post = new m.LookPost();
+      else postLoading = false; // asked for again at the next road
+    });
   };
   const scene = new Scene();
   // The far plane sits just past the fog's end (look.ts: fully fogged at 700 m, so nothing beyond
@@ -348,25 +359,25 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const loadRace = () => {
     if (race || raceLoading) return;
     raceLoading = true;
-    void import('./race-parts')
-      .then((m) => {
-        const effects = new m.FeelEffects(look, params);
-        const speedLines = new m.SpeedLines(look, params);
-        const rain = new m.Rain(look, params);
-        if (rainEnv) rain.set(m.rainColourOf(rainEnv));
-        const eventProps = new m.EventProps(look);
-        const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
-        views.setEffects(effects);
-        camera.add(effects.tint, speedLines.root, rain.root);
-        for (const o of [effects.root, eventProps.root, smashables.root]) {
-          persistent.add(o);
-          scene.add(o);
-        }
-        race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables };
-      })
-      .catch(() => {
-        raceLoading = false; // tried again on the next frame
-      });
+    void chunk('race parts', () => import('./race-parts')).then((m) => {
+      if (!m) {
+        raceLoading = false; // asked for again at the next road
+        return;
+      }
+      const effects = new m.FeelEffects(look, params);
+      const speedLines = new m.SpeedLines(look, params);
+      const rain = new m.Rain(look, params);
+      if (rainEnv) rain.set(m.rainColourOf(rainEnv));
+      const eventProps = new m.EventProps(look);
+      const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
+      views.setEffects(effects);
+      camera.add(effects.tint, speedLines.root, rain.root);
+      for (const o of [effects.root, eventProps.root, smashables.root]) {
+        persistent.add(o);
+        scene.add(o);
+      }
+      race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables };
+    });
   };
   const noProps: EventPropCounts = { byKind: {}, total: 0, signs: [] };
   const noFeel: FeelCounts = { sparks: 0, drops: 0, paper: 0, rings: 0, reactors: 0, tint: 0 };
@@ -427,16 +438,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const loadRigs = () => {
     if (rigs || rigsLoading) return;
     rigsLoading = true;
-    void import('./riders')
-      .then((m) => {
-        rigs = new m.RiderRigs(look, opts.assets ?? null, params);
-        views.setRigs(rigs);
-        rigs.setPlayerPaint(playerPaint);
-        rigs.setLooks(riderLooks);
-      })
-      .catch(() => {
+    void chunk('rider rigs', () => import('./riders')).then((m) => {
+      if (!m) {
         rigsLoading = false; // tried again at the next race start
-      });
+        return;
+      }
+      rigs = new m.RiderRigs(look, opts.assets ?? null, params);
+      views.setRigs(rigs);
+      rigs.setPlayerPaint(playerPaint);
+      rigs.setLooks(riderLooks);
+    });
   };
   // Run W-P: the region's roadside props (roadside.ts), a lazy chunk that arrives with the kit.
   let roadsideModule: typeof import('./roadside') | null = null;
@@ -528,7 +539,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     const files = backdropFilesFor(road.id);
     const region = files?.region.split('/').at(-2);
     if (!region) return;
-    void import('./scenes/layer').then(async (m) => {
+    void chunk('roadside scenes', () => import('./scenes/layer')).then(async (m) => {
+      if (!m) return;
       scenesModule = m;
       const found = await m.loadScenes(region);
       if (!found || roadArgs?.road !== road) return;
@@ -550,16 +562,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     const m = downtownModule;
     if (!m || !roadArgs) return;
     const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
-    const rs = roadScene;
     if (m.hasPortland(tags)) {
-      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit and the land the road scene drew.
+      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit, where the road's plan stands them
+      // (road/structures/downtown.ts, on the land the road scene draws).
       const pdx = models.pdxDowntown;
-      if (!pdx || !rs) return;
+      if (!pdx) return;
       downtown = new m.DowntownLayer(pdx, undefined, undefined, look, {
         road: roadArgs.road,
         dressing: roadArgs.dressing,
         seed: sceneSeed,
-        portland: { landReach: (e, side, s) => rs.landReach(e, side, s) },
+        portland: true,
       });
     } else {
       const kit = models.sfDowntown;
@@ -598,7 +610,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (placed.length === 0 && !corners) return;
     const m = textSurfacesModule;
     if (!m) {
-      void import('./text-surfaces').then((loaded) => {
+      void chunk('text surfaces', () => import('./text-surfaces')).then((loaded) => {
+        if (!loaded) return;
         textSurfacesModule = loaded;
         buildTextSurfaces();
       });
@@ -615,6 +628,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.
   // It is rebuilt with the road (a new seed, the palms arriving) and keeps off the staged scenes.
   let waterfrontModule: typeof import('./waterfront') | null = null;
+  // Where its buildings stand is the road's plan (road/structures/waterfront.ts, a lazy chunk of its own).
+  let waterfrontPlan: Awaited<ReturnType<typeof loadWaterfrontLayout>> | null = null;
   let waterfrontLoading = false;
   let waterfront: WaterfrontLayer | null = null;
   const buildWaterfront = () => {
@@ -626,21 +641,25 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!m) {
       if (waterfrontLoading || !['promenade', 'wharf'].some((t) => tags.has(t))) return;
       waterfrontLoading = true;
-      void import('./waterfront')
-        .then((w) => {
-          waterfrontModule = w;
-          buildWaterfront();
-        })
-        .catch(() => {
+      void Promise.all([
+        chunk('waterfront', () => import('./waterfront')),
+        chunk('waterfront layout', loadWaterfrontLayout),
+      ]).then(([w, plan]) => {
+        if (!w || !plan) {
           waterfrontLoading = false; // tried again at the next road build
-        });
+          return;
+        }
+        waterfrontModule = w;
+        waterfrontPlan = plan;
+        buildWaterfront();
+      });
       return;
     }
-    if (!m.hasWaterfront(tags)) return;
+    if (!m.hasWaterfront(tags) || !waterfrontPlan) return;
     waterfront = new m.WaterfrontLayer(models, look, {
       road: roadArgs.road,
-      dressing: roadArgs.dressing,
       seed: sceneSeed,
+      layout: waterfrontPlan.waterfrontLayout(roadArgs.road, sceneSeed),
       reserved: scenes?.reserved() ?? [],
     });
     scene.add(waterfront.group);
@@ -660,14 +679,19 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!m) {
       if (!blocksLoading) {
         blocksLoading = true;
-        void import('./chinatown-northbeach').then((b) => {
+        void chunk('Chinatown and North Beach', () => import('./chinatown-northbeach')).then((b) => {
+          if (!b) {
+            blocksLoading = false; // tried again at the next road build
+            return;
+          }
           blocksModule = b;
           buildBlocks();
         });
       }
       return;
     }
-    blocks = new m.BlocksLayer(look, { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed });
+    // The districts stand where the road's own plan puts them (road/structures/): no dressing, the road data alone.
+    blocks = new m.BlocksLayer(look, { road: roadArgs.road, seed: sceneSeed });
     scene.add(blocks.group);
   };
   // Run W-U: San Francisco's mural alleys (mission.ts), a lazy chunk fetched once a road has them.
@@ -683,17 +707,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!['shopfronts', 'murals', 'mascot-mural'].some((t) => tags.has(t))) return;
     const m = missionModule;
     if (!m) {
-      void import('./mission').then((loaded) => {
+      void chunk('mural alleys', () => import('./mission')).then((loaded) => {
+        if (!loaded) return;
         missionModule = loaded;
         buildMission();
       });
       return;
     }
-    mission = new m.MissionLayer(models.sfRoadside, look, {
-      road: roadArgs.road,
-      dressing: roadArgs.dressing,
-      seed: sceneSeed,
-    });
+    // The walls stand where the road's own plan puts them (road/structures/): no dressing, the road data alone.
+    mission = new m.MissionLayer(models.sfRoadside, look, { road: roadArgs.road, seed: sceneSeed });
     scene.add(mission.group);
   };
   // Run W-R: the ground band beside the road (verge.ts), a lazy chunk that arrives with the road. It
@@ -731,7 +753,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     landmarks = null;
     landmarkKits = null;
     if (!road.edges.some((e) => e.features.some((f) => f.kind === 'landmark'))) return;
-    void import('./landmarks').then(async (m) => {
+    void chunk('landmarks', () => import('./landmarks')).then(async (m) => {
+      if (!m) return;
       landmarksModule = m;
       const assets = opts.assets;
       const kits = assets ? await m.loadLandmarkKits(assets, m.landmarkKitsFor(road)) : new Map();
@@ -757,16 +780,19 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // Run W-U: the Pacific Northwest's places (pnw-places.ts: the ferry, the clear-cut, the Stump Social), a
   // lazy chunk loaded only for a road with their tags. Built with the road scene, whose land it stands on.
   let placesModule: typeof import('./pnw-places') | null = null;
+  // Where its shops and its ferry stand is the road's plan (road/structures/pnw-places.ts, a lazy chunk of its own).
+  let placesPlan: Awaited<ReturnType<typeof loadPnwPlacesLayout>> | null = null;
   let places: PnwPlacesLayer | null = null;
   const buildPlaces = () => {
     places?.dispose();
     places = null;
     const rs = roadScene;
-    if (!placesModule || !roadArgs || !rs) return;
+    if (!placesModule || !placesPlan || !roadArgs || !rs) return;
     if (!placesModule.hasPnwPlaces(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
     places = new placesModule.PnwPlacesLayer(look, {
       road: roadArgs.road,
       seed: sceneSeed,
+      layout: placesPlan.pnwPlacesLayout(roadArgs.road, sceneSeed),
       landReach: (e, side, s) => rs.landReach(e, side, s),
     });
     scene.add(places.group);
@@ -839,7 +865,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     const assets = opts.assets;
     const args = roadArgs;
     if (!assets || !args) return;
-    void import('./models').then(async (m) => {
+    void chunk('models', () => import('./models')).then(async (m) => {
+      if (!m) return;
       modelsModule = m;
       const { tropical, tags } = networkTags(args.road, args.dressing);
       const kinds = m
@@ -849,19 +876,20 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       for (const k of kinds) requested.add(k);
       const { models: loaded, report } = await m.loadSceneryModels(assets, kinds);
       Object.assign(loadedModels, loaded);
-      modelReport = {
-        loaded: [...(modelReport?.loaded ?? []), ...report.loaded],
-        fellBack: [...(modelReport?.fellBack ?? []), ...report.fellBack],
-      };
+      modelReport = m.mergeModelReports(modelReport, report);
+      // A kind the host held back (its wait, a busy host) is asked for again at the next setRoad.
+      for (const k of m.retryableKinds(report)) requested.delete(k);
       repaint();
       if (report.loaded.length) buildRoad();
       if (report.loaded.some((k) => k.endsWith('Roadside')) && !roadsideModule)
-        void import('./roadside').then((r) => {
+        void chunk('roadside', () => import('./roadside')).then((r) => {
+          if (!r) return;
           roadsideModule = r;
           buildRoadside();
         });
       if ((report.loaded.includes('sfDowntown') || report.loaded.includes('pdxDowntown')) && !downtownModule)
-        void import('./downtown').then((d) => {
+        void chunk('downtown', () => import('./downtown')).then((d) => {
+          if (!d) return;
           downtownModule = d;
           buildDowntown();
         });
@@ -899,6 +927,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
 
   return {
     setRoad(road, env, dressing, catalog) {
+      // A new road asks again for any chunk that failed both tries on the last one.
+      gaveUp.clear();
       if (roadScene) {
         scene.remove(roadScene.group);
         roadScene.dispose();
@@ -931,7 +961,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       buildRoad();
       if (vergeModule) buildVerge();
       else
-        void import('./verge').then((m) => {
+        void chunk('verge', () => import('./verge')).then((m) => {
+          if (!m) return;
           vergeModule = m;
           buildVerge();
         });
@@ -940,7 +971,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (networkTags(road, dressing).tags.has('airboats')) {
         if (airboatsModule) buildAirboats();
         else
-          void import('./airboats').then((m) => {
+          void chunk('airboats', () => import('./airboats')).then((m) => {
+            if (!m) return;
             airboatsModule = m;
             buildAirboats();
           });
@@ -956,15 +988,21 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (hasParty) {
         if (partyModule) buildParty();
         else
-          void import('./party-lights').then((m) => {
+          void chunk('party lights', () => import('./party-lights')).then((m) => {
+            if (!m) return;
             partyModule = m;
             buildParty();
           });
       }
       const placeTags = networkTags(road, dressing).tags;
       if (!placesModule && ['ferry', 'clearcut', 'festival'].some((t) => placeTags.has(t)))
-        void import('./pnw-places').then((m) => {
+        void Promise.all([
+          chunk('Pacific Northwest places', () => import('./pnw-places')),
+          chunk('Pacific Northwest places layout', loadPnwPlacesLayout),
+        ]).then(([m, plan]) => {
+          if (!m || !plan) return;
           placesModule = m;
+          placesPlan = plan;
           buildPlaces();
         });
       backdrop.setRoad(road);

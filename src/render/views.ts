@@ -28,6 +28,7 @@ import type {
   TumbleBodySnapshot,
 } from '../sim/api';
 import type { AssetManifest } from '../assets';
+import { loadChunk } from '../content';
 import type { FeelEffects, Point } from './effects';
 import {
   critterHeightM,
@@ -124,6 +125,8 @@ export function entityById(snap: SimSnapshot, id: number): EntitySnapshot | unde
 
 // ---- Colours -----------------------------------------------------------------------------
 
+/** A crash body this far under the ground it falls to (the water) is under it, and throws no shadow, m. */
+const UNDER_M = 0.5;
 const PLAYER = { bike: '#b8322a', rider: '#f2c14e', helmet: '#fff3c4' };
 const LAW = { bike: '#f4f4f4', rider: '#1d2a55', helmet: '#f4f4f4' };
 const RIVAL_RIDERS = ['#e0543a', '#7fd1c7', '#b98ce0', '#9cc56b', '#f28f8f', '#5a8fd6'];
@@ -574,10 +577,12 @@ export class EntityViews {
       .filter((d) => d.category !== 'pedestrian' && d.category !== 'animal')
       .map((d) => d.contentId);
     const request = ++this.vehicleRequest;
-    void import('./vehicles')
-      .then((m) => m.loadVehicleSets(assets, ids))
+    // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): without it the
+    // traffic keeps its stand-ins.
+    void loadChunk('vehicles', () => import('./vehicles'))
+      .then((m) => (m ? m.loadVehicleSets(assets, ids) : null))
       .then((sets) => {
-        if (request !== this.vehicleRequest) return;
+        if (!sets || request !== this.vehicleRequest) return;
         this.setVehicleModels(new Map([...this.vehicleSets, ...sets]));
       })
       .catch(() => undefined);
@@ -887,19 +892,23 @@ export class EntityViews {
       }
       const tumble = e.tumble;
       if (tumble) {
-        // Down: the rider and the bike each throw their own, fainter the higher they fly.
-        sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
-        sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        // Down: the rider and the bike each throw their own, fainter the higher they fly. A body under the
+        // water (a high drop's plunge, sim/tumble) throws none: nothing lies still on the water over it in
+        // the cut-away's held view (the one live check of 2026-10-07).
+        if (tumble.rider.y >= ground - UNDER_M)
+          sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
+        if (tumble.bike.y >= ground - UNDER_M)
+          sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
         continue;
       }
       if (e.parkedBike) {
         // Running back to the bike: the rider on foot, the bike standing apart.
         const b = e.parkedBike;
-        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.road.h);
+        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.y - ground);
         sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
         continue;
       }
-      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.road.h);
+      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.y - ground);
     }
     sh.end();
   }
@@ -1472,7 +1481,16 @@ export class EntityViews {
           if (actor) fx.burst(bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider'), 0.8);
           break;
         case 'splash':
-          if (actor) {
+          // A HIGH drop (the maintainer, 2026-10-06, "(a)") is a clean cut-away: no water thrown, no ring,
+          // no gator, no fisherman. The same fall as a low one in every other way. And only a fall into the
+          // water splashes: out of bounds onto ground (the course's honest edges, `past: 'ground'`) or a low
+          // drop onto dry ground (`past: 'drop'`) is the plain quick reset, no gag ([decided] 2026-10-06).
+          if (
+            actor &&
+            ev.data['high'] !== true &&
+            ev.data['past'] !== 'ground' &&
+            ev.data['past'] !== 'drop'
+          ) {
             const at = bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider');
             // Away from the bridge: from the rider's spot on the road out to the splash.
             const reactor = (ev.actor + ev.tick) % 2 === 0 ? 'gator' : 'fisherman';

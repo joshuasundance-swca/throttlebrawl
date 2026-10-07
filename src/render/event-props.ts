@@ -109,30 +109,35 @@ function radar(): Parts {
     box([0.05, 1.25, 0.05], [0.18, 0.6, 0.12], '#2b2b2b', { rotX: -0.25 }),
     box([0.34, 0.24, 0.42], [0, 1.3, 0], '#1d1f24'),
     box([0.2, 0.2, 0.04], [0, 1.3, -0.23], '#e83030'),
-    box([0.8, 0.5, 0.05], [0.7, 1.0, 0], WHITE),
+    // A placard hung on the tripod under the head (the sim's contact box is the tripod's, centred).
+    box([0.46, 0.34, 0.04], [0, 0.86, 0.16], WHITE),
   ];
 }
 
+/**
+ * The arrow board on the work truck's back: as wide as the truck at its read-at-speed scale (1.5 x 1.5 m =
+ * 2.25 m on the 2.4 m truck), so the truck's box is what a rider meets of it (the sim: the work truck).
+ */
 function arrowBoard(): Parts {
   const parts: Parts = [
-    box([2.1, 1.1, 0.12], [0, 0, 0], '#111111'),
+    box([1.5, 1.1, 0.12], [0, 0, 0], '#111111'),
     box([0.1, 1.2, 0.1], [0, -1.1, 0.1], '#555'),
   ];
   // An amber arrow pointing toward the open lane (the board's +x side is where the cones lean).
   const cells: [number, number][] = [
-    [-0.8, 0],
-    [-0.55, 0],
-    [-0.3, 0],
-    [-0.05, 0],
-    [0.2, 0],
-    [0.45, 0],
-    [0.45, 0.25],
-    [0.45, -0.25],
-    [0.7, 0],
-    [0.3, 0.35],
-    [0.3, -0.35],
+    [-0.56, 0],
+    [-0.385, 0],
+    [-0.21, 0],
+    [-0.035, 0],
+    [0.14, 0],
+    [0.315, 0],
+    [0.315, 0.25],
+    [0.315, -0.25],
+    [0.49, 0],
+    [0.21, 0.35],
+    [0.21, -0.35],
   ];
-  for (const [x, y] of cells) parts.push(box([0.18, 0.16, 0.04], [x, y, -0.08], '#ffb21a'));
+  for (const [x, y] of cells) parts.push(box([0.13, 0.16, 0.04], [x, y, -0.08], '#ffb21a'));
   return parts;
 }
 
@@ -157,16 +162,22 @@ function signPost(short: boolean): Parts {
     : [box([0.14, 3.6, 0.14], [0, 1.8, -0.12], '#9aa0a6')];
 }
 
-/** A lane-vote gantry's frame (W-T): a post at each side and a beam over the road, `span` wide. */
+/**
+ * A lane-vote gantry's frame (W-T): a cantilever, one post past the route-forward lanes' outer edge (the
+ * model's +x, the right of the way it faces) and a beam over the road, `span` wide. The post the far side had
+ * stood in the oncoming lanes, or in the middle of a one-way street (the set pieces' ride-column check,
+ * 2026-10-06); the sim meets this one by the one rule for heavy things (sim/modifiers `propBoxes`).
+ */
 function gantryFrame(span: number): Parts {
-  const half = span / 2 + 0.4;
+  const half = span / 2 + GANTRY_POST_OUT_M;
   return [
-    box([0.3, 6.4, 0.3], [-half, 3.2, 0], '#8a9096'),
     box([0.3, 6.4, 0.3], [half, 3.2, 0], '#8a9096'),
     box([2 * half + 0.3, 0.35, 0.35], [0, 6.25, 0], '#8a9096'),
     box([2 * half + 0.3, 0.2, 0.2], [0, 6.75, 0], '#8a9096'),
   ];
 }
+/** How far past the gantry's span its post stands, m (the sim's `propBoxes` puts its box there). */
+export const GANTRY_POST_OUT_M = 0.4;
 
 function lightbar(): Parts {
   return [
@@ -187,8 +198,8 @@ const PEOPLE: Readonly<
     arm: '#c8ff2e',
     // The SLOW paddle, held up on its pole.
     extra: [
-      box([0.05, 1.6, 0.05], [0.42, 0.95, -0.1], '#777'),
-      box([0.5, 0.5, 0.05], [0.42, 1.9, -0.1], '#f2c400'),
+      box([0.05, 1.6, 0.05], [0.3, 0.95, -0.1], '#777'),
+      box([0.42, 0.42, 0.05], [0.3, 1.9, -0.1], '#f2c400'),
     ],
   },
   'cop-waving': {
@@ -203,7 +214,7 @@ const PEOPLE: Readonly<
     pants: '#1a2438',
     hat: '#141c2b',
     arm: '#20324f',
-    extra: [box([0.14, 0.14, 0.34], [0.3, 1.25, -0.3], '#1d1f24')],
+    extra: [box([0.14, 0.14, 0.34], [0.3, 1.25, -0.2], '#1d1f24')],
   },
   'marcher-keys': {
     shirt: '#ff5fa2',
@@ -221,8 +232,8 @@ const PEOPLE: Readonly<
     // A hoodie, a lanyard and a blank placard on a stick (the slogans are on the sign ahead).
     extra: [
       box([0.04, 0.3, 0.02], [0, 1.2, -0.17], '#3d7bff'),
-      box([0.04, 1.1, 0.04], [0.4, 1.3, 0], '#8b6a3e'),
-      box([0.7, 0.45, 0.04], [0.4, 2.0, 0], WHITE),
+      box([0.04, 1.1, 0.04], [0.25, 1.3, 0], '#8b6a3e'),
+      box([0.6, 0.45, 0.04], [0.25, 2.0, 0], WHITE),
     ],
   },
   'marcher-pnw': {
@@ -245,9 +256,9 @@ const PEOPLE: Readonly<
     arm: '#ff7a1a',
     extra: [
       box([0.7, 0.06, 0.7], [0, 1.78, 0], '#f0d38a'),
-      box([0.05, 1.5, 0.05], [0.42, 1.0, -0.1], '#777'),
-      box([0.56, 0.56, 0.05], [0.42, 1.95, -0.1], '#d4202a'),
-      box([0.4, 0.12, 0.06], [0.42, 1.95, -0.13], WHITE),
+      box([0.05, 1.5, 0.05], [0.3, 1.0, -0.1], '#777'),
+      box([0.46, 0.46, 0.05], [0.3, 1.95, -0.1], '#d4202a'),
+      box([0.34, 0.12, 0.06], [0.3, 1.95, -0.13], WHITE),
     ],
   },
 };
@@ -277,9 +288,12 @@ function floatDecor(variant: string): Parts {
   const n = Number(index) || 0;
   const skirt = theme === 'sf' ? '#e8edf5' : theme === 'pnw' ? '#2f6b3a' : '#2ec4b6';
   const fringe = theme === 'sf' ? '#5b8cff' : theme === 'pnw' ? '#d9a441' : '#ff6fae';
+  // The skirt wraps the float's own box (the Keys' float 2.4 by 7.5 m, the others 2.6 by 9 m): it hung
+  // 0.45 m past each side and a metre past each end, a ghost the rider rode through beside a parked float.
+  const [w, l] = theme === 'sf' || theme === 'pnw' ? [2.7, 9.1] : [2.5, 7.6];
   const parts: Parts = [
-    box([3.3, 0.9, 9.4], [0, -0.75, 0], skirt),
-    box([3.34, 0.18, 9.44], [0, -0.25, 0], fringe),
+    box([w, 0.9, l], [0, -0.75, 0], skirt),
+    box([w + 0.04, 0.18, l + 0.04], [0, -0.25, 0], fringe),
   ];
   const top = 2.1;
   if (theme === 'keys') {
@@ -303,12 +317,13 @@ function floatDecor(variant: string): Parts {
     parts.push(box([2.2, 0.12, 1.6], [0, top + 0.6, 0.4], '#c9ccd3'));
     parts.push(box([2.2, 1.5, 0.12], [0, top + 1.35, -0.4], '#c9ccd3', { rotX: -0.2 }));
     parts.push(box([1.9, 1.2, 0.05], [0, top + 1.35, -0.48], '#2de2ff', { rotX: -0.2 }));
+    // The ring stays over the float's 2.6 m width (its box is the float's, sim/modifiers `propBoxes`).
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
       parts.push(
         box(
           [0.35, 0.35, 0.2],
-          [Math.cos(a) * 1.2, top + 3.4 + Math.sin(a) * 1.2, 1.2],
+          [Math.cos(a) * 1.05, top + 3.4 + Math.sin(a) * 1.05, 1.2],
           k < 5 ? '#2de2ff' : '#3a3f4a',
         ),
       );
@@ -416,6 +431,13 @@ const SIGN_M = 3.0;
 /** A serial sign's smaller panel (W-T: four small signs, one joke), metres, and how high it stands. */
 const SERIAL_M = 2.2;
 const SERIAL_UP = 1.4;
+/**
+ * A sign's panel as drawn (a square, metres, and how high its bottom stands): the event-props sweep reads it,
+ * since without a canvas (a test) the panel has no texture and is not drawn.
+ */
+export function signPanel(variant: string): { size: number; up: number } {
+  return variant === 'serial' ? { size: SERIAL_M, up: SERIAL_UP } : { size: SIGN_M, up: 2.2 };
+}
 /** A gantry's panel height, and its bottom above the road, metres. */
 const GANTRY_PANEL_M = 1.7;
 const GANTRY_PANEL_UP = 4.25;
@@ -744,8 +766,10 @@ export class EventProps {
     this.q.setFromAxisAngle(this.yAxis, p.heading);
     let sx = 1;
     if (kind === 'arm') {
-      // The arm at the right shoulder, swinging overhead: waving traffic by, or the crowd.
-      const swing = p.moving ? 0.2 : 2.4 + 0.5 * Math.sin(t * (p.variant === 'cop-waving' ? 5 : 3) + p.id);
+      // The arm at the right shoulder, raised and waving overhead: waving traffic by, or the crowd. It stays
+      // over the person's own box (sim/modifiers `propBoxes`: half a metre to each side); it swept out to 0.9 m
+      // and down to the hip, an arm a rider rode through.
+      const swing = p.moving ? 0.2 : 0.2 + 0.2 * Math.sin(t * (p.variant === 'cop-waving' ? 5 : 3) + p.id);
       this.v.add(this.shoulder.set(0.3, 1.4, 0).applyQuaternion(this.q));
       this.q2.setFromAxisAngle(this.zAxis, -swing);
       this.q.multiply(this.q2);
@@ -796,7 +820,6 @@ export class EventProps {
         // Every sign's post goes in the still batch; its panel in the atlas's mesh (or its own).
         const key = `signPost:${p.variant === 'serial' ? 'serial' : 'tall'}`;
         this.still.add(this.geometry(key), this.pose(key, p, t));
-        const serial = p.variant === 'serial';
         const face = `${p.variant}|${p.label}`;
         const slot = this.atlas.slot(face, p.label, p.variant);
         if (slot === null) {
@@ -804,16 +827,8 @@ export class EventProps {
           this.placeSign(p);
           continue;
         }
-        const size = serial ? SERIAL_M : SIGN_M;
-        quads.push({
-          x: p.x,
-          y: p.y,
-          z: p.z,
-          heading: p.heading,
-          size,
-          up: serial ? SERIAL_UP : 2.2,
-          uv: this.atlas.rect(slot),
-        });
+        const { size, up } = signPanel(p.variant);
+        quads.push({ x: p.x, y: p.y, z: p.z, heading: p.heading, size, up, uv: this.atlas.rect(slot) });
         panelKey.push(`${slot}:${p.x}:${p.y}:${p.z}:${p.heading}:${size}`);
         continue;
       }
@@ -892,10 +907,9 @@ export class EventProps {
       }
       if (tex) {
         // The face looks back along the road at the riders coming (the plane's +z, the model's back).
-        const serial = p.variant === 'serial';
-        const m = serial ? SERIAL_M : SIGN_M;
+        const { size: m, up } = signPanel(p.variant);
         const panel = new Mesh(new PlaneGeometry(m, m), this.look.material('board', { map: tex }));
-        panel.position.set(0, (serial ? SERIAL_UP : 2.2) + m / 2, 0);
+        panel.position.set(0, up + m / 2, 0);
         g.add(panel);
       }
       g.name = `event-sign-${p.id}`;

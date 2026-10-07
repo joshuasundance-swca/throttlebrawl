@@ -78,12 +78,14 @@ import {
   type RaceWeather,
   type StorageLike,
 } from '../save';
+import { cameraTargetOf } from './camera-target';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import { engineSoundsFor } from './engine-sounds';
 import { createCountdown } from './countdown';
 import { createLookFallback } from './look-fallback';
 import {
   createSim,
+  loadStructurePlanners,
   SIM_DT,
   type EventPatch,
   type FieldLevel,
@@ -1112,24 +1114,13 @@ export function createApp(opts: AppOptions): AppHandle {
           // bias) and the other riders' positions (camera-1).
           const at = curr?.entities[playerId];
           // Playtest 3's moves (the drift's slip and the wheelie's angle) lean the camera in too.
-          pose = camera.update(
-            {
-              ...me,
-              mode: at?.mode,
-              targetId: at?.targetId,
-              road: at?.road,
-              drift: at?.drift,
-              wheelie: at?.wheelie,
-            },
-            dt,
-            {
-              entities: curr?.entities,
-              // The held look-back action (camera-1's lookBack: L, or the pad's R1).
-              lookBack: input.lastActions().lookBack,
-              // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
-              aspect: viewAspect(),
-            },
-          );
+          pose = camera.update(cameraTargetOf(me, at), dt, {
+            entities: curr?.entities,
+            // The held look-back action (camera-1's lookBack: L, or the pad's R1).
+            lookBack: input.lastActions().lookBack,
+            // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
+            aspect: viewAspect(),
+          });
           // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
           if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
             if (!finishShot) {
@@ -1252,6 +1243,24 @@ export function createApp(opts: AppOptions): AppHandle {
   const roadsMissing = (choice: RegionChoice): string[] =>
     packClosure(registry, choice.packId).filter((id) => !library.hasRoads(id));
   /**
+   * The physical world's planners (the structures the sim meets: its buildings, landmarks and roofs; one
+   * lazy chunk, never in the first load), fetched in the background with the Keys' real roads; a race waits
+   * for them as it waits for its roads, since its world is planned from them as it starts.
+   */
+  let plannersIn = false;
+  let plannersLoading: Promise<void> | null = null;
+  const loadPlanners = (): Promise<void> =>
+    (plannersLoading ??= loadStructurePlanners().then(
+      () => {
+        plannersIn = true;
+      },
+      (err: unknown) => {
+        // Tried again by the next race (a dropped connection on the phone).
+        plannersLoading = null;
+        throw err;
+      },
+    ));
+  /**
    * Fetches the road data a race in a region needs (its pack's, and the Keys' real roads, which
    * every region's content hash covers through base), with a busy line; false (and a notice) when
    * it fails.
@@ -1261,7 +1270,7 @@ export function createApp(opts: AppOptions): AppHandle {
     ui.setBusy(`Loading ${choice.name}`);
     if (!library.hasRoads(choice.packId)) sayPickedRoads(choice, 'loading');
     try {
-      await Promise.all(roadsMissing(choice).map((id) => library.loadRoads(id)));
+      await Promise.all([...roadsMissing(choice).map((id) => library.loadRoads(id)), loadPlanners()]);
       roadsArrived(library.registry());
       return true;
     } catch (err) {
@@ -1356,6 +1365,9 @@ export function createApp(opts: AppOptions): AppHandle {
     });
   };
   if (!library.hasRoads('base')) loadKeysRoads();
+  // The physical world's planners, in the background too (a race that finds them missing fetches them
+  // again, with a busy line).
+  void loadPlanners().catch((err: unknown) => console.warn('the world planners did not load', err));
 
   // ---- The career flow (run W-R) ----------------------------------------------------------------
   const careerReady: Promise<CareerFlow | null> = import('./career-flow').then(
@@ -1430,10 +1442,11 @@ export function createApp(opts: AppOptions): AppHandle {
     if (state === 'race' || state === 'results') go('back');
     if (transition(state, 'race') === null) return;
     const missing = packClosure(registry, packOf(node.event)).filter((id) => !library.hasRoads(id));
-    if (missing.length > 0) {
+    // Its roads, and the planners its world is planned from (loadPlanners).
+    if (missing.length > 0 || !plannersIn) {
       loadingRoads = true;
       ui.setBusy(`Loading ${def.regionName}`);
-      void Promise.all(missing.map((id) => library.loadRoads(id)))
+      void Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()])
         .then(
           () => {
             roadsArrived(library.registry());
@@ -1790,7 +1803,7 @@ export function createApp(opts: AppOptions): AppHandle {
       // race's content hash covers them (through base), so a race waits for them rather than start
       // under a replay key that moves when they arrive.
       const choice = pickedChoice() ?? regions.find((r) => r.eventId === eventId);
-      if (choice && roadsMissing(choice).length > 0) {
+      if (choice && (roadsMissing(choice).length > 0 || !plannersIn)) {
         void loadRegion(choice).then((ok) => {
           if (ok) handle.startRace();
         });
@@ -1891,5 +1904,11 @@ export function createApp(opts: AppOptions): AppHandle {
   go('booted');
   ui.show('start');
   loop.start();
+  // The sound's context is made here, once the start screen has painted, and not in the start tap:
+  // making it is the tap's biggest cost (about 400 of its 408 ms of click handling on the dev
+  // machine), and only starting it needs the tap's gesture (audio/index.ts, `prepare`). A page that
+  // never paints (a hidden tab) leaves it to the tap, as before.
+  if (typeof requestAnimationFrame === 'function')
+    requestAnimationFrame(() => setTimeout(() => audio.prepare(), 0));
   return handle;
 }

@@ -159,6 +159,17 @@ export interface EntitySnapshot {
    */
   touchdown?: TouchdownSnapshot | null;
   /**
+   * What lies straight below a rider in the air (the maintainer, 2026-10-06: "consistent physics and
+   * gameplay is important here so players know what to expect"), as a world height, m: the top of a
+   * support it is above (a truck's roof, a parked pickup) or a ramp truck's deck, else the road's
+   * surface; out past its road's edge (over a barrier) another road under it, else the water or the
+   * drop's floor. For a rider tumbling overboard (past a rail, through a gap), the water level its
+   * bodies fall to. Render's shadow falls there and the camera measures the rider's height over it.
+   * Absent for everyone else, and in hand-built snapshots (the road's surface under it, as before).
+   * Presentation only; the sim fills it for every rider in the air or overboard.
+   */
+  floorY?: number;
+  /**
    * This rival's signature move while it shows (interview, 2026-10-02: "Visible personalities"),
    * so render can draw it (Chad's phone up, the Mayor's wave, Gus's bell swinging); null while it
    * is not showing one, and for other kinds. Presentation only. Optional for hand-built snapshots;

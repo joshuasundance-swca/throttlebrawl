@@ -15,6 +15,10 @@
 //   - past LANDMARK_MID_M: nothing. The far bridge is the backdrop's silhouette.
 // A feature whose kit or node is missing draws nothing (never a placeholder box in a public build).
 //
+// Where each landmark stands is the structure plan's (road/structures/landmark-places.ts, since the physical
+// world, 2026-10-06): render draws each node there, and the plan stands its solid parts there
+// (road/structures/landmarks.ts), so what is drawn is what is met.
+//
 // The Golden Gate is composed in code from the kit's pieces (`golden-gate#gg_bridge`, a virtual node;
 // COMPOSITES): the two towers, a bay of the deck's edge every 15.24 m, the anchorages, and the main
 // cables, which are code-made tubes along the catenary from tower top to tower top and down to the
@@ -34,7 +38,10 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { landmarkParams, type BakedFeature, type LandmarkParams, type RoadNetwork } from '../road';
+import type { RoadNetwork } from '../road';
+// Where each landmark stands: the structure plan's placement (a lazy chunk, road/structures/: imported directly, as
+// the module map lets a lazy render layer, so it stays out of the first load).
+import { landmarkGround, landmarkPlaces, type LandmarkPlace } from '../road/structures/landmark-places';
 import { CRUISE_SHIP_TOP, CRUISE_SLIDES, cruiseShipTopSoup } from './cruise-ship-top';
 import { fredSoup, FRED, type Soup } from './fred';
 import { anchorageSoup, ANCHORAGE_PIECE_R_M } from './gg-anchorage';
@@ -44,7 +51,6 @@ import { SUMMIT_LOT, summitLotSoup } from './summit-lot';
 import {
   LANDMARK_KITS,
   LANDMARK_ROLE_PALETTE,
-  parseLandmarkModel,
   type LandmarkKit,
   type LandmarkKitId,
   type LandmarkNode,
@@ -171,26 +177,19 @@ interface Piece {
   z: number;
   r: number;
   tiers: Tier[];
+  /** Weather (a rain cloud and its rain), not a solid: the structure plan has no part for it. */
+  weather?: boolean;
+  /** Wholly under a bridge deck (the Golden Gate's deck edge, y <= 0 in its bay's frame): under the course, no part of the plan. */
+  underDeck?: boolean;
+  /** Which placement (`landmarkPlacements`, in order) it is part of. */
+  place?: number;
 }
 
-/** One `landmark` feature as the road puts it in the world. */
-export interface LandmarkPlacement {
-  feature: BakedFeature;
-  edge: number;
-  kit: LandmarkKitId;
-  node: string;
-  params: LandmarkParams;
-  /** Where the node's origin stands, in world metres. */
-  x: number;
-  y: number;
-  z: number;
-  /** Turn about the vertical (radians): the road's heading at the centre plus the feature's `yawDeg`. */
-  yaw: number;
-  scale: number;
-}
+/** One `landmark` feature as the road puts it in the world (road/structures/landmark-places.ts). */
+export type LandmarkPlacement = LandmarkPlace;
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-const num = (f: BakedFeature, key: string, fallback: number): number => {
+const num = (f: LandmarkPlace['feature'], key: string, fallback: number): number => {
   const v = f.params?.[key];
   return finite(v) && v > 0 ? v : fallback;
 };
@@ -199,82 +198,24 @@ const num = (f: BakedFeature, key: string, fallback: number): number => {
 const headingOf = (tx: number, tz: number): number => Math.atan2(tx, tz);
 
 /**
- * Every landmark feature of a network that names a node of a known kit, placed: its origin at the
- * footprint's centre (or `params.frontM` ahead of it, along its +Z), its +Z along the road. Its height is the road's surface there, or
- * `params.baseY` (world metres) when it says so: a tower that rises from the water says 0. Features
- * that name no model, or a kit this build does not know, are left out.
+ * Every landmark feature of a network that names a node of a known kit, placed: the structure plan's own
+ * placement (road/structures/landmark-places.ts `landmarkPlaces`), its origin at the footprint's centre (or
+ * `params.frontM` ahead of it), its +Z along the road, at the road's surface or `params.baseY`.
  */
-export function landmarkPlacements(road: RoadNetwork): LandmarkPlacement[] {
-  const out: LandmarkPlacement[] = [];
-  for (const e of road.edges) {
-    for (const feature of road.featuresOf(e.index, 'landmark')) {
-      const params = landmarkParams(feature);
-      const model = parseLandmarkModel(params.model);
-      if (!model) continue;
-      const s = (feature.s0 + feature.s1) / 2;
-      const d = (feature.d0 + feature.d1) / 2;
-      const at = road.toWorld(e.index, s, d, 0);
-      const frame = road.frameAt(e.index, s);
-      const baseY = feature.params?.['baseY'];
-      const yaw = headingOf(frame.tx, frame.tz) + (params.yawDeg * Math.PI) / 180;
-      // `frontM` (playtest 4, P4-19; a church's origin is its facade, with the nave behind it): the origin
-      // stands this far ahead of the footprint's middle along the model's +Z, so the footprint can be the
-      // building's own and not a box twice its depth.
-      const frontM = feature.params?.['frontM'];
-      const ahead = finite(frontM) ? frontM * params.scale : 0;
-      out.push({
-        feature,
-        edge: e.index,
-        kit: model.kit,
-        node: model.node,
-        params,
-        x: at.x + Math.sin(yaw) * ahead,
-        y: finite(baseY) ? baseY : at.y,
-        z: at.z + Math.cos(yaw) * ahead,
-        yaw,
-        scale: params.scale,
-      });
-    }
-  }
-  return out;
-}
+export const landmarkPlacements: (road: RoadNetwork) => LandmarkPlacement[] = landmarkPlaces;
 
 /** The kits a network's landmark features name, so a race fetches only those. */
 export function landmarkKitsFor(road: RoadNetwork): LandmarkKitId[] {
-  const names = new Set(landmarkPlacements(road).map((p) => p.kit));
+  const names = new Set<string>(landmarkPlacements(road).map((p) => p.kit));
   return LANDMARK_KITS.filter((k) => names.has(k));
 }
 
 /**
  * Circles that cover the landmarks' footprints on the ground, for the roadside layers to keep off
- * (`reserved`, as the staged scenes give). A structure the road runs through or under (`overRoad`)
- * stands on the road or in the water and takes no ground.
+ * (`reserved`, as the staged scenes give): road/structures/landmark-places.ts `landmarkGround`.
  */
-export function landmarkFootprints(road: RoadNetwork): { x: number; z: number; r: number }[] {
-  const out: { x: number; z: number; r: number }[] = [];
-  for (const e of road.edges) {
-    for (const f of road.featuresOf(e.index, 'landmark')) {
-      if (landmarkParams(f).overRoad || !parseLandmarkModel(landmarkParams(f).model)) continue;
-      const along = f.s1 - f.s0;
-      const across = Math.abs(f.d1 - f.d0);
-      if (!(along > 0) || !(across > 0)) continue;
-      const lengthwise = along >= across;
-      const long = Math.max(along, across);
-      const short = Math.min(along, across);
-      const n = Math.min(12, Math.max(1, Math.ceil(long / short)));
-      const cell = long / n;
-      const r = Math.hypot(cell / 2, short / 2);
-      for (let i = 0; i < n; i++) {
-        const t = (i + 0.5) * cell;
-        const p = lengthwise
-          ? road.toWorld(e.index, f.s0 + t, (f.d0 + f.d1) / 2, 0)
-          : road.toWorld(e.index, (f.s0 + f.s1) / 2, Math.min(f.d0, f.d1) + t, 0);
-        out.push({ x: p.x, z: p.z, r });
-      }
-    }
-  }
-  return out;
-}
+export const landmarkFootprints: (road: RoadNetwork) => { x: number; z: number; r: number }[] =
+  landmarkGround;
 
 /** A cable's points: the straight line from `a` to `b`, hung `sagM` below its middle (a parabola). */
 export function cablePoints(a: Vector3, b: Vector3, sagM: number, segments: number): Vector3[] {
@@ -564,6 +505,57 @@ function tiersOf(
   return tiers;
 }
 
+/** The deck slab of a bridge kit's bay: its top is the deck's top, this deep, m (the Golden Gate kit's). */
+const DECK_SLAB_M = 0.3;
+
+/**
+ * A deck bay with nothing drawn at the deck's height past the deck's own width (the one live check of
+ * 2026-10-07, punch item 2). The Golden Gate kit's bay carries a 4.7 m walkway slab each side past its
+ * `deck_w_m` (27.6 m, the road's kerb to kerb), its top at the deck's top: a red plate past the railing that
+ * the falling bodies seemed to tumble across, but that nothing meets (the course ends at the railing, the
+ * decided Golden Gate drop past it, and the structure plan stands no walkway). Under the physical world's
+ * rule, what is drawn is what is met, so it is not drawn: the vertices at the bay's widest, no lower than the
+ * deck slab's underside, move in to the deck's edge. The near bay's walkway folds to nothing and its truss
+ * under the cables stays; the far bay's edge block becomes a fascia sloping down and out from the deck's
+ * edge. A node with no `deck_w_m` is drawn as it is. [default]
+ */
+function deckEdgeCut(node: LandmarkNode | undefined): LandmarkNode | undefined {
+  const deckW = node?.extras['deck_w_m'];
+  if (!node || !finite(deckW) || !(deckW > 0)) return node;
+  const half = deckW / 2;
+  const geometry = node.geometry.clone();
+  const pos = geometry.getAttribute('position');
+  let widest = 0;
+  for (let i = 0; i < pos.count; i++) widest = Math.max(widest, Math.abs(pos.getX(i)));
+  if (!(widest > half + 1e-3)) return node;
+  const moved = new Set<number>();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    if (Math.abs(x) < widest - 1e-3 || pos.getY(i) < -DECK_SLAB_M - 1e-3) continue;
+    pos.setX(i, Math.sign(x) * half);
+    moved.add(i - (i % 3));
+  }
+  // A face that moved takes its new facing (a triangle soup: each triangle's three vertices in turn).
+  const normal = geometry.getAttribute('normal');
+  if (normal) {
+    const a = new Vector3();
+    const b = new Vector3();
+    const c = new Vector3();
+    for (const t of moved) {
+      a.fromBufferAttribute(pos, t);
+      b.fromBufferAttribute(pos, t + 1).sub(a);
+      c.fromBufferAttribute(pos, t + 2).sub(a);
+      const n = b.cross(c);
+      if (n.lengthSq() < 1e-12) continue;
+      n.normalize();
+      for (let k = 0; k < 3; k++) normal.setXYZ(t + k, n.x, n.y, n.z);
+    }
+    normal.needsUpdate = true;
+  }
+  pos.needsUpdate = true;
+  return { ...node, geometry };
+}
+
 /** The suspension bridge: `golden-gate#gg_bridge` (see the header). Null draws nothing. */
 function suspensionBridge(c: Compose): Piece[] | null {
   const { road, at, kit, builder, paint, paintColour } = c;
@@ -599,9 +591,9 @@ function suspensionBridge(c: Compose): Piece[] | null {
     });
   });
 
-  // The deck's edge, one bay at a time: y = 0 is the deck top, and the bay runs along +Z.
-  const bayNear = kit.nodes.get('gg_bay_lod0');
-  const bayFar = kit.nodes.get('gg_bay_lod1');
+  // The deck's edge, one bay at a time: y = 0 is the deck top, and the bay runs along +Z. Cut at the railing.
+  const bayNear = deckEdgeCut(kit.nodes.get('gg_bay_lod0'));
+  const bayFar = deckEdgeCut(kit.nodes.get('gg_bay_lod1'));
   const bayM = (bayNear ?? bayFar)?.extras['bay_m'] ?? SUSPENSION.bayM;
   if (bayNear ?? bayFar) {
     const count = Math.floor((f.s1 - f.s0) / bayM);
@@ -613,6 +605,7 @@ function suspensionBridge(c: Compose): Piece[] | null {
         x: mid.x,
         z: mid.z,
         r: bayM / 2 + 20,
+        underDeck: true,
         tiers: tiersOf(
           builder,
           matrixAt(p.x, p.y, p.z, yawAt(s + bayM / 2)),
@@ -810,8 +803,8 @@ function rainCloud(b: MeshBuilder, at: LandmarkPlacement, baseM: number): Piece[
   const rain: Run = { v0: r0, n: b.vertices - r0 };
   const r = Math.max(reachX, reachZ) + 2;
   return [
-    { x: at.x, z: at.z, r, tiers: [{ maxM: C.cloudDrawM, ...cloud }] },
-    { x: at.x, z: at.z, r, tiers: [{ maxM: C.rainDrawM, ...rain }] },
+    { x: at.x, z: at.z, r, tiers: [{ maxM: C.cloudDrawM, ...cloud }], weather: true },
+    { x: at.x, z: at.z, r, tiers: [{ maxM: C.rainDrawM, ...rain }], weather: true },
   ];
 }
 
@@ -990,7 +983,9 @@ export class LandmarkLayer {
     }
     const paintColour = new Color(opts.palette?.['bridgePaint'] ?? BRIDGE_PAINT);
     let doubleSided = false;
+    let place = -1;
     for (const at of landmarkPlacements(opts.road)) {
+      place++;
       const kit = kits.get(at.kit);
       if (!kit) {
         this.skipped++;
@@ -1008,6 +1003,7 @@ export class LandmarkLayer {
       }
       doubleSided ||= kit.doubleSided;
       this.placed++;
+      for (const p of made) p.place = place;
       this.pieces.push(...made);
     }
     this.live = new Uint32Array(builder.vertices);
@@ -1148,6 +1144,29 @@ export class LandmarkLayer {
    */
   surfaces(): readonly PlacedSurface[] {
     return this.surfaceList;
+  }
+
+  /**
+   * What each placement draws near the camera, for tests (scripts/structures-landmarks.test.ts holds the
+   * structure plan to it): the mesh's vertices and, per placement, the vertex runs of its solid pieces' nearest
+   * level (a rain cloud is weather and left out).
+   */
+  nearDrawing(): { positions: ArrayLike<number>; runs: { place: number; v0: number; n: number }[] } {
+    const runs: { place: number; v0: number; n: number }[] = [];
+    for (const p of this.pieces) {
+      const t = p.tiers[0];
+      if (p.weather || p.underDeck || !t || p.place === undefined) continue;
+      runs.push({ place: p.place, v0: t.v0, n: t.n });
+      // A neon tube's core (the first half of its glow run; the halo shell after it is light, not a solid).
+      if (t.glow) runs.push({ place: p.place, v0: -1 - t.glow.v0, n: t.glow.n / 2 });
+    }
+    const positions = this.geometry?.getAttribute('position').array ?? [];
+    return { positions, runs };
+  }
+
+  /** The glowing mesh's vertices, for tests (`nearDrawing`'s runs with a negative `v0` index them, -1 - v0). */
+  glowPositions(): ArrayLike<number> {
+    return this.glowGeometry?.getAttribute('position').array ?? [];
   }
 
   /** Where each placed piece's levels begin and end, for tests: [maxM, triangles] per piece. */

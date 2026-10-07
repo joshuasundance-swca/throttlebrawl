@@ -19,7 +19,9 @@
 //   (scripts/hitboxes.test.ts holds the two together), never from what has loaded.
 //
 // Pure + - * / and core math, like the rest of road/: the same network, seed and planners give the same plan.
-// Nothing reads a plan yet (2026-10-06): the planners move here from render layer by layer.
+// The planners move here from render layer by layer (2026-10-06); the downtowns' came first
+// (road/structures/downtown.ts). A race reads its plan through `raceStructures`, and the sim meets it
+// (sim/riders/structures.ts: walls to the roofline, roofs a rider lands on and rides).
 import { cos, sin } from '../core';
 import type { RoadNetwork } from './network';
 
@@ -91,9 +93,53 @@ export interface StructureLayerSpec {
 
 /**
  * The layers, by name. Each port adds its row with its planner, `{ tags, load: () => import(...) }`, so a
- * network asks only for the planners that exist. Empty until the first port lands.
+ * network asks only for the planners that exist. The planners build into one lazy chunk, `road-structures`
+ * (scripts/sim-chunk.mjs).
  */
-export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {};
+export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
+  // San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws the layout).
+  'chinatown-northbeach': {
+    tags: ['lanterns', 'cafes', 'side-street', 'hill-park'],
+    load: () => import('./structures/chinatown-northbeach').then((m) => m.blocksPlanner),
+  },
+  // Downtown Portland's blocks and San Francisco's downtown (road/structures/downtown.ts).
+  'downtown-pdx': {
+    tags: ['pdx-blocks'],
+    load: () => import('./structures/downtown').then((m) => m.PDX_DOWNTOWN_STRUCTURES),
+  },
+  'downtown-sf': {
+    tags: ['towers', 'plaza', 'cross-street', 'cable-crossing'],
+    load: () => import('./structures/downtown').then((m) => m.SF_DOWNTOWN_STRUCTURES),
+  },
+  // Every landmark's solid parts at its drawn heights (road/structures/landmarks.ts).
+  landmarks: { features: ['landmark'], load: () => import('./structures/landmarks').then((m) => m.planner) },
+  // Key West's Old Town street fronts (road/structures/oldtown.ts).
+  oldtown: { tags: ['key-oldtown'], load: () => import('./structures/oldtown').then((m) => m.planner) },
+  // San Francisco's Mission (render/mission.ts draws the layout).
+  mission: {
+    tags: ['mascot-mural', 'murals', 'shopfronts'],
+    load: () => import('./structures/mission').then((m) => m.missionPlanner),
+  },
+  // San Francisco's waterfront: the pier sheds, the ferry hall, the blocks and the towers (road/structures/waterfront.ts).
+  'sf-waterfront': {
+    tags: [
+      'promenade',
+      'pier-shed',
+      'ferry-hall',
+      'sea-lions',
+      'wharf',
+      'wharf-street',
+      'ferry-plaza',
+      'wharf-lot',
+    ],
+    load: async () => (await import('./structures/waterfront')).waterfrontPlanner,
+  },
+  // The Pacific Northwest's places: the car ferry and the Stump Social's shops (road/structures/pnw-places.ts).
+  'pnw-places': {
+    tags: ['ferry', 'festival'],
+    load: async () => (await import('./structures/pnw-places')).pnwPlacesPlanner,
+  },
+};
 
 /** The plan: every structure, numbered, and a grid of the world for finding them. */
 export interface StructurePlan {
@@ -129,9 +175,9 @@ const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: num
 /**
  * Each placed model's box, by `<asset id>#<variant>`: the committed GLB's whole box (an overhang such as a
  * balcony included), exactly what render measures from the loaded model today, rounded to the centimetre and held
- * to the file by scripts/hitboxes.test.ts. Today's rows are the two layers whose lots render sizes from what has
- * loaded: downtown Portland (render/downtown.ts `pdxFootprint`) and Key West's Old Town fronts (render/roadside.ts,
- * a `Frontage` rule's model box). A port adds the rows of the models it places.
+ * to the file by scripts/hitboxes.test.ts. The first rows were the two layers whose lots render sized from what had
+ * loaded: downtown Portland (now road/structures/downtown.ts `pdxLot`) and Key West's Old Town fronts
+ * (render/roadside.ts, a `Frontage` rule's model box). A port adds the rows of the models it places.
  */
 export const STRUCTURE_MODELS = {
   // Downtown Portland (render/downtown.ts PDX), the kit's front at z 0, its body back along -z.
@@ -155,6 +201,24 @@ export const STRUCTURE_MODELS = {
   // Old Town's open-fronted bars (render/roadside.ts KEYS_KIT `oldtown-bar`).
   'models/scenery/keys-identity#6': box(-7.2, 7.2, 0, 8, -7.2, 2.62, 'an open-fronted bar'),
   'models/scenery/keys-identity#7': box(-6.18, 6.18, 0, 5.5, -7, 3.1, 'an open-fronted bar'),
+  // San Francisco's downtown (road/structures/downtown.ts): the deadpan headquarters, and CX3's tower modules
+  // (a base, a four-storey mid and a crown per style, stacked to a tower's height), the front at z 0.
+  'models/scenery/sf-downtown#5': box(-23.5, 23.5, 0, 40, -30.5, 0.53, 'the headquarters'),
+  'models/scenery/sf-tower-modules#0': box(-14, 14, 0, 7, -24, 0.01, "a glass tower's base"),
+  'models/scenery/sf-tower-modules#1': box(-14, 14, 0, 14, -24, 0, "a glass tower's mid"),
+  'models/scenery/sf-tower-modules#2': box(-14, 14, 0, 8, -24, 0, "a glass tower's crown"),
+  'models/scenery/sf-tower-modules#3': box(-15, 15, 0, 7, -26, 0.01, "a stone tower's base"),
+  'models/scenery/sf-tower-modules#4': box(-15, 15, 0, 14, -26, 0, "a stone tower's mid"),
+  'models/scenery/sf-tower-modules#5': box(-15, 15, 0, 8, -26, 0, "a stone tower's crown"),
+  'models/scenery/sf-tower-modules#6': box(-16, 16, 0, 7, -26, 0.01, "a screen tower's base"),
+  'models/scenery/sf-tower-modules#7': box(-16, 16, 0, 14, -26, 0, "a screen tower's mid"),
+  'models/scenery/sf-tower-modules#8': box(-16, 16, 0, 8, -26, 0, "a screen tower's crown"),
+  'models/scenery/sf-tower-modules#9': box(-17, 17, 0, 7, -28, 0.01, "a crowned tower's base"),
+  'models/scenery/sf-tower-modules#10': box(-17, 17, 0, 14, -28, 0, "a crowned tower's mid"),
+  'models/scenery/sf-tower-modules#11': box(-17, 17, 0, 8, -28, 0, "a crowned tower's crown"),
+  'models/scenery/sf-tower-modules#12': box(-12, 12, 0, 7, -20, 0.01, "a midrise's base"),
+  'models/scenery/sf-tower-modules#13': box(-12, 12, 0, 14, -20, 0, "a midrise's mid"),
+  'models/scenery/sf-tower-modules#14': box(-12, 12, 0, 8, -20, 0, "a midrise's crown"),
 } as const satisfies Record<string, StructureModel>;
 
 /** A model's box by id. An id with no row is a planner's bug: it throws, never guesses a size. */
@@ -345,6 +409,32 @@ export function planStructures(
   return plan;
 }
 
+/**
+ * The planners loaded so far, by their layer's row (a test's own layer table keeps its own): a planner is a pure
+ * function, so once its lazy chunk is in, a plan that needs it can be made at once (`raceStructures`).
+ */
+const loadedPlanners = new WeakMap<StructureLayerSpec, StructurePlanner>();
+
+/** Loads one layer's planner (its lazy chunk), once, and keeps it. */
+async function loadPlanner(spec: StructureLayerSpec): Promise<StructurePlanner> {
+  const known = loadedPlanners.get(spec);
+  if (known) return known;
+  const planner = await spec.load();
+  loadedPlanners.set(spec, planner);
+  return planner;
+}
+
+/**
+ * Loads every layer's planner (`layers`, every row by default): the app does it with a region's road data, so a
+ * race on any of the region's roads can plan its world as it starts; node tools and the tests do it once at
+ * their start (tests/setup/structures.ts).
+ */
+export async function loadStructurePlanners(
+  layers: Readonly<Record<string, StructureLayerSpec>> = STRUCTURE_LAYERS,
+): Promise<void> {
+  await Promise.all(Object.keys(layers).map((name) => loadPlanner(layers[name] as StructureLayerSpec)));
+}
+
 /** Loads the planners a network needs (lazy chunks) and plans it: what the app awaits before a race starts. */
 export async function ensureStructures(
   road: RoadNetwork,
@@ -357,7 +447,7 @@ export async function ensureStructures(
   const loaded = await Promise.all(
     needed.map((name): Promise<StructurePlanner | undefined> => {
       const spec = layers[name];
-      return spec ? spec.load() : Promise.resolve(undefined);
+      return spec ? loadPlanner(spec) : Promise.resolve(undefined);
     }),
   );
   const planners: Record<string, StructurePlanner | undefined> = {};
@@ -366,8 +456,8 @@ export async function ensureStructures(
 }
 
 /**
- * The plan the sim reads: the kept one, or the empty plan for a network that needs no layer. A network that needs
- * layers and has not been planned throws: the race waits for its world rather than ride with a piece missing.
+ * The plan of a network that has been planned: the kept one, or the empty plan for a network that needs no layer.
+ * A network that needs layers and has not been planned throws.
  */
 export function requireStructures(
   road: RoadNetwork,
@@ -380,5 +470,33 @@ export function requireStructures(
   if (needed.length === 0) return EMPTY;
   throw new Error(
     `structures: network ${road.id} at seed ${seed} is not planned (layers ${needed.join(', ')}); ensureStructures first`,
+  );
+}
+
+/**
+ * The plan a race reads (sim/riders/structures.ts): the kept one; the empty plan for a network that needs no
+ * layer; or, when every planner the network needs has loaded (`loadStructurePlanners`, `ensureStructures`), the
+ * plan made now, the same one `ensureStructures` makes (a plan is a pure function of the network, the seed and
+ * the planners), so a race can start the moment its region's planners are in. A network whose planners have not
+ * loaded throws: the race waits for its world rather than ride with a piece missing.
+ */
+export function raceStructures(
+  road: RoadNetwork,
+  seed: number,
+  layers: Readonly<Record<string, StructureLayerSpec>> = STRUCTURE_LAYERS,
+): StructurePlan {
+  const known = structuresOf(road, seed);
+  if (known) return known;
+  const needed = structureLayersFor(road, layers);
+  if (needed.length === 0) return EMPTY;
+  const planners: Record<string, StructurePlanner | undefined> = {};
+  for (const name of needed) {
+    const spec = layers[name];
+    planners[name] = spec ? loadedPlanners.get(spec) : undefined;
+  }
+  if (needed.every((name) => planners[name] !== undefined))
+    return planStructures(road, seed, planners, layers);
+  throw new Error(
+    `structures: network ${road.id} at seed ${seed} is not planned and its planners have not loaded (layers ${needed.join(', ')}); loadStructurePlanners or ensureStructures first`,
   );
 }

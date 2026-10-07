@@ -365,7 +365,11 @@ describe('riders-1: robustness and determinism', () => {
       'riders.driftExitMps',
       'riders.highDropM',
       'riders.furniture',
+      'riders.pileUps',
       'riders.smokeSlowdown',
+      'riders.supports',
+      'riders.structures',
+      'riders.courseEdges',
     ]);
     for (const d of RIDERS_TUNING) {
       expect(d.affectsSim).toBe(true);

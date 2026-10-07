@@ -110,8 +110,10 @@ test.describe('offline', () => {
     expect(cached.missing).toEqual([]);
 
     // Playtest 4 run B's live check, punch item 8: the game's host sends files uncompressed, so the
-    // worker downloads each script's, JSON file's and model's gzip copy and unpacks it. The files the
-    // page had not loaded came that way, and each unpacks to the plain file, byte for byte.
+    // worker downloads each JSON file's and model's gzip copy and unpacks it. The files the page had
+    // not loaded came that way, and each unpacks to the plain file, byte for byte. Scripts are the
+    // exception on a first visit (polish batch F, punch item 1; offline-worker.ts): the install asks
+    // for each one plain, so the page's own import of it revalidates instead of downloading it twice.
     const unpacked = await page.evaluate(async (mark) => {
       const own = (await caches.keys()).find((n) => n.startsWith('offline-'));
       const store = own ? await caches.open(own) : null;
@@ -128,10 +130,12 @@ test.describe('offline', () => {
       `[print] unpacked from gzip copies: ${byExt('.js').length} scripts, ${byExt('.json').length} JSON, ` +
         `${byExt('.glb').length} models`,
     );
-    expect(byExt('.js').length).toBeGreaterThan(0);
+    // (The JSON and model counts are the control: the same scan finds the copies the install took.)
+    expect(byExt('.js')).toEqual([]);
     expect(byExt('.json').length).toBeGreaterThan(0);
-    for (const u of byExt('.js')) expect(u.type, u.url).toMatch(/^text\/javascript/);
-    const sample = byExt('.js')[0]?.url ?? '';
+    expect(byExt('.glb').length).toBeGreaterThan(0);
+    for (const u of byExt('.json')) expect(u.type, u.url).toMatch(/^application\/json/);
+    const sample = byExt('.json')[0]?.url ?? '';
     const fromCache = await page.evaluate(async (url) => {
       const res = await caches.match(url, { ignoreVary: true });
       if (!res) return 'not cached';

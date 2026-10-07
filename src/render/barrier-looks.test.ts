@@ -268,6 +268,9 @@ describe('the shoulder of a tagged road ends in the look its tag names', () => {
       // Nor has it lanes of its own here: the layer asks where every other edge's lanes lie (it has none),
       // and its frame is the line of its points.
       lanesAt: (edge: number, s: number) => (edge === 1 ? [] : base.lanesAt(edge, s)),
+      // Its points by s and d, level with the road (the ground's yield to a lower road asks where it lies).
+      toWorld: (edge: number, s: number, d: number, h: number) =>
+        edge === 1 ? base.toWorld(0, 400 + s, 9 + 0.4 * s + d, h) : base.toWorld(edge, s, d, h),
       frameAt: (edge: number, s: number) => {
         if (edge !== 1) return base.frameAt(edge, s);
         const i = Math.max(0, Math.min(pts.length - 2, Math.floor(s / 2)));

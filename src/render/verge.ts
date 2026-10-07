@@ -51,7 +51,7 @@ import {
 } from './barrier-looks';
 import { keptSamples, mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
-import { EdgeLocator } from './overlap';
+import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import { SEAWALL_LAND_M, themeAt } from './scenery';
 import { thinRank } from './scenery-merge';
 
@@ -648,13 +648,27 @@ export class VergeLayer {
               continue;
             }
             const lift = pass === 'band' ? VERGE_LIFT_M : VERGE_LIFT_M - 0.01;
+            let dFar = pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M;
+            if (pass === 'band') {
+              // The band stops where it would lie over a lower road's lanes (a link down the embankment, a branch
+              // that leaves lower): the I-5's band stood up to 1.55 m over Lake Samish's links.
+              const reach = this.locator.clearReach(
+                e.index,
+                s,
+                v.dInner,
+                v.dOuter,
+                lift,
+                GROUND_YIELD_MARGIN_M,
+                GROUND_OVER_ROAD_M,
+              );
+              if (reach === null || Math.abs(reach - v.dInner) < 0.01) {
+                flush();
+                continue;
+              }
+              dFar = reach;
+            }
             const near = road.toWorld(e.index, s, pass === 'band' ? v.dInner : v.dOuter, lift);
-            const far = road.toWorld(
-              e.index,
-              s,
-              pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M,
-              lift,
-            );
+            const far = road.toWorld(e.index, s, dFar, lift);
             const colour = pass === 'band' ? SURFACE_COLOUR[v.surface] : SHALLOWS_COLOUR;
             run.push({ pair: side < 0 ? [far, near] : [near, far], colour });
             if (i > 0) {
@@ -1163,6 +1177,47 @@ export class VergeLayer {
       ),
       hedgePanels: this.hedges.length,
       nearHedge: this.hedgeMesh.count + this.hedgeFar.count,
+    };
+  }
+
+  /**
+   * Where the edge kit stands (world x and z): each fence panel's middle, each fern clump and each hedge panel, for
+   * the tests that hold the sim's edges to what is drawn (tests/sim/no-invisible-walls.test.ts).
+   */
+  edgeKitPoints(): {
+    fences: readonly { x: number; z: number }[];
+    ferns: readonly { x: number; z: number }[];
+    hedges: readonly { x: number; z: number }[];
+  } {
+    return {
+      fences: this.panels.map((p) => ({ x: p.at.x, z: p.at.z })),
+      ferns: this.clumps,
+      hedges: this.hedges,
+    };
+  }
+
+  /**
+   * The tallest of each edge kit as built, m above the road beside it: a fence panel, a fern clump (its size
+   * drawn in), a hedge panel; 0 for a kit this road builds none of. The sim clears these in the air (road/beyond.ts
+   * GROUND_EDGE_TOP_M), held to them by tests/sim/no-invisible-walls.test.ts.
+   */
+  edgeKitTops(): { fence: number; fern: number; hedge: number } {
+    const top = (mesh: InstancedMesh, list: readonly { m: Matrix4 }[]): number => {
+      mesh.geometry.computeBoundingBox();
+      const high = mesh.geometry.boundingBox?.max.y ?? 0;
+      let best = 0;
+      for (const it of list) {
+        const e = it.m.elements;
+        // The instance's height scale (its matrix's y column), and its foot 5 cm under the road beside it.
+        const sy = Math.hypot(e[4] ?? 0, e[5] ?? 0, e[6] ?? 0);
+        best = Math.max(best, sy * high - 0.05);
+      }
+      return best;
+    };
+    return {
+      fence: top(this.fenceMesh, this.panels),
+      fern: top(this.brushMesh, this.clumps),
+      hedge: top(this.hedgeMesh, this.hedges),
     };
   }
 
