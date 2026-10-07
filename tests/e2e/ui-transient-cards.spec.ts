@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { screenFitFindings } from '../../src/ui/screen-fit';
+import { buildIdFindings, screenFitFindings, type BuildIdPlace } from '../../src/ui/screen-fit';
 import {
   cardFindings,
   inViewFindings,
@@ -77,8 +77,10 @@ interface Painted {
   things: Measured[];
   /** The same things cut only by the clipping boxes inside the screen, not by the screen itself. */
   wide: PaintedThing[];
-  /** The footer's lines of words as painted now. */
+  /** The footer's lines of words as painted now (and the build line's, its stand-in at the end of the menu's column). */
   footer: PaintedThing['box'][];
+  /** Where the build id is painted now, whole and on the screen (the menu's footer, the corner stamp, the line). */
+  buildIds: BuildIdPlace[];
   words: number;
   controls: number;
   boxes: number;
@@ -189,13 +191,13 @@ async function paint(
             inFooter: false,
           });
         }
-        return { cards, things, wide, footer, words, controls, boxes };
+        return { cards, things, wide, footer, buildIds: [], words, controls, boxes };
       }
-      if (!screen) return { cards, things, wide, footer, words, controls, boxes };
+      if (!screen) return { cards, things, wide, footer, buildIds: [], words, controls, boxes };
       for (const e of screen.querySelectorAll<HTMLElement>('*')) {
         if (!seen(e)) continue;
         const owner = ownerOf(e);
-        const inFooter = !!e.closest('.footer');
+        const inFooter = !!e.closest('.footer, .menu-build-line');
         const rect = boxOf(e.getBoundingClientRect());
         const own = painted(rect, e.parentElement);
         const across = painted(rect, e.parentElement, true);
@@ -234,7 +236,28 @@ async function paint(
           }
         }
       }
-      return { cards, things, wide, footer, words, controls, boxes };
+      // The build id: each place it can be drawn, as painted whole (a half-cut line is not found).
+      const buildIds: { name: 'the footer' | 'the corner stamp' | 'the build line'; box: B }[] = [];
+      for (const [name, idSel] of [
+        ['the footer', '#menu-build'],
+        ['the corner stamp', '#build-stamp'],
+        ['the build line', '#menu-build-line'],
+      ] as const) {
+        const e = document.querySelector(idSel);
+        if (!e || !seen(e)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(e);
+        const raw = boxOf(range.getBoundingClientRect());
+        const cut = painted(raw, e);
+        const whole =
+          !!cut &&
+          Math.abs(cut.left - raw.left) < 1 &&
+          Math.abs(cut.right - raw.right) < 1 &&
+          Math.abs(cut.top - raw.top) < 1 &&
+          Math.abs(cut.bottom - raw.bottom) < 1;
+        if (whole) buildIds.push({ name, box: raw });
+      }
+      return { cards, things, wide, footer, buildIds, words, controls, boxes };
     },
     { sel: screenSel, ids: [...cardIds], race },
   );
@@ -362,6 +385,39 @@ async function checkFit(page: Page, screenSel: string, label: string) {
       expect.soft(found, where).toEqual([]);
     }
     await scrollTo(page, screenSel, 0);
+  }
+}
+
+/**
+ * The menu's build id is findable at every size (polish batch I's check, punch 3: at the largest Text
+ * size the menu scrolled and both the footer and the corner stamp gave way): painted whole on the
+ * screen, covering no control, with the menu scrolled to the id when the id is the line at the end of
+ * its column. A debug report and a playtest need it.
+ */
+async function checkBuildId(page: Page, label: string) {
+  for (const size of SIZES) {
+    await leaveFullscreen(page);
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await scrollTo(page, '#menu', 0);
+    const line = page.locator('#menu-build-line');
+    // A plain DOM scroll, not Playwright's scrollIntoViewIfNeeded: that waits for the line to hold still
+    // over two frames, with no limit but the test's, and on two trains (382 and the one after #648
+    // landed) this slice printed the menu's last fit line and then ran out its 10-minute job here
+    // (the keeper, 2026-10-07; not reproduced locally, no browser slot). What is judged is the paint.
+    if (await line.isVisible())
+      await line.evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    const p = await paint(page, '#menu', []);
+    const found = buildIdFindings(
+      p.buildIds,
+      p.things.filter((t) => !t.inFooter),
+      size,
+    );
+    const where = `${label} at ${size.name}`;
+    console.log(
+      `${where}: build id at ${p.buildIds.map((b) => b.name).join(', ') || 'nowhere'}; findings ${JSON.stringify(found)}`,
+    );
+    expect.soft(found, `${where}: the build id is on the menu and covers nothing`).toEqual([]);
+    await scrollTo(page, '#menu', 0);
   }
 }
 
@@ -572,6 +628,26 @@ for (const textSize of TEXT_SIZES) {
     // The menu as the player comes back to it fits every phone size: no row off its sides, and the
     // footer over nothing, at every scroll.
     await checkFit(page, '#menu', `menu, ${textSize}`);
+    await checkBuildId(page, `menu, ${textSize}`);
+    if (textSize === 'largest') {
+      // Negative control 6: no footer, no stamp and no line (as the largest Text size left the menu
+      // before the line): the same judge says the menu shows no build id.
+      await leaveFullscreen(page);
+      await page.setViewportSize({ width: 568, height: 320 });
+      const none = await page.addStyleTag({
+        content:
+          '#ui #menu #menu-build, #ui #menu .menu-build-line, #build-stamp { display: none !important; }',
+      });
+      const bare = await paint(page, '#menu', []);
+      const missing = buildIdFindings(
+        bare.buildIds,
+        bare.things.filter((t) => !t.inFooter),
+        { width: 568, height: 320 },
+      );
+      console.log(`negative control 6: ${JSON.stringify(missing)}`);
+      expect(missing).toEqual(['the menu shows no build id']);
+      await none.evaluate((e) => (e as HTMLElement).remove());
+    }
     await page.setViewportSize({ width: 915, height: 412 });
 
     // The career: the K2 card hid its Map and Garage tabs.
@@ -692,6 +768,44 @@ const regionChip = (page: Page, name: string) =>
 const SF_MAPS = /\/assets\/osm-sf-[^/]*\.json(\?.*)?$/;
 const KEYS_MAPS = /\/assets\/osm-keys-[^/]*\.json(\?.*)?$/;
 
+/**
+ * How many painted lines of words on the screen say `words` (a leaf element's text matches). With
+ * `plantDoubled` (`said` is then the words) it first plants the doubled state the busy line once drew:
+ * the busy line up and the route row's word drawn under it, both saying `said`; it counts and puts
+ * everything back, all in one task, so the UI cannot take the busy line down between the planting and
+ * the count (trains 426 to 435: the separate style tag left the control at 1 line).
+ */
+const linesSaying = (page: Page, words: RegExp, plantDoubled: string | null = null) =>
+  page.evaluate(
+    ({ source, said }) => {
+      const restore: (() => void)[] = [];
+      if (said !== null) {
+        const busy = document.getElementById('busy');
+        const busyText = document.getElementById('busy-text');
+        const picker = document.getElementById('route-picker');
+        const note = document.getElementById('route-note');
+        for (const e of [busy, picker, note]) {
+          if (!e) continue;
+          const was = e.hidden;
+          e.hidden = false;
+          restore.push(() => (e.hidden = was));
+        }
+        for (const e of [busyText, note]) {
+          if (!e) continue;
+          const was = e.textContent;
+          e.textContent = said;
+          restore.push(() => (e.textContent = was));
+        }
+      }
+      const n = [...document.querySelectorAll('#ui *, #build-stamp')].filter(
+        (e) => e.children.length === 0 && e.checkVisibility() && new RegExp(source).test(e.textContent ?? ''),
+      ).length;
+      for (const undo of restore.reverse()) undo();
+      return n;
+    },
+    { source: words.source, said: plantDoubled },
+  );
+
 async function toMenu(page: Page) {
   await page.goto('./');
   await page.locator('#start-screen').click();
@@ -732,8 +846,24 @@ test('the did-not-load card says what failed, goes with its screen and a busy li
   await page.locator('#menu-race').click();
   await expect(page.locator('#busy')).toBeVisible();
   await expect(card).toBeHidden();
+  // One place says it, once (polish batch I's check, note-915: the route row's dimmed word drew through
+  // the busy line, so "Loading San Francisco" showed doubled): the word steps aside under the line.
+  await expect(note).toBeHidden();
+  expect(await linesSaying(page, /Loading San Francisco/), 'the busy line says it once').toBe(1);
+  // Negative control 7: the doubled state as it was, planted (the busy line and the word under it, both
+  // saying it); the same count says twice. Planted, not waited for: the load may end at any moment.
+  expect(
+    await linesSaying(page, /Loading San Francisco/, 'Loading San Francisco…'),
+    'control: the word drawn too',
+  ).toBe(2);
   await expect(page.locator('#busy')).toBeHidden({ timeout: 60_000 });
   await expect(card).toBeVisible();
+  // The control does not lean on the busy line still being up (the CI flake), and puts everything back.
+  expect(
+    await linesSaying(page, /Loading San Francisco/, 'Loading San Francisco…'),
+    'control: planted after the load ended',
+  ).toBe(2);
+  expect(await linesSaying(page, /Loading San Francisco/), 'the planting was put back').toBe(0);
 
   // The card belongs to the menu: the career does not carry it, and coming back does not bring it
   // back. The menu still says why there is no route row (polish batch E's check, punch item 1).
@@ -797,6 +927,23 @@ test('the host asked for a wait: every load path waits it out, with the same cou
   await frames(page, 4);
   expect(asked, 'a tap on Retry during the wait asks the host nothing').toBe(askedAtCard);
 
+  // Polish batch I's check, punch 4: off the menu and back, the card has gone with its screen and the
+  // route row's word says the time left, the card's own seconds (read in one step, so one tick).
+  await page.locator('#menu-settings').click();
+  await page.locator('#settings-back').click();
+  const word = page.locator('#route-note');
+  await expect(word).toBeVisible();
+  await expect(word).toHaveText(
+    /^San Francisco did not load: the game server had a problem\. Tap Race to try again in \d+ s\.$/,
+  );
+  const seconds = await page.evaluate(() => ({
+    word: /in (\d+) s/.exec(document.getElementById('route-note')?.textContent ?? '')?.[1] ?? 'none',
+    button: /in (\d+) s/.exec(document.getElementById('load-retry-button')?.textContent ?? '')?.[1] ?? 'none',
+  }));
+  expect(seconds.word, 'the word counts the same seconds as the card').toBe(seconds.button);
+  expect(Number(seconds.word)).toBeGreaterThan(0);
+  expect(Number(seconds.word)).toBeLessThanOrEqual(30);
+
   // Polish batch E's check, punch item 2: a new pick and a Race tap asked for every file at once. Now
   // the wait is the loader's: each says the same wait at once, and the host is not asked.
   await keys.click();
@@ -838,6 +985,9 @@ test("a 404 says this build's files are gone and offers Reload, not Retry", asyn
   await expect(page.locator('#route-note')).toHaveText(
     "San Francisco did not load: this build's files are gone. Reload the game for the newest build.",
   );
+  // The word has the Reload action beside it (polish batch I's check, punch 4), not only advice.
+  await expect(page.locator('#route-note-action')).toBeVisible();
+  await expect(page.locator('#route-note-action')).toHaveText('Reload');
   // Race asks again and brings the card back; its Reload reloads the page.
   await page.locator('#menu-race').click();
   await expect(card).toBeVisible({ timeout: 30_000 });
@@ -924,4 +1074,103 @@ test('the boot notice (settings from a newer build) is carried to the menu a qui
     ),
     'first in the menu column',
   ).toBe(true);
+});
+
+test("the route row's Reload and its wait fit every size and Text size, and a tap on Reload reloads", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  await toMenu(page);
+  const card = page.locator('#load-retry');
+  await page.route(SF_MAPS, (route) => route.fulfill({ status: 404, body: 'gone' }));
+  await regionChip(page, 'San Francisco').click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  for (const textSize of TEXT_SIZES) {
+    await leaveFullscreen(page);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await page.locator('#menu-settings').click();
+    await page.locator('#settings-tab-access').click();
+    const pick = page.locator(`#settings-textSize [data-value="${textSize}"]`);
+    await pick.click();
+    await expect(pick).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#settings-back').click();
+    const action = page.locator('#route-note-action');
+    await expect(action, `the Reload beside the word, ${textSize}`).toBeVisible();
+    // The word and its button fit every phone size at every scroll, are hit where drawn, and the
+    // build id is on the menu with them there.
+    await checkFit(page, '#menu', `menu with the route Reload, ${textSize}`);
+    await checkBuildId(page, `menu with the route Reload, ${textSize}`);
+    for (const size of SIZES) {
+      await leaveFullscreen(page);
+      await page.setViewportSize({ width: size.width, height: size.height });
+      await expectReachable(
+        page,
+        ['#route-note-action', '#menu-race'],
+        [],
+        `menu with the route Reload, ${textSize} at ${size.name}`,
+      );
+      const across = await page.evaluate(() => {
+        const r = document.getElementById('route-note-action')?.getBoundingClientRect();
+        return !!r && r.left >= -0.5 && r.right <= window.innerWidth + 0.5;
+      });
+      expect.soft(across, `${textSize}, ${size.name}: the button is across the screen`).toBe(true);
+    }
+  }
+  // A tap on the word's Reload reloads the page, for the newest build. It comes before the wait below: in
+  // the host's wait the loader asks the host nothing (platform/retry-fetch.ts, its hold), so a 404 sent
+  // inside the wait never reaches the page and no Reload can come up (trains 426 to 435 ran the test out
+  // here). The reload ends the hold, so the wait is checked on the fresh page, with no wait for the clock.
+  const action = page.locator('#route-note-action');
+  await leaveFullscreen(page);
+  await page.setViewportSize({ width: 915, height: 412 });
+  await expect(action, 'the Reload beside the word, before the tap').toBeVisible();
+  // A plain DOM scroll, as in checkBuildId: train 406 printed this test's last build-id line and then ran
+  // the slice out of its job here (the keeper, 2026-10-07; not reproduced locally). The click below still
+  // waits for the button to be actionable, with a bound, as does the wait for the load.
+  await action.evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  // The wait's answer is set before the reload, so the fresh page's own load of San Francisco (if the
+  // pick is kept) meets it too.
+  await page.unroute(SF_MAPS);
+  await page.route(SF_MAPS, (route) =>
+    route.fulfill({ status: 429, headers: { 'Retry-After': '30' }, body: 'busy' }),
+  );
+  await Promise.all([page.waitForEvent('load', { timeout: 30_000 }), action.click({ timeout: 10_000 })]);
+  await expect(page.locator('#start-screen')).toBeVisible();
+
+  // The wait too, at the largest Text size (the last of the loop, kept by the reload): the longest word
+  // the row says.
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  await regionChip(page, 'Keys').click();
+  await regionChip(page, 'San Francisco').click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await page.locator('#menu-settings').click();
+  await page.locator('#settings-back').click();
+  await expect(page.locator('#route-note')).toHaveText(/ Tap Race to try again in \d+ s\.$/);
+  await expect(action, 'a 429 offers no Reload').toBeHidden();
+  expect(
+    await page.evaluate(() => document.getElementById('ui')?.dataset['text'] ?? ''),
+    'the reload kept the largest Text size',
+  ).toBe('largest');
+  // Control: the old order. A 404 sent inside the wait never reaches the page, so the row offers no
+  // Reload; that is why the tap above comes first. The product is right not to: the hold is the host's
+  // own ask not to be asked, and only an answer can say the files are gone.
+  let asked = 0;
+  await page.unroute(SF_MAPS);
+  await page.route(SF_MAPS, (route) => {
+    asked++;
+    return route.fulfill({ status: 404, body: 'gone' });
+  });
+  await regionChip(page, 'Keys').click();
+  await regionChip(page, 'San Francisco').click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('#load-retry .reload-offer-text')).toHaveText(/the game server had a problem/);
+  await page.locator('#menu-settings').click();
+  await page.locator('#settings-back').click();
+  await expect(page.locator('#route-note')).toHaveText(/ Tap Race to try again in \d+ s\.$/);
+  await expect(action, 'control: a 404 inside the wait offers no Reload').toBeHidden();
+  expect(asked, 'control: inside the wait the host is not asked').toBe(0);
+  await checkFit(page, '#menu', 'menu with the route wait, largest');
+  await checkBuildId(page, 'menu with the route wait, largest');
+  await page.unroute(SF_MAPS);
 });
