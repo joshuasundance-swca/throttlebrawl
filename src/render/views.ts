@@ -60,6 +60,8 @@ import {
 import type { LookStyle } from './look';
 import type { RiderRigs } from './riders';
 import type { BakedVehicle, VehicleSet, VehicleSets } from './vehicles';
+import type { StructurePlan } from '../road';
+import { fitRoof } from './roof-fit';
 import {
   BlobShadows,
   DEFAULT_VEHICLE_SHADOW,
@@ -455,6 +457,8 @@ export class EntityViews {
   readonly root = new Group();
   /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
   private readonly shadows = new BlobShadows();
+  /** The race's structures plan, when it has been made (`setStructures`). */
+  private structures: StructurePlan | null = null;
   private readonly look: LookStyle;
   private readonly proportions: (contentId: string) => RiderProportions;
   private readonly riders = new Map<number, RiderView>();
@@ -538,6 +542,14 @@ export class EntityViews {
   /** The renderer's feel effects, once their lazy chunk has loaded (none drawn before then). */
   setEffects(effects: FeelEffects): void {
     this.effects = effects;
+  }
+
+  /**
+   * The race's structures plan (road/structures.ts), once there is one: a rider's shadow lies on the roof he
+   * rides or is over, tilted to a pitched roof's plane (roof-fit.ts). Null: the road under him, as it was.
+   */
+  setStructures(plan: StructurePlan | null): void {
+    this.structures = plan;
   }
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */
@@ -894,23 +906,47 @@ export class EntityViews {
       if (tumble) {
         // Down: the rider and the bike each throw their own, fainter the higher they fly. A body under the
         // water (a high drop's plunge, sim/tumble) throws none: nothing lies still on the water over it in
-        // the cut-away's held view (the one live check of 2026-10-07).
-        if (tumble.rider.y >= ground - UNDER_M)
-          sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
-        if (tumble.bike.y >= ground - UNDER_M)
-          sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        // the cut-away's held view (the one live check of 2026-10-07). A body over a roof (down on it, or flung
+        // across it) throws its shadow on the roof, not on the road inside the building.
+        if (tumble.rider.y >= ground - UNDER_M) this.castOn(sh, tumble.rider, ground, p.heading, ON_FOOT_SHADOW);
+        if (tumble.bike.y >= ground - UNDER_M) this.castOn(sh, tumble.bike, ground, p.heading, RIDER_SHADOW);
         continue;
       }
       if (e.parkedBike) {
         // Running back to the bike: the rider on foot, the bike standing apart.
         const b = e.parkedBike;
-        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.y - ground);
-        sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
+        this.castOn(sh, { x: p.x, y: e.y, z: p.z }, ground, p.heading, ON_FOOT_SHADOW);
+        this.castOn(sh, b, b.y, b.heading, RIDER_SHADOW, 0);
         continue;
       }
-      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.y - ground);
+      this.castOn(sh, { x: p.x, y: e.y, z: p.z }, ground, p.heading, RIDER_SHADOW);
     }
     sh.end();
+  }
+
+  /**
+   * One shadow of a body at `at` (world position): on the roof of the structure under it when the plan has one
+   * (roof-fit.ts: its top no more than a kerb over the body, so a rider who is on or over a roof), else on
+   * `ground` (what the sim says he rides or is over: the road, a deck, a floor). `fixed` is a caster that never
+   * lifts off its ground (a parked bike): its height over it is that.
+   */
+  private castOn(
+    sh: BlobShadows,
+    at: { x: number; y: number; z: number },
+    ground: number,
+    heading: number,
+    size: ShadowSize,
+    fixed?: number,
+  ): void {
+    const roof =
+      this.structures && fixed === undefined
+        ? fitRoof(this.structures, at.x, at.y, at.z, heading, size.lengthM, size.widthM)
+        : null;
+    if (roof) {
+      sh.add(at.x, roof.y, at.z, heading, size, at.y - roof.y, roof);
+      return;
+    }
+    sh.add(at.x, ground, at.z, heading, size, fixed ?? at.y - ground);
   }
 
   private geometry(key: string, build: () => BoxPart[]): BufferGeometry {

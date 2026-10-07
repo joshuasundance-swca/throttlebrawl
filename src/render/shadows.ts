@@ -47,6 +47,7 @@ export class BlobShadows {
   private readonly q = new Quaternion();
   private readonly flat = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2);
   private readonly yaw = new Quaternion();
+  private readonly tilt = new Quaternion();
   private readonly up = new Vector3(0, 1, 0);
   private readonly v = new Vector3();
   private readonly s = new Vector3();
@@ -82,11 +83,25 @@ export class BlobShadows {
    * Adds a shadow at a world position `groundY` under an entity heading `heading`, `heightM` above
    * the ground (a bike in the air: smaller and fainter the higher it is).
    */
-  add(x: number, groundY: number, z: number, heading: number, size: ShadowSize, heightM: number): void {
+  add(
+    x: number,
+    groundY: number,
+    z: number,
+    heading: number,
+    size: ShadowSize,
+    heightM: number,
+    /** A roof's plane under him (roof-fit.ts): the oval lies in it, drawn `scale` of its size. */
+    roof?: { nx: number; ny: number; nz: number; scale: number },
+  ): void {
     if (this.n >= MAX_SHADOWS) return;
-    const k = Math.max(0.45, 1 - Math.max(0, heightM) * FADE_PER_M);
+    const k = Math.max(0.45, 1 - Math.max(0, heightM) * FADE_PER_M) * (roof?.scale ?? 1);
     this.yaw.setFromAxisAngle(this.up, heading);
     this.q.copy(this.yaw).multiply(this.flat);
+    if (roof && (roof.nx !== 0 || roof.nz !== 0)) {
+      // Level the flat oval, then tip it onto the roof's plane (the normal is a unit vector).
+      this.tilt.setFromUnitVectors(this.up, this.v.set(roof.nx, roof.ny, roof.nz));
+      this.q.premultiply(this.tilt);
+    }
     this.s.set(size.widthM * k, size.lengthM * k, 1);
     this.m.compose(this.v.set(x, groundY + LIFT_M, z), this.q, this.s);
     this.mesh.setMatrixAt(this.n++, this.m);

@@ -376,6 +376,7 @@ The sample grudge lines in [The rivals](#the-rivals) use slots such as `{place}`
 | Menus and UI | 90s grunge zine: photocopy texture, cut-out headings, typewriter labels. Plain words for anything functional; jokes never hide a setting. | [decided for the zine style; default for the rest] |
 | What's new and the changelog | Plain words first, a dry aside allowed. | [default] |
 | Onboarding prompts | Short, plain and never patronizing: `SWIPE DOWN ON ATTACK TO KICK.` Not `Great job! Now try kicking!` | [default] |
+| Out of bounds | One plain `system` line on the top ticker, sign grammar, no joke: `OUT OF BOUNDS. BACK ON THE ROAD IN 4 SECONDS.` Only for a fall that has no gag of its own (onto ground, or a low drop onto it); a splash into water has its gator or fisherman, a high drop no line of text. It states the consequence and the wait; it never blames or winks. The physics is the joke, never the cue (the maintainer, 2026-10-06, "consistent physics and gameplay is important here so players know what to expect"). | [default] |
 
 ## Hard lines
 

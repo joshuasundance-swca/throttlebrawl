@@ -142,11 +142,14 @@ import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
 import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
+  createOutOfBounds,
   createSeenPoll,
   landingLineFor,
   landingLineItem,
+  outOfBoundsLineFor,
   producerAskItem,
   producerThanksItem,
+  resetOutOfBounds,
 } from './ticker-feed';
 import { APP_TUNING, presentationOwner } from './tuning';
 
@@ -562,6 +565,8 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   let landingPool: readonly BoardItem[] = [];
   let lastLandingRef: string | null = null;
+  /** Whether the player's fall out of bounds is being waited out (the line is said once a fall). */
+  const outOfBounds = createOutOfBounds();
   /** The poll for the signs and billboards in view ("recently seen", the veto's list). */
   const seenPoll = createSeenPoll();
   /**
@@ -1084,6 +1089,7 @@ export function createApp(opts: AppOptions): AppHandle {
       renderer.pushEvents(events);
       input.onEvents(events, playerId);
       noteLanding(events);
+      noteOutOfBounds(events);
     }
     // The wheelie's band, every step (null while none): the buzz when it turns high is a swing.
     input.onMoves(curr.moves);
@@ -1120,6 +1126,9 @@ export function createApp(opts: AppOptions): AppHandle {
             lookBack: input.lastActions().lookBack,
             // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
             aspect: viewAspect(),
+            // The race's structures plan, as the renderer read it: the eye stays out of the buildings and off the
+            // road far below a roof (the physical world, 2026-10-06; camera/solids.ts).
+            structures: renderer.structures(),
           });
           // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
           if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
@@ -1408,6 +1417,7 @@ export function createApp(opts: AppOptions): AppHandle {
     lookWatch.reset();
     seenPoll.reset();
     lastLandingRef = null;
+    resetOutOfBounds(outOfBounds);
     input.onMoves(null);
     prev = null;
     curr = race.snapshot();
@@ -1521,6 +1531,16 @@ export function createApp(opts: AppOptions): AppHandle {
     const item = landingLineItem(pick.item, pick.tick, `seed-${race.config.seed}`);
     ui.ticker.push(item);
     ui.narrative.noteSeen({ contentRef: pick.item.ref, kind: 'sign', label: item.text, tick: pick.tick });
+  }
+
+  /**
+   * The player's fall out of bounds onto ground, or off a low drop onto it, reads as one plain line on the top
+   * ticker (the physical world, 2026-10-06; ticker-feed.ts `outOfBoundsLineFor`): a `system` line in the strip's
+   * own slot, so it is never over a control. A splash into water and a high drop have their own presentation.
+   */
+  function noteOutOfBounds(events: readonly SimEvent[]): void {
+    const line = outOfBoundsLineFor(events, playerId, outOfBounds);
+    if (line) ui.ticker.push(line);
   }
 
   /** One step of a career race: its rules, its prompts, the objective line, an early end. */
