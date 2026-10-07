@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
   planStructures,
+  STRUCTURE_LAYERS,
   structuresAt,
   topAt,
   type RoadNetwork,
@@ -232,9 +233,24 @@ function planOf(road: RoadNetwork, items: readonly Structure[], tag: string): St
 
 const SEED = 7;
 
+/**
+ * Only the layer under test: a district's network needs other layers too (its landmarks), whose solids this
+ * district's drawing does not hold.
+ */
+const only = (name: string) => {
+  const spec = STRUCTURE_LAYERS[name];
+  if (!spec) throw new Error(`no layer ${name}`);
+  return { [name]: spec };
+};
+
 describe("Chinatown and North Beach: every structure is a box that is drawn, every drawn roof a structure's top", () => {
   const road = track('sf-chinatown-northbeach');
-  const plan = planStructures(road, SEED, { 'chinatown-northbeach': blocksPlanner });
+  const plan = planStructures(
+    road,
+    SEED,
+    { 'chinatown-northbeach': blocksPlanner },
+    only('chinatown-northbeach'),
+  );
   const drawn = planBlocks({ road, seed: SEED });
   const near = [...drawn.near.values()];
   const all = [...near, ...drawn.far.values()];
@@ -287,7 +303,7 @@ describe("Chinatown and North Beach: every structure is a box that is drawn, eve
 
 describe("The Mission: every structure is a box that is drawn, every drawn roof a structure's top", () => {
   const road = track('sf-mission');
-  const plan = planStructures(road, SEED, { mission: missionPlanner });
+  const plan = planStructures(road, SEED, { mission: missionPlanner }, only('mission'));
   const drawn = planMission({ road, seed: SEED });
   const soups = [...drawn.soups.values()];
   const verts = new Verts(soups);
