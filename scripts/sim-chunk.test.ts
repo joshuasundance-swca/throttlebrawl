@@ -10,6 +10,8 @@ import {
   ROAD_LAZY_TEST,
   SIM_CHUNK_NAME,
   SIM_CODE_HASH_PLACEHOLDER,
+  SIM_STEPS_CHUNK_NAME,
+  SIM_STEPS_TEST,
   simCodeHashOfChunks,
 } from './sim-chunk.mjs';
 
@@ -98,5 +100,20 @@ describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
       false,
     );
     expect(planner.hash).not.toBe(base.hash);
+  });
+
+  it('changes the hash when a system’s step changes: the lazy step chunk is part of the hash', async () => {
+    const base = await buildOnce();
+    const step = await buildOnce([tweak(/\/src\/sim\/ai\/step\.ts$/, '__stepTweak')]);
+    console.log(`[examined] simCodeHash base ${base.hash}, step change ${step.hash}`);
+    const lazy = step.chunks.find((c) => c.name === SIM_STEPS_CHUNK_NAME);
+    expect(lazy?.code.includes('__stepTweak')).toBe(true);
+    // Not in the sim chunk, and the sim chunk loads it only on demand (no static import of it).
+    const sim = step.chunks.find((c) => c.name === SIM_CHUNK_NAME);
+    expect(sim?.code.includes('__stepTweak')).toBe(false);
+    expect(sim?.imports.includes(lazy?.fileName ?? '')).toBe(false);
+    expect(sim?.dynamicImports.includes(lazy?.fileName ?? '')).toBe(true);
+    expect(sim?.moduleIds.some((id) => SIM_STEPS_TEST.test(id))).toBe(false);
+    expect(step.hash).not.toBe(base.hash);
   });
 });
