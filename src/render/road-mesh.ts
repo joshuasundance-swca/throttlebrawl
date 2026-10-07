@@ -25,7 +25,13 @@ import {
   type BufferGeometry,
   type Material,
 } from 'three';
-import { chooseSetPieces, SEEDED_SET_PIECE_KINDS, type Edge, type RoadNetwork } from '../road';
+import {
+  chooseSetPieces,
+  LANES_UNDER_Y_M,
+  SEEDED_SET_PIECE_KINDS,
+  type Edge,
+  type RoadNetwork,
+} from '../road';
 import type { LaneInfo } from '../sim/api';
 import {
   ARCH_FOOTING,
@@ -45,7 +51,7 @@ import {
 } from './bridge-bays';
 import { barrierLookAt } from './barrier-looks';
 import { ChunkedStrips, keptSamples, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
-import { EdgeLocator } from './overlap';
+import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
 import { SeaBands, seaPlanFor } from './sea-bands';
@@ -818,7 +824,7 @@ export const BURIED_M = 1.5;
  * Land may stand at most this far over another road's asphalt (road-clear.test-util.ts holds the drawn ground to
  * 0.15 m), and is looked for this often across its strip and this far past that road's lanes, m. [default]
  */
-const LAND_OVER_ROAD_M = 0.05;
+const LAND_OVER_ROAD_M = GROUND_OVER_ROAD_M;
 const LAND_ROAD_PROBE_M = 1;
 const LAND_ROAD_MARGIN_M = 0.5;
 /** The skirt keeps one road sample in this many. [default] */
@@ -1262,6 +1268,30 @@ export function buildRoadScene(
         if (unclipped(clips[inner], sd[inner]!) && !unclipped(clips[i], sd[i]!)) clips[i] = plainClip(sd[i]!);
       }
     }
+    /**
+     * A ground band of this edge at s over [span[0], span[1]], on `side` of the lanes, stopped where it would lie
+     * over a lower road's lanes (the I-5's shoulder over a link below it); null where it begins over them. The
+     * edge's own road level `lift` m under the band is the height it is held at.
+     */
+    const yieldReach = (
+      s: number,
+      span: [number, number],
+      side: -1 | 1,
+      lift: number,
+    ): [number, number] | null => {
+      const [near, far] = side < 0 ? [span[1], span[0]] : [span[0], span[1]];
+      const reach = locator.clearReach(
+        e.index,
+        s,
+        near,
+        far,
+        lift,
+        GROUND_YIELD_MARGIN_M,
+        GROUND_OVER_ROAD_M,
+      );
+      if (reach === null) return null;
+      return side < 0 ? [reach, near] : [near, reach];
+    };
     const zonesHere = zones.filter((z) => z.edge === e.index);
     const inZone = (s: number, d: number) =>
       zonesHere.some(
@@ -1281,6 +1311,8 @@ export function buildRoadScene(
       span: (l: LaneSpans, c: Clip) => [number, number] | null;
       lift: number;
       skip?: (s: number, span: [number, number]) => boolean;
+      /** A ground band beside the lanes: the side it lies on, so it yields to a lower road's lanes (yieldReach). */
+      side?: -1 | 1;
     }[] = [
       { kind: brickEdge ? 'brick' : 'road', span: (l) => l.drive, lift: 0 },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
@@ -1288,11 +1320,13 @@ export function buildRoadScene(
         kind: 'shoulder',
         span: (l, c) => (c.vergeL ? [outerL - shoulderLap, lanesSpan(l)[0]] : null),
         lift: -0.02,
+        side: -1,
       },
       {
         kind: 'shoulder',
         span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR + shoulderLap] : null),
         lift: -0.02,
+        side: 1,
       },
       {
         kind: 'marking',
@@ -1310,7 +1344,8 @@ export function buildRoadScene(
     const rowOf = (surf: (typeof surfaces)[number], i: number): [Point3, Point3] | null => {
       const s = sd[i] ?? 0;
       const c = clips[i];
-      const span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+      let span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+      if (span && surf.side) span = yieldReach(s, span, surf.side, surf.lift);
       if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) return null;
       return [w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift)];
     };
@@ -2229,6 +2264,22 @@ export function buildRoadScene(
           continue;
         }
         const top = w(e.index, s, d, -0.02);
+        // Nor does it stand over a lower road's lanes beside it (a link down the embankment), within the 3 m a road
+        // under a bridge lies below (the I-5's curtain at Lake Samish's east shore road: 1.3 m over its lanes).
+        if (
+          locator.overLowerLanes(
+            top.x,
+            top.y,
+            top.z,
+            e.index,
+            GROUND_YIELD_MARGIN_M,
+            GROUND_OVER_ROAD_M,
+            LANES_UNDER_Y_M,
+          )
+        ) {
+          deck.breakStrip();
+          continue;
+        }
         const bottom =
           top.y >= ELEVATED_M
             ? { x: top.x, y: top.y - 1, z: top.z }

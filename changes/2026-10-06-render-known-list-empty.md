@@ -1,0 +1,25 @@
+---
+kind: fixed
+audience: player
+---
+No road's edge hangs over another road's lanes any more. Where a link runs lower beside a road, down its embankment, the higher road's shoulder, grass band and edge wall used to stand over the link's lanes, up to a metre and a half over them, and you rode under them. That was the I-5's edge over Lake Samish's links and shore roads, the Fogline Climb's over the park cut's end, and the Jones Street choice's on Russian Hill. Those edges now stop short of the lower road. On the San Francisco hills, Switchback Street's hill now starts 50 m later, past the stair alley's start: the street's brick, shoulder and paint used to lie over the alley's first 100 m, up to 1.1 m over the road you rode, and now the two roads lie level where they share the ground.
+
+For devs:
+
+- **The rule** (the maintainer, 2026-10-06: "a road race in a physical world with honest edges"; `docs/architecture.md`, "Nothing drawn stands in a lane", `[default]`): a road's own ground never stands more than 5 cm over a lower road's lanes.
+  - **Shoulder, verge band, fascia.** `EdgeLocator.overLowerLanes` and `clearReach` (`src/render/overlap.ts`) find where a band would lie over a lower road's lanes (0.25 m wider each side and past a road's end, the lanes' own asphalt more than 5 cm below it). `buildRoadScene` (`src/render/road-mesh.ts`, `yieldReach`) stops a shoulder row there, and leaves a fascia row out (only within 3 m of height, `LANES_UNDER_Y_M`, past which a road runs under a bridge); `VergeLayer` (`src/render/verge.ts`) stops each band row there. It is the land's rule (`landOverRoad`, #641) for the rest of the ground.
+  - **The drive surface cannot yield, so the data does.** Switchback Street's brick, paint and shoulder over the stair alley were not a layer ignoring a sibling: the street is the road, and its hill began at s 50 while 11 m of it still lay over the alley's 5 m. `tools/road/tracks/sf-hills.ts`: the hill's centre moved from 260 m to 285 m and its length from 420 m to 370 m, so it still ends at s 470 and starts at s 100. The street now stands at most 0.003 m over the alley where their lanes overlap (it stood 1.13 m); its steepest grade goes from 4.4 % to 5.0 %. The baked `sf-switchback-street.json` is a re-bake of the source and nothing else.
+- **`KNOWN` is empty** (`src/render/road-clear.test-util.ts`). Its 13 lines, by what removed them:
+  - **Gone on #641's branch already** (the check finds nothing there with the list emptied): the Plaza Cut's and the Mill Yard Cut's 1.2 m side walls, drawn as deck.
+  - **The I-5's ground over lower roads:** its verge band on Lake Samish's links and shore roads, the shoulder over the east shore road's end, and the east and north shore roads' deck walls. Found by `clearReach` and the fascia rule.
+  - **The Fogline Climb's** verge band and shoulder over the park cut's end; **the Jones Street choice's** verge band.
+  - **The stair alley's** brick, brick courses, both kinds of paint, shoulder, verge band and deck: the hill's start.
+- **Tests, failing first.** With `KNOWN` emptied on #641's tip the check failed on three networks: 11 places on the SF hills, 2 on Russian Hill, 7 on Lake Samish.
+  - `src/render/ground-yield.test.ts` (new): `clearReach` and `overLowerLanes` on the I-5 over the east shore road, with controls (the road with nothing beside it keeps its whole band, the lower road's own band is not cut for the road above it, a point level with the lanes or past the 3 m limit is not over them); and the drawn shoulder, fascia and band on the three networks held to 8 cm, not the check's 15 cm. Without the yields it fails on all three, listing the same places and a 0.10 m shoulder on the Jones Street choice that the 15 cm check cannot see.
+  - `src/render/road-clear-pnw.test.ts`: the negative control also plants a shoulder, a band and a fascia 0.3 m over Alder Street's lanes; each is found.
+  - `tools/road/sf-hills.test.ts`: the street's height over the alley where their lanes overlap in plan is under a kerb (0.003 m), and the old hill is over five kerbs (1.13 m).
+- **Examined.** `road-clear-keys`, `-sf` and `-pnw` pass on all 19 networks with `KNOWN` empty (22 tests); `scene-cost`, `-sf` and `-pnw` pass, so every route's peak is under the budgets. No mesh was added, so draw calls cannot grow; triangle counts were not compared with #641's tip.
+- **Build time.** Lake Samish's road scene, six builds (`scenes.test.ts`): 9.4 and 10.0 s with this change, 11.5 and 8.8 s without, on the dev machine in the same hour: no measurable change. Not measured on a phone.
+- **Not fixed.** Nothing on the list. The check runs seed 1 (Bridge City 1 to 3); other seeds were not swept.
+
+Not phone-verified. No local browser was run.

@@ -274,7 +274,7 @@ export const SF_HILLS: TrackSource = {
       lengthM: 520,
       speedLimitMps: CITY,
       surface: 'brick',
-      humps: [{ centreM: 260, lengthM: 420, heightM: 6 }],
+      humps: [{ centreM: 285, lengthM: 370, heightM: 6 }],
       tags: [
         { s0: 0, s1: 'end', side: 'both', tag: 'gardens' },
         { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },

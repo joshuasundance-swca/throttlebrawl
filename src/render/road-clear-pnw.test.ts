@@ -19,6 +19,9 @@ describe('the ride column over every road of every Pacific Northwest network: no
 const BRANCH = 'osm-pnw-pdx-alder';
 const AT_S = 200;
 
+/** The road's other ground, planted over the lanes beside the land (a shoulder, the verge band, a fascia). */
+const GROUND_OVER = ['road-shoulder', 'verge-band', 'road-deck'] as const;
+
 /** Where the land is planted along the branch: over its lanes, under them, and beside them. */
 const LAND_OVER_S = 240;
 const LAND_UNDER_S = 270;
@@ -50,6 +53,9 @@ function plant(road: RoadNetwork): Group {
   box('road-land', 0, 8, 0.2, 0.1, LAND_OVER_S);
   box('road-land', 0, 8, -0.15, 0.1, LAND_UNDER_S);
   box('road-land', Infinity, 6, 0.9, 0.1, LAND_BESIDE_S);
+  // The rest of the road's ground, named as the road's own: a shoulder, a verge band and a fascia, each 0.3 m over the
+  // lanes where the land is (lane M1: the ground rule holds each of them, and each now yields to a lower road).
+  for (const name of GROUND_OVER) box(name, 0, 8, 0.2, 0.1, LAND_OVER_S);
   let hi = 0;
   for (const lane of road.lanesAt(e, AT_S)) hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
   // A building on the lanes: 8 m across, standing on the asphalt.
@@ -82,6 +88,19 @@ describe('the negative control: a building, land and a rail planted on a branch 
     expect(over?.over).toBeGreaterThan(0.2);
     expect(over?.over).toBeLessThan(0.45);
     expect(land.filter((p) => p !== over).map(placeLine)).toEqual([]);
+    // So is each other piece of the road's ground planted 0.3 m over the lanes there.
+    for (const name of GROUND_OVER) {
+      const hit = mine.find(
+        (p) =>
+          p.part === `control/${name}` &&
+          p.edge === BRANCH &&
+          p.s0 <= LAND_OVER_S + 3 &&
+          p.s1 >= LAND_OVER_S - 3,
+      );
+      expect(hit, `${name} 0.3 m over the lanes`).toBeDefined();
+      expect(hit?.over).toBeGreaterThan(0.2);
+      expect(hit?.over).toBeLessThan(0.45);
+    }
     // A thin rail on the lanes is found too (the edge kit the pattern of polish J2 drew across a sibling's lanes).
     expect(
       mine.filter((p) => p.part === 'control/rail' && p.edge === BRANCH).length,
@@ -89,7 +108,11 @@ describe('the negative control: a building, land and a rail planted on a branch 
     ).toBeGreaterThan(0);
     expect(
       mine
-        .filter((p) => !['control/in-road', 'control/road-land', 'control/rail'].includes(p.part))
+        .filter(
+          (p) =>
+            !['control/in-road', 'control/road-land', 'control/rail'].includes(p.part) &&
+            !GROUND_OVER.some((n) => p.part === `control/${n}`),
+        )
         .map(placeLine),
     ).toEqual([]);
   }, 300_000);
