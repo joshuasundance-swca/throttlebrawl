@@ -654,3 +654,175 @@ describe('determinism', () => {
     expect(on.state).toBe(off.state);
   });
 });
+
+// The one support rule (the maintainer, 2026-10-06, [decided]: "consistent physics and gameplay is
+// important here so players know what to expect"), from the support and barrier run's live check
+// (2026-10-07): a rider is on a top or falling, never held in the air by another system. A rider whose
+// box still overlaps a top's end but whose middle is off it falls past the edge, at the speed a fall from
+// there gives; traffic does not hold him at the top while gravity builds (live, Seven Mile seed 6: 123
+// ticks at a shrimp truck's tail, then a crash landing at 32.2 m/s from 3.25 m).
+describe('one rule at a top’s edge: supported or falling, never held in the air', () => {
+  const G = 9.81;
+  /** Consecutive ticks in the air at exactly a top's height (a rider held there, not falling), and the touch-down. */
+  function hoverRun(sc: Scene, top: number, ticks: number, input: SimInput = coast) {
+    let run = 0;
+    let longest = 0;
+    let down: SimEvent | undefined;
+    for (let t = 0; t < ticks && !down; t++) {
+      const out = sc.step(input);
+      if (sc.rider.mode === 'Airborne' && Math.abs(sc.rider.h - top) < 1e-6)
+        longest = Math.max(longest, ++run);
+      else run = 0;
+      down = out.find((e) => e.type === 'land' || e.type === 'crash');
+    }
+    return { longest, down };
+  }
+
+  it('comes down at a truck’s tail (35 offsets and speeds per truck): never held at the top, lands at a fall’s speed', () => {
+    const rows: string[] = [];
+    let worstHover = 0;
+    let worstExcess = -Infinity;
+    let noClosing = 0;
+    for (const [type, vT] of [
+      [T_BOX, 15],
+      [T_SEMI, 20],
+    ] as const) {
+      const def = TYPES[type];
+      if (!def?.heightM) throw new Error('no truck');
+      const h0 = def.heightM + 1.6;
+      // The fastest a fall from where he starts can be: 4 m/s down, h0 above the road.
+      const fallMps = Math.sqrt(4 * 4 + 2 * G * h0);
+      for (const dx of [-0.6, -0.3, 0.1, 0.4, 0.7, 0.95, 1.2]) {
+        for (const dv of [-3, -1, 0, 1, 3]) {
+          const sc = scene(makeConfig(), { s: 0, d: 0, speed: vT + dv, air: { h: h0, vy: -4 } });
+          const vid = sc.vehicle(type, 300, 1, vT);
+          const truck = sc.world.movers[vid];
+          // dx: how far the rider's middle is behind the truck's tail (negative: over its top).
+          sc.rider.pos.s = (truck?.pos.s ?? 0) - def.lengthM / 2 - dx;
+          sc.rider.pos.d = laneD(sc, vid);
+          riderState(sc.world).yAbs[sc.rider.id] =
+            sc.config.road.surfaceHeight(0, sc.rider.pos.s, sc.rider.pos.d) + h0;
+          const { longest, down } = hoverRun(sc, def.heightM, 400);
+          const vertical = Number(down?.data['verticalMps'] ?? down?.data['impactMps'] ?? NaN);
+          worstHover = Math.max(worstHover, longest);
+          worstExcess = Math.max(worstExcess, vertical - fallMps);
+          // A contact with the truck is one he closed on it to make: by the closing speed, never at 0.
+          for (const e of sc.events.filter(isTraffic)) noClosing += Number(e.data['impactMps']) > 0 ? 0 : 1;
+          rows.push(
+            `${def.contentId} dx ${dx} dv ${dv}: held ${longest} ticks; ${down?.type} ${String(down?.data['quality'] ?? down?.data['cause'])} on ${String(down?.data['on'] ?? 'road')} at ${vertical.toFixed(1)} m/s (a fall gives ≤ ${fallMps.toFixed(1)}); traffic [${sc.events
+              .filter(isTraffic)
+              .map((e) => `${e.type} ${String(e.data['hit'])} ${Number(e.data['impactMps']).toFixed(2)}`)
+              .join(', ')}]`,
+          );
+          expect(down, `${def.contentId} dx ${dx} dv ${dv} came down`).toBeDefined();
+        }
+      }
+    }
+    console.log(`[examined] tail come-downs:\n${rows.join('\n')}`);
+    console.log(
+      `[examined] longest hold ${worstHover} ticks; worst excess over a fall ${worstExcess.toFixed(2)} m/s`,
+    );
+    // A hold of one tick is traffic's catch for a truck that moved under him as it stepped: landed next tick.
+    expect(worstHover).toBeLessThanOrEqual(1);
+    expect(worstExcess).toBeLessThan(0.5);
+    expect(noClosing).toBe(0);
+  });
+
+  it('rides off a semi’s front onto the road: falls at once from the edge, with no contact with the semi', () => {
+    const sc = scene(makeConfig(), { s: 405, d: 0, speed: 20, air: { h: 4.05, vy: -1 } });
+    const vid = sc.vehicle(T_SEMI, 400);
+    sc.rider.pos.d = laneD(sc, vid);
+    expect(untilDown(sc)?.data).toMatchObject({ quality: 'clean', on: 'vehicle' });
+    let jump: SimEvent | undefined;
+    for (let t = 0; t < 600 && !jump; t++) jump = sc.step(held(0.6)).find((e) => e.type === 'jump');
+    expect(jump, 'rode off the front').toBeDefined();
+    const { longest, down } = hoverRun(sc, SEMI.heightM ?? 4, 300, held(0.6));
+    const hits = sc.events.filter((e) => isTraffic(e) && e.target === vid);
+    const fallMps = Math.sqrt(2 * G * (SEMI.heightM ?? 4));
+    console.log(
+      `[examined] off the semi's front: ${JSON.stringify(jump?.data)}; held ${longest} ticks; ${down?.type} ${JSON.stringify(down?.data)}; traffic contacts with the semi ${JSON.stringify(hits.map((e) => e.data))}`,
+    );
+    expect(longest).toBeLessThanOrEqual(1);
+    expect(hits).toEqual([]);
+    expect(down?.type).toBe('land');
+    expect(down?.data['quality']).not.toBe('crash');
+    expect(Number(down?.data['verticalMps'])).toBeLessThan(fallMps + 0.5);
+  });
+});
+
+// Punch 1 of the live check: the landing surge beat the brake on a top. On a 20 m/s semi, braking from
+// a big landing still carried the bike 1.8, 5.7 and 10.3 m forward (0, 0.4 and 1.7 m with no surge);
+// live, a 7 m truck ride ran off its front in 0.43 s. On a top the brake holds the surge back.
+describe('the landing surge on a top yields to the brake', () => {
+  /** A big flight (2.5 s of air, so the surge is due) onto a truck 3 m in from its tail, `vr0` faster. */
+  function bigLanding(
+    vr0: number,
+    type: number,
+    input: (landed: boolean) => SimInput,
+    tuning: Record<string, number> = {},
+  ) {
+    const def = TYPES[type];
+    if (!def?.heightM) throw new Error('no truck');
+    const vT = def.cruiseMps;
+    const h0 = def.heightM + 0.6;
+    const sc = scene(makeConfig({ tuning }), { s: 0, d: 0, speed: vT + vr0, air: { h: h0, vy: -11 } });
+    const vid = sc.vehicle(type, 300, 1, vT);
+    const truck = sc.world.movers[vid];
+    sc.rider.pos.s = (truck?.pos.s ?? 0) - def.lengthM / 2 + 3;
+    sc.rider.pos.d = laneD(sc, vid);
+    const rs = riderState(sc.world);
+    rs.yAbs[sc.rider.id] = sc.config.road.surfaceHeight(0, sc.rider.pos.s, sc.rider.pos.d) + h0;
+    rs.airTicks[sc.rider.id] = 150;
+    let land: SimEvent | undefined;
+    let r0 = 0;
+    let furthest = -Infinity;
+    let onTicks = 0;
+    for (let t = 0; t < 60 * 3; t++) {
+      const out = sc.step(input(land !== undefined));
+      const l = out.find((e) => e.type === 'land');
+      const rel = sc.rider.pos.s - (truck?.pos.s ?? 0);
+      if (l && !land) {
+        land = l;
+        r0 = rel;
+      }
+      if (land && supportKeyOf(sc.world, sc.rider.id) === `v:${vid}`) {
+        onTicks++;
+        furthest = Math.max(furthest, rel);
+      }
+      if (land && sc.rider.mode !== 'Road') break;
+    }
+    return { land, carry: furthest - r0, onTicks };
+  }
+  const brakeFromLanding = (landed: boolean) => (landed ? held(0, 1) : coast);
+
+  it('on the semi, braking from the landing carries him no further than with no surge, and he stays on', () => {
+    const rows: string[] = [];
+    for (const vr0 of [0, 3, 6]) {
+      const surge = bigLanding(vr0, T_SEMI, brakeFromLanding);
+      const none = bigLanding(vr0, T_SEMI, brakeFromLanding, { 'riders.surgeS': 0 });
+      rows.push(
+        `${vr0} m/s over the semi: surge ${String(surge.land?.data['surge'])}, carried ${surge.carry.toFixed(2)} m, on ${surge.onTicks} ticks; no surge ${none.carry.toFixed(2)} m, on ${none.onTicks}`,
+      );
+      expect(surge.land?.data).toMatchObject({ quality: 'clean', on: 'vehicle', surge: true });
+      expect(surge.carry).toBeLessThan(none.carry + 0.1);
+      expect(surge.onTicks).toBeGreaterThanOrEqual(60 * 2.5);
+    }
+    console.log(`[examined] braking from a surge landing on a 20 m/s semi:\n${rows.join('\n')}`);
+  });
+
+  it('on a 7.5 m box truck, 3 m/s faster, braking keeps him on it for 2.5 s', () => {
+    const r = bigLanding(3, T_BOX, brakeFromLanding);
+    console.log(`[examined] box truck: carried ${r.carry.toFixed(2)} m, on ${r.onTicks} ticks`);
+    expect(r.land?.data).toMatchObject({ quality: 'clean', on: 'vehicle', surge: true });
+    expect(r.onTicks).toBeGreaterThanOrEqual(60 * 2.5);
+  });
+
+  it('control: off the brake the surge still spits him forward over the top', () => {
+    const coasting = bigLanding(0, T_SEMI, () => coast);
+    const flat = bigLanding(0, T_SEMI, () => coast, { 'riders.surgeS': 0 });
+    console.log(
+      `[examined] coasting after the landing: surge carried ${coasting.carry.toFixed(2)} m, no surge ${flat.carry.toFixed(2)} m`,
+    );
+    expect(coasting.carry).toBeGreaterThan(flat.carry + 1);
+  });
+});
