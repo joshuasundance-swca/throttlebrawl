@@ -6,6 +6,7 @@
 // controls), so a green run says the check can see.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { Script } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { PRS_QUERY } from './train.mjs';
 
@@ -94,10 +95,7 @@ const unsafeAdvice = (text: string) =>
 const RULE: [string, RegExp][] = [
   ['branches from the parent branch, untracked', /`git switch --no-track -c <your branch> origin\/<parent>`/],
   ['pushes with -u, never bare', /`git push -u origin HEAD`.*never a bare `git push`/],
-  [
-    'bounded wait',
-    /still not merged 8 hours after your branch was ready, push your branch, report it blocked and end/,
-  ],
+  ['immediate handoff', /A worker hands off its ready branch and report immediately/],
   ['builds and tests there', /build and run your tests there/],
   ['opens the PR against main', /open your PR against `main`/i],
   ['only after the parent is MERGED', /only after the parent's PR is MERGED/],
@@ -168,10 +166,7 @@ describe("AGENTS.md: a lane that needs another lane's unmerged work", () => {
 const ENGINEERING_CLAIMS: [string, RegExp][] = [
   ['branches from the parent, untracked', /`git switch --no-track -c <your branch> origin\/<parent>`/],
   ['pushes with -u', /`git push -u origin HEAD`/],
-  [
-    'bounded wait',
-    /still open 8 hours after your branch was ready \(red, or stuck\), push your branch, report it blocked and end/,
-  ],
+  ['immediate handoff', /Hand off the ready branch and report immediately/],
   ['waits for the merge', /only after the parent's PR is MERGED/],
   ['merges main in', /`git merge origin\/main` into your branch/],
   ['no rebase, no force-push', /Never a rebase and never a force-push/],
@@ -212,7 +207,10 @@ const ENGINEERING_CLAIMS: [string, RegExp][] = [
     'add/add after the squash',
     /comes back as an add\/add conflict, because the squash is not an ancestor of your branch/,
   ],
-  ['the mechanics are a default', /The commands and the 8-hour bound are the coordinator's `\[default\]`/],
+  [
+    'the mechanics are a default',
+    /The commands and immediate worker handoff are the coordinator's `\[default\]`/,
+  ],
   ['template', /`needs`/],
   ['test', /`scripts\/stack-lite-docs\.test\.ts`/],
 ];
@@ -266,42 +264,111 @@ describe('docs/engineering.md: lanes that build on another lane', () => {
   });
 });
 
-const TEMPLATE_CLAIMS: [string, RegExp][] = [
-  ['accepts needs', /needs\? \}/],
-  ['awaits the parent', /parent = await runLane\(lanes\.find\(\(x\) => x\.key === l\.needs\)\)/],
-  [
-    'branches from the parent PR head, untracked',
-    /git switch --no-track -c <your branch> origin\/<that PR\\?'s head branch>/,
-  ],
-  ['pushes with -u', /push with git push -u origin HEAD/],
-  ['PR only after MERGED', /open your own PR against main only after that PR is MERGED/],
-  ['merges main in', /after merging origin\/main into your branch/],
-  ['keeper keeps watching', /A lane that needs another lane opens its PR only once/],
-  ['rejects a bad needs', /needs must be the key of another lane in this run/],
-  ['rejects a cycle', /needs makes a cycle/],
-];
+type LaneResult = { prs: number[]; branch: string; ready: boolean; reportPath: string; summary: string };
+type RunResult = {
+  lanes: LaneResult[];
+  integrationRequired: boolean;
+  liveCheckRequired: boolean;
+  missing: string[];
+};
+type Harness = {
+  args: Record<string, unknown>;
+  agent: (prompt: string, options: { label: string; model: string }) => Promise<LaneResult | null>;
+  parallel: (tasks: (() => Promise<unknown>)[]) => Promise<unknown[]>;
+  phase: (name: string) => void;
+  log: (message: string) => void;
+};
+// Execute the real workflow with a mocked harness; no agents, git, network or browser are started.
+const workflow = new Script(
+  '(async () => { ' + laneRun.replace('export const meta', 'const meta') + '\n })();',
+);
+const execute = (env: Harness) => workflow.runInNewContext(env) as Promise<RunResult>;
+const harness = (args: Record<string, unknown>, agent: Harness['agent']): Harness => ({
+  args,
+  agent,
+  parallel: (tasks) => Promise.all(tasks.map((task) => task())),
+  phase: () => {},
+  log: () => {},
+});
+const ready = (key: string): LaneResult => ({
+  prs: [],
+  branch: 'lane/sim/' + key,
+  ready: true,
+  reportPath: 'scratch/m2/lanes/' + key + '-report.md',
+  summary: 'ready branch',
+});
 
-describe('lane-run.js: the template builds a dependent lane on its parent', () => {
-  it('lets a lane name the lane it needs, starts it after that lane, and tells it the rule', () => {
-    expect(gaps(laneRun, TEMPLATE_CLAIMS)).toEqual([]);
-    // it waits for the parent before taking a pool slot, so a waiting lane never holds one
-    expect(laneRun.indexOf('parent = await runLane')).toBeGreaterThan(0);
-    expect(laneRun.indexOf('parent = await runLane')).toBeLessThan(
-      laneRun.indexOf('await acquire();\n  try'),
+describe('lane-run.js: actual branch handoff', () => {
+  it('starts each builder once, supports an unpublished prerequisite, and delegates no acceptance', async () => {
+    const calls: { prompt: string; label: string; model: string }[] = [];
+    const result = await execute(
+      harness(
+        {
+          builderModel: 'test-execution-model',
+          maxBuilders: 1,
+          lanes: [
+            { key: 'parent', brief: 'parent work' },
+            { key: 'child', brief: 'child work', needs: 'parent' },
+          ],
+        },
+        (prompt, options) => {
+          calls.push({ prompt, ...options });
+          return Promise.resolve(ready(options.label.slice(5)));
+        },
+      ),
     );
-    // it never tells a lane to open its PR against the parent's branch
-    expect(unsafeAdvice(laneRun)).toEqual([]);
-    expect(flat(laneRun)).not.toMatch(/--base/);
+    expect(calls.map((c) => c.label)).toEqual(['lane parent', 'lane child']);
+    expect(calls.every((c) => c.model === 'test-execution-model')).toBe(true);
+    expect(calls[1]?.prompt).toContain('lane/sim/parent');
+    expect(calls[1]?.prompt).toContain('Do not open a dependent PR or wait for the merge in this worker');
+    expect(result.missing).toEqual([]);
+    expect(result.integrationRequired).toBe(true);
+    expect(result.liveCheckRequired).toBe(true);
   });
-
-  it('control: a template that opens the PR early, or never checks a cycle, is found', () => {
-    expect(
-      gaps(laneRun.replace('only after that PR is MERGED', 'as soon as you are done'), TEMPLATE_CLAIMS),
-    ).toEqual(['PR only after MERGED']);
-    expect(gaps(laneRun.replace('needs makes a cycle', 'ok'), TEMPLATE_CLAIMS)).toEqual(['rejects a cycle']);
-    expect(unsafeAdvice('gh pr create --base lane/x/y')).toHaveLength(1);
-    // the order check can fail: a slot taken before the parent is awaited
-    const early = 'await acquire();\n  try {}\n  parent = await runLane(x)';
-    expect(early.indexOf('parent = await runLane')).toBeGreaterThan(early.indexOf('await acquire();\n  try'));
+  it('does not launch a dependent builder when its prerequisite has no ready evidence', async () => {
+    const labels: string[] = [];
+    const result = await execute(
+      harness(
+        {
+          builderModel: 'test-execution-model',
+          lanes: [
+            { key: 'parent', brief: 'work' },
+            { key: 'child', brief: 'work', needs: 'parent' },
+          ],
+        },
+        (_prompt, options) => {
+          labels.push(options.label);
+          return Promise.resolve(null);
+        },
+      ),
+    );
+    expect(labels).toEqual(['lane parent']);
+    expect(result.missing).toEqual(['parent', 'child']);
+    expect(result.integrationRequired).toBe(true);
+  });
+  it('rejects cycles and requires deliberate model and pool selection', async () => {
+    const stub = () => Promise.resolve(ready('stub'));
+    await expect(execute(harness({ lanes: [{ key: 'one', brief: 'work' }] }, stub))).rejects.toThrow(
+      'builderModel',
+    );
+    await expect(
+      execute(
+        harness({ builderModel: 'test', maxBuilders: 6, lanes: [{ key: 'one', brief: 'work' }] }, stub),
+      ),
+    ).rejects.toThrow('maxBuilders');
+    await expect(
+      execute(
+        harness(
+          {
+            builderModel: 'test',
+            lanes: [
+              { key: 'one', brief: 'work', needs: 'two' },
+              { key: 'two', brief: 'work', needs: 'one' },
+            ],
+          },
+          stub,
+        ),
+      ),
+    ).rejects.toThrow('cycle');
   });
 });
