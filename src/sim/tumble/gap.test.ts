@@ -139,6 +139,8 @@ describe('a missed gap: overboard, the splash, and the far side', () => {
     const band = ownSideBand(h.config.road, 0, h.player.pos.s, 1);
     expect(h.player.pos.d).toBeGreaterThanOrEqual(band.lo);
     expect(h.player.pos.d).toBeLessThanOrEqual(band.hi);
+    // The one respawn rule after any overboard (2026-10-07): the centre of a drive lane his way.
+    expect(ownLaneCentres(h.config, 0, h.player.pos.s, 1)).toContain(h.player.pos.d);
     expect(h.player.speed).toBe(Math.min(REMOUNT, h.config.riders[0]?.bike.topSpeedMps ?? 0));
     expect(riderState(h.world).health[h.player.id]).toBe(100);
     expect(tumbleRecord(h.world, h.player.id)).toBeNull();
@@ -264,9 +266,18 @@ describe("respawn: 'main', on the highway", () => {
     const band = ownSideBand(road, pos.edge, pos.s, pos.dir);
     expect(pos.d).toBeGreaterThanOrEqual(band.lo);
     expect(pos.d).toBeLessThanOrEqual(band.hi);
+    expect(ownLaneCentres(config, pos.edge, pos.s, pos.dir)).toContain(pos.d);
     expect(h.player.mode).toBe('Road');
   });
 });
+
+/** The centres of the drive lanes running `dir` at (edge, s): where a splash respawn wakes him. */
+function ownLaneCentres(config: SimConfig, edge: number, s: number, dir: number): number[] {
+  return config.road
+    .lanesAt(edge, s)
+    .filter((l) => l.kind === 'drive' && l.direction === dir)
+    .map((l) => l.dCenterM);
+}
 
 describe('determinism', () => {
   /** World hashes every 30 ticks of a run of n ticks. */

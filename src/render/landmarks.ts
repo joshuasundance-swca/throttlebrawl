@@ -505,6 +505,57 @@ function tiersOf(
   return tiers;
 }
 
+/** The deck slab of a bridge kit's bay: its top is the deck's top, this deep, m (the Golden Gate kit's). */
+const DECK_SLAB_M = 0.3;
+
+/**
+ * A deck bay with nothing drawn at the deck's height past the deck's own width (the one live check of
+ * 2026-10-07, punch item 2). The Golden Gate kit's bay carries a 4.7 m walkway slab each side past its
+ * `deck_w_m` (27.6 m, the road's kerb to kerb), its top at the deck's top: a red plate past the railing that
+ * the falling bodies seemed to tumble across, but that nothing meets (the course ends at the railing, the
+ * decided Golden Gate drop past it, and the structure plan stands no walkway). Under the physical world's
+ * rule, what is drawn is what is met, so it is not drawn: the vertices at the bay's widest, no lower than the
+ * deck slab's underside, move in to the deck's edge. The near bay's walkway folds to nothing and its truss
+ * under the cables stays; the far bay's edge block becomes a fascia sloping down and out from the deck's
+ * edge. A node with no `deck_w_m` is drawn as it is. [default]
+ */
+function deckEdgeCut(node: LandmarkNode | undefined): LandmarkNode | undefined {
+  const deckW = node?.extras['deck_w_m'];
+  if (!node || !finite(deckW) || !(deckW > 0)) return node;
+  const half = deckW / 2;
+  const geometry = node.geometry.clone();
+  const pos = geometry.getAttribute('position');
+  let widest = 0;
+  for (let i = 0; i < pos.count; i++) widest = Math.max(widest, Math.abs(pos.getX(i)));
+  if (!(widest > half + 1e-3)) return node;
+  const moved = new Set<number>();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    if (Math.abs(x) < widest - 1e-3 || pos.getY(i) < -DECK_SLAB_M - 1e-3) continue;
+    pos.setX(i, Math.sign(x) * half);
+    moved.add(i - (i % 3));
+  }
+  // A face that moved takes its new facing (a triangle soup: each triangle's three vertices in turn).
+  const normal = geometry.getAttribute('normal');
+  if (normal) {
+    const a = new Vector3();
+    const b = new Vector3();
+    const c = new Vector3();
+    for (const t of moved) {
+      a.fromBufferAttribute(pos, t);
+      b.fromBufferAttribute(pos, t + 1).sub(a);
+      c.fromBufferAttribute(pos, t + 2).sub(a);
+      const n = b.cross(c);
+      if (n.lengthSq() < 1e-12) continue;
+      n.normalize();
+      for (let k = 0; k < 3; k++) normal.setXYZ(t + k, n.x, n.y, n.z);
+    }
+    normal.needsUpdate = true;
+  }
+  pos.needsUpdate = true;
+  return { ...node, geometry };
+}
+
 /** The suspension bridge: `golden-gate#gg_bridge` (see the header). Null draws nothing. */
 function suspensionBridge(c: Compose): Piece[] | null {
   const { road, at, kit, builder, paint, paintColour } = c;
@@ -540,9 +591,9 @@ function suspensionBridge(c: Compose): Piece[] | null {
     });
   });
 
-  // The deck's edge, one bay at a time: y = 0 is the deck top, and the bay runs along +Z.
-  const bayNear = kit.nodes.get('gg_bay_lod0');
-  const bayFar = kit.nodes.get('gg_bay_lod1');
+  // The deck's edge, one bay at a time: y = 0 is the deck top, and the bay runs along +Z. Cut at the railing.
+  const bayNear = deckEdgeCut(kit.nodes.get('gg_bay_lod0'));
+  const bayFar = deckEdgeCut(kit.nodes.get('gg_bay_lod1'));
   const bayM = (bayNear ?? bayFar)?.extras['bay_m'] ?? SUSPENSION.bayM;
   if (bayNear ?? bayFar) {
     const count = Math.floor((f.s1 - f.s0) / bayM);
