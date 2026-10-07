@@ -165,6 +165,7 @@ import {
   wayBack,
 } from '../ai/branches';
 import { droppedBikesSeen } from '../ai/dropped';
+import { lawContactOf } from './law-knock';
 import {
   bendSpeed,
   blockerAt,
@@ -799,10 +800,30 @@ function routeHeading(config: SimConfig, edge: number, s: number): number {
 }
 
 /**
+ * The kinds of prop sim/cops puts up, and the look each is (`PropSnapshot.variant`): the END OF JURISDICTION
+ * sign and a radar trooper's radar. Each is met by the one rule as the set pieces' own sign and radar are, and
+ * the hitbox audit (scripts/set-piece-shapes.test.ts) holds every one's drawing to its sim boxes.
+ */
+export const LAW_PROP_LOOKS = { sign: 'jurisdiction', radar: 'trooper' } as const;
+
+/**
  * sim/cops' own props (run W-T; SimSnapshot.props): the END OF JURISDICTION sign (id
- * LAW_PROP_ID_BASE) and each radar trooper's radar (LAW_PROP_ID_BASE + 1 + his id).
+ * LAW_PROP_ID_BASE) and each radar trooper's radar (LAW_PROP_ID_BASE + 1 + his id). A radar a rider knocked
+ * flying (sim/modifiers/law-props.ts, the one rule) is shown where it was thrown.
  */
 export function lawProps(world: World, config: SimConfig): PropSnapshot[] {
+  const contact = lawContactOf(world);
+  return lawPropsStanding(world, config).map((p) => {
+    const k = contact?.radar[String(p.id)];
+    return k ? { ...p, x: p.x + k.dx, y: p.y + k.h, z: p.z + k.dz, tilt: k.tilt, moving: k.moving } : p;
+  });
+}
+
+/**
+ * The law's props standing where they were put, before any rider has knocked one (what the contact rule
+ * meets: sim/modifiers/law-props.ts).
+ */
+export function lawPropsStanding(world: World, config: SimConfig): PropSnapshot[] {
   const st = copsState(world);
   const out: PropSnapshot[] = [];
   const j = config.event.cops?.jurisdiction;
@@ -811,7 +832,7 @@ export function lawProps(world: World, config: SimConfig): PropSnapshot[] {
     out.push({
       id: LAW_PROP_ID_BASE,
       kind: 'sign',
-      variant: 'jurisdiction',
+      variant: LAW_PROP_LOOKS.sign,
       label: j.label,
       piece: j.agency,
       x: w.x,
@@ -830,7 +851,7 @@ export function lawProps(world: World, config: SimConfig): PropSnapshot[] {
     out.push({
       id: LAW_PROP_ID_BASE + 1 + id,
       kind: 'radar',
-      variant: 'trooper',
+      variant: LAW_PROP_LOOKS.radar,
       label: '',
       piece: defOf(config, world.movers[id])?.law?.agency ?? '',
       x: w.x,

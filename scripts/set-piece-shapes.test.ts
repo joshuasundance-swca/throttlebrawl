@@ -17,6 +17,7 @@ import { trafficHeightM, type TrafficCategory } from '../src/core';
 import { EventProps, GANTRY_POST_OUT_M, signPanel } from '../src/render/event-props';
 import { createFlatLook } from '../src/render/look';
 import { PROP_KINDS, type PropKind, type PropSnapshot } from '../src/sim/api';
+import { LAW_PROP_LOOKS } from '../src/sim/cops';
 import {
   GANTRY_POST,
   ON_VEHICLE,
@@ -296,10 +297,25 @@ describe('set-piece props: what is drawn is what the sim meets (the physical wor
     }
   });
 
+  it('every prop sim/cops puts up has the contact of what it is drawn as: light, with boxes (law-props.ts meets them)', () => {
+    for (const [kind, variant] of Object.entries(LAW_PROP_LOOKS)) {
+      expect(['light', 'standing'], `law ${kind}`).toContain(PROP_CONTACT[kind as PropKind]);
+      expect(propBoxes(kind as PropKind, variant).length, `law ${kind}'s boxes`).toBeGreaterThan(0);
+    }
+    // The control: a rule that law-props.ts does not meet (a solid or a vehicle's) is not a law prop's.
+    expect(['light', 'standing']).not.toContain(PROP_CONTACT.gantry);
+    expect(['light', 'standing']).not.toContain(PROP_CONTACT.floatDecor);
+  });
+
   it('each prop standing on the road is drawn inside its boxes, and each box is what is drawn in it', () => {
     const cases: { name: string; p: PropSnapshot; times?: readonly number[] }[] = [
       { name: 'radar', p: prop('radar', 'keys') },
       { name: 'warning sign', p: prop('sign', 'roadwork') },
+      // The law's own props (sim/cops), drawn as the set pieces' sign and radar and met by the same boxes.
+      ...Object.entries(LAW_PROP_LOOKS).map(([kind, variant]) => ({
+        name: `law ${kind} (${variant})`,
+        p: prop(kind as PropKind, variant),
+      })),
       { name: 'serial sign', p: prop('sign', 'serial') },
       ...PEOPLE.map((v) => ({ name: `person ${v}`, p: prop('person', v), times: WAVE })),
       ...[4, 6.8, 8, 12].map((spanM) => ({ name: `gantry ${spanM} m`, p: prop('gantry', '', { spanM }) })),
