@@ -428,6 +428,33 @@ export function structureSupportAt(
   return front.top > rear.top ? front : rear;
 }
 
+/**
+ * Whether a rider's middle is over traffic vehicle `vid`'s top, that top holding its bike, where the
+ * vehicle stands now: the riders' own test for landing on a vehicle (`supportAt`), for traffic's contacts
+ * to read, so one rule decides whether a rider coming down at a roof's edge is on it or falling past it.
+ */
+export function overVehicleTop(world: World, config: SimConfig, m: Mover, vid: number): boolean {
+  let over = false;
+  const at = { edge: m.pos.edge, s: m.pos.s, d: m.pos.d, ahead: 0 };
+  vehicleSupports(world, config, m, at, riderHitbox(config, m.riderIndex), (s) => {
+    if (s.vehicle === vid) over = true;
+  });
+  return over;
+}
+
+/**
+ * A rider leaving a vehicle's top (riding off its edge, or lifted off it into the air) is clear of that
+ * vehicle until they are apart, as a rider launched off a hood is: traffic's `launchedOff`, written by
+ * name. He leaves moving away from it, so its box still overlapping his for a moment as he drops past its
+ * edge is no contact. Nothing to do for a rider on no vehicle.
+ */
+export function clearOfVehicleTop(world: World, id: number): void {
+  const key = supportKeyOf(world, id);
+  if (!key.startsWith('v:')) return;
+  const tr = world.systems['traffic'] as { launchedOff?: number[] } | undefined;
+  if (tr?.launchedOff) tr.launchedOff[id] = Number(key.slice(2));
+}
+
 /** A moving deck's carrier, from its feature id (`moving:<vehicle id>`), or -1. */
 function vehicleOfDeck(f: BakedFeature): number {
   const n = Number(f.id.slice('moving:'.length));

@@ -75,7 +75,14 @@
 import { clamp, cos, nextFloat, secondsToTicks, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor, type RoadPos } from '../../road';
 import { driftOf } from '../riders/drift';
-import { holdsBike, leaveSupport, supportKeyOf, supportMotion, supportsOn } from '../riders/supports';
+import {
+  holdsBike,
+  leaveSupport,
+  overVehicleTop,
+  supportKeyOf,
+  supportMotion,
+  supportsOn,
+} from '../riders/supports';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import {
@@ -2227,20 +2234,60 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         const vAlong = vDir === r.dir ? vSpeed : -vSpeed;
         let solid = false;
         let soft = false;
+        // Met at a top's edge from above: end on or from the side, by the shorter overlap (it was over the
+        // top, so last tick's side-by-side test does not say how it came in); null otherwise.
+        let edgeEndOn: boolean | null = null;
         // Over its roof a tick ago (in the air): it came down onto it, or it is riding the roof.
         const fromAbove = r.airborne && hBefore >= top - 1e-6;
         // A light kerb rider has no roof (the live check of #619): coming down on one is the soft
         // contact below, as from any other direction, never a car's roof (never a crash, never ridden on).
         const kerbLight = kerbSoft && isKerb(t) && softContact(t);
-        if (!kerbLight && st.contactWith[r.id] !== vid && fromAbove && top - r.h <= Math.min(overU, overD)) {
-          // Supports (the maintainer, 2026-10-06): a roof that holds the bike is ground, and the riders
-          // land the rider on it (sim/riders/supports.ts). One the riders' step missed (the vehicle
-          // moved under it as traffic stepped) is held at its top, still falling as it was, and landed
-          // on next tick. A smaller top is an obstacle met from above: the one rule, the fall speed.
-          if (supports && holdsBike(t.lengthM, t.widthM, { lengthM: r.lengthM, widthM: r.widthM })) {
+        // Supports (the maintainer, 2026-10-06): a roof that holds the bike is ground, and the riders land
+        // the rider on it (sim/riders/supports.ts). A smaller top is an obstacle met from above: the one
+        // rule, the fall speed (below).
+        const holdsTop =
+          supports && !kerbLight && holdsBike(t.lengthM, t.widthM, { lengthM: r.lengthM, widthM: r.widthM });
+        if (holdsTop && st.contactWith[r.id] !== vid && fromAbove) {
+          // One rule decides (the live check of 2026-10-07): the riders' own, the rider's middle over the
+          // top. On it (the vehicle moved under him as traffic stepped, so the riders' step missed him),
+          // he is held at its top, still falling as he was, and landed on next tick. With his box over its
+          // end but his middle past it, he is off its edge and falls, never held in the air while gravity
+          // builds (it held him for up to 2 s, then dropped him at 32 m/s from 3.25 m).
+          if (overVehicleTop(world, config, m, vid)) {
             holdAtTop(world, config, m, top);
             continue;
           }
+          // Come down past its edge (a rider riding off one is clear of it already: the riders'
+          // clearOfVehicleTop). Moving into it, he meets its end below its top: the contact below, by the
+          // closing speed, on the side the shorter overlap says. Level with it or falling behind, the edge
+          // tips the overhanging bike off: he slides clear of it the short way, his speed and his fall as
+          // they were, with no contact.
+          const endOn = overU < overD;
+          const into = endOn
+            ? closingOnAxis(riderU, vDir * vSpeed, du)
+            : closingOnAxis(riderCross, st.cdMps[k] ?? 0, dcd);
+          if (into <= 0) {
+            let clear = false;
+            if (!endOn) {
+              r.cd += (dcd > 0 ? -1 : 1) * (overD + 0.02);
+              clear = putRider(world, config, st, r);
+            }
+            if (!clear) {
+              r.u -= (du > 0 ? 1 : -1) * (overU + 0.02);
+              putRider(world, config, st, r);
+            }
+            config.road.advance(m.pos);
+            rel[k] = r.dir * ((st.u[k] ?? 0) - r.u) || -1e-9;
+            continue;
+          }
+          edgeEndOn = endOn;
+        } else if (
+          !holdsTop &&
+          !kerbLight &&
+          st.contactWith[r.id] !== vid &&
+          fromAbove &&
+          top - r.h <= Math.min(overU, overD)
+        ) {
           st.contactWith[r.id] = vid;
           const crashed = roofContact(world, config, st, r, m, { t, vid, top, dcd, hold: !supports });
           // Under the line, with supports, it wobbles off the top: pushed clear below, falling on.
@@ -2254,7 +2301,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           st.contactWith[r.id] = vid;
           // Side by side last tick (their boxes overlapped along the road): it came in from the side.
           const halfLen = (t.lengthM + r.lengthM) / 2;
-          const endOn = prev === 0 ? overU < overD : Math.abs(prev) >= halfLen;
+          const endOn = edgeEndOn ?? (prev === 0 ? overU < overD : Math.abs(prev) >= halfLen);
           const front = du * r.dir > 0;
           const graze = endOn && overD < T.grazeM;
           const oncoming = vDir !== r.dir;

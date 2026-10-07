@@ -125,6 +125,7 @@ import {
   type OverMark,
 } from './gap';
 import {
+  clearOfVehicleTop,
   holdsBike,
   inRiderFrame,
   JOLT_WOBBLE_MPS,
@@ -1916,6 +1917,8 @@ function toWorldFrame(world: World, config: SimConfig, m: Mover): void {
   }
   m.speed = Math.sqrt(along * along + across * across);
   m.yaw = m.speed > 1e-9 ? clamp(atan2(across, along), -1.2, 1.2) : 0;
+  // Off a vehicle's top he moves away from it: clear of it while their boxes part (sim/riders/supports.ts).
+  clearOfVehicleTop(world, m.id);
   leaveSupport(world, m.id);
 }
 
@@ -2133,7 +2136,11 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     const air = vr + carry.along * cos(m.yaw) + carry.across * sin(m.yaw);
     let drive = throttle * a * launch - (a * air * Math.abs(air)) / (top * top) - gravity * slopeGrade;
     if (boostLeft > 0) {
-      if (air < top) drive = Math.max(drive, Math.min(drive + BOOST_ACCEL_MPS2 * m2, (top - air) / dt));
+      // A held brake holds the boost's push back on a top (the live check of 2026-10-07: a landing
+      // surge's 12 m/s² beat the brake's 7.65 and ran a braking rider off a truck's front): the push
+      // and the brake act on his speed over the top, and the brake wins, so braking on landing rides it.
+      const push = BOOST_ACCEL_MPS2 * m2 * (1 - brake);
+      if (air < top) drive = Math.max(drive, Math.min(drive + push, (top - air) / dt));
       st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
     }
     let friction = ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2 * SUPPORT_GRIP) * m2;

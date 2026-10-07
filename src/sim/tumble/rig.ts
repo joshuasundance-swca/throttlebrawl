@@ -369,21 +369,27 @@ function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, spla
  * centre at the surface, still.
  */
 function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean): ClusterContact {
-  const at = centre(c.p);
-  const floor = waterLevelOf(road);
-  let splash = false;
-  if (at.y <= floor) {
-    // In the water: no swimming.
-    c.splashed = true;
-    splash = true;
-    for (const q of c.p) {
-      q.y -= at.y - floor;
-      q.vx = 0;
-      q.vy = 0;
-      q.vz = 0;
-    }
-  }
+  const splash = centre(c.p).y <= waterLevelOf(road);
+  if (splash) intoWater(road, c);
   return overboardContact(road, c, railOver, splash);
+}
+
+/**
+ * Puts an overboard cluster in the water: its centre `depthM` under the network's water level (a drop's
+ * floor), still, and `splashed`. No swimming. The tumble's overboard cap uses it too, so a body it ends is
+ * never left hanging in mid-air (the one live check of 2026-10-07); and a body that falls from a high drop
+ * goes under (sim/tumble, `HIGH_PLUNGE_M`).
+ */
+export function intoWater(road: RoadNetwork, c: Cluster, depthM = 0): void {
+  const at = centre(c.p);
+  const floor = waterLevelOf(road) - depthM;
+  c.splashed = true;
+  for (const q of c.p) {
+    q.y -= at.y - floor;
+    q.vx = 0;
+    q.vy = 0;
+    q.vz = 0;
+  }
 }
 
 /** A particle that reached the ground this step bounces; one touching it slides with friction. */
