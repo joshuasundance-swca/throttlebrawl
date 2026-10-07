@@ -263,6 +263,8 @@ export function overStep(
   mark: OverMark | null,
   limits: (edge: number, s: number, d: number) => RideLimits,
   halfWidthM: number,
+  edgeTop: (edge: number, s: number, side: 'left' | 'right') => number | null = (e, s, side) =>
+    edgeTopAt(config.road, e, s, side),
 ): OverStep {
   const road = config.road;
   const lim = limits(at.edge, at.s, at.d);
@@ -275,7 +277,7 @@ export function overStep(
     const v = road.vergeAt(at.edge, at.s, vside);
     const atBand = v.taper !== true && Math.abs(limit + side * halfWidthM - v.dOuter) <= EDGE_EPS_M;
     if (!atBand) return { result: 'barrier', mark: null, holdD: limit };
-    const top = edgeTopAt(road, at.edge, at.s, vside);
+    const top = edgeTop(at.edge, at.s, vside);
     const deckY = road.surfaceHeight(at.edge, at.s, v.dOuter);
     if (top === null || !(y - deckY > top)) return { result: 'barrier', mark: null, holdD: limit };
     const past = pastAt(road, at.edge, at.s, vside);
@@ -303,7 +305,9 @@ export function overStep(
 /**
  * The over-the-barrier rule, each airborne tick before the barrier rule, with the rider's absolute
  * height `y` this tick and its riding limits (`riderLimits`; `halfWidthM` is the bike's half-width
- * they keep inside the band's edge). Returns:
+ * they keep inside the band's edge). `edgeTop` is what stands at a band's edge (road/beyond.ts
+ * `edgeTopAt`; a building front whose buildings the sim meets is 0 there, sim/riders/structures.ts).
+ * Returns:
  * - `barrier` when the barrier rule decides as ever: inside the limits; below the top of what stands
  *   at the edge; a ground edge; a split's guide, a fence's yard or a bridge taper. Also once a rider
  *   that went over is handed over onto another road the race allows (inside it, the rule does
@@ -322,9 +326,11 @@ export function overBarrier(
   y: number,
   limits: (edge: number, s: number, d: number) => RideLimits,
   halfWidthM: number,
+  edgeTop: (edge: number, s: number, side: 'left' | 'right') => number | null = (e, s, side) =>
+    edgeTopAt(config.road, e, s, side),
 ): 'barrier' | 'deck' | 'past' {
   const pos = m.pos;
-  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM);
+  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM, edgeTop);
   if (step.mark) (st.over ??= {})[m.id] = step.mark;
   else clearOver(st, m.id);
   if (step.setD !== undefined) pos.d = step.setD;

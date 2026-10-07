@@ -19,7 +19,11 @@
 //   pile), its top `hazardTop`;
 // - a solid piece of street furniture whose footprint is its own top (drawn no taller than a rider's
 //   head, FURNITURE_TOP_KNOWN_M: road/furniture.ts measures a footprint only up to there, so a lamp's,
-//   a tree's or a palm's top is not known to be flat) and holds the bike: the waterfront's parked cars.
+//   a tree's or a palm's top is not known to be flat) and holds the bike: the waterfront's parked cars;
+// - a structure's top that holds the bike (the road's structures plan, sim/riders/structures.ts: a
+//   building's roof, a landmark's, a pier's deck; `structureSupportAt`), fixed, ridden at its own grade
+//   (a pitched roof's slope), a neighbour's no more than a kerb up or down ridden across onto, and a crack
+//   narrower than the bike bridged by its wheels.
 // Riding one is the riding model in the support's own frame (sim/riders/index.ts): the bike's speed is
 // its speed over the top (`vr`, signed: a support that outruns the bike rolls it backward), the throttle,
 // the brake and the coasting drag act on it with a little less grip than asphalt (SUPPORT_GRIP), the air
@@ -33,7 +37,7 @@
 // recording made before) keeps the old rules (a roof is a contact; the rest are passed over).
 // Leaf module: it reads traffic's state by name (as traffic reads the riders'), so traffic may import it.
 import { cos, sin, type Hitbox, type TuningParamDecl } from '../../core';
-import type { BakedFeature, FurnitureShape } from '../../road';
+import { topAt, type BakedFeature, type FurnitureShape, type Structure } from '../../road';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks } from '../types';
 import { riderHitbox, systemState, vehicleHeightM, type Mover, type World } from '../world';
 import {
@@ -47,7 +51,8 @@ import {
   truckVelocityS,
   type MovingDecks,
 } from './features';
-import { furnitureOn, piecesNear } from './furniture';
+import { BIKE_SPINE_HALF_M, furnitureOn, piecesNear } from './furniture';
+import { racePlanOf, structuresOver } from './structures';
 
 /** The switch: solid tops are ground a rider lands on and rides (1), or the old rules (0). */
 export const SUPPORTS_KEY = 'riders.supports';
@@ -92,8 +97,8 @@ export const SUPPORT_GRIP = 0.85;
  */
 export const JOLT_WOBBLE_MPS = 3;
 
-/** What a support is. */
-export type SupportKind = 'vehicle' | 'truck' | 'hazard' | 'furniture';
+/** What a support is (a `structure`: a building's, a landmark's or a pier's top, sim/riders/structures.ts). */
+export type SupportKind = 'vehicle' | 'truck' | 'hazard' | 'furniture' | 'structure';
 
 /** A support found under a point: its top and how it moves. */
 export interface Support {
@@ -337,6 +342,10 @@ export function supportAt(
       });
     }
   }
+  if (key === undefined || key.startsWith('s:')) {
+    const top = structureSupportAt(world, config, m, at, accept);
+    if (top) take(top);
+  }
   if ((key === undefined || key.startsWith('f:')) && furnitureOn(world.params)) {
     for (const it of piecesNear(config, at.edge, at.s, 1)) {
       if (it.cls !== 'solid' || it.heightM > FURNITURE_TOP_KNOWN_M || !footprintHoldsBike(it.shape, box))
@@ -357,6 +366,67 @@ export function supportAt(
 
 /** A fixed support's motion: none. */
 const STILL = { vx: 0, vz: 0, speed: 0, hx: 1, hz: 0 } as const;
+
+/** A structure's top as a support, its top `top` m above the road where the rider is. */
+function structureSupport(st: Structure, top: number): Support {
+  return { key: `s:${st.id}`, kind: 'structure', top, ...STILL, vehicle: -1, object: st.cls };
+}
+
+/**
+ * The highest structure top (sim/riders/structures.ts) that holds the rider's bike and that `accept`s, under a
+ * world point, its height above the road at `at`; null for none.
+ */
+function structureTopOver(
+  plan: NonNullable<ReturnType<typeof racePlanOf>>,
+  x: number,
+  z: number,
+  surface: number,
+  box: Readonly<Hitbox>,
+  accept: (top: number, key: string) => boolean,
+): Support | null {
+  let best: Support | null = null;
+  for (const st of structuresOver(plan, x, z)) {
+    if (!holdsBike(2 * st.foot.hu, 2 * st.foot.hv, box)) continue;
+    const top = (topAt(st, x, z) ?? st.baseY) - surface;
+    if (accept(top, `s:${st.id}`) && (!best || top > best.top)) best = structureSupport(st, top);
+  }
+  return best;
+}
+
+/**
+ * The structure top a rider at `at` stands on, or comes down on: the highest that holds the bike and that
+ * `accept`s (its top above the road at `at`, and its support key) under the bike's middle; with none there, the higher of those under its two wheels when both have
+ * one (a crack narrower than the bike, such as the 5 cm between two Mission fronts, is bridged; a gap the
+ * bike's middle and a wheel are both over is open, and it falls). Its `top` is its height above the road at
+ * `at`. Null with the switch off, or for none.
+ */
+export function structureSupportAt(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  at: SupportQuery,
+  accept: (top: number, key: string) => boolean,
+): Support | null {
+  const plan = racePlanOf(world, config);
+  if (!plan) return null;
+  const road = config.road;
+  const box = riderHitbox(config, m.riderIndex);
+  const surface = road.surfaceHeight(at.edge, at.s, at.d);
+  const p = road.toWorld(at.edge, at.s, at.d, 0);
+  const middle = structureTopOver(plan, p.x, p.z, surface, box, accept);
+  if (middle) return middle;
+  // The wheels: half the bike's spine either way along its heading in the world.
+  const f = road.frameAt(at.edge, at.s);
+  const c = cos(m.yaw);
+  const sn = sin(m.yaw);
+  const hx = m.pos.dir * (c * f.tx - sn * f.tz) * BIKE_SPINE_HALF_M;
+  const hz = m.pos.dir * (c * f.tz + sn * f.tx) * BIKE_SPINE_HALF_M;
+  const rear = structureTopOver(plan, p.x - hx, p.z - hz, surface, box, accept);
+  if (!rear) return null;
+  const front = structureTopOver(plan, p.x + hx, p.z + hz, surface, box, accept);
+  if (!front) return null;
+  return front.top > rear.top ? front : rear;
+}
 
 /** A moving deck's carrier, from its feature id (`moving:<vehicle id>`), or -1. */
 function vehicleOfDeck(f: BakedFeature): number {

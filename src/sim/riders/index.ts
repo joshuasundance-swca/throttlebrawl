@@ -28,7 +28,7 @@
 // (sim/riders/drift.ts) and road gaps and jumpable walls (sim/riders/gap.ts) plug in through hooks
 // below, each neutral while its move is off, so their lanes never edit this file.
 import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
-import { sRateFactor, type FurnitureShape } from '../../road';
+import { edgeTopAt, sRateFactor, type FurnitureShape, type Structure, type StructurePlan } from '../../road';
 import type { RideLimits } from '../ground';
 // Types only: sim/traffic and sim/tumble import this module, so their state is read, never imported.
 import type { TrafficState } from '../traffic';
@@ -125,18 +125,34 @@ import {
   type OverMark,
 } from './gap';
 import {
+  holdsBike,
   inRiderFrame,
   JOLT_WOBBLE_MPS,
   leaveSupport,
   standOn,
+  structureSupportAt,
   SUPPORT_GRIP,
   supportAt,
   supportKeyOf,
+  supportKindOf,
   supportMotion,
   supportsOn,
   SUPPORTS_TUNING,
   type Support,
 } from './supports';
+import {
+  localShape,
+  noteTouch,
+  plannedFrontAt,
+  racePlanOf,
+  structuresNear,
+  structuresOver,
+  STRUCTURES_TUNING,
+  topGrade,
+  topNear,
+  touchedOf,
+  type StructurePiece,
+} from './structures';
 import { uturnForget, uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
   behindFence,
@@ -153,6 +169,7 @@ import {
 } from './verge';
 import {
   emit,
+  riderHitbox,
   slotAssists,
   speedMultiplierOf,
   systemState,
@@ -401,6 +418,8 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   ...SMOKE_TUNING,
   // Landing on and riding solid tops (the maintainer, 2026-10-06; sim/riders/supports.ts).
   ...SUPPORTS_TUNING,
+  // The structures plan is solid, its roofs ground (the maintainer, 2026-10-06; sim/riders/structures.ts).
+  ...STRUCTURES_TUNING,
 ];
 
 /**
@@ -603,12 +622,14 @@ export function riderState(world: World): RiderState {
 }
 
 /**
- * Whether a rider is out past its road's edge in the air (over the barrier, sim/riders/gap.ts): no
- * edge holds it there, so combat's shove does not snap it back onto the road.
+ * Whether a rider is out past its road's edge in the air (over the barrier, sim/riders/gap.ts), or up on
+ * a structure's top (sim/riders/structures.ts), where its band's edge does not hold it: no edge holds it
+ * there, so combat's shove and the riders' bumps do not snap it back onto the road.
  */
 export function outPastEdge(world: World, id: number): boolean {
   const st = world.systems['riders'] as RiderState | undefined;
-  return st !== undefined && overMarkOf(st, id) !== null;
+  if (st !== undefined && overMarkOf(st, id) !== null) return true;
+  return supportKindOf(world, id) === 'structure';
 }
 
 /**
@@ -922,7 +943,13 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
     bendCarried(world, config, m, side) ? Math.max(1, world.params['riders.bendEdgeForgive'] ?? 1) : 1,
   );
   const hit = { impact, v, yawBefore, side, newContact, crashScale };
-  if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
+  // A building front whose building is in the structures plan (sim/riders/structures.ts): where it stands at
+  // the edge, the edge is that building, met by the one rule for heavy fixed things, not the barrier's.
+  const front = kind === 'hard' ? frontStructure(world, config, m, side, limit) : null;
+  if (front) {
+    const extra = { object: front.cls, structure: String(front.id), hit: 'side' };
+    wallOutcome(world, st, m, { ...hit, extra, vehicle: true });
+  } else if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
   else if (kind === 'fence') wallOutcome(world, st, m, { ...hit, extra: { object: 'fence' }, noCrash: true });
   else groundEdge(world, st, m, kind, hit);
 }
@@ -1442,6 +1469,68 @@ function droppedBikesNear(world: World, edge: number, s: number, self: number): 
   return out;
 }
 
+/** Limits that hold nothing (a rider up on a structure's top, or out past the edge in the air). */
+const UNHELD = { lo: -Infinity, hi: Infinity } as const;
+
+/** How far past a building front's band edge its building is looked for, m (Old Town's fronts stand 0.3 m back). */
+const FRONT_PROBE_M = [0.05, 0.3, 0.6] as const;
+
+/**
+ * Whether a structure is a wall to a rider whose feet are at world height `feet` near (x, z): its top there
+ * is more than a kerb over his feet (less is a step he rides onto) and its underside is below his head (a
+ * lintel, a balcony or a deck over him is passed under).
+ */
+function wallTo(s: Structure, x: number, z: number, feet: number): boolean {
+  return topNear(s, x, z) > feet + KERB_M && s.baseY < feet + RIDER_BODY_HEIGHT_M;
+}
+
+/**
+ * The building standing at a building front's band edge where a rider is held at it (sim/riders/structures.ts):
+ * a structure just past the edge's line whose walls reach the rider, on a front whose buildings are in the plan;
+ * null where none stands (a gap in the frontage: the band's edge holds him as ever) or with the switch off.
+ */
+function frontStructure(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  side: 1 | -1,
+  limit: number,
+): Structure | null {
+  const plan = racePlanOf(world, config);
+  if (!plan) return null;
+  const road = config.road;
+  const pos = m.pos;
+  if (!plannedFrontAt(road, pos.edge, pos.s, side > 0 ? 'right' : 'left')) return null;
+  const feet = road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
+  for (const k of FRONT_PROBE_M) {
+    const p = road.toWorld(pos.edge, pos.s, limit + side * (BIKE_HALF_WIDTH_M + k), 0);
+    for (const s of structuresOver(plan, p.x, p.z)) if (wallTo(s, p.x, p.z, feet)) return s;
+  }
+  return null;
+}
+
+/**
+ * The structures whose walls reach a rider (feet at world height `feet`) within a contact's reach, each as a
+ * footprint in his road frame, the one he stands on (`own`, a support key) aside.
+ */
+function structureWalls(
+  config: SimConfig,
+  plan: StructurePlan,
+  m: Mover,
+  feet: number,
+  own: string,
+): StructurePiece[] {
+  const road = config.road;
+  const pos = m.pos;
+  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  const out: StructurePiece[] = [];
+  for (const s of structuresNear(plan, p.x, p.z, CONTACT_REACH_M)) {
+    if (own === `s:${s.id}` || !wallTo(s, p.x, p.z, feet)) continue;
+    out.push({ st: s, shape: localShape(road, pos.edge, pos.s, pos.d, s) });
+  }
+  return out;
+}
+
 /** Whether a rider is a ghost to traffic now (sim/traffic `trafficGhost`, read without importing it). */
 function respawnGhost(world: World, id: number): boolean {
   const traffic = world.systems['traffic'] as Pick<TrafficState, 'ghostCapT'> | undefined;
@@ -1495,6 +1584,174 @@ function droppedBikeContact(
     if (e && e.type === 'crash' && e.actor === m.id) return true;
   }
   return false;
+}
+
+/**
+ * What stands at a band's edge, to the over-the-barrier rule (sim/riders/gap.ts `overStep`; road/beyond.ts
+ * `edgeTopAt`), for the flight and its forecasts alike: a building front whose buildings are in the
+ * structures plan is no wall at any height up here (0): the buildings themselves are (their walls to the
+ * roofline, their roofs to land on), and a gap between them is open (sim/riders/structures.ts). Their roofs
+ * are ground only with the supports on: without them, the old wall stands.
+ */
+function edgeTopOf(
+  world: World,
+  config: SimConfig,
+): (edge: number, s: number, side: 'left' | 'right') => number | null {
+  const road = config.road;
+  const fronts = racePlanOf(world, config) !== null && supportsOn(world);
+  return (edge, s, side) =>
+    fronts && plannedFrontAt(road, edge, s, side) ? 0 : edgeTopAt(road, edge, s, side);
+}
+
+/** A structure's events' fields: what it is (its class) and its id in the plan. */
+const structureExtra = (s: Structure): Record<string, string> => ({ object: s.cls, structure: String(s.id) });
+
+/**
+ * Runs a structure contact in the rider's own frame measured in metres: along the road, s is scaled to the
+ * metres it covers where he rides (`sRateFactor`: off the middle of a bend a metre of s is more or less than a
+ * metre), so the structure's footprint (`localShape`, laid out in metres) and the bike's capsule and move meet
+ * as they do in the world. His s is put back in the road's units after. `move` is the tick's move in that frame.
+ */
+function inMetres<T>(
+  config: SimConfig,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  run: (move: { s0: number; d0: number; s1: number; d1: number }) => T,
+): T {
+  const pos = m.pos;
+  const at = pos.s;
+  const k = sRateFactor(config.road.kappaAt(pos.edge, at), pos.d);
+  const raw = moveOf(m, before);
+  const move = { s0: at + (raw.s0 - at) / k, d0: raw.d0, s1: at, d1: raw.d1 };
+  try {
+    return run(move);
+  } finally {
+    pos.s = at + (pos.s - at) * k;
+  }
+}
+
+/**
+ * A riding rider meeting a structure's wall (the maintainer, 2026-10-06: buildings are walls up to the roofline;
+ * sim/riders/structures.ts): below its top and above its underside, met by `meetSolid`, the one rule for heavy
+ * fixed things (the closing speed along the contact's normal: square on at speed a crash, a glance a wobble and
+ * a slide along it). On a top, its own structure is ground, not a wall, and a neighbour is a wall only where it
+ * stands more than a kerb above him. Events carry `object` (the structure's class) and `structure` (its id).
+ */
+function structureContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+): void {
+  const plan = racePlanOf(world, config);
+  if (!plan) return;
+  const pos = m.pos;
+  const feet = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
+  const walls = structureWalls(config, plan, m, feet, supportKeyOf(world, m.id));
+  if (walls.length === 0) {
+    noteTouch(world, m.id, 0);
+    return;
+  }
+  inMetres(config, m, before, (move) => {
+    const hit = firstTouch(walls, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw);
+    if (!hit) {
+      noteTouch(world, m.id, 0);
+      return;
+    }
+    const id = hit.piece.st.id;
+    const newContact = touchedOf(world, m.id) !== id + 1;
+    noteTouch(world, m.id, id + 1);
+    meetSolid(world, st, m, move, hit, { extra: structureExtra(hit.piece.st), newContact });
+  });
+}
+
+/**
+ * A rider in the air meeting a structure (sim/riders/structures.ts), the ground's rule: a wall below its top is
+ * met by `meetSolid`; a top too small to hold the bike (a post, a rail, a café table) that the rider comes down
+ * onto from above (`yBefore`, his feet's world height as the tick began, at or over it) is met by the fall
+ * speed (`hit: 'top'`) and he is pushed off it. A top that holds the bike is a support (`structureSupportAt`),
+ * landed on before this is asked. Returns true when he crashed (the flight ends there).
+ */
+function airStructures(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  y: number,
+  yBefore: number,
+): boolean {
+  const plan = racePlanOf(world, config);
+  if (!plan) return false;
+  const road = config.road;
+  const pos = m.pos;
+  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  const box = riderHitbox(config, m.riderIndex);
+  const spine = spineAt(pos.s, pos.d, pos.dir, m.yaw);
+  const eventsBefore = world.events.length;
+  const crashed = () => {
+    for (let i = eventsBefore; i < world.events.length; i++) {
+      const e = world.events[i];
+      if (e && e.type === 'crash' && e.actor === m.id) return true;
+    }
+    return false;
+  };
+  // From above, onto a top too small to hold the bike: the fall speed closes.
+  for (const s of structuresNear(plan, p.x, p.z, CONTACT_REACH_M)) {
+    if (holdsBike(2 * s.foot.hu, 2 * s.foot.hv, box)) continue;
+    const top = topNear(s, p.x, p.z);
+    if (yBefore < top - 1e-6 || y >= top) continue;
+    const shape = localShape(road, pos.edge, pos.s, pos.d, s);
+    if (spineGap(shape, spine).dist >= BIKE_RADIUS_M) continue;
+    const newContact = touchedOf(world, m.id) !== s.id + 1;
+    noteTouch(world, m.id, s.id + 1);
+    wallOutcome(world, st, m, {
+      impact: Math.max(0, -(st.vy[m.id] ?? 0)),
+      v: m.speed,
+      yawBefore: m.yaw,
+      side: 1,
+      newContact,
+      extra: { ...structureExtra(s), hit: 'top' },
+      vehicle: true,
+    });
+    keepOff(shape, pos, m.yaw, 0, pos.d >= shape.d ? 1 : -1);
+    return crashed();
+  }
+  const walls = structureWalls(config, plan, m, y, '');
+  if (walls.length === 0) {
+    noteTouch(world, m.id, 0);
+    return false;
+  }
+  return inMetres(config, m, before, (move) => {
+    const hit = firstTouch(walls, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw);
+    if (!hit) {
+      noteTouch(world, m.id, 0);
+      return false;
+    }
+    const id = hit.piece.st.id;
+    const newContact = touchedOf(world, m.id) !== id + 1;
+    noteTouch(world, m.id, id + 1);
+    meetSolid(world, st, m, move, hit, { extra: structureExtra(hit.piece.st), newContact });
+    return crashed();
+  });
+}
+
+/**
+ * A structure top's rise per metre along the bike's heading where it is (sim/riders/structures.ts
+ * `topGrade`): 0 on a flat roof, the slope on a pitched one.
+ */
+function structureGradeOf(world: World, config: SimConfig, m: Mover, on: Support): number {
+  const plan = racePlanOf(world, config);
+  const s = plan?.items[Number(on.key.slice(2))];
+  if (!s) return 0;
+  const road = config.road;
+  const pos = m.pos;
+  const f = road.frameAt(pos.edge, pos.s);
+  const hx = pos.dir * (cos(m.yaw) * f.tx - sin(m.yaw) * f.tz);
+  const hz = pos.dir * (cos(m.yaw) * f.tz + sin(m.yaw) * f.tx);
+  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  return topGrade(s, p.x, p.z, hx, hz);
 }
 
 /**
@@ -1681,7 +1938,13 @@ function groundSupport(
     return null;
   }
   const at = { edge: m.pos.edge, s: m.pos.s, d: m.pos.d, ahead: 0 };
-  const on = supportsOn(world) ? supportAt(world, config, m, at, decks, () => true, key) : null;
+  // On a structure's top (sim/riders/structures.ts), the top under the bike now: the one it rode onto, or a
+  // neighbour it rode across to (a row of roofs), never one more than a kerb above it.
+  const on = !supportsOn(world)
+    ? null
+    : key.startsWith('s:')
+      ? structureSupportAt(world, config, m, at, (t) => t <= m.h + KERB_M)
+      : supportAt(world, config, m, at, decks, () => true, key);
   if (!on) toWorldFrame(world, config, m);
   return on;
 }
@@ -1779,6 +2042,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
   st.lastTick[m.id] = world.tick;
+  // On a structure's top (sim/riders/structures.ts) the grade is the roof's along the bike's heading (0 on
+  // a flat roof, the pitch on a pitched one), not the road's below it; and the band's edge does not hold it.
+  const onStructure = sup !== null && sup.kind === 'structure';
+  const slopeGrade = sup && onStructure ? structureGradeOf(world, config, m, sup) : grade;
   // On a support the bike moves over it (its signed speed over it, `vr`), carried at its velocity
   // (`carry`, along and across the rider's travel). When that velocity changed since last tick (a truck
   // braking, traffic's no-overlap snap), the bike rolls on at its own: what the support lost along the
@@ -1864,7 +2131,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // truck the wind rolls a rider who lets go slowly back. Friction stops the bike over the top and
     // never turns it round; the engine, the wind and the slope may.
     const air = vr + carry.along * cos(m.yaw) + carry.across * sin(m.yaw);
-    let drive = throttle * a * launch - (a * air * Math.abs(air)) / (top * top) - gravity * grade;
+    let drive = throttle * a * launch - (a * air * Math.abs(air)) / (top * top) - gravity * slopeGrade;
     if (boostLeft > 0) {
       if (air < top) drive = Math.max(drive, Math.min(drive + BOOST_ACCEL_MPS2 * m2, (top - air) / dt));
       st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
@@ -1929,7 +2196,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   const handed = crossToBranch(config, m);
-  barrierContact(world, config, st, m, dt);
+  // Up on a structure's top its band's edge does not hold it: it rides to the top's edge, and off it.
+  if (!onStructure) barrierContact(world, config, st, m, dt);
   truckContact(world, config, st, m, before, dt, decks);
   furnitureContact(world, config, st, m, before);
   droppedBikeContact(world, st, m, before, m.h);
@@ -1940,6 +2208,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     gearAndRpm(st, m);
     return;
   }
+  structureContact(world, config, st, m, before);
   // On a support: its speed over it after the contacts (a scrape, a brush with a lamp beside it), and
   // the support's velocity as read this tick (the next tick's jolt is measured from it).
   if (sup) {
@@ -1954,25 +2223,34 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
   // Still over its support as the tick ends (a moving one where its velocity takes it)? Off its edge,
   // the ground under the bike fell away: a take-off by the same lip rule as a ramp's.
-  const still = sup
-    ? supportAt(
-        world,
-        config,
-        m,
-        { edge: pos.edge, s: pos.s, d: pos.d, ahead: dt },
-        decks,
-        () => true,
-        sup.key,
-      )
-    : null;
+  // A structure's top (sim/riders/structures.ts): the top under the bike where it is now, its own (a pitched
+  // roof's slope rises and falls under it) or a neighbour's no more than a kerb above or below it (a row of
+  // roofs is ridden along; a lower one is a drop off the edge, a higher one a wall).
+  const here = { edge: pos.edge, s: pos.s, d: pos.d, ahead: dt };
+  const still = !sup
+    ? null
+    : onStructure
+      ? structureSupportAt(
+          world,
+          config,
+          m,
+          here,
+          (t, key) => key === sup.key || (t <= sup.top + KERB_M && t >= sup.top - KERB_M),
+        )
+      : supportAt(world, config, m, here, decks, () => true, sup.key);
   const deck = still ? Math.max(ramp, still.top) : ramp;
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
   // Over a gap (playtest 3, sim/riders/gap.ts) there is no surface: the ground fell away.
   const overGap = !still && gapUnder(world, config, m);
-  const lip = overGap || ballistic > ground + TAKEOFF_CLEARANCE_M;
+  // Across from one structure's top to a neighbour's no more than a kerb up or down (a row of roofs, sim/
+  // riders/structures.ts): the bike rolls on over the step, as over a kerb, with no launch off it.
+  const stepped = onStructure && still !== null && sup !== null && still.key !== sup.key;
+  const lip = overGap || (!stepped && ballistic > ground + TAKEOFF_CLEARANCE_M);
   // Off its support (or onto a ramp deck), the rider moves in the world's frame again.
   if (sup && (!still || lip)) toWorldFrame(world, config, m);
+  // Across onto a neighbour's top: that one holds it now.
+  else if (sup && still && still.key !== sup.key) standOn(world, m.id, still, vr, carry);
   // Over a crest, the pull needed to follow the road (speed along it² × its downward curvature)
   // can beat gravity well before one tick's ballistic gap reaches the lip threshold: then the bike
   // floats off the top. Only on the road itself (a truck deck has its own lip).
@@ -2011,10 +2289,15 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // A handover onto a sibling branch (crossToBranch) moves the rider between two drawn surfaces,
     // which can stand apart where real branches climb and fall (playtest 3, T9.4: 0.6 m on Bridge
     // City). That step is no vertical speed, or the next tick launches the bike off flat road.
-    if (dt > 0) st.vy[m.id] = handed ? vyBefore : (ground - yBefore) / dt;
+    if (dt > 0) st.vy[m.id] = handed || stepped ? vyBefore : (ground - yBefore) / dt;
     // A boost pad lies on the road below a support, not on its top.
     if (!(sup && still)) touchPads(world, config, st, m);
-    groundPitch(st, m, slopeAt(config, m));
+    // On a structure's top, the bike lies on its roof's slope (a pitched roof's pitch along its heading).
+    groundPitch(
+      st,
+      m,
+      still?.kind === 'structure' ? atan(structureGradeOf(world, config, m, still)) : slopeAt(config, m),
+    );
     // A wheelie's front is up this far above the slope (playtest 3).
     if (wh.pitchAdd !== 0) st.pitch[m.id] = (st.pitch[m.id] ?? 0) + wh.pitchAdd;
   }
@@ -2132,7 +2415,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // Over the barrier (2026-10-06, sim/riders/gap.ts): higher than what stands at the edge, the rider
   // flies over it, and what lies past decides; below its top the barrier rule holds it as ever.
   const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d);
-  const over = overBarrier(world, config, st, m, y, limits, BIKE_HALF_WIDTH_M);
+  const over = overBarrier(world, config, st, m, y, limits, BIKE_HALF_WIDTH_M, edgeTopOf(world, config));
   if (over === 'barrier') barrierContact(world, config, st, m, dt);
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
@@ -2148,9 +2431,15 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // supports.ts), where it stands as the tick ends, the rider lands on it as on the road (land()).
   const hNow = y - surface;
   const here = { edge: pos.edge, s: pos.s, d: pos.d, ahead: dt };
-  const onTop = tops
+  const fromAbove = tops
     ? supportAt(world, config, m, here, decks, (t) => hBefore >= t - 1e-6 && hNow <= t)
     : null;
+  // A structure's top a rider meets no more than a kerb below its edge is stepped up onto, as a kerb is
+  // on the ground (sim/riders/structures.ts): it is ground, not a wall.
+  const caught = tops
+    ? structureSupportAt(world, config, m, here, (t) => hBefore >= t - KERB_M && hNow <= t)
+    : null;
+  const onTop = caught && (!fromAbove || caught.top > fromAbove.top) ? caught : fromAbove;
   const body = onTop ? null : truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next);
   if (body && y - surface < truckBodyTop(body) && !clearsBody(body, m.speed, pos.dir, gravity)) {
     m.h = Math.max(0, y - surface);
@@ -2171,6 +2460,13 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   }
   // A dropped bike (pile-ups) is met in the air below its top the same way.
   if (!onTop && droppedBikeContact(world, st, m, airFrom, y - surface)) {
+    m.h = Math.max(0, y - surface);
+    st.yAbs[m.id] = y;
+    return;
+  }
+  // A structure (sim/riders/structures.ts): its wall below its top met by the same rule, a small top from
+  // above by the fall speed. A crash ends the flight here.
+  if (!onTop && airStructures(world, config, st, m, airFrom, y, st.yAbs[m.id] ?? y)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
     return;
@@ -2227,7 +2523,10 @@ function land(
 ): void {
   const pos = m.pos;
   const grade = config.road.frameAt(pos.edge, pos.s).grade * pos.dir;
-  const slopeVy = grade * m.speed * cos(m.yaw);
+  // Onto a structure's top (sim/riders/structures.ts), its roof's slope along the bike's heading is the
+  // ground's (level on a flat roof, the pitch on a pitched one), not the road's below it.
+  const roof = on && on.kind === 'structure' ? structureGradeOf(world, config, m, on) : null;
+  const slopeVy = roof !== null ? roof * m.speed : grade * m.speed * cos(m.yaw);
   const vertical = Math.max(0, slopeVy - (st.vy[m.id] ?? 0));
   // Onto a support (sim/riders/supports.ts; the maintainer, 2026-10-06): the same judgement, made in the
   // support's frame, so the sideways speed is the bike's over the top (a truck changing lanes under
@@ -2236,7 +2535,7 @@ function land(
   const lateral = Math.abs(m.speed * sin(m.yaw));
   const crashAt = world.params['riders.landingCrashMps'] ?? 4;
   // The bike's attitude (sim/riders/air.ts): a trick landed, or nose first or looped out.
-  const slope = slopeAt(config, m);
+  const slope = roof !== null ? atan(roof) : slopeAt(config, m);
   const td = touchdown(st, m, slope);
   const crashes = lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL || td.crashes;
   const wobbles =
@@ -2424,6 +2723,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   // has no mark (there is no landing to aim at), and one that comes down on another road, or at the
   // edge of ground past it, has its mark there.
   const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
+  const edgeTop = edgeTopOf(world, config);
   let mark: OverMark | null = overMarkOf(st, m.id);
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
@@ -2435,7 +2735,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     y += vy * dt - 0.5 * gravity * dt * dt;
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
-    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M);
+    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M, edgeTop);
     mark = step.mark;
     if (step.setD !== undefined) at.d = step.setD;
     if (step.hand) {
@@ -2509,16 +2809,8 @@ export function floorOf(world: World, config: SimConfig, m: Mover): number | nul
   const pos = m.pos;
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
   const y = st.yAbs[m.id] ?? surface + m.h;
-  const mark = overMarkOf(st, m.id);
-  if (mark) {
-    const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
-    const to = roadUnder(config, pos, y, limits);
-    if (to) return road.surfaceHeight(to.edge, to.s, to.d);
-    return mark.past === 'ground' ? road.surfaceHeight(pos.edge, pos.s, mark.d) : mark.floorY;
-  }
   const tops = supportsOn(world);
   const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
-  const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
   const up = y - surface;
   const on = tops
     ? supportAt(
@@ -2530,6 +2822,16 @@ export function floorOf(world: World, config: SimConfig, m: Mover): number | nul
         (h) => h <= up + 1e-6,
       )
     : null;
+  const mark = overMarkOf(st, m.id);
+  if (mark) {
+    // Out past the edge: a structure's top under it (a roof past the sidewalk) first.
+    if (on) return surface + on.top;
+    const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
+    const to = roadUnder(config, pos, y, limits);
+    if (to) return road.surfaceHeight(to.edge, to.s, to.d);
+    return mark.past === 'ground' ? road.surfaceHeight(pos.edge, pos.s, mark.d) : mark.floorY;
+  }
+  const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
   return surface + Math.max(0, ramp, on ? on.top : 0);
 }
 
@@ -2588,9 +2890,12 @@ export const ridersSystem: SimSystem = {
     // Bumps stop where riding does (the verge's edge with off-road on), never back on the road. With
     // supports, two riders meet only within a rider's height of each other (one on a truck's roof
     // passes over one on the road).
+    // A rider up on a structure's top past its band (or out past the edge in the air) is not held by
+    // the band's edge, so a bump never snaps it back onto the road.
     riderContacts(world, config, st, {
       wobbleTicks: WOBBLE_TICKS,
-      limits: (c, edge, s, d) => riderLimits(world, c, edge, s, d),
+      limits: (c, edge, s, d, who) =>
+        who && outPastEdge(world, who.id) ? UNHELD : riderLimits(world, c, edge, s, d),
       ...(supportsOn(world) ? { heightGapM: RIDER_BODY_HEIGHT_M } : {}),
     });
   },

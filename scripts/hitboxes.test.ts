@@ -33,16 +33,20 @@ import {
   createRoadNetwork,
   FURNITURE,
   FURNITURE_KINDS,
+  raceStructures,
   STRUCTURE_MODELS,
+  structureLayersFor,
   type BakedNetwork,
   type BakedRoad,
   type FurnitureFoot,
   type FurnitureKind,
+  type Structure,
   type StructureModel,
   type StructureSpec,
 } from '../src/road';
+import { localShape } from '../src/sim/riders/structures';
 import { HAZARD_REACH_D_M, LIGHT_HAZARD_OBJECTS } from '../src/sim/riders/features';
-import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M } from '../src/sim/riders/furniture';
+import { BIKE_RADIUS_M, BIKE_SPINE_HALF_M, spineGap } from '../src/sim/riders/furniture';
 import { MOVING } from '../src/sim/modifiers/moving';
 import { extent, SET_PIECE } from '../src/sim/modifiers/setpieces';
 import { PEDS } from '../src/sim/peds';
@@ -1242,4 +1246,123 @@ describe("the downtowns' structures (road/structures/downtown.ts) are what rende
     const short = st.roof.kind === 'flat' ? { kind: 'flat' as const, topM: st.roof.topM - 3.3 } : st.roof;
     expect(structureGap({ ...st, roof: short }, pts)).toBeGreaterThan(STRUCTURE_DRAWN_TOLERANCE_M);
   }, 120_000);
+});
+
+/**
+ * How far the distance the sim measures from a rider's bike to a structure may be from the true one near him,
+ * m: the contact meets a structure as a footprint laid out in the rider's own road frame (sim/riders/
+ * structures.ts `localShape`), exact at the rider; on a bend it bends a little away from him.
+ */
+const STRUCTURE_HIT_TOLERANCE_M = 0.05;
+/** Only distances a contact reads count: the bike's points this near a structure, m. */
+const STRUCTURE_HIT_REACH_M = 1.5;
+
+/** The signed distance from a world point to a structure's footprint, m (negative inside it). */
+function footGap(st: Structure, x: number, z: number): number {
+  const f = st.foot;
+  const dx = x - f.x;
+  const dz = z - f.z;
+  const ou = Math.abs(dx * f.ux + dz * f.uz) - f.hu;
+  const ov = Math.abs(dz * f.ux - dx * f.uz) - f.hv;
+  if (ou <= 0 && ov <= 0) return Math.max(ou, ov);
+  return Math.sqrt(Math.max(ou, 0) ** 2 + Math.max(ov, 0) ** 2);
+}
+
+/** Every network the packs carry, built as the game builds it. */
+function packNetworks() {
+  const out: { id: string; road: ReturnType<typeof createRoadNetwork> }[] = [];
+  for (const pack of PACKS)
+    for (const region of readdirSync(`packs/${pack}/regions`)) {
+      let ids: string[];
+      try {
+        ids = readdirSync(`packs/${pack}/regions/${region}/networks`).map((f) => f.replace(/\.json$/, ''));
+      } catch {
+        continue;
+      }
+      for (const id of ids) out.push({ id, road: networkFrom(pack, region, id).road });
+    }
+  return out;
+}
+
+describe('the structures the sim meets are the plan’s boxes (sim/riders/structures.ts, the physical world)', () => {
+  it('a rider beside any structure is as far from it to the sim as in the world, round the bike', () => {
+    let worst = 0;
+    let worstAt = '';
+    let probes = 0;
+    let structures = 0;
+    let networks = 0;
+    for (const { id, road } of packNetworks()) {
+      if (structureLayersFor(road).length === 0) continue;
+      networks++;
+      const plan = raceStructures(road, 7);
+      for (const st of plan.items) {
+        structures++;
+        const f = st.foot;
+        // A rider 0.3 m out from the middle of each side, where the road takes him (projected onto it).
+        for (const [u, v] of [
+          [f.hu + 0.3, 0],
+          [-f.hu - 0.3, 0],
+          [0, f.hv + 0.3],
+          [0, -f.hv - 0.3],
+        ] as const) {
+          const x = f.x + u * f.ux - v * f.uz;
+          const z = f.z + u * f.uz + v * f.ux;
+          const at = road.project(x, z, st.edge);
+          const shape = localShape(road, at.edge, at.s, at.d, st);
+          // His bike's points (its middle, its wheels, its sides), in the frame the contact meets them in:
+          // metres along the road and across it where he is (sim/riders/index.ts `inMetres`), and in the world.
+          const p = road.toWorld(at.edge, at.s, at.d, 0);
+          const fr = road.frameAt(at.edge, at.s);
+          for (const [ds, dd] of [
+            [0, 0],
+            [BIKE_SPINE_HALF_M, 0],
+            [-BIKE_SPINE_HALF_M, 0],
+            [0, BIKE_RADIUS_M],
+            [0, -BIKE_RADIUS_M],
+          ] as const) {
+            const s = at.s + ds;
+            const d = at.d + dd;
+            const truth = footGap(st, p.x + ds * fr.tx - dd * fr.tz, p.z + ds * fr.tz + dd * fr.tx);
+            if (truth > STRUCTURE_HIT_REACH_M) continue;
+            const sim = spineGap(shape, { as: s, ad: d, bs: s, bd: d }).dist;
+            probes++;
+            const gap = Math.abs(sim - truth);
+            if (gap > worst) {
+              worst = gap;
+              worstAt = `${id} #${st.id} ${st.rule} (sim ${sim.toFixed(3)}, world ${truth.toFixed(3)})`;
+            }
+          }
+        }
+      }
+    }
+    console.log(
+      `[examined] ${probes} bike points within ${STRUCTURE_HIT_REACH_M} m of ${structures} structures on ${networks} networks: worst ${worst.toFixed(4)} m at ${worstAt}`,
+    );
+    expect(networks).toBeGreaterThan(5);
+    expect(probes).toBeGreaterThan(1000);
+    expect(worst).toBeLessThanOrEqual(STRUCTURE_HIT_TOLERANCE_M);
+  }, 240_000);
+
+  it('the rule fails a footprint that is not the plan’s (negative controls)', () => {
+    const { road } = networkFrom('region-sf', 'san-francisco', 'sf-downtown');
+    const plan = raceStructures(road, 7);
+    const st = plan.items[0];
+    if (!st) throw new Error('no structure');
+    const f = st.foot;
+    const x = f.x + 0 * f.ux - (f.hv + 0.3) * f.uz;
+    const z = f.z + 0 * f.uz + (f.hv + 0.3) * f.ux;
+    const at = road.project(x, z, st.edge);
+    const w = road.toWorld(at.edge, at.s, at.d, 0);
+    const truth = footGap(st, w.x, w.z);
+    const gapOf = (s: Structure) => {
+      const shape = localShape(road, at.edge, at.s, at.d, s);
+      return Math.abs(spineGap(shape, { as: at.s, ad: at.d, bs: at.s, bd: at.d }).dist - truth);
+    };
+    expect(gapOf(st)).toBeLessThanOrEqual(STRUCTURE_HIT_TOLERANCE_M);
+    // Moved 10 cm, or 10 cm wider across: found.
+    expect(gapOf({ ...st, foot: { ...f, x: f.x + 0.1 * f.uz, z: f.z - 0.1 * f.ux } })).toBeGreaterThan(
+      STRUCTURE_HIT_TOLERANCE_M,
+    );
+    expect(gapOf({ ...st, foot: { ...f, hv: f.hv + 0.1 } })).toBeGreaterThan(STRUCTURE_HIT_TOLERANCE_M);
+  });
 });
