@@ -160,3 +160,31 @@ export type {
 } from './structures';
 export { COURSE_STEP_M, courseAt } from './course';
 export type { CourseSpot } from './course';
+// The car ferry's numbers (small: render's roofs and the places both read them, and so does its planner).
+export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';
+// The layers' layouts (what render draws, what the registry plans): in the planners' lazy chunk
+// (`road-structures`, scripts/sim-chunk.mjs), loaded with the region, never in the first load. Render awaits one before it builds its layer (render/waterfront.ts,
+// render/pnw-places.ts); the registry (`STRUCTURE_LAYERS`) loads the same module for the sim.
+export const loadWaterfrontLayout = () => import('./structures/waterfront');
+export const loadPnwPlacesLayout = () => import('./structures/pnw-places');
+export type {
+  BlockKind,
+  Frontage,
+  SolidDef as WaterfrontSolidDef,
+  WaterfrontLayout,
+  WfBackTower,
+  WfBlock,
+  WfEdge,
+  WfFront,
+  WfPlaced,
+  WfStreet,
+} from './structures/waterfront';
+export type {
+  PnwBanner,
+  PnwBunting,
+  PnwFerryPart,
+  PnwPlacesLayout,
+  PnwShop,
+  PnwSideStreet,
+  PnwSolidDef,
+} from './structures/pnw-places';

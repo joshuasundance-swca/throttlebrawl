@@ -5,7 +5,13 @@
 import { describe, expect, it } from 'vitest';
 import { createSim } from '../api';
 import type { SimConfig, SimEvent } from '../types';
-import { BUMP_CLOSING_MPS, RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from './contact';
+import {
+  BUMP_CLOSING_MPS,
+  RIDER_BODY_HEIGHT_M,
+  RIDER_CONTACT_HALF_WIDTH_M,
+  RIDER_HALF_LENGTH_M,
+  riderContacts,
+} from './contact';
 import { riderState } from './index';
 import { input, packHarness, testConfig, type PackHarness } from './testing';
 
@@ -179,5 +185,39 @@ describe('playtest 1 item 6: riders bump instead of clipping', () => {
       return hashes;
     };
     expect(run()).toEqual(run());
+  });
+});
+
+describe('supports: riders meet only within a rider’s height of each other', () => {
+  /** Two riding bikes side by side and overlapping, one `h` m up (on a truck's roof), met once. */
+  function stacked(h: number, gap: number | undefined) {
+    // The second swings into the first at about 20 · sin(0.15) = 3 m/s across: a bump on the road.
+    const hh = packHarness(pair(), [
+      { s: 100, d: 1.2, speed: 20 },
+      { s: 100, d: 1.6, speed: 20, yaw: -0.15 },
+    ]);
+    const [a, b] = hh.riders;
+    if (!a || !b) throw new Error('no riders');
+    b.h = h;
+    hh.world.events = [];
+    riderContacts(hh.world, hh.config, riderState(hh.world), {
+      wobbleTicks: 36,
+      limits: () => ({ lo: -10, hi: 10 }),
+      ...(gap !== undefined ? { heightGapM: gap } : {}),
+    });
+    return { events: bumps(hh.world.events), apart: Math.abs(b.pos.d - a.pos.d) };
+  }
+
+  it('one 3.4 m up passes over one on the road; at the same height (or with no gap given) they bump', () => {
+    const over = stacked(3.4, RIDER_BODY_HEIGHT_M);
+    const level = stacked(0, RIDER_BODY_HEIGHT_M);
+    const before = stacked(3.4, undefined);
+    console.log(
+      `[examined] bumps: 3.4 m apart in height ${over.events.length}, level ${level.events.length}, no gap given ${before.events.length}`,
+    );
+    expect(over.events).toEqual([]);
+    expect(over.apart).toBeCloseTo(0.4, 9);
+    expect(level.events).toHaveLength(2);
+    expect(before.events).toHaveLength(2);
   });
 });
