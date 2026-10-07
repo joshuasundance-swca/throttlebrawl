@@ -57,6 +57,7 @@ function fakeManifest(files: Record<string, ArrayBuffer | 'broken'>): AssetManif
     resolve: () => null,
     progress: () => ({ total: 0, done: 0, fellBack: 0, bytesLoaded: 0, bytesTotal: 0, perAsset: {} }),
     onProgress: () => () => {},
+    onRetryReady: () => () => {},
     async load<T>(
       id: string,
       standIn: () => T,

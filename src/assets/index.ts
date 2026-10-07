@@ -27,6 +27,8 @@ export interface AssetLoad<T> {
    * its own record of a failed asset keeps it only until then.
    */
   retryable?: true;
+  /** The wait the host asked for in ms (the answer's Retry-After), when it asked for one that can be waited out. */
+  waitMs?: number;
 }
 
 export type AssetStatus = 'pending' | 'loading' | 'loaded' | 'fallback';
@@ -61,12 +63,37 @@ export interface AssetManifest {
   progress(): AssetProgress;
   /** Called on every progress change; returns an unsubscribe function. */
   onProgress(listener: (p: AssetProgress) => void): () => void;
+  /**
+   * Called with an asset's id when the wait the host held it back by (the answer's Retry-After) has passed
+   * and the asset is still not loaded: the caller can ask for it again (`load`) in the same race (lane T2,
+   * after polish L's check). Only a fall-back with `retryable` and a wait calls it; a 404, a connection
+   * failure and an answer with no readable wait do not, and after WAIT_ASKS_MAX of them in a row for one id
+   * it stops until that id loads. Returns an unsubscribe function.
+   */
+  onRetryReady(listener: (id: string) => void): () => void;
 }
 
 export interface AssetManifestOptions {
   /** URLs resolve against this (the build uses a relative base, so it is the page's own URL). */
   baseUrl?: string;
   fetchFn?: typeof fetch;
+  /** Runs `run` after `ms` and returns a cancel; the clock's own timer by default (a test's fires by hand). */
+  later?: (run: () => void, ms: number) => () => void;
+}
+
+/** The longest host wait the manifest sets a timer for; a longer one waits for the next race (ms). [default] */
+export const WAIT_ASK_CAP_MS = 5 * 60 * 1000;
+/** A little past the wait, so the loader's hold has ended when the ask is made (ms). [default] */
+export const WAIT_ASK_MARGIN_MS = 250;
+/** How many waits in a row one asset is asked for again after; a host that keeps holding is not chased. [default] */
+export const WAIT_ASKS_MAX = 3;
+
+/** The wait a Retry-After value asks for in ms (whole seconds or an HTTP date); null when it is none or unreadable. */
+function waitOf(value: string | null): number | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  const ms = /^\d+$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw) - Date.now();
+  return Number.isFinite(ms) && ms > 0 && ms <= WAIT_ASK_CAP_MS ? ms : null;
 }
 
 function defaultBase(): string {
@@ -114,6 +141,16 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
   const loadedBytes = new Map<string, number>();
   const inFlight = new Map<string, Promise<AssetLoad<unknown>>>();
   const listeners = new Set<(p: AssetProgress) => void>();
+  const readyListeners = new Set<(id: string) => void>();
+  /** The timers waiting for a host wait to pass, by asset id, and how many waits in a row each has been asked after. */
+  const waiting = new Map<string, () => void>();
+  const waitAsks = new Map<string, number>();
+  const later =
+    opts.later ??
+    ((run: () => void, ms: number) => {
+      const t = setTimeout(run, ms);
+      return () => clearTimeout(t);
+    });
   const baseUrl = opts.baseUrl ?? defaultBase();
   const fetchFn = opts.fetchFn ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
 
@@ -143,7 +180,13 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
     emit();
     return result;
   };
-  const fallBack = <T>(id: string, standIn: () => T, error: string, retryable = false): AssetLoad<T> =>
+  const fallBack = <T>(
+    id: string,
+    standIn: () => T,
+    error: string,
+    retryable = false,
+    waitMs: number | null = null,
+  ): AssetLoad<T> =>
     settle({
       id,
       source: 'procedural',
@@ -151,7 +194,22 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
       fellBack: true,
       error,
       ...(retryable ? { retryable: true as const } : {}),
+      ...(retryable && waitMs !== null ? { waitMs } : {}),
     });
+
+  /** Once the wait an answer asked for has passed, tells the listeners, if the asset is still not in. */
+  const askWhenWaitPasses = (id: string, waitMs: number) => {
+    const asks = waitAsks.get(id) ?? 0;
+    if (asks >= WAIT_ASKS_MAX || waiting.has(id)) return;
+    waitAsks.set(id, asks + 1);
+    const cancel = later(() => {
+      waiting.delete(id);
+      // Loaded since (the next race asked first), or already being asked for again: nothing to say.
+      if (status.get(id) !== 'fallback' || inFlight.has(id)) return;
+      for (const l of [...readyListeners]) l(id);
+    }, waitMs + WAIT_ASK_MARGIN_MS);
+    waiting.set(id, cancel);
+  };
 
   async function loadFile<T>(
     entry: AssetIndexEntry,
@@ -167,8 +225,16 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
       const res = await fetchFn(url);
       if (!res.ok) {
         // The host was busy or asked for a wait (the loader's hold answers 429 too): asked for again later.
-        void res.body?.cancel().catch(() => undefined);
-        return fallBack(entry.id, standIn, `HTTP ${res.status} for ${entry.path}`, hostTrouble(res.status));
+        // The answer's small error body is left unread (not cancelled): a cancel showed in the network
+        // record as a net::ERR_ABORTED beside every failed model answer (polish L's punch item 3).
+        const trouble = hostTrouble(res.status);
+        return fallBack(
+          entry.id,
+          standIn,
+          `HTTP ${res.status} for ${entry.path}`,
+          trouble,
+          trouble ? waitOf(res.headers.get('Retry-After')) : null,
+        );
       }
       data = await readBody(res, (n) => {
         loadedBytes.set(entry.id, n);
@@ -199,6 +265,10 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    onRetryReady(listener) {
+      readyListeners.add(listener);
+      return () => readyListeners.delete(listener);
+    },
     load<T>(id: string, standIn: () => T, o: LoadOptions<T> = {}): Promise<AssetLoad<T>> {
       const running = inFlight.get(id) as Promise<AssetLoad<T>> | undefined;
       if (running) return running;
@@ -217,6 +287,8 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
       void p.then(
         (res) => {
           if (res.retryable && inFlight.get(id) === p) inFlight.delete(id);
+          if (!res.fellBack) waitAsks.delete(id);
+          else if (res.retryable && res.waitMs !== undefined) askWhenWaitPasses(id, res.waitMs);
         },
         () => undefined,
       );

@@ -74,4 +74,64 @@ describe('a model held back by the loader during the host wait (polish batch I, 
     expect(later).toMatchObject({ fellBack: false, value: 'a real rider model' });
     expect(p.asked).toEqual([WAITED, `${SCOPE}${GLB}`]);
   });
+
+  // The wait's end (lane T2, after polish L's check, punch item 2): a race that started inside the wait
+  // has the model once the wait has passed, in the same race. The loader's hold, the manifest and the
+  // clock are the real ones; only the host and the manifest's timer are scripted.
+  describe('through the real loader, in the same race', () => {
+    /** The manifest's timer, tied to the page clock: passing a wait moves the clock to its end. */
+    function timer(clock: { ms: number }) {
+      const set: { ms: number; run: () => void }[] = [];
+      return {
+        later: (run: () => void, ms: number) => {
+          set.push({ ms, run });
+          return () => undefined;
+        },
+        set,
+        passWait: (i: number) => {
+          const t = set[i];
+          if (!t) throw new Error('no timer set');
+          clock.ms += t.ms;
+          t.run();
+        },
+      };
+    }
+    const race = (script: Record<string, Step[]>, listen = true) => {
+      const p = page(script);
+      const t = timer(p.clock);
+      const m = createAssetManifest(() => [deacon], { baseUrl: SCOPE, fetchFn: p.fetchFn, later: t.later });
+      const arrived: Promise<unknown>[] = [];
+      if (listen) m.onRetryReady((id) => arrived.push(m.load(id, () => 'box rider', { decode: decodeText })));
+      return { ...p, t, m, arrived };
+    };
+
+    it('asks for the held model when the wait passes, and it arrives with no next race', async () => {
+      const r = race({ [WAITED]: [{ status: 429, retryAfter: '30' }] });
+      expect((await r.fetchFn(WAITED)).status).toBe(429);
+      expect(await load(r.m)).toMatchObject({ fellBack: true, retryable: true });
+      expect(r.asked).toEqual([WAITED]);
+      r.t.passWait(0);
+      const [got] = (await Promise.all(r.arrived)) as { fellBack: boolean; value: string }[];
+      expect(got).toMatchObject({ fellBack: false, value: 'a real rider model' });
+      expect(r.asked).toEqual([WAITED, `${SCOPE}${GLB}`]);
+    });
+
+    // Control: main's behaviour (nobody told) keeps the stand-in until the next race asks.
+    it('without a listener the stand-in stays until the next race asks', async () => {
+      const r = race({ [WAITED]: [{ status: 429, retryAfter: '30' }] }, false);
+      await r.fetchFn(WAITED);
+      await load(r.m);
+      r.t.passWait(0);
+      await Promise.resolve();
+      expect(r.asked).toEqual([WAITED]);
+      expect((await load(r.m)).fellBack).toBe(false);
+    });
+
+    it('does not ask again for a model the host does not have (a 404)', async () => {
+      const r = race({ [`${SCOPE}${GLB}`]: [404] });
+      expect(await load(r.m)).toMatchObject({ fellBack: true });
+      expect(r.t.set).toHaveLength(0);
+      expect(r.asked).toEqual([`${SCOPE}${GLB}`]);
+    });
+  });
 });
