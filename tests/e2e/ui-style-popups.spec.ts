@@ -1194,10 +1194,18 @@ test('the look-ahead and layout checks catch a centred widget and overlapped wid
 // under it, and hides when a control is under both (ui/stamp.ts). This measures it on every screen
 // with controls, at phone sizes sideways and upright and at a laptop's.
 
-/** What the stamp covers on this screen, from painted boxes (the UI ignores the pointer outside its controls). */
-async function stampCover(page: Page) {
-  return page.evaluate(() => {
+/**
+ * What the stamp covers on this screen, from painted boxes (the UI ignores the pointer outside its controls).
+ * `forced` first puts the stamp back in its left corner, shown, in the same task as the measuring: the UI's own
+ * check (a class change queues it for the next frame) could otherwise move it again in between.
+ */
+async function stampCover(page: Page, forced = false) {
+  return page.evaluate((force) => {
     const stamp = document.getElementById('build-stamp');
+    if (force && stamp) {
+      stamp.classList.remove('at-right', 'yield');
+      stamp.style.display = 'block';
+    }
     const shown = !!stamp && stamp.checkVisibility();
     const sb = stamp?.getBoundingClientRect();
     const hit = (a: DOMRect, b: DOMRect) =>
@@ -1238,7 +1246,7 @@ async function stampCover(page: Page) {
       under,
       blocked,
     };
-  });
+  }, forced);
 }
 
 /** Lets the stamp's own check run (it re-checks a frame after a screen or its content changes). */
@@ -1470,13 +1478,10 @@ test('the stamp check catches a control under the stamp, and the stamp steps awa
   );
   expect(moved.under, 'the stamp stepped away from the planted button').toEqual([]);
   expect(moved.at !== before.at || !moved.shown, 'the stamp moved or hid').toBe(true);
-  // Forced back over it, the check names it.
-  await page.evaluate(() => {
-    const s = document.getElementById('build-stamp');
-    s?.classList.remove('at-right', 'yield');
-    if (s) s.style.display = 'block';
-  });
-  const forced = await stampCover(page);
+  // Forced back over it, the check names it (forced and measured in one task: the class change queues the
+  // UI's own check for the next frame, which can step the stamp away before a later measure; in train 432 the
+  // forced stamp covered the debug report button and not the planted one).
+  const forced = await stampCover(page, true);
   console.log(`negative control: forced ${JSON.stringify(forced.under)}`);
   expect(forced.under.some((u) => u.includes('planted-under-stamp'))).toBe(true);
 });
