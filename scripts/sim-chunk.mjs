@@ -22,6 +22,21 @@ const HASH_LENGTH = SIM_CODE_HASH_PLACEHOLDER.length;
 export const ROAD_LAZY_TEST = /[\\/]src[\\/]road[\\/]structures[\\/]/;
 export const ROAD_LAZY_CHUNK_NAME = 'road-structures';
 
+/**
+ * The systems' steps (lane U3, 2026-10-07: the first-load headroom; src/sim/late.ts): each system's step and
+ * the rules only a step reaches (`src/sim/<system>/step.ts`, gathered by src/sim/steps.ts; the law's props, the
+ * shortcut stamps, the crash rig and its contacts, the run back). The menu's grid is made and snapshotted without
+ * them, so they build into their own
+ * chunk, which src/sim/late.ts imports dynamically, and the code hash covers it as it covers the planners'. The
+ * sim chunk's group leaves them out (`simChunkGroup`) and theirs comes after it: a group takes its modules'
+ * dependencies too, so the steps' group first would take the whole sim.
+ */
+export const SIM_STEPS_TEST =
+  /[\\/]src[\\/]sim[\\/](?:steps|[\w-]+[\\/]step|modifiers[\\/]law-props|race[\\/]shortcuts|tumble[\\/](?:rig|contacts|runback))\.ts$/;
+export const SIM_STEPS_CHUNK_NAME = 'sim-steps';
+/** The lazy chunks whose code is the sim's, so the code hash covers them. */
+const HASHED_LAZY_CHUNKS = new Set([ROAD_LAZY_CHUNK_NAME, SIM_STEPS_CHUNK_NAME]);
+
 /** Modules that belong in the sim chunk: the sim, the road model (all but its lazy planners) and core. */
 export const SIM_CHUNK_TEST = /[\\/]src[\\/](?:sim|core|road(?![\\/]structures[\\/]))[\\/]/;
 
@@ -31,24 +46,29 @@ export function simCodeHashOf(code) {
 }
 
 /**
- * The sim's code hash from a build's chunks: the sim chunk's code, then each road planner chunk's in file
- * name order (with none, exactly `simCodeHashOf(sim.code)`, as before the planners had a chunk).
+ * The sim's code hash from a build's chunks: the sim chunk's code, then each road planner chunk's and step
+ * chunk's in file name order (with none, exactly `simCodeHashOf(sim.code)`, as before the planners had a chunk).
  */
 export function simCodeHashOfChunks(sim, chunks) {
   const lazy = chunks
-    .filter((c) => c.name === ROAD_LAZY_CHUNK_NAME)
+    .filter((c) => HASHED_LAZY_CHUNKS.has(c.name))
     .sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
   return simCodeHashOf([sim, ...lazy].map((c) => c.code).join('\n'));
 }
 
 /** The Rolldown code-splitting group that makes the sim chunk. */
 export function simChunkGroup() {
-  return { name: SIM_CHUNK_NAME, test: SIM_CHUNK_TEST };
+  return { name: SIM_CHUNK_NAME, test: (id) => SIM_CHUNK_TEST.test(id) && !SIM_STEPS_TEST.test(id) };
 }
 
 /** The Rolldown code-splitting group that makes the road's lazy planners' chunk. */
 export function roadLazyChunkGroup() {
   return { name: ROAD_LAZY_CHUNK_NAME, test: ROAD_LAZY_TEST };
+}
+
+/** The Rolldown code-splitting group that makes the systems' steps' chunk; it comes after the sim chunk's. */
+export function simStepsChunkGroup() {
+  return { name: SIM_STEPS_CHUNK_NAME, test: SIM_STEPS_TEST };
 }
 
 /**
@@ -71,10 +91,10 @@ export function simCodeHashPlugin() {
           return;
         }
         const sim = sims[0];
-        const own = [sim, ...chunks.filter((c) => c.name === ROAD_LAZY_CHUNK_NAME)];
+        const own = [sim, ...chunks.filter((c) => HASHED_LAZY_CHUNKS.has(c.name))];
         if (own.some((c) => c.code.includes(SIM_CODE_HASH_PLACEHOLDER)))
           this.error(
-            'the sim and road planner chunks must not read __SIM_CODE_HASH__ (its hash would depend on itself)',
+            'the sim, road planner and step chunks must not read __SIM_CODE_HASH__ (its hash would depend on itself)',
           );
         const hash = simCodeHashOfChunks(sim, chunks);
         for (const c of chunks) {

@@ -49,6 +49,7 @@ import { createHaptics, createInput, type ActionState } from '../input';
 import {
   APP_ID,
   installOffer,
+  paceBuildFetches,
   runStartTap,
   startOffline,
   watchLifecycle,
@@ -85,6 +86,7 @@ import { createCountdown } from './countdown';
 import { createLookFallback } from './look-fallback';
 import {
   createSim,
+  loadSimSteps,
   loadStructurePlanners,
   SIM_DT,
   type EventPatch,
@@ -406,8 +408,12 @@ function safeStorage(): StorageLike | null {
  * What the first screen needs before `createApp`: the Keys' hand-made road data, which ships as
  * JSON files beside the build instead of in the first-load JavaScript (run W-S), for the default
  * race and the menu's backdrop. main.ts awaits it; a failed fetch rejects and can be tried again.
+ * The page's fetch goes to platform/'s loader first, so these 37 files get its rules too: no pacing
+ * until the host asks, its waits, the retry and the offline caches' read (polish batch O's check,
+ * punch item 3).
  */
 export function loadBootContent(): Promise<void> {
+  paceBuildFetches();
   return loadBaseRoads();
 }
 
@@ -1254,12 +1260,13 @@ export function createApp(opts: AppOptions): AppHandle {
   /**
    * The physical world's planners (the structures the sim meets: its buildings, landmarks and roofs; one
    * lazy chunk, never in the first load), fetched in the background with the Keys' real roads; a race waits
-   * for them as it waits for its roads, since its world is planned from them as it starts.
+   * for them as it waits for its roads, since its world is planned from them as it starts. The systems' steps
+   * (the sim's step chunk, lane U3: the menu's grid needs none of it) come with them, the same way.
    */
   let plannersIn = false;
   let plannersLoading: Promise<void> | null = null;
   const loadPlanners = (): Promise<void> =>
-    (plannersLoading ??= loadStructurePlanners().then(
+    (plannersLoading ??= Promise.all([loadStructurePlanners(), loadSimSteps()]).then(
       () => {
         plannersIn = true;
       },

@@ -106,6 +106,18 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]ui[\\/]moves-gauge\.ts$/,
   // The menu race's options screen (playtest 4, P4-12): its DOM; its rules stay in race-options.ts.
   /[\\/]src[\\/]ui[\\/]race-options-view\.ts$/,
+  // The sim's step (lane U3, 2026-10-07, the first-load headroom): what only a running race runs, each
+  // system's step and the rules only it reaches, one lazy chunk (scripts/sim-chunk.mjs SIM_STEPS_TEST) the app
+  // loads with the structures' planners and a race waits for (src/sim/late.ts). The menu's grid needs none of it.
+  /[\\/]src[\\/]sim[\\/]steps\.ts$/,
+  ...['ai', 'combat', 'cops', 'traffic', 'peds', 'tumble', 'race', 'riders', 'modifiers'].map(
+    (system) => new RegExp(`[\\\\/]src[\\\\/]sim[\\\\/]${system}[\\\\/]step\\.ts$`),
+  ),
+  /[\\/]src[\\/]sim[\\/]modifiers[\\/]law-props\.ts$/,
+  /[\\/]src[\\/]sim[\\/]race[\\/]shortcuts\.ts$/,
+  /[\\/]src[\\/]sim[\\/]tumble[\\/]rig\.ts$/,
+  /[\\/]src[\\/]sim[\\/]tumble[\\/]contacts\.ts$/,
+  /[\\/]src[\\/]sim[\\/]tumble[\\/]runback\.ts$/,
 ];
 
 /**

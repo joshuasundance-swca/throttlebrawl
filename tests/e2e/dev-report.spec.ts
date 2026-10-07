@@ -62,14 +62,15 @@ test.beforeEach(async ({ page }) => {
 /** The build id from the stamp, and the replay key this build should report. */
 /**
  * The replay key the page must report: `simCodeHash + simContentHash` (M2 app-3), where the code
- * part is the first 12 hex digits of the SHA-256 of the sim chunk the page actually loaded, then each of
- * the road's lazy planner chunks in file name order, joined by a newline (scripts/sim-chunk.mjs,
- * `simCodeHashOfChunks`). A planner chunk may not be loaded yet; the loaded chunks name it.
+ * part is the first 12 hex digits of the SHA-256 of the sim chunk the page actually loaded, then the
+ * lazy road planner and sim step chunks in file name order, joined by a newline (scripts/sim-chunk.mjs,
+ * `simCodeHashOfChunks`). A lazy chunk may not be loaded yet; the loaded chunks name it. This discovery
+ * stays independent of the build plugin, so a missing chunk in the injected key fails the check.
  */
 async function expectedKey(page: Page): Promise<{ id: string; key: string }> {
   // The key moves once, when the Keys' real roads arrive after boot (app/index.ts `roadsArrived`: a pack's
-  // hash covers its road data). They are fetched in the background a few files at a time
-  // (platform/retry-fetch.ts FETCH_LANES), so they may land after the start tap: the key is read once
+  // hash covers its road data). They are fetched in the background (a few files at a time once the
+  // host has asked for pacing: platform/retry-fetch.ts), so they may land after the start tap: the key is read once
   // they are in, which the route picker shows by offering a road beside the region's own.
   await expect(page.locator('#route-picker .route-row > :not(#route-own)').first()).toBeAttached({
     timeout: 30_000,
@@ -87,7 +88,7 @@ async function expectedKey(page: Page): Promise<{ id: string; key: string }> {
     const text = async (u: string) => (await fetch(u)).text();
     const names = new Set<string>();
     for (const s of scripts)
-      for (const m of (await text(s)).matchAll(/road-structures-[\w-]+\.js/g)) names.add(m[0]);
+      for (const m of (await text(s)).matchAll(/(?:road-structures|sim-steps)-[\w-]+\.js/g)) names.add(m[0]);
     const lazy = [...names].sort().map((n) => new URL(n, url).href);
     const codes = [await text(url), ...(await Promise.all(lazy.map(text)))];
     const bytes = new TextEncoder().encode(codes.join('\n'));
