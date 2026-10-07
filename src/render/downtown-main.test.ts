@@ -85,6 +85,26 @@ const KNOWN: Readonly<Record<string, { main: readonly string[]; now: readonly st
   },
 };
 
+/**
+ * Where the land itself has changed since the fixture, by network: x and z bounds of the ground whose lots
+ * are not held to main's. The ride column's check (2026-10-06) keeps land from standing over another road's
+ * lanes lower than it (render/road-mesh.ts `landOverRoad`, road/land.ts the same rule), and beside the
+ * Hawthorne Bridge road that land ran over the Morrison links below it; it stops short of their lanes now,
+ * so the lots planned on it differ. A row whose drawn box's middle lies here is left out of both sides;
+ * portland-blocks.test.ts still holds every building there to the land the road scene draws.
+ */
+const LAND_CHANGED: Readonly<Record<string, readonly { x0: number; x1: number; z0: number; z1: number }[]>> =
+  {
+    'osm-pnw-portland': [{ x0: 960, x1: 1055, z0: 725, z1: 855 }],
+  };
+/**
+ * The stretches of surfaces, by network and key, that the same rule trims a few triangles from (their land
+ * stops short of a lower road's lanes too); their extent is held as before.
+ */
+const SURFACES_CHANGED: Readonly<Record<string, ReadonlySet<string>>> = {
+  'osm-pnw-portland': new Set(['4:0', '7:7']),
+};
+
 const c2 = (v: number) => {
   const s = (Math.round(v * 100) / 100).toFixed(2);
   return s.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
@@ -168,12 +188,23 @@ describe("the downtowns draw as main drew them (the placement's move into the ro
   for (const plan of fixture.plans) {
     it(`${plan.network}, seed ${plan.seed}: every building, cart and rack, every stretch of surfaces and every crossing`, () => {
       const layer = layerOf(plan.network, plan.seed);
-      const now = layer.plan.items.filter((it) => !FURNITURE.has(it.rule)).map((it) => rowOf(layer, it));
+      const changed = LAND_CHANGED[plan.network] ?? [];
+      const held = (row: string) => {
+        const { box } = parse(row);
+        const x = ((box[0] ?? 0) + (box[1] ?? 0)) / 2;
+        const z = ((box[4] ?? 0) + (box[5] ?? 0)) / 2;
+        return !changed.some((a) => x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1);
+      };
+      const all = layer.plan.items.filter((it) => !FURNITURE.has(it.rule)).map((it) => rowOf(layer, it));
+      const now = all.filter(held);
+      const main = plan.items.filter(held);
+      // The changed ground still has its buildings (the check would pass vacuously on an empty block).
+      if (changed.length) expect(all.length - now.length, 'drawn on the changed ground').toBeGreaterThan(0);
       const known = KNOWN[`${plan.network}:${plan.seed}`] ?? { main: [], now: [] };
-      const diff = unpaired(plan.items, now);
+      const diff = unpaired(main, now);
       expect(diff.main, 'drawn on main, not now').toEqual([...known.main].sort());
       expect(diff.now, 'drawn now, not on main').toEqual([...known.now].sort());
-      expect(now.length).toBe(plan.items.length);
+      expect(now.length).toBe(main.length);
       // The surfaces: the same stretches, the same triangles, the same extent.
       const soups = [...layer.plan.soups.entries()].map(([key, s]) => {
         const lo = [Infinity, Infinity, Infinity];
@@ -189,7 +220,25 @@ describe("the downtowns draw as main drew them (the placement's move into the ro
           ...[lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]].map((v) => c2(v ?? 0)),
         ].join(' ');
       });
-      const soupDiff = unpaired(plan.soups, soups, 2);
+      // A stretch the changed land runs beside keeps its extent but may lose triangles (never gain them):
+      // compared by its key and extent, and its count held to at most main's.
+      const trimmed = SURFACES_CHANGED[plan.network] ?? new Set<string>();
+      const counts = new Map<string, number>();
+      const byKey = (row: string, side: 'main' | 'now') => {
+        const [key, count, ...box] = row.split(' ');
+        if (!key || !trimmed.has(key)) return row;
+        counts.set(`${side} ${key}`, Number(count));
+        return [key, '*', ...box].join(' ');
+      };
+      const soupDiff = unpaired(
+        plan.soups.map((r) => byKey(r, 'main')),
+        soups.map((r) => byKey(r, 'now')),
+        2,
+      );
+      for (const key of trimmed)
+        expect(counts.get(`now ${key}`) ?? 0, `${key}: triangles now against main's`).toBeLessThanOrEqual(
+          counts.get(`main ${key}`) ?? 0,
+        );
       expect(soupDiff.main, 'surfaces on main, not now').toEqual([]);
       expect(soupDiff.now, 'surfaces now, not on main').toEqual([]);
       const crossings = layer.plan.crossings.map((c) =>
@@ -197,7 +246,7 @@ describe("the downtowns draw as main drew them (the placement's move into the ro
       );
       expect(crossings).toEqual(plan.crossings);
       stdout.write(
-        `[examined] ${plan.network} seed ${plan.seed}: ${now.length} drawn buildings, carts and racks against main's ${plan.items.length} (worst face ${diff.worst.toFixed(3)} m, ${known.now.length} known lots differ), ${soups.length} stretches of surfaces, ${crossings.length} crossings\n`,
+        `[examined] ${plan.network} seed ${plan.seed}: ${now.length} drawn buildings, carts and racks against main's ${main.length} (${all.length - now.length} now and ${plan.items.length - main.length} on main left out on changed ground; worst face ${diff.worst.toFixed(3)} m, ${known.now.length} known lots differ), ${soups.length} stretches of surfaces, ${crossings.length} crossings\n`,
       );
       layer.dispose();
     });
