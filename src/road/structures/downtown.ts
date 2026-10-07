@@ -370,8 +370,15 @@ export function planSfDowntown(road: RoadNetwork, seed: number): SfDowntownLots 
   if (known) return known;
   const lots: DowntownLot[] = [];
   const crossings: Crossing[] = [];
-  const place = (lot: Omit<DowntownLot, 'solid'>) =>
+  // No building stands across another road's lanes (Portland's rule, `roadCuts`). Polish M: the Plaza
+  // Cut goes straight through the headquarters' plaza while the avenue swings round it, so the towers
+  // behind the avenue's plaza stood on the cut (a rider in its lane met their sides).
+  const cuts = roadCuts(road, PDX_ROAD_CLEAR_M);
+  const place = (lot: Omit<DowntownLot, 'solid'>) => {
+    const [width, depth] = towerFootprint(lot.variant, lot.model === 'tower');
+    if (cuts.crosses(rectOf(lot.p, lot.turn, width, depth), lot.edge)) return;
     lots.push(withSolid(lot, lot.model === 'kit' ? SF_KIT_ID : SF_MODULES_ID, 'building'));
+  };
   /** A tower of the kit's variant, `scale` times its old height, stacked from the modules. */
   const towerOf = (
     variant: number,

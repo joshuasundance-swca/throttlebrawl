@@ -1205,8 +1205,9 @@ export class RoadsideScatter {
         );
       });
     const zones = this.zones.get(e.index) ?? [];
-    const zoneClear = (s: number, d: number, r: number) =>
-      !zones.some((z) => s >= z.s0 - r && s <= z.s1 + r && d >= z.lo - r && d <= z.hi + r);
+    const zoneClear = (s: number, lo: number, hi: number, along: number) =>
+      !zones.some((z) => s + along >= z.s0 && s - along <= z.s1 && hi >= z.lo && lo <= z.hi);
+    const bridges = (tags ?? []).filter((t) => t.tag === 'bridge');
     const otherRoad = (s: number, x: number, z: number, r: number) =>
       this.roads.roadUnder(e.index, s, x, z, r);
     // A road standing higher close by (a stacked loop, a spur on the hill above) lays its own land
@@ -1237,6 +1238,11 @@ export class RoadsideScatter {
       for (let j = 0; j < sections; j++) {
         const s = s0 + j * step;
         if (s - along < 0 || s + along > e.length) break;
+        // A bridge's approach stays clear for 5 m; a longer prop must keep its whole body off
+        // the deck too. Land retained behind a wall can continue right up to that approach.
+        const sizeMax = rule.run ? 1 : (rule.size?.[1] ?? 1);
+        const bridgeClear = Math.max(5, along * sizeMax);
+        if (bridges.some((t) => s >= t.s0 - bridgeClear && s <= t.s1 + bridgeClear)) break;
         const sideName = side < 0 ? 'left' : 'right';
         const theme = themeAt(tags, sideName, s);
         if (!(rule.on as readonly string[]).includes(theme)) break;
@@ -1288,7 +1294,15 @@ export class RoadsideScatter {
         // Its clear ground: round the anchor, or round its body behind it (`discBack`).
         const dc = rule.discBack ? side * (outer + across + rule.discBack) : d;
         const c = rule.discBack ? road.toWorld(e.index, s, dc, LAND_TOP_M) : p;
-        if (!featureClear(s, dc, r) || !zoneClear(s, d, r)) break;
+        // The painted split is a road surface: check the prop's length and depth, not only
+        // its anchor disc (a log fence's end can reach the paint from several metres away).
+        const nearD = d - side * r;
+        const farD = d + side * Math.max(r, back * sizeMax);
+        if (
+          !featureClear(s, dc, r) ||
+          !zoneClear(s, Math.min(nearD, farD), Math.max(nearD, farD), Math.max(r, along * sizeMax))
+        )
+          break;
         if (taken.hits(c.x, c.z, r, !!rule.understory || !!rule.low)) {
           if (rule.run) break;
           continue;
