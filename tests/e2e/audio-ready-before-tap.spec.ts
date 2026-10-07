@@ -8,13 +8,15 @@ import { expect, test, type Page } from '@playwright/test';
 //
 // A spy replaces `AudioContext` before the page's scripts run. It records, for each context made,
 // its state at birth and whether it was made inside a click's dispatch, and for each `resume()`
-// whether the page's user activation was live. The waits are on state (a context made, a menu
-// shown), never on time. A negative control makes a context inside a click on purpose and must be
-// seen doing so.
+// whether the page has had a user activation (`hasBeenActive`, the sticky one: the start tap asks
+// for fullscreen first, which uses up the tap's transient activation, `isActive`, before the
+// sound's resume, on main as on this branch; a context's autoplay check is the sticky one). The
+// waits are on state (a context made, a menu shown), never on time. A negative control makes a
+// context inside a click on purpose and must be seen doing so.
 
 interface SpyLog {
   made: { state: string; inClick: boolean }[];
-  resumes: { inClick: boolean; active: boolean; state: string }[];
+  resumes: { inClick: boolean; active: boolean; sticky: boolean; state: string }[];
   states: () => string[];
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __audioSpy?: SpyLog };
@@ -38,7 +40,12 @@ async function installSpy(page: Page) {
         log.made.push({ state: this.state, inClick });
       }
       override resume(): Promise<void> {
-        log.resumes.push({ inClick, active: navigator.userActivation.isActive, state: this.state });
+        log.resumes.push({
+          inClick,
+          active: navigator.userActivation.isActive,
+          sticky: navigator.userActivation.hasBeenActive,
+          state: this.state,
+        });
         return super.resume();
       }
     }
@@ -68,17 +75,18 @@ test('the context is made before the start tap, suspended, and the tap only resu
 
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
-  // The sound starts from the gesture: the context was resumed inside the click, with the page's
-  // user activation live, and the tap made no context of its own.
+  // The sound starts from the gesture: the context was resumed inside the click, with the page
+  // activated by it, and the tap made no context of its own.
   const after = await logOf(page);
   expect(after?.made.length, 'the tap made no context of its own').toBe(1);
   expect(after?.made.filter((m) => m.inClick)).toEqual([]);
   const inTap = after?.resumes.filter((r) => r.inClick) ?? [];
   expect(inTap.length, 'the context was resumed inside the click').toBeGreaterThan(0);
   expect(
-    inTap.every((r) => r.active),
-    'with the click as its user activation',
+    inTap.every((r) => r.sticky),
+    'with the page activated by the click',
   ).toBe(true);
+  console.log(`resumes in the tap: ${JSON.stringify(inTap)}`);
   console.log(`context after the tap: ${JSON.stringify(after?.states)}`);
 });
 
@@ -87,8 +95,10 @@ test('control: the spy sees a context made inside a click', async ({ page }) => 
   await page.goto('./');
   await page.waitForFunction(() => ((window as TestWindow).__audioSpy?.made.length ?? 0) > 0);
   // A context made by a click handler is recorded as made in the click (the way main made it).
+  // The handler sits on the clicked element, as the game's does: one on the window would run after
+  // the spy's own bubble-phase listener there has closed the click.
   await page.evaluate(() => {
-    window.addEventListener('click', () => void new AudioContext(), { once: true });
+    document.body.addEventListener('click', () => void new AudioContext(), { once: true });
     document.body.click();
   });
   const log = await logOf(page);
