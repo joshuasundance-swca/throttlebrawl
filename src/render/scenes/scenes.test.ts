@@ -207,7 +207,9 @@ describe.each(NETWORKS)('the scenes along %s', (id) => {
     print(
       `${id}: ${total} scenes over ${SEEDS.length} seeds (${(total / SEEDS.length).toFixed(1)} a race), ${checked} checked`,
     );
-  });
+    // It builds the network's road scene once a seed: six builds of Lake Samish's took 11.7 s on the dev
+    // machine once land looks for lower roads' lanes under it (5.3 s before), past the unit tier's 20 s on CI.
+  }, 60_000);
 
   it('repeat exactly for a seed', () => {
     const a = place(id, 3).map((p) => [p.def.id, p.edge, p.s, p.d]);

@@ -26,6 +26,22 @@
 // the mural network, never in the first load.
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, Vector3 } from 'three';
 import { planStreetFurniture } from '../road';
+import {
+  CELL_M,
+  lineAt,
+  MASCOT_HEIGHT_M,
+  MISSION_TAGS,
+  missionLayout,
+  PLANK_HALF_THICK_M,
+  PLANK_HALF_WIDTH_M,
+  PLANK_OUT_M,
+  SCAFFOLD_BAY_M,
+  SCAFFOLD_M,
+  SCAFFOLD_PLANKS_M,
+  SINK_M,
+  type MissionKind,
+  type WallLine,
+} from '../road/structures/mission';
 import type { RoadNetwork, SimSnapshot } from '../sim/api';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
@@ -33,56 +49,22 @@ import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
 import { scatterHash } from './scenery';
 
-/** The tags this layer draws. */
-export const MISSION_TAGS = ['mascot-mural', 'murals', 'shopfronts'] as const;
-export type MissionKind = 'mascot' | 'murals' | 'shopfronts';
-const KIND_OF: Readonly<Record<string, MissionKind>> = {
-  'mascot-mural': 'mascot',
-  murals: 'murals',
-  shopfronts: 'shopfronts',
-};
-const RANK: Readonly<Record<MissionKind, number>> = { mascot: 0, murals: 1, shopfronts: 2 };
+// What the layer places is the road's (road/structures/mission.ts: the layout the sim's plan is made of); what is
+// here is how it is drawn. The names the rest of render and the tests know stay exported.
+export { CELL_M, MASCOT_HEIGHT_M, MISSION_TAGS, SCAFFOLD_M };
+export type { MissionKind, WallLine };
 
 /** Whether the network has any of the mural district's land. */
 export function hasMission(tags: ReadonlySet<string>): boolean {
   return MISSION_TAGS.some((t) => tags.has(t));
 }
 
-/** A mural cell's side, m. */
-export const CELL_M = 0.5;
 /** The longest run of same-coloured cells merged into one quad on a bend (its chord stays short), cells. */
 const RUN_MAX = 4;
 /** A wall counts as flat under a quad while its facing turns less than this (cosine of about 1°). */
 const FLAT_DOT = 0.99985;
-/** Step along the road when a wall's front line is sampled, m. */
-const STEP_M = 2;
-/** A wall's front stands this far past the verge's hard edge, m. */
-const WALL_GAP_M = 0.05;
-/** The mascot's wall stands this far past the hard edge: its scaffold stands between, m. */
-export const SCAFFOLD_M = 1.6;
 /** How far each layer of paint stands off the wall (mural, primer, new mural), m. */
 const PAINT_OFF = [0.04, 0.08, 0.12] as const;
-/** Buildings reach this far below the road, so a slope never shows a gap under them, m. */
-const SINK_M = 1.5;
-/** The walls stop this far short of a landmark's footprint along the alley, m. */
-const LANDMARK_GAP_M = 1;
-/** A building's depth back from its front, m. */
-const DEPTH_M: Readonly<Record<MissionKind, number>> = { shopfronts: 14, murals: 12, mascot: 14 };
-/** Building widths along the front, m: [least, spread]. */
-const WIDTH_M: Readonly<Record<'shopfronts' | 'murals', readonly [number, number]>> = {
-  shopfronts: [7, 6],
-  murals: [8, 9],
-};
-/** Building heights, m: [least, spread]. The mascot's wall stands taller than the block. */
-const HEIGHT_M: Readonly<Record<'shopfronts' | 'murals', readonly [number, number]>> = {
-  shopfronts: [7.5, 4],
-  murals: [5, 4],
-};
-export const MASCOT_HEIGHT_M = 14.5;
-/** How far back up the approaching street the face is lined up from, m. */
-const FACE_SIGHT_M = 150;
-/** Share of alley walls painted, and of shopfronts with a mural over the upper floors. */
-const MURAL_SHARE = { murals: 0.72, shopfronts: 0.2 } as const;
 // The shopfront kerb's lamps and bins are road/furniture.ts's (MS_LAMP_EVERY_M).
 
 /**
@@ -147,22 +129,6 @@ export const MOTIFS = [
   'chevrons',
 ] as const;
 export type Motif = (typeof MOTIFS)[number];
-
-/** One wall's front line: points along the road on one side, the way in toward the road, and u. */
-export interface WallLine {
-  kind: MissionKind;
-  side: -1 | 1;
-  /** Where each point was sampled (edge index, s) and the d of the front. */
-  edges: number[];
-  ss: number[];
-  ds: number[];
-  /** Front points at road height (the road's centre height at that s). */
-  pts: Point3[];
-  /** Unit horizontal vectors from each point toward the road. */
-  ins: { x: number; z: number }[];
-  /** Arc length along the front, m. */
-  us: number[];
-}
 
 /** One building of the district. */
 export interface MissionBuilding {
@@ -238,7 +204,8 @@ export interface MissionPlan {
 
 export interface MissionInput {
   road: RoadNetwork;
-  dressing: RoadDressing | undefined;
+  /** A test seam: a control that plans the same roads with other tags or features. The game passes none. */
+  dressing?: RoadDressing | undefined;
   seed: number;
 }
 
@@ -543,42 +510,6 @@ export function freshPainter(w: number, h: number): Painter {
   };
 }
 
-/** A point on a wall line at u (clamped), with the way toward the road there. */
-function lineAt(line: WallLine, u: number): { x: number; y: number; z: number; ix: number; iz: number } {
-  const us = line.us;
-  const n = us.length;
-  if (n < 2) {
-    const p = line.pts[0] ?? { x: 0, y: 0, z: 0 };
-    const i = line.ins[0] ?? { x: 0, z: 1 };
-    return { x: p.x, y: p.y, z: p.z, ix: i.x, iz: i.z };
-  }
-  let lo = 0;
-  let hi = n - 1;
-  const uu = Math.max(0, Math.min(us[n - 1] ?? 0, u));
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if ((us[mid] ?? 0) <= uu) lo = mid;
-    else hi = mid;
-  }
-  const u0 = us[lo] ?? 0;
-  const u1 = us[hi] ?? u0;
-  const t = u1 > u0 ? (uu - u0) / (u1 - u0) : 0;
-  const a = line.pts[lo] as Point3;
-  const b = line.pts[hi] as Point3;
-  const ia = line.ins[lo] as { x: number; z: number };
-  const ib = line.ins[hi] as { x: number; z: number };
-  const ix = ia.x + (ib.x - ia.x) * t;
-  const iz = ia.z + (ib.z - ia.z) * t;
-  const il = Math.hypot(ix, iz) || 1;
-  return {
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t,
-    z: a.z + (b.z - a.z) * t,
-    ix: ix / il,
-    iz: iz / il,
-  };
-}
-
 /** A triangle, wound to face `want` (a direction). */
 function tri(soup: Soup, a: Point3, b: Point3, c: Point3, colour: string, want: Point3): void {
   const ux = b.x - a.x;
@@ -779,108 +710,15 @@ function paintCells(
   return cells;
 }
 
-/** The district's runs of tagged wall: each side of each road, joined across a corner for a mascot. */
-function wallLines(road: RoadNetwork, dressing: RoadDressing | undefined): WallLine[] {
-  const out: WallLine[] = [];
-  for (const e of road.edges) {
-    const dress = dressing?.[e.id];
-    const tags = (dress?.tags ?? e.tags) as readonly { s0: number; s1: number; side?: string; tag: string }[];
-    if (!tags?.some((t) => KIND_OF[t.tag])) continue;
-    // A landmark beside the alley (playtest 4, P4-19, M3: the mission chapel) stands in the wall's place: the
-    // walls on its side stop short of its footprint, a few metres each way.
-    const landmarks = (dress?.features ?? e.features).filter((f) => f.kind === 'landmark');
-    for (const side of [-1, 1] as const) {
-      const name = side < 0 ? 'left' : 'right';
-      const kindAt = (s: number): MissionKind | null => {
-        if (
-          landmarks.some((f) => {
-            // Playtest 4, run C: a landmark that says `params.sightM` also opens its side of the alley that far
-            // before it (the downtown's rule), so its front is seen down the street and not only from beside it.
-            const sight = Number(f.params?.['sightM']);
-            const before = Math.max(LANDMARK_GAP_M, Number.isFinite(sight) ? sight : 0);
-            return (
-              Math.min(f.d0, f.d1) * side > 0 &&
-              s > Math.min(f.s0, f.s1) - before &&
-              s < Math.max(f.s0, f.s1) + LANDMARK_GAP_M
-            );
-          })
-        )
-          return null;
-        let best: MissionKind | null = null;
-        for (const t of tags) {
-          if (s < t.s0 || s > t.s1 || (t.side !== undefined && t.side !== 'both' && t.side !== name))
-            continue;
-          // Where two meet, the first in MISSION_TAGS wins (the mascot's wall over an alley's).
-          const k = KIND_OF[t.tag];
-          if (k && (best === null || RANK[k] < RANK[best])) best = k;
-        }
-        return best;
-      };
-      const n = Math.max(1, Math.round(e.length / STEP_M));
-      let line: WallLine | null = null;
-      for (let k = 0; k <= n; k++) {
-        const s = (e.length * k) / n;
-        const kind = kindAt(s === e.length ? s - 1e-6 : s);
-        if (!kind || (line && line.kind !== kind)) {
-          if (line && line.pts.length > 1) out.push(line);
-          line = null;
-        }
-        if (!kind) continue;
-        if (!line) line = { kind, side, edges: [], ss: [], ds: [], pts: [], ins: [], us: [] };
-        const verge = road.vergeAt(e.index, s, name);
-        const d = side * (Math.abs(verge.dOuter) + (kind === 'mascot' ? SCAFFOLD_M : WALL_GAP_M));
-        const p = road.toWorld(e.index, s, d, 0);
-        const c = road.toWorld(e.index, s, 0, 0);
-        const il = Math.hypot(c.x - p.x, c.z - p.z) || 1;
-        const last = line.pts[line.pts.length - 1];
-        line.us.push(last ? (line.us[line.us.length - 1] ?? 0) + Math.hypot(p.x - last.x, p.z - last.z) : 0);
-        line.pts.push({ x: p.x, y: c.y, z: p.z });
-        line.ins.push({ x: (c.x - p.x) / il, z: (c.z - p.z) / il });
-        line.edges.push(e.index);
-        line.ss.push(s);
-        line.ds.push(d);
-      }
-      if (line && line.pts.length > 1) out.push(line);
-    }
-  }
-  // A mascot wall that runs round a corner onto the next road is one wall.
-  const joined: WallLine[] = [];
-  for (const l of out) {
-    // The same side's mascot wall that ran to the end of the road before this one.
-    const prev =
-      l.kind === 'mascot' && (l.ss[0] ?? 1) <= 1e-6
-        ? joined.find((j) => {
-            const last = road.edges[j.edges[j.edges.length - 1] ?? -1];
-            return (
-              j.kind === 'mascot' &&
-              j.side === l.side &&
-              !!last &&
-              l.edges[0] === last.index + 1 &&
-              (j.ss[j.ss.length - 1] ?? 0) >= last.length - 1e-6
-            );
-          })
-        : undefined;
-    if (prev) {
-      const base = prev.us[prev.us.length - 1] ?? 0;
-      for (let i = 1; i < l.pts.length; i++) {
-        prev.pts.push(l.pts[i] as Point3);
-        prev.ins.push(l.ins[i] as { x: number; z: number });
-        prev.us.push(base + (l.us[i] ?? 0));
-        prev.edges.push(l.edges[i] as number);
-        prev.ss.push(l.ss[i] as number);
-        prev.ds.push(l.ds[i] as number);
-      }
-      continue;
-    }
-    joined.push(l);
-  }
-  return joined;
-}
-
-/** Plans the mural district of a network: its buildings, murals, mascot walls and lamps. */
+/**
+ * Plans the mural district of a network: draws the road's layout (road/structures/mission.ts: the wall lines, the
+ * buildings, the mascot walls) into soups, with the lamps and bins of road/furniture.ts's plan. `dressing` is a
+ * test seam (a control that plans the same roads with other tags or features); the game passes none.
+ */
 export function planMission(input: MissionInput): MissionPlan {
-  const { road, dressing, seed } = input;
-  const lines = wallLines(road, dressing);
+  const { road, seed } = input;
+  const layout = missionLayout(road, seed, input.dressing);
+  const lines = layout.lines;
   const buildings: MissionBuilding[] = [];
   const mascots: MascotWall[] = [];
   const items: MissionItem[] = [];
@@ -905,72 +743,6 @@ export function planMission(input: MissionInput): MissionPlan {
   };
   const UP: Point3 = { x: 0, y: 1, z: 0 };
 
-  /** The index of the line point at or before u. */
-  const indexAt = (line: WallLine, u: number) => {
-    let i = 0;
-    while (i + 1 < line.us.length && (line.us[i + 1] ?? 0) <= u) i++;
-    return i;
-  };
-  /** A building's box over u0..u1 of a line: front, roof and both ends (the back is never seen). */
-  const building = (
-    line: WallLine,
-    u0: number,
-    u1: number,
-    height: number,
-    depth: number,
-    colour: string,
-  ) => {
-    const i0 = indexAt(line, u0);
-    const i1 = indexAt(line, u1);
-    const us = [u0];
-    for (let i = i0 + 1; i <= i1; i++)
-      if ((line.us[i] ?? 0) > u0 + 0.05 && (line.us[i] ?? 0) < u1 - 0.05) us.push(line.us[i] ?? 0);
-    us.push(u1);
-    const mid = Math.min(line.pts.length - 1, Math.max(0, indexAt(line, (u0 + u1) / 2)));
-    const edge = line.edges[mid] ?? 0;
-    const s = line.ss[mid] ?? 0;
-    const key = keyOf(lineAt(line, (u0 + u1) / 2));
-    const soup = soupAt(key);
-    const front: Point3[] = [];
-    const back: Point3[] = [];
-    for (const u of us) {
-      const p = lineAt(line, u);
-      const j = Math.min(line.pts.length - 1, indexAt(line, u));
-      const e = line.edges[j] ?? 0;
-      const ss = line.ss[j] ?? 0;
-      const dd = Math.abs(line.ds[j] ?? 0);
-      // On the inside of a bend the back is held short of the bend's centre.
-      const k = road.kappaAt(e, ss);
-      const inner = k * line.side > 0;
-      const room = inner && Math.abs(k) > 1e-6 ? 1 / Math.abs(k) - dd - 1 : Infinity;
-      const dep = Math.max(2, Math.min(depth, room));
-      front.push({ x: p.x, y: p.y, z: p.z });
-      back.push({ x: p.x - p.ix * dep, y: p.y, z: p.z - p.iz * dep });
-      note(key, front[front.length - 1] as Point3);
-      note(key, back[back.length - 1] as Point3);
-    }
-    const lo = (q: Point3): Point3 => ({ x: q.x, y: q.y - SINK_M, z: q.z });
-    const hi = (q: Point3): Point3 => ({ x: q.x, y: q.y + height, z: q.z });
-    const roof = MISSION_COLOURS.roof;
-    for (let i = 0; i + 1 < front.length; i++) {
-      const fa = front[i] as Point3;
-      const fb = front[i + 1] as Point3;
-      const ba = back[i] as Point3;
-      const bb = back[i + 1] as Point3;
-      const want = { x: fa.x - ba.x + fb.x - bb.x, y: 0, z: fa.z - ba.z + fb.z - bb.z };
-      quad(soup, lo(fa), lo(fb), hi(fb), hi(fa), colour, want);
-      quad(soup, hi(fa), hi(fb), hi(bb), hi(ba), roof, UP);
-    }
-    const f0 = front[0] as Point3;
-    const b0 = back[0] as Point3;
-    const fn = front[front.length - 1] as Point3;
-    const bn = back[back.length - 1] as Point3;
-    const f1 = front[1] ?? fn;
-    const fm = front[front.length - 2] ?? f0;
-    quad(soup, lo(f0), lo(b0), hi(b0), hi(f0), colour, { x: f0.x - f1.x, y: 0, z: f0.z - f1.z });
-    quad(soup, lo(fn), lo(bn), hi(bn), hi(fn), colour, { x: fn.x - fm.x, y: 0, z: fn.z - fm.z });
-    return { key, soup, front, back, edge, s };
-  };
   /** A flat band on a wall over u0..u1 and y0..y1 (windows, doors, glass), `off` off it. */
   const band = (
     soup: Soup,
@@ -989,59 +761,71 @@ export function planMission(input: MissionInput): MissionPlan {
     quad(soup, at(a, y0), at(b, y0), at(b, y1), at(a, y1), colour, want);
   };
 
-  lines.forEach((line, li) => {
-    const total = line.us[line.us.length - 1] ?? 0;
-    const h = (k: number, salt: number) => scatterHash(seed, 7919 + li * 131, k, salt);
-    if (line.kind === 'mascot') {
+  for (const b of layout.builds) {
+    const line = lines[b.li] as WallLine;
+    const h = (k: number, salt: number) => scatterHash(seed, 7919 + b.li * 131, k, salt);
+    const mascot = b.kind === 'mascot';
+    const colour = mascot
+      ? MISSION_COLOURS.primer
+      : (MISSION_COLOURS.stucco[Math.floor(b.stuccoU * MISSION_COLOURS.stucco.length)] as string);
+    const m: Motif | null =
+      !mascot && b.painted ? (MOTIFS[Math.floor(b.motifU * MOTIFS.length)] as Motif) : null;
+    // The building's box over its run of the line: its front, roof and both ends (the back is never seen).
+    const key = keyOf(lineAt(line, (b.u0 + b.u1) / 2));
+    const soup = soupAt(key);
+    const { front, back } = b;
+    for (let i = 0; i < front.length; i++) {
+      note(key, front[i] as Point3);
+      note(key, back[i] as Point3);
+    }
+    const lo = (q: Point3): Point3 => ({ x: q.x, y: q.y - SINK_M, z: q.z });
+    const hi = (q: Point3): Point3 => ({ x: q.x, y: q.y + b.height, z: q.z });
+    const roof = MISSION_COLOURS.roof;
+    for (let i = 0; i + 1 < front.length; i++) {
+      const fa = front[i] as Point3;
+      const fb = front[i + 1] as Point3;
+      const ba = back[i] as Point3;
+      const bb = back[i + 1] as Point3;
+      const want = { x: fa.x - ba.x + fb.x - bb.x, y: 0, z: fa.z - ba.z + fb.z - bb.z };
+      quad(soup, lo(fa), lo(fb), hi(fb), hi(fa), colour, want);
+      quad(soup, hi(fa), hi(fb), hi(bb), hi(ba), roof, UP);
+    }
+    const f0 = front[0] as Point3;
+    const b0 = back[0] as Point3;
+    const fn = front[front.length - 1] as Point3;
+    const bn = back[back.length - 1] as Point3;
+    const f1 = front[1] ?? fn;
+    const fm = front[front.length - 2] ?? f0;
+    quad(soup, lo(f0), lo(b0), hi(b0), hi(f0), colour, { x: f0.x - f1.x, y: 0, z: f0.z - f1.z });
+    quad(soup, lo(fn), lo(bn), hi(bn), hi(fn), colour, { x: fn.x - fm.x, y: 0, z: fn.z - fm.z });
+    buildings.push({
+      kind: b.kind,
+      edge: b.edge,
+      s: b.s,
+      side: line.side,
+      u0: b.u0,
+      u1: b.u1,
+      height: b.height,
+      colour,
+      motif: mascot ? 'mascot' : m,
+      front,
+      back,
+    });
+
+    if (mascot) {
       // One tall wall the length of the run, the mascot over all of it, and its scaffold.
-      const colour = MISSION_COLOURS.primer;
-      const built = building(line, 0, total, MASCOT_HEIGHT_M, DEPTH_M.mascot, colour);
-      buildings.push({
-        kind: 'mascot',
-        edge: built.edge,
-        s: built.s,
-        side: line.side,
-        u0: 0,
-        u1: total,
-        height: MASCOT_HEIGHT_M,
-        colour,
-        motif: 'mascot',
-        front: built.front,
-        back: built.back,
-      });
-      // The corner: where the line passes from one road onto the next.
-      let uCorner = total / 2;
-      for (let i = 1; i < line.edges.length; i++)
-        if (line.edges[i] !== line.edges[i - 1]) {
-          uCorner = line.us[i] ?? uCorner;
-          break;
-        }
-      const ua = CELL_M;
-      const ub = ua + Math.floor((total - 2 * CELL_M) / CELL_M) * CELL_M;
-      const ya = 0.6;
-      const yb = ya + Math.floor((MASCOT_HEIGHT_M - 1.2) / CELL_M) * CELL_M;
+      const wall = layout.mascots.find((x) => x.li === b.li);
+      if (!wall) continue;
+      const { ua, ub, ya, yb, uCorner, uFace } = wall;
       const w = ub - ua;
       const hh = yb - ya;
       // On a right-hand wall the mural is painted mirrored (so it reads), the face still on the corner.
       const mirror = line.side > 0;
-      // The face: where the wall crosses the approaching street's centre line.
-      const e0 = line.edges[0] ?? 0;
-      const sight = road.frameAt(e0, Math.max(0, (line.ss[0] ?? 0) - FACE_SIGHT_M));
-      let uFace = uCorner;
-      let bestAcross = Infinity;
-      line.pts.forEach((p, i) => {
-        const across = Math.abs((p.x - sight.x) * -sight.tz + (p.z - sight.z) * sight.tx);
-        if (across < bestAcross) {
-          bestAcross = across;
-          uFace = line.us[i] ?? uFace;
-        }
-      });
       const faceX = mirror ? w - (uFace - ua) : uFace - ua;
-      paintCells(built.soup, line, ua, ub, ya, yb, PAINT_OFF[0], mascotPainter(w, hh, faceX), { mirror });
+      paintCells(soup, line, ua, ub, ya, yb, PAINT_OFF[0], mascotPainter(w, hh, faceX), { mirror });
       // The scaffold: standards every 2.5 m at the wall and at the front, planks every 3.5 m up.
-      const planks = [3.5, 7, 10.5, 13.5];
-      const bay = 2.5;
-      const nb = Math.max(1, Math.round(w / bay));
+      const planks = SCAFFOLD_PLANKS_M;
+      const nb = Math.max(1, Math.round(w / SCAFFOLD_BAY_M));
       for (let i = 0; i <= nb; i++) {
         const u = ua + (w * i) / nb;
         const p = lineAt(line, u);
@@ -1049,26 +833,26 @@ export function planMission(input: MissionInput): MissionPlan {
         for (const out of [0.2, 1.3]) {
           const x = p.x + p.ix * out;
           const z = p.z + p.iz * out;
-          box(built.soup, x, p.y + 7, z, 0.06, 7, 0.06, yaw, MISSION_COLOURS.scaffold);
+          box(soup, x, p.y + 7, z, 0.06, 7, 0.06, yaw, MISSION_COLOURS.scaffold);
         }
         if (i === nb) continue;
         const q = lineAt(line, u + w / nb / 2);
         const qyaw = Math.atan2(q.ix, q.iz);
         for (const y of planks) {
           box(
-            built.soup,
-            q.x + q.ix * 0.75,
+            soup,
+            q.x + q.ix * PLANK_OUT_M,
             q.y + y,
-            q.z + q.iz * 0.75,
+            q.z + q.iz * PLANK_OUT_M,
             w / nb / 2,
-            0.05,
-            0.6,
+            PLANK_HALF_THICK_M,
+            PLANK_HALF_WIDTH_M,
             qyaw,
             MISSION_COLOURS.plank,
           );
           // The guard rail.
           box(
-            built.soup,
+            soup,
             q.x + q.ix * 1.3,
             q.y + y + 1,
             q.z + q.iz * 1.3,
@@ -1111,101 +895,70 @@ export function planMission(input: MissionInput): MissionPlan {
         paint,
         planks: [0, ...planks.slice(0, 3)],
       });
-      return;
+      continue;
     }
-    // Buildings of their own widths along the run; the last takes what is left.
-    const [wMin, wSpread] = WIDTH_M[line.kind];
-    const [hMin, hSpread] = HEIGHT_M[line.kind];
-    let u = 0;
-    let k = 0;
-    while (u < total - 0.5) {
-      let w = wMin + h(k, 1) * wSpread;
-      if (total - (u + w) < wMin * 0.6) w = total - u;
-      const u0 = u;
-      const u1 = Math.min(total, u + w);
-      u = u1;
-      const height = hMin + h(k, 2) * hSpread;
-      const colour = MISSION_COLOURS.stucco[Math.floor(h(k, 3) * MISSION_COLOURS.stucco.length)] as string;
-      const painted = h(k, 4) < MURAL_SHARE[line.kind] && u1 - u0 >= 4;
-      const m: Motif | null = painted ? (MOTIFS[Math.floor(h(k, 5) * MOTIFS.length)] as Motif) : null;
-      const built = building(line, u0, u1, height, DEPTH_M[line.kind], colour);
-      buildings.push({
-        kind: line.kind,
-        edge: built.edge,
-        s: built.s,
-        side: line.side,
-        u0,
-        u1,
-        height,
-        colour,
-        motif: m,
-        front: built.front,
-        back: built.back,
-      });
-      const soup = built.soup;
-      const r = (j: number) => h(k, 100 + j);
-      if (line.kind === 'murals') {
-        if (m) {
-          const ma = u0 + 0.3;
-          const mb = ma + Math.floor((u1 - u0 - 0.6) / CELL_M) * CELL_M;
-          const ya = 0.3;
-          const yb = ya + Math.floor((height - 0.7) / CELL_M) * CELL_M;
-          paintCells(soup, line, ma, mb, ya, yb, PAINT_OFF[0], motif(m, mb - ma, yb - ya, r));
-        } else {
-          // A roll-up door in the middle and a small window.
-          const c = (u0 + u1) / 2;
-          band(soup, line, c - 1.6, c + 1.6, 0.05, 2.9, 0.03, MISSION_COLOURS.rollUp);
-          if (height > 6) band(soup, line, c - 0.7, c + 0.7, 4, 5.2, 0.03, MISSION_COLOURS.window);
-        }
+
+    const { u0, u1, height } = b;
+    const r = (j: number) => h(b.k, 100 + j);
+    if (b.kind === 'murals') {
+      if (m) {
+        const ma = u0 + 0.3;
+        const mb = ma + Math.floor((u1 - u0 - 0.6) / CELL_M) * CELL_M;
+        const ya = 0.3;
+        const yb = ya + Math.floor((height - 0.7) / CELL_M) * CELL_M;
+        paintCells(soup, line, ma, mb, ya, yb, PAINT_OFF[0], motif(m, mb - ma, yb - ya, r));
       } else {
-        // Shopfront: the shop's glass with a door, an awning, windows above and a cornice.
-        const a = u0 + 0.5;
-        const b = u1 - 0.5;
-        band(soup, line, a, b, 0.4, 3.0, 0.03, MISSION_COLOURS.glass);
-        const door = a + (b - a) * (0.2 + 0.6 * r(1));
-        band(soup, line, door - 0.55, door + 0.55, 0.05, 2.5, 0.05, MISSION_COLOURS.door);
-        const awning = MISSION_COLOURS.awning[Math.floor(r(2) * MISSION_COLOURS.awning.length)] as string;
-        const pa = lineAt(line, a);
-        const pb = lineAt(line, b);
-        const atA = (p: typeof pa, out: number, y: number): Point3 => ({
-          x: p.x + p.ix * out,
-          y: p.y + y,
-          z: p.z + p.iz * out,
-        });
-        quad(soup, atA(pa, 0, 3.35), atA(pb, 0, 3.35), atA(pb, 1.3, 2.85), atA(pa, 1.3, 2.85), awning, {
-          x: pa.ix + pb.ix,
-          y: 1.5,
-          z: pa.iz + pb.iz,
-        });
-        quad(soup, atA(pa, 1.3, 2.85), atA(pb, 1.3, 2.85), atA(pb, 1.3, 2.5), atA(pa, 1.3, 2.5), awning, {
-          x: pa.ix + pb.ix,
-          y: 0,
-          z: pa.iz + pb.iz,
-        });
-        const top = height - 0.7;
-        if (m) {
-          const ma = u0 + 0.4;
-          const mb = ma + Math.floor((u1 - u0 - 0.8) / CELL_M) * CELL_M;
-          const ya = 3.8;
-          const yb = ya + Math.floor((top - 3.8) / CELL_M) * CELL_M;
-          if (yb - ya >= 2)
-            paintCells(soup, line, ma, mb, ya, yb, PAINT_OFF[0], motif(m, mb - ma, yb - ya, r));
-        } else {
-          for (let y = 4.2; y + 1.6 <= top; y += 3.2) {
-            const n = Math.max(1, Math.floor((b - a) / 2.6));
-            for (let i = 0; i < n; i++) {
-              const c = a + ((i + 0.5) * (b - a)) / n;
-              band(soup, line, c - 0.6, c + 0.6, y, y + 1.6, 0.03, MISSION_COLOURS.window);
-            }
+        // A roll-up door in the middle and a small window.
+        const c = (u0 + u1) / 2;
+        band(soup, line, c - 1.6, c + 1.6, 0.05, 2.9, 0.03, MISSION_COLOURS.rollUp);
+        if (height > 6) band(soup, line, c - 0.7, c + 0.7, 4, 5.2, 0.03, MISSION_COLOURS.window);
+      }
+    } else {
+      // Shopfront: the shop's glass with a door, an awning, windows above and a cornice.
+      const a = u0 + 0.5;
+      const bEnd = u1 - 0.5;
+      band(soup, line, a, bEnd, 0.4, 3.0, 0.03, MISSION_COLOURS.glass);
+      const door = a + (bEnd - a) * (0.2 + 0.6 * r(1));
+      band(soup, line, door - 0.55, door + 0.55, 0.05, 2.5, 0.05, MISSION_COLOURS.door);
+      const awning = MISSION_COLOURS.awning[Math.floor(r(2) * MISSION_COLOURS.awning.length)] as string;
+      const pa = lineAt(line, a);
+      const pb = lineAt(line, bEnd);
+      const atA = (p: typeof pa, out: number, y: number): Point3 => ({
+        x: p.x + p.ix * out,
+        y: p.y + y,
+        z: p.z + p.iz * out,
+      });
+      quad(soup, atA(pa, 0, 3.35), atA(pb, 0, 3.35), atA(pb, 1.3, 2.85), atA(pa, 1.3, 2.85), awning, {
+        x: pa.ix + pb.ix,
+        y: 1.5,
+        z: pa.iz + pb.iz,
+      });
+      quad(soup, atA(pa, 1.3, 2.85), atA(pb, 1.3, 2.85), atA(pb, 1.3, 2.5), atA(pa, 1.3, 2.5), awning, {
+        x: pa.ix + pb.ix,
+        y: 0,
+        z: pa.iz + pb.iz,
+      });
+      const top = height - 0.7;
+      if (m) {
+        const ma = u0 + 0.4;
+        const mb = ma + Math.floor((u1 - u0 - 0.8) / CELL_M) * CELL_M;
+        const ya = 3.8;
+        const yb = ya + Math.floor((top - 3.8) / CELL_M) * CELL_M;
+        if (yb - ya >= 2) paintCells(soup, line, ma, mb, ya, yb, PAINT_OFF[0], motif(m, mb - ma, yb - ya, r));
+      } else {
+        for (let y = 4.2; y + 1.6 <= top; y += 3.2) {
+          const n = Math.max(1, Math.floor((bEnd - a) / 2.6));
+          for (let i = 0; i < n; i++) {
+            const c = a + ((i + 0.5) * (bEnd - a)) / n;
+            band(soup, line, c - 0.6, c + 0.6, y, y + 1.6, 0.03, MISSION_COLOURS.window);
           }
         }
-        band(soup, line, u0, u1, height - 0.5, height, 0.06, MISSION_COLOURS.roof);
       }
-      k++;
+      band(soup, line, u0, u1, height - 0.5, height, 0.06, MISSION_COLOURS.roof);
     }
-    // The lamps at the kerb of a shopfront sidewalk and the bins by some doors stand where
-    // road/furniture.ts plans them (playtest 4, "solid but forgiving": the sim meets what is drawn).
-  });
+  }
+  // The lamps at the kerb of a shopfront sidewalk and the bins by some doors stand where
+  // road/furniture.ts plans them (playtest 4, "solid but forgiving": the sim meets what is drawn).
 
   for (const f of planStreetFurniture(road, seed).items) {
     if (f.layer !== 'mission') continue;

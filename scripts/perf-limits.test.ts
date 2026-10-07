@@ -15,6 +15,7 @@ import {
   floorJudgesRun,
   judgeSoft,
   PR_FLOOR_KB,
+  START_TAP_GUARD_MIN_READINGS,
   summaryMarkdown,
   trendLine,
 } from './perf-limits.mjs';
@@ -27,6 +28,9 @@ const frames = (n: number) => Math.round(n * FRAME * 10) / 10;
 interface Times {
   frameMs: { p50: number; p95: number };
   stepMs?: { p95: number };
+  startTapMs?: number;
+  startTapReadings?: number;
+  startTap?: { readings: number[] };
 }
 const baselineFile = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/baseline.json'), 'utf8')) as {
   soft: Times;
@@ -112,6 +116,89 @@ describe('the soft tier: a trend plus a 3x guard', () => {
     expect(md).toContain('| classic | frame p95 | 150 | 1.13 | 133.3 | 408.2 |');
     expect(md).toContain('- first-load JavaScript 1 KB');
     expect(summaryMarkdown({ size: [], probes: [] })).toContain('No probe results were written');
+  });
+});
+
+describe("the start tap's main-thread work: a trend, guarded only once the baseline has 8 CI readings (polish K2 review, must-fix)", () => {
+  const frame = { p50: frames(4), p95: frames(8) };
+  /** A baseline whose start tap rests on `readings` CI readings. */
+  const base = (readings: number): Times => ({ frameMs: frame, startTapMs: 120, startTapReadings: readings });
+  const at = (startTapMs: number | undefined, readings: number) =>
+    judgeSoft({ frameMs: frame, ...(startTapMs === undefined ? {} : { startTapMs }) }, base(readings));
+
+  it('is 8 CI readings, the same bar as the frame baseline', () => {
+    expect(START_TAP_GUARD_MIN_READINGS).toBe(8);
+  });
+
+  it('prints a trend row with its ratio and no guard before then, and never fails, however slow (it was 450 ms or more on one live reading)', () => {
+    for (const readings of [0, 3, 7]) {
+      const row = at(150, readings).rows.find((r) => r.metric === 'start tap');
+      expect(row, `${readings} readings`).toEqual({
+        metric: 'start tap',
+        value: 150,
+        baseline: 120,
+        ratio: 1.25,
+        limit: null,
+        over: false,
+      });
+      expect(guardLimits(base(readings)).startTap).toBeUndefined();
+      expect(at(9999, readings).failures).toEqual([]);
+      expect(at(Number.NaN, readings).failures).toEqual([]);
+    }
+    expect(trendLine('classic', at(150, 3).rows)).toContain(
+      'start tap 150 ms (1.25x the baseline 120, no guard yet)',
+    );
+  });
+
+  it('is guarded at 3x the baseline, with no frame slack, from the 8th reading (the control: it fires)', () => {
+    expect(guardLimits(base(8)).startTap).toBe(360);
+    const row = at(150, 8).rows.find((r) => r.metric === 'start tap');
+    expect(row).toEqual({
+      metric: 'start tap',
+      value: 150,
+      baseline: 120,
+      ratio: 1.25,
+      limit: 360,
+      over: false,
+    });
+    expect(trendLine('classic', at(150, 8).rows)).toContain(
+      'start tap 150 ms (1.25x the baseline 120, guard 360)',
+    );
+    expect(at(360, 8).failures).toEqual([]);
+    expect(at(360.1, 8).failures).toEqual([
+      'start tap 360.1 ms is over the 3x guard 360 ms (baseline 120 ms): a catastrophic slowdown, not runner noise',
+    ]);
+    expect(at(Number.NaN, 8).failures).toHaveLength(1); // a missing reading fails rather than passing
+  });
+
+  it('shows "none yet" in the step summary where the guard would be', () => {
+    const md = summaryMarkdown({ size: [], probes: [{ label: 'classic', rows: at(150, 3).rows }] });
+    expect(md).toContain('| classic | start tap | 150 | 1.25 | 120 | none yet |');
+    const guarded = summaryMarkdown({ size: [], probes: [{ label: 'classic', rows: at(150, 8).rows }] });
+    expect(guarded).toContain('| classic | start tap | 150 | 1.25 | 120 | 360 |');
+  });
+
+  it('holds for the stored baseline: its guard exists exactly when it rests on 8 or more readings', () => {
+    const soft = baselineFile.soft;
+    expect(soft.startTapMs).toBeGreaterThan(0);
+    const readings = soft.startTap?.readings ?? [];
+    expect(readings.length).toBeGreaterThan(0);
+    const limit = guardLimits({ ...soft, startTapReadings: readings.length }).startTap;
+    if (readings.length >= START_TAP_GUARD_MIN_READINGS) expect(limit).toBeGreaterThan(0);
+    else expect(limit).toBeUndefined();
+    // Whatever the baseline's readings are, the CI readings behind it are never judged slow by it.
+    const judged = judgeSoft(
+      { frameMs: soft.frameMs, startTapMs: Math.max(...readings) },
+      { ...soft, startTapReadings: readings.length },
+    );
+    expect(judged.failures).toEqual([]);
+  });
+
+  it('is not judged until both the probe and the baseline have it (the negative control)', () => {
+    expect(at(undefined, 8).rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    const noBase = judgeSoft({ frameMs: frame, startTapMs: 9999 }, { frameMs: frame, startTapReadings: 8 });
+    expect(noBase.rows.map((r) => r.metric)).toEqual(['frame p50', 'frame p95']);
+    expect(noBase.failures).toEqual([]);
   });
 });
 

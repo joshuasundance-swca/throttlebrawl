@@ -47,10 +47,13 @@ describe('the downtowns as structures (road/structures/downtown.ts)', () => {
       ['osm-pnw-portland', 'downtown-pdx', (r: RoadNetwork) => planPdxDowntown(r, 7).lots],
     ] as const) {
       const road = networkOf(id);
-      expect(structureLayersFor(road)).toEqual([layer]);
-      expect(() => requireStructures(road, 7), 'not planned yet').toThrow(/not planned/);
-      const plan = await ensureStructures(road, 7);
-      expect(requireStructures(road, 7)).toBe(plan);
+      // The network asks for its downtown's layer (and its landmarks' too, where it has any: theirs to test).
+      expect(structureLayersFor(road)).toContain(layer);
+      const only = { [layer]: STRUCTURE_LAYERS[layer]! };
+      expect(structureLayersFor(road, only)).toEqual([layer]);
+      expect(() => requireStructures(road, 7, only), 'not planned yet').toThrow(/not planned/);
+      const plan = await ensureStructures(road, 7, only);
+      expect(requireStructures(road, 7, only)).toBe(plan);
       const lots = lotsOf(road);
       expect(plan.items.length, id).toBe(lots.length);
       expect(plan.items.length, id).toBeGreaterThan(400);

@@ -15,6 +15,7 @@ export {
 } from './packs';
 export type { PackLibrary, PackSources } from './packs';
 export { buildRegistry, ContentError, contentHashes, HttpLoadError, lookup } from './registry';
+export { CHUNK_RETRY_MS, loadChunk, type ChunkEnv } from './lazy-chunk';
 export type { ContentRegistry, LoadOptions, PackIndexRow } from './registry';
 export type { ContentHashes } from './hashes';
 export { FORMAT_VERSION, isEntryFile, parsePack } from './parse';

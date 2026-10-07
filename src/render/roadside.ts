@@ -30,6 +30,9 @@ import {
   type Texture,
 } from 'three';
 import { planStreetFurniture, type RoadNetwork, type StreetFurniture } from '../road';
+// Old Town's street fronts, the structure plan's (a lazy chunk, road/structures/: imported directly, as the
+// module map lets a lazy render layer, so it stays out of the first load).
+import { OLDTOWN_RULES, planOldTown, type FrontageRule, type OldTownFront } from '../road/structures/oldtown';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
@@ -172,6 +175,13 @@ export interface RoadsideRule {
    */
   planned?: boolean;
   /**
+   * A street front the structure plan stands (the physical world, the maintainer, 2026-10-06: buildings are
+   * walls up to the roofline, roofs a rider lands on): road/structures/oldtown.ts holds the rule (`fromPlan`
+   * copies it here) and decides where each building stands, so the sim meets what is drawn. The scatter stands
+   * the plan's buildings in this rule's turn, and everything else it places keeps off their ground.
+   */
+  structure?: boolean;
+  /**
    * A prop that must be seen from the road (playtest 4, run B's fix check, punch item 6: the Key deer stood half
    * hidden behind sea grape): a lane from the road's edge, this many metres back along the road, to the prop
    * stays clear of everything placed before it (trees, other props, the scenery), and the lane is kept clear
@@ -197,22 +207,14 @@ export const BANK_MAX_M = 6;
 /**
  * A street front (playtest 3, T12.1; the wave-B punch list: Duval "with no Old Town shopfronts"): the
  * rule's buildings stood end to end along each side, each by its own width and depth (its model's
- * bounding box), their facades on one line `across[0]` m past the verge band's outer edge (the
- * sidewalk's, for a street; playtest 4, P4-19), facing the road, so a balcony hangs out over the
- * pavement. A building that does not fit (a feature, a landmark, a tree, another road, too little land,
- * or a pedestrian zone behind its facade; a crowd may stand under a balcony) is skipped and the next
- * tried a few metres on; now and then a lot is left empty.
+ * box), their facades on one line `across[0]` m past the verge band's outer edge (the sidewalk's, for a
+ * street; playtest 4, P4-19), facing the road, so a balcony hangs out over the pavement. A building that
+ * does not fit (a feature, a landmark, another road, too little land, or a pedestrian zone behind its
+ * facade; a crowd may stand under a balcony) is skipped and the next tried a few metres on; now and then
+ * a lot is left empty. Since the physical world (2026-10-06) the structure plan places them
+ * (road/structures/oldtown.ts `planOldTown`, `structure` rules).
  */
-export interface Frontage {
-  /** The gap between neighbours, [min, max] m. */
-  gap: readonly [number, number];
-  /** The share of plots left as an empty lot, and the lot's length, m. */
-  lotRate: number;
-  lotM: number;
-}
-
-/** A street front tries the next building this far on when one does not fit, m. [default] */
-const FRONTAGE_STEP_M = 3;
+export type Frontage = FrontageRule;
 
 /** Whether one of these tags covers that side of the road at s (a district tag says nothing about the ground). */
 export function inDistrict(
@@ -245,6 +247,31 @@ const INTERSTATE: readonly string[] = ['interstate'];
 const FOREST: readonly LandTheme[] = ['forest', 'sawmill'];
 const TOWN: readonly LandTheme[] = ['commercial'];
 const WOODS_AND_TOWN: readonly LandTheme[] = [...FOREST, ...TOWN];
+
+/**
+ * A street-front rule from the structure plan (road/structures/oldtown.ts `OLDTOWN_RULES`), as the kit lists it:
+ * the plan's own fields, so the two never drift, and how render draws it (`more`: its model kind, its level).
+ */
+const fromPlan = (id: string, more: Partial<RoadsideRule>): RoadsideRule => {
+  const r = OLDTOWN_RULES.find((x) => x.id === id);
+  if (!r) throw new Error(`roadside: the structure plan has no rule ${id}`);
+  return {
+    id,
+    v: r.v,
+    on: r.on,
+    every: 0,
+    rate: 1,
+    across: r.across,
+    r: 0,
+    frontage: r.frontage,
+    district: r.district,
+    ...(r.first ? { first: true } : {}),
+    ...(r.behind ? { behind: r.behind } : {}),
+    ...(r.behindOpenM !== undefined ? { behindOpenM: r.behindOpenM } : {}),
+    structure: true,
+    ...more,
+  };
+};
 
 /** A rule, compactly: its id, variants, themes, spacing, rate, offset and radius, then the rest. */
 const rule = (
@@ -476,11 +503,6 @@ const SECRET = ['key-secret'];
 // the sidewalk, royal poincianas and banyans in the yards behind the row.
 const OLDTOWN = ['key-oldtown'];
 const OLDTOWN_LAND: readonly LandTheme[] = ['oldtown'];
-/**
- * The second row's facade stands this far past the sidewalk, m: behind the front row's deepest body (about 12 m)
- * and the yards' trees (a royal poinciana at 14.5 to 17.5 m, a banyan at 15.5 to 18.5 m). [default]
- */
-export const OLDTOWN_BACK_M = 22;
 /** Keys where mailboxes do not stand (the hotels, the junk, the party). */
 const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY, ...SECRET];
 /** Every key with its own look: conch cottages and their pickets stand only in the conch town. */
@@ -494,13 +516,9 @@ export const KEYS_KIT: RoadsideKit = {
     // P4-19; `across[0]` is past the verge band): the Duval kit's variants 0 to 2 are balconied shopfronts,
     // 3 and 4 conch houses, 5 the corner bar; the sidewalk's planters and scooter racks. The Old Town's open
     // bars and trees follow the kit's last rule below (a rule's place in this list is its random stream).
-    rule('oldtown-front', [0, 0, 1, 1, 2, 2, 3, 4, 5], OLDTOWN_LAND, 0, 1, [0.3, 0], 0, {
-      model: 'duvalKit',
-      frontage: { gap: [0.6, 3], lotRate: 0.08, lotM: 9 },
-      district: OLDTOWN,
-      face: true,
-      tier: 0,
-    }),
+    // The street fronts are structures (the physical world, 2026-10-06): road/structures/oldtown.ts holds
+    // these rules and stands their buildings; the kit keeps their places in its list.
+    fromPlan('oldtown-front', { model: 'duvalKit', face: true, tier: 0 }),
     // The sidewalk's furniture: within its 4 m (it spans 0 to 3.4 m past the drawn verge).
     // Both stand where road/furniture.ts plans them (`planned`), as the frangipanis below: the palm
     // planters in a row along the kerb, square to the street, leaving the shop side of the sidewalk clear.
@@ -648,14 +666,7 @@ export const KEYS_KIT: RoadsideKit = {
     // Playtest 4, P4-19 (Codex CX5's identity kit: variants 3 a banyan, 4 a royal poinciana, 5 a frangipani,
     // 6 and 7 two open-fronted bars). The open bars claim their ground before the street front does
     // (`first`), a long way apart, and stand on the sidewalk's edge like the shops around them.
-    rule('oldtown-bar', [6, 7], OLDTOWN_LAND, 0, 1, [0.3, 0], 0, {
-      model: 'keysIdentity',
-      frontage: { gap: [70, 150], lotRate: 0, lotM: 0 },
-      district: OLDTOWN,
-      face: true,
-      tier: 0,
-      first: true,
-    }),
+    fromPlan('oldtown-bar', { model: 'keysIdentity', face: true, tier: 0 }),
     // A frangipani on the sidewalk now and then, by the kerb.
     rule('oldtown-frangipani', [5], OLDTOWN_LAND, 26, 0.6, [0.5, 0.2], 0.5, {
       model: 'keysIdentity',
@@ -727,25 +738,17 @@ export const KEYS_KIT: RoadsideKit = {
     }),
     // Playtest 4 (run B's check, punch item 4: "mid-street the sea shows behind both fronts"): Old Town's second
     // row. The Duval kit's conch houses (variants 3 and 4: no shop boards, so no balcony crowd up there) stand end
-    // to end behind the front row, their facades OLDTOWN_BACK_M past the sidewalk, over the city floor
-    // (`WIDE_LAND_M`), so a gap between two shopfronts shows a house, not the sea. Last in the list, so no other
-    // rule's seeded placements move; it only takes the ground the rules before it left (the trees' discs, the
-    // bars, the front itself). Run B's fix check (punch item 8: "a sliver of sea still shows at the right edge,
+    // to end behind the front row, their facades 22 m past the sidewalk (road/structures/oldtown.ts OLDTOWN_BACK_M,
+    // behind the front row's deepest body and the yards' trees), over the city floor (`WIDE_LAND_M`), so a gap
+    // between two shopfronts shows a house, not the sea. Last in the list, so no other rule's seeded placements
+    // move; since the structure plan stands it (2026-10-06), the trees keep off its ground. Run B's fix check (punch item 8: "a sliver of sea still shows at the right edge,
     // behind the second row"): the rider's eye is 3 m up, so a ray slants through a gap in the front and comes
     // out past the second row's own gaps (where the front stands closed, there was no house behind it), and a
     // lot, a slit between two houses or a front building's cover each opened one. The row is whole now: a house
     // wherever the ground and the yards leave room (`behindOpenM: 0`), touching its neighbour or overlapping it
     // by up to 0.6 m (these houses stand 22 m behind the sidewalk and are seen from the street at a slant), and
     // no empty lot (tests/sim/duval-sight.test.ts casts the rays).
-    rule('oldtown-back', [3, 4], OLDTOWN_LAND, 0, 1, [OLDTOWN_BACK_M, 0], 0, {
-      model: 'duvalKit',
-      frontage: { gap: [-0.6, 0], lotRate: 0, lotM: 0 },
-      behind: ['oldtown-front', 'oldtown-bar'],
-      behindOpenM: 0,
-      district: OLDTOWN,
-      face: true,
-      tier: 0,
-    }),
+    fromPlan('oldtown-back', { model: 'duvalKit', face: true, tier: 0 }),
   ],
 };
 
@@ -868,6 +871,11 @@ export interface RoadsideInput {
    * 4 run C, punch item 6: Lake Samish's shore lies below East Shore Drive, `RoadScene.landTop`): a prop stands on it.
    */
   landTop?: (edge: number, side: -1 | 1, s: number, across: number) => number | null;
+  /**
+   * The street fronts the `structure` rules stand (road/structures/oldtown.ts), when not the plan's own for this
+   * road and seed (`planOldTown`): tests only.
+   */
+  fronts?: readonly OldTownFront[];
 }
 
 /** A grid of discs, for keeping props apart. Discs over 8 m (the sawmill) are kept in a list. */
@@ -1031,6 +1039,8 @@ export class RoadsideScatter {
   private readonly zones = new Map<number, { s0: number; s1: number; lo: number; hi: number }[]>();
   /** The planned pieces (road/furniture.ts) by edge, rule and side (`edge:rule:side`). */
   private readonly planned = new Map<string, StreetFurniture[]>();
+  /** The structure plan's street fronts (road/structures/oldtown.ts) by edge, rule and side. */
+  private readonly fronts = new Map<string, OldTownFront[]>();
 
   constructor(private readonly input: RoadsideInput) {
     const { road } = input;
@@ -1063,6 +1073,17 @@ export class RoadsideScatter {
     }
     // The staged scenes' ground (run W-T, scenes/): nothing of the kit stands in a scene, ferns included.
     for (const q of input.reserved ?? []) this.taken.add(q.x, q.z, q.r, false);
+    // The street fronts are structures (the physical world, 2026-10-06): the plan stands them
+    // (road/structures/oldtown.ts), and nothing else of the kit stands on their ground, wherever its rule runs.
+    if (input.kit.rules.some((r) => r.structure)) {
+      for (const f of input.fronts ?? planOldTown(road, input.seed).fronts) {
+        for (const c of f.discs) this.taken.add(c.x, c.z, f.r);
+        const key = `${f.edge}:${f.rule}:${f.d < 0 ? -1 : 1}`;
+        const list = this.fronts.get(key);
+        if (list) list.push(f);
+        else this.fronts.set(key, [f]);
+      }
+    }
     // The kit's sidewalk pieces (playtest 4, "solid but forgiving"): road/furniture.ts plans them, so the
     // sim meets what is drawn; each `planned` rule stands its pieces from the plan in its own turn.
     for (const it of planStreetFurniture(road, input.seed).items) {
@@ -1129,14 +1150,40 @@ export class RoadsideScatter {
     }
   }
 
+  /**
+   * A `structure` rule's buildings on one side of one edge, as the structure plan stands them
+   * (road/structures/oldtown.ts): their ground was taken when the scatter began.
+   */
+  private standFronts(edge: number, rule: RoadsideRule, side: -1 | 1): void {
+    for (const f of this.fronts.get(`${edge}:${rule.id}:${side}`) ?? [])
+      this.items.push({
+        rule: rule.id,
+        variant: f.variant,
+        edge,
+        s: f.s,
+        d: f.d,
+        p: { x: f.p.x, y: f.p.y, z: f.p.z },
+        turn: f.turn,
+        pitch: 0,
+        size: 1,
+        tier: rule.tier ?? 0,
+        foot: { half: f.foot.half, front: f.foot.front, back: f.foot.back },
+      });
+  }
+
   private runUnit(edgeIndex: number, ri: number, side: -1 | 1): void {
     const input = this.input;
     const { road, dressing, seed } = input;
     const e = road.edges[edgeIndex];
     const rule = input.kit.rules[ri];
     if (!e || !rule) return;
-    // A rule drawing from another model (Old Town's kit) places nothing until that model is in.
+    // A rule drawing from another model (Old Town's kit) places nothing until that model is in. A street front
+    // the plan stands has taken its ground already, drawn or not.
     if (rule.model && !input.models?.[rule.model]) return;
+    if (rule.structure) {
+      this.standFronts(e.index, rule, side);
+      return;
+    }
     if (rule.planned) {
       this.standPlanned(e.index, rule, side);
       return;
@@ -1169,138 +1216,6 @@ export class RoadsideScatter {
     const h = (k: number, sd: number, salt: number) =>
       scatterHash(seed, 7919 + e.index * 977 + ri * 131, k, sd * 17 + salt + 40);
     const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
-    if (rule.frontage) {
-      const model = rule.model ? input.models?.[rule.model] : undefined;
-      if (!model) return;
-      const fr = rule.frontage;
-      // A building keeps off the landmarks' footprints too (the buoy, the Mile 0 marker).
-      const blocks = (dress?.features ?? []).filter(
-        (f) => KEEP_CLEAR.has(f.kind) || (f.kind === 'landmark' && f.params?.['overRoad'] !== true),
-      );
-      const sideName = side < 0 ? 'left' : 'right';
-      const onLand = (u: number) =>
-        (rule.on as readonly string[]).includes(themeAt(tags, sideName, u)) &&
-        (!rule.district || inDistrict(tags, sideName, u, rule.district)) &&
-        !(rule.notDistrict && inDistrict(tags, sideName, u, rule.notDistrict));
-      let s = h(0, side, 0) * fr.gap[1];
-      for (let k = 0; s < e.length; k++) {
-        const variant = rule.v[Math.floor(h(k, side, 4) * rule.v.length) % rule.v.length] ?? 0;
-        const box = model.variants[variant]?.boundingBox;
-        if (!box) break;
-        if (h(k, side, 7) < fr.lotRate) {
-          s += fr.lotM;
-          continue;
-        }
-        const half = Math.max(-box.min.x, box.max.x);
-        const front = Math.max(0, box.max.z);
-        const back = Math.max(0, -box.min.z);
-        const depth = front + back;
-        const sc = s + half;
-        if (sc + half > e.length) break;
-        const ends = [sc - half, sc, sc + half];
-        // Its facade `across[0]` past the verge band's outer edge, whatever the band is made of (a
-        // sidewalk, a loose band the rider rides), so the front stands on the street's edge and the
-        // balcony, `front` further out, hangs over the pavement; its whole depth on the drawn land.
-        const sideKey = side < 0 ? 'left' : 'right';
-        const bandPast = Math.max(
-          ...ends.map((u) => Math.max(0, Math.abs(road.vergeAt(e.index, u, sideKey).dOuter) - outer)),
-        );
-        const across = bandPast + rule.across[0] - front;
-        let fits =
-          ends.every(onLand) && ends.every((u) => across + depth <= input.landReach(e.index, side, u));
-        const dFront = side * (outer + across);
-        const dFacade = side * (outer + across + front);
-        const dBack = side * (outer + across + depth);
-        const overlaps = (s0: number, s1: number, d0: number, d1: number, from: number, to: number) =>
-          sc + half > Math.min(s0, s1) - 1 &&
-          sc - half < Math.max(s0, s1) + 1 &&
-          Math.max(from, to) > Math.min(d0, d1) - 1 &&
-          Math.min(from, to) < Math.max(d0, d1) + 1;
-        // A crowd stands on the pavement, under the balcony: only the building's body is in its way.
-        // Everything else (a board's posts, a pad, a landmark) keeps off the balcony too.
-        if (fits)
-          fits = !blocks.some((f) =>
-            f.kind === 'roadsideZone'
-              ? overlaps(f.s0, f.s1, f.d0, f.d1, dFacade, dBack)
-              : overlaps(f.s0, f.s1, f.d0, f.d1, dFront, dBack),
-          );
-        if (fits) fits = !zones.some((z) => overlaps(z.s0, z.s1, z.lo, z.hi, dFront, dBack));
-        // A row behind another stands only where that one has a gap: most of its length open, not hidden.
-        if (fits && rule.behind) {
-          const spans = this.items
-            .filter(
-              (o) =>
-                o.edge === e.index &&
-                Math.sign(o.d) === side &&
-                o.foot &&
-                rule.behind?.includes(o.rule) &&
-                o.s + o.foot.half > sc - half &&
-                o.s - o.foot.half < sc + half,
-            )
-            .map((o) => [
-              Math.max(sc - half, o.s - (o.foot?.half ?? 0)),
-              Math.min(sc + half, o.s + (o.foot?.half ?? 0)),
-            ])
-            .sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0));
-          let covered = 0;
-          let upto = sc - half;
-          for (const [a, b] of spans) {
-            if ((b ?? 0) <= upto) continue;
-            covered += (b ?? 0) - Math.max(a ?? 0, upto);
-            upto = b ?? 0;
-          }
-          fits = rule.behindOpenM === undefined ? covered < half : 2 * half - covered >= rule.behindOpenM;
-        }
-        // Its ground as discs along its body (facade to back): clear of the scenery, the scenes and
-        // the landmarks.
-        const r = Math.min(back, 2 * half) / 2;
-        const discs: { x: number; z: number }[] = [];
-        if (fits) {
-          const mid = side * (outer + across + front + back / 2);
-          if (2 * half >= back) {
-            for (let u = -half + r; u < half - r + r / 2; u += r)
-              discs.push(road.toWorld(e.index, sc + u, mid, 0));
-            discs.push(road.toWorld(e.index, sc + half - r, mid, 0));
-          } else {
-            for (let t = r; t < back - r + r / 2; t += r)
-              discs.push(road.toWorld(e.index, sc, side * (outer + across + front + t), 0));
-            discs.push(road.toWorld(e.index, sc, side * (outer + across + front + back - r), 0));
-          }
-          fits = !discs.some((c) => taken.hits(c.x, c.z, r, false));
-        }
-        // No other road under any corner, and no higher road's land over it.
-        if (fits)
-          fits = ends.every((u) =>
-            [dFront, dBack].every((dd) => {
-              const q = road.toWorld(e.index, u, dd, LAND_TOP_M);
-              return !otherRoad(u, q.x, q.z, 1) && !underHigher(q.x, q.z, q.y, u);
-            }),
-          );
-        if (!fits) {
-          s += FRONTAGE_STEP_M;
-          continue;
-        }
-        const d = side * (outer + across + front);
-        const p = road.toWorld(e.index, sc, d, LAND_TOP_M);
-        const toRoad = road.toWorld(e.index, sc, 0, 0);
-        for (const c of discs) taken.add(c.x, c.z, r);
-        this.items.push({
-          rule: rule.id,
-          variant,
-          edge: e.index,
-          s: sc,
-          d,
-          p,
-          turn: Math.atan2(toRoad.x - p.x, toRoad.z - p.z),
-          pitch: 0,
-          size: 1,
-          tier: rule.tier ?? 0,
-          foot: { half, front, back },
-        });
-        s = sc + half + fr.gap[0] + (fr.gap[1] - fr.gap[0]) * h(k, side, 8);
-      }
-      return;
-    }
     const spacing = rule.every / this.density;
     for (let k = 0; ; k++) {
       const s0 = (k + 0.15 + (rule.align ? 0 : 0.7 * h(k, side, 0))) * spacing;

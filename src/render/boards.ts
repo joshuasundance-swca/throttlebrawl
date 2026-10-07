@@ -19,6 +19,7 @@ import {
   type Camera,
   type Texture,
 } from 'three';
+import { lanesUnderOf } from '../road';
 import type { RoadNetwork } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
@@ -133,6 +134,18 @@ export function sizeOfBoard(kind: BoardKind, style: SignStyle): (typeof BOARD_SI
 const AIM_AHEAD_M = 70;
 /** How far behind the printed face the posts stand, metres. */
 const POST_BEHIND_M = 0.22;
+/**
+ * A board stands off every road's lanes (the maintainer, 2026-10-06: "a road race in a physical world with
+ * honest edges"; a board in a lane is a ghost the rider rides through): its posts, and its panel where it
+ * hangs lower than BOARD_LOW_M, keep BOARD_LANES_CLEAR_M off the lanes of every road, not only its own (Sandbar
+ * Flats' billboard stood on Tarpon Flats; two of sf-hills' signs on a branch's lanes). A slot whose spot is
+ * on a lane moves out from its road BOARD_STEP_M at a time, at most BOARD_MOVE_MAX_M, and is not built if no
+ * spot is clear. [default]
+ */
+const BOARD_LOW_M = 2.5;
+const BOARD_LANES_CLEAR_M = 0.25;
+const BOARD_STEP_M = 0.5;
+const BOARD_MOVE_MAX_M = 12;
 
 /**
  * The sign faces (playtest 4, P4-19, C6: every sign in every region was the same green). A region
@@ -209,6 +222,66 @@ function incidentCones(w: number): BoxPart[] {
     ...conePartsAt(1.5, w / 2 + 0.45, 0.25),
     ...conePartsAt(1.5, w / 2 + 1.05, -0.2),
   ];
+}
+
+/**
+ * A board's turn: its face (local +z) toward the road's middle AIM_AHEAD_M before it, so the rider coming up the
+ * road sees it nearly face-on through the approach instead of edge-on from a hundred metres out.
+ */
+function boardYaw(road: RoadNetwork, edge: number, s: number, base: { x: number; z: number }): number {
+  const aim = road.toWorld(edge, Math.max(0, s - AIM_AHEAD_M), 0, 0);
+  return Math.atan2(aim.x - base.x, aim.z - base.z);
+}
+
+/** Across the face (local x), where a board stands low enough to meet a rider: its posts, legs and cones, or all of it. */
+function lowSpan(kind: BoardKind, size: (typeof BOARD_SIZES)[BoardKind], w: number): [number, number][] {
+  if (kind === 'cone') return [[-w / 2 - 0.8, w / 2 + 1.3]];
+  if (size.bottom < BOARD_LOW_M) return [[-w / 2 - 0.15, w / 2 + 0.15]];
+  return [
+    [-w * 0.34 - 0.09, -w * 0.34 + 0.09],
+    [w * 0.34 - 0.09, w * 0.34 + 0.09],
+  ];
+}
+
+/**
+ * Where across its road a board at s stands with its low parts off every road's lanes (BOARD_LANES_CLEAR_M): its
+ * slot's d, or further out from the road by BOARD_STEP_M up to BOARD_MOVE_MAX_M, or null where none is clear.
+ */
+export function boardOffLanes(
+  road: RoadNetwork,
+  edge: number,
+  s: number,
+  d0: number,
+  kind: BoardKind,
+  size: (typeof BOARD_SIZES)[BoardKind],
+  w: number,
+): number | null {
+  const lanes = lanesUnderOf(road);
+  const out = d0 < 0 ? -1 : 1;
+  for (let move = 0; move <= BOARD_MOVE_MAX_M + 1e-6; move += BOARD_STEP_M) {
+    const d = d0 + out * move;
+    const base = road.toWorld(edge, s, d, 0);
+    const yaw = boardYaw(road, edge, s, base);
+    const c = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    let clear = true;
+    for (const [x0, x1] of lowSpan(kind, size, w)) {
+      for (let x = x0; x <= x1 + 1e-6 && clear; x += Math.min(0.5, x1 - x0 || 1)) {
+        for (const z of [0, -POST_BEHIND_M]) {
+          // three.js turns about +Y: x' = x cos + z sin, z' = -x sin + z cos.
+          const px = base.x + x * c + z * sn;
+          const pz = base.z - x * sn + z * c;
+          if (lanes.at(px, base.y, pz, BOARD_LANES_CLEAR_M)) {
+            clear = false;
+            break;
+          }
+        }
+      }
+      if (!clear) break;
+    }
+    if (clear) return d;
+  }
+  return null;
 }
 
 /** A stable index from a string (the slot id), for picking an item out of a pool. */
@@ -478,7 +551,8 @@ export class Boards {
         if (slot.kind !== 'billboard') continue;
         const item = resolveSlot(slot, catalog);
         if (!item) continue;
-        this.views.push(this.buildView(road, edge.index, edge.length, slot, item, catalog));
+        const view = this.buildView(road, edge.index, edge.length, slot, item, catalog);
+        if (view) this.views.push(view);
       }
     }
     for (const v of this.views) {
@@ -565,21 +639,18 @@ export class Boards {
     slot: BoardSlot,
     item: BoardItem,
     catalog: BoardCatalog,
-  ): BoardView {
+  ): BoardView | null {
     const style = styleOfSlot(item.kind, slot, catalog);
     const size = sizeOfBoard(item.kind, style);
     const s = Math.min(length, Math.max(0, (slot.s0 + slot.s1) / 2));
-    const d = (slot.d0 + slot.d1) / 2;
     const w = Math.min(size.maxW, Math.max(size.minW, Math.abs(slot.d1 - slot.d0)));
+    const d = boardOffLanes(road, edge, s, (slot.d0 + slot.d1) / 2, item.kind, size, w);
+    if (d === null) return null;
     const base = road.toWorld(edge, s, d, 0);
     const group = new Group();
     group.name = `board-${slot.id ?? item.ref}`;
     group.position.set(base.x, base.y, base.z);
-    // Angle the face toward the rider coming up the road: its normal (local +z) points at the
-    // road's middle AIM_AHEAD_M before the board, so it is seen nearly face-on through the approach
-    // instead of edge-on from a hundred metres out.
-    const aim = road.toWorld(edge, Math.max(0, s - AIM_AHEAD_M), 0, 0);
-    group.rotation.y = Math.atan2(aim.x - base.x, aim.z - base.z);
+    group.rotation.y = boardYaw(road, edge, s, base);
     const face = faceOf(item.kind, style);
     const postH = size.bottom + size.panelH;
     // Posts and the cross rails stand BEHIND the printed face (local -z), so nothing crosses the

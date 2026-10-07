@@ -138,6 +138,9 @@ for (const size of SIZES) {
       // The first region is open; the second waits for the first's boss.
       await expect(page.locator('#career-lock')).toHaveCount(0);
       await page.locator(`#career-region-${ids[1]}`).click();
+      // The region's roads are fetched now, a few files at a time, and the screen is drawn again when they
+      // are in (app/index.ts `openCareer`): wait for its map, so that redraw does not land mid-check.
+      await expect(page.locator('.career-map').first()).toBeVisible({ timeout: 30_000 });
       const lock = page.locator('#career-lock');
       await expect(lock).toBeVisible();
       await expect(lock).toContainText('Opens when');

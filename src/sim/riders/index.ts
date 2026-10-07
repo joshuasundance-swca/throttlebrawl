@@ -30,7 +30,10 @@
 import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
 import { sRateFactor, type FurnitureShape } from '../../road';
 import type { RideLimits } from '../ground';
+// Types only: sim/traffic and sim/tumble import this module, so their state is read, never imported.
+import type { TrafficState } from '../traffic';
 import { trafficContactCrashes } from '../traffic/contact-rule';
+import type { TumbleState } from '../tumble';
 import {
   InputFlag,
   type MovesSnapshot,
@@ -71,7 +74,11 @@ import {
   FURNITURE_TUNING,
   LIGHT_KICK,
   LIGHT_SCRUB,
+  PARKED_BIKE_HALF_LENGTH_M,
+  PARKED_BIKE_HALF_WIDTH_M,
+  PARKED_BIKE_TOP_M,
   piecesNear,
+  pileUpsOn,
   slideAlong,
   SOLID_GRAZE_M,
   spineAt,
@@ -83,6 +90,7 @@ import {
   BOOST_ACCEL_MPS2,
   boostOf,
   boostPadAt,
+  boxShape,
   clearsBody,
   deckHeight,
   hazardObject,
@@ -105,11 +113,16 @@ import {
   gapFall,
   gapUnder,
   GAP_TUNING,
+  handYaw,
   newGapState,
   overBarrier,
   overFall,
+  overFalls,
   overMarkOf,
+  overStep,
+  roadUnder,
   type GapState,
+  type OverMark,
 } from './gap';
 import {
   inRiderFrame,
@@ -135,6 +148,7 @@ import {
   groundFeel,
   limitsAt,
   ploughYard,
+  brokenFencesOf,
   vergeState,
 } from './verge';
 import {
@@ -438,6 +452,12 @@ export interface RiderState extends AirState, UturnState, WheelieState, DriftSta
   furnTouch: number[];
   lightTouch: number[];
   /**
+   * Whose dropped bike the rider touched last tick, that rider's id + 1 (0 for none; pile-ups, the
+   * maintainer, 2026-10-06), so one contact emits one event. Made at the first contact, so a race with
+   * no pile-up rule hashes as before.
+   */
+  bikeTouch?: number[];
+  /**
    * 1 from a landing until the rider rides clear of a crest that would launch him, so one crest is
    * one jump: coming down on the same crest's far side never bounces him straight back up.
    */
@@ -739,8 +759,11 @@ export function riderLimits(
   edge: number,
   s: number,
   d?: number,
+  reading = false,
 ): RideLimits {
-  const lim = limitsAt(config, world.params, vergeState(world).brokenFences, edge, s, BIKE_HALF_WIDTH_M);
+  // A reader (the snapshot's forecasts) never creates the verge state: it may be absent, no fence broken.
+  const fences = reading ? brokenFencesOf(world) : vergeState(world).brokenFences;
+  const lim = limitsAt(config, world.params, fences, edge, s, BIKE_HALF_WIDTH_M);
   if (lim.loEdge === 'hard' && lim.hiEdge === 'hard' && lim.loBandM === 0 && lim.hiBandM === 0) return lim;
   const lanes = barrierLimits(config, edge, s);
   const outRight = d !== undefined && d > lanes.hi + ON_VERGE_M;
@@ -1167,6 +1190,8 @@ const CONTACT_REACH_M = 2.5;
 interface SolidMet {
   extra: Record<string, string>;
   newContact: boolean;
+  /** Never a crash, only a wobble (a dropped bike put down where the rider already was). */
+  noCrash?: boolean;
 }
 
 /**
@@ -1217,6 +1242,7 @@ function meetSolid(
     newContact: met.newContact,
     extra: { ...met.extra, hit: endOn ? 'end' : alongside ? 'side' : 'graze' },
     vehicle: true,
+    ...(met.noCrash === true ? { noCrash: true } : {}),
   });
 }
 
@@ -1385,6 +1411,92 @@ function furnitureContact(
     newContact,
   });
 }
+/** A dropped bike as the contact sees it: its footprint, and whose bike it is. */
+interface DroppedBike {
+  shape: FurnitureShape;
+  owner: number;
+}
+
+/**
+ * The bikes standing on `edge` near s while their riders run back to them (sim/tumble parks each at its
+ * crash's hand-back and clears it at the remount), other than rider `self`'s own: each a footprint
+ * along the road, the rider box the bike models are fitted to. Read from tumble's state, never imported
+ * (tumble imports this module); none without the tumble system.
+ */
+function droppedBikesNear(world: World, edge: number, s: number, self: number): DroppedBike[] {
+  const records = (world.systems['tumble'] as Pick<TumbleState, 'records'> | undefined)?.records;
+  if (!records) return [];
+  const out: DroppedBike[] = [];
+  const reach = CONTACT_REACH_M + PARKED_BIKE_HALF_LENGTH_M;
+  for (let id = 0; id < records.length; id++) {
+    const bike = records[id]?.parked;
+    if (id === self || !bike || bike.edge !== edge || Math.abs(bike.s - s) > reach) continue;
+    const shape = boxShape(
+      bike.s - PARKED_BIKE_HALF_LENGTH_M,
+      bike.s + PARKED_BIKE_HALF_LENGTH_M,
+      bike.d - PARKED_BIKE_HALF_WIDTH_M,
+      bike.d + PARKED_BIKE_HALF_WIDTH_M,
+    );
+    out.push({ shape, owner: id });
+  }
+  return out;
+}
+
+/** Whether a rider is a ghost to traffic now (sim/traffic `trafficGhost`, read without importing it). */
+function respawnGhost(world: World, id: number): boolean {
+  const traffic = world.systems['traffic'] as Pick<TrafficState, 'ghostCapT'> | undefined;
+  return (traffic?.ghostCapT[id] ?? 0) > 0;
+}
+
+/**
+ * A riding rider meeting a bike left on the road after a crash (pile-ups; the maintainer, 2026-10-06:
+ * "Pile ups are fun lol"). The bike is solid under the one rule for heavy things (docs/content-packs.md,
+ * "Contact outcomes"): its footprint met by `meetSolid`, the closing speed along the contact's normal
+ * deciding, so a square-on hit at `traffic.solidHitMps` or more brings the rider down (a pile-up) and a
+ * crawl, a graze or a side brush wobbles him past it. A rider higher than its top (`h`, above the road)
+ * passes over it. Two fair-restart rules: while a rider's respawn ghost lasts (sim/traffic, started at a
+ * remount or a splash respawn) he passes through dropped bikes as through traffic, so a bike beside the
+ * one he got back on never brings him straight down again; and a bike put down where a rider already is
+ * (a hand-back beside him) only ever wobbles him. Events carry `object` `parked-bike` and `bikeOf`, the
+ * owner's id; no `target`, so the rider on foot is never blamed for it. Off with `riders.pileUps` (then
+ * sim/tumble rides it through as before). Returns true when it crashed the rider.
+ */
+function droppedBikeContact(
+  world: World,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  h: number,
+): boolean {
+  if (!pileUpsOn(world.params)) return false;
+  const pos = m.pos;
+  const near =
+    h <= PARKED_BIKE_TOP_M && !respawnGhost(world, m.id)
+      ? droppedBikesNear(world, pos.edge, pos.s, m.id)
+      : [];
+  const move = moveOf(m, before);
+  const hit = near.length > 0 ? firstTouch(near, move.s0, move.d0, move.s1, move.d1, pos.dir, m.yaw) : null;
+  if (!hit) {
+    if (st.bikeTouch) st.bikeTouch[m.id] = 0;
+    return false;
+  }
+  const touch = (st.bikeTouch ??= []);
+  const owner = hit.piece.owner;
+  const newContact = touch[m.id] !== owner + 1;
+  touch[m.id] = owner + 1;
+  const from = world.events.length;
+  meetSolid(world, st, m, move, hit, {
+    extra: { object: 'parked-bike', bikeOf: String(owner) },
+    newContact,
+    noCrash: hit.held,
+  });
+  for (let i = from; i < world.events.length; i++) {
+    const e = world.events[i];
+    if (e && e.type === 'crash' && e.actor === m.id) return true;
+  }
+  return false;
+}
+
 /**
  * A rider in the air meeting a solid hazard or a solid street piece below its top (`h` above the road):
  * the ground's rule (`meetSolid`), the closing speed along the contact's normal deciding. Returns true
@@ -1820,6 +1932,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   barrierContact(world, config, st, m, dt);
   truckContact(world, config, st, m, before, dt, decks);
   furnitureContact(world, config, st, m, before);
+  droppedBikeContact(world, st, m, before, m.h);
   if (hazardContact(world, config, st, m, before)) {
     // Launched off a parked car by a wheelie (playtest 3): its flight is already set up.
     st.throttle[m.id] = throttle;
@@ -2052,6 +2165,12 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // below its top is met by the same rule as on the ground (playtest 4: by the closing speed along the
   // contact's normal; it was a crash whatever the speed). A crash ends the flight here.
   if (!onTop && airSolids(world, config, st, m, airFrom, y - surface, tops ? hBefore : undefined)) {
+    m.h = Math.max(0, y - surface);
+    st.yAbs[m.id] = y;
+    return;
+  }
+  // A dropped bike (pile-ups) is met in the air below its top the same way.
+  if (!onTop && droppedBikeContact(world, st, m, airFrom, y - surface)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
     return;
@@ -2300,6 +2419,12 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   const dt = FORECAST_STEP_S;
   const tops = supportsOn(world);
   const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
+  // Over the barrier (2026-10-06, sim/riders/gap.ts): the flight meets the edge by the same rule the
+  // rider does (`overStep`, on its own copy of the mark), so a flight past a rail that ends in the water
+  // has no mark (there is no landing to aim at), and one that comes down on another road, or at the
+  // edge of ground past it, has its mark there.
+  const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
+  let mark: OverMark | null = overMarkOf(st, m.id);
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
     const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
@@ -2310,6 +2435,21 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     y += vy * dt - 0.5 * gravity * dt * dt;
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
+    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M);
+    mark = step.mark;
+    if (step.setD !== undefined) at.d = step.setD;
+    if (step.hand) {
+      yaw = handYaw(road, at, step.hand, yaw);
+      at.edge = step.hand.edge;
+      at.s = step.hand.s;
+      at.d = step.hand.d;
+      at.dir = step.hand.dir;
+    }
+    const pastEdge = mark !== null && step.result === 'past';
+    // Out past the edge over water or a drop, and it falls: a splash, not a landing.
+    if (pastEdge && mark && overFalls(mark, y)) return null;
+    // Below the barrier's top (or at a ground edge): it holds the flight at its limit.
+    if (step.holdD !== undefined) at.d = step.holdD;
     const gap = y - road.surfaceHeight(at.edge, at.s, at.d);
     const here = { edge: at.edge, s: at.s, d: at.d, ahead: t + dt };
     const sup = tops
@@ -2326,7 +2466,9 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
       onTop = sup.top;
       break;
     }
-    if (gap <= 0) {
+    // Out past the edge its road's plane does not go on: only a road under it, or the ground's
+    // edge (put back at the limit above), ends the flight there.
+    if (gap <= 0 && !pastEdge) {
       // Back to where the flight crossed the ground, between the two steps.
       const k = prev.gap > 0 ? prev.gap / (prev.gap - gap) : 1;
       if (prev.edge === at.edge) {
@@ -2349,6 +2491,46 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   const crooked =
     holdingPaper(st, m.id) || td.crashes || td.wobbles || lateral >= crashAt * LANDING_WOBBLE_FRACTION;
   return { x: p.x, y: p.y, z: p.z, heading: atan2(-fx, -fz), inS: t, crooked };
+}
+
+/**
+ * What lies straight below a rider in the air, as a world height (`EntitySnapshot.floorY`; the maintainer,
+ * 2026-10-06: "consistent physics and gameplay is important here so players know what to expect"): the
+ * shadow falls there and the camera judges its height over it. The top of a support the rider is above
+ * (a truck's roof, a parked pickup; sim/riders/supports.ts) or a ramp truck's deck, else the road's
+ * surface; out past the edge of its road (over the barrier, sim/riders/gap.ts) another road under it
+ * (the old Seven Mile Bridge), else the water or the drop's floor, or the band's edge where ground lies
+ * past it. Null for anyone not in the air. Presentation only: it reads the state, it never writes it.
+ */
+export function floorOf(world: World, config: SimConfig, m: Mover): number | null {
+  if (m.kind !== 'rider' || m.mode !== 'Airborne') return null;
+  const st = riderState(world);
+  const road = config.road;
+  const pos = m.pos;
+  const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  const y = st.yAbs[m.id] ?? surface + m.h;
+  const mark = overMarkOf(st, m.id);
+  if (mark) {
+    const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
+    const to = roadUnder(config, pos, y, limits);
+    if (to) return road.surfaceHeight(to.edge, to.s, to.d);
+    return mark.past === 'ground' ? road.surfaceHeight(pos.edge, pos.s, mark.d) : mark.floorY;
+  }
+  const tops = supportsOn(world);
+  const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
+  const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
+  const up = y - surface;
+  const on = tops
+    ? supportAt(
+        world,
+        config,
+        m,
+        { edge: pos.edge, s: pos.s, d: pos.d, ahead: 0 },
+        decks,
+        (h) => h <= up + 1e-6,
+      )
+    : null;
+  return surface + Math.max(0, ramp, on ? on.top : 0);
 }
 
 export const ridersSystem: SimSystem = {
