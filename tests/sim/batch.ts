@@ -229,6 +229,7 @@ export const ISOLATED: Readonly<Record<string, number>> = {
   'traffic.density': 0,
   'peds.strayAnimalChance': 0,
   'modifiers.setPieceChance': 0,
+  'modifiers.propContact': 0,
   'cops.spawnChance': 0,
   'cops.patrolScale': 0,
   'cops.heatScale': 0,
@@ -238,6 +239,7 @@ export const ISOLATED: Readonly<Record<string, number>> = {
   'smash.density': 0,
   'riders.furniture': 0,
   'riders.supports': 0,
+  'riders.structures': 0,
 };
 
 /** Seeds `from` to `to`, inclusive. */

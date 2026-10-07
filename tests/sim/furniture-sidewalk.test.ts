@@ -17,6 +17,10 @@
 //   rider in the middle of a Key West sidewalk meets no planter or frangipani square on (it met them
 //   all: they stood across its middle).
 // Seeded statistics: bands well inside the measured shares (printed), over enough contacts (MIN_CONTACTS).
+// The rides are of the street furniture alone: the structures are off (`riders.structures` 0, as in ISOLATED).
+// With them on, Old Town's buildings stand in Duval's sidewalk rides too (train 454: the three middle rides
+// crashed 28 times, 8 of them on a planter, against none with them absent), which is the structures' rule,
+// tested in tests/sim/structures-solid.test.ts, not the furniture's.
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, createStreamCache } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
@@ -83,7 +87,7 @@ function ride(
   const config: SimConfig = buildSimConfig(REG, STREAMS.forEvent(REG, eventId), {
     seed,
     eventId,
-    ...(Object.keys(tuning).length ? { tuning } : {}),
+    tuning: { 'riders.structures': 0, ...tuning },
   });
   const plan = planStreetFurniture(config.road, config.seed);
   const sim = createSim(config);

@@ -270,10 +270,18 @@ export interface ClusterContact {
 }
 
 /**
+ * The structures a crashed body comes down on (the physical world, 2026-10-06; sim/riders/structures.ts):
+ * the highest top over a world point (x, z) at or under `y`, world m, or null. A body on one rests on it,
+ * and the barrier line does not pull it back off a roof past the band.
+ */
+export type TopUnder = (x: number, z: number, y: number) => number | null;
+
+/**
  * Advances one cluster by dt (already scaled; the caller never passes 0): gravity, motion, the
  * constraints, then the road (per particle) and the barrier line (per cluster), or free fall to
  * the water once overboard. `mu` is the sliding friction, as a multiple of g. With `offRoad` (the
- * race's `ground.offRoad`, run W-R) the barrier line is out at the verge bands' outer edges.
+ * race's `ground.offRoad`, run W-R) the barrier line is out at the verge bands' outer edges. With
+ * `tops`, a structure's top under a particle is its floor where it is higher than the road's.
  */
 export function stepCluster(
   road: RoadNetwork,
@@ -281,6 +289,7 @@ export function stepCluster(
   dt: number,
   mu: number,
   offRoad = false,
+  tops?: TopUnder,
 ): ClusterContact {
   if (c.splashed) return overboardContact(road, c, false, false);
   for (const q of c.p) {
@@ -310,7 +319,10 @@ export function stepCluster(
     const d = clamp(pc.d - ox * f.tz + oz * f.tx, band.lo, band.hi);
     // Over a gap there is nothing to stop it (playtest 3).
     if (gapAt(road, pc.edge, s, d)) return -Infinity;
-    return road.surfaceHeight(pc.edge, s, d);
+    const ground = road.surfaceHeight(pc.edge, s, d);
+    // A structure's top it came down on this step (from where it was as the step began).
+    const top = tops ? tops(q.x, q.z, q.y - q.vy * dt + CONTACT_M) : null;
+    return top !== null && top > ground ? top : ground;
   });
   const hit = c.p.map((q, i) => q.y < (floor[i] ?? -Infinity));
   // The links and the ground solved together, so a wheel on the road keeps the frame rigid.
@@ -326,7 +338,10 @@ export function stepCluster(
     c.overboard = true;
     return { ...fallToWater(road, c, true), gap: { edge: pc.edge, id: hole.id } };
   }
-  const over = barrierLine(road, c, pc, offRoad);
+  // Up on a structure's top past the band (a crash on a roof), no edge holds it: it rests up there.
+  const atTop = tops ? centre(c.p) : null;
+  const up = atTop && tops ? tops(atTop.x, atTop.z, atTop.y + CONTACT_M) !== null : false;
+  const over = up ? null : barrierLine(road, c, pc, offRoad);
   if (over) return { ...fallToWater(road, c, true), over };
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);

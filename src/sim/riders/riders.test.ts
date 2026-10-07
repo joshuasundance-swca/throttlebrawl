@@ -368,6 +368,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.pileUps',
       'riders.smokeSlowdown',
       'riders.supports',
+      'riders.structures',
     ]);
     for (const d of RIDERS_TUNING) {
       expect(d.affectsSim).toBe(true);

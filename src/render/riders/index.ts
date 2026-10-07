@@ -1258,7 +1258,12 @@ class Rig {
   }
 }
 
-type PartLoad = { part: BakedPart | null; error: string | null };
+/**
+ * A part the rigs hold: `retryable` when it failed because of the host (a 429 or the host's wait, a busy
+ * host, no connection), so the next race's `setLooks` asks for it again (polish batch L); it is kept
+ * meanwhile, so a rider whose bike failed still draws on the starter bike's model.
+ */
+type PartLoad = { part: BakedPart | null; error: string | null; retryable?: true };
 
 /**
  * Every rider entity's rig, the models they need (loaded once per asset id through the manifest)
@@ -1314,8 +1319,8 @@ export class RiderRigs {
       // A rig built from an older look is rebuilt on its next update (rigFor compares looks).
       this.baseLooks.set(l.contentId, l);
       this.looks.set(l.contentId, withPlayerPaint(l, this.playerPaint));
-      this.request(l.riderModel, 'rider');
-      this.request(l.bikeModel, 'bike');
+      this.request(l.riderModel, 'rider', true);
+      this.request(l.bikeModel, 'bike', true);
     }
   }
 
@@ -1329,13 +1334,20 @@ export class RiderRigs {
     for (const [id, l] of this.baseLooks) if (l.player) this.looks.set(id, withPlayerPaint(l, hex));
   }
 
-  private request(id: string, kind: PartKind): void {
-    if (this.parts.has(id) || this.loading.has(id) || !this.manifest) return;
+  private request(id: string, kind: PartKind, again = false): void {
+    // A part that failed because of the host is asked for again, but only when a race's looks are set
+    // (`again`), never from a frame's `rigFor`: once per race, not once per frame.
+    const have = this.parts.get(id);
+    if ((have && !(again && have.retryable)) || this.loading.has(id) || !this.manifest) return;
     this.loading.add(id);
     void this.manifest
       .load<BakedPart | null>(id, () => null, { decode: (data) => bakePart(readGlb(data), kind) })
       .then((res) => {
-        this.parts.set(id, { part: res.value, error: res.value ? null : (res.error ?? 'no model') });
+        this.parts.set(id, {
+          part: res.value,
+          error: res.value ? null : (res.error ?? 'no model'),
+          ...(!res.value && res.retryable ? { retryable: true as const } : {}),
+        });
       })
       .catch((err: unknown) => {
         this.parts.set(id, { part: null, error: String(err) });

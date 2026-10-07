@@ -876,10 +876,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       for (const k of kinds) requested.add(k);
       const { models: loaded, report } = await m.loadSceneryModels(assets, kinds);
       Object.assign(loadedModels, loaded);
-      modelReport = {
-        loaded: [...(modelReport?.loaded ?? []), ...report.loaded],
-        fellBack: [...(modelReport?.fellBack ?? []), ...report.fellBack],
-      };
+      modelReport = m.mergeModelReports(modelReport, report);
+      // A kind the host held back (its wait, a busy host) is asked for again at the next setRoad.
+      for (const k of m.retryableKinds(report)) requested.delete(k);
       repaint();
       if (report.loaded.length) buildRoad();
       if (report.loaded.some((k) => k.endsWith('Roadside')) && !roadsideModule)
