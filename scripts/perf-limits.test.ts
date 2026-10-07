@@ -12,7 +12,7 @@ import {
   floorProblem,
   GUARD_FACTOR,
   guardLimits,
-  isPullRequestRun,
+  floorJudgesRun,
   judgeSoft,
   PR_FLOOR_KB,
   summaryMarkdown,
@@ -136,11 +136,33 @@ describe("a pull request's headroom floor (2026-10-03: the budget was crossed 4 
   const floor = (head: number, base: number | null, pr: boolean) =>
     floorProblem(firstLoadReport(head * KB, 500, base === null ? null : base * KB), 500, pr);
 
-  it('is 10 KB, and only pull_request runs are judged by it', () => {
+  it("is 10 KB, and judges a pull request's own run and every train run, never a push to main", () => {
     expect(PR_FLOOR_KB).toBe(10);
-    expect(isPullRequestRun({ GITHUB_EVENT_NAME: 'pull_request' })).toBe(true);
-    expect(isPullRequestRun({ GITHUB_EVENT_NAME: 'push' })).toBe(false);
-    expect(isPullRequestRun({})).toBe(false);
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'pull_request' })).toBe(true);
+    // The bundle train (train.yml) and its control run the suite on the workflow_run and
+    // workflow_dispatch events: that run tests the tree that lands, so the floor judges it too.
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'workflow_run' })).toBe(true);
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'workflow_dispatch' })).toBe(true);
+    // Main's pushes (and their re-runs) keep the budget alone; a local run has no event.
+    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'push' })).toBe(false);
+    expect(floorJudgesRun({})).toBe(false);
+  });
+
+  it('holds a train run to it: #633 landed main at 9.9 KB of headroom through a train that skipped the floor', () => {
+    // Train 37530950804 (main ff06745 + #633): 490.1 KB gzip, its change against main not measured
+    // (the base build failed). Its perf step printed "not applied (not a pull_request run)", and #633's
+    // own quick check, against main 1 h 46 min older, had passed at 11.1 KB.
+    // 501,826 bytes: 87ceba3's first load as the live check measured it, 9.9 KB of headroom.
+    const landed = (base: number | null, env: Record<string, string>) =>
+      floorProblem(firstLoadReport(501_826, 500, base), 500, floorJudgesRun(env));
+    const train = { GITHUB_EVENT_NAME: 'workflow_dispatch' };
+    expect(landed(null, train)).toContain('leaves 9.9 KB of headroom');
+    expect(landed(null, train)).toContain('its change against main was not measured');
+    // Measured against the train's base (main ff06745 printed 489.8 KB): it grows the first load.
+    expect(landed(501_520, train)).toContain('this one grows it by 306 B');
+    expect(landed(501_520, { GITHUB_EVENT_NAME: 'workflow_run' })).not.toBeNull();
+    // The negative control: the same build on main's push is not judged by the floor.
+    expect(landed(501_520, { GITHUB_EVENT_NAME: 'push' })).toBeNull();
   });
 
   it('fails a PR that grows the first load into the last 10 KB, with the headroom it leaves (it fires)', () => {

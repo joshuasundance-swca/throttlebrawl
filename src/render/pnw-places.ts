@@ -23,11 +23,10 @@
 // (scenery-merge.ts): a few draw calls a view, built as the camera comes near. The solid hazards draw
 // out to at least MIN_THREAT_DRAW_M whatever the scenery slider says. Presentation only; a lazy chunk.
 import { BufferGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group } from 'three';
-import type { BakedFeature, RoadNetwork } from '../road';
+import { FERRY_DIM, type BakedFeature, type PnwPlacesLayout, type RoadNetwork } from '../road';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import { MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
-import { ferrySections, FERRY_ROOF } from './roofs';
 import { LAND_TOP_M, scatterHash, type ScenerySpot } from './scenery';
 
 /** The tags this layer draws. */
@@ -245,21 +244,12 @@ const C = {
 } as const;
 
 // ---- the ferry ------------------------------------------------------------------------------
-/** Hull half width, the car deck's walls and the passenger deck's heights above the car deck, m. */
-export const FERRY_DIM = {
-  hullHalfW: FERRY_ROOF.halfWidthM,
-  wallD: 10,
-  wallW: 0.6,
-  bulwarkH: 2.6,
-  /** The passenger deck's underside: roofs.ts keeps the rain out from under it. */
-  ceilingY: FERRY_ROOF.heightM,
-  cabinTopY: 10,
-  /** The passenger deck stops this far short of each end of the hull. */
-  cabinInsetM: FERRY_ROOF.insetM,
-} as const;
+// The ferry's numbers (hull half width, the car deck's walls, the passenger deck's heights above the car deck)
+// are road/ferry.ts's now: the ferry is a solid structure the sim meets (road/structures/pnw-places.ts).
+export { FERRY_DIM };
 
 /** One stretch of the hull, `len` along, standing `deckY` above the water (its local y = 0 is the deck). */
-function hullSection(len: number, deckY: number, cabin: boolean, ring: boolean): BufferGeometry {
+export function hullParts(len: number, deckY: number, cabin: boolean, ring: boolean): BoxPart[] {
   const D = FERRY_DIM;
   const bottom = -deckY - 0.4;
   const parts: BoxPart[] = [
@@ -270,13 +260,14 @@ function hullSection(len: number, deckY: number, cabin: boolean, ring: boolean):
   ];
   for (const side of [-1, 1] as const) {
     const wd = side * (D.wallD + D.wallW / 2);
-    parts.push(B([D.wallW, D.bulwarkH, len], [wd, D.bulwarkH / 2, 0], C.hullWhite));
+    parts.push(B([D.wallW, D.bulwarkH, len], [wd, D.bulwarkH / 2, 0], C.hullWhite, { solid: 'bulwark' }));
     // the ledge between the bulwark and the hull's side
     parts.push(
       B(
         [D.hullHalfW - D.wallD - D.wallW, 0.2, len],
         [(side * (D.hullHalfW + D.wallD + D.wallW)) / 2, -0.25, 0],
         C.deckGrey,
+        { solid: 'ledge' },
       ),
     );
     if (ring) parts.push(B([0.12, 0.7, 0.7], [side * (D.wallD + D.wallW + 0.06), 1.6, 0], C.lifeRing));
@@ -284,7 +275,9 @@ function hullSection(len: number, deckY: number, cabin: boolean, ring: boolean):
       // the car deck's open sides: posts holding the passenger deck up
       for (const at of [-len / 2 + 0.3, 0]) {
         parts.push(
-          B([0.5, D.ceilingY - D.bulwarkH, 0.5], [wd, (D.ceilingY + D.bulwarkH) / 2, at], C.hullWhite),
+          B([0.5, D.ceilingY - D.bulwarkH, 0.5], [wd, (D.ceilingY + D.bulwarkH) / 2, at], C.hullWhite, {
+            solid: 'post',
+          }),
         );
       }
       // the cabin's window band, proud of its wall
@@ -292,17 +285,24 @@ function hullSection(len: number, deckY: number, cabin: boolean, ring: boolean):
     }
   }
   if (cabin) {
-    parts.push(B([D.hullHalfW * 2, 0.4, len], [0, D.ceilingY + 0.2, 0], C.hullWhite));
+    parts.push(B([D.hullHalfW * 2, 0.4, len], [0, D.ceilingY + 0.2, 0], C.hullWhite, { solid: 'deck' }));
     parts.push(
       B(
         [(D.hullHalfW - 1) * 2, D.cabinTopY - D.ceilingY - 0.4, len],
         [0, (D.cabinTopY + D.ceilingY + 0.4) / 2, 0],
         C.hullWhite,
+        { solid: 'cabin' },
       ),
     );
-    parts.push(B([(D.hullHalfW - 0.6) * 2, 0.3, len], [0, D.cabinTopY + 0.15, 0], C.deckGrey));
+    parts.push(
+      B([(D.hullHalfW - 0.6) * 2, 0.3, len], [0, D.cabinTopY + 0.15, 0], C.deckGrey, { solid: 'roof' }),
+    );
   }
-  return model(parts);
+  return parts;
+}
+
+function hullSection(len: number, deckY: number, cabin: boolean, ring: boolean): BufferGeometry {
+  return model(hullParts(len, deckY, cabin, ring));
 }
 
 /** One end of the hull: the apron under the ramp, tapering below the waterline. */
@@ -321,18 +321,22 @@ function hullEnd(deckY: number, dir: 1 | -1): BufferGeometry {
 }
 
 /** The middle of the cabin roof: the funnel; each end of it: a wheelhouse. */
-function ferryTop(kind: 'funnel' | 'wheelhouse'): BufferGeometry {
+export function ferryTopParts(kind: 'funnel' | 'wheelhouse'): BoxPart[] {
   const y = FERRY_DIM.cabinTopY + 0.3;
   if (kind === 'funnel')
-    return model([
-      B([3.2, 5, 3.2], [0, y + 2.5, 0], C.funnel),
-      B([3.3, 0.8, 3.3], [0, y + 5.4, 0], C.funnelTop),
-    ]);
-  return model([
-    B([9, 2.6, 4], [0, y + 1.3, 0], C.hullWhite),
+    return [
+      B([3.2, 5, 3.2], [0, y + 2.5, 0], C.funnel, { solid: '' }),
+      B([3.3, 0.8, 3.3], [0, y + 5.4, 0], C.funnelTop, { solid: 'cap' }),
+    ];
+  return [
+    B([9, 2.6, 4], [0, y + 1.3, 0], C.hullWhite, { solid: '' }),
     B([9.1, 0.9, 4.1], [0, y + 1.8, 0], C.window),
-    B([10, 0.25, 4.6], [0, y + 2.7, 0], C.deckGrey),
-  ]);
+    B([10, 0.25, 4.6], [0, y + 2.7, 0], C.deckGrey, { solid: 'roof' }),
+  ];
+}
+
+function ferryTop(kind: 'funnel' | 'wheelhouse'): BufferGeometry {
+  return model(ferryTopParts(kind));
 }
 
 /** The ferry's name, block letters on the hull's white band (both sides, each reading forward). */
@@ -518,15 +522,21 @@ export function solidHazardModel(
 }
 
 /** A false-front shop on the main street, its front on the sidewalk's back edge, facing the road. */
-function shop(width: number, height: number, paint: string, awning: string, side: 1 | -1): BufferGeometry {
+export function shopParts(
+  width: number,
+  height: number,
+  paint: string,
+  awning: string,
+  side: 1 | -1,
+): BoxPart[] {
   const depth = 10;
   const dBack = side * (depth / 2);
   const front = 0;
   const parts: BoxPart[] = [
     // the body, from the front wall back
-    B([depth, height * 0.8, width], [dBack, (height * 0.8) / 2, 0], paint),
+    B([depth, height * 0.8, width], [dBack, (height * 0.8) / 2, 0], paint, { solid: '' }),
     // the false front, standing taller than the roof
-    B([0.3, height, width], [front + side * 0.15, height / 2, 0], paint),
+    B([0.3, height, width], [front + side * 0.15, height / 2, 0], paint, { solid: 'front' }),
     B([0.35, 0.25, width + 0.2], [front + side * 0.1, height + 0.12, 0], C.hullWhite),
     // the shop window and door, and the upstairs windows
     B([0.08, 1.6, width * 0.55], [front - side * 0.02, 1.4, -width * 0.12], C.glass),
@@ -536,7 +546,11 @@ function shop(width: number, height: number, paint: string, awning: string, side
     // the awning over the sidewalk
     B([1.2, 0.12, width * 0.9], [front - side * 0.6, 2.85, 0], awning),
   ];
-  return model(parts);
+  return parts;
+}
+
+function shop(width: number, height: number, paint: string, awning: string, side: 1 | -1): BufferGeometry {
+  return model(shopParts(width, height, paint, awning, side));
 }
 
 /** A string of bunting across the street at height `y`, from d0 to d1. */
@@ -552,21 +566,25 @@ function bunting(d0: number, d1: number, y: number, seed: number): BufferGeometr
 }
 
 /** The STUMP SOCIAL banner over the street, words on the face riders come up to (-s). */
-function banner(halfW: number): BufferGeometry {
+export function bannerParts(halfW: number): BoxPart[] {
   const cell = 0.2;
   const word = 'STUMP SOCIAL';
   const w = wordWidth(word, cell);
   const y = 5.4;
-  return model([
-    B([halfW * 2, 1.6, 0.1], [0, y + 0.6, 0], '#3f6f5a'),
+  return [
+    B([halfW * 2, 1.6, 0.1], [0, y + 0.6, 0], '#3f6f5a', { solid: '' }),
     ...wordAcross(word, cell, -w / 2, -0.07, y + 0.15, C.awningA),
-    B([0.15, y + 1.5, 0.15], [-halfW, (y + 1.5) / 2, 0], '#6b5a48'),
-    B([0.15, y + 1.5, 0.15], [halfW, (y + 1.5) / 2, 0], '#6b5a48'),
-  ]);
+    B([0.15, y + 1.5, 0.15], [-halfW, (y + 1.5) / 2, 0], '#6b5a48', { solid: 'post' }),
+    B([0.15, y + 1.5, 0.15], [halfW, (y + 1.5) / 2, 0], '#6b5a48', { solid: 'post' }),
+  ];
+}
+
+function banner(halfW: number): BufferGeometry {
+  return model(bannerParts(halfW));
 }
 
 /** A side street's mouth: its asphalt running off, the barricade at the sidewalk's edge, two tents. */
-function sideStreet(width: number, side: 1 | -1, seed: number, run: number): BufferGeometry {
+export function sideStreetParts(width: number, side: 1 | -1, seed: number, run: number): BoxPart[] {
   const parts: BoxPart[] = [B([run, 0.06, width], [side * (run / 2), 0.03, 0], C.asphalt)];
   for (let i = 0; i < 4; i++)
     parts.push(
@@ -574,18 +592,25 @@ function sideStreet(width: number, side: 1 | -1, seed: number, run: number): Buf
         [0.06, 0.2, width / 4],
         [side * 0.3, 0.9, -width / 2 + width / 8 + (i * width) / 4],
         i % 2 ? C.barricadeB : C.barricadeA,
+        { solid: 'barricade' },
       ),
     );
   for (const sd of [-1, 1] as const)
-    parts.push(B([0.1, 1.0, 0.1], [side * 0.3, 0.5, sd * (width / 2 - 0.3)], '#9a9a9a'));
+    parts.push(
+      B([0.1, 1.0, 0.1], [side * 0.3, 0.5, sd * (width / 2 - 0.3)], '#9a9a9a', { solid: 'barricade-post' }),
+    );
   for (const [k, at] of [10, 20].entries()) {
     if (at + 2 > run) break;
     const roof = C.bunting[(seed + k) % C.bunting.length] ?? C.awningB;
     const sAt = (k % 2 ? 1 : -1) * (width / 2 - 2);
-    parts.push(B([3, 2.2, 3], [side * at, 1.1, sAt], C.tent));
-    parts.push(B([3.4, 0.5, 3.4], [side * at, 2.45, sAt], roof));
+    parts.push(B([3, 2.2, 3], [side * at, 1.1, sAt], C.tent, { solid: 'tent' }));
+    parts.push(B([3.4, 0.5, 3.4], [side * at, 2.45, sAt], roof, { solid: 'tent-roof' }));
   }
-  return model(parts);
+  return parts;
+}
+
+function sideStreet(width: number, side: 1 | -1, seed: number, run: number): BufferGeometry {
+  return model(sideStreetParts(width, side, seed, run));
 }
 
 // ---- the clear-cut's dressing (past the ridable dirt: nothing solid there) ------------------
@@ -637,7 +662,7 @@ export interface PnwPlacesCounts {
   triangles: number;
 }
 
-interface Item {
+export interface Item {
   kind: string;
   edge: number;
   s: number;
@@ -655,7 +680,7 @@ const tagRanges = (road: RoadNetwork, edge: number, tag: string) =>
   (road.edges[edge]?.tags ?? []).filter((t) => t.tag === tag);
 
 /** The world spot of (edge, s, d) with the model's +Z along the road there. */
-function spotAt(road: RoadNetwork, it: Item): ScenerySpot {
+export function spotAt(road: RoadNetwork, it: Item): ScenerySpot {
   const e = road.edges[it.edge];
   const len = e?.length ?? 0;
   const a = road.toWorld(it.edge, Math.max(0, it.s - 1), 0, 0);
@@ -691,7 +716,12 @@ const VERGE_M = 0.6;
 const BAND_TOP_M = -0.04;
 
 /** Every prop the places put on a network, in road terms (the layer merges them; tests read them). */
-export function placeItems(road: RoadNetwork, seed: number, landReach: LandReach = () => 24): Item[] {
+export function placeItems(
+  road: RoadNetwork,
+  seed: number,
+  layout: PnwPlacesLayout,
+  landReach: LandReach = () => 24,
+): Item[] {
   const items: Item[] = [];
   const shared = new Map<string, BufferGeometry>();
   const once = (key: string, make: () => BufferGeometry) => {
@@ -719,59 +749,52 @@ export function placeItems(road: RoadNetwork, seed: number, landReach: LandReach
       items.push({ kind, edge: e.index, s, d, h: BAND_TOP_M, turn, geometry, threat: true });
     }
 
-    // The ferry.
-    for (const t of tagRanges(road, e.index, 'ferry')) {
-      const { n, len, cabin: hasDeck } = ferrySections(t.s0, t.s1);
-      const deckY = road.toWorld(e.index, (t.s0 + t.s1) / 2, 0, 0).y;
-      for (let i = 0; i < n; i++) {
-        const s = t.s0 + (i + 0.5) * len;
-        const cabin = hasDeck(i);
-        const y = road.toWorld(e.index, s, 0, 0).y;
+    // The ferry: where its parts stand is road/structures/pnw-places.ts's plan (the solids the sim meets).
+    for (const f of layout.ferry) {
+      if (f.edge !== e.index) continue;
+      const y = road.toWorld(e.index, f.s, 0, 0).y;
+      if (f.kind === 'ferry-hull')
         items.push({
-          kind: 'ferry-hull',
+          kind: f.kind,
           edge: e.index,
-          s,
+          s: f.s,
           d: 0,
-          geometry: once(`hull:${len}:${y}:${cabin}:${i % 2}`, () => hullSection(len, y, cabin, i % 2 === 0)),
+          geometry: once(`hull:${f.len}:${y}:${f.cabin}:${f.i % 2}`, () =>
+            hullSection(f.len, y, f.cabin, f.ring),
+          ),
         });
-      }
-      items.push({
-        kind: 'ferry-end',
-        edge: e.index,
-        s: t.s0,
-        d: 0,
-        geometry: once(`end:${deckY}:-1`, () => hullEnd(road.toWorld(e.index, t.s0, 0, 0).y, -1)),
-      });
-      items.push({
-        kind: 'ferry-end',
-        edge: e.index,
-        s: t.s1,
-        d: 0,
-        geometry: once(`end:${deckY}:1`, () => hullEnd(road.toWorld(e.index, t.s1, 0, 0).y, 1)),
-      });
-      const middle = (t.s0 + t.s1) / 2;
-      items.push({
-        kind: 'ferry-funnel',
-        edge: e.index,
-        s: middle,
-        d: 0,
-        geometry: once('funnel', () => ferryTop('funnel')),
-      });
-      for (const at of [t.s0 + FERRY_DIM.cabinInsetM + 4, t.s1 - FERRY_DIM.cabinInsetM - 4])
+      else if (f.kind === 'ferry-end')
         items.push({
-          kind: 'ferry-wheelhouse',
+          kind: f.kind,
           edge: e.index,
-          s: at,
+          s: f.s,
+          d: 0,
+          geometry: once(`end:${y}:${f.end}`, () => hullEnd(y, f.end)),
+        });
+      else if (f.kind === 'ferry-funnel')
+        items.push({
+          kind: f.kind,
+          edge: e.index,
+          s: f.s,
+          d: 0,
+          geometry: once('funnel', () => ferryTop('funnel')),
+        });
+      else if (f.kind === 'ferry-wheelhouse')
+        items.push({
+          kind: f.kind,
+          edge: e.index,
+          s: f.s,
           d: 0,
           geometry: once('wheelhouse', () => ferryTop('wheelhouse')),
         });
-      items.push({
-        kind: 'ferry-name',
-        edge: e.index,
-        s: middle,
-        d: 0,
-        geometry: once('name', () => ferryName('EVENTUALLY')),
-      });
+      else
+        items.push({
+          kind: f.kind,
+          edge: e.index,
+          s: f.s,
+          d: 0,
+          geometry: once('name', () => ferryName('EVENTUALLY')),
+        });
     }
 
     // The clear-cut's dressing, past the ridable dirt on each side it covers.
@@ -858,85 +881,55 @@ export function placeItems(road: RoadNetwork, seed: number, landReach: LandReach
       }
     }
 
-    // The Stump Social.
-    for (const t of tagRanges(road, e.index, 'festival')) {
-      const bears = e.features
-        .filter((f) => f.kind === 'hazard' && objectOf(f) === 'bear' && f.s0 >= t.s0 && f.s1 <= t.s1)
-        .sort((a, b) => a.s0 - b.s0);
-      for (const side of [-1, 1] as const) {
-        const own = bears.filter((b) => Math.sign(b.d0 + b.d1) === side);
-        // A side street is the gap between two bears 8 to 20 m apart.
-        const gaps: [number, number][] = [];
-        for (let i = 0; i + 1 < own.length; i++) {
-          const a = own[i];
-          const b = own[i + 1];
-          if (a && b && b.s0 - a.s1 >= 8 && b.s0 - a.s1 <= 20) gaps.push([a.s1, b.s0]);
-        }
-        const v = road.vergeAt(e.index, (t.s0 + t.s1) / 2, side < 0 ? 'left' : 'right');
-        const front = side * Math.abs(v.dOuter);
-        const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
-        for (const [k, [g0, g1]] of gaps.entries()) {
-          const c = (g0 + g1) / 2;
-          const reach = outer + Math.min(landReach(e.index, side, g0), landReach(e.index, side, g1));
-          const run = Math.max(6, Math.min(40, Math.floor(reach - Math.abs(front) - 1)));
-          items.push({
-            kind: 'side-street',
-            edge: e.index,
-            s: c,
-            d: front,
-            h: LAND_TOP_M + 0.02,
-            geometry: once(`street:${g1 - g0}:${side}:${k % 3}:${run}`, () =>
-              sideStreet(g1 - g0, side, k, run),
-            ),
-          });
-        }
-        // Shops between the gaps.
-        let s = t.s0 + 1;
-        let k = 0;
-        while (s < t.s1 - 4) {
-          const gap = gaps.find(([g0, g1]) => s < g1 + 0.5 && s + 4 > g0 - 0.5);
-          if (gap) {
-            s = gap[1] + 0.5;
-            continue;
-          }
-          const next = gaps.find(([g0]) => g0 > s)?.[0] ?? t.s1 - 1;
-          const want = 9 + Math.round(scatterHash(seed, e.index, s, 21 + side) * 6);
-          const width = Math.min(want, next - 0.5 - s);
-          if (width < 4) {
-            s = next + 0.5;
-            continue;
-          }
-          const height = 6.5 + Math.round(scatterHash(seed, e.index, s, 23) * 5) * 0.6;
-          const paint = C.shops[(k + (side > 0 ? 0 : 3)) % C.shops.length] ?? '#d9cfb4';
-          const awning = k % 2 ? C.awningB : C.cart;
-          items.push({
-            kind: 'shop',
-            edge: e.index,
-            s: s + width / 2,
-            d: front,
-            h: LAND_TOP_M,
-            geometry: once(`shop:${width}:${height}:${paint}:${awning}:${side}`, () =>
-              shop(width, height, paint, awning, side),
-            ),
-          });
-          s += width + 0.3;
-          k++;
-        }
-      }
-      // Bunting across the street, and the banner at each end of the closure.
-      const vR = road.vergeAt(e.index, (t.s0 + t.s1) / 2, 'right');
-      const vL = road.vergeAt(e.index, (t.s0 + t.s1) / 2, 'left');
-      for (let s = t.s0 + 24, i = 0; s < t.s1 - 16; s += 32, i++)
-        items.push({
-          kind: 'bunting',
-          edge: e.index,
-          s,
-          d: 0,
-          geometry: once(`bunting:${i % 4}`, () => bunting(vL.dOuter, vR.dOuter, 7.2 - (i % 2) * 0.4, i)),
-        });
-      const half = Math.min(Math.abs(vL.dOuter), Math.abs(vR.dOuter)) - 0.3;
-      for (const s of [t.s0 + 10, t.s1 - 10])
-        items.push({ kind: 'banner', edge: e.index, s, d: 0, geometry: once('banner', () => banner(half)) });
+    // The Stump Social: its shops, side streets, bunting and banners, where road/structures/pnw-places.ts's
+    // plan puts them (the shops and the tents are solids the sim meets).
+    for (const st of layout.streets) {
+      if (st.edge !== e.index) continue;
+      items.push({
+        kind: 'side-street',
+        edge: e.index,
+        s: st.s,
+        d: st.d,
+        h: LAND_TOP_M + 0.02,
+        geometry: once(`street:${st.width}:${st.side}:${st.k % 3}:${st.run}`, () =>
+          sideStreet(st.width, st.side, st.k, st.run),
+        ),
+      });
+    }
+    for (const sh of layout.shops) {
+      if (sh.edge !== e.index) continue;
+      const paint = C.shops[(sh.k + (sh.side > 0 ? 0 : 3)) % C.shops.length] ?? '#d9cfb4';
+      const awning = sh.k % 2 ? C.awningB : C.cart;
+      items.push({
+        kind: 'shop',
+        edge: e.index,
+        s: sh.s,
+        d: sh.d,
+        h: LAND_TOP_M,
+        geometry: once(`shop:${sh.width}:${sh.height}:${paint}:${awning}:${sh.side}`, () =>
+          shop(sh.width, sh.height, paint, awning, sh.side),
+        ),
+      });
+    }
+    for (const b of layout.bunting) {
+      if (b.edge !== e.index) continue;
+      items.push({
+        kind: 'bunting',
+        edge: e.index,
+        s: b.s,
+        d: 0,
+        geometry: once(`bunting:${b.i % 4}`, () => bunting(b.d0, b.d1, 7.2 - (b.i % 2) * 0.4, b.i)),
+      });
+    }
+    for (const b of layout.banners) {
+      if (b.edge !== e.index) continue;
+      items.push({
+        kind: 'banner',
+        edge: e.index,
+        s: b.s,
+        d: 0,
+        geometry: once('banner', () => banner(b.half)),
+      });
     }
   }
   return items;
@@ -956,10 +949,13 @@ export class PnwPlacesLayer {
   private readonly hazards: number;
   private readonly drawnHazards: number;
 
-  constructor(look: LookStyle, opts: { road: RoadNetwork; seed: number; landReach?: LandReach }) {
+  constructor(
+    look: LookStyle,
+    opts: { road: RoadNetwork; seed: number; layout: PnwPlacesLayout; landReach?: LandReach },
+  ) {
     this.group.name = 'pnw-places';
     const material = look.material('prop', { vertexColors: true });
-    const items = placeItems(opts.road, opts.seed, opts.landReach);
+    const items = placeItems(opts.road, opts.seed, opts.layout, opts.landReach);
     const merge: MergeItem[] = [];
     for (const it of items) {
       this.placed[it.kind] = (this.placed[it.kind] ?? 0) + 1;
