@@ -174,9 +174,11 @@ describe('street furniture: solid but forgiving (playtest 4)', () => {
 
   it('across its width the outcome goes from crash (square) to wobble (glancing) to nothing (clear)', () => {
     const outcomes: string[] = [];
-    // The lamp is 0.2 m across and the bike 0.8 m: they touch within 0.5 m of each other's line, and an
-    // overlap of under GRAZE_M (0.3 m), 0.2 m off its line or more, is a graze (#552's rule).
-    for (const offset of [0, 0.1, 0.18, 0.25, 0.45, 0.6]) {
+    // The lamp is 0.2 m across and the bike 0.8 m: they touch within 0.5 m of each other's line. Square on
+    // is the lamp in the bike's own line (its centre line meets the post, under 0.1 m off); further off,
+    // the bike's shoulder or bar meets it: a graze (SOLID_GRAZE_M, the bike's half width; the live check
+    // of #619: 0.18 m off was a crash at speed, when the graze began at 0.3 m of overlap).
+    for (const offset of [0, 0.08, 0.15, 0.25, 0.45, 0.6]) {
       const r = rideAt(config, lamp, 20, offset);
       outcomes.push(
         r.met.some((e) => e.type === 'crash')
@@ -186,7 +188,7 @@ describe('street furniture: solid but forgiving (playtest 4)', () => {
             : 'none',
       );
     }
-    expect(outcomes).toEqual(['crash', 'crash', 'crash', 'wobble', 'wobble', 'none']);
+    expect(outcomes).toEqual(['crash', 'crash', 'wobble', 'wobble', 'wobble', 'none']);
   });
 
   it('square on at a crawl (8 m/s) wobbles and stops against it', () => {

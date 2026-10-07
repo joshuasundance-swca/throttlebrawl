@@ -12,14 +12,26 @@
 // - the road surface, per particle (surfaceHeight at its offset from the centre's projection),
 //   with a bounce and friction;
 // - the barrier line, per cluster: when the cluster's centre leaves the band between the edge's
-//   outer drivable offsets, it bounces back off a wall, unless that side has a `rail` and the
-//   centre is higher above the deck than the rail, in which case the cluster goes overboard and
-//   falls free until it reaches the water plane (world y = 0);
+//   outer drivable offsets, it bounces back off a wall, unless the centre is higher above the deck
+//   than what stands at that side's edge and water or a drop lies past it (road/beyond.ts, the one
+//   rule a riding rider meets too, 2026-10-06: every rail and wall by its height, never a building
+//   front; a water edge with nothing standing holds a body as it holds a rider on the ground), in
+//   which case the cluster goes overboard and falls
+//   free until it reaches the network's water level (road/beyond.ts `waterLevelOf`: sea level, 0,
+//   but Lake Samish's 82.85 m), which is a drop's floor too;
 // - a `gap` (playtest 3: road with no surface, road/gap.ts): a particle over one has no floor, and a
 //   cluster whose centre is over one and below the deck plane goes overboard the same way, so no body
 //   ever comes to rest on a gap.
 import { clamp } from '../../core';
-import { gapAt, type RoadNetwork, type RoadPos } from '../../road';
+import {
+  edgeTopAt,
+  gapAt,
+  pastAt,
+  waterLevelOf,
+  type Past,
+  type RoadNetwork,
+  type RoadPos,
+} from '../../road';
 import { wallBand, type TumbleBody } from './body';
 
 const GRAVITY = 9.81;
@@ -250,6 +262,11 @@ export interface ClusterContact {
   splash: boolean;
   /** When `railOver` came through a gap rather than over a rail: the gap's edge and feature id. */
   gap?: { edge: number; id: string };
+  /**
+   * When `railOver` came over the barrier line: what lies past it and the drop's height (the deck at
+   * the crossing down to the network's water level, road/beyond.ts).
+   */
+  over?: { past: Past; dropM: number };
 }
 
 /**
@@ -309,7 +326,8 @@ export function stepCluster(
     c.overboard = true;
     return { ...fallToWater(road, c, true), gap: { edge: pc.edge, id: hole.id } };
   }
-  if (barrierLine(road, c, pc, offRoad)) return fallToWater(road, c, true);
+  const over = barrierLine(road, c, pc, offRoad);
+  if (over) return { ...fallToWater(road, c, true), over };
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);
   return {
@@ -331,16 +349,20 @@ function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, spla
   return { edge: p.edge, s: p.s, d, ground: road.surfaceHeight(p.edge, p.s, d), railOver, splash };
 }
 
-/** An overboard cluster falls free; at the water plane it floats, centre at the surface, still. */
+/**
+ * An overboard cluster falls free; at the network's water level (a drop's floor too) it stops there,
+ * centre at the surface, still.
+ */
 function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean): ClusterContact {
   const at = centre(c.p);
+  const floor = waterLevelOf(road);
   let splash = false;
-  if (at.y <= 0) {
+  if (at.y <= floor) {
     // In the water: no swimming.
     c.splashed = true;
     splash = true;
     for (const q of c.p) {
-      q.y -= at.y;
+      q.y -= at.y - floor;
       q.vx = 0;
       q.vy = 0;
       q.vz = 0;
@@ -370,12 +392,19 @@ function groundVelocity(q: Particle, ground: number, hit: boolean, dt: number, m
 }
 
 /**
- * The barrier line, for the whole cluster (`p` is its centre's projection): past the band, a
- * rail lets it over when its centre is higher above the deck than the rail; anything else (a
- * wall, a low crossing, no barrier listed, a dead end) puts it back on the line and reflects the
- * outward velocity. Returns true when it went over.
+ * The barrier line, for the whole cluster (`p` is its centre's projection): past the band, it goes
+ * over when its centre is higher above the deck than what stands at that side's edge (a barrier's
+ * `heightM` or a hard edge's drawn top: road/beyond.ts `edgeTopAt`) and water or a drop lies past it
+ * (`pastAt`); anything else (lower, a building front, a ground edge, a water edge with nothing
+ * standing, ground past it, a dead end) puts it back on the line and reflects the outward velocity.
+ * Returns what lies past and the drop's height when it went over, else null.
  */
-function barrierLine(road: RoadNetwork, c: Cluster, p: RoadPos, offRoad: boolean): boolean {
+function barrierLine(
+  road: RoadNetwork,
+  c: Cluster,
+  p: RoadPos,
+  offRoad: boolean,
+): { past: Past; dropM: number } | null {
   const at = centre(c.p);
   const band = wallBand(road, p.edge, p.s, offRoad);
   const d = clamp(p.d, band.lo, band.hi);
@@ -384,14 +413,19 @@ function barrierLine(road: RoadNetwork, c: Cluster, p: RoadPos, offRoad: boolean
   const oz = at.z - w.z;
   const off = Math.sqrt(ox * ox + oz * oz);
   // Inside the band, the projection residual is far below this threshold.
-  if (d === p.d && off <= 0.05) return false;
+  if (d === p.d && off <= 0.05) return null;
   if (d !== p.d) {
     const side = p.d > d ? 'right' : 'left';
-    const barrier = road.barrierAt(p.edge, p.s, side);
+    // A water edge (nothing stands there, top 0) holds a body as it holds a rider on the ground (the
+    // decided water edge, run W-R); a body goes over only what stands at the edge, above its top.
+    const top = edgeTopAt(road, p.edge, p.s, side);
     const deck = road.surfaceHeight(p.edge, p.s, d);
-    if (barrier?.kind === 'rail' && at.y - deck > barrier.heightM) {
+    const over = top !== null && top > 0 && at.y - deck > top;
+    const past = over ? pastAt(road, p.edge, p.s, side) : 'ground';
+    if (past !== 'ground') {
       c.overboard = true;
-      return true;
+      const floor = waterLevelOf(road);
+      return { past, dropM: deck > floor ? deck - floor : 0 };
     }
   }
   if (off > 1e-9) {
@@ -407,5 +441,5 @@ function barrierLine(road: RoadNetwork, c: Cluster, p: RoadPos, offRoad: boolean
       }
     }
   }
-  return false;
+  return null;
 }

@@ -164,7 +164,17 @@ import {
   STRAY_RETURN_MPS,
   wayBack,
 } from '../ai/branches';
-import { blockerAt, lineClear, pathClear, see, type Obstacle } from '../ai/sense';
+import {
+  bendSpeed,
+  blockerAt,
+  FIXED_OFF_ROAD_MPS,
+  furnitureSeen,
+  lineClear,
+  offRoadAmongFixed,
+  pathClear,
+  see,
+  type Obstacle,
+} from '../ai/sense';
 import { vehicleInfo } from '../traffic';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 
@@ -966,6 +976,10 @@ const TRAFFIC_ONCOMING_COST_M = 1;
 const TRAFFIC_CROSS_S = 1.5;
 /** How far ahead (plus 2.5 s of closing) a move across must be clear of traffic, m. */
 const TRAFFIC_PATH_M = 15;
+/** How far behind him he still sees a piece of street furniture, m (past the alongside rule's reach). */
+const FIXED_BEHIND_M = 6;
+/** The crawl he keeps boxed in behind a piece of street furniture, m/s (well under the 10 m/s crash line). */
+const FIXED_CRAWL_MPS = 3;
 
 /**
  * The vehicles he can see ahead and around, at their real sizes. (Not pedestrians: they keep to the
@@ -993,6 +1007,9 @@ function trafficSeen(world: World, config: SimConfig, cop: Mover): Obstacle[] {
  * - with no clear side he follows it, or (an oncoming one) gets out of its way on his own side,
  *   behind whatever is there;
  * - last, he never steers into a vehicle alongside.
+ * The solid street furniture counts as traffic that stands still (sim/ai/sense `furnitureSeen`; the live
+ * check of #619), except on the way across to a line; on a street lined with it he also keeps to the
+ * speed that holds its bends (`bendSpeed`), and off the road among it to a crawl (`offRoadAmongFixed`).
  * `dodging` asks for a brisker swerve.
  */
 function trafficGuard(
@@ -1011,17 +1028,37 @@ function trafficGuard(
   let brake = 0;
   let dodging = false;
   const seen = trafficSeen(world, config, cop);
-  if (seen.length === 0) return { d, v: speed, brake, dodging };
+  // The solid street furniture in reach (the live check of #619), as the rivals see it (sim/ai/sense
+  // `furnitureSeen`): his line must be clear of it, and he goes round one in his way or alongside as
+  // round a stopped car (`all`); only moving traffic blocks the way across to a line.
+  const fixed = furnitureSeen(world, config, cop, Math.min(TRAFFIC_SEE_M, v * 6 + 40), FIXED_BEHIND_M);
+  const all = fixed.length > 0 ? [...seen, ...fixed] : seen;
+  if (all.length === 0) return { d, v: speed, brake, dodging };
+  if (fixed.length > 0) {
+    // A street lined with solid furniture: slow enough to hold its bends (not carried wide onto the
+    // sidewalk), and back off it at a crawl when a shove put him there.
+    const bike = config.riders[cop.riderIndex]?.bike;
+    if (bike) speed = Math.min(speed, bendSpeed(world, config, cop, bike.steerRateMps));
+    const edge = config.road.edges[pos.edge];
+    if (edge && offRoadAmongFixed(pos.d, edge.dMin, edge.dMax, fixed))
+      speed = Math.min(speed, FIXED_OFF_ROAD_MPS);
+  }
   const look = clamp(14 + v * 2.2, 14, 90);
-  if (!pathClear(seen, v, pos.d, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M)) d = pos.d;
+  if (
+    !pathClear(seen, v, pos.d, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M) ||
+    (fixed.length > 0 && !lineClear(fixed, v, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M))
+  )
+    d = pos.d;
+  // Behind a piece of street furniture he never stops: he crawls on, still rolling, so he can steer.
   const follow = (o: Obstacle): number => {
     const room = Math.max(0, o.s.ahead - o.size.halfLength - TRAFFIC_FOLLOW_M);
-    return Math.max(0, o.s.vAlong) + Math.sqrt(2 * TRAFFIC_FOLLOW_DECEL * room);
+    const crawl = o.s.mover.id < 0 ? FIXED_CRAWL_MPS : 0;
+    return Math.max(crawl, Math.max(0, o.s.vAlong) + Math.sqrt(2 * TRAFFIC_FOLLOW_DECEL * room));
   };
   let slowFor: Obstacle | null = null;
   const blocker =
-    blockerAt(seen, v, d, look, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S) ??
-    blockerAt(seen, v, pos.d, look * 0.5, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S);
+    blockerAt(all, v, d, look, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S) ??
+    blockerAt(all, v, pos.d, look * 0.5, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S);
   if (blocker) {
     const o = blocker.s;
     const gap = o.ahead - blocker.size.halfLength;
@@ -1036,7 +1073,7 @@ function trafficGuard(
       for (const cand of [od - w, od + w, od - w - 1, od + w + 1]) {
         if (cand < dLo || cand > dHi) continue;
         if ((cand - od) * (pos.d - od) < 0 && o.vAlong >= 0 && ttc < TRAFFIC_CROSS_S) continue;
-        if (!lineClear(seen, v, cand, gap + 20, TRAFFIC_CLEAR_M)) continue;
+        if (!lineClear(all, v, cand, gap + 20, TRAFFIC_CLEAR_M)) continue;
         if (!pathClear(others, v, pos.d, cand, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M)) continue;
         const oncoming = cand * pos.dir < 0 ? TRAFFIC_ONCOMING_COST_M : 0;
         const cost = Math.abs(cand - pos.d) + 0.5 * Math.abs(cand - dWant) + oncoming;
@@ -1057,7 +1094,7 @@ function trafficGuard(
         // Boxed in by an oncoming car: out of its band on his own side, behind whatever is there.
         d = clamp(od + w * pos.dir, dLo, dHi);
         dodging = true;
-        const same = seen.filter((x) => x.s.vAlong >= 0);
+        const same = all.filter((x) => x.s.vAlong >= 0);
         const there = blockerAt(same, v, d, look, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S);
         if (there) {
           speed = Math.min(speed, follow(there));
@@ -1077,8 +1114,8 @@ function trafficGuard(
     const target = Math.max(0, slowFor.s.vAlong);
     brake = bike ? (v * v - target * target) / (2 * room * bike.brakeMps2) : 1;
   }
-  // Never steer into a vehicle alongside: hold at least its clearance from it.
-  for (const o of seen) {
+  // Never steer into a vehicle (or a solid piece) alongside: hold at least its clearance from it.
+  for (const o of all) {
     const along = o.size.halfLength + TRAFFIC_ALONGSIDE_M;
     if (o.s.ahead > along || o.s.ahead < -along) continue;
     const od = o.s.mover.pos.d;

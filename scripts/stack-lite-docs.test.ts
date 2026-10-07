@@ -208,6 +208,10 @@ const ENGINEERING_CLAIMS: [string, RegExp][] = [
     /`--no-track` matters: a branch made from `origin\/<parent>` without it tracks the parent's branch/,
   ],
   ['adjacent lines conflict too', /or one next to it, git reports a conflict/],
+  [
+    'add/add after the squash',
+    /comes back as an add\/add conflict, because the squash is not an ancestor of your branch/,
+  ],
   ['the mechanics are a default', /The commands and the 8-hour bound are the coordinator's `\[default\]`/],
   ['template', /`needs`/],
   ['test', /`scripts\/stack-lite-docs\.test\.ts`/],
