@@ -131,11 +131,14 @@ describe('what the sim holds on a carrier past its lip', () => {
       expect(truckBodyAt(config, 0, s, D), `body at ${s}`).toBeNull();
     }
     // The cab and the hood: the body, solid to its top, as it was.
-    for (const s of [CAB_S + 0.01, TRUCK.s1 - 0.1]) {
-      expect(deckHeight(config, 0, s, D), `cab at ${s}`).toBeCloseTo(CAB_TOP, 9);
+    for (const s of [TRUCK.s0 + 17.5, TRUCK.s0 + 20]) {
+      expect(deckHeight(config, 0, s, D), `cab at ${s}`).toBeCloseTo(
+        s < TRUCK.s0 + 19 ? 3.15 : 2.05 - (0.1 * 1.1) / 1.7,
+        9,
+      );
       expect(truckBodyAt(config, 0, s, D)?.id, `body at ${s}`).toBe('carrier-1');
     }
-    expect(CAB_TOP).toBeCloseTo(3.96, 9);
+    expect(CAB_TOP).toBeCloseTo(3.7, 9);
   });
 
   it('what the car was is open air: a rider above the deck, inside the old car, meets nothing and lands on the deck', () => {
@@ -156,7 +159,8 @@ describe('what the sim holds on a carrier past its lip', () => {
   it('a rider below the deck in the air, out over its side, is met by the truck: no fast pass under a drawn deck', () => {
     // 12 m/s clears the truck from its lip, but a rider 1.5 m up beside the deck's line is under it: the
     // frame, the wheels and the lower car are drawn there. It used to pass through at that speed.
-    const h = inAir(DECK_S + 1, 1.5, 12, 0);
+    const h = inAir(DECK_S + 1, 1.5, 12, 0, TRUCK.d0 - 0.8);
+    h.rider.yaw = 1.2;
     const ts = run(
       h,
       () => input(0.3),
@@ -200,13 +204,16 @@ describe('a slow hop from the lip lands on the deck and rides it', () => {
     expect(h.rider.h).toBeCloseTo(LIP, 6);
   });
 
-  it('the cab is a wall from the deck at any speed (a rider on a top cannot back off): thrown off, never stuck, and no clearing speed carries it through', () => {
+  it('the cab is a wall from the deck: a slow hit wobbles, a fast hit crashes, neither passes through', () => {
     const at = (speed: number) => {
       const h = inAir(CAB_S - 3, LIP + 0.02, speed, -0.5);
       return run(
         h,
         () => input(0.2),
-        (t) => t.events.some((e) => e.type === 'crash'),
+        (t) =>
+          t.events.some(
+            (e) => (e.type === 'wobble' || e.type === 'crash') && e.data['object'] === 'rampTruck',
+          ),
         60 * 8,
       );
     };
@@ -214,17 +221,20 @@ describe('a slow hop from the lip lands on the deck and rides it', () => {
     // rider the deck's length and no further.
     for (const speed of [3, 14]) {
       const ts = at(speed);
-      const crash = events(ts, 'crash')[0];
-      expect(crash?.data, `${speed} m/s`).toMatchObject({ object: 'rampTruck', feature: 'carrier-1' });
+      const hit = ts
+        .flatMap((t) => t.events)
+        .find((e) => (e.type === 'wobble' || e.type === 'crash') && e.data['object'] === 'rampTruck');
+      expect(hit?.data, `${speed} m/s`).toMatchObject({ object: 'rampTruck', feature: 'carrier-1' });
+      expect(hit?.type, `${speed} m/s`).toBe(speed < 10 ? 'wobble' : 'crash');
       expect(
-        ts.find((t) => t.events.includes(crash as SimEvent))?.s,
+        ts.find((t) => t.events.includes(hit as SimEvent))?.s,
         `${speed} m/s: at the cab's front`,
-      ).toBeLessThan(CAB_S + 0.01);
+      ).toBeLessThan(TRUCK.s0 + 17);
     }
   });
 
   it('lands on the cab roof, a top of its own, and rides off its front', () => {
-    const h = inAir(CAB_S + 1.5, CAB_TOP + 0.05, 8, -2);
+    const h = inAir(CAB_S + 1.5, 3.15 + 0.05, 8, -2);
     const ts = run(
       h,
       () => input(0.3),
@@ -236,13 +246,12 @@ describe('a slow hop from the lip lands on the deck and rides it', () => {
   });
 });
 
-describe('every lip speed that cleared the truck still clears it', () => {
-  // The control: the same sweep on main (a car solid by speed) reads the same: a jump, no crash, down on
-  // the road past the front. Below the clear speed the car used to be a wall (a crash at the body's
-  // start); the deck now holds the rider instead.
-  const SPEEDS = [11, 12, 14, 16, 19.4, 24, 28, 32, 36];
+describe('flights that actually clear the drawn truck stay clear', () => {
+  // These trajectories rise above the real cab, unlike the lower speeds the old speed-only
+  // immunity let pass through it. The empty deck still catches the shorter hops.
+  const SPEEDS = [16, 19.4, 24, 28, 32, 36];
 
-  it(`from 11 to 36 m/s: airborne over the whole truck, down on the road past its front, no crash`, () => {
+  it(`from 16 to 36 m/s: airborne over the whole truck, down on the road past its front, no crash`, () => {
     const lines: string[] = [];
     for (const v of SPEEDS) {
       const ts = rideUp(v, 60 * 10);
@@ -267,12 +276,18 @@ describe('every lip speed that cleared the truck still clears it', () => {
       lines.push(`${v.toFixed(2)} m/s: ${land ? `lands on ${String(land.data['on'])}` : 'no landing'}`);
       expect(land?.data['on'], `${v}`).toBe('truck');
     }
-    // 10.7 m/s is over the whole deck: down on the road past the front, as it always was.
-    const over = events(rideUp(10.8, 60 * 4), 'land')[0];
+    // At 10.8 m/s the trajectory meets the drawn cab: the diagnostic clear speed must not
+    // exempt it from a real contact.
+    const ts = rideUp(10.8, 60 * 4);
+    const over = events(ts, 'land')[0];
     lines.push(
       `10.8 m/s: ${over?.data['on'] === undefined ? 'lands on the road' : `lands on ${String(over.data['on'])}`}`,
     );
-    expect(over?.data['on']).toBeUndefined();
+    const hit = ts
+      .flatMap((t) => t.events)
+      .find((e) => (e.type === 'wobble' || e.type === 'crash') && e.data['object'] === 'rampTruck');
+    expect(hit).toBeDefined();
+    expect(Number(hit?.data['impactMps'])).toBeGreaterThan(0);
     console.log(`[examined] the band: ${lines.join('; ')}`);
   });
 });

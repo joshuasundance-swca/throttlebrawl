@@ -9,12 +9,13 @@ import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedFeature } from '../../road';
 import { MOVING_DECKS_KEY, type SimConfig, type SimEvent, type SimMovingDeck } from '../types';
 import { createWorld } from '../world';
+import { MOVING } from '../modifiers/moving';
 import { deckHeight, movingDecks, truckBodyTop, truckClearMps } from './features';
 import { input, riderHarness, testConfig } from './testing';
 
-/** The moving carrier's ramp: the parked truck's 13.7° slope, at the size of a 7.5 m tow truck. */
+/** The moving carrier's 5 m ramp reaches its 2.4 m cab roof, on a 7.5 m tow truck. */
 const RUN = 5;
-const LIP = (RUN * 2.8) / 11.5;
+const LIP = RUN * MOVING.rampSlope;
 const LENGTH = 7.5;
 const DT = 1 / 60;
 
@@ -148,6 +149,15 @@ describe('a moving ramp is met at the relative speed', () => {
     console.log(`[print] air: ${airTicks(slow)} ticks at +12 m/s, ${airTicks(fast)} at +30 m/s`);
     expect(airTicks(fast)).toBeGreaterThan(airTicks(slow));
     expect(airTicks(slow)).toBeGreaterThan(30);
+    expect(slow.events.some((e) => e.ev.type === 'crash' || e.ev.type === 'wobble')).toBe(false);
+    expect(slow.events.find((e) => e.ev.type === 'land')?.ev.data['quality']).toBe('clean');
+  });
+
+  it('the fastest bike rides the continuous ramp rather than treating a tick of rise as a kerb', () => {
+    const r = rideDeck({ from: 540, speed: 71.5, deck: deck(600, 18), ticks: 60 * 8 });
+    expect(jumpOf(r)).toBeDefined();
+    expect(r.events.some((e) => e.ev.data['object'] === 'rampTruck')).toBe(false);
+    expect(r.trace.some((p) => p.mode === 'Airborne' && p.h > LIP + 1)).toBe(true);
   });
 
   it('lands on the road past the truck, never on or in it', () => {
@@ -159,7 +169,7 @@ describe('a moving ramp is met at the relative speed', () => {
     expect(r.trace.at(-1)?.h).toBe(0);
   });
 
-  it('meets the body, and crashes, when it is too little faster than the truck to clear it', () => {
+  it('a slow catch lands on the cab instead of being forced into a crash', () => {
     const clear = truckClearMps(
       {
         kind: 'rampTruck',
@@ -175,16 +185,15 @@ describe('a moving ramp is met at the relative speed', () => {
     expect(clear).toBeGreaterThan(2);
     // 2 m/s faster than the truck: under the clearing speed, whatever the road speed is.
     const r = rideDeck({ from: 596, speed: 20, deck: deck(600, 18) });
-    const crash = r.events.find((e) => e.ev.type === 'crash');
-    expect(crash?.ev.data).toMatchObject({ cause: 'barrier', object: 'rampTruck' });
-    expect(r.events.filter((e) => e.ev.type === 'land')).toEqual([]);
+    expect(r.events.some((e) => e.ev.type === 'crash')).toBe(false);
+    expect(r.events.some((e) => e.ev.type === 'land' && e.ev.data['on'] === 'truck')).toBe(true);
   });
 
-  it('the same road speed clears a parked ramp but meets a truck that is nearly as fast', () => {
-    // 20 m/s is plenty over a parked truck, and a crash into one doing 18.
+  it('the same road speed clears a parked ramp but lands on a truck that is nearly as fast', () => {
+    // 20 m/s clears the parked reference, but is only a 2 m/s catch of one doing 18.
     expect(rideParked(20).events.some((e) => e.ev.type === 'crash')).toBe(false);
     const behind = rideDeck({ from: 596, speed: 20, deck: deck(600, 18) });
-    expect(behind.events.some((e) => e.ev.type === 'crash')).toBe(true);
+    expect(behind.events.some((e) => e.ev.type === 'land' && e.ev.data['on'] === 'truck')).toBe(true);
   });
 
   it('a rider in the next lane is not on the deck: nothing happens as it passes', () => {
@@ -244,7 +253,7 @@ describe('deck geometry', () => {
   // Along a parked truck of the same shape: the ramp, its lip platform and the cab to the front. A parked
   // truck has an empty top deck between its lip platform and its cab; a moving carrier carries nothing,
   // so its cab starts where its lip platform ends (the next test).
-  const INTO = [0, 1, RUN / 2, RUN - 0.01, RUN + 0.1, LENGTH - 0.1];
+  const INTO = [0, 1, RUN / 2, RUN - 0.01, RUN + 0.1];
 
   it('stands the way a parked ramp truck of the same shape stands', () => {
     const world = createWorld(bare);
@@ -268,8 +277,8 @@ describe('deck geometry', () => {
     world.systems[MOVING_DECKS_KEY] = { live: [deck(PARKED.s0, 20)] };
     const { now } = movingDecks(world, DT);
     const cab = deckHeight(bare, 0, PARKED.s0 + RUN + 1, 3.4, { moving: now });
-    expect(cab).toBeCloseTo(truckBodyTop(PARKED), 9);
-    expect(cab).toBeGreaterThan(LIP + 0.3);
+    expect(cab).toBeCloseTo(2.4, 9);
+    expect(cab).toBeCloseTo(LIP, 9);
     // The same distance along a parked truck of that shape is its empty deck, at the lip's height.
     expect(deckHeight(parked, 0, PARKED.s0 + RUN + 1, 3.4)).toBeCloseTo(LIP, 9);
   });

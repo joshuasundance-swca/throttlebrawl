@@ -10,11 +10,10 @@
 //   car that stood on it was passed through at the lip speeds, and a solid one would crash every
 //   carrier jump): a top at the lip height that a rider lands on and rides (sim/riders/supports.ts,
 //   key `d:`), under which the truck is solid (the frame, the wheels and the lower car are drawn
-//   there). The cab, from `TRUCK_CAB_FROM_FOOT_M` on, is the truck's body, solid to its top: a
-//   grounded rider meets it as a wall (from the deck, by the one closing-speed rule; from the ramp,
-//   a crash: thrown off the truck, never stuck on it), and an airborne rider who left the lip too
-//   slowly to clear the truck hits it (a crash) instead of landing inside it; a rider fast enough to
-//   clear the truck never lands on it. A moving carrier has no top deck (it carries nothing: its body
+//   there). Past the deck, the cab roof, hood, stacks and small fittings have their own drawn
+//   footprints and heights (carrier-shape.ts). A rider below a part meets it by the ordinary vehicle
+//   closing-speed rule; a flight that clears its geometry stays clear. A roof or hood large enough
+//   to hold the bike is a support. A moving carrier has no top deck (it carries nothing: its body
 //   is its cab, from the lip platform on). Only riders see the truck: it is not in the road's surface,
 //   so tumble bodies, traffic and render's road mesh are unchanged. Riding into its side or front
 //   higher than a kerb is a barrier contact. It faces riders travelling toward +s.
@@ -38,6 +37,7 @@ import {
 import type { FurnitureShape } from '../../road';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDeck, type SimMovingDecks } from '../types';
 import type { World } from '../world';
+import { carrierParts, carrierTopAt } from './carrier-shape';
 
 /** A boostPad's defaults: speed added (m/s) and how long the boost lasts (s). */
 export const BOOST_DEFAULT_MPS = 8;
@@ -52,16 +52,16 @@ export const KERB_M = 0.3;
 /**
  * The truck body past the lip, from the truck model (tools/blender, `tow-truck`) at its 11.5 m run
  * and 2.8 m lip, and scaled with the ramp as render scales the model: the lip platform runs 0.45 m
- * to where the top deck starts, and the cab's top stands 1.16 m above the lip [default] (it was the
- * top-deck car's roof, 0.7 m over the cab's own: the car is gone, the height stays, the cab is as it was).
+ * to where the top deck starts. The former scalar body allowance is retained for compatibility;
+ * contacts and supports use the individual drawn parts in carrier-shape.ts.
  */
 export const TRUCK_PLATFORM_M = 0.45;
 export const TRUCK_BODY_ABOVE_LIP_M = 1.16;
 /**
  * Where a parked truck's cab starts, m from its ramp's foot at the default run: the model's flat deck ends
  * here (`UPPER_DECK_END`, tools/blender/props/tow_truck.py), and the exhaust stacks (3.7 m tall) stand in the
- * 0.2 m before the cab's own face (`CAB_F`, 17.0 m), so the cab's solid starts at the deck's end and holds
- * them [default]. The top deck, empty, runs from the lip platform to here.
+ * 0.2 m before the cab's own face (`CAB_F`, 17.0 m). Each stack occupies only its own footprint;
+ * the top deck, empty, runs from the lip platform to here.
  */
 export const TRUCK_CAB_FROM_FOOT_M = 16.8;
 
@@ -234,10 +234,9 @@ function cabIntoOf(f: BakedFeature): number {
   return Math.min(Math.max(from, (TRUCK_CAB_FROM_FOOT_M * run) / RAMP_TRUCK_LENGTH_M), Math.abs(f.s1 - f.s0));
 }
 
-/** The top of a rampTruck's body above the road: its cab's top (1.16 m over the lip, scaled with the ramp). */
+/** The highest body part above the road; point queries and contacts use each part's own height. */
 export function truckBodyTop(f: BakedFeature): number {
-  const { lip } = rampTruckShape(f);
-  return lip + (TRUCK_BODY_ABOVE_LIP_M * lip) / RAMP_TRUCK_LIP_M;
+  return Math.max(...carrierParts(f).map((p) => p.maxTop));
 }
 
 /** The top of a rampTruck's empty top deck above the road: the lip's height (the deck is level with it). */
@@ -262,7 +261,7 @@ function truckSpan(f: BakedFeature, from: number, to: number): EdgeBox {
 
 /**
  * A rampTruck's body (its cab, with the hood) as a box on its edge, m: from where the cab starts to the
- * truck's front, its whole width (sim/riders/supports.ts lands riders on its top).
+ * truck's front, its whole width. This bounding box is not a roof or a collision surface.
  */
 export function truckBodyBox(f: BakedFeature): EdgeBox {
   return truckSpan(f, cabIntoOf(f), Math.abs(f.s1 - f.s0));
@@ -288,11 +287,12 @@ export function truckVelocityS(f: BakedFeature): number {
  * deck anyone rides up to). The top deck is what a grounded rider beside the truck meets as its solid
  * side; one in the air lands on it (`truckDeckAt`).
  */
-function deckOf(f: BakedFeature, s: number): number {
+function deckOf(f: BakedFeature, s: number, d: number): number {
   const { run, lip } = rampTruckShape(f);
   const into = intoOf(f, s);
-  if (into < run) return (lip * into) / run;
-  return into < cabIntoOf(f) ? lip : truckBodyTop(f);
+  const overDeck = d >= f.d0 && d <= f.d1;
+  if (into < run) return Math.max(overDeck ? (lip * into) / run : 0, carrierTopAt(f, s, d));
+  return Math.max(overDeck && into < cabIntoOf(f) ? lip : 0, carrierTopAt(f, s, d));
 }
 
 /**
@@ -311,15 +311,15 @@ export function deckHeight(
   let h = 0;
   for (const f of features) {
     if (f.s0 > s) break;
-    if (f.kind !== 'rampTruck' || s > f.s1 || d < f.d0 || d > f.d1 || !present(config, f)) continue;
+    if (f.kind !== 'rampTruck' || s > f.s1 || !present(config, f)) continue;
     if (opts.bodies === false && intoOf(f, s) >= bodyIntoOf(f)) continue;
-    const deck = deckOf(f, s);
+    const deck = deckOf(f, s, d);
     if (deck > h) h = deck;
   }
   for (const f of opts.moving ?? []) {
-    if (!onEdge(f, edge) || s < f.s0 || s > f.s1 || d < f.d0 || d > f.d1) continue;
+    if (!onEdge(f, edge) || s < f.s0 || s > f.s1) continue;
     if (opts.bodies === false && intoOf(f, s) >= bodyIntoOf(f)) continue;
-    const deck = deckOf(f, s);
+    const deck = deckOf(f, s, d);
     if (deck > h) h = deck;
   }
   return h;
@@ -334,7 +334,21 @@ export function truckBodyAt(
   moving: readonly BakedFeature[] = [],
 ): BakedFeature | null {
   const f = rampTruckAt(config, edge, s, d, moving);
-  return f && intoOf(f, s) >= cabIntoOf(f) ? f : null;
+  return f && intoOf(f, s) >= cabIntoOf(f) && carrierTopAt(f, s, d) > 0 ? f : null;
+}
+
+/** Active carriers whose physical parts may meet the bike this tick, including off-centre stacks. */
+export function trucksNear(
+  config: SimConfig,
+  edge: number,
+  s: number,
+  reach: number,
+  moving: readonly BakedFeature[] = [],
+): BakedFeature[] {
+  return [
+    ...(config.road.edges[edge]?.features ?? []).filter((f) => f.kind === 'rampTruck' && present(config, f)),
+    ...moving.filter((f) => onEdge(f, edge)),
+  ].filter((f) => s >= f.s0 - reach && s <= f.s1 + reach);
 }
 
 /**
@@ -357,7 +371,8 @@ export function truckDeckAt(
 /**
  * The slowest a rider can leave a rampTruck's lip and clear its body, landing on the road past its
  * front (s1): v² = g·x² / (2·cos²θ·(lip + x·tanθ)), x from the lip to the front, θ the ramp's angle.
- * For a moving deck this is the speed over the deck, in the truck's own frame (see `clearsBody`).
+ * For a moving deck this is the speed over the deck, in the truck's own frame. This estimates the
+ * road landing; clearing the cab and its fittings is separately decided by the actual trajectory.
  */
 export function truckClearMps(f: BakedFeature, gravity: number): number {
   const { run, lip } = rampTruckShape(f);
@@ -374,7 +389,8 @@ function truckAlong(f: BakedFeature, dir: 1 | -1): number {
 
 /**
  * Whether a rider going `speed` along its heading `dir` (along the edge) is fast enough over a truck
- * to clear its body. A parked truck wants `truckClearMps`; a moving one wants that much more than
+ * to land beyond its front. This diagnostic does not grant collision immunity. A parked truck
+ * wants `truckClearMps`; a moving one wants that much more than
  * the truck's own speed along the rider's heading, so a rider barely faster than the truck, or one
  * riding into its front, never clears it.
  */
