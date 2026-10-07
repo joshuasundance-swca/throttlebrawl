@@ -52,8 +52,10 @@ STACK_TOP = 3.7
 CAR_LEN = 4.5
 CAR_HALF_W = 0.9
 CAR_WHEEL_R = 0.31
-CAR1_F = 11.95             # rear end of car_1 (convertible, upper deck)
-CAR2_F = 10.4              # rear end of car_2 (sedan, lower deck)
+# The upper deck carries no car (the maintainer's rules, 2026-10-06: "what is drawn is what is met"): a car
+# there was passed through at the lip speeds and a solid one crashes every carrier jump, so the deck is
+# empty, in the model and in the sim (src/sim/riders/features.ts; the coordinator's [default], vetoable).
+CAR2_F = 10.4              # rear end of car_2 (sedan, lower deck, under the upper deck)
 
 COLOURS = {                # sRGB hex, per role
     "body": "#9fb9c8",      # sun-faded pale blue cab
@@ -63,7 +65,6 @@ COLOURS = {                # sRGB hex, per role
     "tyre": "#1f2022",
     "glass": "#2f3d47",     # opaque dark tint
     "light_head": "#f4e6b2",  # pale warm headlight lenses
-    "car_red": "#e9968b",   # pastel coral rental convertible
     "car_green": "#acd3c4", # sun-bleached seafoam sedan
 }
 ROUGH = {"glass": 0.35, "deck": 0.8}
@@ -347,9 +348,6 @@ def main():
     mb.build("cab", mats, root)
 
     f0, f1, z0, z1 = LOWER_DECK
-    mb = MB(["car_red", "glass", "tyre"])
-    car_parts(mb, CAR1_F, RAMP_LIP, "car_red", convertible=True)
-    mb.build("car_1", mats, root)
     mb = MB(["car_green", "tyre"])
     car_parts(mb, CAR2_F, z1, "car_green", convertible=False)
     mb.build("car_2", mats, root)
