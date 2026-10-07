@@ -12,9 +12,10 @@
 //     It prints the first-load JavaScript's headroom and, on CI (or with --base <ref>), the pull
 //     request's own change against main: it builds the merge base with origin/main in a throwaway
 //     worktree under .cache/ (git-ignored) and measures it the same way. A growth of 5 KB or more
-//     prints a warning. The budget fails any build; on a pull request (GitHub's `pull_request`
-//     event), a change that grows the first load and leaves under 10 KB of headroom fails too (the
-//     floor, scripts/perf-limits.mjs). Main's pushes keep the budget alone.
+//     prints a warning. The budget fails any build; on a pull request's own run and on a train's run
+//     (the tree that lands), a change that grows the first load and leaves under 10 KB of headroom
+//     fails too (the floor, scripts/perf-limits.mjs floorJudgesRun). Main's pushes keep the budget
+//     alone.
 //     It names the biggest first-load modules, each one's estimated share of the gzip size, from the
 //     list the build writes (scripts/first-load-modules.mjs, lane F1), and with main measured, the
 //     modules that grew, so a growth shows by name, not only as a bigger chunk.
@@ -50,7 +51,7 @@ import { examined, fmtBytes, git, refExists, repoRoot } from './lib.mjs';
 import {
   firstLoadReport,
   floorProblem,
-  isPullRequestRun,
+  floorJudgesRun,
   PR_FLOOR_KB,
   summaryMarkdown,
 } from './perf-limits.mjs';
@@ -256,13 +257,14 @@ if ('modules' in headModules) {
   } else console.log(`perf: first-load module growth against main not measured: ${baseModules.reason}`);
 } else console.log(`perf: first-load modules not named: ${headModules.reason}`);
 
-// The pull request's floor: a PR that grows the first load must leave PR_FLOOR_KB of headroom.
-const pullRequest = isPullRequestRun(process.env);
-const floor = floorProblem(fl, budget.jsGzipKB, pullRequest);
+// The pull request's floor: a PR that grows the first load must leave PR_FLOOR_KB of headroom, on its
+// own run and on the train run that lands it (the tree that reaches main).
+const judged = floorJudgesRun(process.env);
+const floor = floorProblem(fl, budget.jsGzipKB, judged);
 if (floor) problems.push(floor);
-const floorLine = pullRequest
-  ? `pull-request floor ${PR_FLOOR_KB} KB of first-load headroom: ${floor ? 'FAILED' : 'holds'}`
-  : `pull-request floor ${PR_FLOOR_KB} KB: not applied (not a pull_request run; the ${budget.jsGzipKB} KB budget alone)`;
+const floorLine = judged
+  ? `pull-request floor ${PR_FLOOR_KB} KB of first-load headroom (${process.env.GITHUB_EVENT_NAME} run): ${floor ? 'FAILED' : 'holds'}`
+  : `pull-request floor ${PR_FLOOR_KB} KB: not applied (a push to main or a local run; the ${budget.jsGzipKB} KB budget alone)`;
 console.log(`perf: ${floorLine}`);
 examined(
   `${here.files} dist files: first-load JavaScript ${fmtBytes(here.jsGzip)} gzip in ${here.jsFiles} files ` +

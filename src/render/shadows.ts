@@ -111,7 +111,20 @@ export class BlobShadows {
   }
 }
 
-/** Ground height under an entity: its world y less its height over the road. */
+/**
+ * Ground height under an entity, world y: what it is on or over (the maintainer, 2026-10-06, "consistent
+ * physics and gameplay is important here so players know what to expect").
+ * - A rider riding (mode Road) is on what holds him: the road, a ramp's deck, or the roof of a truck he
+ *   rides (`road.h` over the road under it): his own height, not the road far under a support.
+ * - A rider in the air, or a body falling overboard, with the sim's `floorY` (the roof he is over, the sea
+ *   or the drop's floor past a rail, another road's deck): that. A roof is never above him.
+ * - Everything else, and a hand-built snapshot with no floor: its world y less its height over the road.
+ */
 export function groundYOf(e: EntitySnapshot): number {
+  if (e.kind === 'rider') {
+    if (e.mode === 'Road') return e.y;
+    if (e.mode === 'Airborne' && e.floorY !== undefined) return Math.min(e.y, e.floorY);
+    if (e.mode === 'Tumble' && e.floorY !== undefined) return e.floorY;
+  }
   return e.y - Math.max(0, e.road.h);
 }

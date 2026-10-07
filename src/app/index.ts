@@ -78,6 +78,7 @@ import {
   type RaceWeather,
   type StorageLike,
 } from '../save';
+import { cameraTargetOf } from './camera-target';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import { engineSoundsFor } from './engine-sounds';
 import { createCountdown } from './countdown';
@@ -1112,24 +1113,13 @@ export function createApp(opts: AppOptions): AppHandle {
           // bias) and the other riders' positions (camera-1).
           const at = curr?.entities[playerId];
           // Playtest 3's moves (the drift's slip and the wheelie's angle) lean the camera in too.
-          pose = camera.update(
-            {
-              ...me,
-              mode: at?.mode,
-              targetId: at?.targetId,
-              road: at?.road,
-              drift: at?.drift,
-              wheelie: at?.wheelie,
-            },
-            dt,
-            {
-              entities: curr?.entities,
-              // The held look-back action (camera-1's lookBack: L, or the pad's R1).
-              lookBack: input.lastActions().lookBack,
-              // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
-              aspect: viewAspect(),
-            },
-          );
+          pose = camera.update(cameraTargetOf(me, at), dt, {
+            entities: curr?.entities,
+            // The held look-back action (camera-1's lookBack: L, or the pad's R1).
+            lookBack: input.lastActions().lookBack,
+            // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
+            aspect: viewAspect(),
+          });
           // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
           if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
             if (!finishShot) {

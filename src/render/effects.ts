@@ -73,8 +73,8 @@ class Particles {
     material: InstancedMesh['material'],
     private readonly capacity: number,
     private readonly gravity: number,
-    /** Particles below this y while falling die (droplets back into the sea). */
-    private readonly floorY: number | null,
+    /** Particles below this y while falling die (droplets back into the water). */
+    public floorY: number | null,
     /**
      * Where the camera is, or null: with it, a particle closer to the lens than `nearM` is drawn
      * smaller in proportion (never below `nearFloor` of its size), so its size on screen stays put.
@@ -375,7 +375,10 @@ export class FeelEffects {
    * (away from the bridge), facing the splash.
    */
   splash(at: Point, reactor: ReactorKind, awayX: number, awayZ: number): void {
-    const water = { x: at.x, y: WATER_Y + 0.05, z: at.z };
+    // At the water's own level: where the body came to the surface (the sea's is 0; Lake Samish's is not).
+    const waterY = Number.isFinite(at.y) ? at.y : WATER_Y;
+    const water = { x: at.x, y: waterY + 0.05, z: at.z };
+    this.drops.floorY = waterY;
     const up = Math.sqrt(2 * GRAVITY * this.params.splashHeightM);
     for (let i = 0; i < 40; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -397,7 +400,8 @@ export class FeelEffects {
     r.t = 0;
     r.lookX = water.x;
     r.lookZ = water.z;
-    r.root.position.set(water.x + ux * dist, WATER_Y - 1, water.z + uz * dist);
+    r.baseY = waterY;
+    r.root.position.set(water.x + ux * dist, waterY - 1, water.z + uz * dist);
     // Face the splash: a model facing -z turned by h looks along (-sin h, -cos h).
     r.root.rotation.set(0, Math.atan2(-(water.x - r.root.position.x), -(water.z - r.root.position.z)), 0);
     r.root.visible = true;

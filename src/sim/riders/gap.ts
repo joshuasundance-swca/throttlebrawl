@@ -181,21 +181,123 @@ const ROAD_UNDER_TOL_M = 0.35;
 const EDGE_EPS_M = 1e-6;
 
 /**
+ * A rider's heading (yaw, from its road's tangent) once handed from `from` onto the road at `to`, its
+ * heading in the world kept (as the split handover keeps it): a heading's world angle is the road's
+ * travel direction's, atan2(z, x), plus the yaw toward the rider's right (sim/tumble's forward vector:
+ * (cos·tx − sin·tz, cos·tz + sin·tx)).
+ */
+export function handYaw(road: RoadNetwork, from: RoadPos, to: RoadPos, yaw: number): number {
+  const a = road.frameAt(from.edge, from.s);
+  const b = road.frameAt(to.edge, to.s);
+  return wrapAngle(yaw + atan2(a.tz * from.dir, a.tx * from.dir) - atan2(b.tz * to.dir, b.tx * to.dir));
+}
+
+/**
  * Hands an airborne rider over onto another road under it (`to`, from RoadNetwork.surfaceUnder),
  * keeping its world position and its heading in the world, as the split handover does.
  */
 function handTo(road: RoadNetwork, m: Mover, to: RoadPos): void {
-  const a = road.frameAt(m.pos.edge, m.pos.s);
-  const b = road.frameAt(to.edge, to.s);
-  // A heading's world angle is the road's travel direction's, atan2(z, x), plus the yaw toward the
-  // rider's right (sim/tumble's forward vector: (cos·tx − sin·tz, cos·tz + sin·tx)).
-  const from = atan2(a.tz * m.pos.dir, a.tx * m.pos.dir);
-  const onto = atan2(b.tz * to.dir, b.tx * to.dir);
-  m.yaw = wrapAngle(m.yaw + from - onto);
+  m.yaw = handYaw(road, m.pos, to, m.yaw);
   m.pos.edge = to.edge;
   m.pos.s = to.s;
   m.pos.d = to.d;
   m.pos.dir = to.dir;
+}
+
+/**
+ * Another road under a rider out past its road's edge (the old Seven Mile Bridge beside the new one):
+ * taken once its centre is inside that road's own riding limits (a bike's half-width in from the
+ * deck's edge, so it is not put down on the edge's line), and while it is still above that deck (or
+ * at most ROAD_UNDER_TOL_M below it). Null when there is none. Reads only: the one place the sim and
+ * its snapshot's forecasts (`floorOf`, the chalk mark) agree on which road that is.
+ */
+export function roadUnder(
+  config: SimConfig,
+  at: RoadPos,
+  y: number,
+  limits: (edge: number, s: number, d: number) => RideLimits,
+): RoadPos | null {
+  const road = config.road;
+  const under = road.surfaceUnder(at, ROAD_UNDER_SEARCH_M, (e) => config.route.allows(e));
+  const there = under ? limits(under.edge, under.s, under.d) : null;
+  if (
+    under &&
+    there &&
+    under.d >= there.lo &&
+    under.d <= there.hi &&
+    y >= road.surfaceHeight(under.edge, under.s, under.d) - ROAD_UNDER_TOL_M
+  ) {
+    return under;
+  }
+  return null;
+}
+
+/** What one airborne tick of the over-the-barrier rule decides (`overStep`): plain data, no writes. */
+export interface OverStep {
+  /** The rule's verdict, as `overBarrier` returns it. */
+  result: 'barrier' | 'deck' | 'past';
+  /** The rider's mark after this tick: null for none (it never went over, or it is down or handed over). */
+  mark: OverMark | null;
+  /** The rider is put back at this `d` (the limit it flew over), where the landing rules judge it. */
+  setD?: number;
+  /**
+   * The rider is out past its limit and the barrier rule holds it there (below the barrier's top, a ground
+   * edge, a taper): this is the limit. The sim's barrier rule does the holding; a forecast puts the flight
+   * at it.
+   */
+  holdD?: number;
+  /** The rider is handed onto this road, its world position and heading kept. */
+  hand?: RoadPos;
+}
+
+/**
+ * The over-the-barrier rule as a pure decision (nothing is written): the rider at `at` with absolute
+ * height `y`, its `mark` from the last tick (null when it is not out past the edge). `overBarrier`
+ * applies it; the chalk mark's forecast (`touchdownOf`) runs it on the flight it marches, with its own
+ * copy of the mark, so the forecast and the flight cannot disagree about what a barrier does.
+ */
+export function overStep(
+  config: SimConfig,
+  at: RoadPos,
+  y: number,
+  mark: OverMark | null,
+  limits: (edge: number, s: number, d: number) => RideLimits,
+  halfWidthM: number,
+): OverStep {
+  const road = config.road;
+  const lim = limits(at.edge, at.s, at.d);
+  if (at.d >= lim.lo && at.d <= lim.hi) return { result: 'barrier', mark: null };
+  const side: 1 | -1 = at.d > lim.hi ? 1 : -1;
+  const limit = side > 0 ? lim.hi : lim.lo;
+  let now = mark;
+  if (!now) {
+    const vside = side > 0 ? 'right' : 'left';
+    const v = road.vergeAt(at.edge, at.s, vside);
+    const atBand = v.taper !== true && Math.abs(limit + side * halfWidthM - v.dOuter) <= EDGE_EPS_M;
+    if (!atBand) return { result: 'barrier', mark: null, holdD: limit };
+    const top = edgeTopAt(road, at.edge, at.s, vside);
+    const deckY = road.surfaceHeight(at.edge, at.s, v.dOuter);
+    if (top === null || !(y - deckY > top)) return { result: 'barrier', mark: null, holdD: limit };
+    const past = pastAt(road, at.edge, at.s, vside);
+    const floorY = past === 'ground' ? deckY : waterLevelOf(road);
+    now = { edge: at.edge, s: at.s, d: limit, side, past, deckY, floorY };
+  }
+  // Its centre still over its own deck (between the limit and the edge's line, where the barrier
+  // stands): the deck is under it. Coming down there, it lands at the limit, beside the barrier it
+  // cleared, and the landing rules judge it.
+  const overDeck = side > 0 ? at.d <= limit + halfWidthM : at.d >= limit - halfWidthM;
+  if (overDeck) {
+    if (y > road.surfaceHeight(at.edge, at.s, at.d)) return { result: 'deck', mark: now };
+    return { result: 'barrier', mark: null, setD: limit };
+  }
+  const to = roadUnder(config, at, y, limits);
+  if (to) return { result: 'barrier', mark: null, hand: to };
+  if (now.past === 'ground' && y <= road.surfaceHeight(at.edge, at.s, limit)) {
+    // Down to the ground's height past the edge: the sim has no ground there, so it comes down at the
+    // band's edge, and the landing rules judge it (its heading and speed as they are).
+    return { result: 'barrier', mark: null, setD: limit };
+  }
+  return { result: 'past', mark: now };
 }
 
 /**
@@ -221,64 +323,26 @@ export function overBarrier(
   limits: (edge: number, s: number, d: number) => RideLimits,
   halfWidthM: number,
 ): 'barrier' | 'deck' | 'past' {
-  const road = config.road;
   const pos = m.pos;
-  const lim = limits(pos.edge, pos.s, pos.d);
-  if (pos.d >= lim.lo && pos.d <= lim.hi) {
-    clearOver(st, m.id);
-    return 'barrier';
-  }
-  const side: 1 | -1 = pos.d > lim.hi ? 1 : -1;
-  const limit = side > 0 ? lim.hi : lim.lo;
-  let mark = overMarkOf(st, m.id);
-  if (!mark) {
-    const vside = side > 0 ? 'right' : 'left';
-    const v = road.vergeAt(pos.edge, pos.s, vside);
-    const atBand = v.taper !== true && Math.abs(limit + side * halfWidthM - v.dOuter) <= EDGE_EPS_M;
-    if (!atBand) return 'barrier';
-    const top = edgeTopAt(road, pos.edge, pos.s, vside);
-    const deckY = road.surfaceHeight(pos.edge, pos.s, v.dOuter);
-    if (top === null || !(y - deckY > top)) return 'barrier';
-    const past = pastAt(road, pos.edge, pos.s, vside);
-    const floorY = past === 'ground' ? deckY : waterLevelOf(road);
-    mark = { edge: pos.edge, s: pos.s, d: limit, side, past, deckY, floorY };
-    (st.over ??= {})[m.id] = mark;
-  }
-  // Its centre still over its own deck (between the limit and the edge's line, where the barrier
-  // stands): the deck is under it. Coming down there, it lands at the limit, beside the barrier it
-  // cleared, and the landing rules judge it.
-  const overDeck = side > 0 ? pos.d <= limit + halfWidthM : pos.d >= limit - halfWidthM;
-  if (overDeck) {
-    if (y > road.surfaceHeight(pos.edge, pos.s, pos.d)) return 'deck';
-    pos.d = limit;
-    clearOver(st, m.id);
-    return 'barrier';
-  }
-  // Another road under it: taken once its centre is inside that road's own riding limits (a bike's
-  // half-width in from the deck's edge, so it is not put down on the edge's line), and while it is
-  // still above that deck.
-  const under = road.surfaceUnder(pos, ROAD_UNDER_SEARCH_M, (e) => config.route.allows(e));
-  const there = under ? limits(under.edge, under.s, under.d) : null;
-  if (
-    under &&
-    there &&
-    under.d >= there.lo &&
-    under.d <= there.hi &&
-    y >= road.surfaceHeight(under.edge, under.s, under.d) - ROAD_UNDER_TOL_M
-  ) {
-    handTo(road, m, under);
-    clearOver(st, m.id);
+  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM);
+  if (step.mark) (st.over ??= {})[m.id] = step.mark;
+  else clearOver(st, m.id);
+  if (step.setD !== undefined) pos.d = step.setD;
+  if (step.hand) {
+    handTo(config.road, m, step.hand);
     (st.hop ??= {})[m.id] = world.tick;
-    return 'barrier';
   }
-  if (mark.past === 'ground' && y <= road.surfaceHeight(pos.edge, pos.s, limit)) {
-    // Down to the ground's height past the edge: the sim has no ground there, so it comes down at the
-    // band's edge, and the landing rules judge it (its heading and speed as they are).
-    pos.d = limit;
-    clearOver(st, m.id);
-    return 'barrier';
-  }
-  return 'past';
+  return step.result;
+}
+
+/**
+ * Whether a rider out past its edge at absolute height `y` goes overboard now: over water or a drop
+ * (not ground), and more than the kill depth below the deck at the crossing, or down at the water. The
+ * chalk mark's forecast asks it too, so the mark is hidden for a flight that ends in a fall.
+ */
+export function overFalls(mark: OverMark, y: number): boolean {
+  if (mark.past === 'ground') return false;
+  return mark.deckY - y > GAP_DEFAULTS.killDepthM || y <= mark.floorY;
 }
 
 /**
@@ -291,9 +355,8 @@ export function overBarrier(
  */
 export function overFall(world: World, _config: SimConfig, st: RiderState, m: Mover, y: number): void {
   const mark = overMarkOf(st, m.id);
-  if (!mark || mark.past === 'ground') return;
+  if (!mark || !overFalls(mark, y)) return;
   const depth = mark.deckY - y;
-  if (depth <= GAP_DEFAULTS.killDepthM && y > mark.floorY) return;
   const dropM = Math.max(0, mark.deckY - mark.floorY);
   clearOver(st, m.id);
   emit(world, 'crash', m.id, {

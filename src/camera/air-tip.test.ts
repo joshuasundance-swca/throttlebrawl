@@ -69,9 +69,15 @@ describe('air that pays: the camera tips forward in the air', () => {
 
   it('is off with its sliders at 0', () => {
     const off = { airTipM: 0, airLiftM: 0 };
-    const ground = settled(3, 'Road', off);
+    // The aim stays on the road ahead (a flat road: the same absolute height as riding it) and the camera
+    // sits as high over the bike as ever. (A rider riding a roof 3 m up is not this: the aim rides up
+    // with him, tests high-riders.)
+    const ground = settled(0, 'Road', off);
     const air = settled(3, 'Airborne', off);
-    expect(pitchDown(air.pose)).toBeCloseTo(pitchDown(ground.pose), 6);
-    expect(air.pose.y).toBeCloseTo(ground.pose.y, 6);
+    expect(air.pose.lookY).toBeCloseTo(ground.pose.lookY, 3);
+    expect(air.pose.y - air.t.y).toBeCloseTo(ground.pose.y - ground.t.y, 6);
+    // And the sliders do something: on, the same flight tips (above).
+    const on = settled(3, 'Airborne');
+    expect(pitchDown(on.pose)).toBeGreaterThan(pitchDown(air.pose) + 0.05);
   });
 });

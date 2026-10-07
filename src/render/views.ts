@@ -898,11 +898,11 @@ export class EntityViews {
       if (e.parkedBike) {
         // Running back to the bike: the rider on foot, the bike standing apart.
         const b = e.parkedBike;
-        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.road.h);
+        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.y - ground);
         sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
         continue;
       }
-      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.road.h);
+      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.y - ground);
     }
     sh.end();
   }
@@ -1475,7 +1475,9 @@ export class EntityViews {
           if (actor) fx.burst(bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider'), 0.8);
           break;
         case 'splash':
-          if (actor) {
+          // A HIGH drop (the maintainer, 2026-10-06, "(a)") is a clean cut-away: no water thrown, no ring,
+          // no gator, no fisherman. The same fall as a low one in every other way.
+          if (actor && ev.data['high'] !== true) {
             const at = bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider');
             // Away from the bridge: from the rider's spot on the road out to the splash.
             const reactor = (ev.actor + ev.tick) % 2 === 0 ? 'gator' : 'fisherman';

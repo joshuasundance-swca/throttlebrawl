@@ -37,12 +37,47 @@ export const FURNITURE_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
     system: true,
   },
+  {
+    // Pile-ups (the maintainer, 2026-10-06: "Pile ups are fun lol" [decided]): a bike left on the road
+    // after a crash is solid by closing speed, like the street furniture's solid pieces (`meetSolid` in
+    // sim/riders). On by default; a race whose tuning leaves it out (every recording made before) rides
+    // through a dropped bike with a wobble, as before (sim/tumble, `parkedBikeContacts`). Like the
+    // dropped bike's old rule, it needs `riders.furniture` on.
+    id: 'riders.pileUps',
+    group: 'crashes',
+    label: 'Dropped bikes are solid: pile-ups (0 off, 1 on)',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
+    affectsSim: true,
+  },
 ];
 
 /** Whether this race's riders meet the street furniture. */
 export function furnitureOn(params: Readonly<Record<string, number>>): boolean {
   return (params[FURNITURE_KEY] ?? 0) >= 0.5;
 }
+
+/** The switch for pile-ups: a dropped bike is solid (1) or ridden through with a wobble (0, as before). */
+export const PILE_UP_KEY = 'riders.pileUps';
+
+/**
+ * Whether a bike left on the road after a crash is solid (pile-ups): `riders.pileUps` on, and the street
+ * furniture on (the dropped bike's contact, old or new, is part of it).
+ */
+export function pileUpsOn(params: Readonly<Record<string, number>>): boolean {
+  return furnitureOn(params) && (params[PILE_UP_KEY] ?? 0) >= 0.5;
+}
+
+/**
+ * A dropped bike's footprint (the rider box the bike models are fitted to, render/riders/bake.ts), standing
+ * along the road as sim/tumble parks it, and its top, m: a rider higher than that passes over it.
+ */
+export const PARKED_BIKE_HALF_LENGTH_M = RIDER_HALF_LENGTH_M;
+export const PARKED_BIKE_HALF_WIDTH_M = RIDER_CONTACT_HALF_WIDTH_M;
+export const PARKED_BIKE_TOP_M = 1.2;
 
 /** The bike's capsule: half its spine along its heading, and its radius, m. */
 export const BIKE_RADIUS_M = RIDER_CONTACT_HALF_WIDTH_M;
