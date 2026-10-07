@@ -140,7 +140,7 @@
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { atan2, clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
-import type { RoadPos, RouteBranch } from '../../road';
+import { standOffLanes, type RoadPos, type RouteBranch } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt, riderState } from '../riders';
 import {
@@ -164,6 +164,7 @@ import {
   STRAY_RETURN_MPS,
   wayBack,
 } from '../ai/branches';
+import { droppedBikesSeen } from '../ai/dropped';
 import {
   bendSpeed,
   blockerAt,
@@ -671,7 +672,14 @@ const CITE_ACROSS_M = 4;
 const CATCH_UP_NEAR_M = 4;
 
 /** The END OF JURISDICTION sign [default]: from this share of the route; this far off the lanes, m. */
-export const JURISDICTION = { share: 0.55, outM: 1.2 };
+export const JURISDICTION = {
+  share: 0.55,
+  outM: 1.2,
+  /** Its post's half width, how far off every road's lanes it keeps, and how far out it looks for that, m. */
+  postHalfM: 0.1,
+  lanesClearM: 0.25,
+  moveMaxM: 8,
+};
 
 function habitOf(def: SimRiderDef | undefined): SimLawHabit | null {
   return def?.law?.habit ?? null;
@@ -1032,7 +1040,11 @@ function trafficGuard(
   // `furnitureSeen`): his line must be clear of it, and he goes round one in his way or alongside as
   // round a stopped car (`all`); only moving traffic blocks the way across to a line.
   const fixed = furnitureSeen(world, config, cop, Math.min(TRAFFIC_SEE_M, v * 6 + 40), FIXED_BEHIND_M);
-  const all = fixed.length > 0 ? [...seen, ...fixed] : seen;
+  // A bike left on the road after a crash is solid too (pile-ups; the maintainer, 2026-10-06): kept clear
+  // of as the furniture is (`still`), but one on the road never slows him for bends.
+  const dropped = droppedBikesSeen(world, config, cop, Math.min(TRAFFIC_SEE_M, v * 6 + 40), FIXED_BEHIND_M);
+  const still = dropped.length > 0 ? [...fixed, ...dropped] : fixed;
+  const all = still.length > 0 ? [...seen, ...still] : seen;
   if (all.length === 0) return { d, v: speed, brake, dodging };
   if (fixed.length > 0) {
     // A street lined with solid furniture: slow enough to hold its bends (not carried wide onto the
@@ -1046,7 +1058,7 @@ function trafficGuard(
   const look = clamp(14 + v * 2.2, 14, 90);
   if (
     !pathClear(seen, v, pos.d, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M) ||
-    (fixed.length > 0 && !lineClear(fixed, v, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M))
+    (still.length > 0 && !lineClear(still, v, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M))
   )
     d = pos.d;
   // Behind a piece of street furniture he never stops: he crawls on, still rolling, so he can steer.
@@ -1990,10 +2002,23 @@ function placeLine(config: SimConfig, st: CopsState): void {
     const o = config.route.orientation(pos.edge) === -1 ? -1 : 1;
     const v = config.road.vergeAt(pos.edge, pos.s, o > 0 ? 'right' : 'left');
     const out = Math.min(JURISDICTION.outM, Math.max(0, Math.abs(v.dOuter - v.dInner) - 0.2));
+    // Its post stands off every road's lanes (2026-10-06, honest edges: a sign is a ghost in a lane), as a set
+    // piece's sign does (sim/modifiers/setpieces.ts SET_PIECE.signLanesClearM); its panel hangs over a rider's head.
+    const d = standOffLanes(
+      config.road,
+      pos.edge,
+      pos.s,
+      o,
+      v.dInner + o * out,
+      JURISDICTION.postHalfM,
+      JURISDICTION.lanesClearM,
+      JURISDICTION.moveMaxM,
+    );
+    if (d === null) continue;
     st.lineAt = at;
     st.lineEdge = pos.edge;
     st.lineS = pos.s;
-    st.lineD = v.dInner + o * out;
+    st.lineD = d;
     return;
   }
 }

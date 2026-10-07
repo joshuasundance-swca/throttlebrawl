@@ -1,7 +1,8 @@
 // The perf check's rules for the numbers it prints (docs/engineering.md, "Perf check"), kept in
 // one place so the Playwright probes, scripts/perf.mjs and a unit test (perf-limits.test.ts) agree.
 //
-// - Soft tier: frame time p50 and p95 and sim step p95 are a TREND. CI prints them on every run
+// - Soft tier: frame time p50 and p95, sim step p95 and the start tap's main-thread work are a TREND.
+//   CI prints them on every run
 //   with their ratio to the stored baseline (tests/perf/baseline.json). They fail the gate only
 //   above GUARD_FACTOR times the baseline, a catastrophe guard that runner noise cannot reach (the
 //   maintainer, 2026-10-02: "Trend plus 3x guard"). On 2026-10-02 the same game code printed a
@@ -28,39 +29,67 @@ export const DELTA_WARN_KB = 5;
 
 /**
  * A pull request's floor: a PR that grows the first-load JavaScript must leave at least this much
- * headroom under the budget, or the perf check fails it. Main's pushes keep the budget alone.
+ * headroom under the budget, or the perf check fails it, on the PR's own run and on the train run
+ * that lands it (floorJudgesRun). Main's pushes keep the budget alone.
  * [default] (the coordinator, 2026-10-03: the 500 KB budget was crossed 4 times on 10-02 and 10-03
  * by PRs that each fit alone, so main went red; the floor turns the PR that eats the margin red.)
  */
 export const PR_FLOOR_KB = 10;
 
+/**
+ * The start tap is a printed trend with no guard until its baseline rests on this many CI readings
+ * (the frame baseline rests on 8). The K2 review found a 3x guard on 3 readings could redden a train
+ * for a change that did nothing to the tap: a model arriving between the click and the next frame
+ * can add 400 to 650 ms to one reading, and 3 or 4 readings cannot bound how often that happens.
+ */
+export const START_TAP_GUARD_MIN_READINGS = 8;
+
 const round1 = (x) => Math.round(x * 10) / 10;
 
 /**
- * @typedef {{ frameMs: { p50: number, p95: number }, stepMs?: { p95: number } }} SoftTimes
- * @typedef {{ metric: string, value: number, baseline: number, ratio: number, limit: number, over: boolean }} TrendRow
+ * `startTapMs` is the start tap's main-thread work (tests/perf/perf.spec.ts): the tap's click handlers,
+ * the audio calls between them and the next frame, and the next frame's work up to the probe's own
+ * frame callback, in ms. It is a trend row once both the probe and the baseline have it, and a
+ * guarded one only when the baseline's `startTapReadings` (how many CI readings it rests on) is
+ * START_TAP_GUARD_MIN_READINGS or more (polish F's live check, punch item 2: the menu came 215 ms
+ * after the tap, then 461 ms, and nothing on CI measured it).
+ * @typedef {{ frameMs: { p50: number, p95: number }, stepMs?: { p95: number }, startTapMs?: number, startTapReadings?: number }} SoftTimes
+ * @typedef {{ metric: string, value: number, baseline: number, ratio: number, limit: number | null, over: boolean }} TrendRow
  */
 
 /**
- * The guard's limits for a baseline, rounded to 0.1 ms.
+ * Whether the baseline's start tap rests on enough CI readings to guard it.
+ * @param {SoftTimes} baseline
+ */
+function startTapGuarded(baseline) {
+  return (
+    baseline.startTapMs !== undefined && (baseline.startTapReadings ?? 0) >= START_TAP_GUARD_MIN_READINGS
+  );
+}
+
+/**
+ * The guard's limits for a baseline, rounded to 0.1 ms. The start tap's work is not counted in whole
+ * frames, so like the sim step it gets no slack.
  * @param {SoftTimes} baseline
  * @param {number} [factor]
- * @returns {{ frameP50: number, frameP95: number, stepP95?: number }}
+ * @returns {{ frameP50: number, frameP95: number, stepP95?: number, startTap?: number }}
  */
 export function guardLimits(baseline, factor = GUARD_FACTOR) {
-  /** @type {{ frameP50: number, frameP95: number, stepP95?: number }} */
+  /** @type {{ frameP50: number, frameP95: number, stepP95?: number, startTap?: number }} */
   const out = {
     frameP50: round1(baseline.frameMs.p50 * factor + FRAME_SLACK_MS),
     frameP95: round1(baseline.frameMs.p95 * factor + FRAME_SLACK_MS),
   };
   if (baseline.stepMs) out.stepP95 = round1(baseline.stepMs.p95 * factor);
+  if (startTapGuarded(baseline)) out.startTap = round1((baseline.startTapMs ?? 0) * factor);
   return out;
 }
 
 /**
  * Judges a probe's times against its baseline. Every metric becomes a trend row (the value, its
  * ratio to the baseline, the guard's limit); only a value above its guard is a failure. Sim step
- * p95 is judged when both the baseline and the probe have it.
+ * p95 and the start tap are judged when both the baseline and the probe have them; the start tap
+ * is a trend row with no guard (and so no failure) until its baseline has 8 CI readings.
  * @param {SoftTimes} measured
  * @param {SoftTimes} baseline
  * @param {number} [factor]
@@ -75,13 +104,17 @@ export function judgeSoft(measured, baseline, factor = GUARD_FACTOR) {
   ];
   if (measured.stepMs && baseline.stepMs)
     metrics.push(['sim step p95', measured.stepMs.p95, baseline.stepMs.p95, limits.stepP95]);
+  if (measured.startTapMs !== undefined && baseline.startTapMs !== undefined)
+    metrics.push(['start tap', measured.startTapMs, baseline.startTapMs, limits.startTap]);
   /** @type {TrendRow[]} */
   const rows = [];
   /** @type {string[]} */
   const failures = [];
-  for (const [metric, value, base, limit] of metrics) {
-    if (limit === undefined) continue;
-    const over = !(value <= limit);
+  for (const [metric, value, base, guard] of metrics) {
+    // A metric with no guard yet (the start tap, below 8 readings) is a printed trend row only.
+    if (guard === undefined && metric !== 'start tap') continue;
+    const limit = guard ?? null;
+    const over = limit !== null && !(value <= limit);
     const ratio = base > 0 ? Math.round((value / base) * 100) / 100 : Number.NaN;
     rows.push({ metric, value, baseline: base, ratio, limit, over });
     if (over)
@@ -100,7 +133,7 @@ export function judgeSoft(measured, baseline, factor = GUARD_FACTOR) {
 export function trendLine(label, rows) {
   const parts = rows.map(
     (r) =>
-      `${r.metric} ${r.value} ms (${r.ratio.toFixed(2)}x the baseline ${r.baseline}, guard ${r.limit}${r.over ? ', OVER' : ''})`,
+      `${r.metric} ${r.value} ms (${r.ratio.toFixed(2)}x the baseline ${r.baseline}, ${r.limit === null ? 'no guard yet' : `guard ${r.limit}`}${r.over ? ', OVER' : ''})`,
   );
   return `perf trend (${label}): ${parts.join('; ')}`;
 }
@@ -132,17 +165,28 @@ export function firstLoadReport(headBytes, budgetKB, baseBytes) {
 }
 
 /**
- * Whether this run judges a pull request: GitHub's `pull_request` event (a push to main is `push`).
+ * The events whose runs test a tree that is about to land, so the floor judges them: a pull
+ * request's own run (`pull_request`), and the bundle train's suite and its lone-PR control
+ * (train.yml runs suite.yml on `workflow_run` and `workflow_dispatch`). A push to main is `push`.
+ * Until 2026-10-06 only `pull_request` was judged, and the train is how most PRs land: #633's own
+ * quick check passed at 11.1 KB against a main 1 h 46 min older, its train (37530950804, main ff06745
+ * plus #633) built 490.1 KB, 9.9 KB of headroom, and printed "not applied (not a pull_request run)".
+ */
+const FLOOR_EVENTS = new Set(['pull_request', 'workflow_run', 'workflow_dispatch']);
+
+/**
+ * Whether the floor judges this run: a pull request's own run or a train's (FLOOR_EVENTS); never a
+ * push to main, which keeps the budget alone, nor a local run (no event).
  * @param {Record<string, string | undefined>} env
  */
-export function isPullRequestRun(env) {
-  return env.GITHUB_EVENT_NAME === 'pull_request';
+export function floorJudgesRun(env) {
+  return FLOOR_EVENTS.has(env.GITHUB_EVENT_NAME ?? '');
 }
 
 /**
  * The floor's verdict on a pull request's build: a failure message when it leaves less than
- * `floorKB` of headroom, or null. Null on a run that is not a pull request (main keeps the budget
- * alone), and over the budget (the budget's own failure speaks). A PR whose measured change does
+ * `floorKB` of headroom, or null. Null on a run the floor does not judge (`pullRequest` false: a
+ * push to main keeps the budget alone), and over the budget (the budget's own failure speaks). A PR whose measured change does
  * not grow the first load never fails it: when main itself has drifted inside the floor (two PRs
  * that each fit, merged), only the PR that adds to it goes red, never every PR or the one that
  * shrinks it. A change that was not measured is held to the floor.
@@ -176,7 +220,7 @@ export function summaryMarkdown({ size, probes }) {
   const out = ['### perf', '', ...size.map((s) => `- ${s}`), ''];
   if (probes.length) {
     out.push(
-      `Frame and sim step times are a trend; the gate fails only above ${GUARD_FACTOR}x the baseline.`,
+      `Frame times, the sim step and the start tap are a trend; the gate fails only above ${GUARD_FACTOR}x the baseline.`,
       '',
       '| probe | metric | ms | x baseline | baseline | guard |',
       '|---|---|---|---|---|---|',
@@ -184,7 +228,7 @@ export function summaryMarkdown({ size, probes }) {
     for (const p of probes)
       for (const r of p.rows)
         out.push(
-          `| ${p.label} | ${r.metric} | ${r.value}${r.over ? ' **OVER**' : ''} | ${r.ratio.toFixed(2)} | ${r.baseline} | ${r.limit} |`,
+          `| ${p.label} | ${r.metric} | ${r.value}${r.over ? ' **OVER**' : ''} | ${r.ratio.toFixed(2)} | ${r.baseline} | ${r.limit ?? 'none yet'} |`,
         );
   } else {
     out.push('No probe results were written (the probes did not run, or failed before measuring).');

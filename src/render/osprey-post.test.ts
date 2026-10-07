@@ -212,5 +212,8 @@ describe('osprey posts stand on the highway`s shores', () => {
     const rule = KEYS_KIT.rules.find((r) => r.id === RULE);
     expect(rule?.notDistrict).toEqual(expect.arrayContaining(['key-oldtown']));
     expect(rule?.on).not.toContain('oldtown');
-  });
+    // It builds Duval's and the Seven Mile's road scenes eight times. With land kept off lower roads' lanes (here and
+    // in road/land.ts, which Old Town's structure plan reads) that took 6.3 s on the dev machine, against 2.0 s on
+    // main, and ran past the unit tier's 20 s on CI in train 432.
+  }, 60_000);
 });

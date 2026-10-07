@@ -689,7 +689,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       return;
     }
-    blocks = new m.BlocksLayer(look, { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed });
+    // The districts stand where the road's own plan puts them (road/structures/): no dressing, the road data alone.
+    blocks = new m.BlocksLayer(look, { road: roadArgs.road, seed: sceneSeed });
     scene.add(blocks.group);
   };
   // Run W-U: San Francisco's mural alleys (mission.ts), a lazy chunk fetched once a road has them.
@@ -712,11 +713,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       });
       return;
     }
-    mission = new m.MissionLayer(models.sfRoadside, look, {
-      road: roadArgs.road,
-      dressing: roadArgs.dressing,
-      seed: sceneSeed,
-    });
+    // The walls stand where the road's own plan puts them (road/structures/): no dressing, the road data alone.
+    mission = new m.MissionLayer(models.sfRoadside, look, { road: roadArgs.road, seed: sceneSeed });
     scene.add(mission.group);
   };
   // Run W-R: the ground band beside the road (verge.ts), a lazy chunk that arrives with the road. It
