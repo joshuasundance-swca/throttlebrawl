@@ -218,8 +218,19 @@ export function createRoutePicker(
     after.disabled = !cue.after;
   };
   row.addEventListener('scroll', syncCue, { passive: true });
+  // Showing the arrows changes the observed row's flex width. Write after observer delivery so
+  // that change does not leave same-row resize notifications undelivered.
+  let cueQueued = false;
+  const queueCue = () => {
+    if (cueQueued) return;
+    cueQueued = true;
+    requestAnimationFrame(() => {
+      cueQueued = false;
+      syncCue();
+    });
+  };
   // The row's width changes with the screen and its chips' with the text size: look again on either.
-  const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncCue);
+  const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(queueCue);
   const blurb = document.createElement('div');
   blurb.className = 'route-blurb';
   const note = document.createElement('div');
