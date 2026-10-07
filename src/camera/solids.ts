@@ -92,13 +92,53 @@ export function armClear(
   eye: { x: number; y: number; z: number },
   pad: number = EYE_CLEARANCE_M,
 ): number {
+  return armClearAmong(armCandidates(plan, pivot, eye, pad), pivot, eye, pad);
+}
+
+/**
+ * The solids that can be anywhere near the line of sight from `pivot` to `eye`: those whose footprint's bounding
+ * circle comes within `pad` of the line over the ground and whose height span overlaps the line's. A broad phase,
+ * so the march tests the handful of solids near the line and not all of a street's hundred parts.
+ */
+function armCandidates(
+  plan: StructurePlan,
+  pivot: { x: number; y: number; z: number },
+  eye: { x: number; y: number; z: number },
+  pad: number,
+): Structure[] {
+  const dx = eye.x - pivot.x;
+  const dz = eye.z - pivot.z;
+  const dd = dx * dx + dz * dz;
+  const lo = Math.min(pivot.y, eye.y) - pad;
+  const hi = Math.max(pivot.y, eye.y) + pad;
+  const near = solidsNear(plan, (eye.x + pivot.x) / 2, (eye.z + pivot.z) / 2, Math.sqrt(dd) / 2 + pad + 1);
+  const out: Structure[] = [];
+  for (const st of near) {
+    const f = st.foot;
+    const top = st.roof.kind === 'flat' ? st.roof.topM : st.roof.ridgeM;
+    if (st.baseY - pad > hi || st.baseY + top + pad < lo) continue;
+    // The footprint's bounding circle against the segment, over the ground.
+    const t = dd > 1e-12 ? Math.min(1, Math.max(0, ((f.x - pivot.x) * dx + (f.z - pivot.z) * dz) / dd)) : 0;
+    const cx = pivot.x + dx * t - f.x;
+    const cz = pivot.z + dz * t - f.z;
+    const reach = Math.sqrt(f.hu * f.hu + f.hv * f.hv) + pad;
+    if (cx * cx + cz * cz <= reach * reach) out.push(st);
+  }
+  return out;
+}
+
+/** `armClear` among the solids that can be near the line (`armCandidates`). */
+function armClearAmong(
+  near: readonly Structure[],
+  pivot: { x: number; y: number; z: number },
+  eye: { x: number; y: number; z: number },
+  pad: number,
+): number {
   const dx = eye.x - pivot.x;
   const dy = eye.y - pivot.y;
   const dz = eye.z - pivot.z;
   const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  if (!(len > 1e-6)) return 1;
-  const near = solidsNear(plan, (eye.x + pivot.x) / 2, (eye.z + pivot.z) / 2, len / 2 + pad + 1);
-  if (near.length === 0) return 1;
+  if (!(len > 1e-6) || near.length === 0) return 1;
   // Each solid's own pad: none for one the pivot is within `pad` of (the wall he rubs); skipped if he is inside.
   const mine: { st: Structure; pad: number }[] = [];
   for (const st of near) {
@@ -187,8 +227,10 @@ export function eyeHeightShare(
 ): number {
   let best = 1;
   let reach = -1;
+  // The same ground line at every height: the solids near it are found once, for the full height.
+  const near = armCandidates(plan, pivot, eye, pad);
   for (const h of HEIGHT_SHARES) {
-    const clear = armClear(plan, pivot, { x: eye.x, y: pivot.y + (eye.y - pivot.y) * h, z: eye.z }, pad);
+    const clear = armClearAmong(near, pivot, { x: eye.x, y: pivot.y + (eye.y - pivot.y) * h, z: eye.z }, pad);
     if (clear >= 1) return h;
     if (clear > reach + 1e-9) {
       reach = clear;
