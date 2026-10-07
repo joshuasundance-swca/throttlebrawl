@@ -435,7 +435,7 @@ describe('docs/engineering.md: the train section opens in plain words', () => {
 
   it('counts the suite as suite.yml does', () => {
     const size = suiteSize(suiteYml);
-    expect(size).toMatchObject({ unit: 2, sim: 8, browser: 8, all: 19 });
+    expect(size).toMatchObject({ unit: 3, sim: 8, browser: 8, all: 20 });
     for (const [name, text] of [
       ['the train section', train],
       ['the CI section', section(engineering, 'CI on GitHub Actions')],
