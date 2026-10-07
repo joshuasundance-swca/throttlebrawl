@@ -11,7 +11,14 @@ import {
 } from 'three';
 import { expect } from 'vitest';
 import budget from '../../tests/perf/budget.json';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import {
+  createRoadNetwork,
+  loadPnwPlacesLayout,
+  loadWaterfrontLayout,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../road';
 import { buildBackdrop, roadPointsOf } from './backdrop/builder';
 import type { BackdropNetworkFile, BackdropRegionFile } from './backdrop/data';
 import { waterAtOf, waterFloors } from './backdrop/water';
@@ -557,10 +564,21 @@ export async function stillSceneOf(
   // Playtest 4 (run A, item 7): and the revellers on the party blocks' balconies, once the fronts are placed.
   lights.setFronts(placed);
   // Run W-U: San Francisco's waterfront.
-  const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
+  const wf = hasWaterfront(tags)
+    ? new WaterfrontLayer(models, look, {
+        road,
+        seed,
+        layout: (await loadWaterfrontLayout()).waterfrontLayout(road, seed),
+      })
+    : null;
   // Run W-U: the Pacific Northwest's places (the ferry, the clear-cut, the Stump Social).
   const places = hasPnwPlaces(tags)
-    ? new PnwPlacesLayer(look, { road, seed, landReach: (e, side, s) => rs.landReach(e, side, s) })
+    ? new PnwPlacesLayer(look, {
+        road,
+        seed,
+        layout: (await loadPnwPlacesLayout()).pnwPlacesLayout(road, seed),
+        landReach: (e, side, s) => rs.landReach(e, side, s),
+      })
     : null;
   // Run W-U: San Francisco's Chinatown and North Beach (a code-made kit, no models).
   const blocks = hasBlocks(tags) ? new BlocksLayer(look, { road, dressing, seed }) : null;

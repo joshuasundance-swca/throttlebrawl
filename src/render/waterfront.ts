@@ -20,6 +20,14 @@
 // its words are a 3 by 5 block font. The palms are the Keys' palm models (models.ts loads them for
 // a waterfront), the cars the city kit's, the boats the base pack's.
 //
+// Where the buildings stand (the pier sheds, the ferry hall, the front blocks, the towers behind and the side
+// streets' blocks) is road/structures/waterfront.ts's plan (the physical world, 2026-10-06: a building is a
+// solid the sim meets, at its drawn shape): the same rules this layer had, moved there unchanged. This layer
+// builds each building's boxes from its kind, width and seeded `u` and draws them where the plan stands them;
+// scripts/hitboxes.test.ts holds the boxes it marks `solid` to the plan's solids. What stays here is what is
+// scenery: the seawall's face, the side streets' roadways, the lot's lines, the city floor, the sea lions'
+// floats and the moored boats.
+//
 // Drawing (the phone's budget): every still item is merged per 160 m square of the world with a far
 // stand-in for each (scenery-merge.ts: one draw call per square, the far ones a few boxes each),
 // and the flat surfaces (the seawall's face, the side streets, the lot's lines, the city floor) are
@@ -37,12 +45,21 @@ import {
   Vector3,
   type Material,
 } from 'three';
-import { planStreetFurniture, type RoadNetwork } from '../road';
+import {
+  onSide,
+  planStreetFurniture,
+  scatterHash,
+  type BlockKind,
+  type Frontage,
+  type RoadNetwork,
+  type SideTag,
+  type WaterfrontLayout,
+  type WfPlaced,
+} from '../road';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel, SceneryModels } from './models';
-import type { RoadDressing } from './road-mesh';
-import { LAND_TOP_M, scatterHash } from './scenery';
+import { LAND_TOP_M } from './scenery';
 import { MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
 
 /** The waterfront's tags (tools/road/tracks/sf-waterfront.ts). */
@@ -54,8 +71,6 @@ export function hasWaterfront(tags: ReadonlySet<string>): boolean {
   return [...BAY_TAGS, ...CITY_TAGS].some((t) => tags.has(t));
 }
 
-/** The verge past the drawn shoulder (road-mesh.ts VERGE_M). */
-const VERGE_M = 0.6;
 /** The road scene's land strip past the verge on the city side (road-mesh.ts SCENERY_LAND_M). */
 const LAND_STRIP_M = 24;
 /** How deep a pier shed reaches out over the water, and the ferry hall, m. [default] */
@@ -65,9 +80,6 @@ const HALL_DEPTH_M = 42;
 export const TOWER_TOP_M = 76;
 /** A waterfront block's depth back from its front, m: past the land strip's edge, so none shows behind it. */
 const BLOCK_DEPTH_M = 22;
-/** The taller towers behind the blocks: past the front this far (plus a seeded spread), every so often. */
-const BACK_ROW_M = 40;
-const BACK_ROW_EVERY_M = 36;
 /** A side street's reach inland and its roadway's half width, m. */
 export const STREET_REACH_M = 170;
 const STREET_ROAD_HALF_M = 5.5;
@@ -76,8 +88,6 @@ const STREET_DROP = 0.05;
 /** The city floor under the blocks: its height and its reach past the land strip, m. */
 const CITY_FLOOR_Y = 0.45;
 export const CITY_FLOOR_M = 260;
-/** Behind the plaza and the lot, buildings stand this far past the verge, m: where their paving ends. */
-const OPEN_BACK_M = 17.4;
 // The promenade's palms, lamps and benches, and the city side's, are road/furniture.ts's now.
 /** Static surfaces are merged per stretch of road this long, m. [default] */
 export const STRETCH_M = 160;
@@ -85,16 +95,6 @@ export const STRETCH_M = 160;
 export const WATERFRONT_DRAW_M = 480;
 const PREFETCH_M = 100;
 const KEEP_M = WATERFRONT_DRAW_M + 200;
-/** Features nothing of this layer stands in, with room round them (road-mesh.ts KEEP_CLEAR). */
-const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck', 'roadsideZone', 'copSpawn']);
-const FEATURE_CLEAR_M = 2;
-
-/**
- * The pier numbers [default], nearest the ferry hall first: even on the hall's near side, odd past
- * it, as the city numbers its piers (with gaps, as its numbers have).
- */
-export const EVEN_PIERS: readonly number[] = [14, 20, 22, 24, 26, 28, 30, 32, 36, 38, 40];
-export const ODD_PIERS: readonly number[] = [1, 3, 5, 7, 9, 15, 17, 19, 23, 27, 29, 31, 33, 35, 39];
 /** The four clocks of the ferry hall's tower: each tells its own time [default] (hours, minutes). */
 export const CLOCK_TIMES: readonly (readonly [number, number])[] = [
   [10, 10],
@@ -202,6 +202,22 @@ interface BoxOpts {
   rz?: number;
   omit?: readonly Face[];
   frame?: Matrix4;
+  /**
+   * The solid this box is, when it is one (a body, a roof, a deck, a tower tier: what road/structures/waterfront.ts
+   * plans for the sim); its name there, without the building's own rule. Drawn the same either way.
+   */
+  solid?: string;
+}
+
+/** A solid's drawn bounds in the shape's own frame, m. */
+export interface DrawnSolid {
+  name: string;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  z0: number;
+  z1: number;
 }
 
 /** Coloured boxes as one flat-triangle geometry, in the shape's own frame. */
@@ -209,6 +225,8 @@ export class Shape {
   readonly pos: number[] = [];
   readonly nrm: number[] = [];
   readonly col: number[] = [];
+  /** The boxes marked `solid`, as drawn (scripts/hitboxes.test.ts holds them to the plan). */
+  readonly solids: DrawnSolid[] = [];
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
   private readonly e = new Euler();
@@ -228,6 +246,30 @@ export class Shape {
     if (o.frame) this.m.premultiply(o.frame);
     const [r, g, b] = hexRgb(colour);
     const half = [size[0] / 2, size[1] / 2, size[2] / 2];
+    if (o.solid !== undefined) {
+      const lo = [Infinity, Infinity, Infinity];
+      const hi = [-Infinity, -Infinity, -Infinity];
+      for (const sx of [-1, 1])
+        for (const sy of [-1, 1])
+          for (const sz of [-1, 1]) {
+            const c = new Vector3(sx * half[0]!, sy * half[1]!, sz * half[2]!).applyMatrix4(this.m);
+            lo[0] = Math.min(lo[0]!, c.x);
+            lo[1] = Math.min(lo[1]!, c.y);
+            lo[2] = Math.min(lo[2]!, c.z);
+            hi[0] = Math.max(hi[0]!, c.x);
+            hi[1] = Math.max(hi[1]!, c.y);
+            hi[2] = Math.max(hi[2]!, c.z);
+          }
+      this.solids.push({
+        name: o.solid,
+        x0: lo[0]!,
+        x1: hi[0]!,
+        y0: lo[1]!,
+        y1: hi[1]!,
+        z0: lo[2]!,
+        z1: hi[2]!,
+      });
+    }
     for (const face of ALL_FACES) {
       if (o.omit?.includes(face)) continue;
       const [nn, u, w] = FACE_AXES[face];
@@ -363,20 +405,25 @@ export function pierShed(width: number, pier: number, drop: number): Shape {
   const sh = new Shape();
   const h = 10;
   // The deck and the dark piles under it, from the water up to the promenade.
-  sh.box([width + 4, 0.6, SHED_DEPTH_M + 2], [0, -0.3, -SHED_DEPTH_M / 2 - 1], C.deck, { omit: ['ny'] });
+  sh.box([width + 4, 0.6, SHED_DEPTH_M + 2], [0, -0.3, -SHED_DEPTH_M / 2 - 1], C.deck, {
+    omit: ['ny'],
+    solid: 'deck',
+  });
   sh.box([width + 3, drop, SHED_DEPTH_M], [0, -0.6 - drop / 2, -SHED_DEPTH_M / 2 - 1.5], C.piles, {
     omit: ['py', 'pz', 'ny'],
   });
   // The long shed behind the facade, its clerestory along the ridge.
   sh.box([width - 2, 7.5, SHED_DEPTH_M - 3], [0, 3.75, -SHED_DEPTH_M / 2 - 1.5], C.shedBody, {
     omit: ['ny', 'pz'],
+    solid: 'body',
   });
   sh.box([width * 0.35, 2, SHED_DEPTH_M - 6], [0, 8.5, -SHED_DEPTH_M / 2 - 2.5], C.shedRoof, {
     omit: ['ny'],
+    solid: 'clerestory',
   });
   // The facade: its wall, a raised middle, pilasters, a cornice, the big door, a row of windows.
-  sh.box([width, h, 1.2], [0, h / 2, -0.6], C.shedFacade, { omit: ['ny'] });
-  sh.box([width * 0.4, 3, 1.2], [0, h + 1.5, -0.6], C.shedFacade, { omit: ['ny'] });
+  sh.box([width, h, 1.2], [0, h / 2, -0.6], C.shedFacade, { omit: ['ny'], solid: '' });
+  sh.box([width * 0.4, 3, 1.2], [0, h + 1.5, -0.6], C.shedFacade, { omit: ['ny'], solid: 'middle' });
   sh.box([width * 0.4 + 0.6, 0.5, 1.5], [0, h + 3.2, -0.6], C.shedTrim, { omit: ['ny'] });
   sh.box([width + 0.6, 0.6, 1.6], [0, h + 0.1, -0.6], C.shedTrim, { omit: ['ny'] });
   const bays = Math.max(2, Math.round(width / 10));
@@ -414,13 +461,19 @@ function clockHands(sh: Shape, r: number, hours: number, minutes: number, frame:
 export function ferryHall(width: number, drop: number): Shape {
   const sh = new Shape();
   const h = 13;
-  sh.box([width + 6, 0.6, HALL_DEPTH_M + 2], [0, -0.3, -HALL_DEPTH_M / 2 - 1], C.deck, { omit: ['ny'] });
+  sh.box([width + 6, 0.6, HALL_DEPTH_M + 2], [0, -0.3, -HALL_DEPTH_M / 2 - 1], C.deck, {
+    omit: ['ny'],
+    solid: 'deck',
+  });
   sh.box([width + 5, drop, HALL_DEPTH_M], [0, -0.6 - drop / 2, -HALL_DEPTH_M / 2 - 1.5], C.piles, {
     omit: ['py', 'pz', 'ny'],
   });
   // The hall, its roof and cornice.
-  sh.box([width, h, HALL_DEPTH_M], [0, h / 2, -HALL_DEPTH_M / 2], C.hall, { omit: ['ny'] });
-  sh.box([width - 4, 2.2, HALL_DEPTH_M - 6], [0, h + 1.1, -HALL_DEPTH_M / 2], C.hallRoof, { omit: ['ny'] });
+  sh.box([width, h, HALL_DEPTH_M], [0, h / 2, -HALL_DEPTH_M / 2], C.hall, { omit: ['ny'], solid: '' });
+  sh.box([width - 4, 2.2, HALL_DEPTH_M - 6], [0, h + 1.1, -HALL_DEPTH_M / 2], C.hallRoof, {
+    omit: ['ny'],
+    solid: 'roof',
+  });
   sh.box([width + 0.8, 0.7, 1.4], [0, h, 0], C.hallTrim, { omit: ['ny'] });
   sh.box([width + 0.4, 0.5, 1.0], [0, 6.2, 0.1], C.hallTrim, { omit: ['ny'] });
   // The arcade below and the windows above, a bay every 6 m.
@@ -432,14 +485,14 @@ export function ferryHall(width: number, drop: number): Shape {
     sh.box([2.6, 3.2, 0.06], [x, 9.4, 0.03], C.glass, { omit: FRONT_ONLY });
   }
   // The central entrance: a tall arch and the word over it.
-  sh.box([10, 4, 1.2], [0, h + 2, 0], C.hall, { omit: ['ny'] });
+  sh.box([10, 4, 1.2], [0, h + 2, 0], C.hall, { omit: ['ny'], solid: 'entrance' });
   sh.box([7, 8, 0.06], [0, 4.2, 0.03], C.door, { omit: FRONT_ONLY });
   sh.text('FERRIES', 0, 10.4, 0.06, 0.4, C.pierText);
   // The tower: a shaft, corner piers, the clock stage, the belfry, a stepped cap and its flag.
   const tw = 11;
   const base = h;
   const shaft = 28;
-  sh.box([tw, shaft, tw], [0, base + shaft / 2, -tw / 2 - 1], C.hall, { omit: ['ny'] });
+  sh.box([tw, shaft, tw], [0, base + shaft / 2, -tw / 2 - 1], C.hall, { omit: ['ny'], solid: 'tower' });
   for (const [x, z] of [
     [-tw / 2, -1],
     [tw / 2, -1],
@@ -453,7 +506,10 @@ export function ferryHall(width: number, drop: number): Shape {
       sh.box([1.2, 3, 0.06], [x, base + 6 + k * 6.5, -0.97], C.glass, { omit: FRONT_ONLY });
   }
   const stage = base + shaft;
-  sh.box([tw + 1.6, 10, tw + 1.6], [0, stage + 5, -tw / 2 - 1], C.hallTrim, { omit: ['ny'] });
+  sh.box([tw + 1.6, 10, tw + 1.6], [0, stage + 5, -tw / 2 - 1], C.hallTrim, {
+    omit: ['ny'],
+    solid: 'tower-stage',
+  });
   // Four clocks, one per side, each its own time.
   const centre = new Vector3(0, stage + 5, -tw / 2 - 1);
   const r = 3.6;
@@ -479,7 +535,7 @@ export function ferryHall(width: number, drop: number): Shape {
     clockHands(sh, r, hh, mm, frame);
   }
   const belfry = stage + 10;
-  sh.box([tw, 9, tw], [0, belfry + 4.5, -tw / 2 - 1], C.hall, { omit: ['ny'] });
+  sh.box([tw, 9, tw], [0, belfry + 4.5, -tw / 2 - 1], C.hall, { omit: ['ny'], solid: 'tower-belfry' });
   for (let side = 0; side < 4; side++) {
     const yaw = (side * Math.PI) / 2;
     const frame = new Matrix4().compose(
@@ -495,51 +551,35 @@ export function ferryHall(width: number, drop: number): Shape {
       sh.box([1.6, 5, 0.06], [x, -0.5, 0.03], C.door, { omit: FRONT_ONLY, frame });
   }
   let y = belfry + 9;
-  for (const [s, hh] of [
-    [tw + 1, 1],
-    [tw * 0.7, 3],
-    [tw * 0.45, 3],
-    [tw * 0.22, 3.5],
-  ] as const) {
-    sh.box([s, hh, s], [0, y + hh / 2, -tw / 2 - 1], hh === 1 ? C.hallTrim : C.hallRoof, { omit: ['ny'] });
+  for (const [i, [s, hh]] of (
+    [
+      [tw + 1, 1],
+      [tw * 0.7, 3],
+      [tw * 0.45, 3],
+      [tw * 0.22, 3.5],
+    ] as const
+  ).entries()) {
+    sh.box([s, hh, s], [0, y + hh / 2, -tw / 2 - 1], hh === 1 ? C.hallTrim : C.hallRoof, {
+      omit: ['ny'],
+      solid: `tower-cap${i + 1}`,
+    });
     y += hh;
   }
   sh.box([0.15, TOWER_TOP_M - y, 0.15], [0, (TOWER_TOP_M + y) / 2, -tw / 2 - 1], C.hands);
   sh.box([0.06, 1.2, 2], [0, TOWER_TOP_M - 0.8, -tw / 2 - 2.05], C.flag, { omit: ['ny'] });
   // A ferry at its slip, past the hall's far end (the hall faces the road: its -x is up the road).
   const fx = -(width / 2 + 10);
-  sh.box([9, 3.4, 34], [fx, 0.9, -24], C.ferryHull, { omit: ['ny'] });
+  sh.box([9, 3.4, 34], [fx, 0.9, -24], C.ferryHull, { omit: ['ny'], solid: 'ferry' });
   sh.box([9.1, 0.5, 34.1], [fx, 0.3, -24], C.ferryBand, { omit: ['ny', 'py'] });
-  sh.box([7, 2.6, 22], [fx, 3.9, -24], C.white, { omit: ['ny'] });
+  sh.box([7, 2.6, 22], [fx, 3.9, -24], C.white, { omit: ['ny'], solid: 'ferry-house' });
   sh.box([7.1, 0.7, 22.1], [fx, 3.9, -24], C.glass, { omit: ['ny', 'py'] });
-  sh.box([4, 2, 8], [fx, 6.2, -24], C.white, { omit: ['ny'] });
-  sh.box([1.2, 2.4, 1.2], [fx, 8.4, -24], C.ferryBand, { omit: ['ny'] });
+  sh.box([4, 2, 8], [fx, 6.2, -24], C.white, { omit: ['ny'], solid: 'ferry-bridge' });
+  sh.box([1.2, 2.4, 1.2], [fx, 8.4, -24], C.ferryBand, { omit: ['ny'], solid: 'ferry-funnel' });
   return sh;
 }
 
-/** What a waterfront block is. */
-export type BlockKind = 'loft' | 'arcade' | 'crab' | 'startup' | 'hotel' | 'garage';
-/** The front's width each kind takes, m (a building is packed to fill its frontage). */
-export const BLOCK_WIDTH: Readonly<Record<BlockKind, readonly [number, number]>> = {
-  loft: [20, 28],
-  arcade: [24, 34],
-  crab: [14, 18],
-  startup: [18, 24],
-  hotel: [16, 20],
-  garage: [26, 32],
-};
-/** The front row's mix [default]: mostly brick lofts and arcades, now and then the odd ones. */
-const BLOCK_MIX: readonly BlockKind[] = [
-  'loft',
-  'loft',
-  'arcade',
-  'arcade',
-  'loft',
-  'crab',
-  'startup',
-  'hotel',
-  'garage',
-];
+/** What a waterfront block is, and how it is drawn: road/structures/waterfront.ts's kinds, widths and heights. */
+export type { BlockKind };
 
 /** A waterfront block of a kind and width; `u` (0..1) varies its height and colours. */
 export function block(kind: BlockKind, width: number, u: number): Shape {
@@ -547,7 +587,7 @@ export function block(kind: BlockKind, width: number, u: number): Shape {
   const d = BLOCK_DEPTH_M;
   const awning = [C.awningA, C.awningB, C.awningC][Math.floor(u * 3) % 3] ?? C.awningA;
   const body = (h: number, colour: string) =>
-    sh.box([width, h + FOOT_M, d], [0, (h - FOOT_M) / 2, -d / 2], colour, { omit: ['ny'] });
+    sh.box([width, h + FOOT_M, d], [0, (h - FOOT_M) / 2, -d / 2], colour, { omit: ['ny'], solid: '' });
   const cornice = (h: number, colour: string) =>
     sh.box([width + 0.5, 0.6, 0.8], [0, h - 0.3, 0.2], colour, { omit: ['ny'] });
   const shopfront = () => {
@@ -563,8 +603,8 @@ export function block(kind: BlockKind, width: number, u: number): Shape {
     cornice(h, kind === 'loft' ? C.stucco : C.white);
     if (kind === 'loft' && u > 0.55) {
       // A wooden water tank on the roof.
-      sh.box([2.6, 3, 2.6], [width / 4, h + 2.6, -d / 2], '#7a5a3c', { omit: ['ny'] });
-      sh.box([0.2, 1.2, 0.2], [width / 4, h + 0.6, -d / 2], C.lampPost);
+      sh.box([2.6, 3, 2.6], [width / 4, h + 2.6, -d / 2], '#7a5a3c', { omit: ['ny'], solid: 'tank' });
+      sh.box([0.2, 1.2, 0.2], [width / 4, h + 0.6, -d / 2], C.lampPost, { solid: 'tank-pole' });
     }
     if (kind === 'startup') {
       // A banner over the door that says what the company does.
@@ -594,8 +634,8 @@ export function block(kind: BlockKind, width: number, u: number): Shape {
     sh.box([5.6, 1.8, 0.4], [0, h + 3.4, -1], C.fish, { omit: ['ny'] });
     sh.box([1.6, 1.6, 0.4], [3.3, h + 3.4, -1], C.fish, { rz: Math.PI / 4, omit: ['ny'] });
     sh.box([0.4, 0.4, 0.5], [-2, h + 3.8, -1], C.white);
-    sh.box([0.3, 1.6, 0.3], [0, h + 1.4, -1], C.lampPost);
-    sh.box([6.4, 1.6, 0.2], [0, h + 1.2, -0.8], C.awningB, { omit: ['ny'] });
+    sh.box([0.3, 1.6, 0.3], [0, h + 1.4, -1], C.lampPost, { solid: 'pole' });
+    sh.box([6.4, 1.6, 0.2], [0, h + 1.2, -0.8], C.awningB, { omit: ['ny'], solid: 'board' });
     sh.text('CRAB', 0, h + 0.65, -0.65, 0.25, C.white);
     return sh;
   }
@@ -629,6 +669,9 @@ export function block(kind: BlockKind, width: number, u: number): Shape {
   return sh;
 }
 
+/** The back towers' seeded `u`, one per variant (road/structures/waterfront.ts `BACK_TOWER_U`). */
+export const TOWER_U: readonly number[] = [0.1, 0.3, 0.5, 0.7, 0.9];
+
 /** A taller tower behind the blocks (the city behind the waterfront). */
 export function backTower(u: number): Shape {
   const sh = new Shape();
@@ -636,8 +679,9 @@ export function backTower(u: number): Shape {
   const h = 40 + u * 70;
   sh.box([w, h + FOOT_M, w * 0.8], [0, (h - FOOT_M) / 2, -w * 0.4], u > 0.5 ? C.tower : C.towerDark, {
     omit: ['ny'],
+    solid: '',
   });
-  sh.box([w * 0.7, 4, w * 0.55], [0, h + 2, -w * 0.4], C.concrete, { omit: ['ny'] });
+  sh.box([w * 0.7, 4, w * 0.55], [0, h + 2, -w * 0.4], C.concrete, { omit: ['ny'], solid: 'crown' });
   for (let k = 1; k < 4; k++)
     sh.box([w + 0.1, 0.6, w * 0.8 + 0.1], [0, (k * h) / 4, -w * 0.4], C.concrete, { omit: ['ny', 'py'] });
   return sh;
@@ -722,16 +766,8 @@ export interface WaterfrontItem {
   d: number;
 }
 
-/** A pier shed or the ferry hall as placed: its front's span on the seawall. */
-export interface Frontage {
-  kind: 'shed' | 'hall';
-  edge: number;
-  s0: number;
-  s1: number;
-  /** The front's d (the verge band's outer edge), and the pier number (0 for the hall). */
-  d: number;
-  pier: number;
-}
+// (A pier shed's or the ferry hall's frontage is road/structures/waterfront.ts's `Frontage`.)
+export type { Frontage };
 
 /** A coloured triangle soup (three vertices per triangle), for the merged surfaces. */
 interface Soup {
@@ -750,22 +786,17 @@ export interface WaterfrontPlan {
 
 export interface WaterfrontInput {
   road: RoadNetwork;
-  dressing: RoadDressing | undefined;
   seed: number;
+  /** Where the buildings stand: road/structures/waterfront.ts's layout for this road and seed. */
+  layout: WaterfrontLayout;
   /** Ground the staged scenes stand on (scenes/layer.ts `reserved`): nothing stands in it. */
   reserved?: readonly { x: number; z: number; r: number }[];
 }
 
-type SideTag = { s0: number; s1: number; side?: string; tag: string };
-const onSide = (t: SideTag, side: 'left' | 'right') =>
-  t.side === undefined || t.side === 'both' || t.side === side;
-
 /** Plans the waterfront of a network. Pure placement: same input, same plan (tests read it). */
 export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {}): WaterfrontPlan {
-  const { road, dressing, seed } = input;
+  const { road, seed, layout } = input;
   const items: WaterfrontItem[] = [];
-  const frontages: Frontage[] = [];
-  const streets: { edge: number; s: number }[] = [];
   const soups = new Map<string, Soup>();
   const centres = new Map<string, { xs: number; zs: number; n: number; pts: Point3[] }>();
   const keyOf = (edge: number, s: number) => `${edge}:${Math.floor(Math.max(0, s) / STRETCH_M)}`;
@@ -824,7 +855,7 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
   const benchGeo = bench().geometry();
   const palmModel: SceneryModel | undefined = models.palms;
   const palmFallback = palmStandIn().geometry();
-  const towers = [0.1, 0.3, 0.5, 0.7, 0.9].map((u) => backTower(u).geometry());
+  const towers = TOWER_U.map((u) => backTower(u).geometry());
   const floats = [0.2, 0.6, 0.9].map((u) => seaLionFloat(u).geometry());
   const carModel: SceneryModel | undefined = models.sfRoadside;
   const boats = [models.skiff?.variants[0], models.boat?.variants[0]].filter((g): g is BufferGeometry => !!g);
@@ -836,49 +867,10 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
     note(it.edge, it.s, it.p);
   };
 
-  // Pier numbers run outward from the ferry hall: collect every frontage first.
-  const raw: { kind: 'shed' | 'hall'; edge: number; s0: number; s1: number }[] = [];
-  for (const e of road.edges) {
-    const tags = (dressing?.[e.id]?.tags ?? e.tags) as readonly SideTag[];
-    for (const t of tags) {
-      if (!onSide(t, 'right')) continue;
-      if (t.tag === 'pier-shed' || t.tag === 'ferry-hall')
-        raw.push({
-          kind: t.tag === 'pier-shed' ? 'shed' : 'hall',
-          edge: e.index,
-          s0: t.s0,
-          s1: Math.min(t.s1, e.length),
-        });
-    }
-  }
-  raw.sort((a, b) => a.edge - b.edge || a.s0 - b.s0);
-  const hallAt = raw.findIndex((r) => r.kind === 'hall');
-  raw.forEach((r, i) => {
-    let pier = 0;
-    if (r.kind === 'shed') {
-      if (hallAt < 0 || i > hallAt) {
-        const k = raw.slice(hallAt < 0 ? 0 : hallAt + 1, i).filter((q) => q.kind === 'shed').length;
-        pier = ODD_PIERS[k] ?? 41 + 2 * k;
-      } else {
-        const k = raw.slice(i + 1, hallAt).filter((q) => q.kind === 'shed').length;
-        pier = EVEN_PIERS[k] ?? 42 + 2 * k;
-      }
-    }
-    const mid = (r.s0 + r.s1) / 2;
-    frontages.push({ ...r, d: road.vergeAt(r.edge, mid, 'right').dOuter, pier });
-  });
-
-  for (const e of road.edges) {
-    const dress = dressing?.[e.id];
-    const tags = (dress?.tags ?? e.tags) as readonly SideTag[];
-    if (
-      !tags.some(
-        (t) =>
-          (BAY_TAGS as readonly string[]).includes(t.tag) || (CITY_TAGS as readonly string[]).includes(t.tag),
-      )
-    )
-      continue;
-    const features = (dress?.features ?? e.features).filter((f) => KEEP_CLEAR.has(f.kind));
+  for (const le of layout.edges) {
+    const e = road.edges[le.edge];
+    if (!e) continue;
+    const tags = e.tags as readonly SideTag[];
     const h = (k: number, side: number, salt: number) =>
       scatterHash(seed, 7211 + e.index * 977, k, side * 41 + salt);
     const has = (side: 'left' | 'right', s: number, tag: string) =>
@@ -888,187 +880,74 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
       const c = w(s, 0, 0);
       return Math.atan2(c.x - p.x, c.z - p.z);
     };
-    /** Whether nothing kept clear lies over s0..s1 at |d| a0..a1 on a side, with `margin` round it. */
-    const clear = (side: -1 | 1, s0: number, s1: number, a0: number, a1: number, margin = FEATURE_CLEAR_M) =>
-      !features.some((f) => {
-        const lo = Math.min(f.d0 * side, f.d1 * side);
-        const hi = Math.max(f.d0 * side, f.d1 * side);
-        return (
-          Math.min(f.s0, f.s1) - margin < s1 &&
-          Math.max(f.s0, f.s1) + margin > s0 &&
-          lo - margin < a1 &&
-          hi + margin > a0
-        );
-      });
-    /** The runs of s (2 m steps) where `want` holds: [start, end] pairs. */
-    const runs = (want: (s: number) => boolean): [number, number][] => {
-      const out: [number, number][] = [];
-      let start = -1;
-      for (let s = 0; s <= e.length + 1e-6; s += 2) {
-        const here = want(Math.min(s, e.length));
-        if (here && start < 0) start = s;
-        if ((!here || s + 2 > e.length + 1e-6) && start >= 0) {
-          out.push([start, here ? e.length : s - 2]);
-          start = -1;
-        }
-      }
-      return out;
-    };
     const vR = (s: number) => road.vergeAt(e.index, s, 'right');
-    const vL = (s: number) => road.vergeAt(e.index, s, 'left');
-    const outerL = -e.dMin + VERGE_M;
+    const outerL = le.outerL;
     const bayOpen = (s: number) =>
       has('right', s, 'promenade') && !has('right', s, 'pier-shed') && !has('right', s, 'ferry-hall');
 
     // ---- the bay side --------------------------------------------------------------------------
-    if (tags.some((t) => t.tag === 'promenade')) {
-      // The seawall's face and its cap, along the open promenade.
-      for (const [a, b] of runs((s) => has('right', s, 'promenade'))) {
-        for (let s = a; s < b; s += 4) {
-          const s1 = Math.min(b, s + 4);
-          const soup = soupAt(e.index, s);
-          const d0 = vR(s).dOuter;
-          const d1 = vR(s1).dOuter;
-          const t0 = w(s, d0 + 0.02, LAND_TOP_M);
-          const t1 = w(s1, d1 + 0.02, LAND_TOP_M);
-          const f0 = { ...t0, y: -0.9 };
-          const f1 = { ...t1, y: -0.9 };
-          const out = w(s, d0 + 5, 0);
-          const face = [out.x - t0.x, 0, out.z - t0.z] as const;
-          if (bayOpen(s) || bayOpen(s1)) quad(soup, t0, t1, f0, f1, C.seawall, face);
-          quad(soup, w(s, d0 - 0.6, -0.02), w(s1, d1 - 0.6, -0.02), w(s, d0, -0.02), w(s1, d1, -0.02), C.cap);
-        }
-      }
-      // The palms, lamps and benches along the seawall's edge stand where road/furniture.ts plans them
-      // (playtest 4, "solid but forgiving": the sim meets what is drawn), placed after the edges below.
-      // In the water between the piers: a moored boat now and then, and the sea lions' floats.
-      for (const [a, b] of runs(bayOpen)) {
-        for (let k = 0; ; k++) {
-          const s = a + 14 + k * 26;
-          if (s > b - 10) break;
-          const d = vR(s).dOuter;
-          if (has('right', s, 'sea-lions')) {
-            const across = d + 14 + 18 * h(k, 1, 20);
-            const p = w(s, across, 0);
-            place({
-              rule: 'sea-lions',
-              geometry: floats[k % floats.length] ?? floats[0]!,
-              doubleSided: false,
-              p: { x: p.x, y: 0, z: p.z },
-              turn: faceRoad(p, s) + (h(k, 1, 21) - 0.5) * 0.8,
-              size: 1,
-              edge: e.index,
-              s,
-              d: across,
-            });
-          } else if (boats.length && h(k, 1, 22) < 0.45) {
-            const across = d + 6 + 10 * h(k, 1, 23);
-            const p = w(s, across, 0);
-            const ahead = w(Math.min(e.length, s + 1), across, 0);
-            place({
-              rule: 'boat',
-              geometry: boats[Math.floor(h(k, 1, 24) * boats.length)] ?? boats[0]!,
-              doubleSided: false,
-              p: { x: p.x, y: 0, z: p.z },
-              turn: Math.atan2(ahead.x - p.x, ahead.z - p.z) + (h(k, 1, 25) < 0.5 ? Math.PI : 0),
-              size: 1,
-              edge: e.index,
-              s,
-              d: across,
-            });
-          }
-        }
+    // The seawall's face and its cap, along the open promenade.
+    for (const [a, b] of le.promenade) {
+      for (let s = a; s < b; s += 4) {
+        const s1 = Math.min(b, s + 4);
+        const soup = soupAt(e.index, s);
+        const d0 = vR(s).dOuter;
+        const d1 = vR(s1).dOuter;
+        const t0 = w(s, d0 + 0.02, LAND_TOP_M);
+        const t1 = w(s1, d1 + 0.02, LAND_TOP_M);
+        const f0 = { ...t0, y: -0.9 };
+        const f1 = { ...t1, y: -0.9 };
+        const out = w(s, d0 + 5, 0);
+        const face = [out.x - t0.x, 0, out.z - t0.z] as const;
+        if (bayOpen(s) || bayOpen(s1)) quad(soup, t0, t1, f0, f1, C.seawall, face);
+        quad(soup, w(s, d0 - 0.6, -0.02), w(s1, d1 - 0.6, -0.02), w(s, d0, -0.02), w(s1, d1, -0.02), C.cap);
       }
     }
-    // The sheds and the hall on this edge.
-    for (const f of frontages.filter((q) => q.edge === e.index)) {
-      const s = (f.s0 + f.s1) / 2;
-      const p = w(s, f.d, LAND_TOP_M);
-      const drop = Math.max(0.5, p.y + 0.6);
-      const geo = (
-        f.kind === 'shed' ? pierShed(f.s1 - f.s0, f.pier, drop) : ferryHall(f.s1 - f.s0, drop)
-      ).geometry();
-      place({
-        rule: f.kind === 'shed' ? 'pier-shed' : 'ferry-hall',
-        geometry: geo,
-        doubleSided: false,
-        p,
-        turn: faceRoad(p, s),
-        size: 1,
-        edge: e.index,
-        s,
-        d: f.d,
-      });
+    // The palms, lamps and benches along the seawall's edge stand where road/furniture.ts plans them
+    // (playtest 4, "solid but forgiving": the sim meets what is drawn), placed after the edges below.
+    // In the water between the piers: a moored boat now and then, and the sea lions' floats.
+    for (const [a, b] of le.bay) {
+      for (let k = 0; ; k++) {
+        const s = a + 14 + k * 26;
+        if (s > b - 10) break;
+        const d = vR(s).dOuter;
+        if (has('right', s, 'sea-lions')) {
+          const across = d + 14 + 18 * h(k, 1, 20);
+          const p = w(s, across, 0);
+          place({
+            rule: 'sea-lions',
+            geometry: floats[k % floats.length] ?? floats[0]!,
+            doubleSided: false,
+            p: { x: p.x, y: 0, z: p.z },
+            turn: faceRoad(p, s) + (h(k, 1, 21) - 0.5) * 0.8,
+            size: 1,
+            edge: e.index,
+            s,
+            d: across,
+          });
+        } else if (boats.length && h(k, 1, 22) < 0.45) {
+          const across = d + 6 + 10 * h(k, 1, 23);
+          const p = w(s, across, 0);
+          const ahead = w(Math.min(e.length, s + 1), across, 0);
+          place({
+            rule: 'boat',
+            geometry: boats[Math.floor(h(k, 1, 24) * boats.length)] ?? boats[0]!,
+            doubleSided: false,
+            p: { x: p.x, y: 0, z: p.z },
+            turn: Math.atan2(ahead.x - p.x, ahead.z - p.z) + (h(k, 1, 25) < 0.5 ? Math.PI : 0),
+            size: 1,
+            edge: e.index,
+            s,
+            d: across,
+          });
+        }
+      }
     }
 
     // ---- the city side -------------------------------------------------------------------------
     if (!tags.some((t) => (CITY_TAGS as readonly string[]).includes(t.tag))) continue;
-    const front = (s: number) => has('left', s, 'wharf') && vL(s).edge === 'hard';
-    const open = (s: number) => has('left', s, 'ferry-plaza') || has('left', s, 'wharf-lot');
-    // The front row of blocks along each run of frontage, packed shoulder to shoulder.
-    const blockRow = (a: number, b: number, back: number, salt: number) => {
-      let cursor = a + 0.5;
-      for (let k = 0; ; k++) {
-        let kind = BLOCK_MIX[Math.floor(h(k + Math.round(a), -1, salt) * BLOCK_MIX.length)] ?? 'loft';
-        const [lo, hi] = BLOCK_WIDTH[kind];
-        let width = lo + (hi - lo) * h(k + Math.round(a), -1, salt + 1);
-        if (cursor + width > b - 0.5) {
-          const narrow = (['crab', 'hotel', 'loft'] as const).find(
-            (q) => cursor + BLOCK_WIDTH[q][0] <= b - 0.5,
-          );
-          if (!narrow) break;
-          kind = narrow;
-          width = Math.min(BLOCK_WIDTH[kind][1], b - 0.5 - cursor);
-        }
-        const s = cursor + width / 2;
-        cursor += width + 0.3;
-        if (!clear(-1, s - width / 2, s + width / 2, back, back + BLOCK_DEPTH_M, 0.3)) continue;
-        const d = -back;
-        const p = w(s, d, 0);
-        // The base sits at the lower front corner, so neither floats on a slope.
-        const y = Math.min(p.y, w(s - width / 2, d, 0).y, w(s + width / 2, d, 0).y) + LAND_TOP_M;
-        place({
-          rule: `block-${kind}`,
-          geometry: block(kind, width, h(k + Math.round(a), -1, salt + 2)).geometry(),
-          doubleSided: false,
-          p: { x: p.x, y, z: p.z },
-          turn: faceRoad(p, s),
-          size: 1,
-          edge: e.index,
-          s,
-          d,
-        });
-      }
-    };
-    // Fronts on the sidewalk's hard edge (the sim's), behind the lot and the plaza further back.
-    for (const [a, b] of runs(front)) blockRow(a, b, -vL(Math.min(e.length, a + 1)).dOuter, 10);
-    for (const [a, b] of runs(open)) blockRow(a, b, outerL + OPEN_BACK_M, 20);
-    // The taller towers behind, away from the side streets.
-    for (const [a, b] of runs((s) => has('left', s, 'wharf') || open(s))) {
-      for (let k = 0; ; k++) {
-        const s = a + (k + 0.5) * BACK_ROW_EVERY_M;
-        if (s + 12 > b) break;
-        if (h(k + Math.round(a), -1, 30) < 0.3) continue;
-        // Clear of a side street and the blocks lining it.
-        if (tags.some((t) => t.tag === 'wharf-street' && Math.abs((t.s0 + t.s1) / 2 - s) < 44)) continue;
-        const d = -(outerL + BACK_ROW_M + 30 * h(k, -1, 31));
-        const p = w(s, d, 0);
-        place({
-          rule: 'back-tower',
-          geometry: towers[Math.floor(h(k + Math.round(a), -1, 32) * towers.length)] ?? towers[0]!,
-          doubleSided: false,
-          p: { x: p.x, y: CITY_FLOOR_Y - 0.2, z: p.z },
-          turn: faceRoad(p, s),
-          size: 0.85 + 0.3 * h(k, -1, 33),
-          edge: e.index,
-          s,
-          d,
-        });
-      }
-    }
-    // The sidewalk's lamps and the plaza's palms and benches: road/furniture.ts's plan, as the promenade's.
-    // The lot: parked cars in a row, nose to the road, and its painted bays.
-    for (const [a, b] of runs((s) => has('left', s, 'wharf-lot'))) {
+    // The lot's painted bays (its cars are road/furniture.ts's plan, drawn below).
+    for (const [a, b] of le.lot) {
       for (let s = a + 4; s < b - 3; s += 3) {
         const soup = soupAt(e.index, s);
         for (const [d0, d1] of [
@@ -1085,27 +964,12 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
           );
         }
       }
-      // Its cars stand where road/furniture.ts plans them (the sim meets them as parked cars).
     }
-    // Side streets: the roadway and its sidewalks running inland, buildings lining both sides.
-    for (const t of tags.filter((x) => x.tag === 'wharf-street' && onSide(x, 'left'))) {
-      const s = (t.s0 + t.s1) / 2;
-      streets.push({ edge: e.index, s });
-      const centre = w(s, 0, 0);
-      const r1 = w(s, -1, 0);
-      const ax = r1.x - centre.x;
-      const az = r1.z - centre.z;
-      const al = Math.hypot(ax, az) || 1;
-      const f = w(Math.min(e.length, s + 1), 0, 0);
-      const bk = w(Math.max(0, s - 1), 0, 0);
-      const fx = f.x - bk.x;
-      const fz = f.z - bk.z;
-      const fl = Math.hypot(fx, fz) || 1;
-      const across = { x: ax / al, z: az / al };
-      const along = { x: fx / fl, z: fz / fl };
+    // Side streets: the roadway and its sidewalks running inland (their buildings are the plan's, below).
+    for (const st of layout.streets.filter((q) => q.edge === e.index)) {
+      const { s, centre, across, along, roadY } = st;
+      const half = (st.s1 - st.s0) / 2;
       // At the road's own height at its mouth (over the verge band), then down to the floor.
-      const roadY = centre.y;
-      const half = (t.s1 - t.s0) / 2;
       const yAt = (u: number) =>
         Math.max(CITY_FLOOR_Y + 0.05, roadY - STREET_DROP * Math.max(0, u - outerL - LAND_STRIP_M));
       const at = (u: number, v: number, lift = 0): Point3 => ({
@@ -1134,30 +998,6 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
           C.line,
         );
       }
-      for (const vs of [-1, 1] as const) {
-        // Behind the corner blocks on the boulevard (their backs at the sidewalk's edge + their depth).
-        let cursor = outerL + 3.4 + BLOCK_DEPTH_M + 1;
-        for (let k = 0; cursor < outerL + STREET_REACH_M - 30; k++) {
-          const kind: BlockKind =
-            scatterHash(seed, 9001 + e.index * 131 + Math.round(s), k, vs) < 0.6 ? 'loft' : 'garage';
-          const width = BLOCK_WIDTH[kind][0] + 4 * scatterHash(seed, 9011 + e.index, k, vs);
-          const u = cursor + width / 2;
-          cursor += width + 1;
-          const base = at(u, vs * half);
-          const toStreet = at(u, 0);
-          place({
-            rule: 'street-block',
-            geometry: block(kind, width, scatterHash(seed, 9021 + e.index, k, vs)).geometry(),
-            doubleSided: false,
-            p: { x: base.x, y: base.y - 0.05, z: base.z },
-            turn: Math.atan2(toStreet.x - base.x, toStreet.z - base.z),
-            size: 1,
-            edge: e.index,
-            s,
-            d: -u,
-          });
-        }
-      }
       note(e.index, s, at(outerL + STREET_REACH_M, 0));
     }
     // The city floor: from the land strip's edge out to CITY_FLOOR_M, every 20 m.
@@ -1175,6 +1015,26 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
       );
     }
   }
+
+  // The buildings, where road/structures/waterfront.ts's plan stands them: the pier sheds and the ferry hall on
+  // the seawall, the blocks along the sidewalk, the plaza, the lot and the side streets, the towers behind.
+  const where = (b: WfPlaced) => ({
+    rule: b.rule,
+    p: b.p,
+    turn: b.turn,
+    size: b.size,
+    edge: b.edge,
+    s: b.s,
+    d: b.d,
+  });
+  for (const f of layout.fronts) {
+    const shape = f.kind === 'shed' ? pierShed(f.width, f.pier, f.drop) : ferryHall(f.width, f.drop);
+    place({ ...where(f), geometry: shape.geometry(), doubleSided: false });
+  }
+  for (const b of layout.blocks)
+    place({ ...where(b), geometry: block(b.kind, b.width, b.u).geometry(), doubleSided: false });
+  for (const b of layout.towers)
+    place({ ...where(b), geometry: towers[b.variant] ?? towers[0]!, doubleSided: false });
 
   // The street furniture (the promenade's palms, lamps and benches, the city side's lamps, the plaza's
   // palms and benches, the lot's cars), from the plan the sim meets (road/furniture.ts, playtest 4:
@@ -1216,7 +1076,13 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
     }
     stretches.push({ key, cx: xs / n, cz: zs / n, radius: CITY_FLOOR_M + 80 });
   }
-  return { items, frontages, streets, soups, stretches };
+  return {
+    items,
+    frontages: [...layout.frontages],
+    streets: layout.streets.map((q) => ({ edge: q.edge, s: q.s })),
+    soups,
+    stretches,
+  };
 }
 
 // ---- the layer ---------------------------------------------------------------------------------

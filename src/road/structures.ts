@@ -92,10 +92,11 @@ export interface StructureLayerSpec {
 
 /**
  * The layers, by name. Each port adds its row with its planner, `{ tags, load: () => import(...) }`, so a
- * network asks only for the planners that exist.
+ * network asks only for the planners that exist. The planners build into one lazy chunk, `road-structures`
+ * (scripts/sim-chunk.mjs).
  */
 export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
-  // Downtown Portland's blocks and San Francisco's downtown (road/structures/downtown.ts, one lazy chunk).
+  // Downtown Portland's blocks and San Francisco's downtown (road/structures/downtown.ts).
   'downtown-pdx': {
     tags: ['pdx-blocks'],
     load: () => import('./structures/downtown').then((m) => m.PDX_DOWNTOWN_STRUCTURES),
@@ -103,6 +104,25 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
   'downtown-sf': {
     tags: ['towers', 'plaza', 'cross-street', 'cable-crossing'],
     load: () => import('./structures/downtown').then((m) => m.SF_DOWNTOWN_STRUCTURES),
+  },
+  // San Francisco's waterfront: the pier sheds, the ferry hall, the blocks and the towers (road/structures/waterfront.ts).
+  'sf-waterfront': {
+    tags: [
+      'promenade',
+      'pier-shed',
+      'ferry-hall',
+      'sea-lions',
+      'wharf',
+      'wharf-street',
+      'ferry-plaza',
+      'wharf-lot',
+    ],
+    load: async () => (await import('./structures/waterfront')).waterfrontPlanner,
+  },
+  // The Pacific Northwest's places: the car ferry and the Stump Social's shops (road/structures/pnw-places.ts).
+  'pnw-places': {
+    tags: ['ferry', 'festival'],
+    load: async () => (await import('./structures/pnw-places')).pnwPlacesPlanner,
   },
 };
 

@@ -50,29 +50,37 @@ export function roadLazyChunkGroup() {
   return { name: ROAD_LAZY_CHUNK_NAME, test: ROAD_LAZY_TEST };
 }
 
-/** Hashes the sim chunk and writes the hash over the placeholder in the other chunks. */
+/**
+ * Hashes the sim chunk and writes the hash over the placeholder in the other chunks. It runs after the other
+ * plugins' `generateBundle` (`order: 'post'`): the sim chunk holds dynamic `import()`s of the planners' chunk
+ * (src/road/structures.ts, the layout doors in src/road/index.ts), and Vite fills in each one's preload list in
+ * its own `generateBundle`, so the hash must be of the code as shipped.
+ */
 export function simCodeHashPlugin() {
   return {
     name: 'throttlebrawl:sim-code-hash',
     apply: 'build',
-    generateBundle(_options, bundle) {
-      const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
-      const sims = chunks.filter((c) => c.name === SIM_CHUNK_NAME);
-      if (sims.length !== 1) {
-        this.error(`expected one "${SIM_CHUNK_NAME}" chunk, found ${sims.length}`);
-        return;
-      }
-      const sim = sims[0];
-      const own = [sim, ...chunks.filter((c) => c.name === ROAD_LAZY_CHUNK_NAME)];
-      if (own.some((c) => c.code.includes(SIM_CODE_HASH_PLACEHOLDER)))
-        this.error(
-          'the sim and road planner chunks must not read __SIM_CODE_HASH__ (its hash would depend on itself)',
-        );
-      const hash = simCodeHashOfChunks(sim, chunks);
-      for (const c of chunks) {
-        if (c !== sim && c.code.includes(SIM_CODE_HASH_PLACEHOLDER))
-          c.code = c.code.split(SIM_CODE_HASH_PLACEHOLDER).join(hash);
-      }
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
+        const sims = chunks.filter((c) => c.name === SIM_CHUNK_NAME);
+        if (sims.length !== 1) {
+          this.error(`expected one "${SIM_CHUNK_NAME}" chunk, found ${sims.length}`);
+          return;
+        }
+        const sim = sims[0];
+        const own = [sim, ...chunks.filter((c) => c.name === ROAD_LAZY_CHUNK_NAME)];
+        if (own.some((c) => c.code.includes(SIM_CODE_HASH_PLACEHOLDER)))
+          this.error(
+            'the sim and road planner chunks must not read __SIM_CODE_HASH__ (its hash would depend on itself)',
+          );
+        const hash = simCodeHashOfChunks(sim, chunks);
+        for (const c of chunks) {
+          if (c !== sim && c.code.includes(SIM_CODE_HASH_PLACEHOLDER))
+            c.code = c.code.split(SIM_CODE_HASH_PLACEHOLDER).join(hash);
+        }
+      },
     },
   };
 }

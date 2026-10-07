@@ -18,6 +18,12 @@ export interface BoxPart {
    * the ground, a rail's ends butted against the next panel's), or too thin to show far off.
    */
   omit?: readonly BoxFace[];
+  /**
+   * The solid this part is, when it is one (the physical world, road/structures: a wall, a deck, a roof a
+   * rider can meet): its name in the structure plan. Never drawn differently; scripts/hitboxes.test.ts holds
+   * the parts of one name to the plan's box for it.
+   */
+  solid?: string;
 }
 
 /** A box's faces, in three's BoxGeometry order (+x, -x, +y, -y, +z, -z). */
