@@ -13,16 +13,17 @@ export const SIM_CODE_HASH_PLACEHOLDER = 'SIMCODE_NONE';
 const HASH_LENGTH = SIM_CODE_HASH_PLACEHOLDER.length;
 
 /**
- * The road's structure planners and the land rule they read (the physical world, 2026-10-06:
- * src/road/structures/*, src/road/land.ts): lazy, never in the first load, so they build into their own
- * chunk, which src/road/structures.ts imports dynamically. Their code is part of the sim's, so the code
- * hash covers that chunk too (`simCodeHashOfChunks`): a planner change changes the replay key.
+ * The road's structure planners (the physical world, 2026-10-06: src/road/structures/*): lazy, never in the
+ * first load, so they build into their own chunk, which src/road/structures.ts imports dynamically. Their code
+ * is part of the sim's, so the code hash covers that chunk too (`simCodeHashOfChunks`): a planner change
+ * changes the replay key. The land rule they read (src/road/drawn-ground.ts) is the sim's too since
+ * 2026-10-07 (what a rider out past an edge meets), so it builds into the sim chunk.
  */
-export const ROAD_LAZY_TEST = /[\\/]src[\\/]road[\\/](?:structures[\\/]|land\.ts$)/;
+export const ROAD_LAZY_TEST = /[\\/]src[\\/]road[\\/]structures[\\/]/;
 export const ROAD_LAZY_CHUNK_NAME = 'road-structures';
 
 /** Modules that belong in the sim chunk: the sim, the road model (all but its lazy planners) and core. */
-export const SIM_CHUNK_TEST = /[\\/]src[\\/](?:sim|core|road(?![\\/](?:structures[\\/]|land\.ts$)))[\\/]/;
+export const SIM_CHUNK_TEST = /[\\/]src[\\/](?:sim|core|road(?![\\/]structures[\\/]))[\\/]/;
 
 /** The code hash of a chunk: the first 12 hex digits of the SHA-256 of its code. */
 export function simCodeHashOf(code) {

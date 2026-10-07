@@ -207,7 +207,7 @@ export interface DowntownInput {
   seed: number;
   /**
    * Downtown Portland (playtest 3, T12.6): draw the blocks of the `pdx-blocks` sides from CX4's kit (the
-   * layer's `kit`), on the land the road scene draws (road/land.ts, its strip rule).
+   * layer's `kit`), on the land the road scene draws (road/drawn-ground.ts, its strip rule).
    */
   portland?: boolean;
 }

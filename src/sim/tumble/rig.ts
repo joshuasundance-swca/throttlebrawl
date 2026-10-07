@@ -24,6 +24,7 @@
 //   ever comes to rest on a gap.
 import { clamp } from '../../core';
 import {
+  beyondAt,
   edgeTopAt,
   gapAt,
   pastAt,
@@ -281,7 +282,9 @@ export type TopUnder = (x: number, z: number, y: number) => number | null;
  * constraints, then the road (per particle) and the barrier line (per cluster), or free fall to
  * the water once overboard. `mu` is the sliding friction, as a multiple of g. With `offRoad` (the
  * race's `ground.offRoad`, run W-R) the barrier line is out at the verge bands' outer edges. With
- * `tops`, a structure's top under a particle is its floor where it is higher than the road's.
+ * `tops`, a structure's top under a particle is its floor where it is higher than the road's. With `honest`
+ * (the course's honest edges, sim/riders/course.ts) what lies past the barrier line is what the scene draws there
+ * (road/beyond.ts `beyondAt`), else what the road's tags say (`pastAt`, the old rules).
  */
 export function stepCluster(
   road: RoadNetwork,
@@ -290,6 +293,7 @@ export function stepCluster(
   mu: number,
   offRoad = false,
   tops?: TopUnder,
+  honest = false,
 ): ClusterContact {
   if (c.splashed) return overboardContact(road, c, false, false);
   for (const q of c.p) {
@@ -341,7 +345,7 @@ export function stepCluster(
   // Up on a structure's top past the band (a crash on a roof), no edge holds it: it rests up there.
   const atTop = tops ? centre(c.p) : null;
   const up = atTop && tops ? tops(atTop.x, atTop.z, atTop.y + CONTACT_M) !== null : false;
-  const over = up ? null : barrierLine(road, c, pc, offRoad);
+  const over = up ? null : barrierLine(road, c, pc, offRoad, honest);
   if (over) return { ...fallToWater(road, c, true), over };
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);
@@ -416,8 +420,8 @@ function groundVelocity(q: Particle, ground: number, hit: boolean, dt: number, m
  * The barrier line, for the whole cluster (`p` is its centre's projection): past the band, it goes
  * over when its centre is higher above the deck than what stands at that side's edge (a barrier's
  * `heightM` or a hard edge's drawn top: road/beyond.ts `edgeTopAt`) and water or a drop lies past it
- * (`pastAt`); anything else (lower, a building front, a ground edge, a water edge with nothing
- * standing, ground past it, a dead end) puts it back on the line and reflects the outward velocity.
+ * (with `honest`, what the scene draws there, `beyondAt`; else the tags, `pastAt`); anything else (lower, a
+ * building front, a ground edge, a water edge with nothing standing, ground past it, a dead end) puts it back on the line and reflects the outward velocity.
  * Returns what lies past and the drop's height when it went over, else null.
  */
 function barrierLine(
@@ -425,6 +429,7 @@ function barrierLine(
   c: Cluster,
   p: RoadPos,
   offRoad: boolean,
+  honest: boolean,
 ): { past: Past; dropM: number } | null {
   const at = centre(c.p);
   const band = wallBand(road, p.edge, p.s, offRoad);
@@ -442,7 +447,16 @@ function barrierLine(
     const top = edgeTopAt(road, p.edge, p.s, side);
     const deck = road.surfaceHeight(p.edge, p.s, d);
     const over = top !== null && top > 0 && at.y - deck > top;
-    const past = over ? pastAt(road, p.edge, p.s, side) : 'ground';
+    // With the honest edges, what lies past is what the scene draws there (road/beyond.ts `beyondAt`): over drawn
+    // ground it is held at the line as at any ground edge, never sunk through it (Chuckanut's shelf past the
+    // parapet, the 2026-10-07 check).
+    const sign = side === 'right' ? 1 : -1;
+    const across = Math.max(0, sign * (p.d - road.vergeAt(p.edge, p.s, side).dOuter));
+    const past = !over
+      ? 'ground'
+      : honest
+        ? beyondAt(road, p.edge, p.s, side, across).past
+        : pastAt(road, p.edge, p.s, side);
     if (past !== 'ground') {
       c.overboard = true;
       const floor = waterLevelOf(road);

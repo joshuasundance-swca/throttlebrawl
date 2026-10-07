@@ -212,22 +212,26 @@ describe('over the barrier (2026-10-06): a wall holds a flying rider only below 
     }
   });
 
-  it("with the course's honest edges (the default), ground past the wall is out of bounds: the quick reset", () => {
+  it("with the course's honest edges (the default), past the wall is out of bounds: what is drawn there, the quick reset", () => {
+    // The tags say ground past this wall, but the scene draws none there (no land stands beside a wall, and none
+    // beside an untagged deck 8 m up: road/land.ts): what lies past is what is drawn (road/beyond.ts `beyondAt`),
+    // the fall to the water's level, never a ground in mid-air at the deck's height.
     const { maxD, events } = fly(airborne(false, 3));
     const crash = ofType(events, 'crash')[0];
     console.log(
-      `[examined] ground past the wall, 3 m up: furthest d ${maxD.toFixed(2)}, crash ${JSON.stringify(crash?.data)}`,
+      `[examined] nothing drawn past the wall, 3 m up: furthest d ${maxD.toFixed(2)}, crash ${JSON.stringify(crash?.data)}`,
     );
     expect(maxD).toBeGreaterThan(EDGE + 1);
     expect(crash?.data).toMatchObject({
       cause: 'over',
       overboard: true,
-      past: 'ground',
+      past: 'drop',
       high: false,
       side: 1,
     });
-    // Down at the ground's height (the deck's at the crossing), never landed at the band's edge.
-    expect(Number(crash?.data['depthM'])).toBeGreaterThanOrEqual(0);
+    expect(crash?.data['dropM']).toBeCloseTo(GAP_DECK_Y, 6);
+    // Out past the kill depth below the deck at the crossing, never landed at the band's edge.
+    expect(Number(crash?.data['depthM'])).toBeGreaterThan(GAP_DEFAULTS.killDepthM);
     expect(crash?.data['crossD']).toBeCloseTo(LIMIT, 6);
     expect(ofType(events, 'land')).toEqual([]);
   });

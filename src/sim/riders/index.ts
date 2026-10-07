@@ -3002,7 +3002,10 @@ export function floorOf(world: World, config: SimConfig, m: Mover): number | nul
     const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
     const to = roadUnder(config, pos, y, limits);
     if (to) return road.surfaceHeight(to.edge, to.s, to.d);
-    return mark.past === 'ground' ? road.surfaceHeight(pos.edge, pos.s, mark.d) : mark.floorY;
+    // The ground the scene draws there (with the course's edges on), else the old rules' band edge.
+    return mark.past === 'ground' && !courseEdgesOn(world.params)
+      ? road.surfaceHeight(pos.edge, pos.s, mark.d)
+      : mark.floorY;
   }
   const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
   return surface + Math.max(0, ramp, on ? on.top : 0);

@@ -17,7 +17,7 @@
 // - `overBarrier`, each airborne tick before the barrier rule (the maintainer, 2026-10-06: "consistent
 //   physics and gameplay is important here so players know what to expect"): a barrier holds a rider
 //   only below its top (road/beyond.ts `edgeTopAt`: every rail and wall by its `heightM`, a building
-//   front never), and what lies past it decides (`pastAt`). Another road under the rider (the old
+//   front never), and what lies past it decides (`beyondAt`: what the scene draws there). Another road under the rider (the old
 //   Seven Mile Bridge beside the new one; RoadNetwork.surfaceUnder) takes it over, and the landing
 //   rules judge it there; water, a drop and (with the course's honest edges, sim/riders/course.ts)
 //   ground are `overFall`'s; under the old rules ground comes down at the band's edge;
@@ -32,6 +32,7 @@
 // (`over`) is written only when a rider goes over, and no random draw is taken.
 import { atan2, cos, sin, wrapAngle, type TuningParamDecl } from '../../core';
 import {
+  beyondAt,
   edgeTopAt,
   gapAt,
   gapParams,
@@ -84,7 +85,11 @@ export interface OverMark {
   /** The side it went out on, in that edge's frame (+1 toward +d). */
   side: 1 | -1;
   past: Past;
-  /** World y of the deck at the crossing, and of the water or the drop's floor past it. */
+  /**
+   * World y of the deck at the crossing, and of what lies under the rider now: the water or the drop's floor, or
+   * the ground (with the course's edges on, the ground the scene draws there, road/beyond.ts `beyondAt`, at its
+   * own height; under the old rules the deck's height at the crossing).
+   */
   deckY: number;
   floorY: number;
 }
@@ -302,9 +307,19 @@ export function overStep(
     const top = edgeTop(at.edge, at.s, vside);
     const deckY = road.surfaceHeight(at.edge, at.s, v.dOuter);
     if (top === null || !(y - deckY > top)) return { result: 'barrier', mark: null, holdD: limit };
+    // The old rules (the course's edges off): what the road's tags say lies past, once, at the crossing.
     const past = pastAt(road, at.edge, at.s, vside);
     const floorY = past === 'ground' ? deckY : waterLevelOf(road);
     now = { edge: at.edge, s: at.s, d: limit, side, past, deckY, floorY };
+  }
+  if (groundOut) {
+    // With the course's honest edges, what lies under him out here is what the scene draws there (road/beyond.ts
+    // `beyondAt`), read each tick as he flies on out or back: Chuckanut's grassy shelf past the parapet is ground
+    // at the road's height, the bluff's cliff past it a drop to the sea, a hill road's slope ground lower down.
+    const vnow = side > 0 ? 'right' : 'left';
+    const across = Math.max(0, side * (at.d - road.vergeAt(at.edge, at.s, vnow).dOuter));
+    const b = beyondAt(road, at.edge, at.s, vnow, across);
+    if (b.past !== now.past || b.floorY !== now.floorY) now = { ...now, past: b.past, floorY: b.floorY };
   }
   // Its centre still over its own deck (between the limit and the edge's line, where the barrier
   // stands): the deck is under it. Coming down there, it lands at the limit, beside the barrier it

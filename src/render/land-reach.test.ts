@@ -1,4 +1,4 @@
-// The land past the verge, as the road reads it (road/land.ts `landReachOf`) and as the road scene draws it
+// The land past the verge, as the road reads it (road/drawn-ground.ts `landReachOf`) and as the road scene draws it
 // (road-mesh.ts `buildRoadScene`, `RoadScene.landReach`): the same rule, so a building the road's plan stands
 // on land stands on drawn ground (the physical world, 2026-10-06: downtown Portland's blocks are planned in
 // road/structures/downtown.ts from the network alone, where render read the drawn scene's reach).
@@ -52,7 +52,7 @@ describe("the land's reach: the road's rule is the road scene's", () => {
     it(`${id}: every metre of every road, both sides`, () => {
       const { road, dressing, roads } = track(id);
       // The rule reads the network's own barriers, which keep a road file's; a file without the key would
-      // read differently (road/land.ts), and none of these lacks it.
+      // read differently (road/drawn-ground.ts), and none of these lacks it.
       expect(roads.filter((r) => r.barriers === undefined).map((r) => r.id)).toEqual([]);
       const scene = buildRoadScene(road, look, dressing, { seed: 1, models: {}, roadsideDensity: 1 });
       const drawn: LandReach = (e, side, s) => scene.landReach(e, side, s);

@@ -10,7 +10,7 @@
 // What render read that a plan may not, and what the plan reads instead (2026-10-06):
 // - the loaded model's bounding box (a lot's width and depth): the committed file's box, `STRUCTURE_MODELS`
 //   (scripts/hitboxes.test.ts holds the rows to the files);
-// - the drawn land's reach (`RoadScene.landReach`): the same strip rule, land.ts, held equal to render's;
+// - the drawn land's reach (`RoadScene.landReach`): the same strip rule, drawn-ground.ts, held equal to render's;
 // - the landmarks' ground: from the road (landmark-places.ts `landmarkGround`), not once the landmark kits
 //   have loaded (render added it when they arrived, so the fronts could move then);
 // - the scenery and the staged scenes already standing, and every other roadside prop: not read. On the
@@ -38,7 +38,7 @@ import {
 } from '../structures';
 import { scatterHash, themeAt, type LandTheme, type SideTag } from '../themes';
 import { landmarkGround } from './landmark-places';
-import { landReachOf, type LandReach } from '../land';
+import { landReachOf, type LandReach } from '../drawn-ground';
 
 /** A street front's layout (render/roadside.ts `Frontage`). */
 export interface FrontageRule {
