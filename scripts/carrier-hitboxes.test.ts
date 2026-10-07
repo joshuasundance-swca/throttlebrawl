@@ -237,7 +237,9 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
     expect(insideTicks(drawn, 19.4).cabTicks).toBe(0);
   });
 
-  it.each([10.3, 10.8])(
+  // The 13 m/s case also reaches the raised roof marker, protecting the first contact of the
+  // way-back staging's low flight as well as the lower cap contacts at 10.3/10.8 m/s.
+  it.each([10.3, 10.8, 13])(
     'a %s m/s hop meets an actual cab triangle at its ordinary fall-speed impact',
     (speed) => {
       const h = riderHarness(config, { s: TRUCK.s0 + RUN - 20, d: MID, speed });

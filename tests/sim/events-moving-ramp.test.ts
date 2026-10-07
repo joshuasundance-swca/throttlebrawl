@@ -297,7 +297,9 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
         return off !== undefined && mine(s, 'land').some((e) => e.tick > off.ev.tick);
       };
       for (let t = 0; t < 60 * 45 && !landedAfterLip() && mine(s, 'crash').length === 0; t++)
-        step(s, carrier);
+        // 12 m/s over the carrier adds 5.76 m/s to the road's launch tangent. It clears the
+        // cab/light and has a road landing below the existing 14 m/s hard-landing line.
+        step(s, carrier, 12);
       const off = s.jumps.find(offTheLip);
       const land = mine(s, 'land').find((e) => e.tick > (off?.ev.tick ?? Infinity));
       const car = s.world.movers[carrier];
@@ -309,6 +311,12 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
       expect(mine(s, 'crash'), 'it did not crash').toEqual([]);
       expect(off, 'it jumped off the carrier').toBeDefined();
       expect(land?.data['quality']).toBe('clean');
+      expect(Number(land?.data['verticalMps'])).toBeLessThan(14);
+      expect(
+        mine(s, 'wobble').filter(
+          (e) => e.tick > (off?.ev.tick ?? Infinity) && e.data['object'] === 'rampTruck',
+        ),
+      ).toEqual([]);
       // Landed on the road, past the truck's front where it stands now.
       expect(s.c.routeDir * (landU - front)).toBeGreaterThan(0);
       // The carrier was never a traffic crash: its contacts are the riders' while the ramp is down.
@@ -316,7 +324,7 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
     },
   );
 
-  it('meets the rider who is barely faster than it: a crash into its body, not a jump', () => {
+  it('meets a barely faster rider at the drawn cab with a low fall-speed wobble', () => {
     const s = scene(placedRace(region));
     const { carrier } = approach(s, 290, 36);
     // Wait for the ramp, then hand the rider to it 12 m behind, held 2 m/s over the carrier's speed.
@@ -325,13 +333,65 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
     const car = s.world.movers[carrier];
     const carU = toCorridor(s.c, car?.pos ?? s.player.pos)?.u ?? 0;
     putPlayer(s, carU - s.c.routeDir * 12, outerCd(s, carU), (car?.speed ?? 20) + 2);
-    for (let t = 0; t < 60 * 20 && mine(s, 'crash').length === 0; t++) step(s, carrier, 2);
-    const crash = mine(s, 'crash')[0];
-    expect(crash?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck' });
-    expect(String(crash?.data['feature'])).toMatch(/^moving:/);
-    // A crest elsewhere on the road may launch it; the carrier's box must not.
+    s.events = [];
+    s.jumps = [];
+    for (let t = 0; t < 60 * 20 && !mine(s, 'wobble').some((e) => e.data['object'] === 'rampTruck'); t++)
+      step(s, carrier, 2);
+    const hit = mine(s, 'wobble').find((e) => e.data['object'] === 'rampTruck');
+    expect(hit?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck', hit: 'top' });
+    expect(String(hit?.data['feature'])).toMatch(/^moving:/);
+    expect(Number(hit?.data['impactMps'])).toBeGreaterThan(0);
+    expect(Number(hit?.data['impactMps'])).toBeLessThan(TRAFFIC_HIT_DEFAULT_MPS);
+    expect(mine(s, 'crash')).toEqual([]);
+    // The small but real tangent is about 0.96 m/s: a hop that cannot clear the cab.
     const inBox = s.jumps.filter((j) => j.into >= 0 && j.into <= 7.5 + 1);
-    expect(inBox, 'it never left the carrier for a jump').toEqual([]);
+    expect(inBox).toHaveLength(1);
+    expect(Number(inBox[0]?.ev.data['vyMps'])).toBeGreaterThan(0);
+    expect(Number(inBox[0]?.ev.data['vyMps'])).toBeLessThan(1.2);
+  });
+
+  it('a head-on meeting below the lowered cab crashes by the ordinary closing-speed line', () => {
+    const s = scene(placedRace(region));
+    const { carrier } = approach(s, 290, 36);
+    for (let t = 0; t < 60 * 40 && decks(s).length === 0; t++) step(s, carrier);
+    expect(decks(s).length).toBeGreaterThan(0);
+    const car = s.world.movers[carrier]!;
+    const carU = toCorridor(s.c, car.pos)?.u ?? 0;
+    putPlayer(s, carU + s.c.routeDir * 6, outerCd(s, carU), 12);
+    s.player.pos.dir = s.c.routeDir === 1 ? -1 : 1;
+    s.player.mode = 'Airborne';
+    s.player.h = 1.8; // Below the actual 2.4 m cab, clear of the low bumper.
+    const st = riderState(s.world);
+    st.yAbs[s.player.id] = s.cfg.road.surfaceHeight(s.player.pos.edge, s.player.pos.s, s.player.pos.d) + 1.8;
+    st.vy[s.player.id] = 0;
+    s.events = [];
+    for (let t = 0; t < 60 && mine(s, 'crash').length === 0; t++) step(s, carrier);
+    const hit = mine(s, 'crash')[0];
+    expect(hit?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck', hit: 'end' });
+    expect(String(hit?.data['feature'])).toMatch(/^moving:/);
+    expect(Number(hit?.data['impactMps'])).toBeGreaterThanOrEqual(TRAFFIC_HIT_DEFAULT_MPS);
+  });
+});
+
+describe('full-throttle moving-carrier flights retain their hard-landing response', () => {
+  it.each([
+    { region: KEYS, seed: 3 },
+    { region: SF, seed: 1 },
+    { region: SF, seed: 2 },
+    { region: SF, seed: 3 },
+  ])('$region.name seed $seed lands hard at the unchanged vertical-impact line', ({ region, seed }) => {
+    const s = scene(placedRace(region, seed));
+    const { carrier } = approach(s, 290, 36);
+    const off = () => s.jumps.find((j) => j.into >= MOVING.rampRunM && j.into <= 8.5);
+    for (let t = 0; t < 2700 && !mine(s, 'land').some((e) => e.tick > (off()?.ev.tick ?? Infinity)); t++)
+      step(s, carrier);
+    const jump = off();
+    const land = mine(s, 'land').find((e) => e.tick > (jump?.ev.tick ?? Infinity));
+    expect(jump).toBeDefined();
+    expect(mine(s, 'crash')).toEqual([]);
+    expect(Number(land?.data['verticalMps'])).toBeGreaterThanOrEqual(14);
+    expect(Number(land?.data['verticalMps'])).toBeLessThan(22);
+    expect(land?.data['quality']).toBe('wobble');
   });
 });
 

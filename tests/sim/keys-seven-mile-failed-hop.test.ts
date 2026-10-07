@@ -192,8 +192,7 @@ const fallOf = (r: Ride, crash: { at: number } | undefined) =>
 describe('a missed staging hop finds no shortcut and pays no airtime', () => {
   // The east hop, arriving slow two ways: 23 m/s, as the live check's seed 7 (the lip's ramp flings
   // it and the gap takes it), and 13 m/s, which clears the staging truck's empty top deck low and
-  // rolls into the gap (the fall, paid nothing). Below that the rider comes down on the truck's deck
-  // instead (the next test).
+  // rolls into the gap (the fall, paid nothing). Lower flights can instead meet the solid cab.
   it.each([23, 13])(
     'the turn-off hop (east), left at %i m/s: it falls, wakes on the highway, and is neither found nor paid',
     (slow) => {
@@ -221,32 +220,55 @@ describe('a missed staging hop finds no shortcut and pays no airtime', () => {
     },
   );
 
-  it('the turn-off hop (east), left at 12 m/s: it comes down on the truck\u2019s empty deck, rides into the cab, and is neither found nor paid', () => {
-    // The top deck past the lip is a top that holds the bike (the car that stood on it is gone, the lip
-    // check of 2026-10-07): a rider too slow to clear it lands on it, as on any solid top, and the cab's
-    // front stops him (a crash, thrown off). It used to pass through the car and the cab and fall in the gap.
+  it.each([
+    { side: 'east', slow: 12, staging: EAST },
+    { side: 'west', slow: 14, staging: WEST },
+  ])(
+    '$side hop at $slow m/s meets the drawn cab and pays nothing for the crashed flight',
+    ({ side, slow, staging }) => {
+      // The full lip tangent now gives these flights enough height to reach the cab before landing
+      // on the empty deck. A downward cap contact wobbles, then its end meets the rider above 10 m/s.
+      const r = ride(
+        (id, s) =>
+          side === 'east'
+            ? (id === ZONE_EDGE && s >= ZONE.s0) ||
+              (OLD.roads.indexOf(id) >= 0 && OLD.roads.indexOf(id) <= OLD.roads.indexOf(EAST.id))
+            : id === WEST.id ||
+              (id === WEST_LEAD && s > (ROAD.edges[ROAD.edgeIndex(WEST_LEAD)]?.length ?? 0) - 230),
+        slow,
+        (_id, events) => events.some((e) => e.type === 'crash' && e.data['feature'] === staging.truck.id),
+      );
+      const crash = ofType(r, 'crash').find((e) => e.data['feature'] === staging.truck.id);
+      const top = ofType(r, 'wobble').find((e) => e.data['feature'] === staging.truck.id);
+      const found = ofType(r, 'shortcutFound');
+      const fall = fallOf(r, crash);
+      print(
+        `${side}, ${slow} m/s: fall ${JSON.stringify(fall?.data)} @${fall?.at}, top ${JSON.stringify(top?.data)} @${top?.at}, crash ${JSON.stringify(crash?.data)} @${crash?.at}; found ${JSON.stringify(found.map((e) => e.data))}`,
+      );
+      expect(fall, 'it left the ground at the lip').toBeDefined();
+      expect(top?.data).toMatchObject({ object: 'rampTruck', hit: 'top' });
+      expect(Number(top?.data['impactMps'])).toBeLessThan(10);
+      expect(crash?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck', hit: 'end' });
+      expect(Number(crash?.data['impactMps'])).toBeGreaterThanOrEqual(10);
+      expect(found).toEqual([]);
+      expect(airtimeFrom(r, fall?.at ?? 0)).toEqual([]);
+    },
+  );
+
+  it('a lower east flight lands on the actual empty deck and pays no short-hop airtime', () => {
     const r = ride(
       (id, s) =>
         (id === ZONE_EDGE && s >= ZONE.s0) ||
         (OLD.roads.indexOf(id) >= 0 && OLD.roads.indexOf(id) <= OLD.roads.indexOf(EAST.id)),
-      12,
-      (_id, events) => events.some((e) => e.type === 'respawn'),
+      10,
+      (_id, events) => events.some((e) => e.type === 'land' && e.data['on'] === 'truck'),
     );
-    const crash = ofType(r, 'crash')[0];
     const landed = ofType(r, 'land').find((e) => e.data['on'] === 'truck');
-    const found = ofType(r, 'shortcutFound');
-    const fall = fallOf(r, crash);
-    print(
-      `east, 12 m/s: fall ${JSON.stringify(fall?.data)} @${fall?.at}, lands ${JSON.stringify(landed?.data)} @${landed?.at}, crash ${JSON.stringify(crash?.data)} @${crash?.at}; found ${JSON.stringify(found.map((e) => e.data))}`,
-    );
-    expect(fall, 'it left the ground at the lip').toBeDefined();
-    expect(landed?.data, 'it came down on the empty deck').toMatchObject({
-      on: 'truck',
-      object: 'rampTruck',
-    });
-    expect(crash?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck' });
-    expect(found).toEqual([]);
-    expect(airtimeFrom(r, fall?.at ?? 0)).toEqual([]);
+    expect(landed?.data).toMatchObject({ on: 'truck', object: 'rampTruck', quality: 'clean' });
+    expect(Number(landed?.data['airTicks'])).toBeLessThan(30);
+    expect(ofType(r, 'crash')).toEqual([]);
+    expect(ofType(r, 'shortcutFound')).toEqual([]);
+    expect(airtimeFrom(r, 0)).toEqual([]);
   });
 
   it('the way-back hop (west), left too slow: it falls, wakes on the highway, and is neither found nor paid', () => {
@@ -254,7 +276,9 @@ describe('a missed staging hop finds no shortcut and pays no airtime', () => {
       (id, s) =>
         id === WEST.id ||
         (id === WEST_LEAD && s > (ROAD.edges[ROAD.edgeIndex(WEST_LEAD)]?.length ?? 0) - 230),
-      14,
+      // At about 17 m/s at this 2.8/11.5 lip the flight clears the 3.21 m cab/markers, but
+      // its ballistic range still cannot span the authored 30 m gap beyond the carrier.
+      18,
       (_id, events) => events.some((e) => e.type === 'respawn' && e.data['gap'] === gapOf(WEST.id)?.id),
     );
     const crash = ofType(r, 'crash').find((e) => e.data['feature'] === gapOf(WEST.id)?.id);
