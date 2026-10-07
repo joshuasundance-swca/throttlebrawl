@@ -1106,7 +1106,12 @@ test("the route row's Reload and its wait fit every size and Text size, and a ta
   await page.locator('#settings-back').click();
   await leaveFullscreen(page);
   await page.setViewportSize({ width: 915, height: 412 });
-  await page.locator('#route-note-action').scrollIntoViewIfNeeded();
+  // A plain DOM scroll, as in checkBuildId: train 406 printed this test's last build-id line and then ran
+  // the slice out of its job here (the keeper, 2026-10-07; not reproduced locally). The click below still
+  // waits for the button to be actionable.
+  await page
+    .locator('#route-note-action')
+    .evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   await Promise.all([page.waitForEvent('load'), page.locator('#route-note-action').click()]);
   await expect(page.locator('#start-screen')).toBeVisible();
   await page.unroute(SF_MAPS);
