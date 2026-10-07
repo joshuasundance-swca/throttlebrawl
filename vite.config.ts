@@ -8,6 +8,7 @@ import {
   SIM_CODE_HASH_PLACEHOLDER,
   simChunkGroup,
   simCodeHashPlugin,
+  simStepsChunkGroup,
 } from './scripts/sim-chunk.mjs';
 import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 import { bootPreloadPlugin } from './scripts/boot-preload.mjs';
@@ -114,6 +115,9 @@ export default defineConfig({
     // src/sim, src/road and src/core in one chunk, so its content hash names the sim's code
     // (docs/architecture.md, "Replay and input recording"); the road's lazy structure planners in their
     // own chunk, off the first load (scripts/sim-chunk.mjs ROAD_LAZY_TEST).
-    rolldownOptions: { output: { codeSplitting: { groups: [simChunkGroup(), roadLazyChunkGroup()] } } },
+    // The systems' steps in a third, off the first load too (scripts/sim-chunk.mjs SIM_STEPS_TEST, lane U3).
+    rolldownOptions: {
+      output: { codeSplitting: { groups: [simChunkGroup(), roadLazyChunkGroup(), simStepsChunkGroup()] } },
+    },
   },
 });

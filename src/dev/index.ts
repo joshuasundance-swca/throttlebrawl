@@ -27,6 +27,9 @@ export type { PerfProbe, PerfReport, Percentiles } from './perf';
 export type { SelfTestResult, SelfTestStatus } from './selftest';
 export { botAttackRun, installTestHandle, moverProblem, MOVER_MODES, testFlagSet } from './handle';
 export type { AttackRun, AttackRunOptions, RaceChecks, TestHandle } from './handle';
+// The systems' steps (a lazy chunk, src/sim/late.ts): under the test flag main.ts loads them before the handle
+// exists, since its headless races (botAttackRuns) step a sim at once.
+export { loadSimSteps } from '../sim/api';
 
 /** Installs whatever the page's flags ask for. */
 export function installDev(app: AppHandle): void {

@@ -89,7 +89,9 @@ const content = loadBootContent().catch(
 if (testFlagSet()) {
   const pending = createPendingHandle();
   (window as unknown as { __game?: object }).__game = pending.stub;
-  void Promise.all([loadDev(), content]).then(([m]) => {
+  // The handle's headless races (botAttackRuns) step a sim at once, so the systems' steps (a lazy chunk,
+  // src/sim/late.ts) are in before the handle is.
+  void Promise.all([loadDev().then((m) => m.loadSimSteps().then(() => m)), content]).then(([m]) => {
     const app = boot();
     if (!app) return;
     m.installDev(app);
