@@ -88,15 +88,13 @@ export const PLAZA_CUT = {
   /**
    * Where the cut's road starts: its reference line, 9 m right of the avenue's centre line, half a
    * metre inside the avenue's edge (a junction must lie on the road it leaves), and its one lane,
-   * 8 m wide, starting on that line: d 9 to 17 beside the avenue. (The sim counts a road's band from
-   * its reference line out to its lanes' far edge, so the near edge is the line.) It overlaps the
-   * avenue's outer half metre, which a rider on the ground (centre at most 9, half a bike in from the
-   * edge) never gets half a bike into, so nobody on the ground is handed across, and a rider in the
-   * air out past the edge is.
+   * 8 m wide, starting a metre farther right: d 10 to 18 beside the avenue. The junction reference
+   * line stays on the avenue, while the usable lane clears its wall and the renderer's 0.3 m lane
+   * clearance. The truck's flight reaches this lane; a grounded bike meets the visible wall.
    */
   offsetM: 9,
   laneM: 8,
-  laneCentreM: 4,
+  laneCentreM: 5,
   truck: {
     kind: 'rampTruck',
     id: 'carrier-dt-plaza-cut',

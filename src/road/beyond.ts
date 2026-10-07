@@ -21,6 +21,7 @@
 // Another road below (the old Seven Mile Bridge beside the new one) is the sim's to find, with
 // RoadNetwork.surfaceUnder. Pure data and + - * / only, like the rest of road/, so the sim may read it.
 import { vergeTagAt, type VergeSide } from './cross-section';
+import { lanesNear } from './course';
 import { groundUnderOf, sectionGroundOf } from './drawn-ground';
 import type { RoadNetwork } from './network';
 import { lakeWaterAt } from './water';
@@ -158,6 +159,59 @@ export const GROUND_EDGE_TOP_M: Readonly<Record<'soft' | 'brush' | 'fence', numb
 export type DrawnEdge = 'barrier' | 'rail' | 'water' | 'wall' | 'front' | 'brush' | 'fence' | 'drop';
 
 /**
+ * Solid bands use one-metre clearance probes; barrier looks use two-metre panels with
+ * five chord probes, at the look's own offset. An isolated clear probe draws no band.
+ * Keep this private: the existing drawn-edge/top queries are the contact seam.
+ */
+function listedPanelAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): boolean {
+  const e = road.edges[edge];
+  const b = e?.barriers.find((b) => s >= b.s0 && s <= b.s1 && (b.side === side || b.side === 'both'));
+  if (!e || !b) return false;
+  let from = Math.max(0, b.s0);
+  let end = Math.min(e.length, b.s1);
+  const sign = side === 'right' ? 1 : -1;
+  // The renderer's barrier-look styles: all three have 2 m panels. Keep contact at
+  // their actual placement, rather than the solid band's 5 cm offset.
+  const interstate = e.tags.some(
+    (t) => t.tag === 'interstate' && s >= t.s0 && s <= t.s1 && (t.side === 'both' || t.side === side),
+  );
+  const look = b.look ?? (interstate ? (b.kind === 'wall' ? 'concrete' : 'guardrail') : undefined);
+  if (look) {
+    const offset = look === 'railing' ? 0.2 : look === 'concrete' ? 0.3 : 0.07;
+    const d = (sign > 0 ? e.dMax : e.dMin) + sign * offset;
+    const panel = (lo: number, hi: number) => {
+      if (hi <= lo) return false;
+      const a = road.toWorld(edge, lo, d, 0);
+      const c = road.toWorld(edge, hi, d, 0);
+      for (let k = 0; k <= 4; k++) {
+        const t = k / 4;
+        if (lanesNear(road, a.x + (c.x - a.x) * t, a.z + (c.z - a.z) * t, edge, 0.3)) return false;
+      }
+      return true;
+    };
+    const lo = from + Math.floor((s - from) / 2) * 2;
+    return panel(lo, Math.min(end, lo + 2)) || (Math.abs(s - lo) < 1e-9 && lo > from && panel(lo - 2, lo));
+  }
+  // A gap restarts the renderer's probe grid at its far end.
+  for (const f of e.features) {
+    if (f.kind !== 'gap' || f.s1 <= from || f.s0 >= end) continue;
+    if (f.s1 <= s) from = Math.max(from, f.s1);
+    else if (f.s0 >= s) end = Math.min(end, f.s0);
+    else return false;
+  }
+  const d = (sign > 0 ? e.dMax : e.dMin) + sign * 0.05;
+  const clear = (u: number) => {
+    const p = road.toWorld(edge, u, d, 0);
+    return !lanesNear(road, p.x, p.z, edge, 0.3);
+  };
+  const lo = from + Math.floor(s - from);
+  const hi = Math.min(end, lo + 1);
+  if (!clear(lo)) return false;
+  if (s > lo + 1e-9) return hi > lo && clear(hi);
+  return (hi > lo && clear(hi)) || (lo > from && clear(Math.max(from, lo - 1)));
+}
+
+/**
  * Whether a `gap` takes the whole road away at (edge, s): its box covers the drive lanes (within half a metre of
  * their edges), as render/road-mesh.ts cuts a barrier there (a rail ends at a broken end; it does not span the
  * hole). Nothing stands at the edge over the hole.
@@ -189,7 +243,7 @@ export function drawnEdgeAt(road: RoadNetwork, edge: number, s: number, side: Ve
     const past = pastAt(road, edge, s, side);
     return past === 'ground' ? null : past;
   }
-  if (road.barrierAt(edge, s, side)) return 'barrier';
+  if (road.barrierAt(edge, s, side)) return listedPanelAt(road, edge, s, side) ? 'barrier' : null;
   const v = road.vergeAt(edge, s, side);
   if (v.edge === 'water')
     return v.derived && beyondAt(road, edge, s, side, 1).past === 'ground' ? null : 'water';
@@ -213,6 +267,7 @@ export function drawnEdgeAt(road: RoadNetwork, edge: number, s: number, side: Ve
  */
 export function courseEdgeTopAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): number {
   if (holeAt(road, edge, s)) return 0;
+  if (road.barrierAt(edge, s, side) && !listedPanelAt(road, edge, s, side)) return 0;
   const top = edgeTopAt(road, edge, s, side);
   if (top === null) {
     const kind = road.vergeAt(edge, s, side).edge;

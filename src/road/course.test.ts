@@ -3,7 +3,7 @@
 // it) and another road of the network; everything else is out. The query says what a rider at a point would
 // come down on: the highest of those at or under him, or nothing.
 import { describe, expect, it } from 'vitest';
-import { COURSE_STEP_M, courseAt } from './course';
+import { COURSE_STEP_M, courseAt, lanesNear } from './course';
 import { fixtureNetwork } from './fixture';
 import { createRoadNetwork, type RoadNetwork } from './network';
 import { planStructures, type StructurePlan, type StructureSpec } from './structures';
@@ -129,4 +129,22 @@ describe('the course: what a rider would come down on', () => {
     expect(backOnA).toMatchObject({ kind: 'road', edge: 0 });
     if (backOnA.kind === 'road') expect(backOnA.d).toBeCloseTo(0, 6);
   });
+});
+
+it('lane clearance excludes the empty space between a one-sided lane and its reference line', () => {
+  const bundle = fixtureNetwork([{ id: 'cut', lengthM: 100, kappa: 0 }]);
+  const r = bundle.roads[0] as BakedRoad;
+  const road = createRoadNetwork({
+    ...bundle,
+    roads: [
+      {
+        ...r,
+        laneSections: [
+          { s0: 0, lanes: [{ id: 'S1', dCenterM: 5, widthM: 8, direction: 1, kind: 'shortcut' }] },
+        ],
+      },
+    ],
+  });
+  expect(lanesNear(road, 0.55, -50, -1, 0.3)).toBe(false);
+  expect(lanesNear(road, 1.1, -50, -1, 0.3)).toBe(true);
 });

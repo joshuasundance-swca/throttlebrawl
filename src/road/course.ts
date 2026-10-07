@@ -300,12 +300,13 @@ export function lanesNear(road: RoadNetwork, x: number, z: number, except: numbe
     if (!e) continue;
     const p = projectFrom(road, e, x, z, i);
     if (p.past > 0.25) continue;
-    let lo = 0;
-    let hi = 0;
+    let lo = Infinity;
+    let hi = -Infinity;
     for (const lane of road.lanesAt(edge, p.s)) {
       lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
       hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
     }
+    if (lo === Infinity) lo = hi = 0;
     if (p.d > lo - margin && p.d < hi + margin) return true;
   }
   return false;
