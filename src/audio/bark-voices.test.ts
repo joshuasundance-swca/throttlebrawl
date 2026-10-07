@@ -235,3 +235,36 @@ describe('spoken barks', () => {
     expect(audio.inspect().duckLevel).toBe(0.4);
   });
 });
+
+// A voice the host held back (polish batch L, lane L2): a bark whose clip came back 429 (the host's wait)
+// stays silent that once, and the same line asks the host again the next time it is shown. A failure is
+// never remembered, whatever it was; this holds the clip loader to it.
+describe('a bark whose clip the host held back', () => {
+  it('is asked for again the next time its line shows, and speaks once it arrives', async () => {
+    const { ctx, create } = fakeContextFactory();
+    const answers: ('429' | 'ok')[] = ['429', 'ok'];
+    let asks = 0;
+    const audio = createAudio({
+      createContext: create,
+      radioKeys: null,
+      barkEvents: null,
+      barkClipUrl: (ref) => `clip:${ref}`,
+      barkFetch: () => {
+        asks++;
+        return answers.shift() === 'ok'
+          ? Promise.resolve(new ArrayBuffer(1500))
+          : Promise.reject(new Error('HTTP 429'));
+      },
+    });
+    await audio.resume();
+    expect(await audio.say(KEVIN)).toBe(false);
+    expect(audio.inspect().voice.silent).toEqual([KEVIN]);
+    expect(clips(ctx)).toHaveLength(0);
+    expect(await audio.say(KEVIN)).toBe(true);
+    expect(asks).toBe(2);
+    expect(clips(ctx)).toHaveLength(1);
+    // Once it is in, it is kept: a third showing asks nothing.
+    await audio.say(KEVIN);
+    expect(asks).toBe(2);
+  });
+});

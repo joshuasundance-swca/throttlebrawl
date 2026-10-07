@@ -25,12 +25,16 @@ import {
   type BakedNetworkBundle,
   type BakedRoad,
   type BakedRoute,
+  edgeTopAt,
+  pastAt,
+  waterLevelOf,
 } from '../../src/road';
 import { groundYOf } from '../../src/render/shadows';
 import { createSimWithWorld, SIM_TUNING } from '../../src/sim/create';
 import { riderLimits, riderState } from '../../src/sim/riders';
 import { placeVehicle, trafficState } from '../../src/sim/traffic';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
+import { OVERBOARD_MAX_TICKS } from '../../src/sim/tumble/index';
 import type {
   EntitySnapshot,
   SimConfig,
@@ -40,6 +44,7 @@ import type {
   SimTrafficTypeDef,
 } from '../../src/sim/types';
 import { ISOLATED } from './batch';
+import { routeNetworks, track } from './geometry-routes';
 
 const print = (line: string) => process.stdout.write(`[high-riders] ${line}\n`);
 const DT = 1 / 60;
@@ -349,6 +354,169 @@ describe('over the Golden Gate’s railing: a high drop, a clean cut-away', () =
   });
 });
 
+// ---- A high fall shows nothing hanging (the one live check of 2026-10-07, mustFix 3) -----------------------
+
+/** The phone held sideways (915 × 412) is the widest view the game draws; a body is a sphere this big, m. */
+const ASPECT = 915 / 412;
+const BODY_R_M = 1;
+/** The render camera's far plane (render/index.ts), m. */
+const FAR_M = 760;
+
+/**
+ * Whether a sphere of `BODY_R_M` at `p` is inside the pose's view frustum (the phone's widest aspect), and
+ * not wholly under the water (`waterY`) while the eye is above it: the sea and a lake are drawn opaque.
+ */
+function inView(pose: CameraPose, p: { x: number; y: number; z: number }, waterY: number): boolean {
+  if (pose.y > waterY && p.y + BODY_R_M < waterY) return false;
+  const f = [pose.lookX - pose.x, pose.lookY - pose.y, pose.lookZ - pose.z];
+  const fl = Math.hypot(f[0]!, f[1]!, f[2]!);
+  const fw = f.map((v) => v / fl) as [number, number, number];
+  const up = [pose.upX, pose.upY, pose.upZ];
+  // right = forward × up, then the true up = right × forward.
+  const r = [
+    fw[1] * up[2]! - fw[2] * up[1]!,
+    fw[2] * up[0]! - fw[0] * up[2]!,
+    fw[0] * up[1]! - fw[1] * up[0]!,
+  ];
+  const rl = Math.hypot(r[0]!, r[1]!, r[2]!);
+  const rw = r.map((v) => v / rl) as [number, number, number];
+  const u = [rw[1] * fw[2] - rw[2] * fw[1], rw[2] * fw[0] - rw[0] * fw[2], rw[0] * fw[1] - rw[1] * fw[0]];
+  const v = [p.x - pose.x, p.y - pose.y, p.z - pose.z];
+  const z = v[0]! * fw[0] + v[1]! * fw[1] + v[2]! * fw[2];
+  if (z < 0.3 - BODY_R_M || z > FAR_M + BODY_R_M) return false;
+  const x = v[0]! * rw[0] + v[1]! * rw[1] + v[2]! * rw[2];
+  const y = v[0]! * u[0]! + v[1]! * u[1]! + v[2]! * u[2]!;
+  const ty = Math.tan(((pose.fov / 2) * Math.PI) / 180);
+  return Math.abs(y) - BODY_R_M <= z * ty && Math.abs(x) - BODY_R_M <= z * ty * ASPECT;
+}
+
+type Body = { x: number; y: number; z: number };
+/**
+ * The frames from the `railOver` to the `respawn` in which a crash body has not moved since the frame before
+ * (it hangs or rests) and is in view of the camera: what the live check saw on the Golden Gate.
+ */
+function frozenInView(frames: readonly Frame[], waterY: number, bodies = (f: Frame) => f.e.tumble): string[] {
+  const over = indexOf(frames as Frame[], 'railOver');
+  const woke = indexOf(frames as Frame[], 'respawn');
+  const out: string[] = [];
+  for (let i = Math.max(1, over); i < woke; i++) {
+    const now = bodies(frames[i] as Frame);
+    const was = bodies(frames[i - 1] as Frame);
+    if (!now || !was) continue;
+    for (const k of ['rider', 'bike'] as const) {
+      const a: Body = now[k];
+      const b: Body = was[k];
+      const still = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 1e-4;
+      if (still && inView((frames[i] as Frame).pose, a, waterY))
+        out.push(`${i - over}:${k}@y${a.y.toFixed(1)}`);
+    }
+  }
+  return out;
+}
+
+/** The old `OVERBOARD_MAX_TICKS` (3 s): the cap that stopped a long fall in mid-air (sim/tumble before this fix). */
+const OLD_CAP_TICKS = 180;
+
+/** The control: the same frames with the bodies stopped where they were `OLD_CAP_TICKS` after the `railOver`. */
+function withOldCap(frames: readonly Frame[]): (f: Frame) => EntitySnapshot['tumble'] {
+  const over = indexOf(frames as Frame[], 'railOver');
+  const stop = frames[over + OLD_CAP_TICKS]?.e.tumble ?? null;
+  return (f) => (frames.indexOf(f) >= over + OLD_CAP_TICKS ? stop : f.e.tumble);
+}
+
+/** The second control: the same frames with each body that went under floating at the surface instead. */
+function afloat(waterY: number): (f: Frame) => EntitySnapshot['tumble'] {
+  const up = (b: Body & { vx: number; vy: number; vz: number }) => ({ ...b, y: Math.max(b.y, waterY) });
+  return (f) => (f.e.tumble ? { rider: up(f.e.tumble.rider), bike: up(f.e.tumble.bike) } : null);
+}
+
+describe('a high fall shows nothing hanging: no body is still in view of the camera, railOver to respawn', () => {
+  const cases: {
+    name: string;
+    config: () => SimConfig;
+    at: Parameters<typeof flyOver>[1];
+    /** Whether a body floating at the surface below would be in the held view (the second control). */
+    floatSeen: boolean;
+  }[] = [
+    {
+      name: 'the Golden Gate',
+      config: () => configOf('osm-sf-golden-gate'),
+      at: { road: 'osm-sf-gg-bridge', s: 1400, side: 'right', hM: 3, vy: 1, speed: 30, yaw: 0.15 },
+      floatSeen: true,
+    },
+    {
+      name: 'Chuckanut’s bluff',
+      config: () => configOf('osm-pnw-chuckanut'),
+      at: { road: 'osm-chuckanut-cliffs', s: 385, side: 'right', hM: 3, vy: 1, speed: 25, yaw: 0.15 },
+      floatSeen: true,
+    },
+    {
+      name: 'the Gorge at Crown Point (the highest drop past any route’s edge, 223 m)',
+      config: () => configOf('osm-pnw-gorge'),
+      at: { road: 'osm-gorge-crown-point-loops', s: 295, side: 'left', hM: 3, vy: 1, speed: 20, yaw: 0.15 },
+      floatSeen: false,
+    },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: the bodies fall the whole way and go under; none is held in view (controls: the old cap, afloat)`, () => {
+      const config = c.config();
+      const waterY = waterLevelOf(config.road);
+      const frames = flyOver(config, c.at);
+      const over = indexOf(frames, 'railOver');
+      const woke = indexOf(frames, 'respawn');
+      const splashes = frames.flatMap((f) => f.events).filter((x) => x.type === 'splash');
+      const last = frames[woke - 1]?.e.tumble;
+      const frozen = frozenInView(frames, waterY);
+      const capped = frozenInView(frames, waterY, withOldCap(frames));
+      const floating = frozenInView(frames, waterY, afloat(waterY));
+      print(
+        `${c.name}: railOver ${over}, splash ${indexOf(frames, 'splash')}, respawn ${woke}; ` +
+          `${JSON.stringify(splashes[0]?.data)}; bodies at the end y ${last?.rider.y.toFixed(2)} / ` +
+          `${last?.bike.y.toFixed(2)} (water ${waterY}); frozen in view ${frozen.length}; with the old cap ` +
+          `${capped.length} (${capped.slice(0, 2).join(' ')}); afloat ${floating.length} (${floating.slice(0, 2).join(' ')})`,
+      );
+      expect(over).toBeGreaterThan(0);
+      expect(woke).toBeGreaterThan(over);
+      expect(splashes.length).toBe(2);
+      for (const e of splashes) expect(e.data).toMatchObject({ over: true, high: true });
+      // They fell the whole way and went under: at the respawn both bodies are wholly below the water.
+      expect(last?.rider.y).toBeLessThan(waterY - BODY_R_M);
+      expect(last?.bike.y).toBeLessThan(waterY - BODY_R_M);
+      expect(frozen).toEqual([]);
+      // The controls: the checker sees bodies stopped in mid-air (the old cap, as the live check saw it) …
+      expect(capped.length).toBeGreaterThan(0);
+      // … and, where the held view looks down on the water below, bodies left floating at its surface.
+      expect(floating.length > 0).toBe(c.floatSeen);
+    });
+  }
+
+  it('the overboard cap is a safety only: the highest drop past any route’s edge falls well within it', () => {
+    let worst = { drop: 0, where: '' };
+    for (const net of routeNetworks()) {
+      const { road } = track(net);
+      const floor = waterLevelOf(road);
+      road.edges.forEach((e, i) => {
+        for (let s = 5; s < e.length - 5; s += 10) {
+          for (const side of ['left', 'right'] as const) {
+            const top = edgeTopAt(road, i, s, side);
+            if (top === null || !(top > 0) || pastAt(road, i, s, side) === 'ground') continue;
+            const drop = road.surfaceHeight(i, s, side === 'right' ? e.dMax : e.dMin) - floor;
+            if (drop > worst.drop) worst = { drop, where: `${net.id} ${e.id} s ${s} ${side}` };
+          }
+        }
+      });
+    }
+    // From rest, thrown up at 10 m/s (a hard crash's throw), with the fall's height plus the 10 m it climbs.
+    const upMps = 10;
+    const fallTicks = ((upMps + Math.sqrt(upMps * upMps + 2 * 9.81 * worst.drop)) / 9.81) * 60;
+    print(
+      `highest drop past an edge: ${worst.drop.toFixed(1)} m (${worst.where}); falls in ${fallTicks.toFixed(0)} ticks, cap ${OVERBOARD_MAX_TICKS}`,
+    );
+    expect(worst.drop).toBeGreaterThan(200);
+    expect(fallTicks).toBeLessThan(OVERBOARD_MAX_TICKS);
+  });
+});
+
 describe('over the Seven Mile Bridge’s rail: a low splash keeps its gag', () => {
   const frames = flyOver(configOf('osm-keys-seven-mile'), {
     road: 'osm-sm-bridge',
@@ -367,6 +535,13 @@ describe('over the Seven Mile Bridge’s rail: a low splash keeps its gag', () =
     print(`railOver at frame ${over}, splash ${JSON.stringify(splash?.data)}`);
     expect(splash?.data).toMatchObject({ over: true, past: 'water', high: false });
     expect(cueForEvent(splash as SimEvent, 0)?.cue).toBe('splash');
+  });
+
+  it('control for the high plunge: after a low splash the bodies float at the surface, for the gag', () => {
+    const last = frames[woke - 1]?.e.tumble;
+    print(`at the respawn the bodies float at y ${last?.rider.y.toFixed(2)} / ${last?.bike.y.toFixed(2)}`);
+    expect(last?.rider.y).toBeCloseTo(0, 6);
+    expect(last?.bike.y).toBeCloseTo(0, 6);
   });
 
   it('control: the camera is not held: it goes on following him', () => {

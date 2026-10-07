@@ -209,15 +209,25 @@ export function atlasTexture(img: AtlasImage): DataTexture {
 /**
  * Loads a region's sheet and layout through the asset manifest. Null when the layout is missing or
  * unreadable (the models then draw plain); a layout with a sheet that fails has a null texture.
+ * `onHeld` is called when either file failed because of the host (its wait, a busy host), so the
+ * caller can ask again later (polish batch L).
  */
-export async function loadRegionAtlas(manifest: AssetManifest, sheet: string): Promise<RegionAtlas | null> {
+export async function loadRegionAtlas(
+  manifest: AssetManifest,
+  sheet: string,
+  onHeld?: () => void,
+): Promise<RegionAtlas | null> {
   const layout = await manifest.load<AtlasLayout | null>(atlasLayoutAsset(sheet), () => null, {
     decode: (data) => parseAtlasLayout(JSON.parse(new TextDecoder().decode(data))),
   });
-  if (!layout.value) return null;
+  if (!layout.value) {
+    if (layout.retryable) onHeld?.();
+    return null;
+  }
   const texture = await manifest.load<Texture | null>(atlasAsset(sheet), () => null, {
     decode: async (data) => atlasTexture(await decodeAtlasPng(data)),
   });
+  if (!texture.value && texture.retryable) onHeld?.();
   return { sheet, layout: layout.value, texture: texture.value };
 }
 

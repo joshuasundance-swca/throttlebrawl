@@ -13,18 +13,23 @@
 // - every traffic vehicle (its type's box, vehicleHeightM tall, measured as its rigid drawn box, as
 //   traffic's own contacts measure it) but a live moving deck, and none for a rider who is a ghost to
 //   traffic (back on the bike moments ago: he passes through traffic, so he cannot stand on it);
-// - a ramp truck's body (the car on its top deck and the cab, parked or the moving carrier's), its top
-//   `truckBodyTop`;
+// - a ramp truck's cab (its body, parked or the moving carrier's), its top `truckBodyTop`, and a parked
+//   truck's top deck (empty: no car stands on it), its top the lip's height `truckDeckTop`;
 // - a solid road hazard that is not light (the parked pickup, the coffee cart, the stair tower, the log
 //   pile), its top `hazardTop`;
 // - a solid piece of street furniture whose footprint is its own top (drawn no taller than a rider's
 //   head, FURNITURE_TOP_KNOWN_M: road/furniture.ts measures a footprint only up to there, so a lamp's,
-//   a tree's or a palm's top is not known to be flat) and holds the bike: the waterfront's parked cars.
+//   a tree's or a palm's top is not known to be flat) and holds the bike: the waterfront's parked cars;
+// - a structure's top that holds the bike (the road's structures plan, sim/riders/structures.ts: a
+//   building's roof, a landmark's, a pier's deck; `structureSupportAt`), fixed, ridden at its own grade
+//   (a pitched roof's slope), a neighbour's no more than a kerb up or down ridden across onto, and a crack
+//   narrower than the bike bridged by its wheels.
 // Riding one is the riding model in the support's own frame (sim/riders/index.ts): the bike's speed is
 // its speed over the top (`vr`, signed: a support that outruns the bike rolls it backward), the throttle,
 // the brake and the coasting drag act on it with a little less grip than asphalt (SUPPORT_GRIP), the air
 // drag acts on the speed through the air (so on a moving truck the wind pushes a rider who lets go
-// slowly back off its tail), and the support carries the bike at its own velocity. When the support's
+// slowly back off its tail), and the support carries the bike along its own path (a vehicle's box turns
+// with the road under it, so the bike moves at the velocity of the point it stands on). When the support's
 // velocity changes under the bike (a truck braking, the overlap snap, a lane's end), the bike rolls on
 // at its own: a jolt of JOLT_WOBBLE_MPS or more in one tick wobbles it, and one at `traffic.solidHitMps`
 // or more throws the rider (the one rule's line).
@@ -33,7 +38,7 @@
 // recording made before) keeps the old rules (a roof is a contact; the rest are passed over).
 // Leaf module: it reads traffic's state by name (as traffic reads the riders'), so traffic may import it.
 import { cos, sin, type Hitbox, type TuningParamDecl } from '../../core';
-import type { BakedFeature, FurnitureShape } from '../../road';
+import { sRateFactor, topAt, type BakedFeature, type FurnitureShape, type Structure } from '../../road';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks } from '../types';
 import { riderHitbox, systemState, vehicleHeightM, type Mover, type World } from '../world';
 import {
@@ -44,10 +49,14 @@ import {
   truckBodyAt,
   truckBodyBox,
   truckBodyTop,
+  truckDeckAt,
+  truckDeckBox,
+  truckDeckTop,
   truckVelocityS,
   type MovingDecks,
 } from './features';
-import { furnitureOn, piecesNear } from './furniture';
+import { BIKE_SPINE_HALF_M, furnitureOn, piecesNear } from './furniture';
+import { racePlanOf, structuresOver } from './structures';
 
 /** The switch: solid tops are ground a rider lands on and rides (1), or the old rules (0). */
 export const SUPPORTS_KEY = 'riders.supports';
@@ -92,12 +101,15 @@ export const SUPPORT_GRIP = 0.85;
  */
 export const JOLT_WOBBLE_MPS = 3;
 
-/** What a support is. */
-export type SupportKind = 'vehicle' | 'truck' | 'hazard' | 'furniture';
+/** What a support is (a `structure`: a building's, a landmark's or a pier's top, sim/riders/structures.ts). */
+export type SupportKind = 'vehicle' | 'truck' | 'hazard' | 'furniture' | 'structure';
 
 /** A support found under a point: its top and how it moves. */
 export interface Support {
-  /** Its identity for the rider standing on it: `v:<vehicle id>`, `t:<feature id>`, `h:<key>`, `f:<id>`. */
+  /**
+   * Its identity for the rider standing on it: `v:<vehicle id>`, `t:<feature id>` (a truck's cab),
+   * `d:<feature id>` (its top deck), `h:<key>`, `f:<id>`.
+   */
   key: string;
   kind: SupportKind;
   /** Its top above the road, m. */
@@ -288,38 +300,52 @@ export function supportAt(
   m: Mover,
   at: SupportQuery,
   decks: MovingDecks,
-  accept: (top: number) => boolean,
+  accept: (top: number, key: string) => boolean,
   key?: string,
 ): Support | null {
   const box = riderHitbox(config, m.riderIndex);
   let best: Support | null = null;
   const take = (s: Support) => {
-    if ((key === undefined || s.key === key) && accept(s.top) && (!best || s.top > best.top)) best = s;
+    if ((key === undefined || s.key === key) && accept(s.top, s.key) && (!best || s.top > best.top)) best = s;
   };
   if (key === undefined || key.startsWith('v:')) vehicleSupports(world, config, m, at, box, take);
-  if (key === undefined || key.startsWith('t:')) {
-    const f = truckBodyAt(config, at.edge, at.s, at.d, at.ahead > 0 ? decks.next : decks.now);
-    if (f) {
-      const body = truckBodyBox(f);
-      if (holdsBike(body.s1 - body.s0, body.d1 - body.d0, box)) {
-        const v = truckVelocityS(f);
-        const fr = config.road.frameAt(at.edge, at.s);
-        const moving = f.params?.['moving'] === true;
-        // Its heading along its edge, the way it faces (a parked one is still: speed 0).
-        const facing = f.params?.['facing'] === -1 ? -1 : 1;
-        take({
-          key: `t:${f.id}`,
-          kind: 'truck',
-          top: truckBodyTop(f),
-          vx: fr.tx * v,
-          vz: fr.tz * v,
-          speed: v * facing,
-          hx: fr.tx * facing,
-          hz: fr.tz * facing,
-          vehicle: moving ? vehicleOfDeck(f) : -1,
-          object: 'rampTruck',
-        });
-      }
+  if (key === undefined || key.startsWith('t:') || key.startsWith('d:')) {
+    const trucks = at.ahead > 0 ? decks.next : decks.now;
+    const fr = config.road.frameAt(at.edge, at.s);
+    // It moves v m of s a second, along the road where the rider is: through the world, a metre of s
+    // at his offset (shorter off the middle of a bend, `sRateFactor`), so he keeps his place on it.
+    const kappa = config.road.kappaAt(at.edge, at.s);
+    const truck = (f: BakedFeature, prefix: 't' | 'd', top: number): Support => {
+      const v = truckVelocityS(f);
+      // Its heading along its edge, the way it faces (a parked one is still: speed 0).
+      const facing = f.params?.['facing'] === -1 ? -1 : 1;
+      const vw = kappa === 0 || v === 0 ? v : v / sRateFactor(kappa, at.d);
+      return {
+        key: `${prefix}:${f.id}`,
+        kind: 'truck',
+        top,
+        vx: fr.tx * vw,
+        vz: fr.tz * vw,
+        speed: v * facing,
+        hx: fr.tx * facing,
+        hz: fr.tz * facing,
+        vehicle: f.params?.['moving'] === true ? vehicleOfDeck(f) : -1,
+        object: 'rampTruck',
+      };
+    };
+    // The cab (with the hood): the truck's body, a top of its own.
+    const cab =
+      key === undefined || key.startsWith('t:') ? truckBodyAt(config, at.edge, at.s, at.d, trucks) : null;
+    if (cab) {
+      const body = truckBodyBox(cab);
+      if (holdsBike(body.s1 - body.s0, body.d1 - body.d0, box)) take(truck(cab, 't', truckBodyTop(cab)));
+    }
+    // The top deck, empty: a top at the lip height from the lip platform to the cab, ridden as a cab is.
+    const deck =
+      key === undefined || key.startsWith('d:') ? truckDeckAt(config, at.edge, at.s, at.d, trucks) : null;
+    if (deck) {
+      const span = truckDeckBox(deck);
+      if (holdsBike(span.s1 - span.s0, span.d1 - span.d0, box)) take(truck(deck, 'd', truckDeckTop(deck)));
     }
   }
   if (key === undefined || key.startsWith('h:')) {
@@ -336,6 +362,10 @@ export function supportAt(
         object,
       });
     }
+  }
+  if (key === undefined || key.startsWith('s:')) {
+    const top = structureSupportAt(world, config, m, at, accept);
+    if (top) take(top);
   }
   if ((key === undefined || key.startsWith('f:')) && furnitureOn(world.params)) {
     for (const it of piecesNear(config, at.edge, at.s, 1)) {
@@ -357,6 +387,81 @@ export function supportAt(
 
 /** A fixed support's motion: none. */
 const STILL = { vx: 0, vz: 0, speed: 0, hx: 1, hz: 0 } as const;
+
+/** A structure's top as a support, its top `top` m above the road where the rider is. */
+function structureSupport(st: Structure, top: number): Support {
+  return { key: `s:${st.id}`, kind: 'structure', top, ...STILL, vehicle: -1, object: st.cls };
+}
+
+/**
+ * The highest structure top (sim/riders/structures.ts) that holds the rider's bike and that `accept`s, under a
+ * world point, its height above the road at `at`; null for none.
+ */
+function structureTopOver(
+  plan: NonNullable<ReturnType<typeof racePlanOf>>,
+  x: number,
+  z: number,
+  surface: number,
+  box: Readonly<Hitbox>,
+  accept: (top: number, key: string) => boolean,
+): Support | null {
+  let best: Support | null = null;
+  for (const st of structuresOver(plan, x, z)) {
+    if (!holdsBike(2 * st.foot.hu, 2 * st.foot.hv, box)) continue;
+    const top = (topAt(st, x, z) ?? st.baseY) - surface;
+    if (accept(top, `s:${st.id}`) && (!best || top > best.top)) best = structureSupport(st, top);
+  }
+  return best;
+}
+
+/**
+ * The structure top a rider at `at` stands on, or comes down on: the highest that holds the bike and that
+ * `accept`s (its top above the road at `at`, and its support key) under the bike's middle; with none there, the higher of those under its two wheels when both have
+ * one (a crack narrower than the bike, such as the 5 cm between two Mission fronts, is bridged; a gap the
+ * bike's middle and a wheel are both over is open, and it falls). Its `top` is its height above the road at
+ * `at`. Null with the switch off, or for none.
+ */
+export function structureSupportAt(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  at: SupportQuery,
+  accept: (top: number, key: string) => boolean,
+): Support | null {
+  const plan = racePlanOf(world, config);
+  if (!plan) return null;
+  const road = config.road;
+  const box = riderHitbox(config, m.riderIndex);
+  const surface = road.surfaceHeight(at.edge, at.s, at.d);
+  const p = road.toWorld(at.edge, at.s, at.d, 0);
+  const middle = structureTopOver(plan, p.x, p.z, surface, box, accept);
+  if (middle) return middle;
+  // The wheels: half the bike's spine either way along its heading in the world.
+  const f = road.frameAt(at.edge, at.s);
+  const c = cos(m.yaw);
+  const sn = sin(m.yaw);
+  const hx = m.pos.dir * (c * f.tx - sn * f.tz) * BIKE_SPINE_HALF_M;
+  const hz = m.pos.dir * (c * f.tz + sn * f.tx) * BIKE_SPINE_HALF_M;
+  const rear = structureTopOver(plan, p.x - hx, p.z - hz, surface, box, accept);
+  if (!rear) return null;
+  const front = structureTopOver(plan, p.x + hx, p.z + hz, surface, box, accept);
+  if (!front) return null;
+  return front.top > rear.top ? front : rear;
+}
+
+/**
+ * Whether a rider's middle is over traffic vehicle `vid`'s top, that top holding its bike, where the
+ * vehicle stands now: the riders' own test for landing on a vehicle (`supportAt`), for traffic's contacts
+ * to read, so one rule decides whether a rider coming down at a roof's edge is on it or falling past it.
+ */
+export function overVehicleTop(world: World, config: SimConfig, m: Mover, vid: number): boolean {
+  let over = false;
+  const at = { edge: m.pos.edge, s: m.pos.s, d: m.pos.d, ahead: 0 };
+  vehicleSupports(world, config, m, at, riderHitbox(config, m.riderIndex), (s) => {
+    if (s.vehicle === vid) over = true;
+  });
+  return over;
+}
 
 /** A moving deck's carrier, from its feature id (`moving:<vehicle id>`), or -1. */
 function vehicleOfDeck(f: BakedFeature): number {
@@ -400,26 +505,68 @@ function vehicleSupports(
     const tz = f.tz * v.pos.dir;
     const c = cos(v.yaw);
     const sn = sin(v.yaw);
-    // Its heading (as traffic's rigidOffset and the tumble's boxes build it), and its velocity along it.
+    // Its heading (as traffic's rigidOffset and the tumble's boxes build it).
     const hx = c * tx - sn * tz;
     const hz = c * tz + sn * tx;
     const centre = road.toWorld(v.pos.edge, v.pos.s, v.pos.d, 0);
-    const ox = p.x - (centre.x + hx * v.speed * at.ahead);
-    const oz = p.z - (centre.z + hz * v.speed * at.ahead);
-    const du = ox * hx + oz * hz;
-    const dc = -ox * hz + oz * hx;
+    const path = vehiclePath(road.kappaAt(v.pos.edge, v.pos.s), v, tx, tz, hx, hz);
+    // Where it is `at.ahead` seconds on, along its own path: its middle moved at its velocity, its box
+    // turned with the road under it.
+    const cx = centre.x + path.vx * at.ahead;
+    const cz = centre.z + path.vz * at.ahead;
+    let ax = hx;
+    let az = hz;
+    if (path.w !== 0 && at.ahead > 0) {
+      const ca = cos(path.w * at.ahead);
+      const sa = sin(path.w * at.ahead);
+      ax = hx * ca - hz * sa;
+      az = hz * ca + hx * sa;
+    }
+    const ox = p.x - cx;
+    const oz = p.z - cz;
+    const du = ox * ax + oz * az;
+    const dc = -ox * az + oz * ax;
     if (Math.abs(du) > t.lengthM / 2 || Math.abs(dc) > t.widthM / 2) continue;
+    // The velocity of its top at the point: its middle's, plus its turn about it (a rigid body turning
+    // with the road), so a rider held still on it anywhere stays where he is on it round a bend.
     take({
       key: `v:${vid}`,
       kind: 'vehicle',
       top: vehicleHeightM(t),
-      vx: hx * v.speed,
-      vz: hz * v.speed,
+      vx: path.w !== 0 ? path.vx - path.w * oz : path.vx,
+      vz: path.w !== 0 ? path.vz + path.w * ox : path.vz,
       speed: v.speed,
-      hx,
-      hz,
+      hx: ax,
+      hz: az,
       vehicle: vid,
       object: t.contentId,
     });
   }
+}
+
+/**
+ * A traffic vehicle's motion along its own path (the live check of 2026-10-07: on I-5 by Lake Samish a
+ * rider braked still on a semi's roof slid 1.24 m across it in 5 s and dropped off its side, carried by
+ * the semi's straight-line velocity with no turn). Traffic moves a vehicle `speed` m of s a second at its
+ * lane's offset (sim/traffic), so its middle's velocity through the world is its heading times its speed,
+ * the part along the road shortened off the middle of a bend as a metre of s is there (`sRateFactor`); and
+ * its box turns with the road under its middle, `w` rad/s (the world angle atan2(z, x), which turns by the
+ * road's curvature per metre of s along +s). (x, z) m/s. On a straight road exactly its heading times its
+ * speed, and no turn.
+ */
+function vehiclePath(
+  kappa: number,
+  v: Mover,
+  tx: number,
+  tz: number,
+  hx: number,
+  hz: number,
+): { vx: number; vz: number; w: number } {
+  if (kappa === 0) return { vx: hx * v.speed, vz: hz * v.speed, w: 0 };
+  const short = v.speed * (1 - 1 / sRateFactor(kappa, v.pos.d));
+  return {
+    vx: hx * v.speed - tx * short,
+    vz: hz * v.speed - tz * short,
+    w: kappa * v.pos.dir * v.speed,
+  };
 }

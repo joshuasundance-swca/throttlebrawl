@@ -77,6 +77,7 @@ import {
   PARKED_BIKE_TOP_M,
   pileUpsOn,
 } from '../riders/furniture';
+import { bodyTopsOf } from '../riders/structures';
 import { leaveSupport, supportedWorldVelocity } from '../riders/supports';
 import { startTrafficGhost } from '../traffic';
 import { InputFlag, type SimConfig } from '../types';
@@ -85,6 +86,7 @@ import { ownSideBand, standingBand, wallBand, type TumbleBody } from './body';
 import { collideBox, nearbyBoxes, type Box } from './contacts';
 import {
   centre,
+  intoWater,
   makeCluster,
   maxParticleSpeed,
   relax,
@@ -218,8 +220,25 @@ const CARTWHEEL_MPS = 12;
 const BLAME_TICKS = 120;
 /** Of the get-up time, the share spent standing up before the fist shake. */
 const FIST_AT = 1 / 3;
-/** An overboard body that has not reached the water after this long splashes anyway (scaled). */
-const OVERBOARD_MAX_TICKS = 180;
+/**
+ * An overboard body that has not reached the water after this long is put in it, and splashes (scaled
+ * ticks). It is a safety, never the end of a real fall: 10 s is a free fall of 490 m from rest, over twice
+ * the highest drop past any route's edge (the Gorge at Crown Point, 223 m; tests/sim/high-riders.test.ts
+ * holds the two together). It used to be 3 s, which stopped any fall of more than about 44 m in mid-air
+ * (the Golden Gate's bodies hung 38 m over the water, in view of the cut-away's held camera: the one live
+ * check of 2026-10-07); and a body it ends goes into the water, never stopped where it is.
+ */
+export const OVERBOARD_MAX_TICKS = 600;
+/**
+ * How far under the water a body that fell from a high drop (`riders.highDropM`) ends, m: deeper than a
+ * body is big, so the water hides it. A low splash floats at the surface for its gag.
+ */
+export const HIGH_PLUNGE_M = 3;
+/**
+ * A splash respawn passes over a lane a vehicle stands in within this far along the road, either way, m: a
+ * car at 25 m/s is about a second away.
+ */
+const RESPAWN_CLEAR_M = 25;
 /** A car a flying body hits keeps this share of its speed: it brakes (hard hit, soft hit). */
 const CAR_KEEP_HARD = 0.4;
 const CAR_KEEP_SOFT = 0.8;
@@ -550,12 +569,17 @@ function startOverboard(
   const cross = data['cause'] === 'over' ? crossingOf(config, data, pos.dir) : null;
   if (cross) {
     const dropM = num(data, 'dropM');
+    const past = data['past'];
     r.over = {
-      past: data['past'] === 'water' ? 'water' : 'drop',
+      past: past === 'water' || past === 'ground' ? past : 'drop',
       dropM,
       high: highDrop(world.params, dropM),
     };
     r.railAt = cross;
+    // A crossing over a hole in the road (a gap's missing span, where nothing stands at the edge): no road to
+    // wake on there, so the gap's own rule says where (its far side, or the main road).
+    const hole = gapAt(config.road, cross.edge, cross.s, 0);
+    if (hole) r.gap = { edge: cross.edge, id: hole.id };
   } else {
     const id = data['feature'];
     const f =
@@ -568,6 +592,20 @@ function startOverboard(
   for (const c of [r.riderRig, r.bikeRig]) {
     c.overboard = true;
     emit(world, 'railOver', m.id, { body: c.kind, ...overData(r, true) }, { causeId: r.causeId });
+  }
+  // Out of bounds onto ground (the course's honest edges, sim/riders/course.ts): down already, where he came
+  // down, with nothing to fall into. The penalty starts now (`splash`, `past: 'ground'`: the plain quick
+  // reset, no water and no gag), then the respawn at the crossing as for any fall past the edge.
+  if (r.over?.past === 'ground') {
+    for (const c of [r.riderRig, r.bikeRig]) {
+      c.splashed = true;
+      for (const q of c.p) {
+        q.vx = 0;
+        q.vy = 0;
+        q.vz = 0;
+      }
+      splash(world, config, m, r, c);
+    }
   }
 }
 
@@ -669,7 +707,14 @@ function contacts(
 }
 
 /** The rail and the splash events for one cluster's step. */
-function railEvents(world: World, m: Mover, r: TumbleRecord, c: Cluster, at: ClusterContact): void {
+function railEvents(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  r: TumbleRecord,
+  c: Cluster,
+  at: ClusterContact,
+): void {
   if (at.railOver) {
     // The first body over decides the respawn: a rail's spot, or the gap's rule; and over the barrier
     // line, what lies past and how far down (2026-10-06).
@@ -682,11 +727,18 @@ function railEvents(world: World, m: Mover, r: TumbleRecord, c: Cluster, at: Clu
     if (r.overboard < 0) r.overboard = 0;
     r.railAt ??= { edge: at.edge, s: at.s, d: at.d, dir: m.pos.dir };
   }
-  if (at.splash) splash(world, m, r, c);
+  if (at.splash) splash(world, config, m, r, c);
 }
 
-/** A cluster reached the water: the event, and the penalty clock starts at the first one. */
-function splash(world: World, m: Mover, r: TumbleRecord, c: Cluster): void {
+/**
+ * A cluster reached the water: the event, and the penalty clock starts at the first one. From a high drop
+ * it goes under (`HIGH_PLUNGE_M`): a fall over `riders.highDropM` ends below the surface, so nothing lies
+ * still on the water in view of the cut-away's held camera (the one live check of 2026-10-07). A low
+ * splash floats at the surface, for its gag.
+ */
+function splash(world: World, config: SimConfig, m: Mover, r: TumbleRecord, c: Cluster): void {
+  // Out of bounds onto ground there is no water to go under: the body stays where it came down.
+  if (r.over?.high === true && r.over.past !== 'ground') intoWater(config.road, c, HIGH_PLUNGE_M);
   const at = centre(c.p);
   const penaltyTicks = secondsToTicks(param(world, 'tumble.splashPenaltyS'));
   const data = { body: c.kind, penaltyTicks, x: at.x, z: at.z, ...overData(r, false) };
@@ -703,12 +755,14 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
   if (wantsSkip(world, config, m)) r.skipQueued = true;
   if (dt > 0) {
     const offRoad = offRoadOn(world.params);
-    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad);
-    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad);
+    // The structures' tops (the physical world, sim/riders/structures.ts): a crash on a roof rests there.
+    const tops = bodyTopsOf(world, config);
+    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad, tops);
+    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad, tops);
     contacts(world, config, m, r, r.riderRig, on);
     contacts(world, config, m, r, r.bikeRig, bikeAt);
-    railEvents(world, m, r, r.riderRig, on);
-    railEvents(world, m, r, r.bikeRig, bikeAt);
+    railEvents(world, config, m, r, r.riderRig, on);
+    railEvents(world, config, m, r, r.bikeRig, bikeAt);
     r.rider = { ...centre(r.riderRig.p), edge: on.edge };
     r.bike = { ...centre(r.bikeRig.p), edge: bikeAt.edge };
     const band = wallBand(road, on.edge, on.s, offRoad);
@@ -729,13 +783,8 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
       if (r.overboard >= OVERBOARD_MAX_TICKS) {
         for (const c of [r.riderRig, r.bikeRig]) {
           if (!c.overboard || c.splashed) continue;
-          c.splashed = true;
-          for (const q of c.p) {
-            q.vx = 0;
-            q.vy = 0;
-            q.vz = 0;
-          }
-          splash(world, m, r, c);
+          intoWater(config.road, c);
+          splash(world, config, m, r, c);
         }
       }
       return;
@@ -843,14 +892,51 @@ function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): vo
   const woke = gap && r.gap ? gapRespawn(config, m, r, r.gap.edge, gap) : null;
   const at = woke?.pos ?? r.railAt ?? m.pos;
   const dir = woke ? woke.pos.dir : handBackDir(config, r, at.edge, at.s);
-  const band = ownSideBand(config.road, at.edge, at.s, dir);
-  const d = at.d < band.lo ? band.lo : at.d > band.hi ? band.hi : at.d;
-  const pos: RoadPos = { edge: at.edge, s: at.s, d, dir };
+  const pos: RoadPos = { edge: at.edge, s: at.s, d: respawnD(world, config, at.edge, at.s, dir, at.d), dir };
   const data = { reason: 'splash', crashTick: r.crashTick, splashTick: r.splashTick, ...overData(r, false) };
   emit(world, 'respawn', m.id, woke && gap ? { ...data, gap: gap.id, at: woke.at } : data, {
     causeId: r.causeId,
   });
   remount(world, config, m, pos);
+}
+
+/**
+ * The one respawn rule after any overboard (over a barrier or into a gap; the one live check of 2026-10-07:
+ * the Seven Mile woke him against its rail, the Golden Gate by its centre line): across the road at (edge, s),
+ * he wakes at the centre of a drive lane of his own direction `dir`, the one nearest `nearD` (where he went
+ * over), clear of the rails; one a vehicle stands in within `RESPAWN_CLEAR_M` along is passed over for the
+ * next, and with none clear the nearest is kept (the respawn ghost lets traffic pass through him). A lane
+ * whose centre lies over a gap is never chosen. A road with no drive lane his way keeps the old rule: the
+ * point of his own side's band nearest `nearD`.
+ */
+function respawnD(
+  world: World,
+  config: SimConfig,
+  edge: number,
+  s: number,
+  dir: 1 | -1,
+  nearD: number,
+): number {
+  const road = config.road;
+  const lanes = road
+    .lanesAt(edge, s)
+    .filter((l) => l.kind === 'drive' && l.direction === dir && !gapAt(road, edge, s, l.dCenterM))
+    .map((l) => ({ d: l.dCenterM, half: l.widthM / 2 }))
+    .sort((a, b) => Math.abs(a.d - nearD) - Math.abs(b.d - nearD) || a.d - b.d);
+  const nearest = lanes[0];
+  if (!nearest) {
+    const band = ownSideBand(road, edge, s, dir);
+    return nearD < band.lo ? band.lo : nearD > band.hi ? band.hi : nearD;
+  }
+  const taken = (lane: { d: number; half: number }) =>
+    world.movers.some(
+      (v) =>
+        v.kind === 'vehicle' &&
+        v.pos.edge === edge &&
+        Math.abs(v.pos.s - s) < RESPAWN_CLEAR_M &&
+        Math.abs(v.pos.d - lane.d) < lane.half,
+    );
+  return (lanes.find((l) => !taken(l)) ?? nearest).d;
 }
 
 /**

@@ -3,11 +3,14 @@ import * as feed from './ticker-feed';
 import type { BoardItem, VisibleContent } from '../render';
 import type { SimEvent } from '../sim/api';
 import {
+  createOutOfBounds,
   createSeenPoll,
   landingLineFor,
   landingLineItem,
+  outOfBoundsLineFor,
   producerAskItem,
   producerThanksItem,
+  resetOutOfBounds,
   seenKindOf,
   SEEN_POLL_EVERY,
 } from './ticker-feed';
@@ -171,5 +174,88 @@ describe('the poll for what is in view', () => {
     expect(seenKindOf('billboard')).toBe('billboard');
     expect(seenKindOf('sign')).toBe('sign');
     expect(seenKindOf('cone')).toBe('sign');
+  });
+});
+
+// The physical world (the maintainer, 2026-10-06, [decided]: a road race in a physical world with honest edges):
+// out of bounds is one quick reset, and it reads at a glance: a short, plain line on the top ticker, a `system`
+// line (a transient item in the strip's own slot, never over a control; docs/architecture.md, "Transient
+// cards"), for a fall that has no gag of its own: out of bounds onto ground, or a low drop onto it. A splash into
+// water keeps its gator or fisherman, and a high drop is a clean cut-away with no line of text (tone guide).
+const fall = (actor: number, data: SimEvent['data'], tick = 300): SimEvent => ({
+  tick,
+  type: 'splash',
+  actor,
+  data: { body: 'rider', penaltyTicks: 240, ...data },
+});
+const woke = (actor: number, tick = 540): SimEvent => ({
+  tick,
+  type: 'respawn',
+  actor,
+  data: { reason: 'splash' },
+});
+
+describe('the out-of-bounds line', () => {
+  it('is a plain system line, with the wait in seconds, for the player’s fall onto ground or a low drop', () => {
+    for (const past of ['ground', 'drop']) {
+      const state = createOutOfBounds();
+      const line = outOfBoundsLineFor([fall(ME, { past, high: false })], ME, state);
+      expect(line, past).toEqual({ cls: 'system', text: 'OUT OF BOUNDS. BACK ON THE ROAD IN 4 SECONDS.' });
+    }
+  });
+
+  it('is short and plain: one sentence pair, no shouting or winking', () => {
+    const line = outOfBoundsLineFor([fall(ME, { past: 'ground' })], ME, createOutOfBounds());
+    expect(line?.text.length ?? 99).toBeLessThanOrEqual(48);
+    expect(line?.text).not.toMatch(/[!?…]|\.\.\./);
+  });
+
+  it('says the wait the sim asked for: a second, two, six', () => {
+    const wait = (ticks: number) =>
+      outOfBoundsLineFor([fall(ME, { past: 'ground', penaltyTicks: ticks })], ME, createOutOfBounds())?.text;
+    expect(wait(60)).toBe('OUT OF BOUNDS. BACK ON THE ROAD IN 1 SECOND.');
+    expect(wait(120)).toBe('OUT OF BOUNDS. BACK ON THE ROAD IN 2 SECONDS.');
+    expect(wait(360)).toBe('OUT OF BOUNDS. BACK ON THE ROAD IN 6 SECONDS.');
+    // No wait in the event (an older recording): still the line, with no number to get wrong.
+    const bare: SimEvent = { tick: 300, type: 'splash', actor: ME, data: { past: 'ground' } };
+    expect(outOfBoundsLineFor([bare], ME, createOutOfBounds())?.text).toBe(
+      'OUT OF BOUNDS. BACK ON THE ROAD SOON.',
+    );
+  });
+
+  it('is none for a splash into water (the gator and the fisherman say it) or a high drop (a clean cut-away)', () => {
+    expect(outOfBoundsLineFor([fall(ME, { past: 'water' })], ME, createOutOfBounds())).toBeNull();
+    expect(
+      outOfBoundsLineFor([fall(ME, { past: 'water', high: false })], ME, createOutOfBounds()),
+    ).toBeNull();
+    for (const past of ['ground', 'drop', 'water'])
+      expect(outOfBoundsLineFor([fall(ME, { past, high: true })], ME, createOutOfBounds()), past).toBeNull();
+  });
+
+  it('is none for a rival’s fall, for other events, and for a splash that says nothing of where', () => {
+    expect(outOfBoundsLineFor([fall(3, { past: 'ground' })], ME, createOutOfBounds())).toBeNull();
+    expect(outOfBoundsLineFor([woke(ME)], ME, createOutOfBounds())).toBeNull();
+    expect(outOfBoundsLineFor([fall(ME, {})], ME, createOutOfBounds())).toBeNull();
+    expect(outOfBoundsLineFor([], ME, createOutOfBounds())).toBeNull();
+  });
+
+  it('says it once a fall: the bike’s splash after the rider’s adds nothing, and the next fall says it again', () => {
+    const state = createOutOfBounds();
+    expect(outOfBoundsLineFor([fall(ME, { past: 'ground' }, 300)], ME, state)).not.toBeNull();
+    expect(outOfBoundsLineFor([fall(ME, { past: 'ground', body: 'bike' }, 302)], ME, state)).toBeNull();
+    // A rival waking is not the player waking.
+    outOfBoundsLineFor([woke(3, 400)], ME, state);
+    expect(outOfBoundsLineFor([fall(ME, { past: 'ground' }, 410)], ME, state)).toBeNull();
+    outOfBoundsLineFor([woke(ME, 540)], ME, state);
+    expect(outOfBoundsLineFor([fall(ME, { past: 'drop' }, 900)], ME, state)).not.toBeNull();
+  });
+
+  it('a fall and the waking in one step still says the line, and a new race starts clean', () => {
+    const state = createOutOfBounds();
+    expect(outOfBoundsLineFor([fall(ME, { past: 'ground' }), woke(ME)], ME, state)).not.toBeNull();
+    expect(outOfBoundsLineFor([fall(ME, { past: 'ground' }, 700)], ME, state)).not.toBeNull();
+    state.open = true;
+    resetOutOfBounds(state);
+    expect(outOfBoundsLineFor([fall(ME, { past: 'ground' }, 5)], ME, state)).not.toBeNull();
   });
 });

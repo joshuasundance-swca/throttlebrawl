@@ -5,8 +5,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_FRONT_TAGS,
+  courseEdgeTopAt,
+  drawnEdgeAt,
   EDGE_TOP_BY_TAG,
   edgeTopAt,
+  GROUND_EDGE_TOP_M,
   pastAt,
   WATER_LEVEL_M,
   waterLevelOf,
@@ -113,5 +116,44 @@ describe("waterLevelOf: the network's water, and a drop's floor", () => {
     expect(waterLevelOf(road([], [], 'osm-pnw-samish'))).toBe(82.85);
     expect(waterLevelOf(road([], [], 'osm-keys-seven-mile'))).toBe(0);
     expect(waterLevelOf(road([], []))).toBe(0);
+  });
+});
+
+describe('the honest edges (2026-10-06): what is drawn at a band edge, and what a flight must clear there', () => {
+  const at = (barriers: readonly BakedBarrier[], tags: readonly BakedTag[]) => {
+    const r = road(barriers, tags);
+    return { drawn: drawnEdgeAt(r, 0, 100, 'right'), top: courseEdgeTopAt(r, 0, 100, 'right') };
+  };
+
+  it('nothing at a soft edge or a bare hard edge with ground past it: open, cleared at any height', () => {
+    // Soft ground runs on (palms, a town's kerb): nothing stands.
+    expect(at([], [tag('palms')])).toEqual({ drawn: null, top: 0 });
+    expect(at([], [tag('town')])).toEqual({ drawn: null, top: 0 });
+    // A side no land tag covers, on a road with tags, and nothing past it but ground: a connector's side.
+    expect(at([], [tag('palms', 'left')])).toEqual({ drawn: null, top: 0 });
+    // Control: the old rule held it at any height (edgeTopAt Infinity), the invisible wall this replaces.
+    expect(edgeTopAt(road([], [tag('palms', 'left')]), 0, 100, 'right')).toBe(Infinity);
+  });
+
+  it('what stands is named and cleared above its drawn top: barriers, rails, parapets, ferns and fences', () => {
+    expect(at([bar('rail', 1)], [tag('towers')])).toEqual({ drawn: 'barrier', top: 1 });
+    expect(at([bar('wall', 1.3)], [])).toEqual({ drawn: 'barrier', top: 1.3 });
+    expect(at([], [tag('bluff')])).toEqual({ drawn: 'wall', top: 1.26 });
+    expect(at([], [tag('interstate')])).toEqual({ drawn: 'wall', top: 0.76 });
+    expect(at([], [tag('forest')])).toEqual({ drawn: 'brush', top: GROUND_EDGE_TOP_M.brush });
+    expect(at([], [tag('gardens')])).toEqual({ drawn: 'fence', top: GROUND_EDGE_TOP_M.fence });
+    expect(at([], [tag('water-open')])).toEqual({ drawn: 'water', top: 0 });
+    expect(at([], [tag('mangrove')])).toEqual({ drawn: 'water', top: 0 });
+  });
+
+  it('a building front is a front, a wall at any height to the road (the sim meets planned ones itself)', () => {
+    for (const t of BUILDING_FRONT_TAGS)
+      expect(at([], [tag(t)]), t).toEqual({ drawn: 'front', top: Infinity });
+  });
+
+  it("a bare deck's edge over a drop holds on the ground (the drop) and is cleared in the air", () => {
+    // A bridge with no land and no water under it, and no rail: the deck's edge.
+    expect(at([], [tag('bridge')])).toEqual({ drawn: 'drop', top: 0 });
+    expect(pastAt(road([], [tag('bridge')]), 0, 100, 'right')).toBe('drop');
   });
 });

@@ -8,7 +8,7 @@
 //   the bike and off the road: render/ no longer draws a landing line of its own;
 // - the poll for the signs and billboards in view, so the veto's "recently seen" list names them.
 import type { BoardItem, VisibleContent } from '../render';
-import type { SimEvent } from '../sim/api';
+import { SIM_DT, type SimEvent } from '../sim/api';
 import type { GameUi } from '../ui';
 
 /** An item on the top ticker, as `GameUi.ticker.push` takes it (ui/ticker.ts). */
@@ -63,6 +63,52 @@ export function landingLineFor(
 /** A landing line as the strip's `line` item: its words on one line, vetoable by its reference. */
 export function landingLineItem(item: BoardItem, tick: number, raceId: string): TickerItem {
   return { cls: 'line', text: oneLine(item.text), contentRef: item.ref, tick, raceId };
+}
+
+/**
+ * Whether the player's fall is being waited out: the line is said at the first `splash` of a fall (the rider's body
+ * and the bike's each splash) and not again until he has woken (`respawn`).
+ */
+export interface OutOfBoundsState {
+  open: boolean;
+}
+
+export const createOutOfBounds = (): OutOfBoundsState => ({ open: false });
+
+/** A new race: nothing is being waited out. */
+export const resetOutOfBounds = (state: OutOfBoundsState): void => {
+  state.open = false;
+};
+
+/**
+ * The out-of-bounds line (the maintainer, 2026-10-06, [decided]: a road race in a physical world with honest
+ * edges; crossing the course's edge has a visible, consistent consequence, the quick reset with its time penalty).
+ * A fall that has no gag of its own reads at a glance as a short, plain `system` line on the top ticker, in the
+ * tone guide's deadpan sign voice and no joke: out of bounds onto ground (`past: 'ground'`) or a low drop onto it
+ * (`past: 'drop'`), by the player. A splash into water keeps its gator or fisherman and its sound, and a high drop
+ * is a clean cut-away with no line of text (tone guide, "Fall off a bridge"), so neither says anything here.
+ * Said once a fall (`state`), with the wait the sim asked for (`penaltyTicks`).
+ */
+export function outOfBoundsLineFor(
+  events: readonly SimEvent[],
+  playerId: SimEvent['actor'],
+  state: OutOfBoundsState,
+): TickerItem | null {
+  let line: TickerItem | null = null;
+  for (const e of events) {
+    if (e.actor !== playerId) continue;
+    if (e.type === 'respawn') state.open = false;
+    if (e.type !== 'splash' || state.open) continue;
+    const past = e.data['past'];
+    if ((past !== 'ground' && past !== 'drop') || e.data['high'] === true) continue;
+    state.open = true;
+    const ticks = e.data['penaltyTicks'];
+    const seconds =
+      typeof ticks === 'number' && Number.isFinite(ticks) ? Math.max(1, Math.round(ticks * SIM_DT)) : 0;
+    const wait = seconds > 0 ? `IN ${seconds} ${seconds === 1 ? 'SECOND' : 'SECONDS'}` : 'SOON';
+    line = { cls: 'system', text: `OUT OF BOUNDS. BACK ON THE ROAD ${wait}.` };
+  }
+  return line;
 }
 
 /** The producer's ask, as it is put (it pays `cash` when met). Not vetoable: it is a game mechanic. */

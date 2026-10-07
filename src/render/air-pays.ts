@@ -18,9 +18,13 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  Quaternion,
+  Vector3,
 } from 'three';
+import type { StructurePlan } from '../road';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
+import { fitRoof } from './roof-fit';
 import { groundYOf } from './shadows';
 
 /** The chalk's colours: clean, and crooked. */
@@ -122,6 +126,11 @@ export class AirPays {
   private readonly markMat: MeshBasicMaterial;
   private readonly clean = new Color(CHALK_CLEAN);
   private readonly crookedColor = new Color(CHALK_CROOKED);
+  private structures: StructurePlan | null = null;
+  private readonly up = new Vector3(0, 1, 0);
+  private readonly normal = new Vector3();
+  private readonly tilt = new Quaternion();
+  private readonly level = new Quaternion();
   private pendingCrash: SimEvent[] = [];
   private flying: Flying | null = null;
   private lastT = -1;
@@ -151,6 +160,11 @@ export class AirPays {
   }
 
   /** The region's live  }
+
+  /** The race's structures plan, once there is one: the mark lies on a roof (see `updateMark`). Null: the ground. */
+  setStructures(plan: StructurePlan | null): void {
+    this.structures = plan;
+  }
 
   /** Sim events: a newspaper crash (the paper flies off). */
   pushEvents(events: readonly SimEvent[]): void {
@@ -185,8 +199,26 @@ export class AirPays {
     const x = from.x + (td.x - from.x) * t;
     const y = from.y + (td.y - from.y) * t;
     const z = from.z + (td.z - from.z) * t;
-    this.mark.position.set(x, y + LIFT_M, z);
-    this.mark.rotation.set(0, td.heading, 0);
+    // On a roof (the maintainer, 2026-10-06: "land on it and ride on it"): the mark lies in the roof's plane, as
+    // the sim's forecast reads the same roof, so on a pitched one it is not sunk into the slope; one that would
+    // hang over the eave is drawn smaller. Off any roof it is flat on the ground as ever.
+    const roof = this.structures
+      ? fitRoof(this.structures, x, y, z, td.heading, RING_R * 2, RING_R * 2)
+      : null;
+    if (roof) {
+      this.mark.position.set(x, roof.y + LIFT_M, z);
+      this.tilt.setFromAxisAngle(this.up, td.heading);
+      if (roof.nx !== 0 || roof.nz !== 0)
+        this.tilt.premultiply(
+          this.level.setFromUnitVectors(this.up, this.normal.set(roof.nx, roof.ny, roof.nz)),
+        );
+      this.mark.quaternion.copy(this.tilt);
+      this.mark.scale.set(roof.scale, 1, roof.scale);
+    } else {
+      this.mark.position.set(x, y + LIFT_M, z);
+      this.mark.rotation.set(0, td.heading, 0);
+      this.mark.scale.set(1, 1, 1);
+    }
     this.markMat.color.copy(td.crooked ? this.crookedColor : this.clean);
     // It firms up as the ground comes near (faint at the top of a long jump).
     this.markMat.opacity = 0.55 + 0.35 * Math.min(1, Math.max(0, 1 - td.inS / 1.5));

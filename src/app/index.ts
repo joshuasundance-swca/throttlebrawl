@@ -85,6 +85,7 @@ import { createCountdown } from './countdown';
 import { createLookFallback } from './look-fallback';
 import {
   createSim,
+  loadStructurePlanners,
   SIM_DT,
   type EventPatch,
   type FieldLevel,
@@ -118,7 +119,7 @@ import {
   withEventPatch,
 } from './config';
 import { motionAmounts, osPrefersReducedMotion } from './motion';
-import { clearLoadRetry, failureOf, offerLoadRetry, routesNote, type LoadFailure } from './load-retry';
+import { clearLoadRetry, failureOf, offerLoadRetry, routesNoteView, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
 import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
@@ -141,11 +142,14 @@ import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
 import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
+  createOutOfBounds,
   createSeenPoll,
   landingLineFor,
   landingLineItem,
+  outOfBoundsLineFor,
   producerAskItem,
   producerThanksItem,
+  resetOutOfBounds,
 } from './ticker-feed';
 import { APP_TUNING, presentationOwner } from './tuning';
 
@@ -561,6 +565,8 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   let landingPool: readonly BoardItem[] = [];
   let lastLandingRef: string | null = null;
+  /** Whether the player's fall out of bounds is being waited out (the line is said once a fall). */
+  const outOfBounds = createOutOfBounds();
   /** The poll for the signs and billboards in view ("recently seen", the veto's list). */
   const seenPoll = createSeenPoll();
   /**
@@ -1083,6 +1089,7 @@ export function createApp(opts: AppOptions): AppHandle {
       renderer.pushEvents(events);
       input.onEvents(events, playerId);
       noteLanding(events);
+      noteOutOfBounds(events);
     }
     // The wheelie's band, every step (null while none): the buzz when it turns high is a swing.
     input.onMoves(curr.moves);
@@ -1119,6 +1126,9 @@ export function createApp(opts: AppOptions): AppHandle {
             lookBack: input.lastActions().lookBack,
             // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
             aspect: viewAspect(),
+            // The race's structures plan, as the renderer read it: the eye stays out of the buildings and off the
+            // road far below a roof (the physical world, 2026-10-06; camera/solids.ts).
+            structures: renderer.structures(),
           });
           // The finish shot: past the line (never a bust), a landmark within reach is framed whole.
           if (shotFoci.length > 0 && outcome.doneTick !== null && !outcome.bust && race) {
@@ -1199,6 +1209,8 @@ export function createApp(opts: AppOptions): AppHandle {
   // The region picker (playtest 1c): a pick fetches that region's road data in the background,
   // and the menu's backdrop shows its road once loaded; Race starts there.
   let loadingRoads = false;
+  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
+  const reloadPage = () => window.location.reload();
   const pickedChoice = (): RegionChoice | undefined => {
     const picked = ui.region;
     return picked ? regions.find((r) => r.id === picked) : undefined;
@@ -1229,13 +1241,34 @@ export function createApp(opts: AppOptions): AppHandle {
     if (choice && state) pickLoad = { id: choice.id, state };
     const picked = pickedChoice();
     if (!picked || library.hasRoads(picked.packId)) pickLoad = null;
-    ui.setRoutesNote(picked && pickLoad?.id === picked.id ? routesNote(picked.name, pickLoad.state) : null);
+    if (!picked || pickLoad?.id !== picked.id) ui.setRoutesNote(null);
+    else {
+      // A missing build's word carries the Reload button; inside the host's wait it counts the wait down.
+      const word = routesNoteView(picked.name, pickLoad.state, reloadPage);
+      ui.setRoutesNote(word.text, word.action);
+    }
   };
-  /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
-  const reloadPage = () => window.location.reload();
   /** The packs a race in this region reads (its pack and base) whose road data is not in yet. */
   const roadsMissing = (choice: RegionChoice): string[] =>
     packClosure(registry, choice.packId).filter((id) => !library.hasRoads(id));
+  /**
+   * The physical world's planners (the structures the sim meets: its buildings, landmarks and roofs; one
+   * lazy chunk, never in the first load), fetched in the background with the Keys' real roads; a race waits
+   * for them as it waits for its roads, since its world is planned from them as it starts.
+   */
+  let plannersIn = false;
+  let plannersLoading: Promise<void> | null = null;
+  const loadPlanners = (): Promise<void> =>
+    (plannersLoading ??= loadStructurePlanners().then(
+      () => {
+        plannersIn = true;
+      },
+      (err: unknown) => {
+        // Tried again by the next race (a dropped connection on the phone).
+        plannersLoading = null;
+        throw err;
+      },
+    ));
   /**
    * Fetches the road data a race in a region needs (its pack's, and the Keys' real roads, which
    * every region's content hash covers through base), with a busy line; false (and a notice) when
@@ -1246,7 +1279,7 @@ export function createApp(opts: AppOptions): AppHandle {
     ui.setBusy(`Loading ${choice.name}`);
     if (!library.hasRoads(choice.packId)) sayPickedRoads(choice, 'loading');
     try {
-      await Promise.all(roadsMissing(choice).map((id) => library.loadRoads(id)));
+      await Promise.all([...roadsMissing(choice).map((id) => library.loadRoads(id)), loadPlanners()]);
       roadsArrived(library.registry());
       return true;
     } catch (err) {
@@ -1341,6 +1374,9 @@ export function createApp(opts: AppOptions): AppHandle {
     });
   };
   if (!library.hasRoads('base')) loadKeysRoads();
+  // The physical world's planners, in the background too (a race that finds them missing fetches them
+  // again, with a busy line).
+  void loadPlanners().catch((err: unknown) => console.warn('the world planners did not load', err));
 
   // ---- The career flow (run W-R) ----------------------------------------------------------------
   const careerReady: Promise<CareerFlow | null> = import('./career-flow').then(
@@ -1386,6 +1422,7 @@ export function createApp(opts: AppOptions): AppHandle {
     lookWatch.reset();
     seenPoll.reset();
     lastLandingRef = null;
+    resetOutOfBounds(outOfBounds);
     input.onMoves(null);
     prev = null;
     curr = race.snapshot();
@@ -1415,10 +1452,11 @@ export function createApp(opts: AppOptions): AppHandle {
     if (state === 'race' || state === 'results') go('back');
     if (transition(state, 'race') === null) return;
     const missing = packClosure(registry, packOf(node.event)).filter((id) => !library.hasRoads(id));
-    if (missing.length > 0) {
+    // Its roads, and the planners its world is planned from (loadPlanners).
+    if (missing.length > 0 || !plannersIn) {
       loadingRoads = true;
       ui.setBusy(`Loading ${def.regionName}`);
-      void Promise.all(missing.map((id) => library.loadRoads(id)))
+      void Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()])
         .then(
           () => {
             roadsArrived(library.registry());
@@ -1498,6 +1536,16 @@ export function createApp(opts: AppOptions): AppHandle {
     const item = landingLineItem(pick.item, pick.tick, `seed-${race.config.seed}`);
     ui.ticker.push(item);
     ui.narrative.noteSeen({ contentRef: pick.item.ref, kind: 'sign', label: item.text, tick: pick.tick });
+  }
+
+  /**
+   * The player's fall out of bounds onto ground, or off a low drop onto it, reads as one plain line on the top
+   * ticker (the physical world, 2026-10-06; ticker-feed.ts `outOfBoundsLineFor`): a `system` line in the strip's
+   * own slot, so it is never over a control. A splash into water and a high drop have their own presentation.
+   */
+  function noteOutOfBounds(events: readonly SimEvent[]): void {
+    const line = outOfBoundsLineFor(events, playerId, outOfBounds);
+    if (line) ui.ticker.push(line);
   }
 
   /** One step of a career race: its rules, its prompts, the objective line, an early end. */
@@ -1775,7 +1823,7 @@ export function createApp(opts: AppOptions): AppHandle {
       // race's content hash covers them (through base), so a race waits for them rather than start
       // under a replay key that moves when they arrive.
       const choice = pickedChoice() ?? regions.find((r) => r.eventId === eventId);
-      if (choice && roadsMissing(choice).length > 0) {
+      if (choice && (roadsMissing(choice).length > 0 || !plannersIn)) {
         void loadRegion(choice).then((ok) => {
           if (ok) handle.startRace();
         });
@@ -1876,5 +1924,11 @@ export function createApp(opts: AppOptions): AppHandle {
   go('booted');
   ui.show('start');
   loop.start();
+  // The sound's context is made here, once the start screen has painted, and not in the start tap:
+  // making it is the tap's biggest cost (about 400 of its 408 ms of click handling on the dev
+  // machine), and only starting it needs the tap's gesture (audio/index.ts, `prepare`). A page that
+  // never paints (a hidden tab) leaves it to the tap, as before.
+  if (typeof requestAnimationFrame === 'function')
+    requestAnimationFrame(() => setTimeout(() => audio.prepare(), 0));
   return handle;
 }

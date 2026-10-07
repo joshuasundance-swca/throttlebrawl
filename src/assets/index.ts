@@ -21,6 +21,12 @@ export interface AssetLoad<T> {
   fellBack: boolean;
   /** Why it fell back, in plain words. */
   error?: string;
+  /**
+   * Set (true) when it fell back because of the host, not the file: a 429 or other busy or briefly down
+   * answer, or no connection. The manifest asks for it again on the next `load`, and a caller that keeps
+   * its own record of a failed asset keeps it only until then.
+   */
+  retryable?: true;
 }
 
 export type AssetStatus = 'pending' | 'loading' | 'loaded' | 'fallback';
@@ -47,7 +53,9 @@ export interface AssetManifest {
   resolve(id: string): AssetIndexEntry | null;
   /**
    * Loads an asset, or returns the procedural stand-in when it is missing or fails; it rejects only
-   * if the stand-in itself throws. Each id loads once; later calls share the first result.
+   * if the stand-in itself throws. Each id loads once and later calls share the first result, except
+   * that a fall-back with `retryable` set (the host's wait, a busy host, no connection) is not kept:
+   * the next call asks again (polish batch L).
    */
   load<T>(id: string, standIn: () => T, opts?: LoadOptions<T>): Promise<AssetLoad<T>>;
   progress(): AssetProgress;
@@ -64,6 +72,10 @@ export interface AssetManifestOptions {
 function defaultBase(): string {
   return typeof document !== 'undefined' ? document.baseURI : 'http://localhost/';
 }
+
+/** Answers that say the host was busy or briefly down, not "no such file" (platform/'s retry-fetch.ts's rule). */
+const hostTrouble = (status: number): boolean =>
+  status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
 
 function hex(buf: ArrayBuffer): string {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -131,8 +143,15 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
     emit();
     return result;
   };
-  const fallBack = <T>(id: string, standIn: () => T, error: string): AssetLoad<T> =>
-    settle({ id, source: 'procedural', value: standIn(), fellBack: true, error });
+  const fallBack = <T>(id: string, standIn: () => T, error: string, retryable = false): AssetLoad<T> =>
+    settle({
+      id,
+      source: 'procedural',
+      value: standIn(),
+      fellBack: true,
+      error,
+      ...(retryable ? { retryable: true as const } : {}),
+    });
 
   async function loadFile<T>(
     entry: AssetIndexEntry,
@@ -146,13 +165,17 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
     let data: ArrayBuffer;
     try {
       const res = await fetchFn(url);
-      if (!res.ok) return fallBack(entry.id, standIn, `HTTP ${res.status} for ${entry.path}`);
+      if (!res.ok) {
+        // The host was busy or asked for a wait (the loader's hold answers 429 too): asked for again later.
+        void res.body?.cancel().catch(() => undefined);
+        return fallBack(entry.id, standIn, `HTTP ${res.status} for ${entry.path}`, hostTrouble(res.status));
+      }
       data = await readBody(res, (n) => {
         loadedBytes.set(entry.id, n);
         emit();
       });
     } catch (err) {
-      return fallBack(entry.id, standIn, `network: ${String(err)}`);
+      return fallBack(entry.id, standIn, `network: ${String(err)}`, true);
     }
     // Without SubtleCrypto (an insecure origin) the check cannot run; the file is still used.
     if (entry.hash && typeof crypto !== 'undefined' && crypto.subtle) {
@@ -190,6 +213,13 @@ export function createAssetManifest(packIndex: PackIndexFn, opts: AssetManifestO
         );
       else p = loadFile(entry, standIn, o);
       inFlight.set(id, p);
+      // A fall-back the host caused is not kept: the next load asks again, once the loader lets it.
+      void p.then(
+        (res) => {
+          if (res.retryable && inFlight.get(id) === p) inFlight.delete(id);
+        },
+        () => undefined,
+      );
       return p;
     },
   };

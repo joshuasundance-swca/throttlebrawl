@@ -81,17 +81,24 @@ function config(tuning: Record<string, number>): SimConfig {
 
 const SYSTEMS: SimSystem[] = [ridersSystem, trafficSystem];
 const hold: SimInput = { steer: 0, throttle: 0, brake: 0, flags: 0 };
+/** A rider coming round the bend: held in place each tick, at a riding pace, m/s. */
+const COMING_MPS = 12;
 
-/** One vehicle's u after `seconds`, with the rider standing at `riderS` (riding +s). */
+/**
+ * One vehicle's u after `seconds`, with the rider held at `riderS` (riding +s) at `riderMps`: coming
+ * round at a riding pace by default, or standing still at 0 (a cop waiting on the shoulder).
+ */
 function vehicleAfter(
   tuning: Record<string, number>,
   riderS: number,
   car: { u: number; dir: 1 | -1 },
   seconds: number,
+  riderMps = COMING_MPS,
 ): number {
   const c = config({ 'traffic.density': 0, ...tuning });
   const world = createWorld(c);
   const rider = addMover(world, 'rider', { edge: 0, s: riderS, d: 1.7, dir: 1 }, 0);
+  rider.speed = riderMps;
   for (const s of SYSTEMS) s.init(world, c);
   const st = trafficState(world);
   const k = placeVehicle(world, c, {
@@ -102,7 +109,8 @@ function vehicleAfter(
     speed: CAR.cruiseMps,
   });
   for (let t = 0; t < seconds * 60; t++) {
-    rider.speed = 0;
+    Object.assign(rider, { mode: 'Road', h: 0, yaw: 0, speed: riderMps });
+    Object.assign(rider.pos, { s: riderS, d: 1.7 });
     stepWorld(world, c, SYSTEMS, [hold]);
   }
   return st.u[k] ?? 0;
@@ -110,7 +118,7 @@ function vehicleAfter(
 
 describe('hairpin yield: traffic waits short of a tight bend while riders come round it (playtest 4)', () => {
   it('an oncoming car stops 60 m short of the bend, and drives in with the key at 0', () => {
-    // The car comes down c toward the bend (u 800 is its mouth), the rider waits on a at s 350.
+    // The car comes down c toward the bend (u 800 is its mouth), the rider rides on a at s 350.
     const waits = vehicleAfter({}, 350, { u: 1000, dir: -1 }, 20);
     const off = vehicleAfter({ 'traffic.hairpinYieldM': 0 }, 350, { u: 1000, dir: -1 }, 20);
     console.log(
@@ -126,6 +134,20 @@ describe('hairpin yield: traffic waits short of a tight bend while riders come r
     expect(vehicleAfter({}, 100, { u: 1000, dir: -1 }, 20)).toBeLessThan(800);
     // A car going the rider's way, ahead of it, drives through the bend.
     expect(vehicleAfter({}, 350, { u: 420, dir: 1 }, 30)).toBeGreaterThan(800);
+  });
+
+  it('a rider standing still past the bend (a cop waiting on the shoulder) does not hold it for good', () => {
+    // Bridge City (polish H's punch item 5): a deputy parked on the shoulder inside the reach held
+    // two oncoming cars at their wait line for the rest of the race, and the riders who came up the
+    // road stopped nose to nose with them. Standing still, nobody is coming round the bend.
+    const standing = vehicleAfter({}, 350, { u: 1000, dir: -1 }, 20, 0);
+    const coming = vehicleAfter({}, 350, { u: 1000, dir: -1 }, 20);
+    console.log(
+      `[examined] the oncoming car's u after 20 s: ${standing.toFixed(1)} with the rider standing, ` +
+        `${coming.toFixed(1)} with it coming round`,
+    );
+    expect(coming).toBeGreaterThan(800 + 60); // the same spot holds it while the rider comes
+    expect(standing).toBeLessThan(800); // into the bend: a standing rider is not coming round it
   });
 
   it('nothing oncoming appears where it could not stop for the riders in time', () => {

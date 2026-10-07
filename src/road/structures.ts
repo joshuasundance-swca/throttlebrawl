@@ -20,7 +20,8 @@
 //
 // Pure + - * / and core math, like the rest of road/: the same network, seed and planners give the same plan.
 // The planners move here from render layer by layer (2026-10-06); the downtowns' came first
-// (road/structures/downtown.ts). The sim reads no plan yet.
+// (road/structures/downtown.ts). A race reads its plan through `raceStructures`, and the sim meets it
+// (sim/riders/structures.ts: walls to the roofline, roofs a rider lands on and rides).
 import { cos, sin } from '../core';
 import type { RoadNetwork } from './network';
 
@@ -408,6 +409,32 @@ export function planStructures(
   return plan;
 }
 
+/**
+ * The planners loaded so far, by their layer's row (a test's own layer table keeps its own): a planner is a pure
+ * function, so once its lazy chunk is in, a plan that needs it can be made at once (`raceStructures`).
+ */
+const loadedPlanners = new WeakMap<StructureLayerSpec, StructurePlanner>();
+
+/** Loads one layer's planner (its lazy chunk), once, and keeps it. */
+async function loadPlanner(spec: StructureLayerSpec): Promise<StructurePlanner> {
+  const known = loadedPlanners.get(spec);
+  if (known) return known;
+  const planner = await spec.load();
+  loadedPlanners.set(spec, planner);
+  return planner;
+}
+
+/**
+ * Loads every layer's planner (`layers`, every row by default): the app does it with a region's road data, so a
+ * race on any of the region's roads can plan its world as it starts; node tools and the tests do it once at
+ * their start (tests/setup/structures.ts).
+ */
+export async function loadStructurePlanners(
+  layers: Readonly<Record<string, StructureLayerSpec>> = STRUCTURE_LAYERS,
+): Promise<void> {
+  await Promise.all(Object.keys(layers).map((name) => loadPlanner(layers[name] as StructureLayerSpec)));
+}
+
 /** Loads the planners a network needs (lazy chunks) and plans it: what the app awaits before a race starts. */
 export async function ensureStructures(
   road: RoadNetwork,
@@ -420,7 +447,7 @@ export async function ensureStructures(
   const loaded = await Promise.all(
     needed.map((name): Promise<StructurePlanner | undefined> => {
       const spec = layers[name];
-      return spec ? spec.load() : Promise.resolve(undefined);
+      return spec ? loadPlanner(spec) : Promise.resolve(undefined);
     }),
   );
   const planners: Record<string, StructurePlanner | undefined> = {};
@@ -429,8 +456,8 @@ export async function ensureStructures(
 }
 
 /**
- * The plan the sim reads: the kept one, or the empty plan for a network that needs no layer. A network that needs
- * layers and has not been planned throws: the race waits for its world rather than ride with a piece missing.
+ * The plan of a network that has been planned: the kept one, or the empty plan for a network that needs no layer.
+ * A network that needs layers and has not been planned throws.
  */
 export function requireStructures(
   road: RoadNetwork,
@@ -443,5 +470,33 @@ export function requireStructures(
   if (needed.length === 0) return EMPTY;
   throw new Error(
     `structures: network ${road.id} at seed ${seed} is not planned (layers ${needed.join(', ')}); ensureStructures first`,
+  );
+}
+
+/**
+ * The plan a race reads (sim/riders/structures.ts): the kept one; the empty plan for a network that needs no
+ * layer; or, when every planner the network needs has loaded (`loadStructurePlanners`, `ensureStructures`), the
+ * plan made now, the same one `ensureStructures` makes (a plan is a pure function of the network, the seed and
+ * the planners), so a race can start the moment its region's planners are in. A network whose planners have not
+ * loaded throws: the race waits for its world rather than ride with a piece missing.
+ */
+export function raceStructures(
+  road: RoadNetwork,
+  seed: number,
+  layers: Readonly<Record<string, StructureLayerSpec>> = STRUCTURE_LAYERS,
+): StructurePlan {
+  const known = structuresOf(road, seed);
+  if (known) return known;
+  const needed = structureLayersFor(road, layers);
+  if (needed.length === 0) return EMPTY;
+  const planners: Record<string, StructurePlanner | undefined> = {};
+  for (const name of needed) {
+    const spec = layers[name];
+    planners[name] = spec ? loadedPlanners.get(spec) : undefined;
+  }
+  if (needed.every((name) => planners[name] !== undefined))
+    return planStructures(road, seed, planners, layers);
+  throw new Error(
+    `structures: network ${road.id} at seed ${seed} is not planned and its planners have not loaded (layers ${needed.join(', ')}); loadStructurePlanners or ensureStructures first`,
   );
 }

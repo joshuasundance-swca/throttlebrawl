@@ -384,8 +384,10 @@ export function scoreGlb(buf, prop, opts = {}) {
       nodeWorldPos(rootName)?.every((v) => Math.abs(v) < 1e-3),
       `${rootName} at ${nodeWorldPos(rootName)}`,
     );
+    // The upper deck is empty (no car stands where a rider lands: what is drawn is what is met), so the
+    // truck carries at most the lower deck's cars, under it.
     if (!prop.rampTrailer)
-      check('cars_2_to_3', cars.length >= 2 && cars.length <= 3, `${cars.length} car_N nodes`);
+      check('cars_1_to_3', cars.length >= 1 && cars.length <= 3, `${cars.length} car_N nodes`);
     check(
       'wheels_separate_nodes',
       wheelInst.length >= (prop.rampTrailer ? 4 : 6),

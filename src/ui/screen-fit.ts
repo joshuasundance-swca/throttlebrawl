@@ -42,3 +42,34 @@ export function screenFitFindings(paint: ScreenPaint, viewport: { width: number;
     if (paint.footer.some((line) => hit(line, t.box))) out.push(`the footer covers ${t.name}`);
   return [...new Set(out)];
 }
+
+/** Somewhere the menu shows its build id: the footer, the corner stamp, or the line ending its column. */
+export interface BuildIdPlace {
+  name: 'the footer' | 'the corner stamp' | 'the build line';
+  /** As painted now (the page hides a place that gives way, so only a painted one is passed). */
+  box: Box;
+}
+
+/**
+ * The menu's build id is always findable and covers nothing (polish batch I's check, punch 3: at the
+ * largest Text size the menu scrolls, and then the footer and the corner stamp both gave way, so no
+ * build id showed). `places` are those painted now; a place off the screen does not count as found
+ * (the spec scrolls the line into view first). Empty when one is in view and none covers anything.
+ */
+export function buildIdFindings(
+  places: readonly BuildIdPlace[],
+  things: readonly PaintedThing[],
+  viewport: { width: number; height: number },
+): string[] {
+  const inView = (b: Box) =>
+    b.right - b.left > 0.5 &&
+    b.bottom - b.top > 0.5 &&
+    b.left >= -0.5 &&
+    b.top >= -0.5 &&
+    b.right <= viewport.width + 0.5 &&
+    b.bottom <= viewport.height + 0.5;
+  const seen = places.filter((p) => inView(p.box));
+  const out: string[] = seen.length === 0 ? ['the menu shows no build id'] : [];
+  for (const p of seen) for (const t of things) if (hit(p.box, t.box)) out.push(`${p.name} covers ${t.name}`);
+  return [...new Set(out)];
+}

@@ -60,6 +60,8 @@ import {
 import type { LookStyle } from './look';
 import type { RiderRigs } from './riders';
 import type { BakedVehicle, VehicleSet, VehicleSets } from './vehicles';
+import type { StructurePlan } from '../road';
+import { fitRoof } from './roof-fit';
 import {
   BlobShadows,
   DEFAULT_VEHICLE_SHADOW,
@@ -125,6 +127,8 @@ export function entityById(snap: SimSnapshot, id: number): EntitySnapshot | unde
 
 // ---- Colours -----------------------------------------------------------------------------
 
+/** A crash body this far under the ground it falls to (the water) is under it, and throws no shadow, m. */
+const UNDER_M = 0.5;
 const PLAYER = { bike: '#b8322a', rider: '#f2c14e', helmet: '#fff3c4' };
 const LAW = { bike: '#f4f4f4', rider: '#1d2a55', helmet: '#f4f4f4' };
 const RIVAL_RIDERS = ['#e0543a', '#7fd1c7', '#b98ce0', '#9cc56b', '#f28f8f', '#5a8fd6'];
@@ -453,6 +457,8 @@ export class EntityViews {
   readonly root = new Group();
   /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
   private readonly shadows = new BlobShadows();
+  /** The race's structures plan, when it has been made (`setStructures`). */
+  private structures: StructurePlan | null = null;
   private readonly look: LookStyle;
   private readonly proportions: (contentId: string) => RiderProportions;
   private readonly riders = new Map<number, RiderView>();
@@ -536,6 +542,14 @@ export class EntityViews {
   /** The renderer's feel effects, once their lazy chunk has loaded (none drawn before then). */
   setEffects(effects: FeelEffects): void {
     this.effects = effects;
+  }
+
+  /**
+   * The race's structures plan (road/structures.ts), once there is one: a rider's shadow lies on the roof he
+   * rides or is over, tilted to a pitched roof's plane (roof-fit.ts). Null: the road under him, as it was.
+   */
+  setStructures(plan: StructurePlan | null): void {
+    this.structures = plan;
   }
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */
@@ -890,21 +904,50 @@ export class EntityViews {
       }
       const tumble = e.tumble;
       if (tumble) {
-        // Down: the rider and the bike each throw their own, fainter the higher they fly.
-        sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
-        sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        // Down: the rider and the bike each throw their own, fainter the higher they fly. A body under the
+        // water (a high drop's plunge, sim/tumble) throws none: nothing lies still on the water over it in
+        // the cut-away's held view (the one live check of 2026-10-07). A body over a roof (down on it, or flung
+        // across it) throws its shadow on the roof, not on the road inside the building.
+        if (tumble.rider.y >= ground - UNDER_M)
+          this.castOn(sh, tumble.rider, ground, p.heading, ON_FOOT_SHADOW);
+        if (tumble.bike.y >= ground - UNDER_M) this.castOn(sh, tumble.bike, ground, p.heading, RIDER_SHADOW);
         continue;
       }
       if (e.parkedBike) {
         // Running back to the bike: the rider on foot, the bike standing apart.
         const b = e.parkedBike;
-        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.y - ground);
-        sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
+        this.castOn(sh, { x: p.x, y: e.y, z: p.z }, ground, p.heading, ON_FOOT_SHADOW);
+        this.castOn(sh, b, b.y, b.heading, RIDER_SHADOW, 0);
         continue;
       }
-      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.y - ground);
+      this.castOn(sh, { x: p.x, y: e.y, z: p.z }, ground, p.heading, RIDER_SHADOW);
     }
     sh.end();
+  }
+
+  /**
+   * One shadow of a body at `at` (world position): on the roof of the structure under it when the plan has one
+   * (roof-fit.ts: its top no more than a kerb over the body, so a rider who is on or over a roof), else on
+   * `ground` (what the sim says he rides or is over: the road, a deck, a floor). `fixed` is a caster that never
+   * lifts off its ground (a parked bike): its height over it is that.
+   */
+  private castOn(
+    sh: BlobShadows,
+    at: { x: number; y: number; z: number },
+    ground: number,
+    heading: number,
+    size: ShadowSize,
+    fixed?: number,
+  ): void {
+    const roof =
+      this.structures && fixed === undefined
+        ? fitRoof(this.structures, at.x, at.y, at.z, heading, size.lengthM, size.widthM)
+        : null;
+    if (roof) {
+      sh.add(at.x, roof.y, at.z, heading, size, at.y - roof.y, roof);
+      return;
+    }
+    sh.add(at.x, ground, at.z, heading, size, fixed ?? at.y - ground);
   }
 
   private geometry(key: string, build: () => BoxPart[]): BufferGeometry {
@@ -1476,8 +1519,15 @@ export class EntityViews {
           break;
         case 'splash':
           // A HIGH drop (the maintainer, 2026-10-06, "(a)") is a clean cut-away: no water thrown, no ring,
-          // no gator, no fisherman. The same fall as a low one in every other way.
-          if (actor && ev.data['high'] !== true) {
+          // no gator, no fisherman. The same fall as a low one in every other way. And only a fall into the
+          // water splashes: out of bounds onto ground (the course's honest edges, `past: 'ground'`) or a low
+          // drop onto dry ground (`past: 'drop'`) is the plain quick reset, no gag ([decided] 2026-10-06).
+          if (
+            actor &&
+            ev.data['high'] !== true &&
+            ev.data['past'] !== 'ground' &&
+            ev.data['past'] !== 'drop'
+          ) {
             const at = bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider');
             // Away from the bridge: from the rider's spot on the road out to the splash.
             const reactor = (ev.actor + ev.tick) % 2 === 0 ? 'gator' : 'fisherman';

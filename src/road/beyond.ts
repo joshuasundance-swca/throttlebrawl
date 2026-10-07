@@ -9,10 +9,10 @@
 // - `edgeTopAt`: how high the thing at one side's band edge stands above the deck there. A barrier's
 //   own `heightM`; a derived `hard` edge's from what is drawn there (the bluff's parapet, the
 //   interstate's guard rail, the ferry's bulwark); 0 at a `water` edge (nothing stands there); and
-//   Infinity at a building front, which stays a wall at any height (buildings are not in the sim yet:
-//   the one known gap, until the sim meets src/road/structures.ts's plan, docs/architecture.md
-//   "Physical world"). Null at a ground edge (soft, brush, fence): the
-//   ground runs on past it and the band's own edge rules hold, in the air too.
+//   Infinity at a building front, a wall at any height to anything that does not know its buildings (a
+//   crashed body; the sim takes it as 0 where the structures plan has the buildings, which then stop a
+//   rider themselves: sim/riders/structures.ts, `frontTagAt`). Null at a ground edge (soft, brush,
+//   fence): the ground runs on past it and the band's own edge rules hold, in the air too.
 // - `pastAt`: what lies past that edge: `water` (a `water-*` tag on the side, or a water edge),
 //   `drop` (the bluff, a bridge or a trestle with no water tagged under it, or any `rail`: rails stand
 //   only on bridges and drops, docs/product-spec.md), else `ground`.
@@ -43,9 +43,10 @@ export function waterLevelOf(road: RoadNetwork): number {
 /**
  * The land tags whose `hard` edge is a building front (the towers, the shopfronts, the mural walls, the
  * row and painted houses, Duval's and the waterfront's buildings, the ferry hall, the pier sheds): a
- * wall at any height while no building is in the sim [default] (a building is to be a wall up to its
- * roofline with a roof to land on, [decided] 2026-10-06, once the sim meets the structures plan). The
- * cafes' patio rail stands right in front of the cafes, so it is one too.
+ * wall at any height where no building is in the sim [default]. Where the structures plan has a front's
+ * buildings, the sim meets them instead (a building a wall up to its roofline with a roof to land on,
+ * [decided] 2026-10-06; sim/riders/structures.ts). The cafes' patio rail stands right in front of the
+ * cafes, so it is one too.
  */
 export const BUILDING_FRONT_TAGS: ReadonlySet<string> = new Set([
   'towers',
@@ -106,6 +107,118 @@ export function edgeTopAt(road: RoadNetwork, edge: number, s: number, side: Verg
   const tag = e && v.derived ? vergeTagAt(e, side, s) : null;
   if (tag === null || BUILDING_FRONT_TAGS.has(tag)) return Infinity;
   return Object.hasOwn(EDGE_TOP_BY_TAG, tag) ? (EDGE_TOP_BY_TAG[tag] ?? Infinity) : Infinity;
+}
+
+/**
+ * The building-front tag (BUILDING_FRONT_TAGS) whose `hard` edge one side's band ends at at (edge, s), or null
+ * where the edge is anything else (a barrier, a given edge, another tag's). Where the buildings along that tag
+ * are in the structures plan, the sim meets them instead of this wall (sim/riders/structures.ts).
+ */
+export function frontTagAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): string | null {
+  if (road.barrierAt(edge, s, side)) return null;
+  const v = road.vergeAt(edge, s, side);
+  if (v.edge !== 'hard' || !v.derived) return null;
+  const e = road.edges[edge];
+  const tag = e ? vergeTagAt(e, side, s) : null;
+  return tag !== null && BUILDING_FRONT_TAGS.has(tag) ? tag : null;
+}
+
+/**
+ * The drawn top of what ends a ground band, m over the road beside it (render/verge.ts draws them along the band's
+ * outer edge): nothing at a `soft` edge (the ground just runs on); ferns and bushes (the largest clump, 1.09 m) or a
+ * clipped hedge (0.77 m) at a `brush` edge, and a fence at a `fence` edge (the garden fence's posts, 1.11 m, the
+ * tallest of its three styles). One number per kind, the tallest drawn (rounded up to the centimetre), so a rider in
+ * the air clears every one he is seen to clear; tests/sim/no-invisible-walls.test.ts holds them to the kit render
+ * builds on every route network.
+ */
+export const GROUND_EDGE_TOP_M: Readonly<Record<'soft' | 'brush' | 'fence', number>> = {
+  soft: 0,
+  brush: 1.09,
+  fence: 1.11,
+};
+
+/**
+ * What is drawn at one side's band edge at (edge, s), the honest edges' witness (the maintainer, 2026-10-06,
+ * [decided]: "never an invisible wall"): only where one of these stands may the edge hold a rider on the ground.
+ * - `barrier`: a rail or a wall the road file lists (the road draws it);
+ * - `rail`: a rail edge a road file gives with no barrier listed;
+ * - `water`: the water's edge;
+ * - `wall`: a derived hard edge's drawn top (EDGE_TOP_BY_TAG: the bluff's parapet, the interstate's guard rail,
+ *   the ferry's bulwark), or a hard edge a road file gives (its author says a wall stands there; no road in the
+ *   packs gives one, 2026-10-06);
+ * - `front`: a building front (BUILDING_FRONT_TAGS): its buildings, in the structures plan or drawn by render's
+ *   scatter (the sim tells the two apart, sim/riders/structures.ts);
+ * - `brush`, `fence`: the ferns, the hedge or the fence render draws along the band's edge;
+ * - `drop`: a hard edge where nothing stands and a drop lies past (a bridge's deck edge with no rail);
+ * - null: nothing: a `soft` edge (the ground just runs on), or a hard edge with no tag over it and ground past it
+ *   (a connector's side): past it is out of bounds, never a wall.
+ */
+export type DrawnEdge = 'barrier' | 'rail' | 'water' | 'wall' | 'front' | 'brush' | 'fence' | 'drop';
+
+/**
+ * Whether a `gap` takes the whole road away at (edge, s): its box covers the drive lanes (within half a metre of
+ * their edges), as render/road-mesh.ts cuts a barrier there (a rail ends at a broken end; it does not span the
+ * hole). Nothing stands at the edge over the hole.
+ */
+export function holeAt(road: RoadNetwork, edge: number, s: number): boolean {
+  const e = road.edges[edge];
+  if (!e) return false;
+  for (const f of e.features) {
+    if (f.s0 > s) break;
+    if (f.kind !== 'gap' || s > f.s1) continue;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const lane of road.lanesAt(edge, s)) {
+      if (lane.kind !== 'drive') continue;
+      lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+      hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+    }
+    const d0 = f.d0 < f.d1 ? f.d0 : f.d1;
+    const d1 = f.d0 < f.d1 ? f.d1 : f.d0;
+    if (lo < hi && d0 <= lo + 0.5 && d1 >= hi - 0.5) return true;
+  }
+  return false;
+}
+
+/** What is drawn at one side's band edge at (edge, s) (`DrawnEdge`), or null for nothing. */
+export function drawnEdgeAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): DrawnEdge | null {
+  // Over a hole in the road nothing stands at its edge: what lies past it (the water under a missing span).
+  if (holeAt(road, edge, s)) {
+    const past = pastAt(road, edge, s, side);
+    return past === 'ground' ? null : past;
+  }
+  if (road.barrierAt(edge, s, side)) return 'barrier';
+  const v = road.vergeAt(edge, s, side);
+  if (v.edge === 'water' || v.edge === 'rail' || v.edge === 'brush' || v.edge === 'fence') return v.edge;
+  if (v.edge !== 'hard') return null;
+  // A hard edge a road file gives (not derived): its author says a wall stands there.
+  if (!v.derived) return 'wall';
+  const e = road.edges[edge];
+  const tag = e ? vergeTagAt(e, side, s) : null;
+  if (tag !== null && BUILDING_FRONT_TAGS.has(tag)) return 'front';
+  if (tag !== null && Object.hasOwn(EDGE_TOP_BY_TAG, tag)) return 'wall';
+  return pastAt(road, edge, s, side) === 'ground' ? null : 'drop';
+}
+
+/**
+ * How high a rider in the air must be over the deck at one side's band edge to clear what is drawn there, m, under
+ * the honest edges (sim/riders/gap.ts `overStep`, with the course's edges on): `edgeTopAt` where something stands
+ * (a barrier, a drawn top, a building front at any height); where it leaves the band's own rules to hold (a ground
+ * edge), the drawn top of what ends the band (GROUND_EDGE_TOP_M); and 0 at a hard edge where nothing stands (a
+ * deck's edge, a connector's side), so nothing undrawn holds a rider in the air.
+ */
+export function courseEdgeTopAt(road: RoadNetwork, edge: number, s: number, side: VergeSide): number {
+  if (holeAt(road, edge, s)) return 0;
+  const top = edgeTopAt(road, edge, s, side);
+  if (top === null) {
+    const kind = road.vergeAt(edge, s, side).edge;
+    return kind === 'brush' || kind === 'fence' ? GROUND_EDGE_TOP_M[kind] : GROUND_EDGE_TOP_M.soft;
+  }
+  if (top === Infinity) {
+    const drawn = drawnEdgeAt(road, edge, s, side);
+    return drawn === null || drawn === 'drop' ? 0 : top;
+  }
+  return top;
 }
 
 /** What lies past one side's band edge at (edge, s). */

@@ -25,7 +25,13 @@ import {
   type BufferGeometry,
   type Material,
 } from 'three';
-import { chooseSetPieces, SEEDED_SET_PIECE_KINDS, type Edge, type RoadNetwork } from '../road';
+import {
+  chooseSetPieces,
+  LANES_UNDER_Y_M,
+  SEEDED_SET_PIECE_KINDS,
+  type Edge,
+  type RoadNetwork,
+} from '../road';
 import type { LaneInfo } from '../sim/api';
 import {
   ARCH_FOOTING,
@@ -45,7 +51,7 @@ import {
 } from './bridge-bays';
 import { barrierLookAt } from './barrier-looks';
 import { ChunkedStrips, keptSamples, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
-import { EdgeLocator } from './overlap';
+import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
 import { SeaBands, seaPlanFor } from './sea-bands';
@@ -420,6 +426,34 @@ function barriersFor(
   return spans;
 }
 
+/**
+ * The barriers this layer draws on one side of an edge, as spans of s: the barrier's band (a rail on posts, a wall)
+ * from its dressing (a rail only on a bridge or a drop), less any gap's hole, with `look` where a barrier look draws
+ * it instead (the verge layer's panels, barrier-looks.ts). The same rule the scene builds from, before the cut where
+ * another road's lanes lie under it. For the tests that hold the sim's walls to what is drawn
+ * (tests/sim/no-invisible-walls.test.ts; the maintainer, 2026-10-06: "never an invisible wall").
+ */
+export function drawnBarrierSpans(
+  road: RoadNetwork,
+  dressing: RoadDressing | undefined,
+  edge: number,
+  side: 'left' | 'right',
+): { s0: number; s1: number; kind: 'rail' | 'wall'; look: boolean }[] {
+  const e = road.edges[edge];
+  if (!e) return [];
+  const dress = dressingOf(e, dressing);
+  const gaps = gapSpans(road, e, dress);
+  return barriersFor(road, e, dress, side)
+    .flatMap((x) => cutByGaps(x, gaps))
+    .map((b) => ({
+      s0: Math.max(0, b.s0),
+      s1: Math.min(e.length, b.s1),
+      kind: b.kind === 'wall' ? ('wall' as const) : ('rail' as const),
+      look: barrierLookAt(b, e.tags, side, (Math.max(0, b.s0) + Math.min(e.length, b.s1)) / 2) !== undefined,
+    }))
+    .filter((b) => b.s1 > b.s0);
+}
+
 /** A rail stands this clear of another road's lanes, m, and is probed for them this often, m. [default] */
 const RAIL_CLEAR_M = 0.3;
 const RAIL_PROBE_M = 1;
@@ -503,6 +537,10 @@ const LINE_M = 0.15;
 /** How far down the shortcut the split zone's inner edge keeps bounding it, m. */
 const GORE_REACH_M = 150;
 
+/** How far either side a main road's drawn span is held when a shortcut under it is clipped, m (a sample step). */
+const ROW_HOLD_M = 2;
+/** The s step at which a main road's shoulder reach is looked up for a shortcut's clip, m. */
+const DRAWN_STEP_M = 0.5;
 /** The drawn span of an edge, verges included: what hides a surface drawn under it. */
 function outerSpan(e: Edge): readonly [number, number] {
   return [e.dMin - VERGE_M, e.dMax + VERGE_M];
@@ -818,7 +856,7 @@ export const BURIED_M = 1.5;
  * Land may stand at most this far over another road's asphalt (road-clear.test-util.ts holds the drawn ground to
  * 0.15 m), and is looked for this often across its strip and this far past that road's lanes, m. [default]
  */
-const LAND_OVER_ROAD_M = 0.05;
+const LAND_OVER_ROAD_M = GROUND_OVER_ROAD_M;
 const LAND_ROAD_PROBE_M = 1;
 const LAND_ROAD_MARGIN_M = 0.5;
 /** The skirt keeps one road sample in this many. [default] */
@@ -1034,10 +1072,62 @@ export function buildRoadScene(
     return !!edge && (dressingOf(edge, dressing).tags ?? []).some((t) => t.tag === 'secret');
   };
   const zones = road.splitZones().filter((z) => !secretEdge(z.toEdge));
+  /**
+   * How far out a main road's shoulder reaches on one side at s (its lanes' edge when it yields from there): its
+   * outer span, less what it leaves out over a lower road's lanes (`yieldReach` below, the same `clearReach`). A
+   * shortcut under the part a main road leaves out is not hidden there, so it is not clipped there either: clipped
+   * under a shoulder that yields to it, the Jones Street choice's shortcut drew nothing where neither road did (the
+   * junction sweep's holes on Russian Hill). Kept per DRAWN_STEP_M of s, so the clip's search asks each once.
+   */
+  const reachKept = new Map<string, number>();
+  const shoulderReachAt = (o: Edge, k: number, side: -1 | 1): number => {
+    const key = `${o.index}:${k}:${side}`;
+    const kept = reachKept.get(key);
+    if (kept !== undefined) return kept;
+    const os = Math.max(0, Math.min(o.length, k * DRAWN_STEP_M));
+    const l = laneSpans(road.lanesAt(o.index, os));
+    const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
+    const [lo, hi] = outerSpan(o);
+    const near = side < 0 ? llo : lhi;
+    const r =
+      locator.clearReach(
+        o.index,
+        os,
+        near,
+        side < 0 ? lo : hi,
+        -0.02,
+        GROUND_YIELD_MARGIN_M,
+        GROUND_OVER_ROAD_M,
+      ) ?? near;
+    reachKept.set(key, r);
+    return r;
+  };
+  // Held over a sample step either side: both roads' edges run straight between their own rows, so where the
+  // yield begins or ends between rows, the shortcut is drawn rather than leave a sliver that neither draws.
+  const shoulderReach = (o: Edge, os: number, side: -1 | 1): number => {
+    const k0 = Math.floor((os - ROW_HOLD_M) / DRAWN_STEP_M);
+    const k1 = Math.ceil((os + ROW_HOLD_M) / DRAWN_STEP_M);
+    let r = side < 0 ? -Infinity : Infinity;
+    for (let k = k0; k <= k1; k++) {
+      const at = shoulderReachAt(o, k, side);
+      r = side < 0 ? Math.max(r, at) : Math.min(r, at);
+    }
+    return r;
+  };
   /** Whether a main (non-shortcut) road draws its surface under a point of edge e. */
   const underMain = (e: Edge, s: number, d: number): boolean => {
     const p = w(e.index, s, d, 0);
-    return locator.covered(p.x, p.z, e.index, outerSpan, (o) => !hasShortcut(o));
+    for (const h of locator.at(p.x, p.z, e.index)) {
+      const o = road.edges[h.edge];
+      if (!o || hasShortcut(o)) continue;
+      const [lo, hi] = outerSpan(o);
+      if (!(h.d > lo && h.d < hi)) continue;
+      const l = laneSpans(road.lanesAt(o.index, h.s));
+      const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
+      if (h.d >= llo && h.d <= lhi) return true;
+      if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
+    }
+    return false;
   };
   /** Whether another road's lanes (drive or shortcut) run under a point of edge e. */
   const onOtherLanes = (e: Edge, s: number, d: number): boolean => {
@@ -1262,6 +1352,30 @@ export function buildRoadScene(
         if (unclipped(clips[inner], sd[inner]!) && !unclipped(clips[i], sd[i]!)) clips[i] = plainClip(sd[i]!);
       }
     }
+    /**
+     * A ground band of this edge at s over [span[0], span[1]], on `side` of the lanes, stopped where it would lie
+     * over a lower road's lanes (the I-5's shoulder over a link below it); null where it begins over them. The
+     * edge's own road level `lift` m under the band is the height it is held at.
+     */
+    const yieldReach = (
+      s: number,
+      span: [number, number],
+      side: -1 | 1,
+      lift: number,
+    ): [number, number] | null => {
+      const [near, far] = side < 0 ? [span[1], span[0]] : [span[0], span[1]];
+      const reach = locator.clearReach(
+        e.index,
+        s,
+        near,
+        far,
+        lift,
+        GROUND_YIELD_MARGIN_M,
+        GROUND_OVER_ROAD_M,
+      );
+      if (reach === null) return null;
+      return side < 0 ? [reach, near] : [near, reach];
+    };
     const zonesHere = zones.filter((z) => z.edge === e.index);
     const inZone = (s: number, d: number) =>
       zonesHere.some(
@@ -1281,6 +1395,8 @@ export function buildRoadScene(
       span: (l: LaneSpans, c: Clip) => [number, number] | null;
       lift: number;
       skip?: (s: number, span: [number, number]) => boolean;
+      /** A ground band beside the lanes: the side it lies on, so it yields to a lower road's lanes (yieldReach). */
+      side?: -1 | 1;
     }[] = [
       { kind: brickEdge ? 'brick' : 'road', span: (l) => l.drive, lift: 0 },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
@@ -1288,11 +1404,13 @@ export function buildRoadScene(
         kind: 'shoulder',
         span: (l, c) => (c.vergeL ? [outerL - shoulderLap, lanesSpan(l)[0]] : null),
         lift: -0.02,
+        side: -1,
       },
       {
         kind: 'shoulder',
         span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR + shoulderLap] : null),
         lift: -0.02,
+        side: 1,
       },
       {
         kind: 'marking',
@@ -1310,7 +1428,8 @@ export function buildRoadScene(
     const rowOf = (surf: (typeof surfaces)[number], i: number): [Point3, Point3] | null => {
       const s = sd[i] ?? 0;
       const c = clips[i];
-      const span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+      let span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+      if (span && surf.side) span = yieldReach(s, span, surf.side, surf.lift);
       if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) return null;
       return [w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift)];
     };
@@ -2229,6 +2348,22 @@ export function buildRoadScene(
           continue;
         }
         const top = w(e.index, s, d, -0.02);
+        // Nor does it stand over a lower road's lanes beside it (a link down the embankment), within the 3 m a road
+        // under a bridge lies below (the I-5's curtain at Lake Samish's east shore road: 1.3 m over its lanes).
+        if (
+          locator.overLowerLanes(
+            top.x,
+            top.y,
+            top.z,
+            e.index,
+            GROUND_YIELD_MARGIN_M,
+            GROUND_OVER_ROAD_M,
+            LANES_UNDER_Y_M,
+          )
+        ) {
+          deck.breakStrip();
+          continue;
+        }
         const bottom =
           top.y >= ELEVATED_M
             ? { x: top.x, y: top.y - 1, z: top.z }

@@ -203,6 +203,30 @@ describe('the shadow falls on what the rider is over or on', () => {
     views.sync(null, snap([falling]), 1, 0);
     expectYs(shadowYs(views), [LIFT, LIFT]);
   });
+
+  it('a body gone under the water (a high drop’s plunge, 3 m) throws no shadow; control: afloat, it does', () => {
+    const body = (y: number) =>
+      rider(0, {
+        mode: 'Tumble',
+        y: 0,
+        road: { edge: 0, s: 100, d: 9, h: 0, dir: 1, yaw: 0 },
+        grounded: false,
+        floorY: 0,
+        tumble: {
+          rider: { x: 9, y, z: -101, vx: 0, vy: 0, vz: 0 },
+          bike: { x: 9, y, z: -100, vx: 0, vy: 0, vz: 0 },
+        },
+      });
+    const under = rig();
+    under.views.sync(null, snap([body(-3)]), 1, 0);
+    const afloat = rig();
+    afloat.views.sync(null, snap([body(0)]), 1, 0);
+    console.log(
+      `[examined] shadows drawn: bodies 3 m under the water ${shadowYs(under.views).length}, afloat ${shadowYs(afloat.views).length}`,
+    );
+    expect(shadowYs(under.views)).toEqual([]);
+    expectYs(shadowYs(afloat.views), [LIFT, LIFT]);
+  });
 });
 
 describe('a splash: low keeps its gag, a high drop has none', () => {
@@ -250,6 +274,21 @@ describe('a splash: low keeps its gag, a high drop has none', () => {
     const { fx } = splashAt({});
     expect(fx.counts().reactors).toBe(1);
     expect(fx.counts().drops).toBe(40);
+  });
+
+  it('out of bounds onto ground, or a low drop onto dry ground: the plain quick reset, no water and no gag', () => {
+    // The course's honest edges (2026-10-06, [decided]: a low splash keeps its gag, a high drop is a clean
+    // cut-away, anything else a plain quick reset): the lot behind a block, ground past the verge, a city
+    // bridge over a street.
+    for (const data of [
+      { over: true, past: 'ground', dropM: 0, high: false },
+      { over: true, past: 'drop', dropM: 6, high: false },
+    ]) {
+      const { fx } = splashAt(data);
+      expect(fx.counts().drops, data.past).toBe(0);
+      expect(fx.counts().rings, data.past).toBe(0);
+      expect(fx.counts().reactors, data.past).toBe(0);
+    }
   });
 
   it('a low splash at Lake Samish is at the lake’s level (82.85 m), not the sea’s', () => {
