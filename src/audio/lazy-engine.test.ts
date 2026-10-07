@@ -182,3 +182,90 @@ describe('the audio stand-in (audio/index.ts)', () => {
     warn.mockRestore();
   });
 });
+
+// The AudioContext is the start tap's biggest cost (about 400 of the tap's 408 ms of click handling
+// on the dev machine, measured live in polish K), so the game makes it before the tap, suspended
+// (`prepare()`), and the tap only resumes it: the sound still starts inside the tap's user
+// activation, because a context may only start running from a gesture.
+describe('the context is made before the start tap (audio/index.ts prepare)', () => {
+  it('control: without prepare(), the tap itself makes the context', () => {
+    const chunk = deferredLoad();
+    const ctxs = contexts();
+    const audio = createAudio({ ...quiet, createContext: ctxs.create }, chunk.load);
+    expect(ctxs.made.length).toBe(0);
+    void audio.resume();
+    expect(ctxs.made.length).toBe(1); // the cost the tap pays on main
+  });
+
+  it('prepare() makes one suspended context, plays nothing, and the tap makes none and resumes it', async () => {
+    const chunk = deferredLoad();
+    const ctxs = contexts();
+    const audio = createAudio({ ...quiet, createContext: ctxs.create }, chunk.load);
+    audio.prepare();
+    audio.prepare(); // asked again (a late pointerdown, say): still one
+    expect(ctxs.made.length).toBe(1);
+    const ctx = ctxs.made[0]!;
+    expect(ctx.state).toBe('suspended');
+    expect(audio.state()).toBe('suspended');
+    expect(ctx.running()).toEqual([]);
+
+    const resumed = audio.resume(); // the start tap
+    // Synchronously, in the tap's user activation: the same context, now resumed; none made.
+    expect(ctxs.made.length).toBe(1);
+    expect(ctx.state).toBe('running');
+    await chunk.resolve();
+    await resumed;
+    expect(ctxs.made.length).toBe(1);
+    expect(ctx.nodes.length).toBeGreaterThan(0); // the engine built its graph on it
+    expect(audio.inspect().state).toBe('running');
+  });
+
+  it('resumes the prepared context in the tap when the engine is already in', async () => {
+    const chunk = deferredLoad();
+    const ctxs = contexts();
+    const audio = createAudio({ ...quiet, createContext: ctxs.create }, chunk.load);
+    audio.prepare();
+    await chunk.resolve();
+    await flush();
+    expect(ctxs.made.length).toBe(1);
+    expect(ctxs.made[0]?.state).toBe('suspended'); // the engine's graph waits for the tap too
+    const resumed = audio.resume();
+    expect(ctxs.made.length).toBe(1);
+    await resumed;
+    expect(ctxs.made[0]?.state).toBe('running');
+    expect(audio.inspect().state).toBe('running');
+  });
+
+  it('a prepare() that comes after the tap makes no second context', async () => {
+    const chunk = deferredLoad();
+    const ctxs = contexts();
+    const audio = createAudio({ ...quiet, createContext: ctxs.create }, chunk.load);
+    await chunk.resolve();
+    await flush();
+    await audio.resume(); // the engine is in: it makes the context itself, in the tap
+    expect(ctxs.made.length).toBe(1);
+    audio.prepare();
+    expect(ctxs.made.length).toBe(1);
+  });
+
+  it('prepare() never makes a context for an offline render, and a failed one is made again at the tap', () => {
+    const chunk = deferredLoad();
+    const ctxs = contexts();
+    const offline = createAudio({ ...quiet, offline: true, createContext: ctxs.create }, chunk.load);
+    offline.prepare();
+    expect(ctxs.made.length).toBe(0);
+
+    // No WebAudio at boot (or a refused context): prepare() stays quiet; the tap tries again.
+    let attempts = 0;
+    const flaky = () => {
+      if (attempts++ === 0) throw new Error('no audio device');
+      return ctxs.create();
+    };
+    const audio = createAudio({ ...quiet, createContext: flaky }, deferredLoad().load);
+    expect(() => audio.prepare()).not.toThrow();
+    expect(ctxs.made.length).toBe(0);
+    void audio.resume();
+    expect(ctxs.made.length).toBe(1);
+    expect(ctxs.made[0]?.state).toBe('running');
+  });
+});
