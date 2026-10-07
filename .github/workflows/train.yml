@@ -171,7 +171,7 @@ jobs:
   # reach the job and main's own run of that job passed (scripts/train.mjs decide).
   control:
     needs: [plan, suite]
-    if: always() && needs.plan.outputs.single != '' && needs.suite.result == 'failure'
+    if: always() && !cancelled() && needs.plan.outputs.single != '' && needs.suite.result == 'failure'
     permissions:
       contents: read
     uses: ./.github/workflows/suite.yml

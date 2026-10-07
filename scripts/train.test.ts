@@ -2364,7 +2364,7 @@ describe('the workflows', () => {
       expect(ride, line).toContain(`\n      ${line}\n`);
     const control = t.get('control') ?? '';
     expect(control).toMatch(
-      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && needs\.plan\.outputs\.single != '' && needs\.suite\.result == 'failure'\n/m,
+      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.suite\.result == 'failure'\n/m,
     );
     expect(control).toContain('\n      full: true\n');
     expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
