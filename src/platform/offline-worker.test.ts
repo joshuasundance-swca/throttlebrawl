@@ -10,6 +10,7 @@ import {
   type OfflineEnv,
   type WorkerRequest,
 } from './offline-worker';
+import { readsOfflineCaches } from './page-cache';
 import { recoverStaleBuild } from './stale-build';
 
 // The offline service worker's policy (docs/architecture.md, "Asset manifest"; docs/engineering.md,
@@ -622,6 +623,11 @@ describe('gzip copies (playtest 4 run B live check, punch item 8: the host sends
 
   async function gzipWorker(net: { fetchFn: OfflineEnv['fetch'] }, gzip?: readonly string[]) {
     const mem = memoryCaches();
+    // A returning player's install (an older build's cache is there), which takes every gzip copy;
+    // a first visit's scripts come plain (the next describe, polish batch F's punch item 1).
+    await (
+      await mem.caches.open(`${CACHE_PREFIX}older`)
+    ).put(`${SCOPE}assets/old-O1.js`, new Response('old'));
     const checks = await checksOf(FILES, (rel) => SITE[rel] ?? '');
     const env: OfflineEnv = {
       scope: SCOPE,
@@ -737,6 +743,11 @@ describe("a first visit (playtest 4 run B fix check, punch item 1: the worker do
   const SIM = 'assets/sim-S1.js';
   const ROAD = 'assets/road-R1.json';
   const LAZY = 'assets/landmarks-L1.js';
+  /** A lazy script the page imports before the install reaches it (polish batch F's check, punch 1). */
+  const LAZY_EARLY = 'assets/race-parts-P1.js';
+  /** A model the page fetches before the install reaches it, and one it fetches after. */
+  const MODEL_EARLY = 'assets/ds/keys/boat-B2.glb';
+  const MODEL = 'assets/ds/keys/bike-B1.glb';
   const SITE: Record<string, string> = {
     'index.html':
       '<!doctype html><html><head>' +
@@ -748,7 +759,9 @@ describe("a first visit (playtest 4 run B fix check, punch item 1: the worker do
     [SIM]: `export const sim = "${'s'.repeat(3000)}";`,
     [ROAD]: JSON.stringify({ points: Array.from({ length: 300 }, (_, i) => [i, i]) }),
     [LAZY]: `export const landmarks = "${'l'.repeat(3000)}";`,
-    'assets/ds/keys/bike-B1.glb': 'glTF'.repeat(600),
+    [LAZY_EARLY]: `export const parts = "${'p'.repeat(3000)}";`,
+    [MODEL]: 'glTF'.repeat(600),
+    [MODEL_EARLY]: 'glTB'.repeat(600),
     'assets/ds/keys/clip-C1.ogg': 'OggS'.repeat(50),
   };
   const FILES = Object.keys(SITE).sort();
@@ -813,11 +826,22 @@ describe("a first visit (playtest 4 run B fix check, punch item 1: the worker do
       wire,
       lookups,
       /** The page's first load: its scripts and preloads carry Origin; its own fetch() does not. */
-      async pageLoads(opts: { fetched?: readonly string[] } = {}) {
+      async pageLoads(opts: { fetched?: readonly string[]; imported?: readonly string[] } = {}) {
         await request('index.html', null);
         for (const rel of [SIM, ROAD, ENTRY]) await request(rel, ORIGIN);
+        for (const rel of opts.imported ?? []) await request(rel, ORIGIN);
         for (const rel of opts.fetched ?? []) await request(rel, null);
       },
+      /** The page's `import()` of lazy scripts: the browser's own module request, with Origin. */
+      async pageImports(rels: readonly string[]) {
+        for (const rel of rels) await request(rel, ORIGIN);
+      },
+      /** The page's own fetch() (no Origin), as the window's `fetch` before platform/ wraps it. */
+      pageFetch: ((input: RequestInfo | URL) =>
+        request(
+          relOf(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url),
+          null,
+        )) as typeof fetch,
       /** A page an older build's worker served: that worker fetched each copy itself (no Origin). */
       async pageLoadsThroughOldWorker() {
         await request('index.html', null);
@@ -877,11 +901,12 @@ describe("a first visit (playtest 4 run B fix check, punch item 1: the worker do
         // As live: what the page loaded as a module or preload misses; what it fetched hits.
         expect(hits).toEqual([ENTRY]);
         expect(misses).toEqual(expect.arrayContaining([SIM, ROAD]));
-        expect(bodiesOf(net.wire)[SIM]).toBe(2);
+        // Without the firstLoad list, the preloaded map file (not a script) is downloaded again.
+        expect(bodiesOf(net.wire)[ROAD]).toBe(2);
       } else {
         // The negative control: the same page and worker against a host without Vary hit them all.
         expect(hits).toEqual(expect.arrayContaining([ENTRY, SIM, ROAD]));
-        expect(bodiesOf(net.wire)[SIM]).toBe(1);
+        expect(bodiesOf(net.wire)[ROAD]).toBe(1);
       }
     }
   });
@@ -906,9 +931,54 @@ describe("a first visit (playtest 4 run B fix check, punch item 1: the worker do
         .map((w) => w.rel)
         .filter((rel) => FIRST_LOAD.includes(rel.replace(/\.gz$/, '')) && rel.endsWith('.gz')),
     ).toEqual([]);
-    // Files the page never loaded still come as their gzip copies.
-    expect(net.wire.map((w) => w.rel)).toContain(`${LAZY}.gz`);
-    expect(net.wire.map((w) => w.rel)).not.toContain(LAZY);
+    // A model or map file the page never loaded still comes as its gzip copy. A script it never
+    // loaded comes as the plain file: the page may still import it before the worker takes the page,
+    // and that import then revalidates the stored copy (a 304) instead of downloading it again.
+    expect(net.wire.map((w) => w.rel)).toContain(`${MODEL}.gz`);
+    expect(net.wire.map((w) => w.rel)).not.toContain(MODEL);
+    expect(net.wire.map((w) => w.rel)).toContain(LAZY);
+    expect(net.wire.map((w) => w.rel)).not.toContain(`${LAZY}.gz`);
+  });
+
+  // Polish batch F's check, punch item 1: #625 cured the first-load files only. On the live host 30
+  // more files crossed the wire twice on a first visit (260,032 bytes): 26 lazy scripts the page had
+  // imported (with Origin) before the install reached them, which the install's lookup missed and
+  // downloaded again as gzip copies; and 3 models and a script the install took as gzip copies first,
+  // which the page, not yet the worker's, then downloaded as the plain files.
+  it('a first visit downloads every file once, lazy ones included, whichever the page or the install asks for first', async () => {
+    for (const vary of ['Origin', ''] as const) {
+      const net = browser(vary);
+      // Before the install: the page imports a lazy script and fetches a model.
+      await net.pageLoads({ imported: [LAZY_EARLY], fetched: [MODEL_EARLY] });
+      const { worker, mem } = await firstVisitWorker(net, { firstLoad: FIRST_LOAD });
+      await worker.install();
+      // After the install, before the worker takes the page: another script and another model.
+      await net.pageImports([LAZY]);
+      const pageFetch = readsOfflineCaches(net.pageFetch, {
+        scope: SCOPE,
+        controlled: () => false,
+        match: (url) => mem.caches.match(url),
+      });
+      expect(await (await pageFetch(`${SCOPE}${MODEL}`)).text()).toBe(SITE[MODEL]);
+      expect(await contents(mem, `${CACHE_PREFIX}f`)).toEqual(plain());
+      const bodies = bodiesOf(net.wire);
+      const bytes = net.wire.reduce((n, w) => n + w.bytes, 0);
+      console.log(
+        `[print] host Vary "${vary}": ${bytes} bytes on the wire; bodies per file ${JSON.stringify(bodies)}`,
+      );
+      for (const rel of FILES) expect(bodies[rel] ?? 0, `Vary "${vary}": ${rel}`).toBe(1);
+      // The model the page never loaded before the install still came as its gzip copy.
+      expect(net.wire.map((w) => w.rel)).toContain(`${MODEL}.gz`);
+    }
+  });
+
+  it('the page asks the network for a model the install cached when it does not read the caches (the negative control)', async () => {
+    const net = browser('Origin');
+    await net.pageLoads();
+    const { worker } = await firstVisitWorker(net, { firstLoad: FIRST_LOAD });
+    await worker.install();
+    await net.pageFetch(`${SCOPE}${MODEL}`);
+    expect(bodiesOf(net.wire)[MODEL]).toBe(2);
   });
 
   it('a returning player (an older build installed) takes the gzip copies, never the plain first-load files (the negative control)', async () => {

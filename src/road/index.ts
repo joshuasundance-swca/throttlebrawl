@@ -109,14 +109,19 @@ export type {
 } from './types';
 export { LAND_TAGS, onSide, scatterHash, THEME_ORDER, themeAt } from './themes';
 export type { LandTheme, SideTag, SideTheme } from './themes';
+export { LANES_UNDER_Y_M, LanesUnder, lanesUnderOf, standOffLanes } from './lanes-under';
+export type { LaneHit } from './lanes-under';
 export {
   DRAWN_VERGE_M,
   FURNITURE,
   FURNITURE_KINDS,
+  FURNITURE_LANES_CLEAR_M,
   kitOfNetwork,
+  lanesUnderPiece,
   OLDTOWN_SIDEWALK_RULES,
   onRidableBand,
   planStreetFurniture,
+  rimOf,
   SF_SIDEWALK_RULES,
 } from './furniture';
 export type {

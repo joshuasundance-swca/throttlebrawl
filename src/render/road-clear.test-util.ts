@@ -3,7 +3,11 @@
 // drive right through it though"). The check looks at the drawn triangles, not at any one layer's plan: the
 // space a rider rides through over every road of a network (every lane of every edge, branches, shortcuts,
 // joins and leaves included) is a column over each half metre of asphalt, and no triangle of anything the
-// renderer draws beside the road (a building, a landmark, a bridge's kit, a rail, a post) may cut it.
+// renderer draws beside the road (a building, a landmark, a bridge's kit, a rail, a post, a sign, a board, the
+// street furniture) may cut it. The maintainer, 2026-10-06: "a road race in a physical world with honest edges";
+// nothing drawn in a lane may be a ghost. The road's own ground (its land, shoulders, verge band, decks and
+// paint) is held to a height rule, not skipped by name: it may meet a road's edge, never stand over its ride
+// column (GROUND, GROUND_OVER_M).
 import {
   Box3,
   InstancedMesh,
@@ -16,7 +20,9 @@ import {
 } from 'three';
 import { expect } from 'vitest';
 import type { RoadNetwork } from '../road';
-import { print, stillSceneOf } from './scene-cost.test-util';
+import { Boards, type BoardItem, type BoardSlot } from './boards';
+import { createFlatLook } from './look';
+import { print, signCatalog, stillSceneOf, track } from './scene-cost.test-util';
 
 /** The cell size of the road's point map, m. */
 const CELL_M = 1;
@@ -32,6 +38,8 @@ export const RIDE_HIGH_M = 2;
  * [default]
  */
 export const RIM_M = 0.5;
+/** A ground triangle whose normal's upward share is at least this is near flat (under 60 degrees of slope). */
+const FLAT_NY = 0.5;
 /** A coarse grid over the fine one, so a triangle the size of a hill only visits the coarse cells with road. */
 const COARSE = 16;
 /** Values per point in RoadColumns.pts: x, y (the asphalt), z, edge, s, d. */
@@ -98,13 +106,28 @@ export interface RoadHit {
   d: number;
   x: number;
   z: number;
-  /** How high over the asphalt the triangle's lowest point is, m (0 when it reaches down past the column). */
+  /**
+   * How high over the asphalt the triangle stands at the point, m (seen from above; its lowest point where it
+   * does not lie over the point, as a wall; 0 when it reaches down past the asphalt).
+   */
   over: number;
   /** How far in from the outermost lane's edge the point is, m. */
   inset: number;
 }
 
 const tri = new Triangle();
+/**
+ * The height of the triangle in `a`, `b`, `c` at (x, z), seen from above, or `low` where it does not lie over
+ * that point (a wall, or a triangle that only clips the point's box).
+ */
+function heightAt(x: number, z: number, low: number): number {
+  const d = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
+  if (Math.abs(d) < 1e-9) return low;
+  const u = ((x - a.x) * (c.z - a.z) - (c.x - a.x) * (z - a.z)) / d;
+  const v = ((b.x - a.x) * (z - a.z) - (x - a.x) * (b.z - a.z)) / d;
+  if (u < -1e-6 || v < -1e-6 || u + v > 1 + 1e-6) return low;
+  return a.y + u * (b.y - a.y) + v * (c.y - a.y);
+}
 const box = new Box3();
 const a = new Vector3();
 const b = new Vector3();
@@ -127,20 +150,27 @@ const outside = (near: Near | null, x0: number, x1: number, z0: number, z1: numb
 
 /**
  * Every point of the column a drawn triangle of `root` cuts, within `near` (null: everywhere), into
- * `into` by part and metre cell. `skip` names the meshes that are the road and its ground themselves.
+ * `into` by part and metre cell. `floorOf` says how high over the asphalt the column starts for a part (floorOf).
  */
 export function hitsIn(
   cols: RoadColumns,
   root: Object3D,
-  skip: (name: string) => boolean,
+  floorOf: (name: string) => number,
   near: Near | null,
   into: Map<string, RoadHit>,
+  once?: Set<Object3D>,
 ): void {
   root.updateMatrixWorld(true);
   const label = root.name;
   const visit = (o: Object3D) => {
     if (!o.visible) return;
-    if (o instanceof Mesh && !skip(o.name)) {
+    if (o instanceof Mesh && !once?.has(o)) {
+      const floor = floorOf(o.name);
+      // The ground is built once and does not move: each of its meshes is looked at whole, the first time it
+      // is drawn, not again at every pose (a network's land is most of its triangles).
+      const whole = once !== undefined && floor < RIDE_LOW_M;
+      if (whole) once.add(o);
+      const where = whole ? null : near;
       const g = (o as Mesh<BufferGeometry>).geometry;
       const pos = g.getAttribute('position');
       if (pos && pos.itemSize === 3) {
@@ -153,9 +183,9 @@ export function hitsIn(
           } else m.copy(o.matrixWorld);
           if (g.boundingBox) {
             bb.copy(g.boundingBox).applyMatrix4(m);
-            if (outside(near, bb.min.x, bb.max.x, bb.min.z, bb.max.z)) continue;
+            if (outside(where, bb.min.x, bb.max.x, bb.min.z, bb.max.z)) continue;
           }
-          trianglesOf(cols, g, m, `${label}/${o.name}`, near, into);
+          trianglesOf(cols, g, m, `${label}/${o.name}`, floor, where, into);
         }
       }
     }
@@ -169,6 +199,7 @@ function trianglesOf(
   g: BufferGeometry,
   mat: Matrix4,
   part: string,
+  floor: number,
   near: Near | null,
   into: Map<string, RoadHit>,
 ): void {
@@ -195,6 +226,22 @@ function trianglesOf(
     const j0 = Math.floor(minZ / CELL_M);
     const j1 = Math.floor(maxZ / CELL_M);
     tri.set(a, b, c);
+    // A ground triangle that lies near flat is held by its height over each point; a steep one (a bank, a
+    // curtain, a wall) is a wall too, tested as anything else from a rider's knees up.
+    const ux = b.x - a.x;
+    const uy = b.y - a.y;
+    const uz = b.z - a.z;
+    const vx = c.x - a.x;
+    const vy = c.y - a.y;
+    const vz = c.z - a.z;
+    const nx = uy * vz - uz * vy;
+    const ny = uz * vx - ux * vz;
+    const nz = ux * vy - uy * vx;
+    const wall = floor >= RIDE_LOW_M || Math.abs(ny) < FLAT_NY * Math.hypot(nx, ny, nz);
+    // The box's reach along the triangle's normal: a box whose centre lies further off its plane misses it.
+    const half = (RIDE_HIGH_M - RIDE_LOW_M) / 2;
+    const reach = HALF_M * Math.abs(nx) + half * Math.abs(ny) + HALF_M * Math.abs(nz);
+    const plane = nx * a.x + ny * a.y + nz * a.z;
     const visitCell = (i: number, j: number) => {
       const list = cols.cells.get(key(i, j));
       if (!list) return;
@@ -202,15 +249,27 @@ function trianglesOf(
         const px = pts[q * PER] ?? 0;
         const py = pts[q * PER + 1] ?? 0;
         const pz = pts[q * PER + 2] ?? 0;
-        const lo = py + RIDE_LOW_M;
+        const lo = py + floor;
         const hi = py + RIDE_HIGH_M;
         if (maxY < lo || minY > hi || maxX < px - HALF_M || minX > px + HALF_M) continue;
         if (maxZ < pz - HALF_M || minZ > pz + HALF_M) continue;
+        // The ground's rule: its surface over the point itself (a box would reach uphill on a steep street).
+        const y = floor < RIDE_LOW_M ? heightAt(px, pz, Number.NaN) : Number.NaN;
+        let cut = y > lo && y <= hi;
+        // Anything (the ground's walls and curtains too) through the column from a rider's knees up.
+        if (
+          !cut &&
+          wall &&
+          maxY >= py + RIDE_LOW_M &&
+          Math.abs(nx * px + ny * (py + RIDE_LOW_M + half) + nz * pz - plane) <= reach
+        ) {
+          box.min.set(px - HALF_M, py + RIDE_LOW_M, pz - HALF_M);
+          box.max.set(px + HALF_M, hi, pz + HALF_M);
+          cut = box.intersectsTriangle(tri);
+        }
+        if (!cut) continue;
         const id = `${part}|${Math.floor(px / CELL_M)},${Math.floor(pz / CELL_M)}`;
         if (into.has(id)) continue;
-        box.min.set(px - HALF_M, lo, pz - HALF_M);
-        box.max.set(px + HALF_M, hi, pz + HALF_M);
-        if (!box.intersectsTriangle(tri)) continue;
         into.set(id, {
           part,
           edge: cols.road.edges[pts[q * PER + 3] ?? 0]?.id ?? '',
@@ -218,7 +277,7 @@ function trianglesOf(
           d: pts[q * PER + 5] ?? 0,
           x: px,
           z: pz,
-          over: Math.max(0, minY - py),
+          over: Math.max(0, (Number.isNaN(y) ? heightAt(px, pz, minY) : y) - py),
           inset: pts[q * PER + 6] ?? 0,
         });
       }
@@ -247,6 +306,8 @@ export interface RoadPlace {
   cells: number;
   /** The deepest a hit lies in from the outermost lane's edge, m. */
   inset: number;
+  /** The highest it stands over the asphalt at a hit, m (RoadHit.over). */
+  over: number;
 }
 
 /** Hits grouped into places: one per part, road and run of s (a building cuts many cells), sorted by road and s. */
@@ -262,6 +323,7 @@ export function placesOf(hits: Iterable<RoadHit>): RoadPlace[] {
     if (last) {
       last.s1 = Math.max(last.s1, h.s);
       last.cells++;
+      last.over = Math.max(last.over, h.over);
       if (h.inset > last.inset) {
         last.inset = h.inset;
         last.d = h.d;
@@ -277,13 +339,14 @@ export function placesOf(hits: Iterable<RoadHit>): RoadPlace[] {
         z: h.z,
         cells: 1,
         inset: h.inset,
+        over: h.over,
       });
   }
   return out;
 }
 
 export const placeLine = (p: RoadPlace) =>
-  `${p.part} on ${p.edge} s ${p.s0.toFixed(0)}-${p.s1.toFixed(0)} d ${p.d.toFixed(1)} (x ${p.x.toFixed(0)}, z ${p.z.toFixed(0)}), ${p.cells} cells, ${p.inset.toFixed(1)} m into the lanes`;
+  `${p.part} on ${p.edge} s ${p.s0.toFixed(0)}-${p.s1.toFixed(0)} d ${p.d.toFixed(1)} (x ${p.x.toFixed(0)}, z ${p.z.toFixed(0)}), ${p.cells} cells, ${p.inset.toFixed(1)} m into the lanes, up to ${p.over.toFixed(2)} m over the asphalt`;
 
 const networkFiles = import.meta.glob<{ id: string }>('../../packs/*/regions/*/networks/*.json', {
   eager: true,
@@ -296,12 +359,49 @@ export const networksOf = (pack: string): string[] =>
     .map(([, n]) => n.id)
     .sort();
 
-/** The meshes that are the road and its ground themselves (road-mesh.ts, verge.ts), and the backdrop. */
-export const ROAD_ITSELF =
-  /^(road-(road|shoulder|land|deck|marking|markingCenter|splitMark|splitZone|boostPad|shortcut|water)|verge-band|backdrop)$/;
+/**
+ * The meshes that are the road and its ground themselves (road-mesh.ts, verge.ts): the asphalt, its paint, the
+ * shoulders, the land, the decks, the water and the verge's band. [default] They are drawn at the road's own
+ * level, so they are held to the ground rule: none may stand more than GROUND_OVER_M over any road's asphalt
+ * anywhere in its ride column (land may meet a road's edge, never rise over its lanes: the 2026-10-06 live
+ * check rode under Bridge City's grass). No part is skipped by name.
+ */
+export const GROUND =
+  /^(road-(road|shoulder|land|deck|marking|markingCenter|splitMark|splitZone|boostPad|shortcut|water)|verge-band)$/;
+/**
+ * The ground rule's height, m [default]: a kerb's. Paint over a crest's chord stands up to 0.13 m over the
+ * curved asphalt; the grass the live check rode under on Bridge City's morrison-out stood 0.14 to 1.07 m over it
+ * (this check found it there at s 28 to 94, up to 1.09 m).
+ */
+export const GROUND_OVER_M = 0.15;
+/** Where the column starts over the asphalt for a drawn part, m: the ground's rule, or a rider's knees. */
+export const floorOf = (name: string): number => (GROUND.test(name) ? GROUND_OVER_M : RIDE_LOW_M);
 /** How far apart the camera stands along every edge while the sweep looks, m, and how far round it it looks. */
 const POSE_M = 60;
 const LOOK_M = 80;
+
+/** Stand-ins for the pooled board items, so every slot is built, not only those naming a region sign. */
+const POOLED: Record<'signs' | 'billboards', BoardItem> = {
+  signs: { ref: 'test:region/pool#sign', text: 'POOLED SIGN. A stand-in.', kind: 'sign' },
+  billboards: { ref: 'test:region/pool#billboard', text: 'POOLED BOARD. A stand-in.', kind: 'billboard' },
+};
+
+/**
+ * Every board slot of a network built (its region signs, and a stand-in for a pooled item, as the game fills a
+ * pool): the still scene's boards are only the slots that name a region sign.
+ */
+function everyBoard(networkId: string, road: RoadNetwork): Object3D {
+  const { dressing } = track(networkId);
+  const boards = new Boards(createFlatLook());
+  boards.build(
+    road,
+    (id) =>
+      (dressing as unknown as Record<string, { features?: unknown } | undefined>)[id]?.features as
+        readonly BoardSlot[] | undefined,
+    { ...signCatalog(), pools: { signs: [POOLED.signs], billboards: [POOLED.billboards] } },
+  );
+  return boards.root;
+}
 
 /**
  * Rides a camera along every edge of a network (every road, branches and connectors included) with every
@@ -312,12 +412,14 @@ export async function sweepNetwork(
   networkId: string,
   seed: number,
   extra?: (road: RoadNetwork) => Object3D,
-): Promise<{ road: RoadNetwork; places: RoadPlace[]; points: number; poses: number }> {
+  floor: (name: string) => number = floorOf,
+): Promise<{ road: RoadNetwork; places: RoadPlace[]; points: number; poses: number; boards: number }> {
   const { road, scene } = await stillSceneOf(networkId, seed);
   const cols = roadColumns(road);
   const planted = extra?.(road);
+  const boards = everyBoard(networkId, road);
   const hits = new Map<string, RoadHit>();
-  const skip = (name: string) => ROAD_ITSELF.test(name);
+  const once = new Set<Object3D>();
   let poses = 0;
   for (const e of road.edges) {
     for (let s = 0; s <= e.length + POSE_M - 1e-6; s += POSE_M) {
@@ -328,11 +430,12 @@ export async function sweepNetwork(
       poses++;
       const near = { x: p.x, z: p.z, reach: LOOK_M };
       // The backdrop's vertex shader moves it (its geometry is not where it draws): it is the distance.
-      for (const r of scene.roots()) if (r.name !== 'backdrop') hitsIn(cols, r, skip, near, hits);
-      if (planted) hitsIn(cols, planted, () => false, near, hits);
+      for (const r of scene.roots()) if (r.name !== 'backdrop') hitsIn(cols, r, floor, near, hits, once);
+      hitsIn(cols, boards, floor, near, hits, once);
+      if (planted) hitsIn(cols, planted, floor, near, hits, once);
     }
   }
-  return { road, places: placesOf(hits.values()), points: cols.count, poses };
+  return { road, places: placesOf(hits.values()), points: cols.count, poses, boards: boards.children.length };
 }
 
 /**
@@ -357,42 +460,93 @@ const ALLOWED: readonly (readonly [string, number, string])[] = [
  * gone (polish J2, `overlap.ts`).
  */
 export const KNOWN: readonly (readonly [string, string, readonly string[], number, string])[] = [
+  ['sf-hills', 'road/road-brick', ['sf-stair-alley'], 2.5, "the stair alley's brick courses"],
+  ['sf-hills', 'road/road-brickCourse', ['sf-stair-alley'], 2.5, "the stair alley's brick courses"],
+  // Found by the ground rule (lane polish-j J1, 2026-10-06): not land, which is held to it everywhere, but another
+  // road's edge (its verge band, shoulder, paint, or a side wall drawn as deck) across a branch's lanes where the
+  // two overlap at a split, a join or a crossing, as the verge kit's lines above. Each fix deletes its line.
   [
-    'keys-m1',
-    'boards/',
-    ['m1-tarpon-flats'],
-    5.5,
-    "Sandbar Flats' billboard (sign-sandbar-advised) stands on Tarpon Flats",
-  ],
-  [
-    'keys-m1',
-    'boards/board-panel',
-    ['m1-tarpon-flats'],
-    5.5,
-    "Sandbar Flats' billboard (sign-sandbar-advised) stands on Tarpon Flats",
+    'osm-sf-russian-hill',
+    'verge/verge-band',
+    ['osm-sf-russian-hill-jones-in', 'osm-sf-russian-hill-jones-out'],
+    0.5,
+    "a sibling's verge band across the Jones Street choice's lanes where it leaves and joins (up to 0.23 m)",
   ],
   [
     'sf-downtown',
-    'road-downtown/road-downtown',
+    'road/road-deck',
     ['c-dt-plaza-in', 'sf-dt-plaza-cut'],
-    4,
-    "Campus Yard's lamps, hydrants and a planter on the Plaza Cut's lanes",
+    1,
+    "the plaza split's 1.2 m side wall (drawn as deck) along the Plaza Cut's lanes",
   ],
   [
     'sf-hills',
-    'boards/',
+    'verge/verge-band',
     ['sf-park-cut', 'sf-stair-alley'],
-    1.5,
-    "Switchback Street's and Fogline Climb's billboards on the stair alley's and park cut's lanes",
+    2.5,
+    "another road's verge band over the park cut's end (up to 1.96 m) and Switchback Street's over the stair alley",
   ],
-  ['sf-hills', 'road/road-brick', ['sf-stair-alley'], 2.5, "the stair alley's brick courses"],
-  ['sf-hills', 'road/road-brickCourse', ['sf-stair-alley'], 2.5, "the stair alley's brick courses"],
+  [
+    'sf-hills',
+    'road/road-shoulder',
+    ['sf-park-cut', 'sf-stair-alley'],
+    2.5,
+    "another road's shoulder over the park cut's end and Switchback Street's over the stair alley (up to 1.09 m)",
+  ],
+  [
+    'sf-hills',
+    'road/road-marking',
+    ['sf-stair-alley'],
+    2.5,
+    "Switchback Street's paint over the stair alley",
+  ],
+  [
+    'sf-hills',
+    'road/road-markingCenter',
+    ['sf-stair-alley'],
+    2,
+    "Switchback Street's paint over the stair alley",
+  ],
+  ['sf-hills', 'road/road-deck', ['sf-stair-alley'], 2.5, "Switchback Street's end over the stair alley"],
+  [
+    'osm-pnw-samish',
+    'verge/verge-band',
+    [
+      'osm-pnw-samish-lake-samish-in',
+      'osm-pnw-samish-lake-samish-out',
+      'osm-samish-east-shore',
+      'osm-samish-north-shore',
+    ],
+    3,
+    "the I-5's verge band across the Lake Samish links and shore roads where they leave and join (up to 1.55 m)",
+  ],
+  [
+    'osm-pnw-samish',
+    'road/road-deck',
+    ['osm-samish-east-shore', 'osm-samish-north-shore'],
+    0.5,
+    "a side wall (drawn as deck) at the lake road's ends",
+  ],
+  [
+    'osm-pnw-samish',
+    'road/road-shoulder',
+    ['osm-samish-east-shore'],
+    0.5,
+    "the I-5's shoulder over the east shore road's end",
+  ],
+  [
+    'pnw-c1',
+    'road/road-deck',
+    ['c-pnw-mill-in', 'pnw-mill-yard-cut'],
+    0.5,
+    "the sawmill yard road's 1.2 m side wall (drawn as deck) along the Mill Yard Cut's lanes",
+  ],
 ];
 
 /** Sweeps a network and holds it: every place is allowed, known, or a failure (printed by road and s). */
 export async function checkNetwork(networkId: string, seed: number): Promise<void> {
   const t0 = Date.now();
-  const { places, points, poses } = await sweepNetwork(networkId, seed);
+  const { places, points, poses, boards } = await sweepNetwork(networkId, seed);
   const held: RoadPlace[] = [];
   const allowed = new Map<string, number>();
   const known = new Map<number, number>();
@@ -413,7 +567,7 @@ export async function checkNetwork(networkId: string, seed: number): Promise<voi
     held.push(p);
   }
   print(
-    `[examined] ${networkId} seed ${seed}: ${points} column points over every lane of every road, ${poses} camera poses, ` +
+    `[examined] ${networkId} seed ${seed}: ${points} column points over every lane of every road, ${poses} camera poses, ${boards} boards (every slot), ` +
       `${places.length} places cut (${Date.now() - t0} ms); allowed ${[...allowed].map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}`,
   );
   for (const [k, row] of KNOWN.entries()) {

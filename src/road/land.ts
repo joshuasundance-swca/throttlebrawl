@@ -45,6 +45,16 @@ const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { promenade
 const WIDE_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { blocks: 60, oldtown: 72 };
 /** How far across an edge's centre line a point may lie and still be looked up, m (render/overlap.ts). */
 const LOCATE_REACH_M = 40;
+/** The land's top over the road's surface, m (render/scenery.ts LAND_TOP_M). */
+const LAND_TOP_M = -0.09;
+/**
+ * Land may stand at most this far over another road's asphalt, looked for this often across its strip and
+ * this far past that road's edges and ends, m (render/road-mesh.ts LAND_OVER_ROAD_M, LAND_ROAD_PROBE_M,
+ * LAND_ROAD_MARGIN_M: a link a little lower than this road, less than BURIED_M, ran under its grass).
+ */
+const LAND_OVER_ROAD_M = 0.05;
+const LAND_ROAD_PROBE_M = 1;
+const LAND_ROAD_MARGIN_M = 0.5;
 
 /** The land's reach past the verge at s on a side of an edge, m (0 = no land). */
 export type LandReach = (edge: number, side: -1 | 1, s: number) => number;
@@ -97,12 +107,16 @@ function locator(road: RoadNetwork) {
     const past = s < 0 ? -s : s > e.length ? s - e.length : 0;
     return { s: Math.min(e.length, Math.max(0, s)), d, past };
   };
-  /** Whether another edge (not `except`) lies under the point within `span(edge, s)` of its d. */
+  /**
+   * Whether another edge (not `except`) lies under the point within `span(edge, s, d)` of its d, the point
+   * projecting at most `pastM` past that edge's ends.
+   */
   return (
     x: number,
     z: number,
     except: number,
-    span: (o: Edge, s: number) => readonly [number, number] | null,
+    span: (o: Edge, s: number, d: number) => readonly [number, number] | null,
+    pastM = 0.25,
   ): boolean => {
     for (const o of road.edges) {
       if (o.index === except) continue;
@@ -116,8 +130,8 @@ function locator(road: RoadNetwork) {
       )
         continue;
       const p = project(o, x, z);
-      if (p.past > 0.25 || Math.abs(p.d) > LOCATE_REACH_M) continue;
-      const sp = span(o, p.s);
+      if (p.past > pastM || Math.abs(p.d) > LOCATE_REACH_M) continue;
+      const sp = span(o, p.s, p.d);
       if (sp && p.d > sp[0] && p.d < sp[1]) return true;
     }
     return false;
@@ -191,6 +205,24 @@ export function landReachOf(road: RoadNetwork): LandReach {
       for (let d = d0; d < d1; d += PROBE_M) if (lowerRoadAt(s, side * d, 1)) return false;
       return true;
     };
+    /** Whether the land strip from d0 out to d1 would stand over another road's edges by more than LAND_OVER_ROAD_M. */
+    const landOverRoad = (s: number, side: -1 | 1, d0: number, d1: number): boolean => {
+      for (let d = d0; d <= d1 + 1e-6; d += LAND_ROAD_PROBE_M) {
+        const p = road.toWorld(e.index, s, side * d, LAND_TOP_M);
+        const over = covered(
+          p.x,
+          p.z,
+          e.index,
+          (o, os, od) =>
+            p.y - road.toWorld(o.index, os, od, 0).y > LAND_OVER_ROAD_M
+              ? [o.dMin - LAND_ROAD_MARGIN_M, o.dMax + LAND_ROAD_MARGIN_M]
+              : null,
+          LAND_ROAD_MARGIN_M,
+        );
+        if (over) return true;
+      }
+      return false;
+    };
     const landmarks = e.features.filter((f) => f.kind === 'landmark' && f.params?.['overRoad'] !== true);
     const landmarkBeyond = (side: -1 | 1, s: number, outer: number, width: number): boolean =>
       landmarks.some((f) => {
@@ -237,7 +269,8 @@ export function landReachOf(road: RoadNetwork): LandReach {
             if (
               !otherRoadAt(s, side * d, 1) &&
               !otherRoadAt(s, side * (outer + width / 2), 1) &&
-              stripClear(s, side, outer, d)
+              stripClear(s, side, outer, d) &&
+              !landOverRoad(s, side, outer, outer + width)
             ) {
               r = width;
               break;
@@ -249,7 +282,8 @@ export function landReachOf(road: RoadNetwork): LandReach {
               if (
                 !otherRoadAt(s, side * (outer + width), GAP_MARGIN_M) &&
                 !otherRoadAt(s, side * (outer + width / 2), GAP_MARGIN_M) &&
-                stripClear(s, side, outer, outer + width)
+                stripClear(s, side, outer, outer + width) &&
+                !landOverRoad(s, side, outer, outer + width)
               ) {
                 r = width;
                 break;

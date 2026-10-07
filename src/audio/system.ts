@@ -68,6 +68,7 @@ import {
   type RadioStation,
   type RadioVetoFlag,
 } from './radio';
+import { rollingOn } from './rolling';
 import { distance, distanceGain, dopplerFactor, moving, panFor } from './spatial';
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
@@ -841,7 +842,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       speedMps: me.speed,
       edge: me.road.edge,
       s: me.road.s,
-      grounded: !down && me.mode !== 'Airborne',
+      grounded: rollingOn(me),
       tags: tagsAt(scapeRoad, me.road.edge, me.road.s),
       near,
       // A bar's open front or a busker (playtest 4, P4-16; B11): the music zone under the rider.

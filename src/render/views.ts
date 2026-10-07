@@ -28,6 +28,7 @@ import type {
   TumbleBodySnapshot,
 } from '../sim/api';
 import type { AssetManifest } from '../assets';
+import { loadChunk } from '../content';
 import type { FeelEffects, Point } from './effects';
 import {
   critterHeightM,
@@ -574,10 +575,12 @@ export class EntityViews {
       .filter((d) => d.category !== 'pedestrian' && d.category !== 'animal')
       .map((d) => d.contentId);
     const request = ++this.vehicleRequest;
-    void import('./vehicles')
-      .then((m) => m.loadVehicleSets(assets, ids))
+    // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): without it the
+    // traffic keeps its stand-ins.
+    void loadChunk('vehicles', () => import('./vehicles'))
+      .then((m) => (m ? m.loadVehicleSets(assets, ids) : null))
       .then((sets) => {
-        if (request !== this.vehicleRequest) return;
+        if (!sets || request !== this.vehicleRequest) return;
         this.setVehicleModels(new Map([...this.vehicleSets, ...sets]));
       })
       .catch(() => undefined);
@@ -895,11 +898,11 @@ export class EntityViews {
       if (e.parkedBike) {
         // Running back to the bike: the rider on foot, the bike standing apart.
         const b = e.parkedBike;
-        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.road.h);
+        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.y - ground);
         sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
         continue;
       }
-      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.road.h);
+      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.y - ground);
     }
     sh.end();
   }
@@ -1472,7 +1475,9 @@ export class EntityViews {
           if (actor) fx.burst(bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider'), 0.8);
           break;
         case 'splash':
-          if (actor) {
+          // A HIGH drop (the maintainer, 2026-10-06, "(a)") is a clean cut-away: no water thrown, no ring,
+          // no gator, no fisherman. The same fall as a low one in every other way.
+          if (actor && ev.data['high'] !== true) {
             const at = bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider');
             // Away from the bridge: from the rider's spot on the road out to the splash.
             const reactor = (ev.actor + ev.tick) % 2 === 0 ? 'gator' : 'fisherman';

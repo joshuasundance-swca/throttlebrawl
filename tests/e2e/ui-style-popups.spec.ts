@@ -1319,12 +1319,17 @@ for (const [where, width, height, finePointer] of [
 
       await press(page, '#menu-changelog', where);
       await expect(page.locator('#changelog')).toBeVisible();
+      // The changelog and the credits fetch their words after the screen shows, and the stamp checks again
+      // a frame after they land: measure once they are in (on main and train 439 the credits' first
+      // entries were measured under the stamp in that gap).
+      await expect(page.locator('#changelog-list h3').first()).toBeAttached();
       await expectStampClear(page, `${where}, changelog`);
       await press(page, '#changelog-back', where);
       await expect(page.locator('#menu-race')).toBeVisible();
 
       await press(page, '#menu-credits', where);
       await expect(page.locator('#credits')).toBeVisible();
+      await expect(page.locator('#credits-list .credit-entry').first()).toBeAttached();
       await expectStampClear(page, `${where}, credits`);
       await press(page, '#credits-back', where);
       await expect(page.locator('#menu-race')).toBeVisible();

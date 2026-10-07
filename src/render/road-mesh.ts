@@ -814,6 +814,13 @@ const SKIRT_ROAD_PROBE_M = 8;
 const STRIP_ROAD_PROBE_M = 4;
 /** A road this far or more below another's height is one its land would bury, m. [default] */
 export const BURIED_M = 1.5;
+/**
+ * Land may stand at most this far over another road's asphalt (road-clear.test-util.ts holds the drawn ground to
+ * 0.15 m), and is looked for this often across its strip and this far past that road's lanes, m. [default]
+ */
+const LAND_OVER_ROAD_M = 0.05;
+const LAND_ROAD_PROBE_M = 1;
+const LAND_ROAD_MARGIN_M = 0.5;
 /** The skirt keeps one road sample in this many. [default] */
 const SKIRT_EVERY = 3;
 /** A far conifer's trunk and the drawn ground it needs round it, as (s, d-outward) offsets, m. */
@@ -1602,6 +1609,40 @@ export function buildRoadScene(
       return true;
     };
     /**
+     * Whether the land strip from d0 out to d1 would stand over another road's drivable band by more than
+     * LAND_OVER_ROAD_M, looked for every LAND_ROAD_PROBE_M. The land lies at this road's height, so a link that
+     * leaves it a little lower (less than BURIED_M, which lowerRoadAt lets be) ran under it, and the rider rode
+     * under the grass (Bridge City's Morrison links, the live check of 2026-10-06: up to 1.07 m). Land may meet
+     * another road's edge, never lie over its lanes. [default]
+     */
+    const landOverRoad = (s: number, side: -1 | 1, d0: number, d1: number): boolean => {
+      for (let d = d0; d <= d1 + 1e-6; d += LAND_ROAD_PROBE_M)
+        if (overLowerLanes(w(e.index, s, side * d, LAND_TOP_M))) return true;
+      return false;
+    };
+    /**
+     * Whether land at p would stand over another road's lanes (LAND_ROAD_MARGIN_M wider, and as far past its ends)
+     * by more than LAND_OVER_ROAD_M.
+     */
+    const overLowerLanes = (p: Point3): boolean => {
+      for (const h of locator.at(p.x, p.z, e.index, LAND_ROAD_MARGIN_M)) {
+        const o = road.edges[h.edge];
+        if (!o || h.d <= o.dMin - LAND_ROAD_MARGIN_M || h.d >= o.dMax + LAND_ROAD_MARGIN_M) continue;
+        if (p.y - w(o.index, h.s, h.d, 0).y > LAND_OVER_ROAD_M) return true;
+      }
+      return false;
+    };
+    /** Whether the line from a to b passes over another road's lanes lower than it (looked for every LAND_ROAD_PROBE_M). */
+    const lineOverLowerLanes = (a: Point3, b: Point3): boolean => {
+      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / LAND_ROAD_PROBE_M));
+      for (let k = 0; k <= n; k++) {
+        const t = k / n;
+        const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
+        if (overLowerLanes(p)) return true;
+      }
+      return false;
+    };
+    /**
      * Whether a landmark of this side stands beyond the usual strip but within the wide one (playtest 4, run B's
      * check: Old Town's city floor, `WIDE_LAND_M`, would have drowned the cruise ship's berth in ground): the
      * wide strip is not laid there, and the next narrower one is tried. A landmark within the usual strip is
@@ -1740,7 +1781,8 @@ export function buildRoadScene(
             if (
               !otherRoadAt(s, side * d, 1) &&
               !otherRoadAt(s, side * (outer + width / 2), 1) &&
-              stripClear(s, side, outer, d)
+              stripClear(s, side, outer, d) &&
+              !landOverRoad(s, side, outer, outer + width)
             ) {
               r = width;
               break;
@@ -1757,7 +1799,8 @@ export function buildRoadScene(
               if (
                 !otherRoadAt(s, side * (outer + width), LAND_GAP_MARGIN_M) &&
                 !otherRoadAt(s, side * (outer + width / 2), LAND_GAP_MARGIN_M) &&
-                stripClear(s, side, outer, outer + width)
+                stripClear(s, side, outer, outer + width) &&
+                !landOverRoad(s, side, outer, outer + width)
               ) {
                 r = width;
                 meets[reach.length] = true;
@@ -1967,11 +2010,18 @@ export function buildRoadScene(
         return skirts[i] ? 3 : 2;
       };
       const caps = strip('land');
-      /** A curtain from each point down under the sea, both faces (it is seen from either side). */
+      /**
+       * A curtain from each point down under the sea, both faces (it is seen from either side). It leaves out a
+       * stretch whose top runs over another road's lanes below it: a cap across a road's half, where its land
+       * stops for a lower road crossing it, stood 0.7 m into that road's ride column (Switchback Street's end over
+       * the stair alley, the ride-column check of 2026-10-06).
+       */
       const curtain = (pts: readonly Point3[]) => {
+        const open = pts.map((p, i) => i > 0 && lineOverLowerLanes(pts[i - 1]!, p));
         for (const flip of [false, true]) {
           caps.breakStrip();
-          for (const p of pts) {
+          for (const [i, p] of pts.entries()) {
+            if (open[i]) caps.breakStrip();
             const foot = { ...p, y: LAND_CAP_FOOT_Y };
             if (flip) caps.pair(foot, p);
             else caps.pair(p, foot);
