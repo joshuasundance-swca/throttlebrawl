@@ -4,10 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, runnerImport, type Plugin } from 'vite';
 import {
+  roadLazyChunkGroup,
   SIM_CODE_HASH_PLACEHOLDER,
   simChunkGroup,
   simCodeHashPlugin,
-  structuresChunkGroup,
 } from './scripts/sim-chunk.mjs';
 import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 import { bootPreloadPlugin } from './scripts/boot-preload.mjs';
@@ -112,10 +112,8 @@ export default defineConfig({
     // pole fell under 4 KB once they shipped without normals).
     assetsInlineLimit: (file) => (file.endsWith('.json') || file.endsWith('.glb') ? false : undefined),
     // src/sim, src/road and src/core in one chunk, so its content hash names the sim's code
-    // (docs/architecture.md, "Replay and input recording"); the structures' planners (src/road/structures/)
-    // are a lazy chunk of their own, loaded with a region's road data.
-    rolldownOptions: {
-      output: { codeSplitting: { groups: [simChunkGroup(), structuresChunkGroup()] } },
-    },
+    // (docs/architecture.md, "Replay and input recording"); the road's lazy structure planners in their
+    // own chunk, off the first load (scripts/sim-chunk.mjs ROAD_LAZY_TEST).
+    rolldownOptions: { output: { codeSplitting: { groups: [simChunkGroup(), roadLazyChunkGroup()] } } },
   },
 });

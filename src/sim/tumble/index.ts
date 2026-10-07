@@ -62,10 +62,11 @@ import {
   gapParams,
   nearestOnEdges,
   type BakedFeature,
+  type Past,
   type RoadPos,
 } from '../../road';
 import { offRoadOn } from '../ground';
-import { riderState } from '../riders';
+import { highDrop, riderState } from '../riders';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../riders/contact';
 import { furnitureOn, LIGHT_KICK, LIGHT_SCRUB } from '../riders/furniture';
 import { startTrafficGhost } from '../traffic';
@@ -268,6 +269,14 @@ export interface TumbleRecord {
    * a race with no gap hashes as before.
    */
   gap?: { edge: number; id: string };
+  /**
+   * The first body went over the barrier line, or the rider flew over it (2026-10-06): what lies past
+   * (`water` or `drop`), the drop's height (the deck at the crossing down to the water level, m) and
+   * whether it is a high one (`riders.highDropM`). The `railOver`, `splash` and `respawn` events carry
+   * them for the presentation (a high drop is a clean cut-away, a low one into water the splash).
+   * Absent for every other crash, so a race where nobody goes over hashes as before.
+   */
+  over?: { past: Past; dropM: number; high: boolean };
   /** Scaled ticks since the first body went overboard, or -1. */
   overboard: number;
   /** Tick of the first splash, or -1, and scaled ticks since it (the penalty clock). */
@@ -512,8 +521,11 @@ function startCrash(
 
 /**
  * A crash that starts overboard (sim/riders/gap.ts: a rider past a gap's kill depth, or into the far
- * deck's broken end): both bodies fall free at once, each with a `railOver` (`gap: true`), and the
- * gap it fell through (`data.feature`, else the one under it) decides the respawn.
+ * deck's broken end, or one that flew over the barrier and fell past the deck): both bodies fall free
+ * at once, each with a `railOver` (`gap: true` through a gap; `over: true`, `past`, `dropM` and `high`
+ * over the barrier). Through a gap, the gap it fell through (`data.feature`, else the one under it)
+ * decides the respawn; over the barrier, the crossing (`data.crossEdge`, `crossS`, `crossD`) is where
+ * it wakes, on the road.
  */
 function startOverboard(
   world: World,
@@ -523,17 +535,44 @@ function startOverboard(
   data: Readonly<Record<string, unknown>>,
 ): void {
   const pos = m.pos;
-  const id = data['feature'];
-  const f =
-    (typeof id === 'string' ? gapById(config.road, pos.edge, id) : null) ??
-    gapAt(config.road, pos.edge, pos.s, pos.d);
-  if (f) r.gap = { edge: pos.edge, id: f.id };
-  r.railAt = { edge: pos.edge, s: pos.s, d: pos.d, dir: pos.dir };
+  const cross = data['cause'] === 'over' ? crossingOf(config, data, pos.dir) : null;
+  if (cross) {
+    const dropM = num(data, 'dropM');
+    r.over = {
+      past: data['past'] === 'water' ? 'water' : 'drop',
+      dropM,
+      high: highDrop(world.params, dropM),
+    };
+    r.railAt = cross;
+  } else {
+    const id = data['feature'];
+    const f =
+      (typeof id === 'string' ? gapById(config.road, pos.edge, id) : null) ??
+      gapAt(config.road, pos.edge, pos.s, pos.d);
+    if (f) r.gap = { edge: pos.edge, id: f.id };
+    r.railAt = { edge: pos.edge, s: pos.s, d: pos.d, dir: pos.dir };
+  }
   r.overboard = 0;
   for (const c of [r.riderRig, r.bikeRig]) {
     c.overboard = true;
-    emit(world, 'railOver', m.id, { body: c.kind, gap: true }, { causeId: r.causeId });
+    emit(world, 'railOver', m.id, { body: c.kind, ...overData(r, true) }, { causeId: r.causeId });
   }
+}
+
+/** The crossing an over-the-barrier crash names (sim/riders/gap.ts `overFall`), or null. */
+function crossingOf(config: SimConfig, data: Readonly<Record<string, unknown>>, dir: 1 | -1): RoadPos | null {
+  const edge = data['crossEdge'];
+  if (typeof edge !== 'number' || !config.road.edges[edge]) return null;
+  return { edge, s: num(data, 'crossS'), d: num(data, 'crossD'), dir };
+}
+
+/**
+ * What an overboard event says about the fall: over the barrier, `over`, `past`, `dropM` and `high`;
+ * through a gap (`gap`, for the crash's own `railOver`s), `gap: true`; else nothing.
+ */
+function overData(r: TumbleRecord, gap: boolean): Record<string, string | number | boolean> {
+  if (r.over) return { over: true, past: r.over.past, dropM: r.over.dropM, high: r.over.high };
+  return gap ? { gap: true } : {};
 }
 
 function isPlayer(config: SimConfig, m: Mover): boolean {
@@ -620,11 +659,14 @@ function contacts(
 /** The rail and the splash events for one cluster's step. */
 function railEvents(world: World, m: Mover, r: TumbleRecord, c: Cluster, at: ClusterContact): void {
   if (at.railOver) {
-    // Into a gap (playtest 3, ./rig.ts) rather than over a rail: flagged, and the gap is kept.
-    const data = at.gap === undefined ? { body: c.kind } : { body: c.kind, gap: true };
-    emit(world, 'railOver', m.id, data, { causeId: r.causeId });
-    // The first body over decides the respawn: a rail's spot, or the gap's rule.
+    // The first body over decides the respawn: a rail's spot, or the gap's rule; and over the barrier
+    // line, what lies past and how far down (2026-10-06).
     if (r.overboard < 0 && at.gap !== undefined) r.gap = { ...at.gap };
+    if (r.overboard < 0 && at.over !== undefined)
+      r.over = { ...at.over, high: highDrop(world.params, at.over.dropM) };
+    // Into a gap (playtest 3, ./rig.ts) rather than over a rail: flagged, and the gap is kept.
+    const data = { body: c.kind, ...overData(r, at.gap !== undefined) };
+    emit(world, 'railOver', m.id, data, { causeId: r.causeId });
     if (r.overboard < 0) r.overboard = 0;
     r.railAt ??= { edge: at.edge, s: at.s, d: at.d, dir: m.pos.dir };
   }
@@ -635,7 +677,8 @@ function railEvents(world: World, m: Mover, r: TumbleRecord, c: Cluster, at: Clu
 function splash(world: World, m: Mover, r: TumbleRecord, c: Cluster): void {
   const at = centre(c.p);
   const penaltyTicks = secondsToTicks(param(world, 'tumble.splashPenaltyS'));
-  emit(world, 'splash', m.id, { body: c.kind, penaltyTicks, x: at.x, z: at.z }, { causeId: r.causeId });
+  const data = { body: c.kind, penaltyTicks, x: at.x, z: at.z, ...overData(r, false) };
+  emit(world, 'splash', m.id, data, { causeId: r.causeId });
   if (r.splashTick < 0) {
     r.splashTick = world.tick;
     r.splashElapsed = 0;
@@ -791,7 +834,7 @@ function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): vo
   const band = ownSideBand(config.road, at.edge, at.s, dir);
   const d = at.d < band.lo ? band.lo : at.d > band.hi ? band.hi : at.d;
   const pos: RoadPos = { edge: at.edge, s: at.s, d, dir };
-  const data = { reason: 'splash', crashTick: r.crashTick, splashTick: r.splashTick };
+  const data = { reason: 'splash', crashTick: r.crashTick, splashTick: r.splashTick, ...overData(r, false) };
   emit(world, 'respawn', m.id, woke && gap ? { ...data, gap: gap.id, at: woke.at } : data, {
     causeId: r.causeId,
   });

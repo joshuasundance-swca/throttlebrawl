@@ -516,7 +516,7 @@ export async function stillSceneOf(
           road,
           dressing,
           seed,
-          portland: { landReach: (e, side, s) => rs.landReach(e, side, s) },
+          portland: true,
         })
       : null
     : models.sfDowntown && hasDowntown(tags)

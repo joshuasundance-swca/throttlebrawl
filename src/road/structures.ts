@@ -19,7 +19,8 @@
 //   (scripts/hitboxes.test.ts holds the two together), never from what has loaded.
 //
 // Pure + - * / and core math, like the rest of road/: the same network, seed and planners give the same plan.
-// Nothing reads a plan yet (2026-10-06): the planners move here from render layer by layer.
+// The planners move here from render layer by layer (2026-10-06); the downtowns' came first
+// (road/structures/downtown.ts). The sim reads no plan yet.
 import { cos, sin } from '../core';
 import type { RoadNetwork } from './network';
 
@@ -99,6 +100,15 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
     tags: ['lanterns', 'cafes', 'side-street', 'hill-park'],
     load: () => import('./structures/chinatown-northbeach').then((m) => m.blocksPlanner),
   },
+  // Downtown Portland's blocks and San Francisco's downtown (road/structures/downtown.ts).
+  'downtown-pdx': {
+    tags: ['pdx-blocks'],
+    load: () => import('./structures/downtown').then((m) => m.PDX_DOWNTOWN_STRUCTURES),
+  },
+  'downtown-sf': {
+    tags: ['towers', 'plaza', 'cross-street', 'cable-crossing'],
+    load: () => import('./structures/downtown').then((m) => m.SF_DOWNTOWN_STRUCTURES),
+  },
   // San Francisco's Mission (render/mission.ts draws the layout).
   mission: {
     tags: ['mascot-mural', 'murals', 'shopfronts'],
@@ -140,9 +150,9 @@ const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: num
 /**
  * Each placed model's box, by `<asset id>#<variant>`: the committed GLB's whole box (an overhang such as a
  * balcony included), exactly what render measures from the loaded model today, rounded to the centimetre and held
- * to the file by scripts/hitboxes.test.ts. Today's rows are the two layers whose lots render sizes from what has
- * loaded: downtown Portland (render/downtown.ts `pdxFootprint`) and Key West's Old Town fronts (render/roadside.ts,
- * a `Frontage` rule's model box). A port adds the rows of the models it places.
+ * to the file by scripts/hitboxes.test.ts. The first rows were the two layers whose lots render sized from what had
+ * loaded: downtown Portland (now road/structures/downtown.ts `pdxLot`) and Key West's Old Town fronts
+ * (render/roadside.ts, a `Frontage` rule's model box). A port adds the rows of the models it places.
  */
 export const STRUCTURE_MODELS = {
   // Downtown Portland (render/downtown.ts PDX), the kit's front at z 0, its body back along -z.
@@ -166,6 +176,24 @@ export const STRUCTURE_MODELS = {
   // Old Town's open-fronted bars (render/roadside.ts KEYS_KIT `oldtown-bar`).
   'models/scenery/keys-identity#6': box(-7.2, 7.2, 0, 8, -7.2, 2.62, 'an open-fronted bar'),
   'models/scenery/keys-identity#7': box(-6.18, 6.18, 0, 5.5, -7, 3.1, 'an open-fronted bar'),
+  // San Francisco's downtown (road/structures/downtown.ts): the deadpan headquarters, and CX3's tower modules
+  // (a base, a four-storey mid and a crown per style, stacked to a tower's height), the front at z 0.
+  'models/scenery/sf-downtown#5': box(-23.5, 23.5, 0, 40, -30.5, 0.53, 'the headquarters'),
+  'models/scenery/sf-tower-modules#0': box(-14, 14, 0, 7, -24, 0.01, "a glass tower's base"),
+  'models/scenery/sf-tower-modules#1': box(-14, 14, 0, 14, -24, 0, "a glass tower's mid"),
+  'models/scenery/sf-tower-modules#2': box(-14, 14, 0, 8, -24, 0, "a glass tower's crown"),
+  'models/scenery/sf-tower-modules#3': box(-15, 15, 0, 7, -26, 0.01, "a stone tower's base"),
+  'models/scenery/sf-tower-modules#4': box(-15, 15, 0, 14, -26, 0, "a stone tower's mid"),
+  'models/scenery/sf-tower-modules#5': box(-15, 15, 0, 8, -26, 0, "a stone tower's crown"),
+  'models/scenery/sf-tower-modules#6': box(-16, 16, 0, 7, -26, 0.01, "a screen tower's base"),
+  'models/scenery/sf-tower-modules#7': box(-16, 16, 0, 14, -26, 0, "a screen tower's mid"),
+  'models/scenery/sf-tower-modules#8': box(-16, 16, 0, 8, -26, 0, "a screen tower's crown"),
+  'models/scenery/sf-tower-modules#9': box(-17, 17, 0, 7, -28, 0.01, "a crowned tower's base"),
+  'models/scenery/sf-tower-modules#10': box(-17, 17, 0, 14, -28, 0, "a crowned tower's mid"),
+  'models/scenery/sf-tower-modules#11': box(-17, 17, 0, 8, -28, 0, "a crowned tower's crown"),
+  'models/scenery/sf-tower-modules#12': box(-12, 12, 0, 7, -20, 0.01, "a midrise's base"),
+  'models/scenery/sf-tower-modules#13': box(-12, 12, 0, 14, -20, 0, "a midrise's mid"),
+  'models/scenery/sf-tower-modules#14': box(-12, 12, 0, 8, -20, 0, "a midrise's crown"),
 } as const satisfies Record<string, StructureModel>;
 
 /** A model's box by id. An id with no row is a planner's bug: it throws, never guesses a size. */

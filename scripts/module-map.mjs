@@ -45,10 +45,10 @@ export const MODULE_MAP = {
  * The files another module may import: the module's index.ts, and for sim its public contract
  * api.ts ("every --> sim edge means imports src/sim/api.ts"). dev has two: index.ts, which
  * src/main.ts loads lazily (off the first-load JavaScript budget), and boot.ts, the small part
- * that loads with the first screen (the test flag and the error capture). Only main imports dev. road has its
- * index and the structures' planners (src/road/structures/*.ts, an entry ending in `/*` is every file under
- * that folder): a lazy chunk of their own, so render's lazy layers import them directly, and the road's
- * index, which the sim chunk bundles, never re-exports them (docs/architecture.md, "Physical world").
+ * that loads with the first screen (the test flag and the error capture). Only main imports dev.
+ * road has its index.ts and its structure planners, `structures/*` (the physical world, 2026-10-06): each is
+ * a lazy chunk, and a lazy render layer that draws one imports it directly, which through index.ts would
+ * pull it into the first load.
  */
 const PUBLIC_ENTRIES = { sim: ['api'], dev: ['index', 'boot'], road: ['index', 'structures/*'] };
 
@@ -77,8 +77,11 @@ export function checkImport(fromRel, targetRel) {
   }
   const inside = targetRel.slice(`src/${to}/`.length).replace(/\.(?:[cm]?[jt]s|d\.ts)$/, '');
   const entries = PUBLIC_ENTRIES[to] ?? ['index'];
-  const open = entries.some((e) => (e.endsWith('/*') ? inside.startsWith(e.slice(0, -1)) : e === inside));
-  if (targetRel === `src/${to}` || open) return null;
+  const entry = (e) =>
+    e.endsWith('/*')
+      ? inside.startsWith(e.slice(0, -1)) && !inside.slice(e.length - 1).includes('/')
+      : e === inside;
+  if (targetRel === `src/${to}` || entries.some(entry)) return null;
   return `import ${to} through its public entry (src/${to}/${entries[0]}.ts), not ${targetRel}`;
 }
 

@@ -94,9 +94,9 @@ describe('lint rules fire', () => {
       'modules/boundaries',
     ],
     [
-      "render reaching into road past its index and the structures' planners",
+      'render reaching into road past its index and its structure planners',
       'src/render/probe.ts',
-      "export * from '../road/furniture';",
+      "export * from '../road/land';",
       'modules/boundaries',
     ],
     [
@@ -169,6 +169,11 @@ describe('lint rules stay quiet on allowed code', () => {
     ],
     ['sim sub-folders importing each other', 'src/sim/riders/probe.ts', "export * from '../world/store';"],
     ['render importing the sim contract', 'src/render/probe.ts', "export type * from '../sim/api';"],
+    [
+      "render importing one of road's lazy structure planners (the physical world, 2026-10-06)",
+      'src/render/probe.ts',
+      "export * from '../road/structures/downtown';",
+    ],
     ['render importing three', 'src/render/probe.ts', "export { Scene } from 'three';"],
     [
       'Math.sqrt and Math.random outside the sim',
@@ -188,11 +193,6 @@ describe('lint rules stay quiet on allowed code', () => {
       "export * from '../../app';\nexport * from '../../sim/api';",
     ],
     ['a sim unit test using Math.random', 'src/sim/probe.test.ts', 'export const r = Math.random();'],
-    [
-      "render importing a structures planner directly (a lazy layer reads the road's layout)",
-      'src/render/probe.ts',
-      "export * from '../road/structures/mission';",
-    ],
     [
       'a short poll in a browser spec',
       'tests/e2e/probe.spec.ts',

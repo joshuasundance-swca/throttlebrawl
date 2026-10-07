@@ -69,13 +69,18 @@ function roadPoints(road: RoadNetwork): { x: number; z: number; edge: number; s:
 
 describe('the layers: which network asks for which planner, and that they load lazily', () => {
   it('the districts ask for their own layer only, by their tags', () => {
-    expect(Object.keys(STRUCTURE_LAYERS).sort()).toEqual(['chinatown-northbeach', 'mission']);
+    // Other layers (the downtowns, the waterfront) have rows too; this test holds the districts' own.
+    const districts = (id: string) =>
+      structureLayersFor(track(id).road).filter((l) => l === 'chinatown-northbeach' || l === 'mission');
+    expect(Object.keys(STRUCTURE_LAYERS)).toEqual(
+      expect.arrayContaining(['chinatown-northbeach', 'mission']),
+    );
     expect(STRUCTURE_LAYERS['chinatown-northbeach']?.tags).toEqual([...BLOCK_TAGS]);
     expect(STRUCTURE_LAYERS['mission']?.tags).toEqual([...MISSION_TAGS]);
-    expect(structureLayersFor(track(CN).road)).toEqual(['chinatown-northbeach']);
-    expect(structureLayersFor(track(MI).road)).toEqual(['mission']);
+    expect(districts(CN)).toEqual(['chinatown-northbeach']);
+    expect(districts(MI)).toEqual(['mission']);
     for (const other of ['sf-downtown', 'sf-hills', 'keys-m1', 'pnw-c1'])
-      expect(structureLayersFor(track(other).road), other).toEqual([]);
+      expect(districts(other), other).toEqual([]);
   });
 
   it('ensureStructures loads the planner (a dynamic import) and keeps one plan per network and seed', async () => {

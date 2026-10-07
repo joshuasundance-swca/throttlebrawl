@@ -6,7 +6,10 @@ import {
   nearestFocus,
   shotFociOf,
   shotPose,
+  shotTarget,
   SHOT_EASE_TICKS,
+  SHOT_MAX_FOV_DEG,
+  SHOT_PULLBACK_MAX_M,
   SHOT_REACH_M,
   type ShotFocus,
 } from './finish-shot';
@@ -144,25 +147,82 @@ describe("the finish shot: the player's finish near a landmark that asks for it 
         ).toBeLessThan(0.95);
       }
       stdout.write(
-        `[examined] finish shot, aspect ${aspect.toFixed(2)}: the tower's base and top within ${worstOverall.toFixed(2)} of the frame's middle (1 is its edge) over the beat, FOV ${shotPose(live, focus, aspect, 1).fov.toFixed(0)} from ${live.fov.toFixed(0)}\n`,
+        `[examined] finish shot, aspect ${aspect.toFixed(2)}: the tower's base and top within ${worstOverall.toFixed(2)} of the frame's middle (1 is its edge) over the beat, FOV ${shotPose(live, focus, aspect, 1).fov.toFixed(0)} from ${live.fov.toFixed(0)}, the camera ${shotTarget(live, focus, aspect).backM.toFixed(0)} m further back\n`,
       );
     },
   );
 
-  it('starts as the chase camera is (no jump) and eases to the shot, never moving the camera itself', () => {
+  it('starts as the chase camera is (no jump) and eases to the shot, the camera backing off and up, never forward', () => {
     const { foci, live, finishM } = atTheLine(PHONE);
     const focus = nearestFocus(foci, finishM.x, finishM.z, SHOT_REACH_M)!;
     const start = shotPose(live, focus, PHONE, 0);
     expect(start).toEqual(live);
-    for (const w of [0.25, 0.5, 1, 4]) {
+    // The camera never goes toward the landmark or down: it backs off along the way it came and rises.
+    const back = shotTarget(live, focus, PHONE);
+    expect(back.backM).toBeGreaterThan(0);
+    expect(back.backM).toBeLessThanOrEqual(SHOT_PULLBACK_MAX_M);
+    let lastBack = 0;
+    for (const w of [0.25, 0.5, 0.75, 1, 4]) {
       const p = shotPose(live, focus, PHONE, w);
-      expect([p.x, p.y, p.z]).toEqual([live.x, live.y, live.z]);
+      const moved = Math.hypot(p.x - live.x, p.z - live.z);
+      expect(moved, `ease ${w}: backed off`).toBeGreaterThanOrEqual(lastBack - 1e-9);
+      expect(moved).toBeLessThanOrEqual(SHOT_PULLBACK_MAX_M + 1e-9);
+      expect(p.y, `ease ${w}: not lower`).toBeGreaterThanOrEqual(live.y - 1e-9);
+      lastBack = moved;
     }
     // Between the two the frame moves steadily toward the shot: the top climbs into the frame without overshooting.
     const tops = [0, 0.25, 0.5, 0.75, 1].map(
       (w) => seen(shotPose(live, focus, PHONE, w), PHONE, focus).top.y,
     );
     for (let i = 1; i < tops.length; i++) expect(tops[i]!).toBeLessThanOrEqual(tops[i - 1]! + 1e-9);
+  });
+
+  it.each([
+    ['a phone held sideways', PHONE],
+    ['a 16:9 screen', WIDE],
+  ])(
+    'on %s the field never passes the cap (%s degrees), from the first frame of the ease to the results',
+    (_name, aspect) => {
+      const { foci, live, finishM } = atTheLine(aspect);
+      const focus = nearestFocus(foci, finishM.x, finishM.z, SHOT_REACH_M)!;
+      expect(SHOT_MAX_FOV_DEG).toBeLessThanOrEqual(75);
+      let widest = 0;
+      for (let tick = 0; tick <= 120; tick += 4) {
+        widest = Math.max(widest, shotPose(live, focus, aspect, tick / SHOT_EASE_TICKS).fov);
+      }
+      stdout.write(
+        `[examined] finish shot, aspect ${aspect.toFixed(2)}: the widest field over the beat ${widest.toFixed(1)} degrees (cap ${SHOT_MAX_FOV_DEG}; the first shot used 86), the chase field ${live.fov.toFixed(1)}
+`,
+      );
+      expect(widest).toBeLessThanOrEqual(SHOT_MAX_FOV_DEG + 1e-9);
+      expect(widest).toBeLessThanOrEqual(Math.max(live.fov, 55) + 1e-9);
+    },
+  );
+
+  it('control: the same tower from the held camera at the cap field is cut off, so the pull-back is what fits it', () => {
+    // The old shot widened the field to 86 degrees from where the camera was; under the 75 cap that camera, aimed
+    // at the tower's middle, cuts the tower's top and base off, on either screen.
+    for (const aspect of [PHONE, WIDE]) {
+      const { foci, live, finishM } = atTheLine(aspect);
+      const focus = nearestFocus(foci, finishM.x, finishM.z, SHOT_REACH_M)!;
+      const mid = focus.y + focus.heightM / 2;
+      const held: CameraPose = {
+        ...live,
+        fov: SHOT_MAX_FOV_DEG,
+        lookX: focus.x,
+        lookY: mid,
+        lookZ: focus.z,
+        roll: 0,
+        upX: 0,
+        upY: 1,
+        upZ: 0,
+      };
+      expect(seen(held, aspect, focus).worst, `aspect ${aspect.toFixed(2)}`).toBeGreaterThan(1);
+      // And the shot's own camera fits it, inside the same cap.
+      const pose = shotPose(live, focus, aspect, 1);
+      expect(seen(pose, aspect, focus).worst).toBeLessThan(0.95);
+      expect(pose.fov).toBeLessThanOrEqual(SHOT_MAX_FOV_DEG);
+    }
   });
 
   it('is for a finish near the landmark only: the reach is 90 m, and a finish farther off has no shot', () => {
