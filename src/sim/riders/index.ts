@@ -140,7 +140,6 @@ import {
   type OverMark,
 } from './gap';
 import {
-  clearOfVehicleTop,
   holdsBike,
   inRiderFrame,
   JOLT_WOBBLE_MPS,
@@ -2061,8 +2060,9 @@ function toWorldFrame(world: World, config: SimConfig, m: Mover): void {
   }
   m.speed = Math.sqrt(along * along + across * across);
   m.yaw = m.speed > 1e-9 ? clamp(atan2(across, along), -1.2, 1.2) : 0;
-  // Off a vehicle's top he moves away from it: clear of it while their boxes part (sim/riders/supports.ts).
-  clearOfVehicleTop(world, m.id);
+  // Off a vehicle's top it is solid to him again at once (the maintainer's rule, 2026-10-06: nothing is a
+  // ghost): its box still under his as he drops past its edge is traffic's to resolve, by its one rule at
+  // a top's edge (sim/traffic `contacts`: clear of it the short way, or met by the closing speed).
   leaveSupport(world, m.id);
 }
 

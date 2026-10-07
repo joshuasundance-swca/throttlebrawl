@@ -2257,8 +2257,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             holdAtTop(world, config, m, top);
             continue;
           }
-          // Come down past its edge (a rider riding off one is clear of it already: the riders'
-          // clearOfVehicleTop). Moving into it, he meets its end below its top: the contact below, by the
+          // Come down past its edge (a rider who has just ridden off its top included: it is solid to him
+          // again at once, the live check of 2026-10-07). Moving into it, he meets its end below its top: the contact below, by the
           // closing speed, on the side the shorter overlap says. Level with it or falling behind, the edge
           // tips the overhanging bike off: he slides clear of it the short way, his speed and his fall as
           // they were, with no contact.
