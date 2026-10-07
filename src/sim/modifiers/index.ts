@@ -8,9 +8,8 @@
 import type { TuningParamDecl } from '../../core';
 import type { SimConfig } from '../types';
 import type { SimSystem, World } from '../world';
-import { stepLawProps } from './law-props';
-import { initSetPieces, PROP_CONTACT_KEY, stepSetPieces } from './setpieces';
-import { raceState } from '../race';
+import { initSetPieces, PROP_CONTACT_KEY } from './setpieces';
+import { lateSteps } from '../late';
 
 export { propSnapshots, SET_PIECE, SET_PIECES, setPieceState } from './setpieces';
 export type { SetPiece, SetPieceName, SetPieceState, SetProp } from './setpieces';
@@ -51,9 +50,6 @@ export const modifiersSystem: SimSystem = {
   init(world: World, config: SimConfig) {
     initSetPieces(world, config);
   },
-  step(world: World, config: SimConfig) {
-    stepSetPieces(world, config, raceState(world).over);
-    // The law's own props (sim/cops lawProps) are met by the same rule, with or without a set piece in the race.
-    stepLawProps(world, config);
-  },
+  // The step is in ./step.ts, a lazy chunk the race waits for (src/sim/late.ts).
+  step: (world, config) => lateSteps().modifiersStep(world, config),
 };

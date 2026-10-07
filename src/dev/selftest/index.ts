@@ -2,6 +2,7 @@
 // `?selftest=1` runs the fixed self-test race (./race.ts) in the browser and compares its final
 // state hash with the one Node baked in at build time (vite.config.ts, `virtual:selftest-expected`).
 // It shows MATCH or MISMATCH on a panel; the maintainer opens it on the phone.
+import { loadSimSteps } from '../../sim/api';
 import { createSelfTestRace, type SelfTestRaceResult } from './race';
 
 export type SelfTestStatus = 'MATCH' | 'MISMATCH' | 'not-built';
@@ -34,6 +35,8 @@ const yieldToPage = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 export async function runSelfTest(opts: SelfTestOptions = {}): Promise<SelfTestResult> {
   const expected = await (opts.expected ?? bakedExpected)();
   if (!expected) return { status: 'not-built', expected: null, actual: null, ticks: 0, ms: 0 };
+  // The systems' steps are a lazy chunk (src/sim/late.ts); the app may not have fetched it yet.
+  await loadSimSteps();
   const t0 = performance.now();
   const race = createSelfTestRace();
   while (!race.step(opts.sliceTicks ?? 240)) await yieldToPage();

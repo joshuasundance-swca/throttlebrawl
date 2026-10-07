@@ -86,6 +86,7 @@ import { createCountdown } from './countdown';
 import { createLookFallback } from './look-fallback';
 import {
   createSim,
+  loadSimSteps,
   loadStructurePlanners,
   SIM_DT,
   type EventPatch,
@@ -1259,12 +1260,13 @@ export function createApp(opts: AppOptions): AppHandle {
   /**
    * The physical world's planners (the structures the sim meets: its buildings, landmarks and roofs; one
    * lazy chunk, never in the first load), fetched in the background with the Keys' real roads; a race waits
-   * for them as it waits for its roads, since its world is planned from them as it starts.
+   * for them as it waits for its roads, since its world is planned from them as it starts. The systems' steps
+   * (the sim's step chunk, lane U3: the menu's grid needs none of it) come with them, the same way.
    */
   let plannersIn = false;
   let plannersLoading: Promise<void> | null = null;
   const loadPlanners = (): Promise<void> =>
-    (plannersLoading ??= loadStructurePlanners().then(
+    (plannersLoading ??= Promise.all([loadStructurePlanners(), loadSimSteps()]).then(
       () => {
         plannersIn = true;
       },
