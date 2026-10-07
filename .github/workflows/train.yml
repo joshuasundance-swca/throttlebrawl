@@ -202,6 +202,32 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
+      # Record only a passed full suite, before report can post a success that lets a PR merge.
+      # Main can then reuse this exact tree; intermediate bundle subsets still run the suite.
+      # This job checks out main's scripts, never the assembled PR code, with its write token.
+      - name: Record the tree this train tested
+        id: tested
+        if: needs.suite.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        env:
+          TRAIN_TREE: ${{ needs.plan.outputs.tree }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TRAIN_TREE" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "invalid tested tree" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/tested-tree"
+          printf '{"tree":"%s","run":%s}\n' "$TRAIN_TREE" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/tested-tree/tested-tree.json"
+          echo "name=tested-tree-$TRAIN_TREE" >> "$GITHUB_OUTPUT"
+      - name: Upload the tested train tree
+        if: steps.tested.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.tested.outputs.name }}
+          path: ${{ runner.temp }}/tested-tree/tested-tree.json
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
       - name: Results, the landing, and the next train
         env:
           GH_TOKEN: ${{ github.token }}
