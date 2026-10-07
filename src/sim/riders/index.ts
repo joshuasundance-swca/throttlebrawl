@@ -113,11 +113,16 @@ import {
   gapFall,
   gapUnder,
   GAP_TUNING,
+  handYaw,
   newGapState,
   overBarrier,
   overFall,
+  overFalls,
   overMarkOf,
+  overStep,
+  roadUnder,
   type GapState,
+  type OverMark,
 } from './gap';
 import {
   inRiderFrame,
@@ -143,6 +148,7 @@ import {
   groundFeel,
   limitsAt,
   ploughYard,
+  brokenFencesOf,
   vergeState,
 } from './verge';
 import {
@@ -753,8 +759,11 @@ export function riderLimits(
   edge: number,
   s: number,
   d?: number,
+  reading = false,
 ): RideLimits {
-  const lim = limitsAt(config, world.params, vergeState(world).brokenFences, edge, s, BIKE_HALF_WIDTH_M);
+  // A reader (the snapshot's forecasts) never creates the verge state: it may be absent, no fence broken.
+  const fences = reading ? brokenFencesOf(world) : vergeState(world).brokenFences;
+  const lim = limitsAt(config, world.params, fences, edge, s, BIKE_HALF_WIDTH_M);
   if (lim.loEdge === 'hard' && lim.hiEdge === 'hard' && lim.loBandM === 0 && lim.hiBandM === 0) return lim;
   const lanes = barrierLimits(config, edge, s);
   const outRight = d !== undefined && d > lanes.hi + ON_VERGE_M;
@@ -2410,6 +2419,12 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   const dt = FORECAST_STEP_S;
   const tops = supportsOn(world);
   const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
+  // Over the barrier (2026-10-06, sim/riders/gap.ts): the flight meets the edge by the same rule the
+  // rider does (`overStep`, on its own copy of the mark), so a flight past a rail that ends in the water
+  // has no mark (there is no landing to aim at), and one that comes down on another road, or at the
+  // edge of ground past it, has its mark there.
+  const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
+  let mark: OverMark | null = overMarkOf(st, m.id);
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
     const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
@@ -2420,6 +2435,21 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     y += vy * dt - 0.5 * gravity * dt * dt;
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
+    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M);
+    mark = step.mark;
+    if (step.setD !== undefined) at.d = step.setD;
+    if (step.hand) {
+      yaw = handYaw(road, at, step.hand, yaw);
+      at.edge = step.hand.edge;
+      at.s = step.hand.s;
+      at.d = step.hand.d;
+      at.dir = step.hand.dir;
+    }
+    const pastEdge = mark !== null && step.result === 'past';
+    // Out past the edge over water or a drop, and it falls: a splash, not a landing.
+    if (pastEdge && mark && overFalls(mark, y)) return null;
+    // Below the barrier's top (or at a ground edge): it holds the flight at its limit.
+    if (step.holdD !== undefined) at.d = step.holdD;
     const gap = y - road.surfaceHeight(at.edge, at.s, at.d);
     const here = { edge: at.edge, s: at.s, d: at.d, ahead: t + dt };
     const sup = tops
@@ -2436,7 +2466,9 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
       onTop = sup.top;
       break;
     }
-    if (gap <= 0) {
+    // Out past the edge its road's plane does not go on: only a road under it, or the ground's
+    // edge (put back at the limit above), ends the flight there.
+    if (gap <= 0 && !pastEdge) {
       // Back to where the flight crossed the ground, between the two steps.
       const k = prev.gap > 0 ? prev.gap / (prev.gap - gap) : 1;
       if (prev.edge === at.edge) {
@@ -2459,6 +2491,46 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   const crooked =
     holdingPaper(st, m.id) || td.crashes || td.wobbles || lateral >= crashAt * LANDING_WOBBLE_FRACTION;
   return { x: p.x, y: p.y, z: p.z, heading: atan2(-fx, -fz), inS: t, crooked };
+}
+
+/**
+ * What lies straight below a rider in the air, as a world height (`EntitySnapshot.floorY`; the maintainer,
+ * 2026-10-06: "consistent physics and gameplay is important here so players know what to expect"): the
+ * shadow falls there and the camera judges its height over it. The top of a support the rider is above
+ * (a truck's roof, a parked pickup; sim/riders/supports.ts) or a ramp truck's deck, else the road's
+ * surface; out past the edge of its road (over the barrier, sim/riders/gap.ts) another road under it
+ * (the old Seven Mile Bridge), else the water or the drop's floor, or the band's edge where ground lies
+ * past it. Null for anyone not in the air. Presentation only: it reads the state, it never writes it.
+ */
+export function floorOf(world: World, config: SimConfig, m: Mover): number | null {
+  if (m.kind !== 'rider' || m.mode !== 'Airborne') return null;
+  const st = riderState(world);
+  const road = config.road;
+  const pos = m.pos;
+  const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  const y = st.yAbs[m.id] ?? surface + m.h;
+  const mark = overMarkOf(st, m.id);
+  if (mark) {
+    const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
+    const to = roadUnder(config, pos, y, limits);
+    if (to) return road.surfaceHeight(to.edge, to.s, to.d);
+    return mark.past === 'ground' ? road.surfaceHeight(pos.edge, pos.s, mark.d) : mark.floorY;
+  }
+  const tops = supportsOn(world);
+  const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
+  const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
+  const up = y - surface;
+  const on = tops
+    ? supportAt(
+        world,
+        config,
+        m,
+        { edge: pos.edge, s: pos.s, d: pos.d, ahead: 0 },
+        decks,
+        (h) => h <= up + 1e-6,
+      )
+    : null;
+  return surface + Math.max(0, ramp, on ? on.top : 0);
 }
 
 export const ridersSystem: SimSystem = {
