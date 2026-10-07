@@ -15,13 +15,17 @@ function rewriteUri(uri) {
 
 /** Changes source URI fields only; comments, other source URIs and signature fields stay verbatim.
  * @param {string} text
- * @param {'list' | 'sources'} format
+ * @param {'list' | 'sources' | 'mirrorlist'} format
  */
 export function rewriteUbuntuMirror(text, format) {
   let inUris = false;
   return text
     .split(/(?<=\n)/)
     .map((line) => {
+      if (format === 'mirrorlist') {
+        // One URI per line; the remainder can contain TAB-separated selection metadata.
+        return line.replace(/^([\t ]*)(\S+)/, (_match, prefix, uri) => prefix + rewriteUri(uri));
+      }
       if (format === 'list') {
         return line.replace(
           /^([\t ]*deb(?:-src)?[\t ]+(?:\[[^\]]*\][\t ]+)?)(\S+)/,
@@ -65,6 +69,9 @@ export async function prepareBrowserApt(aptRoot) {
   }
   const files = [
     { path: join(aptRoot, 'sources.list'), format: 'list' },
+    // The hosted runner uses mirror+file sources pointing to this known file. Do not follow
+    // arbitrary mirror+file references or discover other paths from source contents.
+    { path: join(aptRoot, 'apt-mirrors.txt'), format: 'mirrorlist' },
     ...names
       .filter((name) => name.endsWith('.list') || name.endsWith('.sources'))
       .map((name) => ({

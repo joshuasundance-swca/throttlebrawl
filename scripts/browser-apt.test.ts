@@ -63,6 +63,59 @@ describe('browser dependency APT preparation', () => {
     expect(rewriteUbuntuMirror(`URIs:${oldMirror}\n`, 'sources')).toBe(`URIs:${newMirror}\n`);
   });
 
+  it('rewrites only mirrorlist URI tokens and preserves comments, blanks and tab metadata', () => {
+    const before = [
+      `# ${oldMirror}`,
+      `  # ${oldMirror}`,
+      '',
+      `${oldMirror}\tpriority:1 arch:amd64`,
+      `${oldMirror}/`,
+      'https://archive.ubuntu.com/ubuntu\tpriority:2',
+      `https://example.org/ubuntu\tcomment:${oldMirror}`,
+      `${oldMirror}/other`,
+      `${oldMirror}#other`,
+      'http://security.ubuntu.com/ubuntu',
+      '',
+    ].join('\r\n');
+    const expected = before
+      .replace(`${oldMirror}\tpriority:1`, `${newMirror}\tpriority:1`)
+      .replace(`${oldMirror}/\r\n`, `${newMirror}/\r\n`);
+    expect(rewriteUbuntuMirror(before, 'mirrorlist')).toBe(expected);
+    expect(rewriteUbuntuMirror(expected, 'mirrorlist')).toBe(expected);
+  });
+
+  it('prepares the observed apt-mirrors.txt while preserving mirror+file sources and other files', async () => {
+    await mkdir('scratch', { recursive: true });
+    const root = await mkdtemp(join('scratch', 'browser-apt-'));
+    try {
+      await mkdir(join(root, 'sources.list.d'));
+      const source = [
+        'Types: deb',
+        'URIs: mirror+file:/etc/apt/apt-mirrors.txt',
+        'Suites: noble noble-updates noble-security',
+        'Components: main universe',
+        'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg',
+        '',
+      ].join('\n');
+      const mirrorlist = `${oldMirror}\tpriority:1\nhttps://archive.ubuntu.com/ubuntu\tpriority:2\n`;
+      const otherSource = 'deb mirror+file:/etc/apt/custom-mirrors.txt noble main\n';
+      await writeFile(join(root, 'sources.list.d', 'ubuntu.sources'), source);
+      await writeFile(join(root, 'sources.list.d', 'other.list'), otherSource);
+      await writeFile(join(root, 'apt-mirrors.txt'), mirrorlist);
+      await writeFile(join(root, 'custom-mirrors.txt'), mirrorlist);
+      expect(await prepareBrowserApt(root)).toBe(1);
+      expect(await readFile(join(root, 'apt-mirrors.txt'), 'utf8')).toBe(
+        mirrorlist.replace(oldMirror, newMirror),
+      );
+      expect(await readFile(join(root, 'sources.list.d', 'ubuntu.sources'), 'utf8')).toBe(source);
+      expect(await readFile(join(root, 'sources.list.d', 'other.list'), 'utf8')).toBe(otherSource);
+      expect(await readFile(join(root, 'custom-mirrors.txt'), 'utf8')).toBe(mirrorlist);
+      expect(await prepareBrowserApt(root)).toBe(0);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
   it('is idempotent in both source formats', () => {
     for (const format of ['list', 'sources'] as const) {
       const before = format === 'list' ? `deb ${oldMirror} noble main\n` : `URIs: ${oldMirror}\n`;
