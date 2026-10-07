@@ -14,6 +14,9 @@ export { createSim, SIM_TUNING } from './create';
 // them with the region's road data and starts a race only after (a race whose network needs a planner that
 // has not loaded throws rather than ride a world with a piece missing).
 export { loadStructurePlanners } from '../road';
+// Prepares the simulation's step code before the first race. Callers may await this with the
+// structure planners; see late.ts for the current loading implementation.
+export { loadSimSteps } from './late';
 // The share of health at or under which a bike smokes (and is a little slower): the render draws the
 // smoke from the same number (playtest 4, P4-14).
 export { SMOKE_HEALTH } from './riders/smoke';
