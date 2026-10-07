@@ -47,7 +47,7 @@
       "params": { "spawns": "pedestrians" }
     }
   ],
-  "barriers": [{ "s0": 0, "s1": 125, "side": "right", "kind": "wall", "heightM": 1.2, "jumpable": true }],
+  "barriers": [{ "s0": 0, "s1": 688, "side": "right", "kind": "wall", "heightM": 1.2, "jumpable": true }],
   "samples": {
     "encoding": "json-columns",
     "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],

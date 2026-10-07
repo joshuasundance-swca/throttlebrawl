@@ -1482,8 +1482,15 @@ export class EntityViews {
           break;
         case 'splash':
           // A HIGH drop (the maintainer, 2026-10-06, "(a)") is a clean cut-away: no water thrown, no ring,
-          // no gator, no fisherman. The same fall as a low one in every other way.
-          if (actor && ev.data['high'] !== true) {
+          // no gator, no fisherman. The same fall as a low one in every other way. And only a fall into the
+          // water splashes: out of bounds onto ground (the course's honest edges, `past: 'ground'`) or a low
+          // drop onto dry ground (`past: 'drop'`) is the plain quick reset, no gag ([decided] 2026-10-06).
+          if (
+            actor &&
+            ev.data['high'] !== true &&
+            ev.data['past'] !== 'ground' &&
+            ev.data['past'] !== 'drop'
+          ) {
             const at = bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider');
             // Away from the bridge: from the rider's spot on the road out to the splash.
             const reactor = (ev.actor + ev.tick) % 2 === 0 ? 'gator' : 'fisherman';

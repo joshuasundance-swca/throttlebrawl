@@ -8,6 +8,7 @@
 import type { TuningParamDecl } from '../../core';
 import type { SimConfig } from '../types';
 import type { SimSystem, World } from '../world';
+import { stepLawProps } from './law-props';
 import { initSetPieces, PROP_CONTACT_KEY, stepSetPieces } from './setpieces';
 import { raceState } from '../race';
 
@@ -30,7 +31,8 @@ export const MODIFIERS_TUNING: readonly TuningParamDecl[] = [
   },
   {
     // The maintainer, 2026-10-06 ("a road race in a physical world with honest edges"): every set-piece prop
-    // a rider can reach is met by the one rule (sim/modifiers/setpieces.ts, PROP_CONTACT). On [default].
+    // a rider can reach is met by the one rule (sim/modifiers/setpieces.ts, PROP_CONTACT), and so are the law's own
+    // (the END OF JURISDICTION sign and a radar trooper's radar, law-props.ts). On [default].
     id: PROP_CONTACT_KEY,
     group: 'crashes',
     label: 'Road event props are physical (0 off, 1 on)',
@@ -51,5 +53,7 @@ export const modifiersSystem: SimSystem = {
   },
   step(world: World, config: SimConfig) {
     stepSetPieces(world, config, raceState(world).over);
+    // The law's own props (sim/cops lawProps) are met by the same rule, with or without a set piece in the race.
+    stepLawProps(world, config);
   },
 };

@@ -17,6 +17,13 @@ import { FENCE_GAP_M, FENCE_SMASH_LOSS, FENCE_YARD_M } from './verge';
 /** The fixture's lanes end at d ±4.9 (3.4 m drive lanes and 1.5 m shoulders each side). */
 const LANE_EDGE = 4.9;
 
+/**
+ * The old rules for a soft edge (the course's honest edges off, sim/riders/course.ts): it holds the rider at the
+ * band's edge. With them on (the default) nothing is drawn there, so past it is out of bounds
+ * (src/sim/riders/course.test.ts).
+ */
+const HELD = { 'riders.courseEdges': 0 } as const;
+
 const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['edge']): BakedVerge => ({
   widthM,
   surface,
@@ -62,8 +69,8 @@ function ride(h: RiderHarness, inp: SimInput, max: number, done?: (evs: SimEvent
 const ofType = (evs: readonly SimEvent[], type: string) => evs.filter((e) => e.type === type);
 
 describe('off-road: past the lanes onto the ground band', () => {
-  it('rides out onto the sand with no wall at the lanes, and stops at the band, with no event', () => {
-    const config = vergeConfig(band(8, 'sand', 'soft'));
+  it('rides out onto the sand with no wall at the lanes, and (the old rules) stops at the band, with no event', () => {
+    const config = vergeConfig(band(8, 'sand', 'soft'), { tuning: HELD });
     const h = riderHarness(config, { s: 100, d: 2, speed: 25 });
     const evs = ride(h, input(1, 0, 1), 240);
     const hi = LANE_EDGE + 8 - BIKE_HALF_WIDTH_M;
@@ -161,22 +168,22 @@ describe('off-road: each surface has its own speed and grip', () => {
 
 describe("off-road: what a band's outer edge does", () => {
   /** Rides hard into the right edge for `ticks` from just inside the band; the speed lost and the events. */
-  function into(verge: BakedVerge, ticks = 40, speed = 30) {
-    const config = vergeConfig(verge);
+  function into(verge: BakedVerge, ticks = 40, speed = 30, tuning: Readonly<Record<string, number>> = {}) {
+    const config = vergeConfig(verge, { tuning });
     const h = riderHarness(config, { s: 100, d: LANE_EDGE + verge.widthM - 1.2, speed, yaw: 0.45 });
     const evs = ride(h, input(1, 0, 1), ticks);
     return { h, evs, lost: speed - h.rider.speed };
   }
 
-  it('soft ground: no event, a little slower', () => {
-    const { evs, h } = into(band(8, 'sand', 'soft'));
+  it('soft ground (the old rules): no event, a little slower', () => {
+    const { evs, h } = into(band(8, 'sand', 'soft'), 40, 30, HELD);
     expect(evs).toHaveLength(0);
     expect(h.rider.pos.d).toBeCloseTo(LANE_EDGE + 8 - BIKE_HALF_WIDTH_M, 6);
   });
 
   it('ferns and bushes: a wobble that never crashes, and it slows hard', () => {
     const brush = into(band(6, 'dirt', 'brush'));
-    const soft = into(band(6, 'dirt', 'soft'));
+    const soft = into(band(6, 'dirt', 'soft'), 40, 30, HELD);
     expect(ofType(brush.evs, 'crash')).toHaveLength(0);
     const w = ofType(brush.evs, 'wobble');
     expect(w).toHaveLength(1);
@@ -189,7 +196,7 @@ describe("off-road: what a band's outer edge does", () => {
 
   it('water: a splash (a wobble with cause water) that never crashes, and slows hard', () => {
     const water = into(band(3, 'grass', 'water'));
-    const soft = into(band(3, 'grass', 'soft'));
+    const soft = into(band(3, 'grass', 'soft'), 40, 30, HELD);
     expect(ofType(water.evs, 'crash')).toHaveLength(0);
     expect(ofType(water.evs, 'wobble').map((e) => e.data['cause'])).toEqual(['water']);
     expect(water.lost).toBeGreaterThan(soft.lost + 3);

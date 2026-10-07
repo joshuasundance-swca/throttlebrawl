@@ -134,15 +134,19 @@ export const PLAZA_CUT = {
     jumpable: true,
   } satisfies BakedBarrier,
   /**
-   * The wall goes on along the avenue beside the cut, over the split connector and the first 125 m
-   * of the next piece (155 m past the split): where the cut lies beside it, a rider on the ground
-   * could otherwise ride out onto the verge (the off-road switch is on) and be handed across.
+   * The wall goes on along the avenue beside the cut, over the split connector and the next piece: where
+   * the cut lies beside it, a rider on the ground could otherwise ride out onto the verge (the off-road
+   * switch is on) and be handed across. It stopped 125 m into the piece. Since polish M the avenue swings
+   * round the plaza and the cut goes straight through it, and with the course's honest edges (2026-10-06)
+   * nothing undrawn holds a rider who leaves the avenue on its right there: he could ride across the
+   * plaza onto the cut, or cut the avenue's sweep. So the wall that shuts the plaza runs the whole
+   * piece (`yardM`, tools/road/truck-shortcuts.test.ts).
    */
   wallAfter: { s0: 0, s1: 'end', side: 'right', kind: 'wall', heightM: 1.2, jumpable: true } satisfies Omit<
     BakedBarrier,
     's1'
   > & { s1: 'end' },
-  wallAlongM: 125,
+  wallAlongM: 688,
   sign: 'PLAZA ENTRANCE: DELIVERIES ONLY. Founders arrive by ramp.',
 } as const;
 

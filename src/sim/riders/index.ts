@@ -28,7 +28,14 @@
 // (sim/riders/drift.ts) and road gaps and jumpable walls (sim/riders/gap.ts) plug in through hooks
 // below, each neutral while its move is off, so their lanes never edit this file.
 import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
-import { edgeTopAt, sRateFactor, type FurnitureShape, type Structure, type StructurePlan } from '../../road';
+import {
+  courseEdgeTopAt,
+  edgeTopAt,
+  sRateFactor,
+  type FurnitureShape,
+  type Structure,
+  type StructurePlan,
+} from '../../road';
 import type { RideLimits } from '../ground';
 // Types only: sim/traffic and sim/tumble import this module, so their state is read, never imported.
 import type { TrafficState } from '../traffic';
@@ -55,6 +62,14 @@ import {
   type AirState,
 } from './air';
 import { applyShove, RIDER_BODY_HEIGHT_M, RIDER_CONTACT_HALF_WIDTH_M, riderContacts } from './contact';
+import {
+  COURSE_TUNING,
+  courseEdgesOn,
+  courseSpotOf,
+  groundEdgeOpen,
+  leaveCourse,
+  roadPastLine,
+} from './course';
 import {
   driftDown,
   driftMoves,
@@ -125,7 +140,6 @@ import {
   type OverMark,
 } from './gap';
 import {
-  clearOfVehicleTop,
   holdsBike,
   inRiderFrame,
   JOLT_WOBBLE_MPS,
@@ -421,6 +435,8 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   ...SUPPORTS_TUNING,
   // The structures plan is solid, its roofs ground (the maintainer, 2026-10-06; sim/riders/structures.ts).
   ...STRUCTURES_TUNING,
+  // The course's honest edges: past it is a reset, never an invisible wall (2026-10-06; sim/riders/course.ts).
+  ...COURSE_TUNING,
 ];
 
 /**
@@ -620,6 +636,51 @@ export function riderState(world: World): RiderState {
     ...newDriftState(),
     ...newGapState(),
   }));
+}
+
+/**
+ * Whether a racer is off the course's roads for the race's progress (the maintainer, 2026-10-06, [decided]: "a
+ * corner cut across the roofs or a lot counts if the rider rejoins the course ahead"; sim/riders/course.ts):
+ * out past its road's edge in the air, up on a structure's top past its band, or down past the edge (a fall
+ * over the barrier or out of bounds, until the respawn). sim/race keeps its progress where it left, and takes
+ * it again where it rejoins, so a cut counts by where it comes back (behind is no gain), and a respawn at the
+ * crossing gains nothing. Off with the course's edges off. Reads only.
+ */
+export function offCourse(world: World, config: SimConfig, m: Mover): boolean {
+  if (m.kind !== 'rider' || !courseEdgesOn(world.params)) return false;
+  const st = world.systems['riders'] as RiderState | undefined;
+  if (st !== undefined && overMarkOf(st, m.id) !== null) return true;
+  const crash = (world.systems['tumble'] as Pick<TumbleState, 'records'> | undefined)?.records[m.id];
+  if (crash && crash.over !== undefined && crash.overboard >= 0) return true;
+  if (supportKindOf(world, m.id) !== 'structure') return false;
+  const road = config.road;
+  const pos = m.pos;
+  return (
+    pos.d < road.vergeAt(pos.edge, pos.s, 'left').dOuter ||
+    pos.d > road.vergeAt(pos.edge, pos.s, 'right').dOuter
+  );
+}
+
+/**
+ * Keeps where a riding rider left the course (gap.ts `left`) while it is off it, and forgets it once it is back on
+ * a road's band: the over-the-barrier mark's crossing when it flew over the edge, else (up on a top it rode onto)
+ * its riding limit where it is. Writes only when that changes, so a race where nobody leaves the course hashes as
+ * before.
+ */
+function noteLeft(world: World, config: SimConfig, st: RiderState, m: Mover): void {
+  const off = offCourse(world, config, m);
+  if (!off) {
+    if (st.left && Object.hasOwn(st.left, m.id)) delete st.left[m.id];
+    return;
+  }
+  if (st.left && Object.hasOwn(st.left, m.id)) return;
+  const mark = overMarkOf(st, m.id);
+  const pos = m.pos;
+  const lim = riderLimits(world, config, pos.edge, pos.s, pos.d, true);
+  const at = mark
+    ? { edge: mark.edge, s: mark.s, d: mark.d }
+    : { edge: pos.edge, s: pos.s, d: pos.d > lim.hi ? lim.hi : pos.d < lim.lo ? lim.lo : pos.d };
+  (st.left ??= {})[m.id] = at;
 }
 
 /**
@@ -900,13 +961,15 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   }
   const side: 1 | -1 = pos.d > hi ? 1 : -1; // road-frame side of the wall
   const limit = side > 0 ? hi : lo;
-  if (splitGuideAt(config, pos.edge, pos.s, side, limit) || stagingGuideAt(config, pos.edge)) {
+  const feet = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
+  const holds = edgeHold(world, config, pos, side, lim, feet);
+  if (holds === 'guide') {
     pos.d = limit;
     m.yaw = 0;
     st.touching[m.id] = 0;
     return;
   }
-  if (side > 0 ? lim.hiTaper === true : lim.loTaper === true) {
+  if (holds === 'taper') {
     // A bridge taper (road/bridge-taper.ts; playtest 4, "the rider clips from open air onto the
     // bridge"): the verge narrows into the bridge's end, and its edge eases a rider out on it onto
     // the deck with no event. The edge coming in costs nothing; a rider whose own heading pushes
@@ -917,6 +980,15 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
     const pushing = pos.dir * m.yaw * side > 0;
     if (pushing) scrapeAlong(config, m, side, dt, EDGE_DRAG[side > 0 ? lim.hiEdge : lim.loEdge]);
     st.touching[m.id] = pushing ? 1 : 0;
+    return;
+  }
+  // The course's honest edges (the maintainer, 2026-10-06; sim/riders/course.ts): where nothing is drawn at the
+  // band's edge (soft ground running on, a gap in a row of planned buildings, a hard edge nothing names) it
+  // holds nothing. Across its line the rider is on another road the race allows, or out of bounds.
+  if (holds === 'open') {
+    st.touching[m.id] = 0;
+    if ((pos.d - (limit + side * BIKE_HALF_WIDTH_M)) * side > 0)
+      leaveCourse(world, config, m, side, limit, feet);
     return;
   }
   if (uturnTurning(st, m.id)) {
@@ -946,13 +1018,76 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   const hit = { impact, v, yawBefore, side, newContact, crashScale };
   // A building front whose building is in the structures plan (sim/riders/structures.ts): where it stands at
   // the edge, the edge is that building, met by the one rule for heavy fixed things, not the barrier's.
-  const front = kind === 'hard' ? frontStructure(world, config, m, side, limit) : null;
+  const front = kind === 'hard' ? frontStructure(world, config, pos, feet, side, limit) : null;
   if (front) {
     const extra = { object: front.cls, structure: String(front.id), hit: 'side' };
     wallOutcome(world, st, m, { ...hit, extra, vehicle: true });
   } else if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
   else if (kind === 'fence') wallOutcome(world, st, m, { ...hit, extra: { object: 'fence' }, noCrash: true });
   else groundEdge(world, st, m, kind, hit);
+}
+
+/**
+ * What a band's edge does to a rider on the ground who reaches his riding limit there (`lim`, on his `side`,
+ * his feet at world height `feet`): the barrier rule's one decision (`barrierContact`), and what the test that
+ * holds every edge to what is drawn reads (`edgeHoldAt`):
+ * - `guide`: a split's guide span or a staging road's edge turns him along it, no event, no speed lost;
+ * - `taper`: a bridge's taper eases him in along it onto the deck;
+ * - `open`: nothing is drawn there, under the course's honest edges (sim/riders/course.ts `groundEdgeOpen`): soft
+ *   ground running on, a hard edge nothing names with ground past it, or a building front whose buildings are in
+ *   the structures plan where none of them stands at him (a gap in the row: an alley, a lot);
+ * - `held`: what is drawn there holds him (a barrier, the water, the ferns, a fence, a building, a deck's edge).
+ */
+type EdgeHold = 'guide' | 'taper' | 'open' | 'held';
+
+function edgeHold(
+  world: World,
+  config: SimConfig,
+  at: { readonly edge: number; readonly s: number },
+  side: 1 | -1,
+  lim: RideLimits,
+  feet: number,
+): EdgeHold {
+  const limit = side > 0 ? lim.hi : lim.lo;
+  if (splitGuideAt(config, at.edge, at.s, side, limit) || stagingGuideAt(config, at.edge)) return 'guide';
+  if (side > 0 ? lim.hiTaper === true : lim.loTaper === true) return 'taper';
+  if (!courseEdgesOn(world.params)) return 'held';
+  const kind = side > 0 ? lim.hiEdge : lim.loEdge;
+  const vside = side > 0 ? 'right' : 'left';
+  if (groundEdgeOpen(config.road, at.edge, at.s, vside, kind)) return 'open';
+  // Another road's lanes just past the line (a junction, a split's branches): nothing stands in them.
+  if (roadPastLine(config, at.edge, at.s, side, kind)) return 'open';
+  const gap =
+    kind === 'hard' &&
+    racePlanOf(world, config) !== null &&
+    plannedFrontAt(config.road, at.edge, at.s, vside) &&
+    frontStructure(world, config, at, feet, side, limit) === null;
+  return gap ? 'open' : 'held';
+}
+
+/**
+ * What one side's band edge at (edge, s) does to a rider on the ground who rides out to it from the road, his
+ * feet on the road there (`edgeHold`), with its kind and riding limit, and how high over the deck a rider in the
+ * air must be to clear it there (`airTop`, the over-the-barrier rule's `edgeTopOf`; null where the band's own
+ * rules hold, at any height, as under the old rules at a ground edge). Reads only (it never makes the verge
+ * state): tests/sim/no-invisible-walls.test.ts walks every edge of every network with it.
+ */
+export function edgeHoldAt(
+  world: World,
+  config: SimConfig,
+  edge: number,
+  s: number,
+  side: 1 | -1,
+): { hold: EdgeHold; kind: VergeEdge; limit: number; airTop: number | null } {
+  const lim = riderLimits(world, config, edge, s, undefined, true);
+  const limit = side > 0 ? lim.hi : lim.lo;
+  const feet = config.road.surfaceHeight(edge, s, limit);
+  return {
+    hold: edgeHold(world, config, { edge, s }, side, lim, feet),
+    kind: side > 0 ? lim.hiEdge : lim.loEdge,
+    limit,
+    airTop: edgeTopOf(world, config)(edge, s, side > 0 ? 'right' : 'left'),
+  };
 }
 
 /** The bars held this far into a bend count as holding it (bend room). [default] */
@@ -1493,16 +1628,15 @@ function wallTo(s: Structure, x: number, z: number, feet: number): boolean {
 function frontStructure(
   world: World,
   config: SimConfig,
-  m: Mover,
+  pos: { readonly edge: number; readonly s: number },
+  feet: number,
   side: 1 | -1,
   limit: number,
 ): Structure | null {
   const plan = racePlanOf(world, config);
   if (!plan) return null;
   const road = config.road;
-  const pos = m.pos;
   if (!plannedFrontAt(road, pos.edge, pos.s, side > 0 ? 'right' : 'left')) return null;
-  const feet = road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
   for (const k of FRONT_PROBE_M) {
     const p = road.toWorld(pos.edge, pos.s, limit + side * (BIKE_HALF_WIDTH_M + k), 0);
     for (const s of structuresOver(plan, p.x, p.z)) if (wallTo(s, p.x, p.z, feet)) return s;
@@ -1600,8 +1734,17 @@ function edgeTopOf(
 ): (edge: number, s: number, side: 'left' | 'right') => number | null {
   const road = config.road;
   const fronts = racePlanOf(world, config) !== null && supportsOn(world);
-  return (edge, s, side) =>
-    fronts && plannedFrontAt(road, edge, s, side) ? 0 : edgeTopAt(road, edge, s, side);
+  // The course's honest edges (sim/riders/course.ts): every edge is cleared above what is drawn there (the
+  // ferns, a fence; nothing at a soft edge or a deck's bare edge), never held at any height by nothing.
+  const course = courseEdgesOn(world.params);
+  const top = course ? courseEdgeTopAt : edgeTopAt;
+  return (edge, s, side) => {
+    if (fronts && plannedFrontAt(road, edge, s, side)) return 0;
+    // Another road's lanes just past the edge (sim/riders/course.ts `roadPastLine`): nothing stands there.
+    const sign = side === 'right' ? 1 : -1;
+    if (course && roadPastLine(config, edge, s, sign, road.vergeAt(edge, s, side).edge)) return 0;
+    return top(road, edge, s, side);
+  };
 }
 
 /** A structure's events' fields: what it is (its class) and its id in the plan. */
@@ -1917,8 +2060,9 @@ function toWorldFrame(world: World, config: SimConfig, m: Mover): void {
   }
   m.speed = Math.sqrt(along * along + across * across);
   m.yaw = m.speed > 1e-9 ? clamp(atan2(across, along), -1.2, 1.2) : 0;
-  // Off a vehicle's top he moves away from it: clear of it while their boxes part (sim/riders/supports.ts).
-  clearOfVehicleTop(world, m.id);
+  // Off a vehicle's top it is solid to him again at once (the maintainer's rule, 2026-10-06: nothing is a
+  // ghost): its box still under his as he drops past its edge is traffic's to resolve, by its one rule at
+  // a top's edge (sim/traffic `contacts`: clear of it the short way, or met by the closing speed).
   leaveSupport(world, m.id);
 }
 
@@ -2422,7 +2566,19 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // Over the barrier (2026-10-06, sim/riders/gap.ts): higher than what stands at the edge, the rider
   // flies over it, and what lies past decides; below its top the barrier rule holds it as ever.
   const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d);
-  const over = overBarrier(world, config, st, m, y, limits, BIKE_HALF_WIDTH_M, edgeTopOf(world, config));
+  // The course's honest edges (sim/riders/course.ts): ground past the edge is out of bounds, as water or a drop.
+  const course = courseEdgesOn(world.params);
+  const over = overBarrier(
+    world,
+    config,
+    st,
+    m,
+    y,
+    limits,
+    BIKE_HALF_WIDTH_M,
+    edgeTopOf(world, config),
+    course,
+  );
   if (over === 'barrier') barrierContact(world, config, st, m, dt);
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
@@ -2503,7 +2659,15 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     m.h = y - surface;
     st.yAbs[m.id] = y;
     if (overGap) gapFall(world, config, st, m, y - (surface + deck));
-    else if (over === 'past') overFall(world, config, st, m, y);
+    else if (over === 'past')
+      overFall(
+        world,
+        config,
+        st,
+        m,
+        y,
+        course ? { out: (at) => courseSpotOf(world, config, pos, at).kind === 'out' } : undefined,
+      );
   }
   settle(world, st, m, m.mode === 'Airborne' ? leanTarget : 0, dt);
   st.throttle[m.id] = throttle;
@@ -2731,6 +2895,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   // edge of ground past it, has its mark there.
   const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
   const edgeTop = edgeTopOf(world, config);
+  const groundOut = courseEdgesOn(world.params);
   let mark: OverMark | null = overMarkOf(st, m.id);
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
@@ -2742,7 +2907,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     y += vy * dt - 0.5 * gravity * dt * dt;
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
-    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M, edgeTop);
+    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M, edgeTop, groundOut);
     mark = step.mark;
     if (step.setD !== undefined) at.d = step.setD;
     if (step.hand) {
@@ -2753,8 +2918,9 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
       at.dir = step.hand.dir;
     }
     const pastEdge = mark !== null && step.result === 'past';
-    // Out past the edge over water or a drop, and it falls: a splash, not a landing.
-    if (pastEdge && mark && overFalls(mark, y)) return null;
+    // Out past the edge over water or a drop (or ground, with the course's edges on), and it falls: out of
+    // bounds, not a landing.
+    if (pastEdge && mark && overFalls(mark, y, groundOut)) return null;
     // Below the barrier's top (or at a ground edge): it holds the flight at its limit.
     if (step.holdD !== undefined) at.d = step.holdD;
     const gap = y - road.surfaceHeight(at.edge, at.s, at.d);
@@ -2893,6 +3059,8 @@ export const ridersSystem: SimSystem = {
       }
       // Out of the air (down in a crash, back on a road), it is no longer out past an edge.
       if (m.mode !== 'Airborne') clearOver(st, m.id);
+      // Where it left the course, kept while it is off it (sim/riders/course.ts; gap.ts `left`).
+      if (m.mode === 'Road' || m.mode === 'Airborne') noteLeft(world, config, st, m);
     }
     // Bumps stop where riding does (the verge's edge with off-road on), never back on the road. With
     // supports, two riders meet only within a rider's height of each other (one on a truck's roof

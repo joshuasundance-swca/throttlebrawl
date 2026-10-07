@@ -19,12 +19,14 @@
 //   only below its top (road/beyond.ts `edgeTopAt`: every rail and wall by its `heightM`, a building
 //   front never), and what lies past it decides (`pastAt`). Another road under the rider (the old
 //   Seven Mile Bridge beside the new one; RoadNetwork.surfaceUnder) takes it over, and the landing
-//   rules judge it there; ground comes down at the band's edge (the sim has no ground past it), and
-//   the landing rules judge it there; water or a drop is `overFall`'s;
-// - `overFall`, each airborne tick out past the edge over water or a drop: more than the kill depth
-//   below the deck at the crossing, or down at the water level, it goes overboard (a `crash` with
-//   `cause: 'over'`, `overboard: true`, `past`, `dropM` and `high`), which sim/tumble takes into the
-//   water (or to the drop's floor), the splash penalty and the respawn on the road at the crossing.
+//   rules judge it there; water, a drop and (with the course's honest edges, sim/riders/course.ts)
+//   ground are `overFall`'s; under the old rules ground comes down at the band's edge;
+// - `overFall`, each airborne tick out past the edge: over water or a drop more than the kill depth
+//   below the deck at the crossing, or down at the water level, and over ground down at the ground
+//   (with the course's edges, and only where the course query says out), it goes overboard (a `crash`
+//   with `cause: 'over'`, `overboard: true`, `past`, `dropM` and `high`), which sim/tumble takes into
+//   the water (or to the drop's floor, or down at once on ground), the splash penalty and the respawn
+//   on the road where it left it (`left`, kept across a run on the roofs; else the crossing).
 // Gaps exist only where road data puts them, and the barrier rule is as before for a rider below a
 // barrier's top, so a race where nobody leaves the road rides exactly as before: the per-rider state
 // (`over`) is written only when a rider goes over, and no random draw is taken.
@@ -99,6 +101,25 @@ export interface GapState {
    * until a rider first is.
    */
   hop?: Record<number, number>;
+  /**
+   * Where a rider left its road's course (the course's honest edges, sim/riders/course.ts), by entity id: the
+   * edge, s and riding limit at the band's edge it went over, kept while it is off the course (in the air past the
+   * edge, up on a roof past its band) and forgotten once it is back on a road. Out of bounds it wakes there, so a
+   * run across the roofs that ends in the lot gains nothing. Absent until a rider first leaves the course.
+   */
+  left?: Record<number, Crossing>;
+}
+
+/** A crossing of a band's edge: the edge, s and the rider's riding limit there. Plain data. */
+export interface Crossing {
+  edge: number;
+  s: number;
+  d: number;
+}
+
+/** Where a rider off the course left it (`GapState.left`), or null. */
+export function leftAt(st: GapState, id: number): Crossing | null {
+  return st.left?.[id] ?? null;
 }
 
 export function newGapState(): GapState {
@@ -265,6 +286,7 @@ export function overStep(
   halfWidthM: number,
   edgeTop: (edge: number, s: number, side: 'left' | 'right') => number | null = (e, s, side) =>
     edgeTopAt(config.road, e, s, side),
+  groundOut = false,
 ): OverStep {
   const road = config.road;
   const lim = limits(at.edge, at.s, at.d);
@@ -294,9 +316,10 @@ export function overStep(
   }
   const to = roadUnder(config, at, y, limits);
   if (to) return { result: 'barrier', mark: null, hand: to };
-  if (now.past === 'ground' && y <= road.surfaceHeight(at.edge, at.s, limit)) {
-    // Down to the ground's height past the edge: the sim has no ground there, so it comes down at the
-    // band's edge, and the landing rules judge it (its heading and speed as they are).
+  if (!groundOut && now.past === 'ground' && y <= road.surfaceHeight(at.edge, at.s, limit)) {
+    // The old rules (the course's edges off, sim/riders/course.ts): down to the ground's height past the
+    // edge, it comes down at the band's edge, and the landing rules judge it. With them on, ground past the
+    // edge is out of bounds like water or a drop (`overFalls`).
     return { result: 'barrier', mark: null, setD: limit };
   }
   return { result: 'past', mark: now };
@@ -328,9 +351,10 @@ export function overBarrier(
   halfWidthM: number,
   edgeTop: (edge: number, s: number, side: 'left' | 'right') => number | null = (e, s, side) =>
     edgeTopAt(config.road, e, s, side),
+  groundOut = false,
 ): 'barrier' | 'deck' | 'past' {
   const pos = m.pos;
-  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM, edgeTop);
+  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM, edgeTop, groundOut);
   if (step.mark) (st.over ??= {})[m.id] = step.mark;
   else clearOver(st, m.id);
   if (step.setD !== undefined) pos.d = step.setD;
@@ -342,12 +366,14 @@ export function overBarrier(
 }
 
 /**
- * Whether a rider out past its edge at absolute height `y` goes overboard now: over water or a drop
- * (not ground), and more than the kill depth below the deck at the crossing, or down at the water. The
- * chalk mark's forecast asks it too, so the mark is hidden for a flight that ends in a fall.
+ * Whether a rider out past its edge at absolute height `y` goes overboard now: over water or a drop,
+ * more than the kill depth below the deck at the crossing, or down at the water; over ground, with the
+ * course's edges on (`groundOut`, sim/riders/course.ts), down at the ground (the deck's height at the
+ * crossing: no ground is built past the course). The chalk mark's forecast asks it too, so the mark is
+ * hidden for a flight that ends out of bounds.
  */
-export function overFalls(mark: OverMark, y: number): boolean {
-  if (mark.past === 'ground') return false;
+export function overFalls(mark: OverMark, y: number, groundOut = false): boolean {
+  if (mark.past === 'ground') return groundOut && y <= mark.floorY;
   return mark.deckY - y > GAP_DEFAULTS.killDepthM || y <= mark.floorY;
 }
 
@@ -359,11 +385,23 @@ export function overFalls(mark: OverMark, y: number): boolean {
  * (`high`, over `riders.highDropM`), the floor's height (`floorY`) and the crossing (`crossEdge`,
  * `crossS`, `crossD`), where sim/tumble wakes it after the splash penalty.
  */
-export function overFall(world: World, _config: SimConfig, st: RiderState, m: Mover, y: number): void {
+export function overFall(
+  world: World,
+  _config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  y: number,
+  course?: { out: (y: number) => boolean },
+): void {
   const mark = overMarkOf(st, m.id);
-  if (!mark || !overFalls(mark, y)) return;
+  if (!mark || !overFalls(mark, y, course !== undefined)) return;
+  // With the course's edges on, only where the course query says out: a top or a road under him that the
+  // landing rules did not take (too small for the bike, not under his centre) is passed, and he falls on.
+  if (course && !course.out(y)) return;
   const depth = mark.deckY - y;
   const dropM = Math.max(0, mark.deckY - mark.floorY);
+  // It wakes where it left the course (`left`, kept across a run on the roofs), else where it went over.
+  const cross = leftAt(st, m.id) ?? mark;
   clearOver(st, m.id);
   emit(world, 'crash', m.id, {
     cause: 'over',
@@ -376,8 +414,8 @@ export function overFall(world: World, _config: SimConfig, st: RiderState, m: Mo
     speed: m.speed,
     yaw: m.yaw,
     depthM: depth,
-    crossEdge: mark.edge,
-    crossS: mark.s,
-    crossD: mark.d,
+    crossEdge: cross.edge,
+    crossS: cross.s,
+    crossD: cross.d,
   });
 }

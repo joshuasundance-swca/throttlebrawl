@@ -4,7 +4,7 @@ audience: player
 ---
 The two ramp-truck shortcuts now pay. Jumping the truck onto San Francisco's Plaza Cut or the Pacific Northwest's Mill Yard Cut used to save nothing: each ran beside the road it skipped and was just as long, so "FOUND IT" said 0 s. Now the avenue swings out round the headquarters' plaza, and the flats round the mill yard, in one long sweep, while the cut goes straight through. The Plaza Cut is about 32 m shorter and the Mill Yard Cut about 31 m. Flown well, either one puts you more than a second ahead of riding the road.
 
-Flying it well means steering right off the lip and letting the stick go once you are over the cut. Hold the stick over all the way to the ground and you still land wobbling. Both trucks also have a longer, shallower deck now, so a fast bike that hits one flat out lands clean too. Off the old, steeper deck, anything over about 50 m/s came down too hard to land clean.
+Flying it well means steering right off the lip and letting the stick go once you are over the cut. Hold the stick over all the way to the ground and you still land wobbling, or sail past the cut's far side and out of bounds. Both trucks also have a longer, shallower deck now, so a fast bike that hits one flat out lands clean too. Off the old, steeper deck, anything over about 50 m/s came down too hard to land clean.
 
 For devs:
 - Why the live check (polish M, punch items 1 and 2) saw a gain of -0.5 m and -0.2 m: the route table's `gainM` (`createRouteProgress`, the split zone's distance to finish less the cut's) is the main stretch less the cut's own length. Both cuts ran parallel to a straight main road and eased back in to merge, so each was a little longer. `stampShortcuts` stamps `savedS` as `gainM` over the rider's speed on the cut, so it said 0.
@@ -14,6 +14,7 @@ For devs:
   - The avenue's yard piece is now 688 m (SF) and 677 m (PNW). The cut's middle road is 655 m and 645 m. The cut's via points are 150 m past the split and 100 m short of the merge, on the old line.
   - The Pacific Northwest's flats up to the split did not move. San Francisco's Campus Way moved by up to 0.49 m from its s 128.
   - The named branches are now `kind: 'shortcut'`.
+  - The 1.2 m wall on the main road's right now runs the whole yard piece beside each cut (688 m and 677 m). It used to stop 125 m in, and #672 had taken the Mill Yard's to 240 m. With the main road swinging away, and nothing undrawn holding a rider since the course's honest edges (#672), a rider on the ground who left the main road on its right got onto the cut at 18 m/s and steer 0.3. That would also let him cut the main road's sweep. `truck-shortcuts.test.ts` rides it.
   - The routes are longer: Downtown from 3634 m to 4122 m, and the Sawmill Haul from 6624 m to 7039 m. `pnw-c1.test.ts`'s bound for the long route is now 6800 to 7200 m.
   - Both trucks have `rampLengthM` 15 (10.6°, the same 2.8 m lip), the same lip s, and `s0`/`s1` 1.3 times as long (`carrier-dt-plaza-cut` is s 625 to 652.5 and `carrier-mill-cut` s 560 to 587.5). The Mill Yard wall starts at 560.
 - `src/road/structures/downtown.ts` `planSfDowntown`: no San Francisco building stands across another road's lanes any more (`roadCuts`, Portland's rule, with the same 2.8 m clearance). With the bow, the towers behind the avenue's plaza stood on the cut, and a rider in its lane met their sides. Outside the moved ground, all 402 and 408 buildings of seeds 7 and 8 are unchanged (`downtown-main.test.ts`).
@@ -23,7 +24,7 @@ For devs:
   - Each cut's route gain must be at least 20 m.
   - The clean thumb must take the cut, land clean with no wobble, and be stamped with a gain of at least 20 m and at least 0.5 s saved. Measured: 32.2 m and 31.1 m, 0.7 s each.
   - It must finish at least 0.5 s ahead of two controls, the main road with and without the jump. Measured: 1.5 to 1.9 s ahead on the Plaza Cut and 1.2 to 1.3 s on the Mill Yard Cut, at lips of 39.0 and 50.8 m/s.
-  - The held thumb must wobble.
+  - The held thumb must wobble or crash. Since #672 it goes out of bounds past the cut's far side on both cuts.
   - Before the move, the test failed on the route gain (-0.5 and -0.2).
   - `tools/road/truck-shortcuts.test.ts` also flies at 50 and 60 m/s and checks that each branch is a shortcut of at least 25 m.
 - Not phone-verified, and no browser was run. The render tiers (road-clear, scenery, the downtowns) run in CI.

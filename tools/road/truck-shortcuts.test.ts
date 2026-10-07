@@ -51,6 +51,14 @@ interface Cut {
   truck: string;
   /** Where the harness starts a rider, short of the truck, in the avenue piece's s. */
   runUpS: number;
+  /**
+   * How far along the next piece the wall goes on, m: as far as the yard road lies beside the avenue (the Mill
+   * Yard's whole piece since the course's honest edges, 2026-10-06: past its old 125 m nothing drawn held a
+   * rider on the ground off the yard road, so the wall is drawn the whole way). Both cuts' whole piece since
+   * polish M: the avenue swings round the plaza or the yard while the cut goes straight through, so off the
+   * avenue's right a rider on the ground could ride across onto the cut, or cut the avenue's sweep.
+   */
+  wallAlongM: number;
 }
 
 const CUTS: readonly Cut[] = [
@@ -67,6 +75,7 @@ const CUTS: readonly Cut[] = [
     signItem: 'mill-cut',
     truck: 'carrier-mill-cut',
     runUpS: 470,
+    wallAlongM: 677,
   },
   {
     name: 'the Plaza Cut (San Francisco)',
@@ -81,6 +90,7 @@ const CUTS: readonly Cut[] = [
     signItem: 'dt-plaza-cut',
     truck: 'carrier-dt-plaza-cut',
     runUpS: 520,
+    wallAlongM: 688,
   },
 ];
 
@@ -146,6 +156,12 @@ interface Flight {
   /** The edge ids the rider was on, in order, once each. */
   edges: string[];
   events: string[];
+  /**
+   * Out of bounds (the course's honest edges, 2026-10-06, sim/riders/course.ts): it came down past the course's
+   * edge, a `crash` with `cause: 'over'`, the quick reset (the harness steps the riding model alone, so the flight
+   * ends there; the reset is tests/sim/course-edges.test.ts's).
+   */
+  out: boolean;
   /** Where it first touched down after the lip: its edge, d and the d limits a rider's centre keeps there. */
   landing: { edge: string; d: number; lo: number; hi: number } | null;
   end: { edge: string; s: number; d: number };
@@ -181,6 +197,7 @@ function fly(
   let landing: Flight['landing'] = null;
   let airTicks = 0;
   let jumped = false;
+  let wentOut = false;
   for (let t = 0; t < (opts.maxTicks ?? 2400); t++) {
     const air = h.rider.mode === 'Airborne';
     if (air) airTicks++;
@@ -196,6 +213,7 @@ function fly(
       steer = airTicks > (opts.steerAfter ?? 0) && h.rider.pos.d < opts.steerUntilD ? 1 : 0;
     } else if (!air && !onAvenue) steer = follow(h);
     const out = h.step(input(1, 0, steer));
+    if (out.some((e) => e.type === 'crash' && e.data['cause'] === 'over')) wentOut = true;
     events.push(...kinds(out));
     const id = l.road.edges[h.rider.pos.edge]?.id ?? '';
     if (edges[edges.length - 1] !== id) edges.push(id);
@@ -211,6 +229,7 @@ function fly(
   return {
     edges,
     events,
+    out: wentOut,
     landing,
     end: { edge: l.road.edges[p.edge]?.id ?? '', s: p.s, d: p.d },
   };
@@ -277,8 +296,8 @@ describe.each(CUTS)('$name', (cut) => {
     expect(zone.s1 - lip).toBeLessThanOrEqual(30);
     expect(truck.d0).toBeGreaterThan(0);
     // The wall: 1.2 m, on the right from the lip (at the latest) to the end of the avenue's piece,
-    // on along the split connector and the first 125 m of the next piece (155 m past the split, as far
-    // as the sim's hand-over between the roads looks), and nowhere else on the avenue's pieces.
+    // on along the split connector and the next piece as far as the yard road lies beside it
+    // (`wallAlongM`), and nowhere else on the avenue's pieces.
     const connector = avenue + 1;
     const yard = avenue + 2;
     for (let s = lip; s <= len; s += 1)
@@ -287,9 +306,9 @@ describe.each(CUTS)('$name', (cut) => {
       expect(wallAt(l.road, avenue, s, 'right'), `s ${s}`).toBeNull();
     for (let s = 0; s <= (l.road.edges[connector]?.length ?? 0); s += 1)
       expect(wallAt(l.road, connector, s, 'right')?.heightM, `connector s ${s}`).toBe(1.2);
-    for (let s = 0; s <= 125; s += 5)
+    for (let s = 0; s <= cut.wallAlongM; s += 5)
       expect(wallAt(l.road, yard, s, 'right')?.heightM, `yard s ${s}`).toBe(1.2);
-    for (let s = 126; s <= (l.road.edges[yard]?.length ?? 0); s += 5)
+    for (let s = cut.wallAlongM + 1; s <= (l.road.edges[yard]?.length ?? 0); s += 5)
       expect(wallAt(l.road, yard, s, 'right'), `yard s ${s}`).toBeNull();
     for (const e of [avenue, connector, yard])
       for (let s = 0; s <= (l.road.edges[e]?.length ?? 0); s += 5)
@@ -397,13 +416,17 @@ describe.each(CUTS)('$name', (cut) => {
     }
   });
 
-  it('a thumb that holds right, holds left or holds nothing from the lip until the bike is down never crashes, at any speed off the lip, and rides on to the end of the route', () => {
+  it('a thumb that holds right, holds left or holds nothing from the lip until the bike is down never meets a wall, at any speed off the lip, and rides on to the end of the route or is out of bounds', () => {
     // The wave-B live check: a player who held the stick right through the whole flight crossed the
-    // Plaza Cut in the air and crashed into its far edge (3 of 3). Whatever the thumb holds, the bike
-    // comes down on the cut or on the avenue, and nothing on the way is a wall that crashes it.
+    // Plaza Cut in the air and crashed into its far edge (3 of 3). Nothing on the way is a wall that
+    // crashes it: the bike comes down on the cut or on the avenue and rides on, or (since the course's
+    // honest edges, 2026-10-06, [decided]: "never an invisible wall") a flight held hard enough to carry it
+    // past the course's edge, where the soft edge used to catch it at any height, is out of bounds: the
+    // quick reset, never a wall's crash.
     if (!truck) throw new Error('no truck');
     const edge = rightEdge(l.road, avenue, truck.s0);
     let flights = 0;
+    let outs = 0;
     const lines: string[] = [];
     for (const held of [1, -1, 0] as const) {
       for (const speed of [24, 30, 36, 40, 44, 48]) {
@@ -412,8 +435,18 @@ describe.each(CUTS)('$name', (cut) => {
           flights++;
           const label = `held ${held}, ${speed} m/s from d ${d.toFixed(1)}`;
           lines.push(
-            `${label}: ${f.edges.join(' > ')}; landed ${f.landing?.edge} d ${f.landing?.d.toFixed(2)}; ${f.events.filter((e) => e === 'crash' || e === 'wobble').join(',') || 'clean'}`,
+            `${label}: ${f.edges.join(' > ')}; landed ${f.landing?.edge} d ${f.landing?.d.toFixed(2)}; ${f.out ? 'out of bounds' : f.events.filter((e) => e === 'crash' || e === 'wobble').join(',') || 'clean'}`,
           );
+          if (f.out) {
+            // Out of bounds is its only crash, and it is the held stick's: it carried the bike sideways.
+            expect(
+              f.events.filter((e) => e === 'crash'),
+              label,
+            ).toHaveLength(1);
+            expect(held, label).not.toBe(0);
+            outs++;
+            continue;
+          }
           expect(f.events, label).not.toContain('crash');
           expect(f.landing, label).not.toBeNull();
           // Down on the route's own roads (the avenue's pieces and the cut's), and on to its last piece.
@@ -423,8 +456,12 @@ describe.each(CUTS)('$name', (cut) => {
         }
       }
     }
-    console.log(`[examined] ${flights} held-stick flights up the truck\n  ${lines.join('\n  ')}`);
+    console.log(
+      `[examined] ${flights} held-stick flights up the truck, ${outs} out of bounds\n  ${lines.join('\n  ')}`,
+    );
     expect(flights).toBe(36);
+    // Holding nothing never leaves the course, and most held flights come down on it.
+    expect(outs).toBeLessThan(flights / 2);
   });
 
   it('is shut to every rival, the bold included, and to the law', () => {

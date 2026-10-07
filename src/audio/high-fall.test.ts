@@ -32,6 +32,15 @@ describe('the splash is heard for a low drop only', () => {
     expect(cueForEvent(ev('splash', 0, { over: true, past: 'drop', dropM: 70, high: true }), 0)).toBeNull();
   });
 
+  it('out of bounds onto ground, or a low drop onto dry ground, is no splash to hear', () => {
+    expect(cueForEvent(ev('splash', 0, { over: true, past: 'ground', dropM: 0, high: false }), 0)).toBeNull();
+    expect(cueForEvent(ev('splash', 0, { over: true, past: 'drop', dropM: 6, high: false }), 0)).toBeNull();
+    // Its respawn still blips.
+    expect(cueForEvent(ev('respawn', 0, { reason: 'splash', over: true, past: 'ground' }), 0)?.cue).toBe(
+      'respawn',
+    );
+  });
+
   it('control: the rail and the respawn of a high drop still sound', () => {
     const high = { over: true, past: 'water', dropM: 68, high: true };
     expect(cueForEvent(ev('railOver', 0, { body: 'rider', ...high }), 0)?.cue).toBe('railClang');
