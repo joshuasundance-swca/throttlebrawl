@@ -25,7 +25,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import type { ContentRegistry } from '../content';
+import { loadChunk, type ContentRegistry } from '../content';
 import { DEFAULT_SETTINGS, sanitiseSettings, VIEW_SETTINGS, withVeto, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
@@ -1020,7 +1020,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (heatBadge) heatBadge.update(law);
     else if (!heatBadgeLoading && law && (law.heat > 0 || law.tier > 0)) {
       heatBadgeLoading = true;
-      void import('./heat-badge').then((m) => {
+      // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): a badge that
+      // did not load is not asked for again in this page, so a gone build is not asked every frame.
+      void loadChunk('heat badge', () => import('./heat-badge')).then((m) => {
+        if (!m) return;
         const style = document.createElement('style');
         style.textContent = m.HEAT_BADGE_CSS;
         document.head.append(style);

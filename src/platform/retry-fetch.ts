@@ -17,6 +17,12 @@
 // wait no longer than the cap waits it out first, and one inside a longer wait answers at once with a
 // 429 of its own whose Retry-After is the wait that is left, so every load path says the same wait.
 //
+// Paced (polish batch F's check, punch item 5: picking San Francisco asked for its 34 map files at
+// once, and the host answered some 429): no more than FETCH_LANES build files are asked for at a
+// time. A request holds its lane until the host's answer arrives (its headers; the body is the
+// caller's) and then hands it to the next in line, so a region's files go a few at a time, and a 429
+// that asks for a wait holds every file still in line until it has passed (the wait above).
+//
 // What is not: a 404 or 410 (a build file the host no longer has: stale-build.ts's rule, which
 // reloads to the build the host serves; retrying it would only delay that), any other 4xx, a file
 // outside `assets/`, a request with the network off or that the caller aborted. When it gives up it
@@ -29,6 +35,8 @@
 export const RETRY_DELAYS_MS: readonly number[] = [500, 1500, 4000];
 /** The longest Retry-After it waits out; a longer one gives up at once (ms). [default] */
 export const RETRY_AFTER_CAP_MS = 8000;
+/** How many build files are asked for at a time; the rest wait for a lane. [default] */
+export const FETCH_LANES = 4;
 /** The content-hashed files of a build (stale-build.ts's BUILD_DIR). */
 const BUILD_DIR = 'assets/';
 
@@ -71,10 +79,31 @@ const heldBack = (leftMs: number): Response =>
     headers: { 'Retry-After': String(Math.ceil(leftMs / 1000)) },
   });
 
+/** A count of lanes, handed on in the order they were asked for. */
+function lanes(count: number) {
+  let free = count;
+  const line: (() => void)[] = [];
+  return {
+    take: (): Promise<void> => {
+      if (free > 0) {
+        free--;
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => line.push(resolve));
+    },
+    give: () => {
+      const next = line.shift();
+      if (next) next();
+      else free++;
+    },
+  };
+}
+
 export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch {
   const buildDir = new URL(BUILD_DIR, env.scope).href;
   /** Until when (env.now's clock) the host asked not to be asked for a build file again. */
   let holdUntil = -Infinity;
+  const lane = lanes(FETCH_LANES);
   const eligible = (input: RequestInfo | URL, init?: RequestInit): boolean => {
     try {
       const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -92,24 +121,40 @@ export function retryingFetch(inner: typeof fetch, env: RetryEnv): typeof fetch 
       waitedTo = env.now() + ms;
       return env.wait(ms);
     };
+    /**
+     * Waits out any wait the host asked for (this answer's, or another file's), then for a lane, and
+     * again for a wait asked for while it stood in line; null once it holds a lane with no wait left.
+     * A wait longer than the cap is answered at once with the wait that is left, asking nothing.
+     */
+    const ready = async (): Promise<Response | null> => {
+      for (;;) {
+        const left = holdUntil - Math.max(env.now(), waitedTo);
+        if (left > RETRY_AFTER_CAP_MS) return heldBack(left);
+        if (left > 0) await pause(left);
+        await lane.take();
+        if (holdUntil - Math.max(env.now(), waitedTo) <= 0) return null;
+        lane.give();
+      }
+    };
     for (let attempt = 0; ; attempt++) {
       const backoff = RETRY_DELAYS_MS[attempt];
-      // Inside a wait the host asked for (this answer's, or another file's): sat out when it is short,
-      // answered at once with the wait that is left when it is long. The host is not asked.
-      const left = holdUntil - Math.max(env.now(), waitedTo);
-      if (left > RETRY_AFTER_CAP_MS) return heldBack(left);
-      if (left > 0) await pause(left);
+      const held = await ready();
+      if (held) return held;
       let res: Response;
       try {
         res = await inner(input, init);
       } catch (err) {
+        lane.give();
         if (backoff === undefined || init?.signal?.aborted || !env.online()) throw err;
         await pause(backoff);
         continue;
       }
-      if (!worthRetrying(res.status)) return res;
-      const asked = retryAfterMs(res, env.now());
+      // The wait this answer asks for holds the line before its lane is handed on.
+      const retry = worthRetrying(res.status);
+      const asked = retry ? retryAfterMs(res, env.now()) : null;
       if (asked !== null && asked > 0) holdUntil = Math.max(holdUntil, env.now() + asked);
+      lane.give();
+      if (!retry) return res;
       if (backoff === undefined || (asked !== null && asked > RETRY_AFTER_CAP_MS)) return res;
       // This answer is dropped, so its body is not left half-read.
       void res.body?.cancel().catch(() => undefined);
