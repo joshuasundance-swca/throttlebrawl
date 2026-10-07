@@ -14,9 +14,8 @@ export { createSim, SIM_TUNING } from './create';
 // them with the region's road data and starts a race only after (a race whose network needs a planner that
 // has not loaded throws rather than ride a world with a piece missing).
 export { loadStructurePlanners } from '../road';
-// The systems' steps are one lazy chunk too (lane U3, 2026-10-07: the first-load headroom; src/sim/late.ts):
-// the menu's grid is made and snapshotted without them, and app/ loads them with the planners, so a race waits
-// for both (a sim stepped before they have loaded throws).
+// Prepares the simulation's step code before the first race. Callers may await this with the
+// structure planners; see late.ts for the current loading implementation.
 export { loadSimSteps } from './late';
 // The share of health at or under which a bike smokes (and is a little slower): the render draws the
 // smoke from the same number (playtest 4, P4-14).
