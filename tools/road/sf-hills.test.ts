@@ -145,6 +145,50 @@ describe('tools/road: the baked San Francisco track', () => {
     expect(net.splitZones().length).toBe(2);
   });
 
+  it('lane M1: Switchback Street keeps level with the stair alley where their lanes share the ground (the hill starts past them)', () => {
+    // The alley leaves the same junction as Switchback Street and runs flat; the street's hill used to start 50 m
+    // in, while its 11 m of road still lay over the alley's 5 m, so the alley's rider rode 0.2 to 1.3 m under the
+    // street's brick, shoulder and verge band (ride-column check, 2026-10-06; the maintainer: "a road race in a
+    // physical world with honest edges"). The most the street stands over the alley wherever the two roads' lanes
+    // overlap in plan, m:
+    const overOf = (ids: readonly { id: string; samples: BakedRoad['samples'] }[]): number => {
+      const at = (id: string) => {
+        const d = ids.find((r) => r.id === id)?.samples.data ?? {};
+        return { x: d['x'] ?? [], y: d['y'] ?? [], z: d['z'] ?? [] };
+      };
+      const street = at('sf-switchback-street');
+      const alley = at('sf-stair-alley');
+      // The street's lanes and shoulders are +-5.5 m, the alley's +-2.5 m: they overlap inside 8 m of centres.
+      let worst = 0;
+      let pairs = 0;
+      for (let i = 0; i < alley.x.length; i++)
+        for (let j = 0; j < street.x.length; j++) {
+          const dx = (alley.x[i] ?? 0) - (street.x[j] ?? 0);
+          const dz = (alley.z[i] ?? 0) - (street.z[j] ?? 0);
+          if (dx * dx + dz * dz > 8 * 8) continue;
+          pairs++;
+          worst = Math.max(worst, Math.abs((street.y[j] ?? 0) - (alley.y[i] ?? 0)));
+        }
+      expect(pairs, 'the roads do overlap (the check looks at something)').toBeGreaterThan(50);
+      return worst;
+    };
+    const kerbM = 0.15;
+    const now = overOf(roads);
+    expect(now).toBeLessThan(kerbM);
+    // The control: the old hill (centre 260 m, 420 m long) is found, over five kerbs.
+    const old = compileTrack({
+      ...SF_HILLS,
+      roads: SF_HILLS.roads.map((r) =>
+        r.id === 'sf-switchback-street' ? { ...r, humps: [{ centreM: 260, lengthM: 420, heightM: 6 }] } : r,
+      ),
+    });
+    const before = overOf(old.roads as unknown as BakedRoad[]);
+    expect(before).toBeGreaterThan(kerbM * 5);
+    process.stdout.write(
+      `[examined] Switchback over the alley: ${now.toFixed(3)} m now, ${before.toFixed(2)} m with the old hill\n`,
+    );
+  });
+
   it('run W-R: the park cut is a marked dirt shortcut past the Fogline Climb, flat where the climb rises', () => {
     const len = (id: string) => roads.find((r) => r.id === id)?.lengthM ?? 0;
     const main = len('c-sf-park-split-main') + len('sf-fogline-climb') + len('c-sf-park-merge-main');

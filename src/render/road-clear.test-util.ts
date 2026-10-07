@@ -453,95 +453,14 @@ const ALLOWED: readonly (readonly [string, number, string])[] = [
 ];
 
 /**
- * Hits this check found on 2026-10-06 that are not buildings, left to follow-ups (lane polish-g G1's
- * report lists each by road and s): [network, part, the roads, the deepest in (m), what it is]. A new
- * road or a deeper cut fails; one that is gone is printed so its line can go. The edge kit's lines (a verge's
- * fence, brush and hedge, a guardrail, a bridge's rail, posts and bays across a sibling road's lanes) are all
- * gone (polish J2, `overlap.ts`).
+ * Hits this check found that are not buildings, left to a follow-up: [network, part, the roads, the deepest in
+ * (m), what it is]. A new road or a deeper cut fails; one that is gone is printed so its line can go. It is
+ * empty (lane M1, 2026-10-06): the edge kit's lines went with polish J2 (`overlap.ts`), and the rest with the
+ * road's ground yielding to a lower road's lanes (a shoulder, a verge band and a fascia: `clearReach`, overlap.ts)
+ * and Switchback Street's hill starting past the stair alley (tools/road/tracks/sf-hills.ts). A hit that cannot be
+ * fixed at its cause goes back here, with the reason.
  */
-export const KNOWN: readonly (readonly [string, string, readonly string[], number, string])[] = [
-  ['sf-hills', 'road/road-brick', ['sf-stair-alley'], 2.5, "the stair alley's brick courses"],
-  ['sf-hills', 'road/road-brickCourse', ['sf-stair-alley'], 2.5, "the stair alley's brick courses"],
-  // Found by the ground rule (lane polish-j J1, 2026-10-06): not land, which is held to it everywhere, but another
-  // road's edge (its verge band, shoulder, paint, or a side wall drawn as deck) across a branch's lanes where the
-  // two overlap at a split, a join or a crossing, as the verge kit's lines above. Each fix deletes its line.
-  [
-    'osm-sf-russian-hill',
-    'verge/verge-band',
-    ['osm-sf-russian-hill-jones-in', 'osm-sf-russian-hill-jones-out'],
-    0.5,
-    "a sibling's verge band across the Jones Street choice's lanes where it leaves and joins (up to 0.23 m)",
-  ],
-  [
-    'sf-downtown',
-    'road/road-deck',
-    ['c-dt-plaza-in', 'sf-dt-plaza-cut'],
-    1,
-    "the plaza split's 1.2 m side wall (drawn as deck) along the Plaza Cut's lanes",
-  ],
-  [
-    'sf-hills',
-    'verge/verge-band',
-    ['sf-park-cut', 'sf-stair-alley'],
-    2.5,
-    "another road's verge band over the park cut's end (up to 1.96 m) and Switchback Street's over the stair alley",
-  ],
-  [
-    'sf-hills',
-    'road/road-shoulder',
-    ['sf-park-cut', 'sf-stair-alley'],
-    2.5,
-    "another road's shoulder over the park cut's end and Switchback Street's over the stair alley (up to 1.09 m)",
-  ],
-  [
-    'sf-hills',
-    'road/road-marking',
-    ['sf-stair-alley'],
-    2.5,
-    "Switchback Street's paint over the stair alley",
-  ],
-  [
-    'sf-hills',
-    'road/road-markingCenter',
-    ['sf-stair-alley'],
-    2,
-    "Switchback Street's paint over the stair alley",
-  ],
-  ['sf-hills', 'road/road-deck', ['sf-stair-alley'], 2.5, "Switchback Street's end over the stair alley"],
-  [
-    'osm-pnw-samish',
-    'verge/verge-band',
-    [
-      'osm-pnw-samish-lake-samish-in',
-      'osm-pnw-samish-lake-samish-out',
-      'osm-samish-east-shore',
-      'osm-samish-north-shore',
-    ],
-    3,
-    "the I-5's verge band across the Lake Samish links and shore roads where they leave and join (up to 1.55 m)",
-  ],
-  [
-    'osm-pnw-samish',
-    'road/road-deck',
-    ['osm-samish-east-shore', 'osm-samish-north-shore'],
-    0.5,
-    "a side wall (drawn as deck) at the lake road's ends",
-  ],
-  [
-    'osm-pnw-samish',
-    'road/road-shoulder',
-    ['osm-samish-east-shore'],
-    0.5,
-    "the I-5's shoulder over the east shore road's end",
-  ],
-  [
-    'pnw-c1',
-    'road/road-deck',
-    ['c-pnw-mill-in', 'pnw-mill-yard-cut'],
-    0.5,
-    "the sawmill yard road's 1.2 m side wall (drawn as deck) along the Mill Yard Cut's lanes",
-  ],
-];
+export const KNOWN: readonly (readonly [string, string, readonly string[], number, string])[] = [];
 
 /** Sweeps a network and holds it: every place is allowed, known, or a failure (printed by road and s). */
 export async function checkNetwork(networkId: string, seed: number): Promise<void> {

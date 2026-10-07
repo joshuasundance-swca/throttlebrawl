@@ -51,7 +51,7 @@ import {
 } from './barrier-looks';
 import { keptSamples, mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
-import { EdgeLocator } from './overlap';
+import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import { SEAWALL_LAND_M, themeAt } from './scenery';
 import { thinRank } from './scenery-merge';
 
@@ -648,13 +648,27 @@ export class VergeLayer {
               continue;
             }
             const lift = pass === 'band' ? VERGE_LIFT_M : VERGE_LIFT_M - 0.01;
+            let dFar = pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M;
+            if (pass === 'band') {
+              // The band stops where it would lie over a lower road's lanes (a link down the embankment, a branch
+              // that leaves lower): the I-5's band stood up to 1.55 m over Lake Samish's links.
+              const reach = this.locator.clearReach(
+                e.index,
+                s,
+                v.dInner,
+                v.dOuter,
+                lift,
+                GROUND_YIELD_MARGIN_M,
+                GROUND_OVER_ROAD_M,
+              );
+              if (reach === null || Math.abs(reach - v.dInner) < 0.01) {
+                flush();
+                continue;
+              }
+              dFar = reach;
+            }
             const near = road.toWorld(e.index, s, pass === 'band' ? v.dInner : v.dOuter, lift);
-            const far = road.toWorld(
-              e.index,
-              s,
-              pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M,
-              lift,
-            );
+            const far = road.toWorld(e.index, s, dFar, lift);
             const colour = pass === 'band' ? SURFACE_COLOUR[v.surface] : SHALLOWS_COLOUR;
             run.push({ pair: side < 0 ? [far, near] : [near, far], colour });
             if (i > 0) {
