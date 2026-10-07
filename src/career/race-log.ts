@@ -169,6 +169,7 @@ export const STYLE_KIND_WORDS: Readonly<Record<string, string>> = {
   trick: 'TRICKS',
   wheelie: 'WHEELIE',
   drift: 'DRIFT',
+  roofRide: 'ROOF RIDES',
 };
 
 /** The most incidents one race keeps. [default] */

@@ -352,23 +352,11 @@ const ALLOWED: readonly (readonly [string, number, string])[] = [
 /**
  * Hits this check found on 2026-10-06 that are not buildings, left to follow-ups (lane polish-g G1's
  * report lists each by road and s): [network, part, the roads, the deepest in (m), what it is]. A new
- * road or a deeper cut fails; one that is gone is printed so its line can go.
+ * road or a deeper cut fails; one that is gone is printed so its line can go. The edge kit's lines (a verge's
+ * fence, brush and hedge, a guardrail, a bridge's rail, posts and bays across a sibling road's lanes) are all
+ * gone (polish J2, `overlap.ts`).
  */
 export const KNOWN: readonly (readonly [string, string, readonly string[], number, string])[] = [
-  [
-    'keys-m1',
-    'verge/verge-fence',
-    ['c-marina-split-main', 'm1-marina-bends'],
-    5.5,
-    "a verge's fence across the marina split's other road",
-  ],
-  [
-    'keys-m1',
-    'verge/verge-fence-far',
-    ['c-marina-split-main', 'm1-marina-bends'],
-    5.5,
-    "a verge's fence across the marina split's other road",
-  ],
   [
     'keys-m1',
     'boards/',
@@ -384,102 +372,11 @@ export const KNOWN: readonly (readonly [string, string, readonly string[], numbe
     "Sandbar Flats' billboard (sign-sandbar-advised) stands on Tarpon Flats",
   ],
   [
-    'osm-keys-seven-mile',
-    'road/road-scenery',
-    [
-      'osm-keys-seven-mile-old-road-in',
-      'osm-keys-seven-mile-old-road-join',
-      'osm-keys-seven-mile-old-road-leave',
-      'osm-sm-bridge',
-      'osm-sm-bridge-east',
-      'osm-sm-old-west',
-    ],
-    5.5,
-    "a bridge's bays across its sibling's lanes where the old road splits off and joins",
-  ],
-  [
-    'osm-keys-seven-mile',
-    'road/road-rail',
-    ['osm-keys-seven-mile-old-road-in', 'osm-keys-seven-mile-old-road-out', 'osm-sm-old-road-back'],
-    3,
-    "a bridge's rail across its sibling's lanes at the old road's split and join",
-  ],
-  [
-    'osm-keys-seven-mile',
-    'road/road-rail-posts',
-    ['osm-keys-seven-mile-old-road-in', 'osm-sm-old-road-back'],
-    3,
-    "a bridge's rail across its sibling's lanes at the old road's split and join",
-  ],
-  [
-    'osm-pnw-samish',
-    'verge/verge-brush',
-    ['osm-i5-lake-samish', 'osm-pnw-samish-lake-samish-join', 'osm-pnw-samish-lake-samish-leave'],
-    11.5,
-    "a verge's brush across the Lake Samish leave and join",
-  ],
-  [
-    'osm-pnw-samish',
-    'verge/verge-brush-far',
-    ['osm-i5-lake-samish', 'osm-pnw-samish-lake-samish-join', 'osm-pnw-samish-lake-samish-leave'],
-    11.5,
-    "a verge's brush across the Lake Samish leave and join",
-  ],
-  [
-    'osm-pnw-samish',
-    'verge/verge-guardrail',
-    ['osm-samish-east-shore', 'osm-samish-north-shore'],
-    3,
-    "a verge's guardrail across the lake road's other end",
-  ],
-  [
-    'pnw-c1',
-    'verge/verge-brush',
-    ['c-pnw-mill-split', 'c-pnw-spur-split', 'pnw-logging-spur', 'pnw-sawmill-yard', 'pnw-switchback-grade'],
-    5.5,
-    "a verge's brush across a split's other road",
-  ],
-  [
-    'pnw-c1',
-    'verge/verge-brush-far',
-    ['c-pnw-mill-split', 'c-pnw-spur-split', 'pnw-logging-spur', 'pnw-sawmill-yard', 'pnw-switchback-grade'],
-    5.5,
-    "a verge's brush across a split's other road",
-  ],
-  [
-    'osm-sf-lombard',
-    'verge/verge-hedge',
-    ['osm-sf-lombard-climb', 'osm-sf-lombard-flats'],
-    2,
-    "a verge's hedge across the crooked block's ends",
-  ],
-  [
-    'osm-sf-lombard',
-    'verge/verge-hedge-far',
-    ['osm-sf-lombard-climb', 'osm-sf-lombard-flats'],
-    2,
-    "a verge's hedge across the crooked block's ends",
-  ],
-  [
     'sf-downtown',
     'road-downtown/road-downtown',
     ['c-dt-plaza-in', 'sf-dt-plaza-cut'],
     4,
     "Campus Yard's lamps, hydrants and a planter on the Plaza Cut's lanes",
-  ],
-  [
-    'sf-hills',
-    'verge/verge-fence',
-    ['c-sf-park-merge-main', 'c-sf-park-split-main', 'sf-fogline-climb', 'sf-painted-row'],
-    5.5,
-    "a verge's fence across the park cut's split and merge",
-  ],
-  [
-    'sf-hills',
-    'verge/verge-fence-far',
-    ['c-sf-park-merge-main', 'c-sf-park-split-main', 'sf-fogline-climb', 'sf-painted-row'],
-    5.5,
-    "a verge's fence across the park cut's split and merge",
   ],
   [
     'sf-hills',

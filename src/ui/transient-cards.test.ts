@@ -3,6 +3,7 @@ import { ROAD_AHEAD } from '../sim/api';
 import {
   cardFindings,
   createCardSlots,
+  inViewFindings,
   ownerOf,
   retryButton,
   SLOT_SCREENS,
@@ -95,6 +96,29 @@ describe('a raised card belongs to its screen', () => {
     slots.raise('load-retry', 'career');
     expect(slots.visible('career')).toEqual(['load-retry']);
   });
+
+  // Polish batch E's check, punch item 4: the boot notice (settings from a newer build) went with the
+  // start screen, so a start tap inside its 4 s lost it and the menu never said it.
+  it('a notice on the start screen is carried to the menu the start tap opens, and said there', () => {
+    const slots = createCardSlots();
+    slots.raise('ui-notice', 'start');
+    expect(slots.visible('start')).toEqual(['ui-notice']);
+    expect(slots.screenChanged('menu'), 'it is carried').toEqual(['ui-notice']);
+    expect(slots.visible('menu')).toEqual(['ui-notice']);
+    // On the menu it is the menu's: it goes when the menu does.
+    expect(slots.screenChanged('career')).toEqual([]);
+    expect(slots.visible('menu')).toEqual([]);
+    slots.screenChanged('menu');
+    expect(slots.visible('menu')).toEqual([]);
+  });
+
+  it('control: a notice on any other screen still goes with it', () => {
+    const slots = createCardSlots();
+    slots.raise('ui-notice', 'career');
+    expect(slots.screenChanged('menu')).toEqual([]);
+    expect(slots.visible('menu')).toEqual([]);
+    expect(slots.visible('career')).toEqual([]);
+  });
 });
 
 describe('the Retry button while the host asked for a wait', () => {
@@ -103,6 +127,40 @@ describe('the Retry button while the host asked for a wait', () => {
     expect(retryButton(12_000, 0)).toEqual({ label: 'Retry in 12 s', disabled: true });
     expect(retryButton(12_000, 11_200)).toEqual({ label: 'Retry in 1 s', disabled: true });
     expect(retryButton(12_000, 12_000)).toEqual({ label: 'Retry', disabled: false });
+  });
+
+  it('carries another word when the card offers something else (Reload for a build whose files are gone)', () => {
+    expect(retryButton(null, 0, 'Reload')).toEqual({ label: 'Reload', disabled: false });
+  });
+});
+
+// Polish batch E's check, mustFix 1: a failed career ride raised the did-not-load card first in the
+// career's flow while the screen was scrolled down to the event, so it sat 420 to 590 px above the
+// top of the screen and the player saw no word. A raised card must be in view.
+describe('inViewFindings: a raised card is in view', () => {
+  const at915 = { width: 915, height: 412 };
+  it('names a card above the screen, below it, or with only an edge showing', () => {
+    // The live check's geometry: the career at 915x412 (y -474 to -420), and the 568x320 menu
+    // scrolled to its end (y -57 to 4: only its 4 px bottom edge showed).
+    expect(inViewFindings('load-retry', box(170, -474, 745, -420), at915)).toEqual([
+      'load-retry is out of view (y -474 to -420 of a 412 px screen)',
+    ]);
+    expect(inViewFindings('load-retry', box(142, -57, 426, 4), { width: 568, height: 320 })).toEqual([
+      'load-retry is out of view (y -57 to 4 of a 320 px screen)',
+    ]);
+    expect(inViewFindings('whats-new', box(10, 380, 300, 520), at915)).toHaveLength(1);
+  });
+
+  it('control: a card wholly on the screen, or one taller than it that fills it, is in view', () => {
+    expect(inViewFindings('load-retry', box(170, 8, 745, 62), at915)).toEqual([]);
+    expect(inViewFindings('load-retry', box(170, 0, 745, 412), at915)).toEqual([]);
+    expect(inViewFindings('whats-new', box(10, -30, 300, 600), at915)).toEqual([]);
+  });
+
+  it('names a card that is not drawn', () => {
+    expect(inViewFindings('ui-notice', box(0, 0, 0, 0), at915)).toEqual([
+      'ui-notice is out of view (not drawn)',
+    ]);
   });
 });
 

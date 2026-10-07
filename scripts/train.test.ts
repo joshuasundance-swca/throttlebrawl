@@ -2491,7 +2491,11 @@ describe('the workflows', () => {
     expect(read('scripts/train.test.ts')).toMatch(namesScript);
     for (const f of files) {
       expect(importsTest.test(read(f)), f).toBe(false);
-      if (!/^scripts\/(?:(?:train|tested-tree)\.(?:mjs|test\.ts)|contributing-docs\.test\.ts)$/.test(f))
+      if (
+        !/^scripts\/(?:(?:train|tested-tree)\.(?:mjs|test\.ts)|(?:contributing|stack-lite)-docs\.test\.ts)$/.test(
+          f,
+        )
+      )
         expect(namesScript.test(read(f)), f).toBe(false);
     }
   });

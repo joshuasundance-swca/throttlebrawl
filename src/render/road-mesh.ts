@@ -33,8 +33,11 @@ import {
   ARCH_M,
   ARCH_PIER_M,
   ARCH_TAG,
+  BARE_BAYS,
   BAY_BLOCK_M,
   BAY_DRAW_M,
+  BAY_KINDS,
+  BAY_M,
   TRESTLE_TAG,
   isSevenMile,
   planArches,
@@ -154,6 +157,16 @@ export function chunkKey(x: number, z: number): string {
  * then draws its surfaces alone: two to five fewer draw calls each, and fewer triangles.
  */
 export const ROAD_FINE_DRAW_M = 300;
+/**
+ * The thin posts (a highway's delineators, a rail's posts) are left out of a chunk wholly farther than this from the
+ * camera, metres [default]: sooner than the lines, which run as long as the road and so stay to ROAD_FINE_DRAW_M. A
+ * 0.15 m post 200 m away is a sliver 0.27 px wide and 1.9 px tall on the phone's 412 px-tall view; past it the posts are
+ * dots. Polish J3: the busiest Bridge City frame (112 of 120 draw calls, the takedown framing aimed down a side street)
+ * drew the posts of chunks 244 and 281 m away, three calls.
+ */
+export const ROAD_POST_DRAW_M = 200;
+/** The fine meshes that leave at ROAD_POST_DRAW_M instead of ROAD_FINE_DRAW_M. */
+const THIN_MESHES = new Set(['road-posts', 'road-rail-posts']);
 /** The chunk layers and instanced meshes that are fine detail (see ROAD_FINE_DRAW_M). */
 const FINE_MESHES = new Set([
   'road-marking',
@@ -406,6 +419,12 @@ function barriersFor(
   if (start >= 0) spans.push({ s0: start, s1: edge.length, side, kind: 'rail', heightM: 1 });
   return spans;
 }
+
+/** A rail stands this clear of another road's lanes, m, and is probed for them this often, m. [default] */
+const RAIL_CLEAR_M = 0.3;
+const RAIL_PROBE_M = 1;
+/** A bay's above-deck parts stand this clear of another road's lanes, m (a wall slab is 0.15 m thick). [default] */
+const BAY_CLEAR_M = 0.45;
 
 /** The shortcut surface sits this far above the main road, so the two never flicker where they overlap. */
 export const SHORTCUT_LIFT_M = 0.05;
@@ -1020,6 +1039,35 @@ export function buildRoadScene(
       const l = laneSpans(road.lanesAt(o.index, os));
       return l.drive ?? l.shortcut;
     });
+  };
+  /**
+   * The parts of [s0, s1] of edge e, at lateral offset d, that are not over another road's lanes (within
+   * `margin` m of them), at RAIL_PROBE_M. A piece of the edge kit drawn there is drawn across a road the
+   * rider rides (polish J2): where two roads overlap at a split or a join, it stops where the lanes begin.
+   */
+  const clearOfOtherLanes = (
+    e: number,
+    s0: number,
+    s1: number,
+    d: number,
+    margin: number,
+  ): [number, number][] => {
+    const out: [number, number][] = [];
+    let from = -1;
+    let last = s0;
+    for (let s = s0; ; s = Math.min(s1, s + RAIL_PROBE_M)) {
+      const p = w(e, s, d, 0);
+      if (!locator.onLanes(p.x, p.z, e, margin)) {
+        if (from < 0) from = s;
+        last = s;
+      } else if (from >= 0) {
+        if (last > from) out.push([from, last]);
+        from = -1;
+      }
+      if (s >= s1) break;
+    }
+    if (from >= 0 && last > from) out.push([from, last]);
+    return out;
   };
   const postSpots: Point3[] = [];
   const railPostSpots: { p: Point3; h: number }[] = [];
@@ -2088,16 +2136,30 @@ export function buildRoadScene(
       }),
     );
     if (sevenMile) {
+      const planned = planBays({
+        edge: e.index,
+        length: e.length,
+        tags: dress.tags,
+        shortcutOnly: laneSpans(road.lanesAt(e.index, e.length / 2)).drive === null,
+        sevenMile,
+        gaps,
+        ramps: (dress.features ?? []).filter((f) => f.kind === 'ramp'),
+        at: (s) => w(e.index, s, 0, 0),
+      });
+      // A bay whose above-deck parts (the new span's walls, the repair platform's rails) would stand over
+      // another road's lanes, where the old road splits off or joins, is placed without them (polish J2).
       baySpots.push(
-        ...planBays({
-          edge: e.index,
-          length: e.length,
-          tags: dress.tags,
-          shortcutOnly: laneSpans(road.lanesAt(e.index, e.length / 2)).drive === null,
-          sevenMile,
-          gaps,
-          ramps: (dress.features ?? []).filter((f) => f.kind === 'ramp'),
-          at: (s) => w(e.index, s, 0, 0),
+        ...planned.map((spot): ScenerySpot => {
+          const kind = BAY_KINDS[spot.variant];
+          const bare = kind ? BARE_BAYS[kind] : undefined;
+          if (!kind || !bare) return spot;
+          for (let f = 0; f <= 1 + 1e-9; f += 0.125) {
+            for (const d of bare.across.flatMap((x) => [-x, x])) {
+              const p = w(spot.edge, spot.s + f * BAY_M[kind], d, 0);
+              if (locator.onLanes(p.x, p.z, spot.edge, BAY_CLEAR_M)) return { ...spot, bare: true };
+            }
+          }
+          return spot;
         }),
       );
     }
@@ -2241,15 +2303,18 @@ export function buildRoadScene(
         const bottom = b.kind === 'wall' ? 0 : h - 0.3;
         // On a terrain network a wall is a concrete retaining wall, not the bridge's painted rail.
         const rail = strip(terrain && b.kind === 'wall' ? 'deck' : 'rail');
-        rail.breakStrip();
-        for (let s = s0; ; s = Math.min(s1, s + STEP_M)) {
-          rail.pair(w(e.index, s, d, h), w(e.index, s, d, bottom));
-          if (s >= s1) break;
-        }
-        rail.breakStrip();
-        railM += s1 - s0;
-        if (b.kind !== 'wall') {
-          for (let s = s0; s <= s1; s += 3) railPostSpots.push({ p: w(e.index, s, d, 0), h });
+        // Where another road's lanes lie under the rail (a split or a join) it stops, and starts again past them.
+        for (const [r0, r1] of clearOfOtherLanes(e.index, s0, s1, d, RAIL_CLEAR_M)) {
+          rail.breakStrip();
+          for (let s = r0; ; s = Math.min(r1, s + STEP_M)) {
+            rail.pair(w(e.index, s, d, h), w(e.index, s, d, bottom));
+            if (s >= r1) break;
+          }
+          rail.breakStrip();
+          railM += r1 - r0;
+          if (b.kind !== 'wall') {
+            for (let s = r0; s <= r1; s += 3) railPostSpots.push({ p: w(e.index, s, d, 0), h });
+          }
         }
       }
     }
@@ -2782,7 +2847,10 @@ export function buildRoadScene(
         : look.material('prop', { vertexColors: true, doubleSided: model?.doubleSided ?? false });
     if (!INSTANCED_KINDS.has(kind)) {
       for (const s of mine) {
-        const geometry = geos[Math.min(geos.length - 1, s.variant)] ?? geos[0];
+        // A bay placed bare (bridge-bays.ts `BARE_BAYS`) takes its kind's variant without the above-deck parts.
+        const bare = kind === 'bay' && s.bare ? BARE_BAYS[BAY_KINDS[s.variant] ?? 'newSpan'] : undefined;
+        const variant = bare && geos.length > bare.variant ? bare.variant : s.variant;
+        const geometry = geos[Math.min(geos.length - 1, variant)] ?? geos[0];
         if (geometry)
           (kind === 'bay' || kind === 'arch' ? bayItems : mergeItems).push({ spot: s, geometry, material });
       }
@@ -2928,9 +2996,11 @@ export function buildRoadScene(
     update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1, detail = {}) {
       sea?.update(cameraX, cameraZ);
       const fineM = ROAD_FINE_DRAW_M * (detail.propDetail ?? 1);
+      const postM = ROAD_POST_DRAW_M * (detail.propDetail ?? 1);
       for (const [key, fine] of fineByChunk) {
-        const near = chunkDistance(key, cameraX, cameraZ) < fineM;
-        for (const mesh of fine) mesh.visible = near;
+        const away = chunkDistance(key, cameraX, cameraZ);
+        for (const mesh of fine)
+          mesh.visible = away < (THIN_MESHES.has(mesh.name) ? Math.min(postM, fineM) : fineM);
       }
       let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds, detail.treeShare ?? 1);
       if (bayMerged) shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), lodM, builds);
