@@ -1,10 +1,14 @@
 // The integration skeptic's finding F2 (playtest 1c): past the lip the sim held a level 2.8 m deck
-// to the truck's front, while the model has a car parked on its top deck (roof 0.7 to 1.16 m above
+// to the truck's front, while the model had a car parked on its top deck (roof 0.7 to 1.16 m above
 // that deck) and then the cab, so a slow rider rolled along the deck inside that car and floated
-// past the cab. Now the truck past a short lip platform is its body: solid, never landed on. A slow
-// rider who rolls up the ramp bumps the parked car and is thrown off (a crash, then tumble's usual
-// hand-back), one too slow off the lip to clear the truck hits it, and one fast enough clears it.
-// No rider is ever left stuck on or in the truck.
+// past the cab. The fix then made the car a solid. The live check of 2026-10-07 found that car passed
+// through at the lip speeds, and a solid one crashes every carrier jump, so the car is gone (the
+// coordinator's [default], vetoable; truck-deck.test.ts): past a short lip platform the truck is an
+// empty top deck (a top a rider lands on and rides) and then the cab, its body, solid to its top.
+// A slow rider who rolls up the ramp hops onto the deck and rides into the cab's front, which throws
+// him off (a crash, then tumble's usual hand-back); one too slow off the lip to clear the truck lands
+// on the deck; one fast enough clears it; one who flies into the cab below its top hits it. No rider
+// is ever left stuck on or in the truck.
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedFeature } from '../../road';
 import { createSim, quantizeInput } from '../api';
@@ -18,6 +22,7 @@ import {
   truckBodyTop,
   truckClearMps,
 } from './features';
+import { riderState } from './index';
 import { input, riderHarness, testConfig } from './testing';
 
 const TRUCK: BakedFeature = {
@@ -31,6 +36,8 @@ const TRUCK: BakedFeature = {
 };
 const LIP_S = TRUCK.s0 + RAMP_TRUCK_LENGTH_M;
 const BODY_S = LIP_S + TRUCK_PLATFORM_M;
+/** Where the empty top deck ends and the cab starts: 16.8 m from the ramp foot (where the model's flat deck ends). */
+const CAB_S = TRUCK.s0 + 16.8;
 
 function withTruck(startS = 40): SimConfig {
   const base = testConfig();
@@ -71,35 +78,54 @@ function rideUp(speed: number, full = false, ticks = 60 * 10) {
 const top = truckBodyTop(TRUCK);
 
 describe("the ramp truck's body (skeptic F2)", () => {
-  it('stands on a short lip platform, then is the parked car to the front; the clear speed is about 10 m/s', () => {
+  it('stands on a short lip platform, then is an empty deck to the cab, then the cab to the front; the clear speed is about 10 m/s', () => {
     const config = withTruck();
     expect(deckHeight(config, 0, LIP_S + 0.2, 3.4)).toBeCloseTo(RAMP_TRUCK_LIP_M, 9);
-    expect(deckHeight(config, 0, BODY_S + 0.01, 3.4)).toBeCloseTo(top, 9);
+    expect(deckHeight(config, 0, BODY_S + 0.01, 3.4)).toBeCloseTo(RAMP_TRUCK_LIP_M, 9);
+    expect(deckHeight(config, 0, CAB_S + 0.01, 3.4)).toBeCloseTo(top, 9);
     expect(deckHeight(config, 0, TRUCK.s1 - 0.1, 3.4)).toBeCloseTo(top, 9);
-    expect(top).toBeCloseTo(3.96, 9); // the model's top-deck car roof
+    expect(top).toBeCloseTo(3.96, 9); // the cab's top (it was the top-deck car's roof, now gone)
     const clear = truckClearMps(TRUCK, 9.81);
     expect(clear).toBeGreaterThan(9.5);
     expect(clear).toBeLessThan(11);
   });
 
-  it('a slow rider rolling up the ramp (4 m/s) bumps the parked car: thrown off (a crash), never on or in it', () => {
+  it('a slow rider rolling up the ramp (4 m/s) hops onto the deck and rides into the cab: thrown off (a crash), never inside the truck', () => {
     const r = rideUp(4);
     const crash = r.events.find((e) => e.ev.type === 'crash');
     expect(crash?.ev.data).toMatchObject({ cause: 'barrier', object: 'rampTruck', feature: 'carrier-1' });
-    // It never rode past the car's rear, and never above the lip.
+    expect(crash?.s ?? 0).toBeGreaterThan(CAB_S - 1);
+    // It never rode past the cab's front, and never below the deck once past the lip platform.
     for (const p of r.trace) {
-      if (p.mode === 'Road') expect(p.s).toBeLessThan(BODY_S);
-      expect(p.h).toBeLessThanOrEqual(RAMP_TRUCK_LIP_M + 0.2);
+      if (p.mode === 'Road') expect(p.s).toBeLessThan(CAB_S + 0.01);
+      if (p.s > BODY_S + 0.3) expect(p.h).toBeGreaterThanOrEqual(RAMP_TRUCK_LIP_M - 0.01);
     }
   });
 
-  it('too slow off the lip to clear the truck (8 m/s): it hits the body, it never lands on or in it', () => {
+  it('too slow off the lip to clear the truck (8 m/s): it comes down on the deck, never inside the truck', () => {
     const r = rideUp(8);
     expect(r.events.some((e) => e.ev.type === 'jump')).toBe(true);
-    const crash = r.events.find((e) => e.ev.type === 'crash');
-    expect(crash?.ev.data).toMatchObject({ object: 'rampTruck', feature: 'carrier-1' });
-    expect(crash?.s ?? 0).toBeGreaterThanOrEqual(BODY_S);
-    expect(r.events.filter((e) => e.ev.type === 'land')).toEqual([]);
+    const land = r.events.find((e) => e.ev.type === 'land');
+    expect(land?.ev.data).toMatchObject({ on: 'truck', object: 'rampTruck' });
+    expect(land?.s ?? 0).toBeGreaterThanOrEqual(BODY_S);
+    expect(land?.s ?? 0).toBeLessThan(CAB_S);
+    // Nothing is hit before the cab's front: the crash, rolling on at 8 m/s, is the cab's.
+    for (const c of r.events.filter((e) => e.ev.type === 'crash'))
+      expect(c.s, 'a crash before the cab').toBeGreaterThan(CAB_S - 1);
+  });
+
+  it('flying into the cab below its top, slower than it takes to clear the truck, hits it', () => {
+    // Above the deck (3.3 m) and a beat from the cab's front, at 6 m/s: the cab's top is 3.96 m.
+    const h = riderHarness(withTruck(), { s: CAB_S - 0.5, d: 3.4, speed: 6 });
+    const st = riderState(h.world);
+    h.rider.mode = 'Airborne';
+    h.rider.h = 3.3;
+    st.yAbs[h.rider.id] = h.config.road.surfaceHeight(0, CAB_S - 0.5, 3.4) + 3.3;
+    st.vy[h.rider.id] = 0;
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 60 && !events.some((e) => e.type === 'crash'); t++) events.push(...h.step(input(0)));
+    const crash = events.find((e) => e.type === 'crash');
+    expect(crash?.data).toMatchObject({ object: 'rampTruck', feature: 'carrier-1' });
   });
 
   it('fast enough to clear it (12 m/s): airborne over the whole truck, landed on the road past its front', () => {

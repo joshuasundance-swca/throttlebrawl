@@ -493,14 +493,16 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
     expect(down(truck.s1 - 1.5, mid)).not.toBeNull();
   });
 
-  it("draws the sim's truck: the lip platform, then the parked car as the solid body (#211)", () => {
-    // Since #211 (riders, skeptic 1c F2) the sim keeps the lip height for a 0.45 m platform past
-    // the lip, then the truck's body is solid to s1, its top 1.16 m above the lip (the top-deck
-    // car's roof): src/sim/riders/features.ts TRUCK_PLATFORM_M and TRUCK_BODY_ABOVE_LIP_M, scaled
-    // with the ramp. So the drawn truck must show a deck on the platform, the car where the body
-    // starts, and nothing standing above the body's top anywhere.
+  it("draws the sim's truck: the lip platform, an empty top deck at the lip height, then the cab as the solid body", () => {
+    // Since #211 (riders, skeptic 1c F2) the sim keeps the lip height for a 0.45 m platform past the
+    // lip. The top deck past it is EMPTY (the live check of 2026-10-07: a car there was passed through at
+    // the lip speeds, and a solid one crashes every jump; docs/content-packs.md, the `rampTruck` feature): a top at
+    // the lip height to the cab, which starts 16.8 m from the foot and is solid to 1.16 m over the lip
+    // (src/sim/riders/features.ts TRUCK_PLATFORM_M, TRUCK_CAB_FROM_FOOT_M, TRUCK_BODY_ABOVE_LIP_M, scaled
+    // with the ramp). So the drawn truck must show a deck on the platform and past it, no car standing on
+    // it, and nothing above the cab's top anywhere. (scripts/carrier-hitboxes.test.ts is the full parity.)
     const lip = 2.8;
-    const bodyS = 11.5 + 0.45;
+    const cabS = 16.8;
     const bodyTop = lip + 1.16;
     const lines: string[] = [];
     let worstPlatform = 0;
@@ -508,18 +510,25 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
       worstPlatform = Math.max(worstPlatform, Math.abs(down(truck.s0 + x, mid)! - lip));
     lines.push(`platform +11.6 to +11.8 m worst ${worstPlatform.toFixed(3)} m off ${lip} m`);
     expect(worstPlatform).toBeLessThan(0.1);
-    // The car fills the body's first metres: its roof reaches the body's top.
-    const carRoof = Math.max(
-      ...Array.from({ length: 45 }, (_, i) => down(truck.s0 + 12 + i * 0.1, mid) ?? 0),
-    );
-    lines.push(`car roof ${carRoof.toFixed(2)} m (body top ${bodyTop.toFixed(2)} m)`);
-    expect(Math.abs(carRoof - bodyTop)).toBeLessThan(0.1);
-    expect(down(truck.s0 + bodyS + 0.3, mid)!).toBeGreaterThan(lip + 0.3);
+    // The deck: level at the lip height from the platform to the cab, nothing standing on it.
+    let deckHighest = 0;
+    let deckWorst = 0;
+    for (let x = 12; x <= cabS - 0.2; x += 0.1)
+      for (const d of [mid - 0.9, mid, mid + 0.9]) {
+        const top = down(truck.s0 + x, d);
+        expect(top, `deck at +${x.toFixed(1)} m`).not.toBeNull();
+        deckHighest = Math.max(deckHighest, top!);
+        deckWorst = Math.max(deckWorst, Math.abs(top! - lip));
+      }
+    lines.push(`top deck highest ${deckHighest.toFixed(2)} m, worst ${deckWorst.toFixed(3)} m off the lip`);
+    expect(deckWorst).toBeLessThan(0.1);
+    // The cab stands up from the deck.
+    expect(down(truck.s0 + cabS + 1.5, mid)!).toBeGreaterThan(lip + 0.3);
     // Nothing drawn stands above the body's top, over the whole box.
     let highest = 0;
     for (let x = 11.5; x <= truck.s1 - truck.s0; x += 0.25)
       for (const d of [mid - 1, mid, mid + 1]) highest = Math.max(highest, down(truck.s0 + x, d) ?? 0);
-    lines.push(`highest drawn point ${highest.toFixed(2)} m`);
+    lines.push(`highest drawn point ${highest.toFixed(2)} m (the sim's cab top ${bodyTop.toFixed(2)} m)`);
     expect(highest).toBeLessThan(bodyTop + 0.05);
     console.log(`[examined] the truck against the sim's body: ${lines.join('; ')}`);
   });

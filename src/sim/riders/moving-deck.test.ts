@@ -241,7 +241,10 @@ describe('a moving ramp that faces the other way along the edge', () => {
 describe('deck geometry', () => {
   const parked = straight([PARKED]);
   const bare = straight();
-  const INTO = [0, 1, RUN / 2, RUN - 0.01, RUN + 0.1, RUN + 1, LENGTH - 0.1];
+  // Along a parked truck of the same shape: the ramp, its lip platform and the cab to the front. A parked
+  // truck has an empty top deck between its lip platform and its cab; a moving carrier carries nothing,
+  // so its cab starts where its lip platform ends (the next test).
+  const INTO = [0, 1, RUN / 2, RUN - 0.01, RUN + 0.1, LENGTH - 0.1];
 
   it('stands the way a parked ramp truck of the same shape stands', () => {
     const world = createWorld(bare);
@@ -258,6 +261,17 @@ describe('deck geometry', () => {
     expect(deckHeight(bare, 0, PARKED.s0 + 2, -1.7, { moving: now })).toBe(0);
     expect(deckHeight(bare, 0, PARKED.s0 + LENGTH + 0.1, 3.4, { moving: now })).toBe(0);
     expect(deckHeight(bare, 0, PARKED.s0 - 0.1, 3.4, { moving: now })).toBe(0);
+  });
+
+  it('has no top deck: a moving carrier carries nothing, so its cab starts where its lip platform ends', () => {
+    const world = createWorld(bare);
+    world.systems[MOVING_DECKS_KEY] = { live: [deck(PARKED.s0, 20)] };
+    const { now } = movingDecks(world, DT);
+    const cab = deckHeight(bare, 0, PARKED.s0 + RUN + 1, 3.4, { moving: now });
+    expect(cab).toBeCloseTo(truckBodyTop(PARKED), 9);
+    expect(cab).toBeGreaterThan(LIP + 0.3);
+    // The same distance along a parked truck of that shape is its empty deck, at the lip's height.
+    expect(deckHeight(parked, 0, PARKED.s0 + RUN + 1, 3.4)).toBeCloseTo(LIP, 9);
   });
 
   it('moves with the truck: one tick on, it stands one tick of its travel further', () => {

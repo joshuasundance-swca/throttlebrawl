@@ -40,7 +40,7 @@ import {
   type SimSystem,
   type World,
 } from '../world';
-import { RAMP_TRUCK_LENGTH_M, RAMP_TRUCK_LIP_M, TRUCK_PLATFORM_M, truckBodyTop } from './features';
+import { RAMP_TRUCK_LENGTH_M, RAMP_TRUCK_LIP_M, truckBodyTop } from './features';
 import { riderState, ridersSystem, touchdownOf } from './index';
 import { holdsBike, supportKeyOf, SUPPORT_STATE_KEY, SUPPORTS_KEY } from './supports';
 
@@ -97,7 +97,7 @@ const PLAYER: SimRiderDef = {
   healthMax: 100,
 };
 
-/** The carrier (a parked ramp truck): its body, the top-deck car and the cab, from s 611.95 to 622. */
+/** The carrier (a parked ramp truck): its empty top deck from s 611.95 to 617, then its cab to 622. */
 const CARRIER: BakedFeature = {
   kind: 'rampTruck',
   id: 'carrier-1',
@@ -107,7 +107,8 @@ const CARRIER: BakedFeature = {
   d1: 4.4,
   params: { rampLengthM: RAMP_TRUCK_LENGTH_M, lipHeightM: RAMP_TRUCK_LIP_M },
 };
-const BODY_S = CARRIER.s0 + RAMP_TRUCK_LENGTH_M + TRUCK_PLATFORM_M;
+/** Where the carrier's cab starts: 16.8 m from its ramp foot (where the model's flat deck ends). */
+const CAB_S = CARRIER.s0 + 16.8;
 /** The ferry deck's parked pickup (a solid hazard, 5.4 by 2.1 m, 1.9 m tall). */
 const PICKUP: BakedFeature = {
   kind: 'hazard',
@@ -499,10 +500,10 @@ describe('riding it', () => {
 });
 
 describe('big solid things beyond vehicles', () => {
-  it('lands on the carrier’s top car, rides it to the front and drops off; control: the old rule crashed into it', () => {
+  it('lands on the carrier’s cab roof, rides it to the front and drops off; control: the old rule crashed into it', () => {
     const drop = (tuning: Record<string, number>) => {
       const sc = scene(makeConfig({ tuning, features: [CARRIER] }), {
-        s: BODY_S + 3,
+        s: CAB_S + 2,
         d: 3.4,
         speed: 8,
         air: { h: truckBodyTop(CARRIER) + 0.05, vy: -2 },
@@ -510,7 +511,7 @@ describe('big solid things beyond vehicles', () => {
       return { sc, down: untilDown(sc) };
     };
     const { sc, down } = drop({});
-    console.log(`[examined] onto the carrier's top car: ${JSON.stringify(down?.data)}`);
+    console.log(`[examined] onto the carrier's cab roof: ${JSON.stringify(down?.data)}`);
     expect(down?.data).toMatchObject({ quality: 'clean', on: 'truck' });
     expect(supportKeyOf(sc.world, sc.rider.id)).toBe('t:carrier-1');
     const off = untilDown(sc, held(0.3));
