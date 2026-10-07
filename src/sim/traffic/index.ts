@@ -1107,11 +1107,20 @@ function nearTightBend(world: World, config: SimConfig, st: TrafficState, u: num
 const HAIRPIN_WAIT_M = 60;
 
 /**
+ * A rider slower than this does not hold a vehicle at its hairpin wait line, m/s: it is not coming
+ * round the bend. Bridge City (polish H's punch item 5): a deputy waiting on the shoulder inside the
+ * reach held two oncoming cars there for the rest of the race, and the riders who came up the road
+ * stopped nose to nose with them. Car-following still stops a vehicle behind a rider standing in
+ * its lane, and it rounds one who is down. [default]
+ */
+const HAIRPIN_COMING_MPS = 2;
+
+/**
  * Hairpin yield (`traffic.hairpinYieldM`): how far ahead of corridor u, travelling `dir`, the next
  * drift bend (DRIFT_BEND_KAPPA, the corridor's bend mask) begins, when a rider is in that bend or
  * within the key's reach beyond it, riding toward u; else Infinity (also with the key off, and in
- * a bend already: a vehicle in one drives on through). Riders going the vehicle's way never count.
- * Pure + - * / over the corridor and the rider views.
+ * a bend already: a vehicle in one drives on through). Riders going the vehicle's way never count,
+ * nor do riders slower than `minMps`. Pure + - * / over the corridor and the rider views.
  */
 function hairpinMouth(
   world: World,
@@ -1120,6 +1129,7 @@ function hairpinMouth(
   riders: readonly RiderView[],
   u: number,
   dir: number,
+  minMps: number,
 ): number {
   const reach = world.params['traffic.hairpinYieldM'] ?? 0;
   if (!(reach > 0) || riders.length === 0) return Infinity;
@@ -1143,7 +1153,7 @@ function hairpinMouth(
   let far = mouth;
   while (bendAt(far + BEND_STEP_M) === true) far += BEND_STEP_M;
   for (const r of riders) {
-    if (r.dir === dir) continue;
+    if (r.dir === dir || r.speed < minMps) continue;
     const ahead = dir * (r.u - u);
     if (ahead >= mouth && ahead <= far + reach) return mouth;
   }
@@ -1153,6 +1163,7 @@ function hairpinMouth(
 /**
  * The distance ahead of vehicle k to the line where it waits for riders coming round a hairpin
  * (HAIRPIN_WAIT_M short of its mouth), or Infinity: none coming, or k already past its wait line.
+ * A rider standing still is not coming (HAIRPIN_COMING_MPS), so nobody holds it there for good.
  */
 function hairpinWait(
   world: World,
@@ -1161,14 +1172,15 @@ function hairpinWait(
   riders: readonly RiderView[],
   k: number,
 ): number {
-  const mouth = hairpinMouth(world, config, st, riders, st.u[k] ?? 0, st.dir[k] ?? 1);
+  const mouth = hairpinMouth(world, config, st, riders, st.u[k] ?? 0, st.dir[k] ?? 1, HAIRPIN_COMING_MPS);
   return mouth - HAIRPIN_WAIT_M > 0 ? mouth - HAIRPIN_WAIT_M : Infinity;
 }
 
 /**
  * A spawn slot a vehicle could not wait in time at (hairpin yield): riders are coming round the
  * hairpin ahead of it, and it would start past its wait line or inside its comfortable stopping
- * distance of it.
+ * distance of it. Every rider counts here, standing still or not (one may set off at any moment, and
+ * a spawn that cannot wait is never a vehicle stuck at a wait line).
  */
 function hairpinSpawnBlocked(
   world: World,
@@ -1179,7 +1191,7 @@ function hairpinSpawnBlocked(
   dir: number,
   v0: number,
 ): boolean {
-  const mouth = hairpinMouth(world, config, st, riders, u, dir);
+  const mouth = hairpinMouth(world, config, st, riders, u, dir, 0);
   return mouth < HAIRPIN_WAIT_M + (v0 * v0) / (2 * IDM.comfortDecelMps2);
 }
 
