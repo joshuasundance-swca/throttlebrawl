@@ -106,8 +106,8 @@ jobs:
         run: node scripts/train.mjs route
 
   # The suite (suite.yml, shared with the train): every tier on a push to main and on a PR's full
-  # path, the quick check (3 jobs) on the train and docs paths. Skipped on main's skip path. Its
-  # jobs show as `suite / static`, `suite / unit (1/2)` and so on. On a PR it fails fast
+  # path, the quick check (4 jobs) on the train and docs paths. Skipped on main's skip path. Its
+  # jobs show as `suite / static`, `suite / unit (1/3)` and so on. On a PR it fails fast
   # (docs/engineering.md, "Fail fast on a PR"): the first red suite job cancels the rest of this
   # run. Every suite job gets this job's token, so actions: write here is what the cancel needs
   # (contents: read restated: job permissions replace the workflow's). No other job gets it.
@@ -178,6 +178,7 @@ jobs:
           if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
             sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
           fi
+          sudo "$(command -v node)" scripts/browser-apt.mjs
           npx playwright install --with-deps --only-shell chromium
       - name: Boot the prod build (drafts off) before it ships
         run: |
