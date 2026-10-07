@@ -126,7 +126,7 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
   it('no part of the drawn truck stands above what the sim holds there (to the height tolerance)', () => {
     const found = ghosts(drawn);
     console.log(
-      `[examined] parked carrier: ${(LENGTH / 0.1) | 0} lengths x 5 widths, drawn top against the sim's; ghosts ${found.length}`,
+      `[examined] parked carrier: sampled lengths across 5 widths, drawn top against the sim's; ghosts ${found.length}`,
     );
     expect(found).toEqual([]);
   });
@@ -305,7 +305,7 @@ describe('the moving carrier: its figure draws nothing over the deck, and no car
     const sim = simTop(LENGTH_M - 0.5);
     const box = new Box3().setFromObject(mesh);
     console.log(
-      `[examined] the moving carrier's cab: drawn up to ${drawnHighest.toFixed(2)} m, the sim's body top ${sim.toFixed(2)} m (figure ${box.max.y.toFixed(2)} m tall)`,
+      `[examined] the moving carrier: drawn up to ${drawnHighest.toFixed(2)} m, physical cab roof at the sampled point ${sim.toFixed(2)} m, highest physical part ${truckBodyTop(now[0] as BakedFeature).toFixed(2)} m (figure ${box.max.y.toFixed(2)} m tall)`,
     );
     expect(drawnHighest - truckBodyTop(now[0] as BakedFeature)).toBeLessThanOrEqual(HEIGHT_TOLERANCE_M);
   });

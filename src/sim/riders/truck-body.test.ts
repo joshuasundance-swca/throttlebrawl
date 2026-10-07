@@ -171,7 +171,7 @@ describe("the ramp truck's body (skeptic F2)", () => {
       const me = sim.snapshot().entities[0];
       if (!me) throw new Error('no rider');
       const { d, yaw } = me.road;
-      // Crawl the truck's line until thrown off, then ride on in the lane.
+      // Crawl the truck's line until contact, then use the existing turn gesture and back off.
       const line = contacts === 0 ? 3.4 : 1.7;
       const slow = contacts === 0 && me.speed > 3;
       const steer = Math.max(-1, Math.min(1, me.road.dir * 0.35 * (line - d) - 2.5 * yaw));
