@@ -5,9 +5,12 @@
 // the engine straight away, as the menu comes up, so it is in long before the first race.
 // - Settings made before it loads (volumes, tuning, stations, the region, the road, this device's
 //   cuts, the engine sounds) reach it in the order they were made.
-// - `resume()` inside the start tap creates the AudioContext and resumes it there, in the tap's
-//   user activation, then hands that context to the engine once it is in; it resolves once the
-//   engine has resumed too.
+// - `prepare()` makes the AudioContext before the start tap, suspended: creating it is the tap's
+//   biggest cost (about 400 of its 408 ms of click handling on the dev machine, polish K), and a
+//   context may be made without a gesture; only starting to run needs one.
+// - `resume()` inside the start tap resumes that context there, in the tap's user activation (it
+//   makes the context itself when `prepare()` did not or could not), then hands it to the engine
+//   once it is in; it resolves once the engine has resumed too.
 // - Per-frame calls (`frame`, `update`, `onEvents`) before then play nothing, and `inspect()`
 //   reports the settings' bus targets and whether a voice could speak, as the engine would.
 // The tuning declarations (tuning.ts) and the station tables (stations.ts) load at boot.
@@ -46,6 +49,15 @@ export type { NowPlaying, RadioBand } from './radio';
 
 type Engine = typeof import('./system');
 
+/** The audio system as the game holds it: the engine's face, plus the stand-in's `prepare()`. */
+export interface AudioFace extends AudioSystem {
+  /**
+   * Makes the AudioContext now, suspended, so the start tap only has to `resume()` it. Call it
+   * when the start screen is up, outside the tap. A device that refuses is left to the tap.
+   */
+  prepare(): void;
+}
+
 /**
  * The audio system: a stand-in now, the engine (system.ts) once its lazy chunk is in. `load`
  * fetches the chunk (tests pass their own); a failed fetch is tried again at the next `resume()`.
@@ -53,7 +65,7 @@ type Engine = typeof import('./system');
 export function createAudio(
   opts: AudioOptions = {},
   load: () => Promise<Engine> = () => import('./system'),
-): AudioSystem {
+): AudioFace {
   const createContext = opts.createContext ?? (() => new AudioContext());
   let engine: AudioSystem | null = null;
   /** The context the start tap made before the engine was in; the engine is built on it. */
@@ -80,7 +92,7 @@ export function createAudio(
         const a = m.createAudio({
           ...opts,
           radioKeys: null,
-          createContext: () => tapContext ?? createContext(),
+          createContext: () => (tapContext ??= createContext()),
         });
         for (const set of pending.splice(0)) set(a);
         engine = a;
@@ -164,6 +176,15 @@ export function createAudio(
   };
 
   return {
+    prepare() {
+      if (opts.offline || resumed || tapContext) return;
+      try {
+        tapContext = createContext();
+      } catch (err) {
+        // No audio device (or a refused context) at boot: the start tap tries again, as before.
+        console.warn('audio: the context could not be made before the start tap', err);
+      }
+    },
     resume() {
       if (engine) return engine.resume();
       resumed = true;
