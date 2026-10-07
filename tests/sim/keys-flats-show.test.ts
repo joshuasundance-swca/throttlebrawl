@@ -1,17 +1,30 @@
 // The Keys' flats as the player sees them (playtest 4, run C's fix check, punch item 1: "the Keys flats still read
-// as one turquoise: no seagrass or sand patch in 9 frames at Bahia Honda, Spanish Harbor and Seven Mile, chase
-// and far cameras, golden hour and noon". #616's test counted the views that hold a patch in the mesh's vertex
-// colours; it did not ask whether the patch shows). What is asked here is what shows:
-//   - the colour the player sees: the water's colour times the patch's tint, through the ink water shader's
-//     light, the scene's haze at the pixel's depth and the film grade (sea-view.test-util.ts `seenSea`), against
-//     the same pixel of the same water without the patch;
-//   - from the chase camera on the phone's screen, with what the land hides taken out (the beaches take most of
-//     the near sea; the road scene's triangles are rasterised into a depth buffer);
-//   - "shows" is a colour difference (CIE76 delta E) of at least MIN_DELTA_E over a connected area of at least
-//     MIN_AREA_PX2 screen pixels, a patch you can see as a shape, in a view with at least MIN_SEA_SHARE of the
-//     screen as flats; a view shows seagrass when a darker such area is in it and sand when a paler one is.
-// Asked of Bahia Honda (with Spanish Harbor) and the Seven Mile, three seeds, a view every STEP_M along every
-// road, at noon, golden hour and dusk. The control is the patches as they were when run C found them.
+// as one turquoise: no seagrass or sand patch in 9 frames at Bahia Honda, Spanish Harbor and Seven Mile"; polish
+// batch H's check of #635, punch item 1: "faint at golden hour and on Bahia Honda: both a paler and a darker region
+// show in 1 of 24 chase frames, golden-hour Bahia shows neither in 4 of 6, and #635's own test claims 84 to 93 %").
+// What is asked here is what a rider reads in a frame, and the model of the frame is held to the live frames:
+//   - the colour seen (sea-view.test-util.ts `seenSea`): the water's colour times the patch's tint, through the ink
+//     water shader's far body and its wave stroke, the scene's haze at the pixel's depth, the film grade and the
+//     final pass's vignette. #635's model had the first two as a plain exposure and no vignette; against the sea
+//     colours of 12 live frames (polish H's check, build 22291ea, 915 by 412) it was 6.2 delta E off on average and
+//     the model now is 0.7, 2.2 at worst (`LIVE_SEA`);
+//   - from the chase camera on the phone's screen, with what the land hides taken out, and only the sea within
+//     READS_TO_M of the camera: past it the haze has begun and the horizon's ink line is drawn, and in the live
+//     frames the sea there was cream or inked, not teal (of the 23,616 px² the model draws between 250 and 450 m in
+//     the 12 frames, 2,220 were teal in the live frame, the live check's own water mask);
+//   - "shows" is read as the live check read its frames: a darker area and a paler area, of at least MIN_DELTA_E, than
+//     the water of the same row of the screen (a row is one depth band, so the haze and the slope of the light cancel),
+//     each a connected area of at least MIN_AREA_PX2 screen pixels. "The same row" is its quartiles, not the same
+//     water without the patch: #635 held every sample against bare water that is nowhere in the view, so a strip of
+//     the sea that was all sand read as a sand patch and its two-tone sea read as 84 to 93 % shown, where the live
+//     frames showed none. A row's lighter quarter is its paler reference and its darker quarter its darker one, so
+//     a two-tone sea (sand and seagrass) and a three-tone one (bare water between them) both show;
+//   - MIN_AREA_PX2 is the live check's 1,000 px², scaled for what the model does not draw. Over the 12 live frames
+//     the model's flats within READS_TO_M held 1.96 times the sea the frame did (137,412 px² against 70,200: the
+//     trees, the traffic, the riders and the HUD stand in front of the rest), and at 2,600 px² the model shows both
+//     in 2 of those 12 frames, as the live frames did (at 2,000 it shows 4).
+// Asked of Bahia Honda (with Spanish Harbor) and the Seven Mile, eight seeds, a view every STEP_M along every road,
+// at noon, golden hour and dusk, where the flats fill at least MIN_SEA_SHARE of the screen.
 import { Fog, Scene } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../../src/road';
@@ -53,21 +66,28 @@ function track(id: string) {
   return { road, dressing, plan };
 }
 
+type Lab = [number, number, number];
+
 /** A colour difference of this (CIE76) is a different colour at a glance: teal against green, teal against aqua. */
 const MIN_DELTA_E = 12;
-/** ...over this much of the screen at once, connected (about 33 by 33 px, or 100 by 10 px: a band you can see). */
-const MIN_AREA_PX2 = 1000;
+/** ...over this much of the screen at once, connected: the live check's 1,000 px² for what the model does not draw. */
+const MIN_AREA_PX2 = 2600;
+/** The sea is read to this far (view depth, m); past it the haze (from 220 m) and the horizon's ink line have it. */
+const READS_TO_M = 250;
 /** A view counts only where the flats fill this much of the screen (a view of sand, road and sky has none to show). */
 const MIN_SEA_SHARE = 0.01;
+/** A row of the screen is read where the flats hold at least this many samples of it (about 40 px). */
+const MIN_ROW_SAMPLES = 7;
 /** Of those views, at least this share must show both seagrass and sand. */
 const MIN_BOTH = 0.6;
-const SEEDS = [1, 2, 3];
+const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const TIMES = ['noon', 'golden-hour', 'dusk'] as const;
 const NETWORKS = ['osm-keys-seven-mile', 'osm-keys-bahia-honda'];
 const STEP_M = 250;
 /** The sea's depth (0 the flats, 1 the channel; open water far from land reaches 0.4) from which it is open water. */
 const OPEN_DEPTH = 0.3;
 const SCREEN_PX2 = PHONE.width * PHONE.height;
+const GRID = { cols: Math.ceil(PHONE.width / STEP_PX), rows: Math.ceil(PHONE.height / STEP_PX) };
 
 /** The area, in screen px², of the largest 4-connected run of samples of the grid that are in `set`. */
 function largestArea(frame: SeaFrame, set: ReadonlySet<number>): number {
@@ -104,38 +124,104 @@ function largestArea(frame: SeaFrame, set: ReadonlySet<number>): number {
   return best * STEP_PX * STEP_PX;
 }
 
-/** What one view shows of the flats: the largest darker and the largest paler area, px², or null for no flats in it. */
+/** The seen colour (CIE L*a*b*) of every flats sample of a view that the rider reads, with its place on the grid. */
+function seenFlats(frame: SeaFrame, time: string): { col: number; row: number; lab: Lab }[] {
+  return frame.pixels
+    .filter((p) => p.deep < 0.1 && p.depthM <= READS_TO_M)
+    .map((p) => ({
+      col: p.col,
+      row: p.row,
+      lab: lab(
+        seenSea(p.tint, p.depthM, time, { u: (p.col + 0.5) / frame.cols, v: 1 - (p.row + 0.5) / frame.rows }),
+      ),
+    }));
+}
+
+/** What one view shows of the flats: the largest darker and the largest paler area, px², or null for none to show. */
 function showsOf(frame: SeaFrame, time: string): { dark: number; pale: number } | null {
-  const flats = frame.pixels.filter((p) => p.deep < 0.1);
+  const flats = seenFlats(frame, time);
   if ((flats.length * STEP_PX * STEP_PX) / SCREEN_PX2 < MIN_SEA_SHARE) return null;
+  const byRow = new Map<number, typeof flats>();
+  for (const p of flats) byRow.set(p.row, [...(byRow.get(p.row) ?? []), p]);
   const dark = new Set<number>();
   const pale = new Set<number>();
-  for (const p of flats) {
-    const seen = lab(seenSea(p.tint, p.depthM, time));
-    const bare = lab(seenSea([1, 1, 1], p.depthM, time));
-    if (deltaE(seen, bare) >= MIN_DELTA_E) (seen[0] < bare[0] ? dark : pale).add(p.row * frame.cols + p.col);
+  for (const [row, samples] of byRow) {
+    if (samples.length < MIN_ROW_SAMPLES) continue;
+    const byLight = [...samples].sort((p, q) => p.lab[0] - q.lab[0]);
+    const lo = byLight[byLight.length >> 2]?.lab ?? [0, 0, 0];
+    const hi = byLight[(byLight.length * 3) >> 2]?.lab ?? [0, 0, 0];
+    for (const p of samples) {
+      if (p.lab[0] < hi[0] && deltaE(p.lab, hi) >= MIN_DELTA_E) dark.add(row * frame.cols + p.col);
+      if (p.lab[0] > lo[0] && deltaE(p.lab, lo) >= MIN_DELTA_E) pale.add(row * frame.cols + p.col);
+    }
   }
   return { dark: largestArea(frame, dark), pale: largestArea(frame, pale) };
 }
 
-/** The share of the views over a network's flats (all seeds and times) that show both seagrass and sand. */
-function measure(id: string): { views: number; both: number; share: number; dark: number; pale: number } {
+interface Share {
+  views: number;
+  both: number;
+  share: number;
+}
+
+/** The share of the views over a network's flats (all seeds), at each time of day, that show both seagrass and sand. */
+function measure(id: string, times: readonly string[] = TIMES): Record<string, Share> {
   const { road, dressing, plan } = track(id);
-  let views = 0;
-  let both = 0;
-  let dark = 0;
-  let pale = 0;
+  const out: Record<string, Share> = {};
+  for (const t of times) out[t] = { views: 0, both: 0, share: 0 };
   for (const seed of SEEDS)
     for (const frame of seaFrames(road, dressing, plan, seed, STEP_M))
-      for (const time of TIMES) {
-        const r = showsOf(frame, time);
-        if (!r) continue;
-        views++;
-        if (r.dark >= MIN_AREA_PX2) dark++;
-        if (r.pale >= MIN_AREA_PX2) pale++;
-        if (r.dark >= MIN_AREA_PX2 && r.pale >= MIN_AREA_PX2) both++;
+      for (const time of times) {
+        const shows = showsOf(frame, time);
+        const r = out[time];
+        if (!shows || !r) continue;
+        r.views++;
+        if (shows.dark >= MIN_AREA_PX2 && shows.pale >= MIN_AREA_PX2) r.both++;
       }
-  return { views, both, share: views > 0 ? both / views : 0, dark, pale };
+  for (const r of Object.values(out)) r.share = r.views > 0 ? r.both / r.views : 0;
+  return out;
+}
+
+const percent = (r: Share | undefined) =>
+  `${((r?.share ?? 0) * 100).toFixed(0)} % (${r?.both} of ${r?.views})`;
+
+/**
+ * The sea colours of 12 live frames (polish H's check, the live link at build 22291ea, Bahia Honda run, golden hour
+ * seed 3 and noon seed 4, a 915 by 412 touch viewport): where the live frame's sea stood inside a 3 by 3 block of
+ * the grid of one tint (a patch's middle, or the deep channel), 36 px from 49 to 151 m (the deck's channel: 63 and
+ * 74 m) from the camera, the median colour of the block's teal pixels, against the tint the model's sea mesh held
+ * there (`col` and `row` are the block on the grid; the tints are the shipped `sand`, `seagrass` and the channel's).
+ */
+const LIVE_SEA: readonly {
+  time: string;
+  tint: readonly [number, number, number];
+  depthM: number;
+  col: number;
+  row: number;
+  live: string;
+}[] = [
+  { time: 'golden-hour', tint: [0.45, 0.5, 0.4], depthM: 49.3, col: 19, row: 30, live: '#1a695e' },
+  { time: 'golden-hour', tint: [0.45, 0.5, 0.4], depthM: 68.9, col: 14, row: 37, live: '#19665b' },
+  { time: 'golden-hour', tint: [6, 1.6, 1.25], depthM: 75.2, col: 135, row: 34, live: '#48b29d' },
+  { time: 'golden-hour', tint: [0.45, 0.5, 0.4], depthM: 151.2, col: 1, row: 33, live: '#1b5c52' },
+  { time: 'golden-hour', tint: [0.45, 0.5, 0.4], depthM: 56.3, col: 150, row: 34, live: '#186054' },
+  { time: 'golden-hour', tint: [0.8253, 0.27, 0.7986], depthM: 63.5, col: 101, row: 42, live: '#254e93' },
+  { time: 'noon', tint: [5.9877, 1.5985, 1.2494], depthM: 48, col: 1, row: 33, live: '#46a993' },
+  { time: 'noon', tint: [0.45, 0.5, 0.4], depthM: 48.3, col: 139, row: 37, live: '#19695c' },
+  { time: 'noon', tint: [0.45, 0.5, 0.4], depthM: 53.2, col: 4, row: 37, live: '#176356' },
+  { time: 'noon', tint: [0.45, 0.5, 0.4], depthM: 108.6, col: 3, row: 40, live: '#196457' },
+  { time: 'noon', tint: [6, 1.6, 1.25], depthM: 51.8, col: 147, row: 34, live: '#46ab95' },
+  { time: 'noon', tint: [0.826, 0.2727, 0.7993], depthM: 73.9, col: 143, row: 43, live: '#224987' },
+];
+
+/** The colour difference between a model sea colour and a live one, for each of LIVE_SEA. */
+function liveErrors(plain: boolean): number[] {
+  return LIVE_SEA.map((s) => {
+    const at = { u: (s.col + 0.5) / GRID.cols, v: 1 - (s.row + 0.5) / GRID.rows };
+    const model = seenSea(s.tint, s.depthM, s.time, at, plain);
+    const live = [1, 3, 5].map((k) => parseInt(s.live.slice(k, k + 2), 16) / 255) as Lab;
+    return deltaE(lab(model), lab(live));
+  });
 }
 
 describe('the colour the player sees', () => {
@@ -165,21 +251,103 @@ describe('the colour the player sees', () => {
       expect(deltaE(grass(450), bare(450))).toBeLessThan(deltaE(grass(60), bare(60)) * 0.7);
     }
   });
+
+  it('is the colour of the live frames: 12 sea colours seen on the live link are each within 3 delta E, 1.5 on average', () => {
+    const errors = liveErrors(false);
+    const mean = errors.reduce((a, b) => a + b, 0) / errors.length;
+    print(
+      `the model against 12 live sea colours: mean ${mean.toFixed(2)} delta E, worst ${Math.max(...errors).toFixed(2)}; #635's model: mean ${(liveErrors(true).reduce((a, b) => a + b, 0) / errors.length).toFixed(2)}`,
+    );
+    for (const [i, e] of errors.entries())
+      expect(e, `${LIVE_SEA[i]?.time} ${LIVE_SEA[i]?.live}`).toBeLessThan(3);
+    expect(mean).toBeLessThan(1.5);
+  });
+
+  it('the measure can tell: #635`s model (a plain exposure, no wave stroke, no vignette) is over 4.5 delta E off on average (control)', () => {
+    const errors = liveErrors(true);
+    expect(errors.reduce((a, b) => a + b, 0) / errors.length).toBeGreaterThan(4.5);
+  });
+
+  it('golden hour is lit as noon is: a patch differs from the bare water by the same delta E (the light is not what made it faint)', () => {
+    const diff = (time: string, tint: readonly [number, number, number]) =>
+      deltaE(
+        lab(seenSea(tint, 100, time, { u: 0.2, v: 0.55 })),
+        lab(seenSea([1, 1, 1], 100, time, { u: 0.2, v: 0.55 })),
+      );
+    for (const tint of [SEA_BANDS.sand, SEA_BANDS.seagrass])
+      expect(Math.abs(diff('golden-hour', tint) - diff('noon', tint))).toBeLessThan(1.5);
+  });
+});
+
+/** The hue (degrees) and chroma of a colour. */
+function hueChroma(c: Lab): { hue: number; chroma: number } {
+  return { hue: ((Math.atan2(c[2], c[1]) * 180) / Math.PI + 360) % 360, chroma: Math.hypot(c[1], c[2]) };
+}
+
+/**
+ * Whether the patches stay a sea's colours (the brief's bar for the fix: "without turning noon garish"): at every time
+ * of day and at 60 and 150 m, a patch is within MAX_PATCH_DELTA_E of the bare water, its hue stays between teal and
+ * green (the bare water is 200 degrees, the patches 176 to 181), its chroma at or under MAX_CHROMA, the sand no
+ * lighter than MAX_SAND_L and the seagrass no darker than MIN_GRASS_L. Returns what breaks it.
+ */
+const MAX_PATCH_DELTA_E = 24;
+const MAX_CHROMA = 40;
+const MAX_SAND_L = 75;
+const MIN_GRASS_L = 33;
+function garish(sand: readonly number[], seagrass: readonly number[]): string[] {
+  const broken: string[] = [];
+  for (const time of TIMES)
+    for (const d of [60, 150]) {
+      const at = { u: 0.3, v: 0.55 };
+      const bare = lab(seenSea([1, 1, 1], d, time, at));
+      for (const [name, tint] of [
+        ['sand', sand],
+        ['seagrass', seagrass],
+      ] as const) {
+        const seen = lab(seenSea(tint as [number, number, number], d, time, at));
+        const { hue, chroma } = hueChroma(seen);
+        const tag = `${name} ${time} ${d} m`;
+        if (deltaE(seen, bare) > MAX_PATCH_DELTA_E)
+          broken.push(`${tag}: ${deltaE(seen, bare).toFixed(1)} delta E from the water`);
+        if (hue < 165 || hue > 195) broken.push(`${tag}: hue ${hue.toFixed(0)}`);
+        if (chroma > MAX_CHROMA) broken.push(`${tag}: chroma ${chroma.toFixed(0)}`);
+        if (name === 'sand' && seen[0] > MAX_SAND_L) broken.push(`${tag}: lightness ${seen[0].toFixed(0)}`);
+        if (name === 'seagrass' && seen[0] < MIN_GRASS_L)
+          broken.push(`${tag}: lightness ${seen[0].toFixed(0)}`);
+      }
+    }
+  return broken;
+}
+
+describe('the patches stay a sea', () => {
+  it('at noon, golden hour and dusk the sand and the seagrass are no further from the water than a patch reads at, and stay teal to green', () => {
+    expect(garish(SEA_BANDS.sand, SEA_BANDS.seagrass)).toEqual([]);
+  });
+
+  it('the measure can tell: tints twice as bold as these (sand 14, 2.6, 1.7; seagrass 0.2, 0.25, 0.2) break it (control)', () => {
+    expect(garish([14, 2.6, 1.7], [0.2, 0.25, 0.2]).length).toBeGreaterThan(0);
+  });
 });
 
 describe.each(NETWORKS)('the Keys` flats at %s, from the chase camera', (id) => {
-  it(`at least ${MIN_BOTH * 100} % of the views over the flats show a seagrass patch and a sand patch (a difference of ${MIN_DELTA_E} delta E over ${MIN_AREA_PX2} px²)`, () => {
+  it(`at every time of day at least ${MIN_BOTH * 100} % of the views over the flats show a seagrass patch and a sand patch (${MIN_DELTA_E} delta E from the row, ${MIN_AREA_PX2} px² each)`, () => {
     const r = measure(id);
     print(
-      `${id}: ${r.both} of ${r.views} views over the flats (${SEEDS.length} seeds, ${TIMES.length} times of day, every ${STEP_M} m, ${PHONE.width} by ${PHONE.height}) show both, ${(r.share * 100).toFixed(0)} %; seagrass in ${r.dark}, sand in ${r.pale}`,
+      `${id}: ${TIMES.map((t) => `${t} ${percent(r[t])}`).join(', ')} (${SEEDS.length} seeds, every ${STEP_M} m, ${PHONE.width} by ${PHONE.height}, sea to ${READS_TO_M} m)`,
     );
-    expect(r.views, 'the network has flats to ride over').toBeGreaterThan(100);
-    expect(r.share).toBeGreaterThanOrEqual(MIN_BOTH);
+    for (const t of TIMES) {
+      expect(r[t]?.views, `${t}: the network has flats to ride over`).toBeGreaterThan(50);
+      expect(r[t]?.share, t).toBeGreaterThanOrEqual(MIN_BOTH);
+    }
+    // The light is not what made it faint: golden hour shows as many views as noon, to a few views.
+    expect(Math.abs((r['golden-hour']?.share ?? 0) - (r['noon']?.share ?? 0))).toBeLessThan(0.05);
   });
 
   it('the measure can tell: with the patches as run C found them (a tint of 1.3 and 0.5, a third of the noise for an edge), no view does (control)', () => {
     // sea-bands.ts as it stood in #616, which run C's fix check found one turquoise on the live link.
     const OLD = {
+      patchM: 60,
+      octaveWeight: 0.32,
       patchFrom: 0.04,
       patchTo: 0.36,
       patchGiveWay: [0, 0.5],
@@ -190,12 +358,10 @@ describe.each(NETWORKS)('the Keys` flats at %s, from the chase camera', (id) => 
     const kept = Object.fromEntries(Object.keys(OLD).map((k) => [k, bands[k]]));
     Object.assign(bands, OLD);
     try {
-      const r = measure(id);
-      print(
-        `${id}, patches as run C found them: ${r.both} of ${r.views} views show both, ${(r.share * 100).toFixed(0)} %`,
-      );
-      expect(r.views).toBeGreaterThan(100);
-      expect(r.share).toBeLessThan(MIN_BOTH / 3);
+      const r = measure(id, ['noon']);
+      print(`${id}, patches as run C found them: noon ${percent(r['noon'])}`);
+      expect(r['noon']?.views).toBeGreaterThan(50);
+      expect(r['noon']?.share).toBeLessThan(MIN_BOTH / 3);
     } finally {
       Object.assign(bands, kept);
     }

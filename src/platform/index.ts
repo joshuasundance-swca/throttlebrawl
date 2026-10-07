@@ -6,6 +6,7 @@
 // the injected `resumeAudio` callback. The browser APIs sit behind `PlatformEnv`, so the unit
 // tests drive the same code with mocks.
 import type { ResumeAudio } from '../core';
+import { readsOfflineCaches } from './page-cache';
 import { retryingFetch } from './retry-fetch';
 import { recoverStaleBuild, type StaleBuild } from './stale-build';
 
@@ -485,6 +486,7 @@ export function registerOfflineWorker(
 
 export { recoverStaleBuild, STALE_BUILD_KEY, type StaleBuild, type StaleBuildPage } from './stale-build';
 export {
+  FETCH_LANES,
   RETRY_AFTER_CAP_MS,
   RETRY_DELAYS_MS,
   retryAfterMsOf,
@@ -545,12 +547,23 @@ export function startOffline(buildId: string, canReload: () => boolean): StaleBu
   let stale: StaleBuild | null = null;
   // Inside the watch, so it hears only the final answer of a build file: a 429 or 500 that a retry
   // cured is no sign of a deploy, and a 404 or 410 is never retried (retry-fetch.ts).
-  window.fetch = retryingFetch(window.fetch.bind(window), {
+  const network = retryingFetch(window.fetch.bind(window), {
     scope,
     online: () => navigator.onLine,
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),
   });
+  // Before the worker takes the page, a build file its install has cached is read from there, not
+  // downloaded a second time (page-cache.ts; a cache hit asks the host nothing, so it waits for no
+  // retry and is never a sign of a deploy).
+  window.fetch =
+    typeof caches === 'undefined'
+      ? network
+      : readsOfflineCaches(network, {
+          scope,
+          controlled: () => navigator.serviceWorker?.controller != null,
+          match: (url) => caches.match(url, { ignoreVary: true }),
+        });
   const net = watchFetches(window, document.baseURI, (url, status) => stale?.answered(url, status));
   stale = recoverStaleBuild(
     {

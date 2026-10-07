@@ -69,7 +69,7 @@ import {
   type EntityId,
   type SetPieceHeightKind,
 } from '../../core';
-import type { EdgeLink, RoadPos } from '../../road';
+import { standOffLanes, type EdgeLink, type RoadPos } from '../../road';
 import { addHeat, CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState, HEAT } from '../cops';
 import { placePed } from '../peds';
 import { riderState } from '../riders';
@@ -162,6 +162,17 @@ export const SET_PIECE = {
   /** The speed trap's default limit, m/s (about 65 mph), before the speed multiplier. */
   trapLimitMps: 29,
   gravity: 9.81,
+  /**
+   * A sign stands off every road's lanes (the maintainer, 2026-10-06: "a road race in a physical world with
+   * honest edges"; a sign is not touchable, so one in a lane is a ghost the rider rides through). What of it hangs
+   * low enough to meet a rider keeps this far off them, m, looked for out to `signMoveMaxM` past its spot:
+   * a serial sign's panel (render/event-props.ts SERIAL_M, 2.2 m wide from 1.4 m up, so half of it is
+   * `serialHalfM`), and a warning sign's post (`signPostHalfM`; its panel hangs from 2.2 m, over a rider's head).
+   */
+  signLanesClearM: 0.25,
+  serialHalfM: 1.1,
+  signPostHalfM: 0.1,
+  signMoveMaxM: 8,
 };
 
 /** One placed piece. Plain data (it hashes with the world). */
@@ -732,6 +743,44 @@ function shoulderCd(config: SimConfig, c: Corridor, p: SetPiece, u: number, out:
   return p.side * Math.min(want, walled ? limit - 0.3 : limit + 0.6);
 }
 
+/**
+ * A sign's cd at u, on the piece's shoulder side: `out` metres past the outermost lane there (at the sign's own
+ * spot: the piece's own lane is the one nearest the centre line, so on a road of two lanes each way a sign `out`
+ * past it stood in the outer lane, the bot riding through its panel; the live check, 2026-10-06), and on out
+ * until all `half` of it either side stands SET_PIECE.signLanesClearM off every road's lanes (a branch, a
+ * shortcut, a road alongside). It may stand past a rail or a wall: nothing reaches it there. Null where no spot
+ * within SET_PIECE.signMoveMaxM is clear (the sign is left out).
+ */
+function signCd(
+  config: SimConfig,
+  c: Corridor,
+  p: SetPiece,
+  u: number,
+  out: number,
+  half: number,
+): number | null {
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  fromCorridor(c, u, 0, c.routeDir, pos);
+  const o = c.o[c.edges.indexOf(pos.edge)] ?? 1;
+  // The side in the edge's own d, and the outermost lane's edge on it.
+  const side = p.side * o > 0 ? 1 : -1;
+  let edgeD = 0;
+  for (const lane of config.road.lanesAt(pos.edge, pos.s))
+    edgeD = Math.max(edgeD, side * (lane.dCenterM + (side * lane.widthM) / 2));
+  const from = Math.max(edgeD + out, edgeD + half + SET_PIECE.signLanesClearM);
+  const d = standOffLanes(
+    config.road,
+    pos.edge,
+    pos.s,
+    side,
+    side * from,
+    half,
+    SET_PIECE.signLanesClearM,
+    SET_PIECE.signMoveMaxM,
+  );
+  return d === null ? null : d * o;
+}
+
 /** The drivable band's outer edge on the piece's side at u, as a distance from the centre line. */
 function bandEdge(config: SimConfig, c: Corridor, p: SetPiece, u: number): number {
   const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
@@ -840,25 +889,24 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
   p.phase = 1;
   p.startTick = world.tick;
   // The warning sign, on the shoulder side, ahead of everything (unless serial signs stand in for it).
-  if (keepsSign(e))
+  const warnCd = keepsSign(e)
+    ? signCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2, SET_PIECE.signPostHalfM)
+    : null;
+  if (warnCd !== null)
     addProp(st, index, {
       kind: 'sign',
       variant: p.piece,
       label: str(e, 'signText', ''),
       u: at(-SET_PIECE.signLeadM),
-      cd: shoulderCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2),
+      cd: warnCd,
     });
   // Serial signs (W-T): one joke over up to four small signs, punchline last.
   const serial = serialOf(e);
-  serialLeads(serial.length, SET_PIECE.signLeadM, keepsSign(e)).forEach((lead, i) =>
-    addProp(st, index, {
-      kind: 'sign',
-      variant: 'serial',
-      label: serial[i] ?? '',
-      u: at(-lead),
-      cd: shoulderCd(config, c, p, at(-lead), 0.9),
-    }),
-  );
+  serialLeads(serial.length, SET_PIECE.signLeadM, keepsSign(e)).forEach((lead, i) => {
+    const cd = signCd(config, c, p, at(-lead), 0.9, SET_PIECE.serialHalfM);
+    if (cd !== null)
+      addProp(st, index, { kind: 'sign', variant: 'serial', label: serial[i] ?? '', u: at(-lead), cd });
+  });
   switch (p.piece) {
     case 'roadwork': {
       // A taper from the shoulder edge to the lane's inner edge over 30 m, then a line to the truck.

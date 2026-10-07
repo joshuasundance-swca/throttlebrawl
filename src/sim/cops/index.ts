@@ -140,7 +140,7 @@
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { atan2, clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
-import type { RoadPos, RouteBranch } from '../../road';
+import { standOffLanes, type RoadPos, type RouteBranch } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt, riderState } from '../riders';
 import {
@@ -672,7 +672,14 @@ const CITE_ACROSS_M = 4;
 const CATCH_UP_NEAR_M = 4;
 
 /** The END OF JURISDICTION sign [default]: from this share of the route; this far off the lanes, m. */
-export const JURISDICTION = { share: 0.55, outM: 1.2 };
+export const JURISDICTION = {
+  share: 0.55,
+  outM: 1.2,
+  /** Its post's half width, how far off every road's lanes it keeps, and how far out it looks for that, m. */
+  postHalfM: 0.1,
+  lanesClearM: 0.25,
+  moveMaxM: 8,
+};
 
 function habitOf(def: SimRiderDef | undefined): SimLawHabit | null {
   return def?.law?.habit ?? null;
@@ -1995,10 +2002,23 @@ function placeLine(config: SimConfig, st: CopsState): void {
     const o = config.route.orientation(pos.edge) === -1 ? -1 : 1;
     const v = config.road.vergeAt(pos.edge, pos.s, o > 0 ? 'right' : 'left');
     const out = Math.min(JURISDICTION.outM, Math.max(0, Math.abs(v.dOuter - v.dInner) - 0.2));
+    // Its post stands off every road's lanes (2026-10-06, honest edges: a sign is a ghost in a lane), as a set
+    // piece's sign does (sim/modifiers/setpieces.ts SET_PIECE.signLanesClearM); its panel hangs over a rider's head.
+    const d = standOffLanes(
+      config.road,
+      pos.edge,
+      pos.s,
+      o,
+      v.dInner + o * out,
+      JURISDICTION.postHalfM,
+      JURISDICTION.lanesClearM,
+      JURISDICTION.moveMaxM,
+    );
+    if (d === null) continue;
     st.lineAt = at;
     st.lineEdge = pos.edge;
     st.lineS = pos.s;
-    st.lineD = v.dInner + o * out;
+    st.lineD = d;
     return;
   }
 }

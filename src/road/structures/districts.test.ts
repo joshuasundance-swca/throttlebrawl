@@ -14,6 +14,7 @@ import {
   structuresAt,
   structuresOf,
   topAt,
+  type StructureLayerSpec,
   type StructurePlan,
 } from '../structures';
 import type { BakedNetwork, BakedRoad } from '../types';
@@ -54,6 +55,13 @@ const CN = 'sf-chinatown-northbeach';
 const MI = 'sf-mission';
 const SEED = 7;
 const planners = { 'chinatown-northbeach': blocksPlanner, mission: missionPlanner };
+/**
+ * The districts' own layers: their networks need other layers too (the landmarks), which these tests do not
+ * plan, so the plans here hold the districts' solids only.
+ */
+const layers: Record<string, StructureLayerSpec> = Object.fromEntries(
+  Object.keys(planners).map((name) => [name, STRUCTURE_LAYERS[name] as StructureLayerSpec]),
+);
 
 /** The lanes' world positions (centre, and each lane's centre) every 2 m: where a rider on the road stands. */
 function roadPoints(road: RoadNetwork): { x: number; z: number; edge: number; s: number }[] {
@@ -103,8 +111,8 @@ describe('the layers: which network asks for which planner, and that they load l
 describe('the plan is a function of the network and the seed only', () => {
   it('is the same for a second network built from the same data (nothing drawn or loaded is an input)', () => {
     for (const id of [CN, MI]) {
-      const a = planStructures(track(id).road, SEED, planners);
-      const b = planStructures(track(id).road, SEED, planners);
+      const a = planStructures(track(id).road, SEED, planners, layers);
+      const b = planStructures(track(id).road, SEED, planners, layers);
       expect(b).not.toBe(a);
       expect(JSON.stringify(b.items)).toBe(JSON.stringify(a.items));
     }
@@ -163,7 +171,7 @@ describe('the plan is a function of the network and the seed only', () => {
 
 describe("Chinatown and North Beach's plan", () => {
   const { road } = track(CN);
-  const plan: StructurePlan = planStructures(road, SEED, planners);
+  const plan: StructurePlan = planStructures(road, SEED, planners, layers);
   const rules = (name: string) => plan.items.filter((s) => s.rule === name);
 
   it('plans a solid for every front, second row, balcony, bay, rail, side-street lot and park building', () => {
@@ -227,14 +235,19 @@ describe("Chinatown and North Beach's plan", () => {
     const front = rules('lanterns-front')[0];
     if (!front) throw new Error('no front');
     const lane = road.toWorld(front.edge, front.s, 0, 0);
-    const moved = planStructures(track(CN).road, SEED, {
-      'chinatown-northbeach': {
-        plan(r, seed, out) {
-          for (const spec of blocksSolids(blocksLayout(r, seed))) out.add(spec);
-          out.add({ ...front, foot: { ...front.foot, x: lane.x, z: lane.z } });
+    const moved = planStructures(
+      track(CN).road,
+      SEED,
+      {
+        'chinatown-northbeach': {
+          plan(r, seed, out) {
+            for (const spec of blocksSolids(blocksLayout(r, seed))) out.add(spec);
+            out.add({ ...front, foot: { ...front.foot, x: lane.x, z: lane.z } });
+          },
         },
       },
-    });
+      layers,
+    );
     expect(structuresAt(moved, lane.x, lane.z).length).toBeGreaterThan(0);
     expect(structuresAt(plan, lane.x, lane.z)).toEqual([]);
   });
@@ -242,7 +255,7 @@ describe("Chinatown and North Beach's plan", () => {
 
 describe("the Mission's plan", () => {
   const { road } = track(MI);
-  const plan: StructurePlan = planStructures(road, SEED, planners);
+  const plan: StructurePlan = planStructures(road, SEED, planners, layers);
   const layout = missionLayout(road, SEED);
 
   it('plans a run of boxes for every building and a plank for every bay and height of the mascot scaffold', () => {

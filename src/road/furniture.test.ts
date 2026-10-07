@@ -3,8 +3,16 @@
 // gives the same plan, every kerb piece stands on its sidewalk (a ridable, paved band), each kind has its
 // class, and a piece's footprint in the road frame follows its turn.
 import { describe, expect, it } from 'vitest';
-import { FURNITURE, FURNITURE_KINDS, kitOfNetwork, onRidableBand, planStreetFurniture } from './furniture';
-import { createRoadNetwork } from './network';
+import {
+  FURNITURE,
+  FURNITURE_KINDS,
+  kitOfNetwork,
+  onRidableBand,
+  planStreetFurniture,
+  rimOf,
+  type FurnitureShape,
+} from './furniture';
+import { createRoadNetwork, type RoadNetwork } from './network';
 import type { BakedNetwork, BakedRoad } from './types';
 
 /** The examined lines, printed even when the tests pass. */
@@ -88,5 +96,107 @@ describe('the street furniture plan', () => {
       expect(f.foot.length).toBeGreaterThan(0);
       expect(f.heightM).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The lanes of every road of a network as points every LANE_STEP_M along and across (every lane of every edge,
+ * branches and shortcuts included), in a metre grid: a check of its own, not the plan's (road/lanes-under.ts).
+ */
+const LANE_STEP_M = 0.25;
+/** A point this near a lane point (in plan, and within 3 m of its height) is on the lanes, m: past half a cell's diagonal. */
+const ON_LANE_M = 0.2;
+function lanePoints(road: RoadNetwork) {
+  const cells = new Map<string, number[]>();
+  for (const e of road.edges)
+    for (let s = 0; s <= e.length + 1e-6; s += LANE_STEP_M) {
+      let lo = 0;
+      let hi = 0;
+      for (const lane of road.lanesAt(e.index, s)) {
+        lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+        hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+      }
+      for (let d = lo; d <= hi + 1e-6; d += LANE_STEP_M) {
+        const p = road.toWorld(e.index, s, d, 0);
+        const k = `${Math.floor(p.x)},${Math.floor(p.z)}`;
+        const list = cells.get(k) ?? [];
+        list.push(p.x, p.y, p.z, e.index, s);
+        cells.set(k, list);
+      }
+    }
+  return (x: number, y: number, z: number): string | null => {
+    for (let i = Math.floor(x) - 1; i <= Math.floor(x) + 1; i++)
+      for (let j = Math.floor(z) - 1; j <= Math.floor(z) + 1; j++) {
+        const list = cells.get(`${i},${j}`) ?? [];
+        for (let q = 0; q < list.length; q += 5) {
+          const dx = (list[q] ?? 0) - x;
+          const dz = (list[q + 2] ?? 0) - z;
+          if (dx * dx + dz * dz <= ON_LANE_M * ON_LANE_M && Math.abs((list[q + 1] ?? 0) - y) <= 3)
+            return `${road.edges[list[q + 3] ?? 0]?.id} s ${(list[q + 4] ?? 0).toFixed(1)}`;
+        }
+      }
+    return null;
+  };
+}
+
+/** Where a footprint on `edge` stands on a lane: the road and s, or null. */
+function onLanes(road: RoadNetwork, at: ReturnType<typeof lanePoints>, edge: number, shape: FurnitureShape) {
+  for (const q of rimOf(shape)) {
+    const p = road.toWorld(edge, q.s, q.d, 0);
+    const hit = at(p.x, p.y, p.z);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const allNetworks = () =>
+  Object.values(networkFiles)
+    .map((n) => n.id)
+    .sort();
+
+describe("the street furniture keeps off every road's lanes (2026-10-06: honest edges)", () => {
+  it('on every network: no piece stands on a lane of any road, its own or a branch, shortcut or neighbour', () => {
+    const bad: string[] = [];
+    let pieces = 0;
+    let nets = 0;
+    for (const id of allNetworks()) {
+      const road = network(id);
+      const plan = planStreetFurniture(road, 1);
+      if (plan.items.length === 0) continue;
+      nets++;
+      const at = lanePoints(road);
+      for (const p of plan.items) {
+        pieces++;
+        const hit = onLanes(road, at, p.edge, p.shape);
+        if (hit)
+          bad.push(`${id}: ${p.kind} (${p.rule}) of ${road.edges[p.edge]?.id} s ${p.s.toFixed(0)} on ${hit}`);
+      }
+    }
+    stdout.write(
+      `[examined] ${pieces} pieces on ${nets} networks with furniture, seed 1, against every lane\n`,
+    );
+    expect(pieces).toBeGreaterThan(1500);
+    expect(bad).toEqual([]);
+  }, 120_000);
+
+  it("the negative control: a lamp on the Plaza Cut's lane is found, one just past its edge is not", () => {
+    const road = network('sf-downtown');
+    const at = lanePoints(road);
+    const cut = road.edgeIndex('sf-dt-plaza-cut');
+    let hi = 0;
+    for (const lane of road.lanesAt(cut, 80)) hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+    const lamp = (d: number): FurnitureShape => ({
+      s: 80,
+      d,
+      r: 0.1,
+      hu: 0,
+      hv: 0,
+      us: 1,
+      ud: 0,
+      reachS: 0.1,
+      reachD: 0.1,
+    });
+    expect(onLanes(road, at, cut, lamp(hi - 1))).toMatch(/sf-dt-plaza-cut s 80/);
+    expect(onLanes(road, at, cut, lamp(hi + 0.35))).toBeNull();
   });
 });

@@ -10,6 +10,7 @@
 // lazy chunks, fetched the first time a road with a backdrop is shown: a region's backdrop loads
 // only when a race (or the menu) there needs it. One mesh, one draw call, a few thousand triangles.
 import { Color, Fog, Group, type Scene } from 'three';
+import { loadChunk } from '../../content';
 import type { RoadNetwork } from '../../sim/api';
 import type { BackdropNetworkFile, BackdropRegionFile } from './data';
 import type { BackdropStats, BuiltBackdrop } from './builder';
@@ -41,7 +42,12 @@ export async function loadNetworkWater(
 ): Promise<((x: number, z: number) => number | null) | null> {
   const files = backdropFilesFor(networkId);
   if (!files) return null;
-  const [file, m] = await Promise.all([NETWORK_FILES[files.network]!(), import('./water')]);
+  // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): no water floor.
+  const loaded = await loadChunk('backdrop water', () =>
+    Promise.all([NETWORK_FILES[files.network]!(), import('./water')]),
+  );
+  if (!loaded) return null;
+  const [file, m] = loaded;
   const floors = m.waterFloors(file);
   return floors.length ? m.waterAtOf(floors) : null;
 }
@@ -92,9 +98,18 @@ export class Backdrop {
       this.clear();
       return;
     }
-    void Promise.all([import('./builder'), NETWORK_FILES[files.network]!(), REGION_FILES[files.region]!()])
-      .then(([m, network, region]) => {
+    // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4).
+    void loadChunk('backdrop', () =>
+      Promise.all([import('./builder'), NETWORK_FILES[files.network]!(), REGION_FILES[files.region]!()]),
+    )
+      .then((loaded) => {
         if (ticket !== this.ticket) return;
+        if (!loaded) {
+          // A backdrop that will not load leaves the old horizon; the race goes on.
+          this.failed = 'the backdrop chunks did not load';
+          return;
+        }
+        const [m, network, region] = loaded;
         const next = m.buildBackdrop(region, network, m.roadPointsOf(road.edges), seed);
         this.clear();
         this.built = next;

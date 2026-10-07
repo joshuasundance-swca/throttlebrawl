@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { recoverStaleBuild, type StaleBuildPage } from './stale-build';
-import { RETRY_AFTER_CAP_MS, RETRY_DELAYS_MS, retryingFetch, watchFetches } from './index';
+import { FETCH_LANES, RETRY_AFTER_CAP_MS, RETRY_DELAYS_MS, retryingFetch, watchFetches } from './index';
 
 // A failed data, map, model or kit fetch is tried again a few times before the page gives up
 // (polish lane K2; playtest 4 run A's second fix check: San Francisco's map file failed once, with no
@@ -270,5 +270,105 @@ describe('retryingFetch: the host asked for a wait', () => {
     await t.fetchFn(MAP);
     expect((await t.fetchFn(`${SCOPE}sw.js`)).status).toBe(200);
     expect(t.asked).toEqual([MAP, `${SCOPE}sw.js`]);
+  });
+});
+
+// Polish batch F's check, punch item 5: picking San Francisco asked the host for its 34 map files at
+// once, and the host answered some of them 429. The loader paces build files: no more than
+// FETCH_LANES are asked for at a time, and a 429's Retry-After holds every one still waiting.
+describe('retryingFetch: a region pick is paced', () => {
+  const FILES = Array.from({ length: 34 }, (_, i) => `${SCOPE}assets/osm-sf-file-${i}.json`);
+  /** Lets every promise the page has settle (no clock: the host answers when the test says). */
+  const settle = async () => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+
+  /** A host whose answers wait until the test lets them through; it counts requests in flight. */
+  function gated(first429?: { retryAfter: string }) {
+    const clock = { now: 1_000_000 };
+    const pending: (() => void)[] = [];
+    const asked: { url: string; at: number }[] = [];
+    let inFlight = 0;
+    let most = 0;
+    let gave429 = false;
+    const inner = ((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      asked.push({ url, at: clock.now });
+      inFlight++;
+      most = Math.max(most, inFlight);
+      return new Promise<Response>((resolve) => {
+        pending.push(() => {
+          inFlight--;
+          if (first429 && !gave429) {
+            gave429 = true;
+            resolve(
+              new Response('slow down', { status: 429, headers: { 'Retry-After': first429.retryAfter } }),
+            );
+          } else resolve(new Response('{"ok":true}', { status: 200 }));
+        });
+      });
+    }) as typeof fetch;
+    const waits: number[] = [];
+    const fetchFn = retryingFetch(inner, {
+      scope: SCOPE,
+      online: () => true,
+      now: () => clock.now,
+      wait: (ms) => {
+        waits.push(ms);
+        clock.now += ms;
+        return Promise.resolve();
+      },
+    });
+    /** Answers the oldest request in flight, then lets the page's promises settle. */
+    const answerOne = async () => {
+      pending.shift()?.();
+      await settle();
+    };
+    return { fetchFn, asked, waits, clock, answerOne, pending, most: () => most, inFlight: () => inFlight };
+  }
+
+  it(`asks for no more than ${FETCH_LANES} files at a time, and every file is answered`, async () => {
+    const t = gated();
+    const all = Promise.all(FILES.map((url) => t.fetchFn(url)));
+    await settle();
+    expect(t.inFlight()).toBe(FETCH_LANES);
+    while (t.pending.length) await t.answerOne();
+    const statuses = (await all).map((r) => r.status);
+    console.log(`[print] ${FILES.length} files: at most ${t.most()} in flight; ${t.asked.length} asks`);
+    expect(statuses).toEqual(FILES.map(() => 200));
+    expect(t.most()).toBe(FETCH_LANES);
+    expect(t.asked).toHaveLength(FILES.length);
+  });
+
+  it("holds every waiting file for a 429's Retry-After, then asks for the rest, still paced", async () => {
+    const t = gated({ retryAfter: '2' });
+    const all = Promise.all(FILES.map((url) => t.fetchFn(url)));
+    await settle();
+    const before = t.clock.now;
+    // The first answer is the host's 429 with Retry-After: 2.
+    await t.answerOne();
+    while (t.pending.length) await t.answerOne();
+    const statuses = (await all).map((r) => r.status);
+    // Only the requests already in flight were asked before the wait had passed.
+    const inside = t.asked.filter((a) => a.at < before + 2000);
+    console.log(
+      `[print] 429 path: ${t.asked.length} asks for ${FILES.length} files, ${inside.length} before the wait had passed; waits ${JSON.stringify(t.waits)}; at most ${t.most()} in flight`,
+    );
+    expect(inside).toHaveLength(FETCH_LANES);
+    expect(t.waits[0]).toBe(2000);
+    expect(statuses).toEqual(FILES.map(() => 200));
+    // One file asked twice (its 429, then its retry); every other once.
+    expect(t.asked).toHaveLength(FILES.length + 1);
+    expect(t.most()).toBeLessThanOrEqual(FETCH_LANES);
+  });
+
+  it('control: a file outside assets/ is never queued behind them', async () => {
+    const t = gated();
+    const files = Promise.all(FILES.map((url) => t.fetchFn(url)));
+    await settle();
+    void t.fetchFn(`${SCOPE}sw.js`);
+    expect(t.inFlight()).toBe(FETCH_LANES + 1);
+    while (t.pending.length) await t.answerOne();
+    await files;
   });
 });
