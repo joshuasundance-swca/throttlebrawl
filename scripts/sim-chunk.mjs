@@ -34,8 +34,10 @@ export const ROAD_LAZY_CHUNK_NAME = 'road-structures';
 export const SIM_STEPS_TEST =
   /[\\/]src[\\/]sim[\\/](?:steps|[\w-]+[\\/]step|modifiers[\\/]law-props|race[\\/]shortcuts|tumble[\\/](?:rig|contacts|runback))\.ts$/;
 export const SIM_STEPS_CHUNK_NAME = 'sim-steps';
-/** The lazy chunks whose code is the sim's, so the code hash covers them. */
-const HASHED_LAZY_CHUNKS = new Set([ROAD_LAZY_CHUNK_NAME, SIM_STEPS_CHUNK_NAME]);
+// Manual splitting keeps Rolldown's namespace helper in a separate generated chunk. Its code
+// must be part of the rules hash too, even though it has no application modules.
+export const RUNTIME_CHUNK_NAME = 'rolldown-runtime';
+const HASHED_RULES_CHUNKS = new Set([ROAD_LAZY_CHUNK_NAME, SIM_STEPS_CHUNK_NAME, RUNTIME_CHUNK_NAME]);
 
 /** Modules that belong in the sim chunk: the sim, the road model (all but its lazy planners) and core. */
 export const SIM_CHUNK_TEST = /[\\/]src[\\/](?:sim|core|road(?![\\/]structures[\\/]))[\\/]/;
@@ -47,13 +49,14 @@ export function simCodeHashOf(code) {
 
 /**
  * The sim's code hash from a build's chunks: the sim chunk's code, then each road planner chunk's and step
- * chunk's in file name order (with none, exactly `simCodeHashOf(sim.code)`, as before the planners had a chunk).
+ * chunk's and generated runtime helper's in file name order (with none, exactly
+ * `simCodeHashOf(sim.code)`, as before the planners had a chunk).
  */
 export function simCodeHashOfChunks(sim, chunks) {
-  const lazy = chunks
-    .filter((c) => HASHED_LAZY_CHUNKS.has(c.name))
+  const rules = chunks
+    .filter((c) => HASHED_RULES_CHUNKS.has(c.name))
     .sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
-  return simCodeHashOf([sim, ...lazy].map((c) => c.code).join('\n'));
+  return simCodeHashOf([sim, ...rules].map((c) => c.code).join('\n'));
 }
 
 /** The Rolldown code-splitting group that makes the sim chunk. */
@@ -91,10 +94,10 @@ export function simCodeHashPlugin() {
           return;
         }
         const sim = sims[0];
-        const own = [sim, ...chunks.filter((c) => HASHED_LAZY_CHUNKS.has(c.name))];
+        const own = [sim, ...chunks.filter((c) => HASHED_RULES_CHUNKS.has(c.name))];
         if (own.some((c) => c.code.includes(SIM_CODE_HASH_PLACEHOLDER)))
           this.error(
-            'the sim, road planner and step chunks must not read __SIM_CODE_HASH__ (its hash would depend on itself)',
+            'the sim, road planner, step and generated runtime chunks must not read __SIM_CODE_HASH__ (its hash would depend on itself)',
           );
         const hash = simCodeHashOfChunks(sim, chunks);
         for (const c of chunks) {
