@@ -9,6 +9,7 @@
 // finished or been busted or the race-end timeout has passed; a hard stop guarantees it ends.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
+import { offCourse } from '../riders';
 import type { SimConfig } from '../types';
 import { emit, systemState, type SimSystem, type World } from '../world';
 import { stampShortcuts } from './shortcuts';
@@ -171,6 +172,11 @@ function isRacer(config: SimConfig, world: World, id: EntityId): boolean {
 function measure(world: World, config: SimConfig, st: RaceState): void {
   for (const m of world.movers) {
     if (m.kind !== 'rider') continue;
+    // Off the course's roads (the maintainer, 2026-10-06: "a corner cut across the roofs or a lot counts if
+    // the rider rejoins the course ahead"; sim/riders `offCourse`): out past the edge in the air, up on a roof
+    // past the band, or down past the edge until the respawn. The progress stays where he left, and is taken
+    // again where he rejoins: ahead is the cut's gain, behind is none, and a reset at the crossing gains nothing.
+    if (offCourse(world, config, m) && st.progress[m.id] !== undefined) continue;
     const p = config.route.progressAt(m.pos.edge, m.pos.s);
     if (p !== -Infinity) st.progress[m.id] = p;
     const dist = config.route.distanceToFinish(m.pos.edge, m.pos.s);

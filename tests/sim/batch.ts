@@ -240,6 +240,7 @@ export const ISOLATED: Readonly<Record<string, number>> = {
   'riders.furniture': 0,
   'riders.supports': 0,
   'riders.structures': 0,
+  'riders.courseEdges': 0,
 };
 
 /** Seeds `from` to `to`, inclusive. */

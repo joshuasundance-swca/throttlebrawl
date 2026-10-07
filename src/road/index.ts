@@ -35,14 +35,17 @@ export { BRIDGE_TAPER_SLOPE, bridgedAt } from './bridge-taper';
 export type { TaperedVerge } from './bridge-taper';
 export {
   BUILDING_FRONT_TAGS,
+  courseEdgeTopAt,
+  drawnEdgeAt,
   EDGE_TOP_BY_TAG,
   edgeTopAt,
   frontTagAt,
+  GROUND_EDGE_TOP_M,
   pastAt,
   WATER_LEVEL_M,
   waterLevelOf,
 } from './beyond';
-export type { Past } from './beyond';
+export type { DrawnEdge, Past } from './beyond';
 export { gapAt, gapById, gapFarSide, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
@@ -169,7 +172,7 @@ export type {
   StructureSink,
   StructureSpec,
 } from './structures';
-export { COURSE_STEP_M, courseAt } from './course';
+export { COURSE_STEP_M, courseAt, lanesNear } from './course';
 export type { CourseSpot } from './course';
 // The car ferry's numbers (small: render's roofs and the places both read them, and so does its planner).
 export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';

@@ -163,9 +163,15 @@ describe('over the barrier (2026-10-06): a wall holds a flying rider only below 
   const SEA: BakedTag[] = [{ s0: 0, s1: 1500, side: 'right', tag: 'water-open' }];
 
   /** A rider in the air at s 150, `h` above the deck, heading right at the wall. */
-  function airborne(jumpable: boolean, hM: number, tags?: BakedTag[]): RiderHarness {
+  function airborne(
+    jumpable: boolean,
+    hM: number,
+    tags?: BakedTag[],
+    tuning?: Readonly<Record<string, number>>,
+  ): RiderHarness {
     const bridge = gapBridge({ barriers: wall(jumpable), ...(tags ? { tags } : {}) });
-    const h = riderHarness(gapSimConfig(bridge), {
+    const config = gapSimConfig(bridge);
+    const h = riderHarness(tuning ? { ...config, tuning: { ...config.tuning, ...tuning } } : config, {
       s: 150,
       d: 3.5,
       speed: 25,
@@ -190,9 +196,11 @@ describe('over the barrier (2026-10-06): a wall holds a flying rider only below 
     return { maxD, events, endD: h.rider.pos.d };
   }
 
-  it('higher than the wall it flies over, jumpable or not; with ground past it, it comes down at the edge', () => {
+  it('higher than the wall it flies over, jumpable or not; with ground past it (the old rules), it comes down at the edge', () => {
     for (const jumpable of [true, false]) {
-      const { maxD, events, endD } = fly(airborne(jumpable, 3));
+      // The old rules: the course's honest edges off (sim/riders/course.ts). With them on, ground past the
+      // edge is out of bounds (the next test).
+      const { maxD, events, endD } = fly(airborne(jumpable, 3, undefined, { 'riders.courseEdges': 0 }));
       console.log(
         `[examined] jumpable ${jumpable}, 3 m up: furthest d ${maxD.toFixed(2)}, ends at d ${endD.toFixed(2)}, events ${events.map((e) => `${e.type}:${String(e.data['cause'] ?? e.data['quality'])}`).join(',')}`,
       );
@@ -202,6 +210,26 @@ describe('over the barrier (2026-10-06): a wall holds a flying rider only below 
       expect(ofType(events, 'land')).toHaveLength(1);
       expect(endD).toBeCloseTo(LIMIT, 6);
     }
+  });
+
+  it("with the course's honest edges (the default), ground past the wall is out of bounds: the quick reset", () => {
+    const { maxD, events } = fly(airborne(false, 3));
+    const crash = ofType(events, 'crash')[0];
+    console.log(
+      `[examined] ground past the wall, 3 m up: furthest d ${maxD.toFixed(2)}, crash ${JSON.stringify(crash?.data)}`,
+    );
+    expect(maxD).toBeGreaterThan(EDGE + 1);
+    expect(crash?.data).toMatchObject({
+      cause: 'over',
+      overboard: true,
+      past: 'ground',
+      high: false,
+      side: 1,
+    });
+    // Down at the ground's height (the deck's at the crossing), never landed at the band's edge.
+    expect(Number(crash?.data['depthM'])).toBeGreaterThanOrEqual(0);
+    expect(crash?.data['crossD']).toBeCloseTo(LIMIT, 6);
+    expect(ofType(events, 'land')).toEqual([]);
   });
 
   it('below its height it holds the rider in', () => {
