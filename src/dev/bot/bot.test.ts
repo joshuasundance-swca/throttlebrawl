@@ -8,6 +8,7 @@ import {
   KICK_REPEAT_TICKS,
   REMOUNT_OWN_SIDE_TICKS,
   RETREAT_HEALTH,
+  STUCK_TICKS,
   createBot,
 } from './index';
 
@@ -229,6 +230,111 @@ describe('dev/bot: the BotController', () => {
     const d = blank();
     createBot().drive(snapshot(5, [mover(ME, { speed: 9 }), close, oncoming]), ME, route(), d);
     expect(d.brake).toBeGreaterThan(0);
+  });
+
+  it('stopped behind a vehicle that stays stopped, with the pass closed, it filters past on its own shoulder', () => {
+    // San Francisco's runaway cable car (career-headless-sf, the meter, seed 39596): rolling back down
+    // Hyde Street it reads as stopped (the set piece moves it, at no speed of its own), with the queue
+    // stopped behind it, and cars came up the other side often enough to keep the pass closed. The
+    // bot braked in front of it and was shoved back down the hill with the queue, still on the bike
+    // for 2,249 ticks (233 s of a 368 s limit).
+    const oncoming = mover(6, { kind: 'vehicle', s: 180, d: -1.7, speed: 9 });
+    oncoming.road = { ...oncoming.road, dir: -1 };
+    const stopped = mover(5, { kind: 'vehicle', s: 114, d: 1.7, speed: 0 });
+    const bot = createBot();
+    const at = (tick: number, ahead: EntitySnapshot, me = mover(ME, { speed: 0 })) => {
+      const a = blank();
+      bot.drive(snapshot(tick, [me, ahead, oncoming]), ME, route(), a);
+      return a;
+    };
+    // At first it waits: a queue that has just stopped may move off again.
+    const first = at(1, stopped);
+    expect(first.throttle).toBe(0);
+    expect(Math.abs(first.steer)).toBeLessThan(0.05);
+    let a = first;
+    for (let t = 2; t <= STUCK_TICKS + 1; t++) a = at(t, stopped);
+    expect(a.steer).toBeGreaterThan(0.3); // toward its shoulder (d 4.15)
+    expect(a.throttle).toBe(1);
+    // On the shoulder, alongside the queue, it rides on past it at a walking pace, and no faster.
+    const along = at(STUCK_TICKS + 2, stopped, mover(ME, { s: 108, d: 4.15, speed: 3 }));
+    expect(along.throttle).toBe(1);
+    expect(along.steer).toBeLessThan(0.05);
+    const brisk = at(STUCK_TICKS + 3, stopped, mover(ME, { s: 110, d: 4.15, speed: 12 }));
+    expect(brisk.throttle).toBe(0);
+    // The negative controls: behind a queue that is moving, however slowly, it never leaves its
+    // lane; and with a car on the shoulder ahead, it stays put.
+    const crawling = mover(5, { kind: 'vehicle', s: 114, d: 1.7, speed: 1 });
+    const other = createBot();
+    let c = blank();
+    for (let t = 1; t <= STUCK_TICKS + 1; t++) {
+      c = blank();
+      other.drive(snapshot(t, [mover(ME, { speed: 0 }), crawling, oncoming]), ME, route(), c);
+    }
+    expect(Math.abs(c.steer)).toBeLessThan(0.05);
+    const parked = mover(7, { kind: 'vehicle', s: 120, d: 4.15, speed: 0 });
+    const third = createBot();
+    let e = blank();
+    for (let t = 1; t <= STUCK_TICKS + 1; t++) {
+      e = blank();
+      third.drive(snapshot(t, [mover(ME, { speed: 0 }), stopped, parked, oncoming]), ME, route(), e);
+    }
+    expect(Math.abs(e.steer)).toBeLessThan(0.05);
+    expect(e.throttle).toBe(0);
+  });
+
+  it('a stopped queue coming back at it (shoved down the road): it makes for the shoulder at once', () => {
+    // San Francisco's runaway cable car (career-headless-sf, the meter, seed 39596) rolls back down
+    // Hyde Street and shoves the queue behind it, each car at no speed of its own. The bot eased to a
+    // stop behind that queue and was pinned to the hatchback's tail as it came back (a rider pushed
+    // into a tail is slowed to that vehicle's speed): shoved 110 m downhill, still on the bike, until
+    // the roll ended. Two snapshots a tick apart show the car 0.1 m further back: 6 m/s toward the bot.
+    const oncoming = mover(6, { kind: 'vehicle', s: 180, d: -1.7, speed: 9 });
+    oncoming.road = { ...oncoming.road, dir: -1 };
+    const ride = (second: number) => {
+      const bot = createBot();
+      const me = mover(ME, { speed: 5 });
+      bot.drive(
+        snapshot(1, [me, mover(5, { kind: 'vehicle', s: 120, d: 1.7, speed: 0 }), oncoming]),
+        ME,
+        route(),
+        blank(),
+      );
+      const a = blank();
+      bot.drive(
+        snapshot(2, [me, mover(5, { kind: 'vehicle', s: second, d: 1.7, speed: 0 }), oncoming]),
+        ME,
+        route(),
+        a,
+      );
+      return a;
+    };
+    const back = ride(119.9);
+    expect(back.steer).toBeGreaterThan(0.3); // toward its shoulder (d 4.15)
+    expect(back.throttle).toBe(1);
+    // The negative control: the same car standing where it stood is followed (it eases to a stop).
+    const still = ride(120);
+    expect(Math.abs(still.steer)).toBeLessThan(0.05);
+    expect(still.throttle).toBe(0);
+  });
+
+  it('a cyclist pulling away along the shoulder does not close it to filtering; a slow one does', () => {
+    // Hyde Street again: a delivery e-bike rode the kerb ahead at 9 m/s, and the bot, which filters at
+    // no more than 6 m/s, counted it as a car on the shoulder and stayed in the queue's path.
+    const oncoming = mover(6, { kind: 'vehicle', s: 180, d: -1.7, speed: 9 });
+    oncoming.road = { ...oncoming.road, dir: -1 };
+    const stopped = mover(5, { kind: 'vehicle', s: 114, d: 1.7, speed: 0 });
+    const stuck = (cyclistMps: number) => {
+      const cyclist = mover(8, { kind: 'vehicle', s: 125, d: 4.15, speed: cyclistMps });
+      const bot = createBot();
+      let a = blank();
+      for (let t = 1; t <= STUCK_TICKS + 1; t++) {
+        a = blank();
+        bot.drive(snapshot(t, [mover(ME, { speed: 0 }), stopped, cyclist, oncoming]), ME, route(), a);
+      }
+      return a;
+    };
+    expect(stuck(9).steer).toBeGreaterThan(0.3);
+    expect(Math.abs(stuck(3).steer)).toBeLessThan(0.05);
   });
 
   it('prefers a shortcut lane in its direction, once', () => {
@@ -472,6 +578,33 @@ describe('bot: a split zone across the oncoming lanes, and a remount', () => {
     createBot().drive(snapshot(3, [mover(ME, { s: 255, d: -3.3, speed: 30 }), ahead]), ME, zoned(), c);
     expect(c.throttle).toBe(0);
     expect(c.brake).toBeGreaterThan(0);
+  });
+
+  it('a car coming the other way beside the zone line, not in it: it goes for the zone and never stops for that car', () => {
+    // The Keys' Mangrove Boardwalk leaves across the oncoming lane too, and that lane's cars run
+    // 1.9 m from the split's line: kept off the zone for every one of them, the bot rode past the
+    // split in 13 of 16 seeds (road-boardwalk-rejoin: the player over the planks in 3 of 16).
+    // Here the line is d -3.3; the car runs at d -1.4, 1.9 m off it.
+    const beside = mover(6, { kind: 'vehicle', s: 275, d: -1.4, speed: 20 });
+    beside.road = { ...beside.road, dir: -1 };
+    const a = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 30 }), beside]), ME, zoned(), a);
+    expect(a.steer).toBeLessThan(-0.3); // into the zone, across the centre line
+    expect(a.throttle).toBe(1);
+    // Already in the zone on its line, that car ahead beside it: no brake, no swerve.
+    const b = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 255, d: -3.3, speed: 30 }), beside]), ME, zoned(), b);
+    expect(b.brake).toBe(0);
+    expect(b.throttle).toBe(1);
+    expect(Math.abs(b.steer)).toBeLessThan(0.05);
+    // The control: a car 1.6 m off the line (in its own lane at d -1.7, as the test above has it)
+    // would touch a bike on the line (a 2.6 m semi's half and half a bike: 1.7 m), so it still keeps
+    // the bot off the zone.
+    const inLine = mover(7, { kind: 'vehicle', s: 275, d: -1.7, speed: 20 });
+    inLine.road = { ...inLine.road, dir: -1 };
+    const c = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 30 }), inLine]), ME, zoned(), c);
+    expect(c.steer).toBeGreaterThan(0);
   });
 
   it('a remount inside the approach keeps to its own side, and does not go back for the zone', () => {
