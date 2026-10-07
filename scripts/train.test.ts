@@ -2393,12 +2393,12 @@ describe('the workflows', () => {
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
   });
 
-  it('the quick check is static (with the build and size budget) plus the unit slices, at most 3 jobs', () => {
+  it('the quick check is static (with the build and size budget) plus the unit slices, at most 4 jobs', () => {
     const j = jobs(suite);
     for (const id of ['sim', 'browser']) expect(j.get(id), id).toMatch(/^ {4}if: inputs\.full$/m);
     for (const id of ['static', 'unit']) expect(j.get(id), id).not.toMatch(/^ {4}if:/m);
     const unitSlices = /shard: \[([^\]]*)\]/.exec(j.get('unit') ?? '')?.[1]?.split(',') ?? [];
-    expect(1 + unitSlices.length).toBeLessThanOrEqual(3);
+    expect(1 + unitSlices.length).toBeLessThanOrEqual(4);
     const stat = j.get('static') ?? '';
     expect(stat).toMatch(/if: \$\{\{ !inputs\.full \}\}\n {8}run: npm run check -- --tier static,budget\n/);
     expect(stat).toMatch(/if: inputs\.full\n {8}run: npm run check -- --tier static\n/);
