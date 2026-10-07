@@ -172,26 +172,32 @@ function listedPanelAt(road: RoadNetwork, edge: number, s: number, side: VergeSi
   const sign = side === 'right' ? 1 : -1;
   // The renderer's barrier-look styles: all three have 2 m panels. Keep contact at
   // their actual placement, rather than the solid band's 5 cm offset.
-  const interstate = e.tags.some(
-    (t) => t.tag === 'interstate' && s >= t.s0 && s <= t.s1 && (t.side === 'both' || t.side === side),
-  );
-  const look = b.look ?? (interstate ? (b.kind === 'wall' ? 'concrete' : 'guardrail') : undefined);
-  if (look) {
+  const lookAt = (u: number) => {
+    const interstate = e.tags.some(
+      (t) => t.tag === 'interstate' && u >= t.s0 && u <= t.s1 && (t.side === 'both' || t.side === side),
+    );
+    return b.look ?? (interstate ? (b.kind === 'wall' ? 'concrete' : 'guardrail') : undefined);
+  };
+  const panel = (lo: number, hi: number) => {
+    // VergeLayer selects a look at each panel's start, including a tag ending inside it.
+    const look = lookAt(lo);
+    if (!look || hi <= lo) return false;
     const offset = look === 'railing' ? 0.2 : look === 'concrete' ? 0.3 : 0.07;
     const d = (sign > 0 ? e.dMax : e.dMin) + sign * offset;
-    const panel = (lo: number, hi: number) => {
-      if (hi <= lo) return false;
-      const a = road.toWorld(edge, lo, d, 0);
-      const c = road.toWorld(edge, hi, d, 0);
-      for (let k = 0; k <= 4; k++) {
-        const t = k / 4;
-        if (lanesNear(road, a.x + (c.x - a.x) * t, a.z + (c.z - a.z) * t, edge, 0.3)) return false;
-      }
-      return true;
-    };
-    const lo = from + Math.floor((s - from) / 2) * 2;
-    return panel(lo, Math.min(end, lo + 2)) || (Math.abs(s - lo) < 1e-9 && lo > from && panel(lo - 2, lo));
-  }
+    const a = road.toWorld(edge, lo, d, 0);
+    const c = road.toWorld(edge, hi, d, 0);
+    for (let k = 0; k <= 4; k++) {
+      const t = k / 4;
+      if (lanesNear(road, a.x + (c.x - a.x) * t, a.z + (c.z - a.z) * t, edge, 0.3)) return false;
+    }
+    return true;
+  };
+  const panelLo = from + Math.floor((s - from) / 2) * 2;
+  if (
+    panel(panelLo, Math.min(end, panelLo + 2)) ||
+    (Math.abs(s - panelLo) < 1e-9 && panelLo > from && panel(panelLo - 2, panelLo))
+  )
+    return true;
   // A gap restarts the renderer's probe grid at its far end.
   for (const f of e.features) {
     if (f.kind !== 'gap' || f.s1 <= from || f.s0 >= end) continue;
@@ -199,6 +205,9 @@ function listedPanelAt(road: RoadNetwork, edge: number, s: number, side: VergeSi
     else if (f.s0 >= s) end = Math.min(end, f.s0);
     else return false;
   }
+  // RoadScene suppresses the entire gap-clipped band by its midpoint's look. A
+  // partial tag can leave a band alongside look panels, or leave unpanelled openings.
+  if (lookAt((from + end) / 2)) return false;
   const d = (sign > 0 ? e.dMax : e.dMin) + sign * 0.05;
   const clear = (u: number) => {
     const p = road.toWorld(edge, u, d, 0);
