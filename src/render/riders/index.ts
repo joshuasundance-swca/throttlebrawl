@@ -261,6 +261,8 @@ class Rig {
   private bellSwing = 0;
   readonly id: number;
   readonly look: RiderLook;
+  /** Set when the rig was built on the starter bike because its own bike's model had not come (RiderRigs.rigFor). */
+  bikeStandIn = false;
 
   constructor(
     id: number,
@@ -1263,7 +1265,20 @@ class Rig {
  * host, no connection), so the next race's `setLooks` asks for it again (polish batch L); it is kept
  * meanwhile, so a rider whose bike failed still draws on the starter bike's model.
  */
-type PartLoad = { part: BakedPart | null; error: string | null; retryable?: true };
+type PartLoad = {
+  part: BakedPart | null;
+  error: string | null;
+  kind: PartKind;
+  retryable?: true;
+  /** Set when this answer replaced a held one: the part came in mid-race, after a wait (see LATE_RIGS_PER_FRAME). */
+  late?: true;
+};
+
+/**
+ * How many rigs a frame may build or rebuild for parts that arrived late (after the host's wait, mid-race):
+ * the swap from the stand-in is spread over frames, so models arriving together are never a frame-time spike.
+ */
+export const LATE_RIGS_PER_FRAME = 1;
 
 /**
  * Every rider entity's rig, the models they need (loaded once per asset id through the manifest)
@@ -1290,6 +1305,8 @@ export class RiderRigs {
   private readonly ghosts = new Ghosts();
   private readonly smokeMesh: InstancedMesh;
   private drawn = new Set<number>();
+  /** The rigs built this frame for parts that arrived late (reset by endFrame). */
+  private lateRigs = 0;
   private now = 0;
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
@@ -1310,6 +1327,11 @@ export class RiderRigs {
     this.smokeMesh.count = 0;
     this.smokeMesh.frustumCulled = false;
     this.root.add(this.smokeMesh, this.skids.root);
+    // A model the host held back is asked for once its wait has passed, in this race (lane T2).
+    manifest?.onRetryReady((id) => {
+      const have = this.parts.get(id);
+      if (have?.retryable) this.request(id, have.kind, true);
+    });
   }
 
   /** The race's riders and their models; loading starts now (only the models this race needs). */
@@ -1346,18 +1368,20 @@ export class RiderRigs {
         this.parts.set(id, {
           part: res.value,
           error: res.value ? null : (res.error ?? 'no model'),
+          kind,
           ...(!res.value && res.retryable ? { retryable: true as const } : {}),
+          ...(have?.retryable ? { late: true as const } : {}),
         });
       })
       .catch((err: unknown) => {
-        this.parts.set(id, { part: null, error: String(err) });
+        this.parts.set(id, { part: null, error: String(err), kind });
       })
       .finally(() => this.loading.delete(id));
   }
 
   /** Bakes a part directly (tests and tools: no manifest). */
   addPart(id: string, part: BakedPart): void {
-    this.parts.set(id, { part, error: null });
+    this.parts.set(id, { part, error: null, kind: part.kind });
   }
 
   setCamera(x: number, y: number, z: number): void {
@@ -1399,24 +1423,41 @@ export class RiderRigs {
     }
   }
 
-  /** The rig for a rider entity, built once both its models are in; null until then. */
+  /**
+   * The rig for a rider entity, built once both its models are in; null until then. A rig built on the starter
+   * bike while its own bike was held back is rebuilt on the real one when it arrives; either swap that comes
+   * from a late part is one rig a frame at most (LATE_RIGS_PER_FRAME), and until its turn the rider keeps the
+   * rig (or the box rider) it has.
+   */
   private rigFor(e: EntitySnapshot): Rig | null {
     const look = this.looks.get(e.contentId);
     const existing = this.rigs.get(e.id);
-    if (existing && existing.look === look) return existing;
-    if (existing) this.release(e.id);
-    if (!look) return null;
-    const rider = this.parts.get(look.riderModel)?.part;
+    const ownBike = look ? this.parts.get(look.bikeModel) : undefined;
+    const upgrade = !!existing && existing.look === look && existing.bikeStandIn && !!ownBike?.part;
+    if (existing && existing.look === look && !upgrade) return existing;
+    if (!look) {
+      if (existing) this.release(e.id);
+      return null;
+    }
+    const riderLoad = this.parts.get(look.riderModel);
     // A bike model that is missing or failed (a garage bike with no model yet) falls back to the
     // starter bike's, so the rider still draws as a real rider.
-    const own = this.parts.get(look.bikeModel);
-    let bike = own?.part;
-    if (own && !own.part && look.bikeModel !== FALLBACK_BIKE_MODEL) {
+    let bike = ownBike?.part;
+    if (ownBike && !ownBike.part && look.bikeModel !== FALLBACK_BIKE_MODEL) {
       this.request(FALLBACK_BIKE_MODEL, 'bike');
       bike = this.parts.get(FALLBACK_BIKE_MODEL)?.part;
     }
-    if (!rider || !bike) return null;
+    const rider = riderLoad?.part;
+    if (!rider || !bike) {
+      if (existing && existing.look !== look) this.release(e.id);
+      return null;
+    }
+    const late = !!(riderLoad?.late ?? ownBike?.late);
+    if (late && this.lateRigs >= LATE_RIGS_PER_FRAME) return existing?.look === look ? existing : null;
+    if (late) this.lateRigs++;
+    if (existing) this.release(e.id);
     const rig = new Rig(e.id, look, rider, bike, this.look, this.root);
+    rig.bikeStandIn = !ownBike?.part;
     this.rigs.set(e.id, rig);
     return rig;
   }
@@ -1456,6 +1497,7 @@ export class RiderRigs {
     for (const [id, rig] of this.rigs) if (!this.drawn.has(id)) rig.setVisible(false);
     this.lastDrawn = this.drawn;
     this.drawn = new Set();
+    this.lateRigs = 0;
     let n = 0;
     for (const p of this.puffs) {
       p.age += dt;
