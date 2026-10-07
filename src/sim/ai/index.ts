@@ -69,6 +69,7 @@ import {
   STRAY_RETURN_MPS,
   wayBack,
 } from './branches';
+import { droppedBikesSeen } from './dropped';
 import { aggressionScale, signatureGapScale } from './level';
 import {
   BELL_TELL_TICKS,
@@ -750,7 +751,11 @@ function driveRider(
   // rider on a tree-lined sidewalk never found a way back to the road). The signature moves and the
   // fight's push read the traffic alone (`obstacles`).
   const fixed = furnitureSeen(world, config, m, Math.min(SEE_TRAFFIC_M, v * 6 + 40), FIXED_BEHIND_M);
-  const avoid = fixed.length > 0 ? [...obstacles, ...fixed] : obstacles;
+  // A bike left on the road after a crash is solid too (pile-ups; the maintainer, 2026-10-06): it is kept
+  // clear of as the furniture is (`still`), but one on the road never slows it for bends.
+  const dropped = droppedBikesSeen(world, config, m, Math.min(SEE_TRAFFIC_M, v * 6 + 40), FIXED_BEHIND_M);
+  const still = dropped.length > 0 ? [...fixed, ...dropped] : fixed;
+  const avoid = still.length > 0 ? [...obstacles, ...still] : obstacles;
   // A road weaver keeps its swerve inside its lane while other riders are close, so a bunched pack
   // (the start, a fight) does not turn its swerve into random bumps (rivals-1).
   const packed = riders.some((r) => Math.abs(r.ahead) < ROAD_WEAVE_CLEAR_M);
@@ -981,7 +986,7 @@ function driveRider(
     ? obstacles.filter((o) => Math.abs(o.s.mover.pos.d - pos.d) >= o.size.halfWidth + RIDER_CLEAR)
     : obstacles;
   const reachable = (d: number): boolean =>
-    (fixed.length === 0 || lineClear(fixed, v, d, LINE_CHECK_M)) &&
+    (still.length === 0 || lineClear(still, v, d, LINE_CHECK_M)) &&
     (weaving
       ? lineClear(obstacles, v, d, LINE_CHECK_M) && pathClear(across, v, pos.d, d, LINE_CHECK_M)
       : pathClear(obstacles, v, pos.d, d, LINE_CHECK_M));
