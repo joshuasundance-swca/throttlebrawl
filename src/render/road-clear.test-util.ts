@@ -61,8 +61,8 @@ export function roadColumns(road: RoadNetwork): RoadColumns {
   const raw: number[] = [];
   for (const e of road.edges) {
     for (let s = 0; s <= e.length + 1e-6; s += STEP_M) {
-      let lo = 0;
-      let hi = 0;
+      let lo = Infinity;
+      let hi = -Infinity;
       for (const lane of road.lanesAt(e.index, s)) {
         lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
         hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
