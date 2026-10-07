@@ -34,7 +34,7 @@
 //   height in the sim) keep the tag rule, and a camera with no plan is the camera as it was.
 import type { BakedTag, RoadNetwork, StructurePlan } from '../road';
 import type { CameraPose } from './chase';
-import { armClear, escapeSolids, eyeHeightShare, pushedClear } from './solids';
+import { armClear, escapeSolids, eyeHeightShare, keepInView, pushedClear } from './solids';
 
 /**
  * The scenery tags whose side of the road is a street front, each with its land theme (road/themes.ts
@@ -182,6 +182,12 @@ export interface FrontScene {
   helmet: boolean;
 }
 
+/**
+ * How far off the middle of the frame the rider may be once the solids have moved the eye, as a share of the
+ * frame's half height [default]: half of it.
+ */
+const VIEW_SHARE = 0.5;
+
 /** The arm is never cut shorter than this (the eye stays out of the rider's own body), m [default]. */
 const MIN_ARM_M = 0.6;
 
@@ -298,7 +304,12 @@ export function createFrontKeeper(getRoad: () => RoadNetwork | null, params: Fro
         heightLoss = 0;
         return tagged;
       }
-      return bySolids(plan, tagged, dt, scene.pivot);
+      const solved = bySolids(plan, tagged, dt, scene.pivot);
+      // An eye the solids moved is not where the aim was made for: the rider stays within `VIEW_SHARE` of the
+      // frame's half height of its middle.
+      return solved === tagged
+        ? solved
+        : keepInView(solved, scene.pivot, (VIEW_SHARE * pose.fov * Math.PI) / 360);
     },
   };
 }

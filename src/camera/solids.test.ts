@@ -15,6 +15,7 @@ import {
   escapeSolids,
   eyeHeightShare,
   insideSolid,
+  keepInView,
   outsideM,
   pushedClear,
   solidsNear,
@@ -195,6 +196,39 @@ describe('out of a solid by the shortest way', () => {
   it('control: a point in no solid is returned as it is', () => {
     expect(escapeSolids(plan, { x: 300, y: 3, z: -100 })).toEqual({ x: 300, y: 3, z: -100 });
     expect(escapeSolids(plan, { x: 190, y: 3, z: -100 })).toEqual({ x: 190, y: 3, z: -100 });
+  });
+});
+
+describe('the rider stays in the view', () => {
+  const pose = { x: 0, y: 3, z: 0, lookX: 0, lookY: -5, lookZ: -20 };
+  const angle = (p: typeof pose, to: { x: number; y: number; z: number }) => {
+    const ax = p.lookX - p.x;
+    const ay = p.lookY - p.y;
+    const az = p.lookZ - p.z;
+    const rx = to.x - p.x;
+    const ry = to.y - p.y;
+    const rz = to.z - p.z;
+    return Math.acos((ax * rx + ay * ry + az * rz) / (Math.hypot(ax, ay, az) * Math.hypot(rx, ry, rz)));
+  };
+
+  it('turns a view that has him too far off its axis until he is at the limit, keeping the look’s distance', () => {
+    // The eye is level with him (3 m), the aim 8 m below: he is 23 degrees above the axis.
+    const him = { x: 0, y: 3, z: -8 };
+    const before = angle(pose, him);
+    const limit = (15 * Math.PI) / 180;
+    expect(before).toBeGreaterThan(limit);
+    const turned = keepInView(pose, him, limit);
+    expect(angle(turned, him)).toBeCloseTo(limit, 2);
+    expect(Math.hypot(turned.lookX - pose.x, turned.lookY - pose.y, turned.lookZ - pose.z)).toBeCloseTo(
+      Math.hypot(pose.lookX - pose.x, pose.lookY - pose.y, pose.lookZ - pose.z),
+      9,
+    );
+  });
+
+  it('control: a rider within the limit leaves the pose as it is (the same object)', () => {
+    const him = { x: 0, y: -2, z: -8 };
+    expect(angle(pose, him)).toBeLessThan((15 * Math.PI) / 180);
+    expect(keepInView(pose, him, (15 * Math.PI) / 180)).toBe(pose);
   });
 });
 

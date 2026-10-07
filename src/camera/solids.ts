@@ -210,6 +210,42 @@ export function escapeSolids(
   return { x, y, z };
 }
 
+/**
+ * Turns the view toward the rider until he is no more than `maxRad` off its axis, the look point kept at its
+ * distance: the eye, once the solids have lowered it or cut its arm, is not where the aim was made for (a flight's
+ * tip looks at the road far below, and an eye brought down to his height sees him above that), so the aim follows
+ * him. A rider already within `maxRad` of the axis leaves the pose as it is.
+ */
+export function keepInView<
+  P extends { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number },
+>(pose: P, pivot: { x: number; y: number; z: number }, maxRad: number): P {
+  const ax = pose.lookX - pose.x;
+  const ay = pose.lookY - pose.y;
+  const az = pose.lookZ - pose.z;
+  const rx = pivot.x - pose.x;
+  const ry = pivot.y - pose.y;
+  const rz = pivot.z - pose.z;
+  const la = Math.sqrt(ax * ax + ay * ay + az * az);
+  const lr = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  if (!(la > 1e-6) || !(lr > 1e-6)) return pose;
+  const cos = (ax * rx + ay * ry + az * rz) / (la * lr);
+  const phi = Math.acos(cos > 1 ? 1 : cos < -1 ? -1 : cos);
+  if (!(phi > maxRad)) return pose;
+  // Toward him by the excess, as a blend of the two unit directions (small angles), and back to the look's length.
+  const t = (phi - maxRad) / phi;
+  const dx = (ax / la) * (1 - t) + (rx / lr) * t;
+  const dy = (ay / la) * (1 - t) + (ry / lr) * t;
+  const dz = (az / la) * (1 - t) + (rz / lr) * t;
+  const dl = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (!(dl > 1e-9)) return pose;
+  return {
+    ...pose,
+    lookX: pose.x + (dx / dl) * la,
+    lookY: pose.y + (dy / dl) * la,
+    lookZ: pose.z + (dz / dl) * la,
+  };
+}
+
 /** The shares of the eye's height over the pivot tried under a ceiling, highest first [default]. */
 const HEIGHT_SHARES: readonly number[] = [1, 0.6, 0.3, 0];
 

@@ -230,7 +230,7 @@ describe('the cameras on a roof ride: Old Town’s roof over the sidewalk, and t
         const withPlan = rideRoof(id, speed, zone, view, true);
         const without = rideRoof(id, speed, zone, view, false);
         print(
-          `${id} ${name}: rode ${withPlan.riddenTicks} ticks (crash ${withPlan.crashed}); eye across from him at most ${withPlan.lateral.toFixed(2)} m with the plan, ${without.lateral.toFixed(2)} m as it was; inside a building ${withPlan.inside}/${withPlan.frames} frames, within the near plane's reach of one ${withPlan.withinNear}; widest view-to-rider angle ${withPlan.worstOffCentre.toFixed(1)} deg (frame half ${(withPlan.fov / 2).toFixed(0)})`,
+          `${id} ${name}: rode ${withPlan.riddenTicks} ticks (crash ${withPlan.crashed}); eye across from him at most ${withPlan.lateral.toFixed(2)} m with the plan, ${without.lateral.toFixed(2)} m as it was; inside a building ${withPlan.inside}/${withPlan.frames} frames, within the near plane's reach of one ${withPlan.withinNear}; widest view-to-rider angle ${withPlan.worstOffCentre.toFixed(1)} deg (as it was ${without.worstOffCentre.toFixed(1)}; frame half ${(withPlan.fov / 2).toFixed(0)})`,
         );
         expect(withPlan.riddenTicks).toBeGreaterThanOrEqual(15);
         expect(withPlan.inside).toBe(0);
@@ -239,7 +239,8 @@ describe('the cameras on a roof ride: Old Town’s roof over the sidewalk, and t
           // of him to keep (he is behind it).
           expect(withPlan.lateral).toBeLessThan(0.5);
         } else {
-          expect(withPlan.worstOffCentre).toBeLessThan((withPlan.fov / 2) * 0.8);
+          // Inside the middle 60 % of the frame's half height, however the solids moved the eye.
+          expect(withPlan.worstOffCentre).toBeLessThan((withPlan.fov / 2) * 0.6);
           // Beside him as on the road; as it was the sidewalk's tag held it a metre or more off him.
           expect(withPlan.lateral).toBeLessThan(0.8);
           expect(without.lateral).toBeGreaterThan(1.5);

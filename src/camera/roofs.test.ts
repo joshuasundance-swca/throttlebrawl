@@ -282,7 +282,7 @@ describe('a rider thrown under a balcony: the eye comes down under its slab', ()
       (pose.lookX - pose.x) * (t.x - pose.x) +
       (pose.lookY - pose.y) * (t.y + 1 - pose.y) +
       (pose.lookZ - pose.z) * (t.z - pose.z);
-    expect((Math.acos(dot / (view * to)) * 180) / Math.PI).toBeLessThan(30);
+    expect((Math.acos(dot / (view * to)) * 180) / Math.PI).toBeLessThan(pose.fov / 4 + 1e-6);
   });
 
   it('control: as it was (no front rule) the eye sits inside the slab', () => {

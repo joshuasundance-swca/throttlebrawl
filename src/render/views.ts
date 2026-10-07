@@ -908,7 +908,8 @@ export class EntityViews {
         // water (a high drop's plunge, sim/tumble) throws none: nothing lies still on the water over it in
         // the cut-away's held view (the one live check of 2026-10-07). A body over a roof (down on it, or flung
         // across it) throws its shadow on the roof, not on the road inside the building.
-        if (tumble.rider.y >= ground - UNDER_M) this.castOn(sh, tumble.rider, ground, p.heading, ON_FOOT_SHADOW);
+        if (tumble.rider.y >= ground - UNDER_M)
+          this.castOn(sh, tumble.rider, ground, p.heading, ON_FOOT_SHADOW);
         if (tumble.bike.y >= ground - UNDER_M) this.castOn(sh, tumble.bike, ground, p.heading, RIDER_SHADOW);
         continue;
       }
