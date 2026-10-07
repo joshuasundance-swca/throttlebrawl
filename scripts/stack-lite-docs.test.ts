@@ -94,7 +94,10 @@ const unsafeAdvice = (text: string) =>
 const RULE: [string, RegExp][] = [
   ['branches from the parent branch, untracked', /`git switch --no-track -c <your branch> origin\/<parent>`/],
   ['pushes with -u, never bare', /`git push -u origin HEAD`.*never a bare `git push`/],
-  ['bounded wait', /still not merged after 8 hours, push your branch, report it blocked and end/],
+  [
+    'bounded wait',
+    /still not merged 8 hours after your branch was ready, push your branch, report it blocked and end/,
+  ],
   ['builds and tests there', /build and run your tests there/],
   ['opens the PR against main', /open your PR against `main`/i],
   ['only after the parent is MERGED', /only after the parent's PR is MERGED/],
@@ -109,6 +112,7 @@ const RULE: [string, RegExp][] = [
   ],
   ['rebuilds on main when the parent is CLOSED', /CLOSED unmerged, rebuild on `main`/],
   ['never opens a PR against a lane branch', /Never open a PR against another lane's branch/],
+  ['the steps are a default', /the steps are `\[default\]`/],
 ];
 
 describe("AGENTS.md: a lane that needs another lane's unmerged work", () => {
@@ -125,6 +129,10 @@ describe("AGENTS.md: a lane that needs another lane's unmerged work", () => {
     expect(flat(rule)).toContain(
       '`[decided]` (the maintainer, 2026-10-06: "Proceed as recommended without gh stack at this time.")',
     );
+  });
+
+  it('is pointed to from the Branch bullet, so branching off main reads as one rule with its exception', () => {
+    expect(flat(bullet(agents, 'Branch'))).toMatch(/branches off that lane's branch instead: see below/);
   });
 
   it('links to the mechanics, and the link resolves', () => {
@@ -160,7 +168,10 @@ describe("AGENTS.md: a lane that needs another lane's unmerged work", () => {
 const ENGINEERING_CLAIMS: [string, RegExp][] = [
   ['branches from the parent, untracked', /`git switch --no-track -c <your branch> origin\/<parent>`/],
   ['pushes with -u', /`git push -u origin HEAD`/],
-  ['bounded wait', /still open after 8 hours \(red, or stuck\), push your branch, report it blocked and end/],
+  [
+    'bounded wait',
+    /still open 8 hours after your branch was ready \(red, or stuck\), push your branch, report it blocked and end/,
+  ],
   ['waits for the merge', /only after the parent's PR is MERGED/],
   ['merges main in', /`git merge origin\/main` into your branch/],
   ['no rebase, no force-push', /Never a rebase and never a force-push/],
@@ -192,6 +203,16 @@ const ENGINEERING_CLAIMS: [string, RegExp][] = [
     /its merge lands the whole stack at once, directly or through GitHub's merge queue, never through the train/,
   ],
   ['revisit', /Revisit if the repo ever adopts the merge queue/],
+  [
+    'why --no-track',
+    /`--no-track` matters: a branch made from `origin\/<parent>` without it tracks the parent's branch/,
+  ],
+  ['adjacent lines conflict too', /or one next to it, git reports a conflict/],
+  [
+    'add/add after the squash',
+    /comes back as an add\/add conflict, because the squash is not an ancestor of your branch/,
+  ],
+  ['the mechanics are a default', /The commands and the 8-hour bound are the coordinator's `\[default\]`/],
   ['template', /`needs`/],
   ['test', /`scripts\/stack-lite-docs\.test\.ts`/],
 ];
