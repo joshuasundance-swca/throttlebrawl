@@ -13,7 +13,6 @@
 //   riders as a SimMovingDeck.
 // [default] every number, to be tuned on the phone.
 import { clamp } from '../../core';
-import { RAMP_TRUCK_DEFAULTS } from '../../road';
 import type { SimMovingDeck } from '../types';
 
 export const MOVING = {
@@ -88,13 +87,14 @@ export const MOVING = {
    */
   rampDropM: 200,
   /**
-   * Its ramp's run, m, and the slope it rises at: the parked truck's 13.7° (RAMP_TRUCK_DEFAULTS),
-   * which is also the steepest the riders' kerb rule lets the quickest bike ride onto. The carrier is
+   * Its ramp's run, m, and slope: the lip meets the 2.4 m cab roof. At 12 m/s relative speed the
+   * launch tangent clears the 2.56 m roof light even when the bike's front reaches it first.
+   * The old 1.22 m lip's tangent lay below the cab at every speed. The carrier is
    * a 7.5 m tow truck, the longest vehicle every region's race may add: the rival AI sizes every
    * vehicle by the largest in the race, so it cannot be the parked truck's 21.1 m.
    */
   rampRunM: 5,
-  rampSlope: RAMP_TRUCK_DEFAULTS.lipHeightM / RAMP_TRUCK_DEFAULTS.rampLengthM,
+  rampSlope: 2.4 / 5,
   /** The least of its body past the lip, m (the cab and what it carries). */
   minBodyM: 0.5,
   /**

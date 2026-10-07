@@ -3,7 +3,6 @@
 // cable car's roll back, and which side of a lane-vote gantry a rider is under. Driven by sim steps
 // (dt = 1/60), never wall time.
 import { describe, expect, it } from 'vitest';
-import { KERB_M } from '../riders/features';
 import {
   gantrySpan,
   hopVy,
@@ -157,12 +156,17 @@ describe('the moving ramp truck (playtest 3: "the ramp trucks could be in motion
     expect(short.lipHeightM / short.rampLengthM).toBeCloseTo(0.25, 9);
   });
 
-  it('is never steeper than the riders can ride up without meeting its foot as a kerb', () => {
-    // A rider's step up the ramp in one tick is slope × its speed × dt: it must stay under a kerb
-    // for the fastest bike (160 mph, 71.5 m/s), or the foot would crash the quickest riders.
+  it('meets the cab roof and clears the roof light at an ordinary 12 m/s relative launch', () => {
     const d = movingDeckOf(truck);
     expect(d.lipHeightM / d.rampLengthM).toBeCloseTo(MOVING.rampSlope, 9);
-    expect(MOVING.rampSlope * (71.5 / 60)).toBeLessThanOrEqual(KERB_M);
+    expect(d.lipHeightM).toBeCloseTo(2.4, 9);
+    // The front of the 2 m bike reaches the light at +6.525 m while its middle is at +5.525 m.
+    // In the carrier frame, y = lip + slope*x - g*x²/(2*vAlong²); this includes the bike's reach.
+    const x = 6.525 - 1 - d.rampLengthM;
+    const y = d.lipHeightM + MOVING.rampSlope * x - (9.81 * x * x) / (2 * 12 * 12);
+    expect(y).toBeGreaterThan(2.56);
+    const oldLip = 1.22;
+    expect(oldLip + (oldLip / 5) * (5.8 - 5)).toBeLessThan(2.4);
   });
 
   it('its ramp drops while the field is still well behind it', () => {

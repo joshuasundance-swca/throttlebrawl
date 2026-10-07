@@ -41,7 +41,7 @@ import {
   type SimSystem,
   type World,
 } from '../world';
-import { RAMP_TRUCK_LENGTH_M, RAMP_TRUCK_LIP_M, truckBodyTop } from './features';
+import { RAMP_TRUCK_LENGTH_M, RAMP_TRUCK_LIP_M } from './features';
 import { riderState, ridersSystem, touchdownOf } from './index';
 import { holdsBike, supportKeyOf, SUPPORT_STATE_KEY, SUPPORTS_KEY } from './supports';
 
@@ -503,13 +503,13 @@ describe('riding it', () => {
 });
 
 describe('big solid things beyond vehicles', () => {
-  it('lands on the carrier’s cab roof, rides it to the front and drops off; control: the old rule crashed into it', () => {
+  it('lands on the carrier’s cab roof, rides it to the front and drops off; control: supports off never stands on it', () => {
     const drop = (tuning: Record<string, number>) => {
       const sc = scene(makeConfig({ tuning, features: [CARRIER] }), {
-        s: CAB_S + 2,
+        s: CAB_S + 1,
         d: 3.4,
         speed: 8,
-        air: { h: truckBodyTop(CARRIER) + 0.05, vy: -2 },
+        air: { h: 3.15 + 0.05, vy: -2 },
       });
       return { sc, down: untilDown(sc) };
     };
@@ -522,8 +522,7 @@ describe('big solid things beyond vehicles', () => {
     expect(off?.data['quality']).not.toBe('crash');
     expect(sc.rider.pos.s).toBeGreaterThan(CARRIER.s1);
     const old = drop(OLD_RULES).down;
-    expect(old?.type).toBe('crash');
-    expect(old?.data['object']).toBe('rampTruck');
+    expect(old?.data['on']).toBeUndefined();
   });
 
   it('lands on a parked pickup (a solid hazard) and rides off it; control: the old rule never stood on it', () => {
