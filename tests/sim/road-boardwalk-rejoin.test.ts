@@ -10,12 +10,9 @@
 // The race here is the long haul's Mangrove stretch on the base pack, with the full field (no cop:
 // the dev bot never evades the law), traffic both ways and pedestrians. It starts on the Mangrove
 // Cut, 180 m before the boardwalk's split, so each race reaches the junction in seconds. The player
-// is the dev bot: shown the boardwalk (it goes for the first split it meets) or kept on the Mangrove
-// Bend (its route shows it no split). The boardwalk leaves across the oncoming lanes, and the bot
-// does not cross them while a car coming the other way is in the split's line (#658), so on this busy
-// road it takes the planks in some races only (6 of 32 when that landed); the rivals give the rest of
-// the exits. Every rider that comes onto the Reach is an exit, by the road it came off, and a traffic
-// crash within 2 s of that is a crash at the merge.
+// is the dev bot: once over the boardwalk (it takes the first split it meets) and once kept on the
+// Mangrove Bend (its route shows it no split). Every rider that comes onto the Reach is an exit, by
+// the road it came off, and a traffic crash within 2 s of that is a crash at the merge.
 //
 // The fault was head-on: off the boardwalk, riders now land on the Reach's travel side and meet
 // oncoming traffic no more often than riders off the main road. Rear-ending a same-way car just
@@ -33,8 +30,8 @@ import type { BakedRoute } from '../../src/road/types';
 import { createSim, type RouteProgress, type SimConfig } from '../../src/sim/api';
 import { activateRegion } from '../../src/stream';
 
-/** The boardwalk races' seeds; the main-road races use the first 8 (rivals give many more exits). */
-const SEEDS = Array.from({ length: 32 }, (_, i) => i + 1);
+/** The boardwalk races' seeds; the main-road races use the first half (rivals give many more exits). */
+const SEEDS = Array.from({ length: 16 }, (_, i) => i + 1);
 const MAIN_SEEDS = SEEDS.slice(0, 8);
 /** 2 s at 60 ticks a second: the live check's window after the merge. */
 const WINDOW_TICKS = 120;
@@ -170,10 +167,9 @@ describe('W-U live check mustFix 1: the Mangrove Boardwalk rejoins in the travel
         `${Math.max(...landed).toFixed(1)}; main road ${tally.main.crashes} (${tally.main.headOn} head-on) in ${tally.main.exits}\n  ` +
         [...tally.boardwalk.lines, ...tally.main.lines].join('\n  '),
     );
-    // Enough exits each way to mean something: 16 off the planks (21 when measured), the player's
-    // among them, and three main-road exits a race (about 4.5 when measured).
-    expect(playerBoardwalk).toBeGreaterThan(0);
-    expect(tally.boardwalk.exits).toBeGreaterThanOrEqual(16);
+    // Enough exits each way to mean something: the player over the boardwalk in every seed.
+    expect(playerBoardwalk).toBe(SEEDS.length);
+    expect(tally.boardwalk.exits).toBeGreaterThanOrEqual(SEEDS.length);
     expect(tally.main.exits).toBeGreaterThanOrEqual(3 * races.length);
     // Off the planks onto the travel side of the Reach (d > 0), never the oncoming lane (d -4 to 0).
     expect(Math.min(...landed)).toBeGreaterThan(0);
