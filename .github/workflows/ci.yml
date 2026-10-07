@@ -1,5 +1,5 @@
 # The gate (docs/engineering.md, "CI on GitHub Actions" and "The bundle train"). The suite itself
-# (static, unit in two slices, sim in seven, browser in eight with perf in the last) lives in
+# (static, unit in two slices, sim in eight, browser in eight with perf in the last) lives in
 # suite.yml, shared with the bundle train (train.yml) so the two can never drift. `gate` is the
 # single required status check.
 #

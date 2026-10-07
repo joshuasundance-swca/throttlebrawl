@@ -267,57 +267,68 @@ function rideFor(c: (typeof ROUTES)[number], seed: number, aspect: number): Ride
   return out;
 }
 
+/** The per-test hang guard for a test that may ride its route's races (twice the sim tier's 90 s). */
+const RIDE_TEST_TIMEOUT_MS = 180_000;
+
 describe('the chase camera over real crests (run W-P)', () => {
   for (const c of ROUTES) {
     for (const aspect of ASPECTS) {
-      it(`${c.name} at aspect ${aspect.toFixed(2)}: the road ahead and the road beyond each crest show`, () => {
-        let riding = 0;
-        let airborne = 0;
-        let crestFrames = 0;
-        const blind: string[] = [];
-        const hidden: string[] = [];
-        const mapBlind: string[] = [];
-        const buried: string[] = [];
-        const all: Frame[] = [];
-        for (const seed of SEEDS) {
-          const { frames, maxDrop } = rideFor(c, seed, aspect);
-          console.log(
-            `[print] ${c.name} seed ${seed}: steepest drop past a top within 25 m: ${maxDrop.toFixed(2)} m over 12 m`,
-          );
-          all.push(...frames);
-          riding += frames.length;
-          airborne += frames.filter((f) => f.airborne).length;
-          for (const f of frames) {
-            const where = `seed ${seed} t${f.tick} e${f.edge} s${f.s.toFixed(0)}${f.airborne ? ' air' : ''}`;
-            if (!f.aheadShown) blind.push(where);
-            if (f.beyondShown !== null) crestFrames++;
-            if (f.beyondShown === false) (BLIND_BY_DESIGN.test(f.road) ? mapBlind : hidden).push(where);
-            if (f.clearance < 0.3) buried.push(`${where} clearance ${f.clearance.toFixed(2)}`);
+      it(
+        `${c.name} at aspect ${aspect.toFixed(2)}: the road ahead and the road beyond each crest show`,
+        () => {
+          let riding = 0;
+          let airborne = 0;
+          let crestFrames = 0;
+          const blind: string[] = [];
+          const hidden: string[] = [];
+          const mapBlind: string[] = [];
+          const buried: string[] = [];
+          const all: Frame[] = [];
+          for (const seed of SEEDS) {
+            const { frames, maxDrop } = rideFor(c, seed, aspect);
+            console.log(
+              `[print] ${c.name} seed ${seed}: steepest drop past a top within 25 m: ${maxDrop.toFixed(2)} m over 12 m`,
+            );
+            all.push(...frames);
+            riding += frames.length;
+            airborne += frames.filter((f) => f.airborne).length;
+            for (const f of frames) {
+              const where = `seed ${seed} t${f.tick} e${f.edge} s${f.s.toFixed(0)}${f.airborne ? ' air' : ''}`;
+              if (!f.aheadShown) blind.push(where);
+              if (f.beyondShown !== null) crestFrames++;
+              if (f.beyondShown === false) (BLIND_BY_DESIGN.test(f.road) ? mapBlind : hidden).push(where);
+              if (f.clearance < 0.3) buried.push(`${where} clearance ${f.clearance.toFixed(2)}`);
+            }
           }
-        }
-        const near = all.filter((f) => f.beyondShown !== null && f.top <= 12);
-        const share = (m: number) => `${near.filter((f) => f.farthest >= m).length}/${near.length}`;
-        console.log(
-          `[print] ${c.name} ${aspect.toFixed(2)}: crest within 12 m: beyond >=6 m ${share(6)}, >=12 m ${share(12)}, >=20 m ${share(20)}, >=30 m ${share(30)}`,
-        );
-        console.log(
-          `[print] ${c.name} ${aspect.toFixed(2)}, seeds ${SEEDS.join(' ')}: ${riding} riding frames ` +
-            `(${airborne} airborne), ${crestFrames} with a crest ahead; road ahead hidden in ${blind.length}, ` +
-            `road beyond the crest hidden in ${hidden.length}, camera under 0.3 m in ${buried.length}` +
-            (hidden[0] ? `; first hidden: ${hidden[0]}` : '') +
-            (blind[0] ? `; first blind: ${blind[0]}` : ''),
-        );
-        console.log(
-          `[print] ${c.name} ${aspect.toFixed(2)}: hidden on the blind-by-design roads: ${mapBlind.length} (cap ${BLIND_BY_DESIGN_MAX})`,
-        );
-        expect(riding).toBeGreaterThan(10_000);
-        if (c.flies) expect(airborne, 'the crest launch flies the bike in these races').toBeGreaterThan(0);
-        expect(crestFrames, 'the races pass crests').toBeGreaterThan(c.flies ? 200 : 20);
-        expect(hidden).toEqual([]);
-        expect(mapBlind.length).toBeLessThanOrEqual(BLIND_BY_DESIGN_MAX);
-        expect(blind).toEqual([]);
-        expect(buried).toEqual([]);
-      });
+          const near = all.filter((f) => f.beyondShown !== null && f.top <= 12);
+          const share = (m: number) => `${near.filter((f) => f.farthest >= m).length}/${near.length}`;
+          console.log(
+            `[print] ${c.name} ${aspect.toFixed(2)}: crest within 12 m: beyond >=6 m ${share(6)}, >=12 m ${share(12)}, >=20 m ${share(20)}, >=30 m ${share(30)}`,
+          );
+          console.log(
+            `[print] ${c.name} ${aspect.toFixed(2)}, seeds ${SEEDS.join(' ')}: ${riding} riding frames ` +
+              `(${airborne} airborne), ${crestFrames} with a crest ahead; road ahead hidden in ${blind.length}, ` +
+              `road beyond the crest hidden in ${hidden.length}, camera under 0.3 m in ${buried.length}` +
+              (hidden[0] ? `; first hidden: ${hidden[0]}` : '') +
+              (blind[0] ? `; first blind: ${blind[0]}` : ''),
+          );
+          console.log(
+            `[print] ${c.name} ${aspect.toFixed(2)}: hidden on the blind-by-design roads: ${mapBlind.length} (cap ${BLIND_BY_DESIGN_MAX})`,
+          );
+          expect(riding).toBeGreaterThan(10_000);
+          if (c.flies) expect(airborne, 'the crest launch flies the bike in these races').toBeGreaterThan(0);
+          expect(crestFrames, 'the races pass crests').toBeGreaterThan(c.flies ? 200 : 20);
+          expect(hidden).toEqual([]);
+          expect(mapBlind.length).toBeLessThanOrEqual(BLIND_BY_DESIGN_MAX);
+          expect(blind).toEqual([]);
+          expect(buried).toEqual([]);
+          // The first aspect of each route also rides its seeds' races (rideFor shares them with the
+          // other aspect), so its test carries the races: Russian Hill at 2.17 took 92 s against the
+          // tier's 90 s on slow runners (runs 37595909481, 37595192409, 2026-10-07). A hang guard, not
+          // a wait: the test is driven by sim ticks.
+        },
+        RIDE_TEST_TIMEOUT_MS,
+      );
     }
   }
 });

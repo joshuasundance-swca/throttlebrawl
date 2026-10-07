@@ -1335,7 +1335,7 @@ function hazardContact(
   // Met below its top only (a rider on a support stands above most of them), and never the hazard the
   // rider stands on (supports: the parked pickup, the stair tower).
   const own = supportKeyOf(world, m.id);
-  const all = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
+  const all = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M, world).filter(
     (p) => m.h < hazardTop(p.feature) && own !== `h:${p.key}`,
   );
   // A light hazard (a festival barricade: boards on legs) is knocked aside as a light street piece is:
@@ -1782,7 +1782,7 @@ function airSolids(
     }
     return false;
   }
-  const hazards = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M).filter(
+  const hazards = solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M, world).filter(
     (p) => h < hazardTop(p.feature) && !isLightHazard(p.feature) && !fromAbove(hazardTop(p.feature)),
   );
   const pieces = furnitureOn(world.params)
@@ -1858,7 +1858,7 @@ function topContact(
       return true;
     }
   }
-  for (const p of solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M)) {
+  for (const p of solidHazardsNear(config, pos.edge, pos.s, CONTACT_REACH_M, world)) {
     const top = hazardTop(p.feature);
     if (isLightHazard(p.feature) || h >= top || !fromAbove(top) || !touching(p.shape)) continue;
     const newContact = st.hazardTouch[m.id] !== 1;
