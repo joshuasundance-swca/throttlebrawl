@@ -4,7 +4,7 @@
   "name": "Downtown",
   "network": "sf-downtown",
   "start": { "road": "sf-dt-founders-plaza", "s": 40, "dir": 1 },
-  "finish": { "road": "sf-dt-campus-end", "s": 29 },
+  "finish": { "road": "sf-dt-campus-end", "s": 29.5 },
   "mainPath": [
     "sf-dt-founders-plaza",
     "sf-dt-inference-ave",
@@ -36,7 +36,7 @@
   "branches": [
     {
       "id": "sf-dt-plaza-cut",
-      "kind": "alternate",
+      "kind": "shortcut",
       "marked": true,
       "sign": "PLAZA ENTRANCE: DELIVERIES ONLY. Founders arrive by ramp.",
       "aiTake": 0,

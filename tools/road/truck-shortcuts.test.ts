@@ -181,7 +181,7 @@ function fly(
   let landing: Flight['landing'] = null;
   let airTicks = 0;
   let jumped = false;
-  for (let t = 0; t < (opts.maxTicks ?? 900); t++) {
+  for (let t = 0; t < (opts.maxTicks ?? 2400); t++) {
     const air = h.rider.mode === 'Airborne';
     if (air) airTicks++;
     const onAvenue = h.rider.pos.edge === avenue;
@@ -249,6 +249,11 @@ describe.each(CUTS)('$name', (cut) => {
     const pads = cut.roads.flatMap((id) => l.road.featuresOf(l.road.edgeIndex(id), 'boostPad'));
     expect(pads).toHaveLength(1);
     expect(pads[0]?.params?.['slot']).toBeUndefined();
+    // Polish M (punch item 1): it pays. The main road swings round the plaza or the yard while the cut
+    // goes straight through, so the cut is a shortcut by the route's own table, not an alternate of the
+    // same length (tests/sim/ramp-truck-cuts.test.ts times it against the main road).
+    expect(branch?.kind).toBe('shortcut');
+    expect(branch?.gainM ?? -Infinity).toBeGreaterThanOrEqual(25);
     console.log(
       `[examined] ${cut.branch}: ${branch?.kind}, gain ${branch?.gainM.toFixed(1)} m, aiTake ${branch?.aiTake}, sign "${branch?.sign}"`,
     );
@@ -334,7 +339,7 @@ describe.each(CUTS)('$name', (cut) => {
     const edge = rightEdge(l.road, avenue, truck.s0);
     let flights = 0;
     const lines: string[] = [];
-    for (const speed of [24, 30, 36, 42]) {
+    for (const speed of [24, 30, 36, 42, 50, 60]) {
       for (const d of [
         truck.d0 + 0.3,
         (truck.d0 + Math.min(truck.d1, edge - 0.9)) / 2,
@@ -361,7 +366,7 @@ describe.each(CUTS)('$name', (cut) => {
       }
     }
     console.log(`[examined] ${flights} flights up the truck, steering right\n  ${lines.join('\n  ')}`);
-    expect(flights).toBe(24);
+    expect(flights).toBe(36);
   });
 
   it('a rider who does not steer in the air, or presses right only once down again, stays on the avenue', () => {

@@ -196,10 +196,18 @@ export const MILL_CUT = {
   /** The end of the flats' first piece: where the split connector starts, in that road's s. */
   splitS: 600,
   connectorM: 30,
-  /** The main road's piece beside the cut. */
-  yardM: 240,
-  /** The truck's ramp foot and the lip, 25 m short of the split (a ramp is 11.5 m long). */
-  truckS0: 563.5,
+  /**
+   * The main road's piece beside the cut, and the yard road's own middle road (polish M, punch items 1
+   * and 2: the yard road ran beside the flats as long as the stretch it skipped, so it saved nothing).
+   * The flats now swing 80 m left round the mill yard in one long sweep and back, while the haul road
+   * runs straight through the yard: it is about 31 m shorter (tools/road/truck-shortcuts.test.ts and
+   * tests/sim/ramp-truck-cuts.test.ts hold it). The main road's piece reaches from the split connector
+   * to where it is back on its line, 60 m past the sweep. [default]
+   */
+  yardM: 677,
+  cutM: 645,
+  /** The truck's ramp foot and the lip, 25 m short of the split (this carrier's ramp is 15 m long). */
+  truckS0: 560,
   lipS: 575,
   /**
    * Where the yard road starts: its reference line, 5 m right of the main road's centre line, half a
@@ -213,18 +221,26 @@ export const MILL_CUT = {
   offsetM: 5,
   laneM: 8,
   laneCentreM: 4,
+  /**
+   * The ramp truck, its lip at s 575 as before. Polish M (punch item 2): off the default 13.7° deck a
+   * bike that leaves the lip faster than about 50 m/s (the long route's bike does, down the flats)
+   * comes down on the level harder than the landing's 14 m/s wobble line, however well it is flown.
+   * This truck's deck is longer and shallower, 15 m to the same 2.8 m lip (10.6°), so a straight flight
+   * lands clean to about 65 m/s; the truck is drawn 1.3 times as long to match (render scales the
+   * model by the run). [default]
+   */
   truck: {
     kind: 'rampTruck',
     id: 'carrier-mill-cut',
-    s0: 563.5,
-    s1: 584.6,
+    s0: 560,
+    s1: 587.5,
     d0: 3.4,
     d1: 5.4,
-    params: { rampLengthM: 11.5, lipHeightM: 2.8 },
+    params: { rampLengthM: 15, lipHeightM: 2.8 },
   } satisfies BakedFeature,
   /** From the ramp's foot to the end of the road, on the right; 1.2 m, the default wall height. */
   wall: {
-    s0: 563.5,
+    s0: 560,
     s1: 600,
     side: 'right',
     kind: 'wall',
@@ -299,11 +315,32 @@ export const PNW_C1: TrackSource = {
     [2160, -3440],
     [2320, -3520],
     [2400, -3680],
-    // Sawmill Flats: the long straight past the mill.
+    // Sawmill Flats: the long straight past the mill. Polish M (punch item 1): 30 m past the last of
+    // these the road swings 80 m left round the mill yard and back, one sweep over 450 m (a sin² bow,
+    // sampled every 28 m; its tightest radius is about 135 m), while the Mill Yard Cut's haul road goes
+    // straight through the yard. The flats up to the split are where they were. [default]
     [2460, -3880],
     [2520, -4100],
     [2580, -4320],
-    [2640, -4540],
+    [2587.89, -4348.94],
+    [2592.36, -4376.88],
+    [2591.39, -4406.29],
+    [2586.27, -4436.84],
+    [2578.9, -4468],
+    [2571.54, -4499.17],
+    [2566.42, -4529.71],
+    [2565.45, -4559.13],
+    [2569.91, -4587.06],
+    [2580.25, -4613.4],
+    [2596.02, -4638.25],
+    [2615.94, -4661.97],
+    [2638.11, -4685.08],
+    [2660.27, -4708.18],
+    [2680.19, -4731.9],
+    [2695.96, -4756.75],
+    [2706.3, -4783.09],
+    [2723.4, -4845.8],
+    [2740.5, -4908.51],
   ],
   baseElevationM: 3,
   spacingM: 2,
@@ -819,7 +856,8 @@ export const PNW_C1: TrackSource = {
       barriers: [MILL_CUT.wallAfter],
     },
     {
-      // Beside the Mill Yard Cut: the same flats, the main road's own traffic.
+      // Beside the Mill Yard Cut, then round the mill yard and back (polish M): the same flats, the main
+      // road's own traffic.
       id: 'pnw-sawmill-yard',
       name: 'Sawmill Flats',
       lengthM: MILL_CUT.yardM,
@@ -960,20 +998,23 @@ export const PNW_C1: TrackSource = {
       },
       join: { road: 'pnw-sawmill-end', offsetM: -0.5, lane: 'R1' },
       turnsM: [20, 60],
-      // Two points of the flats' straight, 5 m right of its centre line, 85 and 170 m past the split:
-      // they hold the yard road parallel to the main road while the sim's hand-over between the two
-      // can act (the first 150 m), so a rider pressing the wall on the ground is never taken across.
-      // The yard road then eases back to the main road's lane for the merge.
+      // Two points on the flats' line, 5 m right of its centre line: one 150 m past the split, that
+      // holds the yard road parallel to the main road while the sim's hand-over between the two can
+      // act (the first 150 m), so a rider pressing the wall on the ground is never taken across; and
+      // one 100 m short of where the main road is back from its sweep round the yard (polish M), so the
+      // haul road runs straight through the yard between them. It then eases back to the main road's
+      // lane for the merge.
       via: [
-        { x: 2567.07, z: -4240.35, headingDeg: 15.26, turnM: 20 },
-        { x: 2589.44, z: -4322.35, headingDeg: 15.26, turnM: 20 },
+        { x: 2584.17, z: -4303.06, headingDeg: 15.25, turnM: 20 },
+        { x: 2700.6, z: -4743.18, headingDeg: 15.26, turnM: 20 },
       ],
       lanes: [
         { id: 'S1', dCenterM: MILL_CUT.laneCentreM, widthM: MILL_CUT.laneM, direction: 1, kind: 'shortcut' },
       ],
       named: {
+        // A shortcut since polish M: about 31 m shorter than the flats round the mill yard.
         id: 'pnw-mill-yard-cut',
-        kind: 'alternate',
+        kind: 'shortcut',
         marked: true,
         sign: MILL_CUT.sign,
         aiTake: 0,
@@ -994,7 +1035,7 @@ export const PNW_C1: TrackSource = {
         {
           id: 'pnw-mill-yard-cut',
           name: 'Mill Yard Cut',
-          lengthM: MILL_CUT.yardM,
+          lengthM: MILL_CUT.cutM,
           speedLimitMps: FOREST_MPS,
           surface: 'concrete',
           humps: [],
@@ -1054,7 +1095,7 @@ export const PNW_C1: TrackSource = {
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
     },
     {
-      // Long (about 6.6 km): on over Fogline Ridge to the end of the Sawmill Flats.
+      // Long (about 7 km): on over Fogline Ridge to the end of the Sawmill Flats.
       id: 'pnw-sawmill-haul',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
       finish: { road: 'pnw-sawmill-end', s: -40 },

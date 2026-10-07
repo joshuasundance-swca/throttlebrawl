@@ -21,6 +21,7 @@ import {
   type BakedRoad,
 } from '../../src/road';
 import type { SimConfig, SimEvent } from '../../src/sim/api';
+import { stampShortcuts } from '../../src/sim/race/shortcuts';
 import { input, riderHarness } from '../../src/sim/riders/testing';
 
 const REG = registryFromGlob(
@@ -217,6 +218,161 @@ describe('every ramp-truck shortcut is makeable from its approach', () => {
       console.log(
         `[examined] ${cut.network} ${cut.avenue}, truck ${cut.truck.id} (s ${cut.truck.s0}-${cut.truck.s1}, d ${cut.truck.d0}..${cut.truck.d1}), ${bike?.contentId} (top ${bike?.topSpeedMps} m/s)\n  ${lines.join('\n  ')}`,
       );
+    });
+  }
+});
+
+// Polish M's live check (punch items 1 and 2): every ride that took either cut was stamped `shortcutFound`
+// with `gainM` -0.5 (the Plaza Cut) or -0.2 (the Mill Yard Cut) and `savedS` 0, and all 5 of 5 landings
+// wobbled, so a made cut cost a wobble and saved nothing. Both cuts ran beside their avenue, as long as
+// the stretch they stood beside. A shortcut that is hard to make must pay: each cut is shorter than the
+// main road it skips (the avenue swings round the plaza or the mill yard while the cut goes straight
+// through), a rider who flies it well (right off the lip, the stick let go before the bike is down)
+// lands clean and reaches the finish well ahead of the same rider on the main road, and the race's own
+// stamp says so; a rider who holds the stick over to the ground still wobbles.
+
+/** The thumbs a rider takes the truck with. */
+type Line =
+  /** Off the lip, right until handed over onto the cut, then the stick let go before touch-down. */
+  | 'cut-clean'
+  /** Off the lip, right and held there until the bike is down: the live check's thumb. */
+  | 'cut-held'
+  /** The control: the main road in the outside lane's middle, past the truck. */
+  | 'main'
+  /** The other control: up the truck, no steering in the air, on along the main road. */
+  | 'main-jump';
+
+interface Timed {
+  line: Line;
+  lip: number;
+  edges: string[];
+  /** The first landing after the jump: its quality, sideways and downward speed. */
+  landing: { quality: string; lateralMps: number; verticalMps: number } | null;
+  wobbles: number;
+  crashed: boolean;
+  /** Ticks from the start until the route's progress reached the finish line. */
+  ticks: number;
+  /** The race's own stamp, if one was made. */
+  found: { gainM: number; savedS: number } | null;
+}
+
+/** A thumb that holds `target` d on whatever road the bike is on: a lane's middle. */
+function hold(h: ReturnType<typeof riderHarness>, target: number): number {
+  return Math.max(-1, Math.min(1, (target - h.rider.pos.d) * 0.35 - h.rider.yaw * 1.5));
+}
+
+function timedRide(config: SimConfig, cut: Cut, line: Line): Timed {
+  const road = config.road;
+  const route = config.route;
+  const avenue = road.edgeIndex(cut.avenue);
+  const lip = cut.truck.s0 + rampTruckShape(cut.truck).run;
+  const fromS = Math.max(5, cut.truck.s0 - 200);
+  const drive = road.lanesAt(avenue, fromS).filter((l) => l.kind === 'drive' && l.direction === 1);
+  const outside = drive.reduce((a, l) => (l.dCenterM > a ? l.dCenterM : a), -Infinity);
+  const edge = Math.max(...drive.map((l) => l.dCenterM + l.widthM / 2));
+  // The truck's line: half a metre in from the truck's inner side, and off the shoulder (and its drag)
+  // where the truck reaches into the lane, taken from 100 m short of its foot; till then, the outside
+  // lane's middle, as the main road's rider rides.
+  const onTruck = Math.max(cut.truck.d0 + 0.5, (cut.truck.d0 + Math.min(edge, cut.truck.d1)) / 2);
+  const h = riderHarness(config, { edge: avenue, s: fromS, d: outside, speed: 15 });
+  const onAvenue = () => h.rider.pos.edge === avenue;
+  const edges: string[] = [];
+  let lipSpeed = 0;
+  let jumped = false;
+  let handed = false;
+  let landing: Timed['landing'] = null;
+  let wobbles = 0;
+  let crashed = false;
+  let found: Timed['found'] = null;
+  let ticks = -1;
+  for (let t = 0; t < 6000 && ticks < 0 && !crashed; t++) {
+    const air = h.rider.mode === 'Airborne';
+    if (onAvenue() && h.rider.pos.s <= lip) lipSpeed = h.rider.speed;
+    if (jumped && road.edges[h.rider.pos.edge]?.id === cut.into) handed = true;
+    let steer: number;
+    if (line === 'main' && !jumped) steer = hold(h, outside);
+    else if (!jumped) steer = hold(h, onAvenue() && h.rider.pos.s >= cut.truck.s0 - 100 ? onTruck : outside);
+    else if (air) steer = line === 'cut-held' || (line === 'cut-clean' && !handed) ? 1 : 0;
+    else {
+      // Down again: the middle of the lane it is in (the cut's one lane, or the avenue's outside lane).
+      const lanes = road.lanesAt(h.rider.pos.edge, h.rider.pos.s).filter((l) => l.direction === 1);
+      const lane = lanes.find((l) => l.kind === 'shortcut') ?? lanes.find((l) => l.dCenterM === outside);
+      steer = hold(h, lane?.dCenterM ?? outside);
+    }
+    const out: SimEvent[] = h.step(input(1, 0, steer));
+    // The race's stamp, run after the riders as the race system runs it.
+    h.world.events = out;
+    stampShortcuts(h.world, config, () => true);
+    for (const e of h.world.events) {
+      if (e.type === 'jump') jumped = true;
+      if (e.type === 'land' && jumped && landing === null)
+        landing = {
+          quality: String(e.data['quality']),
+          lateralMps: Number(e.data['lateralMps']),
+          verticalMps: Number(e.data['verticalMps']),
+        };
+      if (e.type === 'wobble') wobbles++;
+      if (e.type === 'crash') crashed = true;
+      if (e.type === 'shortcutFound')
+        found = { gainM: Number(e.data['gainM']), savedS: Number(e.data['savedS']) };
+    }
+    h.world.events = [];
+    const id = road.edges[h.rider.pos.edge]?.id ?? '';
+    if (edges.at(-1) !== id) edges.push(id);
+    if (route.progressAt(h.rider.pos.edge, h.rider.pos.s) >= route.length) ticks = t + 1;
+  }
+  return { line, lip: lipSpeed, edges, landing, wobbles, crashed, ticks, found };
+}
+
+/** The least a cut must save, on the route's table and against the same rider on the main road. [default] */
+const PAYS_M = 20;
+const PAYS_S = 0.5;
+
+describe('every ramp-truck shortcut pays a rider who makes it cleanly', () => {
+  const cuts = truckCuts();
+  for (const cut of cuts) {
+    const race = RACES[cut.network];
+    it(`${cut.network}: shorter than the main road by ${PAYS_M} m or more; flown well it lands clean and finishes ${PAYS_S} s or more ahead of the main road; held over to the ground it wobbles`, () => {
+      expect(race, 'its race').toBeDefined();
+      if (!race) return;
+      const config = playerConfig(race.event, race.length);
+      const zone = config.route.shortcuts.find((z) => config.road.edges[z.toEdge]?.id === cut.into);
+      expect(zone, 'the route offers it').toBeDefined();
+      const rides = (['cut-clean', 'cut-held', 'main', 'main-jump'] as const).map((l) =>
+        timedRide(config, cut, l),
+      );
+      const [clean, held, main, mainJump] = rides as [Timed, Timed, Timed, Timed];
+      const lines = rides.map(
+        (r) =>
+          `${r.line}: lip ${r.lip.toFixed(1)} m/s, landing ${r.landing ? `${r.landing.quality} (lateral ${r.landing.lateralMps.toFixed(1)}, vertical ${r.landing.verticalMps.toFixed(1)} m/s)` : 'none'}, ${r.wobbles} wobbles${r.crashed ? ', CRASH' : ''}, at the finish in ${r.ticks} ticks${r.found ? `, stamped gain ${r.found.gainM} m saved ${r.found.savedS} s` : ''}; ${r.edges.join(' > ')}`,
+      );
+      console.log(
+        `[examined] ${cut.network} ${cut.into}: the route's gain ${zone?.gainM.toFixed(1)} m\n  ${lines.join('\n  ')}`,
+      );
+      // The route's table: the cut is shorter than the main road it skips.
+      expect(zone?.gainM ?? -Infinity, 'the gain on the route table').toBeGreaterThanOrEqual(PAYS_M);
+      // Flown well: on the cut, a clean landing, no wobble, no crash, and the stamp says what it saved.
+      expect(
+        race.cut.every((id) => clean.edges.includes(id)),
+        lines[0],
+      ).toBe(true);
+      expect(clean.crashed, lines[0]).toBe(false);
+      expect(clean.landing?.quality, lines[0]).toBe('clean');
+      expect(clean.wobbles, lines[0]).toBe(0);
+      expect(clean.found?.gainM ?? -Infinity, lines[0]).toBeGreaterThanOrEqual(PAYS_M);
+      expect(clean.found?.savedS ?? 0, lines[0]).toBeGreaterThanOrEqual(PAYS_S);
+      // The controls stay on the main road and reach the finish later, by the stated saving or more.
+      for (const [r, label] of [
+        [main, lines[2]],
+        [mainJump, lines[3]],
+      ] as const) {
+        for (const id of race.cut) expect(r.edges, label).not.toContain(id);
+        expect(r.crashed, label).toBe(false);
+        expect(r.ticks, label).toBeGreaterThan(0);
+        expect(r.ticks - clean.ticks, label).toBeGreaterThanOrEqual(PAYS_S * 60);
+      }
+      // Sloppy: the stick held over to the ground still costs a wobble, or worse.
+      expect(held.wobbles + (held.crashed ? 1 : 0), lines[1]).toBeGreaterThan(0);
     });
   }
 });

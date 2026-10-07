@@ -83,8 +83,16 @@ export const PLAZA_CUT = {
   /** The end of Campus Way's first piece, where the split connector starts, in that road's s. */
   splitS: 665,
   connectorM: 30,
-  /** The avenue's piece beside the cut. */
-  yardM: 200,
+  /**
+   * The avenue's piece beside the cut, and the cut's own middle road (polish M, punch items 1 and 2:
+   * the cut ran beside the avenue as long as the stretch it skipped, so it saved nothing). The avenue
+   * now swings 80 m left round the headquarters' plaza in one long sweep (BOW) and back, while the cut
+   * runs straight through it: the cut is about 32 m shorter (tools/road/truck-shortcuts.test.ts and
+   * tests/sim/ramp-truck-cuts.test.ts hold it). The avenue's piece reaches from the split connector
+   * to where it is back on its line, 60 m past the sweep. [default]
+   */
+  yardM: 688,
+  cutM: 655,
   /**
    * Where the cut's road starts: its reference line, 9 m right of the avenue's centre line, half a
    * metre inside the avenue's edge (a junction must lie on the road it leaves), and its one lane,
@@ -97,14 +105,21 @@ export const PLAZA_CUT = {
   offsetM: 9,
   laneM: 8,
   laneCentreM: 4,
+  /**
+   * The car carrier, its lip at s 640 as before. Polish M (punch item 2): off the default 13.7° deck a
+   * bike that leaves the lip faster than about 50 m/s comes down on the level harder than the landing's
+   * 14 m/s wobble line, however well it is flown. This carrier's deck is longer and shallower, 15 m to
+   * the same 2.8 m lip (10.6°), so a straight flight lands clean to about 65 m/s; the truck is drawn
+   * 1.3 times as long to match (render scales the model by the run). [default]
+   */
   truck: {
     kind: 'rampTruck',
     id: 'carrier-dt-plaza-cut',
-    s0: 628.5,
-    s1: 649.6,
+    s0: 625,
+    s1: 652.5,
     d0: 7.2,
     d1: 9.2,
-    params: { rampLengthM: 11.5, lipHeightM: 2.8 },
+    params: { rampLengthM: 15, lipHeightM: 2.8 },
   } satisfies BakedFeature,
   /**
    * From the lip to the end of the road, on the right; 1.2 m, the default wall height. It starts where
@@ -161,6 +176,11 @@ export const SF_DOWNTOWN: TrackSource = {
   // South-west from the bay: along (-0.7071, 0.7071), swinging 35 m off that line and back three
   // times (long sweeps you take flat out, not corners). The stretch from 1500 m to 2800 m is
   // straight, for the ramp truck's flight.
+  // Polish M (punch item 1): past the Plaza Cut's split the avenue swings 80 m left round the
+  // headquarters' plaza and back, one sweep over 450 m (a sin² bow, sampled every 28 m; its tightest
+  // radius is about 130 m), while the cut goes straight through the plaza. The last point before the
+  // sweep is three quarters of the way along the old last chord, so Campus Way up to the split stays
+  // where it was (within half a metre). [default]
   points: [
     [0, 0],
     [-212.13, 212.13],
@@ -171,7 +191,25 @@ export const SF_DOWNTOWN: TrackSource = {
     [-1601.6, 1651.09],
     [-1955.15, 2004.65],
     [-2283.95, 2241.53],
-    [-2637.51, 2595.08],
+    [-2549.12, 2506.69],
+    [-2566.85, 2528.73],
+    [-2580.61, 2554.75],
+    [-2591.32, 2583.81],
+    [-2600.39, 2614.53],
+    [-2609.45, 2645.24],
+    [-2620.16, 2674.3],
+    [-2633.92, 2700.32],
+    [-2651.65, 2722.36],
+    [-2673.69, 2740.09],
+    [-2699.71, 2753.85],
+    [-2728.78, 2764.56],
+    [-2759.49, 2773.62],
+    [-2790.2, 2782.69],
+    [-2819.26, 2793.4],
+    [-2845.28, 2807.15],
+    [-2867.32, 2824.89],
+    [-2913.29, 2870.85],
+    [-2959.25, 2916.81],
   ],
   baseElevationM: 1,
   spacingM: 2,
@@ -387,7 +425,8 @@ export const SF_DOWNTOWN: TrackSource = {
       barriers: [PLAZA_CUT.wallAfter],
     },
     {
-      // Beside the Plaza Cut: the same avenue, with the main road's own traffic.
+      // Beside the Plaza Cut, then round the plaza and back (polish M): the same avenue, with the main
+      // road's own traffic.
       id: 'sf-dt-campus-yard',
       name: 'Campus Way',
       lengthM: PLAZA_CUT.yardM,
@@ -465,13 +504,15 @@ export const SF_DOWNTOWN: TrackSource = {
       },
       join: { road: 'sf-dt-campus-end', offsetM: 2, lane: 'R2' },
       turnsM: [20, 60],
-      // Two points beside the avenue, 9 m right of its centre line, 70 and 155 m past the split: they
-      // hold the cut parallel to the avenue while the sim's hand-over between the two can act (the
-      // first 150 m), so a rider pressing the wall on the ground is never taken across. The cut then
-      // eases back to the avenue's lane for the merge.
+      // Two points: one beside the avenue, 9 m right of its centre line, 150 m past the split, that
+      // holds the cut parallel to the avenue while the sim's hand-over between the two can act (the
+      // first 150 m), so a rider pressing the wall on the ground is never taken across; and one on the
+      // same line 100 m short of where the avenue is back from its sweep round the plaza (polish M), so
+      // the cut runs straight through the plaza between them. It then eases back to the avenue's lane
+      // for the merge.
       via: [
-        { x: -2464.03, z: 2402.02, headingDeg: -136.01, turnM: 20 },
-        { x: -2522.83, z: 2463.49, headingDeg: -136.41, turnM: 20 },
+        { x: -2519.38, z: 2459.87, headingDeg: -136.41, turnM: 20 },
+        { x: -2845.4, z: 2790.24, headingDeg: -135, turnM: 20 },
       ],
       lanes: [
         {
@@ -483,8 +524,9 @@ export const SF_DOWNTOWN: TrackSource = {
         },
       ],
       named: {
+        // A shortcut since polish M: about 32 m shorter than the avenue round the plaza.
         id: 'sf-dt-plaza-cut',
-        kind: 'alternate',
+        kind: 'shortcut',
         marked: true,
         sign: PLAZA_CUT.sign,
         aiTake: 0,
@@ -505,7 +547,7 @@ export const SF_DOWNTOWN: TrackSource = {
         {
           id: 'sf-dt-plaza-cut',
           name: 'Plaza Cut',
-          lengthM: PLAZA_CUT.yardM,
+          lengthM: PLAZA_CUT.cutM,
           speedLimitMps: CITY,
           surface: 'concrete',
           humps: [],
