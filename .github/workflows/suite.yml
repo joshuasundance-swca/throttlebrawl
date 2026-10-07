@@ -1,9 +1,9 @@
 # The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
 # they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
 # it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (two slices), sim
-# (seven slices) and browser (eight slices, the last also running perf) run in parallel, each
+# (eight slices) and browser (eight slices, the last also running perf) run in parallel, each
 # running its tiers of `npm run check`. Every slice is planned as its whole job (setup, build and
-# tests; scripts/shard-plan.mjs) at no more than 70% of its timeout-minutes, which
+# tests; scripts/shard-plan.mjs) at no more than two thirds of its timeout-minutes, which
 # scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
 # for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
@@ -157,8 +157,8 @@ jobs:
   unit:
     name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
-    # The plan puts each slice at about 236 s of job (2026-10-06 table: tests, 0.8 s of setup per
-    # file and 17 s of job setup), 49% of this timeout; slices took 145 to 351 s on 2026-10-06.
+    # The plan puts the largest slice at about 293 s of job (2026-10-07 table), 61% of this timeout;
+    # slices took 145 to 351 s on 2026-10-06.
     timeout-minutes: 8
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
@@ -227,8 +227,12 @@ jobs:
     if: inputs.full
     runs-on: ubuntu-latest
     # The plan puts the batch readers' slice at about 374 s of job and the others at 401 to 408 s
-    # (2026-10-07 table, 19 s of job setup included), up to 68% of this timeout.
-    timeout-minutes: 10
+    # (2026-10-07 table, 19 s of job setup included), up to 45% of this timeout. 15 minutes since
+    # 2026-10-07: the first train on eight slices (run 37593974876) ran sim (4/8) to 617 s on a
+    # 408 s plan (its files ran 0.89 to 1.79 times the fresh table; one of them was broken by that bundle),
+    # so 10 minutes left no room. The line is JOB_SHARE of this timeout, so sim's line is 600 s:
+    # a slice may plan up to a 10-minute job before the plan test asks for a ninth slice.
+    timeout-minutes: 15
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
@@ -283,8 +287,8 @@ jobs:
   # cancels the run (see static). Full suite only. [default]
   # Eight slices since 2026-10-06: with seven, the plan counted test seconds only, and slices planned
   # at 355 s took 410 to 573 s as jobs (setup, the Chromium install and the build add 37 to 70 s;
-  # runs 37439710625, 37442774709). The plan now puts each at about 328 s of job (2026-10-06 table,
-  # 47 s of job setup included), 55% of this timeout.
+  # runs 37439710625, 37442774709). The plan now puts the largest at about 354 s of job (2026-10-07
+  # table, job setup included), 59% of this timeout.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
