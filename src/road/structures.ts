@@ -96,6 +96,11 @@ export interface StructureLayerSpec {
  * (scripts/sim-chunk.mjs).
  */
 export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
+  // San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws the layout).
+  'chinatown-northbeach': {
+    tags: ['lanterns', 'cafes', 'side-street', 'hill-park'],
+    load: () => import('./structures/chinatown-northbeach').then((m) => m.blocksPlanner),
+  },
   // Downtown Portland's blocks and San Francisco's downtown (road/structures/downtown.ts).
   'downtown-pdx': {
     tags: ['pdx-blocks'],
@@ -109,6 +114,11 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
   landmarks: { features: ['landmark'], load: () => import('./structures/landmarks').then((m) => m.planner) },
   // Key West's Old Town street fronts (road/structures/oldtown.ts).
   oldtown: { tags: ['key-oldtown'], load: () => import('./structures/oldtown').then((m) => m.planner) },
+  // San Francisco's Mission (render/mission.ts draws the layout).
+  mission: {
+    tags: ['mascot-mural', 'murals', 'shopfronts'],
+    load: () => import('./structures/mission').then((m) => m.missionPlanner),
+  },
   // San Francisco's waterfront: the pier sheds, the ferry hall, the blocks and the towers (road/structures/waterfront.ts).
   'sf-waterfront': {
     tags: [

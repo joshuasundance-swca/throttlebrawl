@@ -28,7 +28,8 @@ export const DELTA_WARN_KB = 5;
 
 /**
  * A pull request's floor: a PR that grows the first-load JavaScript must leave at least this much
- * headroom under the budget, or the perf check fails it. Main's pushes keep the budget alone.
+ * headroom under the budget, or the perf check fails it, on the PR's own run and on the train run
+ * that lands it (floorJudgesRun). Main's pushes keep the budget alone.
  * [default] (the coordinator, 2026-10-03: the 500 KB budget was crossed 4 times on 10-02 and 10-03
  * by PRs that each fit alone, so main went red; the floor turns the PR that eats the margin red.)
  */
@@ -132,17 +133,28 @@ export function firstLoadReport(headBytes, budgetKB, baseBytes) {
 }
 
 /**
- * Whether this run judges a pull request: GitHub's `pull_request` event (a push to main is `push`).
+ * The events whose runs test a tree that is about to land, so the floor judges them: a pull
+ * request's own run (`pull_request`), and the bundle train's suite and its lone-PR control
+ * (train.yml runs suite.yml on `workflow_run` and `workflow_dispatch`). A push to main is `push`.
+ * Until 2026-10-06 only `pull_request` was judged, and the train is how most PRs land: #633's own
+ * quick check passed at 11.1 KB against a main 1 h 46 min older, its train (37530950804, main ff06745
+ * plus #633) built 490.1 KB, 9.9 KB of headroom, and printed "not applied (not a pull_request run)".
+ */
+const FLOOR_EVENTS = new Set(['pull_request', 'workflow_run', 'workflow_dispatch']);
+
+/**
+ * Whether the floor judges this run: a pull request's own run or a train's (FLOOR_EVENTS); never a
+ * push to main, which keeps the budget alone, nor a local run (no event).
  * @param {Record<string, string | undefined>} env
  */
-export function isPullRequestRun(env) {
-  return env.GITHUB_EVENT_NAME === 'pull_request';
+export function floorJudgesRun(env) {
+  return FLOOR_EVENTS.has(env.GITHUB_EVENT_NAME ?? '');
 }
 
 /**
  * The floor's verdict on a pull request's build: a failure message when it leaves less than
- * `floorKB` of headroom, or null. Null on a run that is not a pull request (main keeps the budget
- * alone), and over the budget (the budget's own failure speaks). A PR whose measured change does
+ * `floorKB` of headroom, or null. Null on a run the floor does not judge (`pullRequest` false: a
+ * push to main keeps the budget alone), and over the budget (the budget's own failure speaks). A PR whose measured change does
  * not grow the first load never fails it: when main itself has drifted inside the floor (two PRs
  * that each fit, merged), only the PR that adds to it goes red, never every PR or the one that
  * shrinks it. A change that was not measured is held to the floor.

@@ -27,22 +27,41 @@
 // it is presentation only and placed from the race's seed; a lazy chunk loaded only on this network.
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, Vector3 } from 'three';
 import type { RoadNetwork } from '../road';
+import {
+  BACK_DEPTH_M,
+  BLOCK_TAGS,
+  blocksLayout,
+  DEPTH_M,
+  FOOT_SINK_M,
+  frontFrame,
+  GROUND_STOREY_M,
+  groundAt,
+  PATIO_M,
+  pickOf,
+  SIDE_REACH_M,
+  SIDE_ROAD_HALF_M,
+  STOREY_M,
+  STRETCH_M,
+  STRING_EVERY_M,
+  STRING_HEIGHT_M,
+  type BlockFront,
+  type Frame2,
+  type GroundSpan,
+} from '../road/structures/chinatown-northbeach';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { RoadDressing } from './road-mesh';
-import { scatterHash, themeAt, type SideTag, type SideTheme } from './scenery';
 import { hangPoints, stringPoints } from './string-lights';
 
-/** The tags this layer draws. */
-export const BLOCK_TAGS = ['lanterns', 'cafes', 'side-street', 'hill-park'] as const;
+// What the layer places is the road's (road/structures/chinatown-northbeach.ts: the layout the sim's plan is made
+// of); what is here is how it is drawn. The names the rest of render and the tests know stay exported.
+export { BLOCK_TAGS, PATIO_M, SIDE_REACH_M, STRETCH_M, STRING_EVERY_M };
 
 /** Whether the network has these districts at all. */
 export function hasBlocks(tags: ReadonlySet<string>): boolean {
   return BLOCK_TAGS.some((t) => tags.has(t));
 }
 
-/** Static geometry merges per stretch of road this long, m. [default] */
-export const STRETCH_M = 240;
 /** A stretch shows its full detail within this far of the camera, its far stand-in beyond, m. [default] */
 export const NEAR_M = 240;
 /** Drawn out to this far (the foggy region's haze is full at 480 m), m. [default] */
@@ -52,46 +71,14 @@ const KEEP_M = BLOCKS_DRAW_M + 200;
 /** The tower on the hill is drawn out to this far, m. */
 export const TOWER_DRAW_M = 1400;
 
-/** A building's depth from its front, m; the second row stands behind it. [default] */
-const DEPTH_M = 14;
-const BACK_DEPTH_M = 16;
-/** The ground storey and each storey above it, m. */
-const GROUND_STOREY_M = 4.2;
-const STOREY_M = 3.3;
-/** Every building's foot reaches this far under the lower end of its ground (the hills), m. */
-const FOOT_SINK_M = 6;
-/** North Beach's cafe patio: from the rail on the hard edge back to the cafe fronts, m. */
-export const PATIO_M = 2.8;
-/** The lanterns: a string every so often across Chinatown's street, its height and sag, m. [default] */
-export const STRING_EVERY_M = 11;
-const STRING_HEIGHT_M = 6.6;
+/** The lanterns: a cord's sag, the metres between lanterns along it, and a lantern's size, m. */
 const STRING_SAG_M = 0.9;
-/** Metres between lanterns along a string, and their size. */
 const LANTERN_PITCH_M = 1.7;
 const LANTERN_R = 0.3;
 const LANTERN_HALF_H = 0.38;
-/** A side street's reach from the road and its roadway's half width, m. */
-export const SIDE_REACH_M = 90;
-const SIDE_ROAD_HALF_M = 4.2;
-/** The hill's park: a tree every so often past the grass band, m. [default] */
-const TREE_EVERY_M = 9;
-/** The tower: how far past the finish crest it stands, out to its side, its height and radius, m. */
-const TOWER_AHEAD_M = 90;
-const TOWER_OUT_M = 70;
+/** The tower's height and radius, m. */
 export const TOWER_HEIGHT_M = 52;
 const TOWER_R = 4.6;
-/** The park's back row of buildings stands this far past its grass, and clear of the tower's hill, m. */
-const PARK_BACK_M = 24;
-const TOWER_CLEAR_M = 75;
-/** A feature's box on the road: s0 to s1 along, d0 to d1 across (a landmark's footprint, a zone). */
-interface FeatureBox {
-  s0: number;
-  s1: number;
-  d0: number;
-  d1: number;
-}
-/** Features nothing of this layer stands in. */
-const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck', 'roadsideZone', 'copSpawn']);
 
 /** Flat colours. [default] Clean paint, no grime (maintainer, 2026-09-30: no crack, rust, grime). */
 export const BLOCK_COLOURS = {
@@ -173,7 +160,8 @@ export interface BlocksPlan {
 
 export interface BlocksInput {
   road: RoadNetwork;
-  dressing: RoadDressing | undefined;
+  /** A test seam: a control that plans the same roads with other tags or features. The game passes none. */
+  dressing?: RoadDressing | undefined;
   seed: number;
 }
 
@@ -337,10 +325,6 @@ interface Look {
   cafe: boolean;
 }
 
-function pick<T>(list: readonly T[], u: number): T {
-  return list[Math.min(list.length - 1, Math.floor(u * list.length))] as T;
-}
-
 /**
  * Draws one building of the front row into the near soup (its whole look) and the far soup (its box).
  * `f`'s origin is the front's left end at t 0, the front `width` long; `ground` gives the ground
@@ -462,9 +446,39 @@ function building(near: Soup, far: Soup, f: Frame, width: number, ground: Ground
   );
 }
 
-/** Plans the districts of a network: buildings, lanterns, patios, side streets, the park and the tower. */
+/** A layout frame as this file draws in: on the ground, y 0. */
+const frameOf = (f: Frame2): Frame => ({ o: { ...f.o, y: 0 }, a: { ...f.a, y: 0 }, n: { ...f.n, y: 0 } });
+const groundFn =
+  (g: GroundSpan): GroundAt =>
+  (t) =>
+    groundAt(g, t);
+
+/** One front-row building's look, from the layout's hash picks. */
+function lookOf(b: BlockFront): Look {
+  return {
+    district: b.district,
+    storeys: b.storeys,
+    wall: pickOf(
+      b.district === 'lanterns' ? BLOCK_COLOURS.chinatownWalls : BLOCK_COLOURS.northBeachWalls,
+      b.wallU,
+    ),
+    accent: pickOf(BLOCK_COLOURS.chinatownAccents, b.accentU),
+    stripes: b.stripesU === null ? null : pickOf(BLOCK_COLOURS.northBeachStripes, b.stripesU),
+    balconies: b.balconies,
+    blade: b.blade,
+    bay: b.bay,
+    cafe: b.cafe,
+  };
+}
+
+/**
+ * Plans the districts of a network: draws the road's layout (road/structures/chinatown-northbeach.ts:
+ * buildings, lanterns, patios, side streets, the park and the tower) into soups. `dressing` is a test seam
+ * (a control that plans the same roads with other tags or features); the game passes none.
+ */
 export function planBlocks(input: BlocksInput): BlocksPlan {
-  const { road, dressing, seed } = input;
+  const { road, seed } = input;
+  const layout = blocksLayout(road, seed, input.dressing);
   const near = new Map<string, Soup>();
   const far = new Map<string, Soup>();
   const centres = new Map<string, { xs: number; zs: number; n: number; pts: Point3[] }>();
@@ -499,614 +513,350 @@ export function planBlocks(input: BlocksInput): BlocksPlan {
     c.pts.push(p);
     centres.set(key, c);
   };
+  const w = (edge: number, s: number, d: number, y = 0) =>
+    road.toWorld(edge, Math.max(0, Math.min(road.edges[edge]?.length ?? 0, s)), d, y);
 
-  let towerAt: { edge: number; s: number; side: -1 | 1 } | null = null;
-  const parkRow: {
-    edge: number;
-    side: -1 | 1;
-    s0: number;
-    s1: number;
-    d: number;
-    storeys: number;
-    wall: string;
-  }[] = [];
-  for (const e of road.edges) {
-    const dress = dressing?.[e.id];
-    const tags = (dress?.tags ?? e.tags) as readonly SideTag[] | undefined;
-    if (!tags?.some((t) => (BLOCK_TAGS as readonly string[]).includes(t.tag))) continue;
-    const features = (dress?.features ?? e.features).filter((f) => KEEP_CLEAR.has(f.kind));
-    // The landmarks (the Dragon Gate over the street, the church by the park): their footprints are
-    // closed to the districts, as a staged scene's is (landmarks.ts `landmarkFootprints`), and an
-    // `overRoad` one too, since its posts stand where the fronts would.
-    const landmarks = (dress?.features ?? e.features).filter((f) => f.kind === 'landmark');
-    const h = (k: number, side: number, salt: number) =>
-      scatterHash(seed, 7019 + e.index * 613, k, side * 41 + salt);
-    const w = (s: number, d: number, y = 0) =>
-      road.toWorld(e.index, Math.max(0, Math.min(e.length, s)), d, y);
-    const theme = (side: -1 | 1, s: number): SideTheme => themeAt(tags, side < 0 ? 'left' : 'right', s);
-    /** The sim's hard (or soft) edge on a side at s: the verge band's outer edge, as a distance. */
-    const edgeAt = (side: -1 | 1, s: number) =>
-      Math.abs(road.vergeAt(e.index, Math.max(0, Math.min(e.length, s)), side < 0 ? 'left' : 'right').dOuter);
-    const runs = (side: -1 | 1, want: SideTheme): [number, number][] => {
-      const out: [number, number][] = [];
-      let start = -1;
-      for (let s = 0; s <= e.length + 1e-6; s += 2) {
-        const here = theme(side, Math.min(s, e.length)) === want;
-        if (here && start < 0) start = s;
-        if ((!here || s + 2 > e.length + 1e-6) && start >= 0) {
-          out.push([start, here ? e.length : s - 2]);
-          start = -1;
-        }
-      }
-      return out;
-    };
-    const boxHit = (f: FeatureBox, side: -1 | 1, s0: number, s1: number, a0: number, a1: number) => {
-      const lo = Math.min(f.d0 * side, f.d1 * side);
-      const hi = Math.max(f.d0 * side, f.d1 * side);
-      return Math.min(f.s0, f.s1) - 1 < s1 && Math.max(f.s0, f.s1) + 1 > s0 && lo - 1 < a1 && hi + 1 > a0;
-    };
-    /** Nothing of the scene's own (a sign, a pad, a zone, a lot) is in the way. */
-    const clearOfScene = (side: -1 | 1, s0: number, s1: number, a0: number, a1: number) =>
-      !features.some((f) => boxHit(f, side, s0, s1, a0, a1));
-    /** Also nothing of a landmark's, with a metre to spare (a tree, a bench). */
-    const clearOf = (side: -1 | 1, s0: number, s1: number, a0: number, a1: number) =>
-      clearOfScene(side, s0, s1, a0, a1) && !landmarks.some((f) => boxHit(f, side, s0, s1, a0, a1));
-    /** The first landmark ahead of `from` (and short of `to`) whose footprint reaches a0..a1 out on a side. */
-    const landmarkAhead = (
-      side: -1 | 1,
-      from: number,
-      to: number,
-      a0: number,
-      a1: number,
-    ): { s0: number; s1: number } | null => {
-      let found: { s0: number; s1: number } | null = null;
-      for (const f of landmarks) {
-        const lo = Math.min(f.d0 * side, f.d1 * side);
-        const hi = Math.max(f.d0 * side, f.d1 * side);
-        const s0 = Math.min(f.s0, f.s1);
-        const s1 = Math.max(f.s0, f.s1);
-        if (s1 <= from || s0 >= to || lo >= a1 || hi <= a0) continue;
-        if (!found || s0 < found.s0) found = { s0, s1 };
-      }
-      return found;
-    };
-    /** The frame of a frontage from s0 to s1 on a side, its front `d` out (the front's left end first). */
-    const frontFrame = (side: -1 | 1, s0: number, s1: number, d: number): { f: Frame; width: number } => {
-      // Seen from the street, a right-side front runs with s and a left-side one against it.
-      const [sa, sb] = side > 0 ? [s0, s1] : [s1, s0];
-      const p0 = w(sa, side * d);
-      const p1 = w(sb, side * d);
-      const len = Math.hypot(p1.x - p0.x, p1.z - p0.z) || 1;
-      const a = { x: (p1.x - p0.x) / len, y: 0, z: (p1.z - p0.z) / len };
-      const inward = w((s0 + s1) / 2, side * (d + 1));
-      const mid = w((s0 + s1) / 2, side * d);
-      let n = { x: a.z, y: 0, z: -a.x };
-      if (n.x * (inward.x - mid.x) + n.z * (inward.z - mid.z) < 0) n = { x: -n.x, y: 0, z: -n.z };
-      return { f: { o: { ...p0, y: 0 }, a, n }, width: len };
-    };
-    const groundAlong = (side: -1 | 1, s0: number, s1: number): GroundAt => {
-      const [sa, sb] = side > 0 ? [s0, s1] : [s1, s0];
-      const ya = w(sa, 0).y;
-      const yb = w(sb, 0).y;
-      const len = Math.abs(s1 - s0) || 1;
-      return (t: number) => ya + ((yb - ya) * Math.max(0, Math.min(len, t))) / len;
-    };
-
-    // Side streets: one per span (both sides share it).
-    const seen = new Set<number>();
-    for (const t of tags) {
-      if (t.tag !== 'side-street') continue;
-      const s = (t.s0 + t.s1) / 2;
-      if (seen.has(s)) continue;
-      seen.add(s);
-      plan.sideStreets.push({ edge: e.index, s });
-      const half = (t.s1 - t.s0) / 2;
-      const [n, fs] = soupsAt(e.index, s);
-      const y = w(s, 0).y;
-      for (const side of [-1, 1] as const) {
-        const edge = road.vergeAt(e.index, s, side < 0 ? 'left' : 'right').dInner;
-        const o = w(s, side * Math.abs(edge));
-        const outward = w(s, side * (Math.abs(edge) + 1));
-        const n0 = { x: outward.x - o.x, y: 0, z: outward.z - o.z };
-        const nl = Math.hypot(n0.x, n0.z) || 1;
-        const a0 = w(s + 1, side * Math.abs(edge));
-        const al = Math.hypot(a0.x - o.x, a0.z - o.z) || 1;
-        // Frame: t along the side street (away from the road), k across it.
-        const f: Frame = {
-          o: { ...o, y: 0 },
-          a: { x: n0.x / nl, y: 0, z: n0.z / nl },
-          n: { x: (a0.x - o.x) / al, y: 0, z: (a0.z - o.z) / al },
-        };
-        for (const soup of [n, fs]) {
+  // Side streets: a roadway off both sides, lined with buildings and closed by a facade at its far end.
+  for (const street of layout.sideStreets) {
+    const { edge, s, half, y } = street;
+    plan.sideStreets.push({ edge, s });
+    const [n, fs] = soupsAt(edge, s);
+    for (const sd of street.sides) {
+      const f = frameOf(sd.f);
+      for (const soup of [n, fs]) {
+        quad(
+          soup,
+          at(f, 0, -SIDE_ROAD_HALF_M, y + 0.03),
+          at(f, SIDE_REACH_M, -SIDE_ROAD_HALF_M, y + 0.03),
+          at(f, SIDE_REACH_M, SIDE_ROAD_HALF_M, y + 0.03),
+          at(f, 0, SIDE_ROAD_HALF_M, y + 0.03),
+          BLOCK_COLOURS.street,
+          UP,
+        );
+        for (const k of [-1, 1]) {
+          const k0 = k * SIDE_ROAD_HALF_M;
+          const k1 = k * half;
           quad(
             soup,
-            at(f, 0, -SIDE_ROAD_HALF_M, y + 0.03),
-            at(f, SIDE_REACH_M, -SIDE_ROAD_HALF_M, y + 0.03),
-            at(f, SIDE_REACH_M, SIDE_ROAD_HALF_M, y + 0.03),
-            at(f, 0, SIDE_ROAD_HALF_M, y + 0.03),
-            BLOCK_COLOURS.street,
+            at(f, 0, k0, y + 0.07),
+            at(f, SIDE_REACH_M, k0, y + 0.07),
+            at(f, SIDE_REACH_M, k1, y + 0.07),
+            at(f, 0, k1, y + 0.07),
+            BLOCK_COLOURS.pavement,
             UP,
           );
-          for (const k of [-1, 1]) {
-            const k0 = k * SIDE_ROAD_HALF_M;
-            const k1 = k * half;
-            quad(
+        }
+      }
+      for (const row of sd.rows) {
+        const g = frameOf(row.g);
+        const walls = sd.chinatown ? BLOCK_COLOURS.chinatownWalls : BLOCK_COLOURS.northBeachWalls;
+        for (const lot of row.lots) {
+          for (const soup of [n, fs])
+            box(
               soup,
-              at(f, 0, k0, y + 0.07),
-              at(f, SIDE_REACH_M, k0, y + 0.07),
-              at(f, SIDE_REACH_M, k1, y + 0.07),
-              at(f, 0, k1, y + 0.07),
-              BLOCK_COLOURS.pavement,
-              UP,
+              g,
+              lot.t0,
+              lot.t1,
+              0,
+              DEPTH_M,
+              y - FOOT_SINK_M,
+              lot.top,
+              pickOf(walls, lot.wallU),
+              'flrt',
+              BLOCK_COLOURS.roof,
             );
+          for (let st = 1; st < lot.storeys; st++) {
+            const wy = y + GROUND_STOREY_M + STOREY_M * (st - 1) + 0.8;
+            panel(n, g, lot.t0 + 0.8, lot.t1 - 0.8, wy, wy + 1.6, BLOCK_COLOURS.window);
           }
-        }
-        // Buildings line it from behind the corner buildings out, and one closes its far end.
-        for (const k of [-1, 1] as const) {
-          let cursor = DEPTH_M + 4;
-          for (let i = 0; cursor < SIDE_REACH_M - 8; i++) {
-            const wd = 8 + 5 * h(i + Math.round(s), side * 3 + k, 11);
-            const t0 = cursor;
-            const t1 = Math.min(SIDE_REACH_M, cursor + wd);
-            cursor = t1 + 0.3;
-            const storeys = 3 + Math.floor(h(i, side * 3 + k, 12) * 3);
-            const top = y + GROUND_STOREY_M + STOREY_M * (storeys - 1) + 0.8;
-            // Its front faces the side street (k toward the street is -k).
-            const g: Frame = { o: at(f, 0, k * half, 0), a: f.a, n: k > 0 ? f.n : neg(f.n) };
-            const wall = pick(
-              theme(side, s - half - 3) === 'lanterns'
-                ? BLOCK_COLOURS.chinatownWalls
-                : BLOCK_COLOURS.northBeachWalls,
-              h(i, k, 13),
-            );
-            for (const soup of [n, fs])
-              box(soup, g, t0, t1, 0, DEPTH_M, y - FOOT_SINK_M, top, wall, 'flrt', BLOCK_COLOURS.roof);
-            for (let st = 1; st < storeys; st++) {
-              const wy = y + GROUND_STOREY_M + STOREY_M * (st - 1) + 0.8;
-              panel(n, g, t0 + 0.8, t1 - 0.8, wy, wy + 1.6, BLOCK_COLOURS.window);
-            }
-            plan.buildings.push({
-              edge: e.index,
-              side,
-              s0: s,
-              s1: s,
-              front: t0,
-              district: 'side',
-              storeys,
-              cafe: false,
-            });
-          }
-        }
-        const endTop = y + GROUND_STOREY_M + STOREY_M * 3;
-        for (const soup of [n, fs])
-          box(
-            soup,
-            f,
-            SIDE_REACH_M,
-            SIDE_REACH_M + DEPTH_M,
-            -half - 2,
-            half + 2,
-            y - FOOT_SINK_M,
-            endTop,
-            pick(BLOCK_COLOURS.backWalls, h(3, side, 14)),
-            'lrt',
-            BLOCK_COLOURS.roof,
-          );
-        // The end facade faces back down the street.
-        for (const soup of [n, fs])
-          quad(
-            soup,
-            at(f, SIDE_REACH_M, -half - 2, y - 1),
-            at(f, SIDE_REACH_M, half + 2, y - 1),
-            at(f, SIDE_REACH_M, half + 2, endTop),
-            at(f, SIDE_REACH_M, -half - 2, endTop),
-            pick(BLOCK_COLOURS.backWalls, h(4, side, 14)),
-            neg(f.a),
-          );
-        note(e.index, s, at(f, SIDE_REACH_M, 0, y));
-      }
-      // Zebras across the road on both sides of the side street.
-      for (const s0 of [s - half + 0.5, s + half - 3.5]) {
-        for (let d = -5.5 + 0.4; d + 0.6 <= 5.5 - 0.4; d += 1.3) {
-          const p = (u: number, v: number) =>
-            road.toWorld(e.index, Math.max(0, Math.min(e.length, u)), v, 0.035);
-          quad(n, p(s0, d), p(s0, d + 0.6), p(s0 + 3, d + 0.6), p(s0 + 3, d), BLOCK_COLOURS.zebra, UP);
-        }
-      }
-    }
-
-    for (const side of [-1, 1] as const) {
-      for (const district of ['lanterns', 'cafes'] as const) {
-        for (const [a, b] of runs(side, district)) {
-          // The front row, shoulder to shoulder.
-          let cursor = a + 0.4;
-          for (let k = 0; ; k++) {
-            const u = h(k + Math.round(a), side, 1);
-            let width = district === 'lanterns' ? 6 + 4 * u : 7 + 4.5 * u;
-            // A landmark's footprint ahead (the Dragon Gate across the street): the row closes up to it,
-            // 0.3 m short, with a building at least 5 m wide (the last one takes the room that is left),
-            // and starts again 0.3 m past it.
-            const reach = edgeAt(side, cursor) + (district === 'cafes' ? PATIO_M : 0);
-            const lm = landmarkAhead(side, cursor, b, reach, reach + DEPTH_M + 0.5 + BACK_DEPTH_M);
-            if (lm) {
-              const room = lm.s0 - 0.3 - cursor;
-              if (room < 5) {
-                cursor = Math.max(cursor, lm.s1 + 0.3);
-                continue;
-              }
-              if (room < width + 5.3) width = room;
-            }
-            if (cursor + width > b - 0.3) {
-              width = b - 0.3 - cursor;
-              if (width < 5) break;
-            }
-            const s0 = cursor;
-            const s1 = cursor + width;
-            cursor = s1 + 0.25;
-            const edgeD = edgeAt(side, (s0 + s1) / 2);
-            const frontD = district === 'cafes' ? edgeD + PATIO_M : edgeD;
-            if (!clearOfScene(side, s0, s1, frontD, frontD + DEPTH_M)) continue;
-            const { f, width: len } = frontFrame(side, s0, s1, frontD);
-            const ground = groundAlong(side, s0, s1);
-            const v = (salt: number) => h(k + Math.round(a), side, salt);
-            const cafe = district === 'cafes' && v(2) < 0.6;
-            const look: Look = {
-              district,
-              storeys: district === 'lanterns' ? 3 + Math.floor(v(3) * 3) : 3 + Math.floor(v(3) * 2),
-              wall: pick(
-                district === 'lanterns' ? BLOCK_COLOURS.chinatownWalls : BLOCK_COLOURS.northBeachWalls,
-                v(4),
-              ),
-              accent: pick(BLOCK_COLOURS.chinatownAccents, v(5)),
-              stripes: district === 'cafes' ? pick(BLOCK_COLOURS.northBeachStripes, v(6)) : null,
-              balconies: district === 'lanterns' && v(7) < 0.55,
-              blade: district === 'lanterns' && v(8) < 0.4,
-              bay: district === 'cafes' && v(9) < 0.6,
-              cafe,
-            };
-            const [n, fs] = soupsAt(e.index, (s0 + s1) / 2);
-            building(n, fs, f, len, ground, look);
-            plan.buildings.push({
-              edge: e.index,
-              side,
-              s0,
-              s1,
-              front: frontD,
-              district,
-              storeys: look.storeys,
-              cafe,
-            });
-            note(e.index, (s0 + s1) / 2, at(f, len / 2, 0, 0));
-            // The second row behind it: a plain box, a different height.
-            const back = frontFrame(side, s0, s1, frontD + DEPTH_M + 0.5);
-            const bt = ground(len) + GROUND_STOREY_M + STOREY_M * (1 + Math.floor(v(10) * 4));
-            for (const soup of [n, fs])
-              box(
-                soup,
-                back.f,
-                0,
-                back.width,
-                0,
-                BACK_DEPTH_M,
-                Math.min(ground(0), ground(len)) - FOOT_SINK_M,
-                bt,
-                pick(BLOCK_COLOURS.backWalls, v(11)),
-                'flrt',
-                BLOCK_COLOURS.roof,
-              );
-            // North Beach: the cafe patio behind the rail. A cafe gets two or three tables and
-            // their chairs; the rail and its planters run along every front.
-            if (district === 'cafes') {
-              const railF = frontFrame(side, s0, s1, edgeD).f;
-              const ry = (t: number) => ground(t);
-              // The patio's tiles, from the rail back to the front.
-              for (const soup of [n, fs])
-                quad(
-                  soup,
-                  at(railF, 0, 0, ry(0) + 0.04),
-                  at(railF, len, 0, ry(len) + 0.04),
-                  at(railF, len, PATIO_M, ry(len) + 0.04),
-                  at(railF, 0, PATIO_M, ry(0) + 0.04),
-                  BLOCK_COLOURS.patio,
-                  UP,
-                );
-              for (let t = 0.3; t < len - 0.2; t += 2) {
-                const y = ry(t);
-                box(n, railF, t, t + 0.08, 0.02, 0.1, y - 0.2, y + 0.9, BLOCK_COLOURS.rail, 'flr');
-              }
-              const ya = ry(0);
-              const yb = ry(len);
-              quad(
-                n,
-                at(railF, 0, 0.02, ya + 0.86),
-                at(railF, len, 0.02, yb + 0.86),
-                at(railF, len, 0.02, yb + 0.94),
-                at(railF, 0, 0.02, ya + 0.94),
-                BLOCK_COLOURS.rail,
-                neg(railF.n),
-              );
-              box(
-                fs,
-                railF,
-                0,
-                len,
-                0,
-                0.1,
-                Math.min(ya, yb) - 0.2,
-                Math.max(ya, yb) + 0.9,
-                BLOCK_COLOURS.rail,
-                'f',
-              );
-              if (cafe) {
-                const count = 2 + (v(12) < 0.5 ? 1 : 0);
-                for (let i = 0; i < count; i++) {
-                  const t = 1.6 + i * 2.6;
-                  if (t > len - 1.2) break;
-                  const y = ry(t);
-                  const c = at(railF, t, 1.4, y);
-                  // The round top (an octagon), its stem, and two chairs.
-                  const ring: Point3[] = [];
-                  for (let j = 0; j < 8; j++) {
-                    const ang = (j / 8) * Math.PI * 2;
-                    ring.push({ x: c.x + Math.cos(ang) * 0.42, y: y + 0.74, z: c.z + Math.sin(ang) * 0.42 });
-                  }
-                  for (let j = 1; j < 7; j++)
-                    tri(
-                      n,
-                      ring[0] as Point3,
-                      ring[j] as Point3,
-                      ring[j + 1] as Point3,
-                      BLOCK_COLOURS.tableTop,
-                      UP,
-                    );
-                  box(
-                    n,
-                    { o: c, a: railF.a, n: railF.n },
-                    -0.05,
-                    0.05,
-                    -0.05,
-                    0.05,
-                    y,
-                    y + 0.72,
-                    BLOCK_COLOURS.chair,
-                    'fl',
-                  );
-                  for (const off of [-0.7, 0.7]) {
-                    const cf: Frame = { o: at(railF, t + off, 1.4, 0), a: railF.a, n: railF.n };
-                    box(n, cf, -0.22, 0.22, -0.22, 0.22, y + 0.42, y + 0.47, BLOCK_COLOURS.chair, 'flrt');
-                    box(
-                      n,
-                      cf,
-                      off > 0 ? 0.18 : -0.22,
-                      off > 0 ? 0.22 : -0.18,
-                      -0.22,
-                      0.22,
-                      y + 0.42,
-                      y + 0.9,
-                      BLOCK_COLOURS.chair,
-                      'flr',
-                    );
-                  }
-                  plan.tables.push({
-                    edge: e.index,
-                    s: s0 + (side > 0 ? t : len - t),
-                    d: side * (edgeD + 1.4),
-                  });
-                }
-              } else if (v(13) < 0.7) {
-                for (let t = 1.2; t < len - 1; t += 3.2) {
-                  const y = ry(t);
-                  box(n, railF, t - 0.5, t + 0.5, 0.2, 0.7, y - 0.1, y + 0.55, BLOCK_COLOURS.planter, 'flrt');
-                }
-              }
-            }
-          }
-
-          // Chinatown: lantern strings across the street, where both sides are lantern fronts.
-          if (district === 'lanterns' && side > 0) {
-            for (let k = 0; ; k++) {
-              const s = a + 5 + k * STRING_EVERY_M + (h(k, 0, 20) - 0.5) * 3;
-              if (s > b - 3) break;
-              if (theme(-1, s) !== 'lanterns') continue;
-              // None through a landmark that spans the street (the gate's lintel and side roofs).
-              if (landmarks.some((f) => f.d0 < 0 && f.d1 > 0 && s > f.s0 - 1.5 && s < f.s1 + 1.5)) continue;
-              const left = edgeAt(-1, s);
-              const right = edgeAt(1, s);
-              const y = w(s, 0).y + STRING_HEIGHT_M;
-              // The cord, one end on each side's facade, and the lanterns hung from it (string-lights.ts).
-              const from = { ...w(s, -left), y };
-              const to = { ...w(s, right), y };
-              const pts = stringPoints(from, to, STRING_SAG_M, 10);
-              const [n] = soupsAt(e.index, s);
-              const fwd = sub(w(s - 1, 0), w(s, 0));
-              const facing = { x: fwd.x, y: 0, z: fwd.z };
-              for (let i = 0; i < pts.length - 1; i++) {
-                const p = pts[i] as Point3;
-                const q = pts[i + 1] as Point3;
-                quad(n, p, q, { ...q, y: q.y - 0.06 }, { ...p, y: p.y - 0.06 }, BLOCK_COLOURS.string, facing);
-                quad(
-                  n,
-                  p,
-                  q,
-                  { ...q, y: q.y - 0.06 },
-                  { ...p, y: p.y - 0.06 },
-                  BLOCK_COLOURS.string,
-                  neg(facing),
-                );
-              }
-              const gold = h(k, 1, 21) < 0.2;
-              const hung = hangPoints(from, to, {
-                sagM: STRING_SAG_M,
-                pitchM: LANTERN_PITCH_M,
-                endM: 1.2,
-                dropM: 0.05,
-              });
-              hung.forEach((c, count) =>
-                lantern(n, c, gold && count % 2 === 1 ? BLOCK_COLOURS.lanternGold : BLOCK_COLOURS.lantern),
-              );
-              const count = hung.length;
-              plan.strings.push({
-                edge: e.index,
-                s,
-                lanterns: count,
-                clearance: STRING_HEIGHT_M - STRING_SAG_M - 2 * LANTERN_HALF_H - 0.05,
-              });
-            }
-          }
-        }
-      }
-
-      // The hill's park: trees and benches past the grass band; the tower's spot.
-      for (const [a, b] of runs(side, 'park')) {
-        for (let k = 0; ; k++) {
-          const s = a + 4 + k * TREE_EVERY_M + (h(k, side, 30) - 0.5) * 4;
-          if (s > b - 2) break;
-          const edgeD = edgeAt(side, s);
-          for (const row of [0, 1] as const) {
-            if (row === 1 && h(k, side, 31) < 0.4) continue;
-            const d = edgeD + 1.5 + row * 7 + h(k, side, 32 + row) * 3;
-            if (!clearOf(side, s - 2, s + 2, d - 2, d + 2)) continue;
-            const p = w(s, side * d);
-            const [ns, fs] = soupsAt(e.index, s);
-            const hgt = 6 + 5 * h(k, side, 34 + row);
-            const colour = pick(BLOCK_COLOURS.canopy, h(k, side, 36 + row));
-            tree(ns, { x: p.x, y: w(s, 0).y - 0.05, z: p.z }, hgt, colour);
-            tree(fs, { x: p.x, y: w(s, 0).y - 0.05, z: p.z }, hgt, colour);
-            plan.trees++;
-            plan.treeSpots.push({ edge: e.index, s, d: side * d });
-            note(e.index, s, p);
-          }
-          if (h(k, side, 40) < 0.35) {
-            const d = edgeD + 0.9;
-            if (clearOf(side, s + 2, s + 4.5, d - 0.5, d + 1)) {
-              const fr = frontFrame(side, s + 2, s + 4, d);
-              const y = w(s + 3, 0).y;
-              const [ns] = soupsAt(e.index, s);
-              box(ns, fr.f, 0, fr.width, 0.1, 0.6, y + 0.42, y + 0.5, BLOCK_COLOURS.bench, 'flrt');
-              box(ns, fr.f, 0, fr.width, 0.55, 0.62, y + 0.5, y + 0.95, BLOCK_COLOURS.bench, 'fb');
-            }
-          }
-        }
-        // The city behind the park: a row of plain buildings past the trees, so the park is a park
-        // in the city, not the edge of the world (drawn once the tower's spot is known).
-        for (let k = 0; ; k++) {
-          const s0 = a + 6 + k * 16 + h(k, side, 50) * 3;
-          const s1 = s0 + 10 + 4 * h(k, side, 51);
-          if (s1 > b - 2) break;
-          const d = edgeAt(side, (s0 + s1) / 2) + PARK_BACK_M;
-          if (landmarks.some((f) => boxHit(f, side, s0, s1, d, d + DEPTH_M))) continue;
-          parkRow.push({
-            edge: e.index,
-            side,
-            s0,
-            s1,
-            d,
-            storeys: 2 + Math.floor(h(k, side, 52) * 3),
-            wall: pick(BLOCK_COLOURS.northBeachWalls, h(k, side, 53)),
+          plan.buildings.push({
+            edge,
+            side: sd.side,
+            s0: s,
+            s1: s,
+            front: lot.t0,
+            district: 'side',
+            storeys: lot.storeys,
+            cafe: false,
           });
         }
-        if (side < 0) towerAt = { edge: e.index, s: b, side };
+      }
+      for (const soup of [n, fs])
+        box(
+          soup,
+          f,
+          SIDE_REACH_M,
+          SIDE_REACH_M + DEPTH_M,
+          -half - 2,
+          half + 2,
+          y - FOOT_SINK_M,
+          sd.endTop,
+          pickOf(BLOCK_COLOURS.backWalls, sd.endWallU),
+          'lrt',
+          BLOCK_COLOURS.roof,
+        );
+      // The end facade faces back down the street.
+      for (const soup of [n, fs])
+        quad(
+          soup,
+          at(f, SIDE_REACH_M, -half - 2, y - 1),
+          at(f, SIDE_REACH_M, half + 2, y - 1),
+          at(f, SIDE_REACH_M, half + 2, sd.endTop),
+          at(f, SIDE_REACH_M, -half - 2, sd.endTop),
+          pickOf(BLOCK_COLOURS.backWalls, sd.endFaceU),
+          neg(f.a),
+        );
+      note(edge, s, at(f, SIDE_REACH_M, 0, y));
+    }
+    // Zebras across the road on both sides of the side street.
+    for (const s0 of [s - half + 0.5, s + half - 3.5]) {
+      for (let d = -5.5 + 0.4; d + 0.6 <= 5.5 - 0.4; d += 1.3) {
+        const p = (u: number, v: number) => w(edge, u, v, 0.035);
+        quad(n, p(s0, d), p(s0, d + 0.6), p(s0 + 3, d + 0.6), p(s0 + 3, d), BLOCK_COLOURS.zebra, UP);
       }
     }
+  }
+
+  // The front rows, shoulder to shoulder, each with its second row and, in North Beach, its patio.
+  for (const b of layout.fronts) {
+    const { edge, side, s0, s1, edgeD, len } = b;
+    const f = frameOf(b.f);
+    const ground = groundFn(b.ground);
+    const mid = (s0 + s1) / 2;
+    const [n, fs] = soupsAt(edge, mid);
+    building(n, fs, f, len, ground, lookOf(b));
+    plan.buildings.push({
+      edge,
+      side,
+      s0,
+      s1,
+      front: b.frontD,
+      district: b.district,
+      storeys: b.storeys,
+      cafe: b.cafe,
+    });
+    note(edge, mid, at(f, len / 2, 0, 0));
+    // The second row behind it: a plain box, a different height.
+    for (const soup of [n, fs])
+      box(
+        soup,
+        frameOf(b.back.f),
+        0,
+        b.back.len,
+        0,
+        BACK_DEPTH_M,
+        b.back.foot,
+        b.back.top,
+        pickOf(BLOCK_COLOURS.backWalls, b.back.wallU),
+        'flrt',
+        BLOCK_COLOURS.roof,
+      );
+    // North Beach: the cafe patio behind the rail. A cafe gets two or three tables and
+    // their chairs; the rail and its planters run along every front.
+    if (b.railF) {
+      const railF = frameOf(b.railF);
+      const ry = (t: number) => ground(t);
+      // The patio's tiles, from the rail back to the front.
+      for (const soup of [n, fs])
+        quad(
+          soup,
+          at(railF, 0, 0, ry(0) + 0.04),
+          at(railF, len, 0, ry(len) + 0.04),
+          at(railF, len, PATIO_M, ry(len) + 0.04),
+          at(railF, 0, PATIO_M, ry(0) + 0.04),
+          BLOCK_COLOURS.patio,
+          UP,
+        );
+      for (let t = 0.3; t < len - 0.2; t += 2) {
+        const y = ry(t);
+        box(n, railF, t, t + 0.08, 0.02, 0.1, y - 0.2, y + 0.9, BLOCK_COLOURS.rail, 'flr');
+      }
+      const ya = ry(0);
+      const yb = ry(len);
+      quad(
+        n,
+        at(railF, 0, 0.02, ya + 0.86),
+        at(railF, len, 0.02, yb + 0.86),
+        at(railF, len, 0.02, yb + 0.94),
+        at(railF, 0, 0.02, ya + 0.94),
+        BLOCK_COLOURS.rail,
+        neg(railF.n),
+      );
+      box(fs, railF, 0, len, 0, 0.1, Math.min(ya, yb) - 0.2, Math.max(ya, yb) + 0.9, BLOCK_COLOURS.rail, 'f');
+      for (const t of b.tables) {
+        const y = ry(t);
+        const c = at(railF, t, 1.4, y);
+        // The round top (an octagon), its stem, and two chairs.
+        const ring: Point3[] = [];
+        for (let j = 0; j < 8; j++) {
+          const ang = (j / 8) * Math.PI * 2;
+          ring.push({ x: c.x + Math.cos(ang) * 0.42, y: y + 0.74, z: c.z + Math.sin(ang) * 0.42 });
+        }
+        for (let j = 1; j < 7; j++)
+          tri(n, ring[0] as Point3, ring[j] as Point3, ring[j + 1] as Point3, BLOCK_COLOURS.tableTop, UP);
+        box(
+          n,
+          { o: c, a: railF.a, n: railF.n },
+          -0.05,
+          0.05,
+          -0.05,
+          0.05,
+          y,
+          y + 0.72,
+          BLOCK_COLOURS.chair,
+          'fl',
+        );
+        for (const off of [-0.7, 0.7]) {
+          const cf: Frame = { o: at(railF, t + off, 1.4, 0), a: railF.a, n: railF.n };
+          box(n, cf, -0.22, 0.22, -0.22, 0.22, y + 0.42, y + 0.47, BLOCK_COLOURS.chair, 'flrt');
+          box(
+            n,
+            cf,
+            off > 0 ? 0.18 : -0.22,
+            off > 0 ? 0.22 : -0.18,
+            -0.22,
+            0.22,
+            y + 0.42,
+            y + 0.9,
+            BLOCK_COLOURS.chair,
+            'flr',
+          );
+        }
+        plan.tables.push({ edge, s: s0 + (side > 0 ? t : len - t), d: side * (edgeD + 1.4) });
+      }
+      if (b.planters)
+        for (let t = 1.2; t < len - 1; t += 3.2) {
+          const y = ry(t);
+          box(n, railF, t - 0.5, t + 0.5, 0.2, 0.7, y - 0.1, y + 0.55, BLOCK_COLOURS.planter, 'flrt');
+        }
+    }
+  }
+
+  // Chinatown: lantern strings across the street, where both sides are lantern fronts.
+  for (const str of layout.strings) {
+    const { edge, s, left, right } = str;
+    const y = str.y + STRING_HEIGHT_M;
+    // The cord, one end on each side's facade, and the lanterns hung from it (string-lights.ts).
+    const from = { ...w(edge, s, -left), y };
+    const to = { ...w(edge, s, right), y };
+    const pts = stringPoints(from, to, STRING_SAG_M, 10);
+    const [n] = soupsAt(edge, s);
+    const fwd = sub(w(edge, s - 1, 0), w(edge, s, 0));
+    const facing = { x: fwd.x, y: 0, z: fwd.z };
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p = pts[i] as Point3;
+      const q = pts[i + 1] as Point3;
+      quad(n, p, q, { ...q, y: q.y - 0.06 }, { ...p, y: p.y - 0.06 }, BLOCK_COLOURS.string, facing);
+      quad(n, p, q, { ...q, y: q.y - 0.06 }, { ...p, y: p.y - 0.06 }, BLOCK_COLOURS.string, neg(facing));
+    }
+    const hung = hangPoints(from, to, {
+      sagM: STRING_SAG_M,
+      pitchM: LANTERN_PITCH_M,
+      endM: 1.2,
+      dropM: 0.05,
+    });
+    hung.forEach((c, count) =>
+      lantern(n, c, str.gold && count % 2 === 1 ? BLOCK_COLOURS.lanternGold : BLOCK_COLOURS.lantern),
+    );
+    plan.strings.push({
+      edge,
+      s,
+      lanterns: hung.length,
+      clearance: STRING_HEIGHT_M - STRING_SAG_M - 2 * LANTERN_HALF_H - 0.05,
+    });
+  }
+
+  // The hill's park: trees and benches past the grass band.
+  for (const t of layout.trees) {
+    const p = w(t.edge, t.s, t.side * t.d);
+    const [ns, fs] = soupsAt(t.edge, t.s);
+    const colour = pickOf(BLOCK_COLOURS.canopy, t.colourU);
+    const base = { x: p.x, y: w(t.edge, t.s, 0).y - 0.05, z: p.z };
+    tree(ns, base, t.height, colour);
+    tree(fs, base, t.height, colour);
+    plan.trees++;
+    plan.treeSpots.push({ edge: t.edge, s: t.s, d: t.side * t.d });
+    note(t.edge, t.s, p);
+  }
+  for (const bn of layout.benches) {
+    const fr = frontFrame(road, bn.edge, bn.side, bn.s + 2, bn.s + 4, bn.d);
+    const f = frameOf(fr.f);
+    const y = w(bn.edge, bn.s + 3, 0).y;
+    const [ns] = soupsAt(bn.edge, bn.s);
+    box(ns, f, 0, fr.width, 0.1, 0.6, y + 0.42, y + 0.5, BLOCK_COLOURS.bench, 'flrt');
+    box(ns, f, 0, fr.width, 0.55, 0.62, y + 0.5, y + 0.95, BLOCK_COLOURS.bench, 'fb');
   }
 
   // The tower on the hill: past the finish crest on the last park's left, on its mound.
-  if (towerAt) {
-    const e = road.edges[towerAt.edge];
-    if (e) {
-      // The crest of that road: its highest point along it.
-      let crestS = 0;
-      let crestY = -Infinity;
-      for (let s = 0; s <= e.length; s += 4) {
-        const y = road.toWorld(e.index, s, 0, 0).y;
-        if (y > crestY) {
-          crestY = y;
-          crestS = s;
-        }
+  const tw = layout.tower;
+  if (tw) {
+    const c = tw.c;
+    const base = tw.baseY;
+    const soup: Soup = { pos: [], col: [] };
+    const top = tw.topY;
+    const ringAt = (r: number, y: number, n: number, phase = 0) =>
+      Array.from({ length: n }, (_v, i) => {
+        const ang = phase + (i / n) * Math.PI * 2;
+        return { x: c.x + Math.cos(ang) * r, y, z: c.z + Math.sin(ang) * r };
+      });
+    const band = (lo: Point3[], hiR: Point3[], colour: string) => {
+      for (let i = 0; i < lo.length; i++) {
+        const a = lo[i] as Point3;
+        const b = lo[(i + 1) % lo.length] as Point3;
+        const d = hiR[(i + 1) % hiR.length] as Point3;
+        const u = hiR[i] as Point3;
+        quad(soup, a, b, d, u, colour, { x: (a.x + b.x) / 2 - c.x, y: 0, z: (a.z + b.z) / 2 - c.z });
       }
-      const s = Math.min(e.length, crestS + TOWER_AHEAD_M);
-      const c = road.toWorld(e.index, s, towerAt.side * TOWER_OUT_M, 0);
-      const base = road.toWorld(e.index, s, 0, 0).y - 6;
-      const soup: Soup = { pos: [], col: [] };
-      const top = crestY + 3;
-      const ringAt = (r: number, y: number, n: number, phase = 0) =>
-        Array.from({ length: n }, (_v, i) => {
-          const ang = phase + (i / n) * Math.PI * 2;
-          return { x: c.x + Math.cos(ang) * r, y, z: c.z + Math.sin(ang) * r };
-        });
-      const band = (lo: Point3[], hiR: Point3[], colour: string) => {
-        for (let i = 0; i < lo.length; i++) {
-          const a = lo[i] as Point3;
-          const b = lo[(i + 1) % lo.length] as Point3;
-          const d = hiR[(i + 1) % hiR.length] as Point3;
-          const u = hiR[i] as Point3;
-          quad(soup, a, b, d, u, colour, { x: (a.x + b.x) / 2 - c.x, y: 0, z: (a.z + b.z) / 2 - c.z });
-        }
-      };
-      // The mound: a low cone frustum, flat on top.
-      const m0 = ringAt(36, base, 12);
-      const m1 = ringAt(15, top, 12);
-      band(m0, m1, BLOCK_COLOURS.mound);
-      for (let i = 1; i < 11; i++)
-        tri(soup, m1[0] as Point3, m1[i] as Point3, m1[i + 1] as Point3, BLOCK_COLOURS.mound, UP);
-      // The fluted column: sixteen flutes, a slight taper, a darker band of arches near the top,
-      // and a crown.
-      const flute = (r: number, y: number) =>
-        Array.from({ length: 32 }, (_v, i) => {
-          const ang = (i / 32) * Math.PI * 2;
-          const rr = r * (i % 2 === 0 ? 1 : 0.9);
-          return { x: c.x + Math.cos(ang) * rr, y, z: c.z + Math.sin(ang) * rr };
-        });
-      const y0 = top;
-      const y1 = top + TOWER_HEIGHT_M - 9;
-      const y2 = top + TOWER_HEIGHT_M - 4;
-      const y3 = top + TOWER_HEIGHT_M;
-      band(flute(TOWER_R, y0), flute(TOWER_R * 0.94, y1), BLOCK_COLOURS.tower);
-      band(flute(TOWER_R * 0.94, y1), flute(TOWER_R * 0.93, y2), BLOCK_COLOURS.towerDark);
-      band(ringAt(TOWER_R * 1.02, y2, 16), ringAt(TOWER_R * 0.85, y3, 16), BLOCK_COLOURS.tower);
-      const cap = ringAt(TOWER_R * 0.85, y3, 16);
-      for (let i = 1; i < 15; i++)
-        tri(soup, cap[0] as Point3, cap[i] as Point3, cap[i + 1] as Point3, BLOCK_COLOURS.tower, UP);
-      plan.tower = { x: c.x, y: top, z: c.z };
-      plan.towerSoup = soup;
-    }
+    };
+    // The mound: a low cone frustum, flat on top.
+    const m0 = ringAt(36, base, 12);
+    const m1 = ringAt(15, top, 12);
+    band(m0, m1, BLOCK_COLOURS.mound);
+    for (let i = 1; i < 11; i++)
+      tri(soup, m1[0] as Point3, m1[i] as Point3, m1[i + 1] as Point3, BLOCK_COLOURS.mound, UP);
+    // The fluted column: sixteen flutes, a slight taper, a darker band of arches near the top,
+    // and a crown.
+    const flute = (r: number, y: number) =>
+      Array.from({ length: 32 }, (_v, i) => {
+        const ang = (i / 32) * Math.PI * 2;
+        const rr = r * (i % 2 === 0 ? 1 : 0.9);
+        return { x: c.x + Math.cos(ang) * rr, y, z: c.z + Math.sin(ang) * rr };
+      });
+    const y0 = top;
+    const y1 = top + TOWER_HEIGHT_M - 9;
+    const y2 = top + TOWER_HEIGHT_M - 4;
+    const y3 = top + TOWER_HEIGHT_M;
+    band(flute(TOWER_R, y0), flute(TOWER_R * 0.94, y1), BLOCK_COLOURS.tower);
+    band(flute(TOWER_R * 0.94, y1), flute(TOWER_R * 0.93, y2), BLOCK_COLOURS.towerDark);
+    band(ringAt(TOWER_R * 1.02, y2, 16), ringAt(TOWER_R * 0.85, y3, 16), BLOCK_COLOURS.tower);
+    const cap = ringAt(TOWER_R * 0.85, y3, 16);
+    for (let i = 1; i < 15; i++)
+      tri(soup, cap[0] as Point3, cap[i] as Point3, cap[i + 1] as Point3, BLOCK_COLOURS.tower, UP);
+    plan.tower = { x: c.x, y: top, z: c.z };
+    plan.towerSoup = soup;
   }
   // The buildings behind the parks, clear of the tower's hill.
-  for (const r of parkRow) {
-    const e = road.edges[r.edge];
-    if (!e) continue;
-    const w = (s: number, d: number) => road.toWorld(r.edge, Math.max(0, Math.min(e.length, s)), d, 0);
-    const mid = w((r.s0 + r.s1) / 2, r.side * r.d);
-    if (plan.tower && Math.hypot(mid.x - plan.tower.x, mid.z - plan.tower.z) < TOWER_CLEAR_M) continue;
-    const [sa, sb] = r.side > 0 ? [r.s0, r.s1] : [r.s1, r.s0];
-    const p0 = w(sa, r.side * r.d);
-    const p1 = w(sb, r.side * r.d);
-    const len = Math.hypot(p1.x - p0.x, p1.z - p0.z) || 1;
-    const a = { x: (p1.x - p0.x) / len, y: 0, z: (p1.z - p0.z) / len };
-    const inward = w((r.s0 + r.s1) / 2, r.side * (r.d + 1));
-    let nn = { x: a.z, y: 0, z: -a.x };
-    if (nn.x * (inward.x - mid.x) + nn.z * (inward.z - mid.z) < 0) nn = { x: -nn.x, y: 0, z: -nn.z };
-    const f: Frame = { o: { ...p0, y: 0 }, a, n: nn };
-    const y = Math.max(w(r.s0, 0).y, w(r.s1, 0).y);
-    const top = y + GROUND_STOREY_M + STOREY_M * (r.storeys - 1) + 0.8;
+  for (const r of layout.parkRows) {
+    const f = frameOf(r.f);
+    const mid = w(r.edge, (r.s0 + r.s1) / 2, r.side * r.d);
     const [n, fs] = soupsAt(r.edge, (r.s0 + r.s1) / 2);
     for (const soup of [n, fs])
       box(
         soup,
         f,
         0,
-        len,
+        r.len,
         0,
         DEPTH_M,
-        Math.min(w(r.s0, 0).y, w(r.s1, 0).y) - FOOT_SINK_M,
-        top,
-        r.wall,
+        r.foot,
+        r.top,
+        pickOf(BLOCK_COLOURS.northBeachWalls, r.wallU),
         'flrt',
         BLOCK_COLOURS.roof,
       );
     for (let st = 1; st < r.storeys; st++) {
-      const wy = y + GROUND_STOREY_M + STOREY_M * (st - 1) + 0.8;
-      panel(n, f, 0.8, len - 0.8, wy, wy + 1.6, BLOCK_COLOURS.window);
+      const wy = r.y + GROUND_STOREY_M + STOREY_M * (st - 1) + 0.8;
+      panel(n, f, 0.8, r.len - 0.8, wy, wy + 1.6, BLOCK_COLOURS.window);
     }
     plan.buildings.push({
       edge: r.edge,
