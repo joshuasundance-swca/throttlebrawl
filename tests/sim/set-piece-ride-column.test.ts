@@ -36,6 +36,7 @@ import {
   type RoadHit,
 } from '../../src/render/road-clear.test-util';
 import type { PropSnapshot, SimConfig } from '../../src/sim/api';
+import { copsState, lawProps } from '../../src/sim/cops';
 import { createSimWithWorld } from '../../src/sim/create';
 import {
   ON_VEHICLE,
@@ -139,6 +140,10 @@ function ride(cfg: SimConfig): { seen: Seen[]; pieces: string[] } {
       }
       seen.set(q.id, { prop: p, vehicle });
     }
+    // The law's own props (sim/cops: the END OF JURISDICTION sign, a radar trooper's radar) are drawn the same
+    // way and met by the same rule (sim/modifiers/law-props.ts), so they are held to the same check.
+    for (const p of lawProps(world, cfg))
+      if (!seen.has(p.id) && !p.moving) seen.set(p.id, { prop: p, vehicle: null });
     if (st.pieces.length > 0 && st.pieces.every((p) => p.phase === 2)) break;
   }
   const pieces = setPieceState(world).pieces.map((p) => `${p.piece}${p.phase === 0 ? ' (never live)' : ''}`);
@@ -281,6 +286,8 @@ describe('the ride column through every live set piece: what is drawn has a sim 
       for (const f of failures) print(`  GHOST: ${f}`);
       // The check can see: the race's props cut the column (the cones, flares and people in the lanes).
       expect(cut, 'drawn props in the ride column').toBeGreaterThan(0);
+      // The law's own sign stands in each of these races, so it is held to the same check (a ghost of it fails).
+      expect(kinds.get('sign:jurisdiction'), 'the END OF JURISDICTION sign was in the check').toBe(1);
       expect(failures).toEqual([]);
     }, 600_000);
   }
@@ -316,6 +323,27 @@ describe('the ride column through every live set piece: what is drawn has a sim 
     expect(ghostOf(cols, look, float, skirt(0)).ghost, 'a skirt at the float').toBeNull();
     print(
       `[examined] control: the hay load with no truck, ${loose.cuts} cuts, a ghost on ${loose.ghost?.edge} s ${loose.ghost?.s.toFixed(0)}; a skirt 1.5 m past a float (${float.prop.piece}), ${wide.cuts} cuts, a ghost on ${wide.ghost?.edge} s ${wide.ghost?.s.toFixed(0)}; at the float's width, none`,
+    );
+  }, 600_000);
+
+  it("the negative control for the law's own sign: its post drawn in a lane has no sim shape and is found; the sign where it stands is not", () => {
+    const { cfg, seen, cols } = rideOf(RACES[2] as Race);
+    const look = createFlatLook();
+    const sign = seen.find((s) => s.prop.kind === 'sign' && s.prop.variant === 'jurisdiction');
+    expect(sign, 'the sheriff sign stood').toBeDefined();
+    if (!sign) return;
+    expect(ghostOf(cols, look, sign).ghost, 'the sign where it stands').toBeNull();
+    // The same post, 3.6 m of it, 0.14 m square, drawn at d 1.5 on the road the sign stands by (a lane).
+    const { world } = createSimWithWorld(cfg);
+    const st = copsState(world);
+    const at = cfg.road.toWorld(st.lineEdge, st.lineS, 1.5, 0);
+    const post = new Mesh(new BoxGeometry(0.14, 3.6, 0.14), new MeshBasicMaterial());
+    post.position.set(at.x, at.y + 1.8, at.z);
+    const lane = ghostOf(cols, look, sign, post);
+    expect(lane.cuts, 'the post cuts the ride column').toBeGreaterThan(0);
+    expect(lane.ghost, 'the post in a lane has no sim shape').not.toBeNull();
+    print(
+      `[examined] control: the law sign's post drawn in a lane, ${lane.cuts} cuts, a ghost on ${lane.ghost?.edge} s ${lane.ghost?.s.toFixed(0)}; the sign where it stands, none`,
     );
   }, 600_000);
 });

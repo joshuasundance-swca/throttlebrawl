@@ -134,3 +134,135 @@ describe('the asset manifest after the host asked for a wait', () => {
     expect(h.asked).toHaveLength(1);
   });
 });
+
+// The wait's end (lane T2, after polish L's check, punch item 2): a model the host held back is asked
+// for again when its wait has passed, not only at the next race. The manifest reads the wait from the
+// answer's Retry-After (the loader's own hold answers 429 with the wait that is left) and tells whoever
+// listens (`onRetryReady`) once it is over. The timer is scripted here: a test fires it by hand.
+describe('the asset manifest when host wait ends', () => {
+  /** A scheduler that only records: `fire(i)` runs the i-th timer, as if its wait had passed. */
+  function timers() {
+    const set: { ms: number; run: () => void; cancelled: boolean }[] = [];
+    return {
+      later: (run: () => void, ms: number) => {
+        const t = { ms, run, cancelled: false };
+        set.push(t);
+        return () => {
+          t.cancelled = true;
+        };
+      },
+      set,
+      fire: (i: number) => {
+        const t = set[i];
+        if (t && !t.cancelled) t.run();
+      },
+    };
+  }
+  const held = (retryAfter: string, times = 1): Step[] =>
+    Array.from({ length: times }, () => ({ status: 429, retryAfter }));
+
+  it('tells its listeners once the wait it was held by has passed, and the next load gets the model', async () => {
+    const h = host(held('30'));
+    const t = timers();
+    const m = createAssetManifest(() => [deacon], { baseUrl: BASE, fetchFn: h.fn, later: t.later });
+    const ready: string[] = [];
+    m.onRetryReady((id) => ready.push(id));
+    expect((await load(m)).retryable).toBe(true);
+    // One timer, no sooner than the wait and not much later.
+    expect(t.set).toHaveLength(1);
+    expect(t.set[0]?.ms).toBeGreaterThanOrEqual(30_000);
+    expect(t.set[0]?.ms).toBeLessThan(31_000);
+    expect(ready).toEqual([]);
+    t.fire(0);
+    expect(ready).toEqual([ID]);
+    expect((await load(m)).fellBack).toBe(false);
+    expect(h.asked).toHaveLength(2);
+  });
+
+  it('stops listening when told to', async () => {
+    const h = host(held('30'));
+    const t = timers();
+    const m = createAssetManifest(() => [deacon], { baseUrl: BASE, fetchFn: h.fn, later: t.later });
+    const ready: string[] = [];
+    const off = m.onRetryReady((id) => ready.push(id));
+    await load(m);
+    off();
+    t.fire(0);
+    expect(ready).toEqual([]);
+  });
+
+  // Negative controls: no wait, nothing to be told about.
+  it.each([
+    ['a 404', 404],
+    ['a 503 with no Retry-After', 503],
+    ['a connection failure', 'network' as const],
+    ['a 429 with a Retry-After of 0', { status: 429, retryAfter: '0' }],
+    ['a 429 asking for more than 5 minutes', { status: 429, retryAfter: '3600' }],
+    ['a 429 whose Retry-After cannot be read', { status: 429, retryAfter: 'soon' }],
+  ] as [string, Step][])('sets no timer after %s', async (_name, step) => {
+    const h = host([step]);
+    const t = timers();
+    const m = createAssetManifest(() => [deacon], { baseUrl: BASE, fetchFn: h.fn, later: t.later });
+    await load(m);
+    expect(t.set).toHaveLength(0);
+  });
+
+  it('says nothing when the model has loaded by then (the next race asked first)', async () => {
+    const h = host(held('30'));
+    const t = timers();
+    const m = createAssetManifest(() => [deacon], { baseUrl: BASE, fetchFn: h.fn, later: t.later });
+    const ready: string[] = [];
+    m.onRetryReady((id) => ready.push(id));
+    await load(m);
+    expect((await load(m)).fellBack).toBe(false);
+    t.fire(0);
+    expect(ready).toEqual([]);
+  });
+
+  it('asks again for a wait only a few times in a row, so a host that keeps holding is not chased', async () => {
+    const h = host(held('1', 10));
+    const t = timers();
+    const m = createAssetManifest(() => [deacon], { baseUrl: BASE, fetchFn: h.fn, later: t.later });
+    const ready: string[] = [];
+    m.onRetryReady((id) => {
+      ready.push(id);
+      void load(m);
+    });
+    await load(m);
+    for (let i = 0; i < 10; i++) {
+      t.fire(i);
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    expect(ready).toHaveLength(3);
+    expect(t.set).toHaveLength(3);
+  });
+});
+
+// Polish L's punch item 3: #666's `res.body.cancel()` on a failed model answer showed in the network record
+// as a net::ERR_ABORTED about 10 ms after each one. The answer's small error body is left unread instead.
+describe('a failed model answer is not cancelled', () => {
+  it.each([404, 429, 503])('leaves the body of a %s answer alone', async (status) => {
+    let cancelled = 0;
+    const fn = (() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start: (c) => {
+              c.enqueue(bytes('no'));
+              c.close();
+            },
+            cancel: () => {
+              cancelled++;
+            },
+          }),
+          { status },
+        ),
+      )) as typeof fetch;
+    const m = createAssetManifest(() => [deacon], { baseUrl: BASE, fetchFn: fn });
+    expect((await load(m)).fellBack).toBe(true);
+    await Promise.resolve();
+    expect(cancelled).toBe(0);
+  });
+});

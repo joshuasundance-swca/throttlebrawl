@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { HttpLoadError } from '../content';
+import { WAIT_SLOT } from '../ui';
 import {
   clearLoadRetry,
   failureOf,
   loadFailedText,
   offerLoadRetry,
   routesNote,
+  routesNoteView,
   type LoadFailure,
   type RetryCard,
 } from './load-retry';
@@ -176,5 +178,34 @@ describe("the word in the route row's place", () => {
     expect(routesNote('San Francisco', { kind: 'gone', status: 404 })).toBe(
       "San Francisco did not load: this build's files are gone. Reload the game for the newest build.",
     );
+  });
+});
+
+// Polish batch I's check, punch 4: inside the host's wait the word said "Tap Race to try again
+// shortly" for the whole wait, and after a 404 it said "Reload the game" with no button.
+describe("the route row's word, inside the host's wait and after a 404", () => {
+  const sf = 'San Francisco';
+  it('carries the wait slot while the host asked for a wait, and says shortly when it did not', () => {
+    expect(routesNote(sf, { kind: 'host', status: 429, waitMs: 30_000 })).toBe(
+      `San Francisco did not load: the game server had a problem. Tap Race to try again${WAIT_SLOT}.`,
+    );
+    // Control: no wait asked for, so the old words stand and there is no slot to fill.
+    const plain = routesNote(sf, { kind: 'host', status: 503, waitMs: 0 });
+    expect(plain).toContain('Tap Race to try again shortly.');
+    expect(plain).not.toContain(WAIT_SLOT);
+    expect(routesNote(sf, NETWORK)).not.toContain(WAIT_SLOT);
+  });
+
+  it('gives a missing build the Reload action, and nothing else an action', () => {
+    let reloaded = 0;
+    const gone = routesNoteView(sf, { kind: 'gone', status: 404 }, () => reloaded++);
+    expect(gone.text).toBe(routesNote(sf, { kind: 'gone', status: 404 }));
+    expect(gone.action?.label).toBe('Reload');
+    gone.action?.run();
+    expect(reloaded).toBe(1);
+    // Controls: the states with no Reload to offer have no action.
+    for (const state of [NETWORK, 'loading', { kind: 'host', status: 503, waitMs: 0 }] as const)
+      expect(routesNoteView(sf, state, () => reloaded++).action).toBeUndefined();
+    expect(reloaded).toBe(1);
   });
 });

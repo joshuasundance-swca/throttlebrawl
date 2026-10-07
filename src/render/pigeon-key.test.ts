@@ -49,6 +49,7 @@ function fileManifest(): AssetManifest {
     resolve: () => null,
     progress: () => ({ total: 0, done: 0, fellBack: 0, bytesLoaded: 0, bytesTotal: 0, perAsset: {} }),
     onProgress: () => () => undefined,
+    onRetryReady: () => () => undefined,
     load<T>(id: string, standIn: () => T, o?: { decode?: (data: ArrayBuffer) => T | Promise<T> }) {
       const running = inFlight.get(id);
       if (running) return running as Promise<never>;

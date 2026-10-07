@@ -121,6 +121,8 @@ import {
   truckBodyAt,
   truckBodyTop,
   truckClosingMps,
+  truckDeckAt,
+  truckDeckTop,
   type MovingDecks,
 } from './features';
 import {
@@ -140,7 +142,6 @@ import {
   type OverMark,
 } from './gap';
 import {
-  clearOfVehicleTop,
   holdsBike,
   inRiderFrame,
   JOLT_WOBBLE_MPS,
@@ -521,6 +522,12 @@ export const COAST_DECEL = 0.6;
  * rider's reach (truckSideContact), so stepping out is not a scrape (it was 0.3, the bike's middle).
  */
 const TRUCK_STEP_OUT_M = HAZARD_REACH_D_M + 0.05;
+/**
+ * How far under a carrier's top deck a rider in the air must be to have flown into the truck, m, and how
+ * far under it one may come down onto it from: a rider who leaves the lip platform is on the deck's
+ * level, and a few millimetres of the first tick's fall and the rounding of its height are no hit.
+ */
+const TRUCK_DECK_TOLERANCE_M = 0.05;
 const GRAVITY = 9.81;
 /**
  * 1/s: how fast the bike reaches the steered heading (Arcade). The Free steering style turns the
@@ -1269,10 +1276,14 @@ function truckContact(
 ): void {
   const pos = m.pos;
   const truck = rampTruckAt(config, pos.edge, pos.s, pos.d, decks.next);
+  // A rider on the carrier's empty top deck is on a top that holds the bike, not on the lip (its jump is
+  // over, at any speed): the cab's front is a wall to it, and no clearing speed carries it through.
+  const onDeck = supportKeyOf(world, m.id).startsWith('d:');
   // Off the lip fast enough to clear the body, in the tick that crosses into it: a launch, not a
   // contact (the take-off rule below sends it airborne over the truck).
   const launch =
     !!truck &&
+    !onDeck &&
     before.deck > KERB_M &&
     truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next) === truck &&
     clearsBody(truck, m.speed, pos.dir, GRAVITY * accelMultiplierOf(config));
@@ -1302,8 +1313,10 @@ function truckContact(
   pos.s = before.s;
   pos.d = before.d;
   m.speed = 0;
-  // Up on the truck (its ramp or lip platform) and into its body, the parked car: thrown off the
-  // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck).
+  // Up on the truck (its ramp, its lip platform or its empty top deck) and into its cab: thrown off the
+  // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck; a
+  // rider on a top cannot turn round or back off, so a wall there that only wobbled him would hold him
+  // for good).
   const crash = before.deck > KERB_M;
   wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash, vehicle: true });
 }
@@ -2061,8 +2074,9 @@ function toWorldFrame(world: World, config: SimConfig, m: Mover): void {
   }
   m.speed = Math.sqrt(along * along + across * across);
   m.yaw = m.speed > 1e-9 ? clamp(atan2(across, along), -1.2, 1.2) : 0;
-  // Off a vehicle's top he moves away from it: clear of it while their boxes part (sim/riders/supports.ts).
-  clearOfVehicleTop(world, m.id);
+  // Off a vehicle's top it is solid to him again at once (the maintainer's rule, 2026-10-06: nothing is a
+  // ghost): its box still under his as he drops past its edge is traffic's to resolve, by its one rule at
+  // a top's edge (sim/traffic `contacts`: clear of it the short way, or met by the closing speed).
   leaveSupport(world, m.id);
 }
 
@@ -2594,8 +2608,18 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // supports.ts), where it stands as the tick ends, the rider lands on it as on the road (land()).
   const hNow = y - surface;
   const here = { edge: pos.edge, s: pos.s, d: pos.d, ahead: dt };
+  // A carrier's top deck is where a rider leaving its lip platform comes down: it left a hair under the
+  // deck's level (its flat ground ended, and gravity took the first tick), and is on the deck's level
+  // still (`TRUCK_DECK_TOLERANCE_M`).
   const fromAbove = tops
-    ? supportAt(world, config, m, here, decks, (t) => hBefore >= t - 1e-6 && hNow <= t)
+    ? supportAt(
+        world,
+        config,
+        m,
+        here,
+        decks,
+        (t, key) => hBefore >= t - (key.startsWith('d:') ? TRUCK_DECK_TOLERANCE_M : 1e-6) && hNow <= t,
+      )
     : null;
   // A structure's top a rider meets no more than a kerb below its edge is stepped up onto, as a kerb is
   // on the ground (sim/riders/structures.ts): it is ground, not a wall.
@@ -2604,13 +2628,24 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     : null;
   const onTop = caught && (!fromAbove || caught.top > fromAbove.top) ? caught : fromAbove;
   const body = onTop ? null : truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next);
-  if (body && y - surface < truckBodyTop(body) && !clearsBody(body, m.speed, pos.dir, gravity)) {
+  // Under the carrier's empty top deck (the car that stood on it is gone, the frame and the lower car are
+  // not): flown into from the side below its top, the truck is a wall at any speed (the speed that
+  // clears a truck is a lip's, and a rider launched off the lip is above the deck). From above, the
+  // deck is a top a rider lands on (`onTop`).
+  const beneath = onTop ? null : truckDeckAt(config, pos.edge, pos.s, pos.d, decks.next);
+  const hit =
+    body && y - surface < truckBodyTop(body) && !clearsBody(body, m.speed, pos.dir, gravity)
+      ? body
+      : beneath && y - surface < truckDeckTop(beneath) - TRUCK_DECK_TOLERANCE_M
+        ? beneath
+        : null;
+  if (hit) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
     st.wobble[m.id] = 0;
-    const impact = truckClosingMps(body, m.speed, pos.dir);
+    const impact = truckClosingMps(hit, m.speed, pos.dir);
     const data = { cause: 'barrier', speed: m.speed, impactMps: impact, yaw: m.yaw, side: 1 };
-    emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
+    emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: hit.id });
     return;
   }
   // A solid hazard (run W-U) or a solid piece of street furniture stands up from the road: flying into it

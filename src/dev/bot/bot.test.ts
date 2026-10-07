@@ -205,6 +205,32 @@ describe('dev/bot: the BotController', () => {
     expect(b.brake).toBeGreaterThan(0);
   });
 
+  it("boxed in at a standstill, it follows a car going its way off the line at that car's pace", () => {
+    // Dense traffic on Bridge City (the never-stuck lane): stopped with no lane free, the bot braked
+    // whatever the car in its line did, so a queue moving at 9 m/s held it still for 941 ticks.
+    const oncoming = mover(6, { kind: 'vehicle', s: 180, d: -1.7, speed: 9 });
+    oncoming.road = { ...oncoming.road, dir: -1 };
+    const moving = mover(5, { kind: 'vehicle', s: 125, d: 1.7, speed: 9 });
+    const a = blank();
+    createBot().drive(snapshot(5, [mover(ME, { speed: 0 }), moving, oncoming]), ME, route(), a);
+    expect(a.throttle).toBe(1);
+    expect(a.brake).toBe(0);
+    // Up to that pace it holds it (no throttle, no brake); a stopped car, or one 3 m ahead, stops it.
+    const b = blank();
+    createBot().drive(snapshot(5, [mover(ME, { speed: 9 }), moving, oncoming]), ME, route(), b);
+    expect(b.throttle).toBe(0);
+    expect(b.brake).toBe(0);
+    const stopped = mover(5, { kind: 'vehicle', s: 125, d: 1.7, speed: 0 });
+    const c = blank();
+    createBot().drive(snapshot(5, [mover(ME, { speed: 9 }), stopped, oncoming]), ME, route(), c);
+    expect(c.throttle).toBe(0);
+    expect(c.brake).toBeGreaterThan(0);
+    const close = mover(5, { kind: 'vehicle', s: 103, d: 1.7, speed: 9 });
+    const d = blank();
+    createBot().drive(snapshot(5, [mover(ME, { speed: 9 }), close, oncoming]), ME, route(), d);
+    expect(d.brake).toBeGreaterThan(0);
+  });
+
   it('prefers a shortcut lane in its direction, once', () => {
     const withShortcut: LaneInfo[] = [
       ...LANES,
@@ -420,6 +446,34 @@ describe('bot: a split zone across the oncoming lanes, and a remount', () => {
     expect(a.steer).toBeLessThan(-0.3);
   });
 
+  it('a car coming the other way in the zone line: it rides on, on its own side, and never stops in its path', () => {
+    // Bridge City's Broadway (polish H's punch item 5; seed 23 headless, the bot alone): following
+    // that car meant braking to a stop at full lock across the centre line, where the cars coming
+    // down the road stop for the bot in turn. It sat there 460 ticks; the live check's, 4,000+.
+    const oncoming = mover(6, { kind: 'vehicle', s: 275, d: -1.7, speed: 10 });
+    oncoming.road = { ...oncoming.road, dir: -1 };
+    const a = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 245, d: 0.5, speed: 30 }), oncoming]), ME, zoned(), a);
+    expect(a.brake).toBe(0);
+    expect(a.throttle).toBe(1);
+    expect(a.steer).toBeGreaterThan(0); // toward its own lane (d 1.7), not across into the car's
+    // Already stopped across the centre line, nose to nose with a car waiting for it: it gets going.
+    const stopped = mover(7, { kind: 'vehicle', s: 262, d: -1.7, speed: 0 });
+    stopped.road = { ...stopped.road, dir: -1 };
+    const b = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 250, d: -0.3, speed: 0 }), stopped]), ME, zoned(), b);
+    expect(b.brake).toBe(0);
+    expect(b.throttle).toBeGreaterThan(0);
+    expect(b.steer).toBeGreaterThan(0);
+    // A car going its own way in the zone line is still followed, as on road-2's ramp (the check
+    // can see a stop): the bot holds the zone behind it.
+    const ahead = mover(8, { kind: 'vehicle', s: 275, d: -3.3, speed: 20 });
+    const c = blank();
+    createBot().drive(snapshot(3, [mover(ME, { s: 255, d: -3.3, speed: 30 }), ahead]), ME, zoned(), c);
+    expect(c.throttle).toBe(0);
+    expect(c.brake).toBeGreaterThan(0);
+  });
+
   it('a remount inside the approach keeps to its own side, and does not go back for the zone', () => {
     const { bot, a } = remounted(245, 245);
     expect(a.steer).toBeGreaterThan(0); // toward its own lane (d 1.7), not the oncoming one
@@ -495,7 +549,10 @@ describe('bot: a remount keeps to its own side (playtest 4, run C: 2 of 8 remoun
     for (const later of [0, REMOUNT_OWN_SIDE_TICKS - 3]) {
       const { a } = remounted({ d: 2 }, later, [car(), outerCar()]);
       expect(a.steer, `${later} ticks on`).toBeGreaterThan(-0.05); // never toward the oncoming lane (d -2)
-      expect(a.brake, `${later} ticks on`).toBeGreaterThan(0); // follows at the blocker's pace
+      // Follows at the blocker's pace: from 8 m/s it rides up to the car's 20 m/s behind it, in its
+      // own lane (it braked whatever the car did until the never-stuck lane).
+      expect(a.throttle, `${later} ticks on`).toBe(1);
+      expect(a.brake, `${later} ticks on`).toBe(0);
     }
   });
 
