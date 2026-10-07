@@ -1,7 +1,8 @@
 // What the pre-push hook tests (scripts/push-plan.mjs, docs/engineering.md "Pre-commit hooks and
 // leak scan"): nothing for a docs-only push, the whole unit tier when a dependency or config file
 // changed, and otherwise only the unit test files the push names: the test files it changed and the
-// tests named after the source files it changed. CI runs every test on the PR.
+// tests named after the source files it changed, plus bounded authored contact controls for their
+// shared inputs. CI runs every test on the PR.
 import { describe, expect, it } from 'vitest';
 import { planPush } from './push-plan.mjs';
 
