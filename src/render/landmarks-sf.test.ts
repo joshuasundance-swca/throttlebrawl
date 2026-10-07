@@ -97,6 +97,108 @@ describe('the Golden Gate kit on the baked bridge', () => {
   });
 });
 
+// The one live check of 2026-10-07 (punch item 2): a wide red plate was drawn past the Golden Gate's railing at
+// the deck's height, and the falling bodies tumbled across it before dropping through it. It is the kit's bay
+// (`gg_bay`): past the deck's own width (`deck_w_m`, 27.6 m, the road's kerb to kerb) it carries a 4.7 m
+// walkway slab each side, its top at the deck's top, out to the truss under the cables. The course ends at the
+// railing, with the bay below (the decided Golden Gate drop), and the structure plan holds no walkway, so under
+// the physical world's rule (what is drawn is what is met) it is not drawn: the drawn deck ends at the railing.
+describe('the Golden Gate draws nothing at the deck’s height past its railing', () => {
+  type P = { x: number; y: number; z: number };
+  /** Drawn area of the layer's triangles near a point of the bridge, past the deck's edge, at the deck's height. */
+  function pastTheRailing(layer: LandmarkLayer, road: RoadNetwork, edge: number, s: number) {
+    const centre = road.toWorld(edge, s, 0, 0);
+    let mesh: Mesh | null = null;
+    layer.group.traverse((o) => {
+      if ((o as { isMesh?: boolean }).isMesh && !mesh) mesh = o as Mesh;
+    });
+    if (!mesh) throw new Error('no landmark mesh');
+    const geo = (mesh as Mesh).geometry;
+    const pos = geo.getAttribute('position');
+    const index = geo.getIndex();
+    if (!index) throw new Error('no index');
+    let plate = 0;
+    const halfW = road.edges[edge]?.dMax ?? NaN;
+    for (let k = 0; k + 2 < geo.drawRange.count; k += 3) {
+      const p = [0, 1, 2].map((j) => {
+        const i = index.getX(k + j);
+        return { x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) };
+      }) as [P, P, P];
+      if (p.some((q) => Math.hypot(q.x - centre.x, q.z - centre.z) > 40)) continue;
+      // Across the road from its centre line, measured in the frame (a projection would clamp to the band),
+      // and up from the road's surface there.
+      const rd = p.map((q) => {
+        const r = road.project(q.x, q.z, edge);
+        const o = road.toWorld(r.edge, r.s, 0, 0);
+        const f = road.frameAt(r.edge, r.s);
+        return { d: Math.abs((q.x - o.x) * -f.tz + (q.z - o.z) * f.tx), up: q.y - o.y };
+      });
+      // Wholly past the railing (a corner may sit on it), its middle short of the truss under the cables
+      // (17.3 m out), at the deck's height (the bays are not sheared to the road's grade: within half a
+      // metre), and lying flat.
+      if (!rd.every((q) => q.d > halfW - 0.05 && Math.abs(q.up) < 0.5)) continue;
+      const mid = rd.reduce((n, q) => n + q.d, 0) / 3;
+      if (mid <= halfW + 0.05 || mid >= 17.3) continue;
+      const [a, b, c] = p;
+      const n = [
+        (b.y - a.y) * (c.z - a.z) - (b.z - a.z) * (c.y - a.y),
+        (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z),
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x),
+      ];
+      const twice = Math.hypot(n[0]!, n[1]!, n[2]!);
+      if (twice > 1e-9 && Math.abs(n[1]!) / twice > 0.9) plate += twice / 2;
+    }
+    return { plate, halfW };
+  }
+
+  it('near and mid: no plate past the railing (the kit node itself, uncut, is the control)', async () => {
+    const road = track('osm-sf-golden-gate');
+    const kits = await kitsFor(road);
+    const bridge = landmarkPlacements(road).find((p) => p.node === 'gg_bridge');
+    if (!bridge) throw new Error('no bridge');
+    const s = (bridge.feature.s0 + bridge.feature.s1) / 2 + 100;
+    const at = road.toWorld(bridge.edge, s, 0, 0);
+    const layer = new LandmarkLayer(kits, look, { road });
+    layer.update(at.x, at.z);
+    const near = pastTheRailing(layer, road, bridge.edge, s);
+    // The mid level: the camera 700 m along, past LANDMARK_NEAR_M of these bays.
+    const far = road.toWorld(bridge.edge, s + 700, 0, 0);
+    layer.update(far.x, far.z);
+    const mid = pastTheRailing(layer, road, bridge.edge, s);
+    // The control: the same layer with the kit's bays left whole (their deck width not given, so not cut).
+    const gg = kits.get('golden-gate');
+    if (!gg) throw new Error('no golden-gate kit');
+    const whole = new Map(kits);
+    whole.set('golden-gate', {
+      ...gg,
+      nodes: new Map(
+        [...gg.nodes].map(([k, n]) => {
+          if (!k.startsWith('gg_bay')) return [k, n];
+          const { deck_w_m: _, ...extras } = n.extras;
+          return [k, { ...n, extras }];
+        }),
+      ),
+    });
+    const control = new LandmarkLayer(whole, look, { road });
+    control.update(at.x, at.z);
+    const nearControl = pastTheRailing(control, road, bridge.edge, s);
+    control.update(far.x, far.z);
+    const midControl = pastTheRailing(control, road, bridge.edge, s);
+    const deckHalf = (gg.nodes.get('gg_bay_lod0')?.extras['deck_w_m'] ?? NaN) / 2;
+    stdout.write(
+      `[examined] 40 m round s ${s.toFixed(0)} (road edge ±${near.halfW}, the kit's deck_w_m / 2 ${deckHalf}): flat drawn area past the railing at the deck's height, near ${near.plate.toFixed(2)} m², mid ${mid.plate.toFixed(2)} m²; with the bays whole ${nearControl.plate.toFixed(1)} m² and ${midControl.plate.toFixed(1)} m²
+`,
+    );
+    // The kit's deck is the road's: the railing stands at its edge.
+    expect(deckHalf).toBeCloseTo(near.halfW, 6);
+    expect(near.plate).toBeLessThan(0.01);
+    expect(mid.plate).toBeLessThan(0.01);
+    // The checker sees the walkway when it is drawn: about 2 × 3.5 m × 15.24 m a bay, several bays in range.
+    expect(nearControl.plate).toBeGreaterThan(100);
+    expect(midControl.plate).toBeGreaterThan(100);
+  });
+});
+
 // Playtest 4, P1 (the wave C check: "no suspender ropes"): the real kit's bays set where the ropes hang.
 describe('the Golden Gate hangs suspender ropes on the real bridge', () => {
   it('draws a rope at every bay of both cables, in the one mesh, with the real kit', async () => {
