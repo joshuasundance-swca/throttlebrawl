@@ -9,7 +9,7 @@
 // with `riders.supports` off, the old rules (a roof is a contact by the fall speed; the rest is passed
 // over). Fixture roads, only the riders and traffic stepping, counted in sim ticks.
 import { describe, expect, it } from 'vitest';
-import { FNV_OFFSET, tuningDefaults } from '../../core';
+import { cos, FNV_OFFSET, sin, tuningDefaults } from '../../core';
 import {
   createRoadNetwork,
   createRouteProgress,
@@ -34,6 +34,7 @@ import {
   addMover,
   createWorld,
   hashPlain,
+  riderHitbox,
   stepWorld,
   worldHash,
   type Mover,
@@ -126,10 +127,12 @@ interface ConfigOptions {
   tuning?: Record<string, number>;
   features?: readonly BakedFeature[];
   tags?: readonly BakedTag[];
+  /** The road's curvature, 1/m (positive: a right turn); 0, a straight road. */
+  kappa?: number;
 }
 
 function makeConfig(opts: ConfigOptions = {}): SimConfig {
-  const bundle = fixtureNetwork([{ id: 'a', lengthM: 2000, kappa: 0 }]);
+  const bundle = fixtureNetwork([{ id: 'a', lengthM: 2000, kappa: opts.kappa ?? 0 }]);
   const road0 = bundle.roads[0];
   if (!road0) throw new Error('no road');
   const road = createRoadNetwork({
@@ -614,8 +617,8 @@ describe('the chalk mark (Air that pays) knows the tops', () => {
 
 describe('determinism', () => {
   /** The semi ride, then off its tail: the world hash after every tick. */
-  function rideHashes(): number[] {
-    const sc = scene(makeConfig(), { s: 400, d: 0, speed: 20, air: { h: 4.05, vy: -1 } });
+  function rideHashes(kappa = 0): number[] {
+    const sc = scene(makeConfig({ kappa }), { s: 400, d: 0, speed: 20, air: { h: 4.05, vy: -1 } });
     const vid = sc.vehicle(T_SEMI, 400);
     sc.rider.pos.d = laneD(sc, vid);
     const out: number[] = [];
@@ -631,6 +634,13 @@ describe('determinism', () => {
     const a = rideHashes();
     const b = rideHashes();
     expect(b).toEqual(a);
+  });
+
+  it('a ride on a semi round a bend (carried along its path, off its edge) records and replays the same', () => {
+    const a = rideHashes(1 / 300);
+    const b = rideHashes(1 / 300);
+    expect(b).toEqual(a);
+    expect(a).not.toEqual(rideHashes());
   });
 
   it('a race that never stands on a support hashes as before: the same state, the switch on or off', () => {
@@ -825,5 +835,162 @@ describe('the landing surge on a top yields to the brake', () => {
       `[examined] coasting after the landing: surge carried ${coasting.carry.toFixed(2)} m, no surge ${flat.carry.toFixed(2)} m`,
     );
     expect(coasting.carry).toBeGreaterThan(flat.carry + 1);
+  });
+});
+
+// The live check of 2026-10-07 (the maintainer's rule of 2026-10-06, [decided]: one consistent physics,
+// what is drawn is what is met, nothing is a ghost). On I-5 by Lake Samish a rider braked to a standstill
+// on a semi's roof slid 1.24 m sideways in 5 s and dropped off its side: the top carried him by its own
+// straight-line velocity, with no turn, on a bend of 350 to 840 m radius. Then he fell through the
+// trailer (48 ticks inside it) because the vehicle he left was a ghost to him until they were apart, and
+// a rider sliding off a semi's back had his nose inside its tail for 10 to 25 ticks. A moving top carries
+// its rider along its own path, and a vehicle a rider has left is solid to him again at once.
+describe('a moving top carries its rider along its own path; the one he left is solid at once', () => {
+  /** Where the rider's middle is on a vehicle's box: along its heading and across it, m. */
+  function onBox(sc: Scene, vid: number): { du: number; dc: number } {
+    const v = sc.world.movers[vid];
+    if (!v) throw new Error('no vehicle');
+    const road = sc.config.road;
+    const f = road.frameAt(v.pos.edge, v.pos.s);
+    const tx = f.tx * v.pos.dir;
+    const tz = f.tz * v.pos.dir;
+    const c = cos(v.yaw);
+    const sn = sin(v.yaw);
+    const hx = c * tx - sn * tz;
+    const hz = c * tz + sn * tx;
+    const p = road.toWorld(sc.rider.pos.edge, sc.rider.pos.s, sc.rider.pos.d, 0);
+    const o = road.toWorld(v.pos.edge, v.pos.s, v.pos.d, 0);
+    const ox = p.x - o.x;
+    const oz = p.z - o.z;
+    return { du: ox * hx + oz * hz, dc: -ox * hz + oz * hx };
+  }
+
+  /**
+   * The live check's pass-through detector, per tick: the rider's box (riderHitbox) into the vehicle's
+   * footprint by 5 cm or more both ways while 5 cm or more under its top (`box`), and his middle inside
+   * the footprint under its top (`middle`).
+   */
+  function inside(sc: Scene, vid: number, def: SimTrafficTypeDef): { box: boolean; middle: boolean } {
+    const { du, dc } = onBox(sc, vid);
+    const box = riderHitbox(sc.config, sc.rider.riderIndex);
+    const under = sc.rider.mode !== 'Tumble' && sc.rider.h <= (def.heightM ?? 0) - 0.05;
+    const overU = (def.lengthM + box.lengthM) / 2 - Math.abs(du);
+    const overD = (def.widthM + box.widthM) / 2 - Math.abs(dc);
+    return {
+      box: under && overU >= 0.05 && overD >= 0.05,
+      middle: under && Math.abs(du) < def.lengthM / 2 && Math.abs(dc) < def.widthM / 2,
+    };
+  }
+
+  /** A semi at 20 m/s, the player set down on its roof `along` m from its middle (a road of `kappa`). */
+  function onSemiAt(along: number, kappa: number) {
+    const sc = scene(makeConfig({ kappa }), { s: 400 + along, d: 0, speed: 20, air: { h: 4.05, vy: -1 } });
+    const vid = sc.vehicle(T_SEMI, 400);
+    sc.rider.pos.d = laneD(sc, vid);
+    expect(untilDown(sc)?.data).toMatchObject({ quality: 'clean', on: 'vehicle' });
+    return { sc, vid };
+  }
+
+  it('braked still on a semi on a 400 m bend, left or right, he stays where he is on it for 6 s', () => {
+    const rows: string[] = [];
+    for (const kappa of [1 / 400, -1 / 400, 0]) {
+      const { sc, vid } = onSemiAt(-6, kappa);
+      const at0 = onBox(sc, vid);
+      let across = 0;
+      let alongMove = 0;
+      let onTicks = 0;
+      for (let t = 0; t < 60 * 6; t++) {
+        sc.step(held(0, 1));
+        if (supportKeyOf(sc.world, sc.rider.id) !== `v:${vid}`) break;
+        onTicks++;
+        const at = onBox(sc, vid);
+        across = Math.max(across, Math.abs(at.dc - at0.dc));
+        alongMove = Math.max(alongMove, Math.abs(at.du - at0.du));
+      }
+      rows.push(
+        `kappa ${kappa.toFixed(4)}: on ${onTicks} ticks, from (${at0.du.toFixed(2)}, ${at0.dc.toFixed(2)}) on the box moved at most ${across.toFixed(3)} m across, ${alongMove.toFixed(3)} m along`,
+      );
+      expect(onTicks, `kappa ${kappa}: still on the semi`).toBe(60 * 6);
+      expect(across, `kappa ${kappa}: across`).toBeLessThan(0.05);
+      expect(alongMove, `kappa ${kappa}: along`).toBeLessThan(0.3);
+    }
+    console.log(`[examined] braked on a 20 m/s semi, 6 m behind its middle:\n${rows.join('\n')}`);
+  });
+
+  /** Steps until he is down off the semi (or `max` ticks); the detector's ticks and the semi's contacts. */
+  function afterLeaving(sc: Scene, vid: number, input: () => SimInput, max = 240) {
+    let box = 0;
+    let middle = 0;
+    let down: SimEvent | undefined;
+    // The most his place on the semi's box moved in one tick (the slide clear of its edge included).
+    let step = 0;
+    let was = onBox(sc, vid);
+    for (let t = 0; t < max && !down; t++) {
+      const out = sc.step(input());
+      const at = inside(sc, vid, SEMI);
+      if (at.box) box++;
+      if (at.middle) middle++;
+      const now = onBox(sc, vid);
+      step = Math.max(step, Math.hypot(now.du - was.du, now.dc - was.dc));
+      was = now;
+      down = out.find((e) => e.type === 'land' || e.type === 'crash');
+    }
+    // A few ticks on the road after it, beside the semi.
+    for (let t = 0; t < 30; t++) {
+      sc.step(input());
+      const at = inside(sc, vid, SEMI);
+      if (at.box) box++;
+      if (at.middle) middle++;
+    }
+    const hits = sc.events.filter((e) => isTraffic(e) && e.target === vid);
+    return { box, middle, down, hits, step };
+  }
+
+  /** Steps until he leaves the top (a `jump`): it, and how far his place on the box moved in that tick. */
+  function offTop(sc: Scene, vid: number, input: SimInput, max: number) {
+    let jump: SimEvent | undefined;
+    let moved = 0;
+    for (let t = 0; t < max && !jump; t++) {
+      const was = onBox(sc, vid);
+      jump = sc.step(input).find((e) => e.type === 'jump');
+      const now = onBox(sc, vid);
+      moved = Math.hypot(now.du - was.du, now.dc - was.dc);
+    }
+    expect(inside(sc, vid, SEMI)).toEqual({ box: false, middle: false });
+    return { jump, moved };
+  }
+
+  it('off a semi’s side on a bend, steering back into it: never inside it; he meets it by the closing speed', () => {
+    const rows: string[] = [];
+    for (const kappa of [1 / 300, -1 / 300]) {
+      const { sc, vid } = onSemiAt(-5, kappa);
+      // Toward the inside of the bend (a right bend turns toward +d): off that side, then back at the semi.
+      const toInside = kappa > 0 ? 1 : -1;
+      const { jump, moved } = offTop(sc, vid, held(0.25, 0, toInside), 240);
+      expect(jump, 'stepped off the side').toBeDefined();
+      const r = afterLeaving(sc, vid, () => held(0.3, 0, -toInside));
+      rows.push(
+        `kappa ${kappa.toFixed(4)}: moved ${moved.toFixed(2)} m on the box as he left it; box inside ${r.box} ticks, middle inside ${r.middle}; most moved on the box in a tick after ${r.step.toFixed(2)} m; ${r.down?.type} ${String(r.down?.data['quality'] ?? r.down?.data['cause'])}; contacts ${JSON.stringify(r.hits.map((e) => [e.type, e.data['hit'], Number(e.data['impactMps']).toFixed(2)]))}`,
+      );
+      expect(r.middle, `kappa ${kappa}: middle inside`).toBe(0);
+      expect(r.box, `kappa ${kappa}: box inside`).toBe(0);
+      for (const e of r.hits) expect(Number(e.data['impactMps'])).toBeGreaterThan(0);
+    }
+    console.log(`[examined] off a semi's side toward the bend's inside, steering back:\n${rows.join('\n')}`);
+  });
+
+  it('rolled back off a semi’s tail by the wind: his nose never inside its tail, no contact at 0', () => {
+    const { sc, vid } = onSemiAt(-6, 0);
+    const { jump, moved } = offTop(sc, vid, coast, 60 * 20);
+    expect(jump, 'rolled off its tail').toBeDefined();
+    const r = afterLeaving(sc, vid, () => coast);
+    console.log(
+      `[examined] off the semi's tail: ${JSON.stringify(jump?.data)}; moved ${moved.toFixed(2)} m on the box as he left it; box inside ${r.box} ticks, middle ${r.middle}; most moved on the box in a tick after ${r.step.toFixed(2)} m; ${r.down?.type} ${JSON.stringify(r.down?.data)}; contacts ${JSON.stringify(r.hits.map((e) => e.data))}`,
+    );
+    expect(r.box).toBe(0);
+    expect(r.middle).toBe(0);
+    expect(r.down?.type).toBe('land');
+    expect(r.down?.data['quality']).not.toBe('crash');
+    for (const e of r.hits) expect(Number(e.data['impactMps'])).toBeGreaterThan(0);
   });
 });
