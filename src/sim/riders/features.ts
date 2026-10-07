@@ -216,6 +216,22 @@ export function truckBodyTop(f: BakedFeature): number {
 }
 
 /**
+ * A rampTruck's body (the top-deck car and the cab) as a box on its edge, m: from where it starts past
+ * the lip platform to the truck's front, its whole width (sim/riders/supports.ts lands riders on its top).
+ */
+export function truckBodyBox(f: BakedFeature): { s0: number; s1: number; d0: number; d1: number } {
+  const into = bodyIntoOf(f);
+  return facingOf(f) === -1
+    ? { s0: f.s0, s1: f.s1 - into, d0: f.d0, d1: f.d1 }
+    : { s0: f.s0 + into, s1: f.s1, d0: f.d0, d1: f.d1 };
+}
+
+/** A truck's velocity along its edge's +s, m/s: 0 for a parked one, a moving deck's travel. */
+export function truckVelocityS(f: BakedFeature): number {
+  return truckSpeedOf(f) * facingOf(f);
+}
+
+/**
  * A rampTruck's height at a point of its box: the ramp from 0 at its foot to the lip height at the
  * lip, the lip platform, then the body's top (solid, not a deck anyone rides).
  */

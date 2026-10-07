@@ -383,6 +383,8 @@ describe('riders-3: the rubber band', () => {
       'race.styleTrickScale',
       'race.styleWheelieMinS',
       'race.styleHoodScale',
+      'race.styleRoofScale',
+      'race.styleRoofMinS',
     ]);
     for (const d of RACE_TUNING) {
       expect(d.affectsSim).toBe(true);
