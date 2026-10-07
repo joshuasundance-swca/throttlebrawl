@@ -18,6 +18,7 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimConfig, SimEvent, SimSnapshot } from '../../src/sim/api';
 import { firstSeed, ISOLATED, seedRange } from './batch';
+import { createRadioedAheadCounter } from './radioed-ahead';
 
 const REG = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 
@@ -229,34 +230,24 @@ describe('law with a personality: real races', () => {
   // budget with no radioed roadblock is the real "this never happens any more".
   it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
     const event = eventOf('pacific-northwest');
-    const radioed = (r: Ride) => {
-      const chasing = new Set<number>();
-      let ahead = 0;
-      for (const e of r.events) {
-        if (e.type !== 'siren') continue;
-        if (e.data['on'] !== true) chasing.delete(e.actor);
-        else if (e.data['cause'] !== 'roadblock') chasing.add(e.actor);
-        else if (chasing.has(e.actor)) ahead++;
-      }
-      return ahead;
-    };
     let spent = 0;
     const found = firstSeed(
       'a PNW roadblock cop radioed ahead',
       seedRange(1, ROADBLOCK_BUDGET_TICKS / ROADBLOCK_RACE_TICKS),
       (seed) => {
         const left = ROADBLOCK_BUDGET_TICKS - spent;
+        const radioed = createRadioedAheadCounter();
         const r = ride(
           event,
           seed,
           { 'cops.heatScale': 30 },
           Math.min(ROADBLOCK_RACE_TICKS, left),
-          (x) => radioed(x) > 0,
+          (x) => radioed(x.events) > 0,
         );
         spent += r.ticks;
         return r;
       },
-      (r) => radioed(r) > 0,
+      (r) => createRadioedAheadCounter()(r.events) > 0,
     );
     process.stdout
       .write(`cops law: PNW roadblock: ${found.summary}; ${spent} of ${ROADBLOCK_BUDGET_TICKS} ticks
