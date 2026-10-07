@@ -1,10 +1,10 @@
-// The drawn land as the structure plans read it (road/land.ts `landReachOf`), on the networks beyond the downtowns'
+// The drawn land as the structure plans read it (road/drawn-ground.ts `landReachOf`), on the networks beyond the downtowns'
 // (src/render/land-reach.test.ts holds Portland and San Francisco's downtown): Old Town's street fronts
 // (road/structures/oldtown.ts) stand only where their whole depth is on it, and the second row reaches 33 m past
 // the sidewalk, so the rule must be render's own (road-mesh.ts `buildRoadScene`, `RoadScene.landReach`) at every
 // sample, or a plan would stand a house where render draws no ground (or leave a lot empty where it does).
 import { describe, expect, it } from 'vitest';
-import { landReachOf } from '../src/road/land';
+import { landReachOf } from '../src/road/drawn-ground';
 import { createFlatLook } from '../src/render/look';
 import { buildRoadScene } from '../src/render/road-mesh';
 import { print, track } from '../src/render/structures.test-util';
@@ -27,7 +27,7 @@ const NETWORKS = [
   'sf-waterfront',
 ];
 
-describe('the land a structure plan reads is the land render draws (road/land.ts)', () => {
+describe('the land a structure plan reads is the land render draws (road/drawn-ground.ts)', () => {
   it.each(NETWORKS)(
     '%s: the same reach at every 2 m on both sides of every road',
     (id) => {
