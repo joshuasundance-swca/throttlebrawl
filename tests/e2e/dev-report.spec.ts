@@ -63,7 +63,7 @@ test.beforeEach(async ({ page }) => {
 /**
  * The replay key the page must report: `simCodeHash + simContentHash` (M2 app-3), where the code
  * part is the first 12 hex digits of the SHA-256 of the sim chunk the page actually loaded, then the
- * lazy road planner and sim step chunks in file name order, joined by a newline (scripts/sim-chunk.mjs,
+ * road planner, sim step and generated runtime chunks in file name order, joined by a newline (scripts/sim-chunk.mjs,
  * `simCodeHashOfChunks`). A lazy chunk may not be loaded yet; the loaded chunks name it. This discovery
  * stays independent of the build plugin, so a missing chunk in the injected key fails the check.
  */
@@ -83,12 +83,19 @@ async function expectedKey(page: Page): Promise<{ id: string; key: string }> {
       .getEntriesByType('resource')
       .map((e) => e.name)
       .filter((n) => /\/assets\/[^/]+\.js$/.test(n));
-    const url = scripts.find((n) => /\/assets\/sim-[^/]*\.js$/.test(n));
+    const url = scripts.find((n) => /\/assets\/sim-(?!steps-)[^/]*\.js$/.test(n));
     if (!url) return '';
     const text = async (u: string) => (await fetch(u)).text();
     const names = new Set<string>();
     for (const s of scripts)
-      for (const m of (await text(s)).matchAll(/(?:road-structures|sim-steps)-[\w-]+\.js/g)) names.add(m[0]);
+      for (const m of (await text(s)).matchAll(/(?:road-structures|sim-steps|rolldown-runtime)-[\w-]+\.js/g))
+        names.add(m[0]);
+    if (
+      !['road-structures-', 'sim-steps-', 'rolldown-runtime-'].every((prefix) =>
+        [...names].some((n) => n.startsWith(prefix)),
+      )
+    )
+      throw new Error('a required replay rules chunk was not discovered');
     const lazy = [...names].sort().map((n) => new URL(n, url).href);
     const codes = [await text(url), ...(await Promise.all(lazy.map(text)))];
     const bytes = new TextEncoder().encode(codes.join('\n'));

@@ -64,25 +64,32 @@ function heatRace(eventId: string, seed: number, tuning: Record<string, number> 
 
 describe('playtest 2: the heat meter in every region (the dev bot racing)', () => {
   for (const choice of regionChoices(REG)) {
-    it(`${choice.name}: chaos raises heat, which brings heat cops, and they are shaken off again`, () => {
-      const runs = SEEDS.map((seed) => heatRace(choice.eventId, seed));
-      process.stdout.write(
-        `cops heat: ${choice.id}: ` +
-          runs
-            .map(
-              (r) =>
-                `seed ${r.seed} max ${(r.maxHeat * 100).toFixed(0)} tier ${r.maxTier} sent ${r.sent} roadblock ${r.blocks} lost ${r.lost}` +
-                `${r.busted ? ' busted' : ''}${r.finished ? ' finished' : ''}`,
-            )
-            .join('; ') +
-          '\n',
-      );
-      for (const r of runs) {
-        expect(r.problem, `seed ${r.seed}: the snapshot's law is a heat in 0..1`).toBe(false);
-        expect(r.busted || r.finished, `seed ${r.seed}: every race ends`).toBe(true);
-      }
-      expect(runs.some((r) => r.maxHeat > 0)).toBe(true);
-      expect(runs.some((r) => r.sent > 0)).toBe(true);
+    describe(`${choice.name}: chaos raises heat, which brings heat cops, and they are shaken off again`, () => {
+      const runs: HeatRun[] = [];
+      // Each complete seeded race gets the existing per-test budget. Grouping five complete
+      // races under one budget could time out after all five finished on a slower runner.
+      it.each(SEEDS)('seed %i has valid heat and ends', (seed) => {
+        const run = heatRace(choice.eventId, seed);
+        runs.push(run);
+        expect(run.problem, `seed ${seed}: the snapshot's law is a heat in 0..1`).toBe(false);
+        expect(run.busted || run.finished, `seed ${seed}: every race ends`).toBe(true);
+      });
+      it('the complete five-seed sample raises heat and sends heat cops', () => {
+        expect(runs.map((run) => run.seed)).toEqual(SEEDS);
+        process.stdout.write(
+          `cops heat: ${choice.id}: ` +
+            runs
+              .map(
+                (r) =>
+                  `seed ${r.seed} max ${(r.maxHeat * 100).toFixed(0)} tier ${r.maxTier} sent ${r.sent} roadblock ${r.blocks} lost ${r.lost}` +
+                  `${r.busted ? ' busted' : ''}${r.finished ? ' finished' : ''}`,
+              )
+              .join('; ') +
+            '\n',
+        );
+        expect(runs.some((r) => r.maxHeat > 0)).toBe(true);
+        expect(runs.some((r) => r.sent > 0)).toBe(true);
+      });
     });
   }
 
