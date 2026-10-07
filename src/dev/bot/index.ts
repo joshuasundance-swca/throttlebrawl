@@ -127,9 +127,12 @@ const PASS_CLEAR_M = 160;
 const LINE_HALF_WIDTH_M = 1.3;
 /**
  * Following a car in its line: the gap at which the bot wants to be stopped, and the gap over which
- * it eases up to the car's pace from there, m.
+ * it eases up to the car's pace from there, m. The gap is centre to centre, so it clears half the
+ * longest vehicle (an 11 m bus) and half the bike with room to spare. At 4 m it stopped about a
+ * metre off a sedan's bumper, and on main 30ed3db the San Francisco career's meter race left it
+ * pinned in a stopped queue for the rest of the race (720 s of a 368 s limit); at 9 m it was not.
  */
-const FOLLOW_STOP_M = 4;
+const FOLLOW_STOP_M = 9;
 const FOLLOW_EASE_M = 16;
 /** How far before a split zone the bot starts moving into it, m. */
 export const SHORTCUT_APPROACH_M = 150;

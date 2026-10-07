@@ -27,6 +27,7 @@ import {
 } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
 import { setPieceState } from '../../src/sim/modifiers';
+import { MOVING } from '../../src/sim/modifiers/moving';
 import { laneAt } from '../../src/sim/modifiers/setpieces';
 import { pedsState } from '../../src/sim/peds';
 import { trafficState } from '../../src/sim/traffic';
@@ -293,6 +294,59 @@ describe('weird events that move (W-T)', () => {
     expect(run?.problem).toBeNull();
     expect(run?.pieces[0]?.rolled ?? 0).toBeGreaterThan(60);
     expect(run?.signs.map((s) => s.label)).toEqual(words('region-sf:sf-cable-runaway', 'serial'));
+  });
+
+  // #658: once its grip catches, the cable car climbs on as traffic at once. Held in its lane at a
+  // standstill until the whole field was past it, it walled the street, and the dev bot stood in the
+  // queue behind it for the rest of San Francisco's meter race (720 s of a 368 s limit).
+  it('the SF cable car climbs on as traffic once its grip catches, with the field still behind it', () => {
+    const on = Object.keys(REG.events)
+      .filter((id) => id.startsWith('region-sf:'))
+      .flatMap((event) => [undefined, ...realRoutes(REG, event)].map((route) => ({ event, route })))
+      .find(({ event, route }) => {
+        const cfg = config(event, 1, route);
+        return cfg.route.mainEdges.some((e) =>
+          (cfg.road.edges[e]?.tags ?? []).some((t) => t.tag === 'cable-line'),
+        );
+      });
+    expect(on, 'an SF race on a cable street').toBeDefined();
+    const found = firstSeed(
+      'cable runaway, caught with the field behind it',
+      seedRange(1, 8),
+      (seed) => {
+        const cfg = only(config(on?.event ?? '', seed, on?.route), { 'region-sf:sf-cable-runaway': 1 });
+        const { sim, world } = createSimWithWorld(cfg);
+        const playerId = cfg.riders.findIndex((r) => r.controller.kind === 'player');
+        const bot = createBot();
+        let snap = sim.snapshot();
+        const step = () => {
+          const actions = emptyActions();
+          bot.drive(snap, playerId, cfg.route, actions);
+          sim.step([toSimInput(actions)]);
+          snap = sim.snapshot();
+        };
+        const piece = () => setPieceState(world).pieces[0];
+        while (!sim.isOver() && sim.tick < 60 * 60 * 4 && (piece()?.beat ?? 0) === 0) step();
+        const p = piece();
+        if (p?.piece !== 'cable-runaway' || p.beat === 0) return null;
+        // As if it had rolled its whole way: the grip catches on the next tick, a racer still behind.
+        p.rolled = MOVING.rollMaxM;
+        step();
+        const tr = trafficState(world);
+        const slot = tr.id.indexOf(p.vehicles[0] ?? -1);
+        const u0 = tr.u[slot] ?? 0;
+        const live = p.phase === 1;
+        for (let i = 0; i < 120; i++) step();
+        return { live, v0: tr.v0[slot] ?? 0, climbed: tr.corridor.routeDir * ((tr.u[slot] ?? 0) - u0) };
+      },
+      (r) => r !== null && r.live,
+    );
+    console.log(
+      `[print] ${found.summary}; cruise ${found.result?.v0.toFixed(1)} m/s, climbed ${found.result?.climbed.toFixed(1)} m in 2 s`,
+    );
+    expect(found.result, found.summary).not.toBeNull();
+    expect(found.result?.v0 ?? 0).toBeGreaterThan(0);
+    expect(found.result?.climbed ?? 0).toBeGreaterThan(1);
   });
 
   it.each([

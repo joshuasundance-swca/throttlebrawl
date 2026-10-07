@@ -1598,11 +1598,21 @@ function stepCable(
     p.mv = world.movers[tr.id[slot] ?? -1]?.speed ?? 0;
     beat(world, config, p, 'runaway', tr.id[slot] ?? -1);
   }
-  if (p.rolled < MOVING.rollMaxM) {
-    p.mv = rollStep(p.mv, dt);
-    p.mu += dir * p.mv * dt;
-    if (p.mv < 0) p.rolled -= p.mv * dt;
-  } else p.mv = 0; // the grip catches at last
+  // Its grip has caught: traffic drives it again (below).
+  if (p.drive < 0) return;
+  if (p.rolled >= MOVING.rollMaxM) {
+    // The grip catches at last, and it climbs on as traffic at once. Held at a standstill until the
+    // whole field was past it, it walled its lane, and a rider who could not get round the queue
+    // behind it waited there for good: the dev bot stood 600 s of San Francisco's meter race at the
+    // foot of the cable street (#658).
+    tr.v0[slot] = config.trafficTypes[p.vehicleTypes[0] ?? -1]?.cruiseMps ?? 4;
+    p.mv = 0;
+    p.drive = -1;
+    return;
+  }
+  p.mv = rollStep(p.mv, dt);
+  p.mu += dir * p.mv * dt;
+  if (p.mv < 0) p.rolled -= p.mv * dt;
   // In its lane wherever it has rolled to; traffic carries it at no speed of its own: the piece moves it.
   p.mcd = laneAt(config, tr.corridor, p.mu, p).cd;
   drive(world, p, 0, p.mu, p.mcd, 0, 0);

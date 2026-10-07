@@ -25,7 +25,7 @@ const REG = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: tru
 const seconds = (s: number) => s * 60;
 /** The PNW roadblock search: at most this many ticks in one race, and this many in all (see its test). */
 const ROADBLOCK_RACE_TICKS = 5_000;
-const ROADBLOCK_BUDGET_TICKS = 40_000;
+const ROADBLOCK_BUDGET_TICKS = 60_000;
 
 interface Ride {
   config: SimConfig;
@@ -223,9 +223,10 @@ describe('law with a personality: real races', () => {
   // The search's cost is a budget of sim ticks, not a wall-clock timeout: each race stops once a
   // radioed-ahead roadblock fires, or at ROADBLOCK_RACE_TICKS, and the whole search stops at
   // ROADBLOCK_BUDGET_TICKS, so its worst case is the same number of steps on any machine. CI stepped
-  // about 1 ms a tick on 2026-10-05 (nine full races, 90 to 104 s), so the budget is about half of
-  // the sim project's 90 s default. Out of budget with no radioed roadblock is the real "this never
-  // happens any more".
+  // about 1 ms a tick on 2026-10-05 (nine full races, 90 to 104 s), so the budget is about two thirds
+  // of the sim project's 90 s default. It was 8 races until the dev bot learned to follow a car at its
+  // pace (#658): the first such race moved from seed 6 to seed 10, so the search now covers 12. Out of
+  // budget with no radioed roadblock is the real "this never happens any more".
   it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
     const event = eventOf('pacific-northwest');
     const radioed = (r: Ride) => {
