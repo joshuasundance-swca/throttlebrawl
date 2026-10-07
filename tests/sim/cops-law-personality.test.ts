@@ -24,7 +24,7 @@ const REG = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: tru
 /** Sim ticks in `s` seconds of race (the sim runs at 60 ticks a second). */
 const seconds = (s: number) => s * 60;
 /** The PNW roadblock search: at most this many ticks in one race, and this many in all (see its test). */
-const ROADBLOCK_RACE_TICKS = 5_000;
+const ROADBLOCK_RACE_TICKS = 4_000;
 const ROADBLOCK_BUDGET_TICKS = 40_000;
 
 interface Ride {
@@ -225,7 +225,9 @@ describe('law with a personality: real races', () => {
   // ROADBLOCK_BUDGET_TICKS, so its worst case is the same number of steps on any machine. CI stepped
   // about 1 ms a tick on 2026-10-05 (nine full races, 90 to 104 s), so the budget is about half of
   // the sim project's 90 s default. Out of budget with no radioed roadblock is the real "this never
-  // happens any more".
+  // happens any more". Every race that showed it fired before tick 3,000 (main's seed 6 at 1,947; with
+  // the never-stuck lane's bot, which moved it, seeds 9 and 10 at 2,111 and 2,903, and 2 of 12 seeds
+  // against main's 1 of 12), so a race stops at 4,000 and the same budget reaches seed 10.
   it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
     const event = eventOf('pacific-northwest');
     const radioed = (r: Ride) => {

@@ -113,8 +113,11 @@ function mangroveRace(seed: number, playerTakesBoardwalk: boolean) {
       if (e.road.edge !== reach || before === reach) continue;
       if (before === offBoardwalk || before === offBend) {
         const via = before === offBoardwalk ? 'boardwalk' : 'main';
-        // The first time each rider comes on (a crashed rider set back on the road is not an exit).
-        if (!exits.some((x) => x.id === e.id)) {
+        // The first time each rider rides on (a crashed rider set back on the road is not an exit,
+        // and nor is one tumbling off: seed 6 of the bend races, once the never-stuck lane's bot
+        // moved it, slid a rival who went down on the planks onto the Reach at d -1.9).
+        const riding = e.mode === 'Road' || e.mode === 'Airborne';
+        if (riding && !exits.some((x) => x.id === e.id)) {
           exits.push({ id: e.id, via, tick: sim.tick, d: e.road.d, speed: e.speed });
         }
       }
