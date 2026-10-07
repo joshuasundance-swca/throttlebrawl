@@ -248,6 +248,9 @@ export function cueForEvent(
   if (type === 'setPieceBeat') cue = BEAT_CUES[String(e.data['beat'])] ?? null;
   if (cue === null) return null;
   if (PLAYER_ONLY_EVENTS.has(type) && e.actor !== playerId) return null;
+  // A HIGH drop (the maintainer, 2026-10-06, "(a)": the same physics everywhere, a high drop a clean
+  // cut-away with no gag) is not a splash to hear: the rail's clang and the respawn's blip say it.
+  if (type === 'splash' && e.data['high'] === true) return null;
   // cops-1's siren event carries `on`; only the start of a chase whoops.
   if (type === 'siren' && e.data['on'] === false) return null;
   // Bad Connection: the screech is the warning; the drop and the reconnect are seen, not heard.

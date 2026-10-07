@@ -73,9 +73,10 @@ export const TIERS = {
 /**
  * The share of a job's timeout-minutes its planned time may fill. The rest is room for a slow
  * runner: the same files ran at 0.55 to 1.5 times their table time from one runner to the next
- * (docs/engineering.md, "Jobs and timeouts"). [default]
+ * (docs/engineering.md, "Jobs and timeouts"), so two thirds: a slice at its line still fits at
+ * 1.5 times (0.7 until 2026-10-07, when sim (4/8) ran 617 s on a 408 s plan). [default]
  */
-export const JOB_SHARE = 0.7;
+export const JOB_SHARE = 2 / 3;
 
 export const SUITE_FILE = '.github/workflows/suite.yml';
 

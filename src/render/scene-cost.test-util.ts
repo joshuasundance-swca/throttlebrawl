@@ -100,7 +100,7 @@ const sceneFiles = import.meta.glob<ScenesFile>('../../packs/*/assets/scenes/*.j
  * The region signs the game would hand the renderer (live ones, by id), for the words painted on a model's
  * board (playtest 3, T12.6): every region's, since a road's own region is not named here and ids do not collide.
  */
-function signCatalog(): BoardCatalog {
+export function signCatalog(): BoardCatalog {
   const items: Record<string, { ref: string; text: string; kind: 'sign' }> = {};
   for (const [path, region] of Object.entries(regionFiles)) {
     const pack = /packs\/([^/]+)\//.exec(path)?.[1] ?? '';

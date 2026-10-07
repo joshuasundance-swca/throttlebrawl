@@ -8,7 +8,7 @@
 import type { TuningParamDecl } from '../../core';
 import type { SimConfig } from '../types';
 import type { SimSystem, World } from '../world';
-import { initSetPieces, stepSetPieces } from './setpieces';
+import { initSetPieces, PROP_CONTACT_KEY, stepSetPieces } from './setpieces';
 import { raceState } from '../race';
 
 export { propSnapshots, SET_PIECE, SET_PIECES, setPieceState } from './setpieces';
@@ -25,6 +25,20 @@ export const MODIFIERS_TUNING: readonly TuningParamDecl[] = [
     max: 3,
     step: 0.1,
     unit: '×',
+    affectsSim: true,
+    system: true,
+  },
+  {
+    // The maintainer, 2026-10-06 ("a road race in a physical world with honest edges"): every set-piece prop
+    // a rider can reach is met by the one rule (sim/modifiers/setpieces.ts, PROP_CONTACT). On [default].
+    id: PROP_CONTACT_KEY,
+    group: 'crashes',
+    label: 'Road event props are physical (0 off, 1 on)',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
     affectsSim: true,
     system: true,
   },

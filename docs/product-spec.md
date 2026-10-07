@@ -263,7 +263,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - The simulation tracks riders by distance along the road and offset across it. [decided] Real physics is used only for crash tumbles. [default] Details are in [the architecture doc](./architecture.md#crash-tumble).
 - Crashes are part of the comedy. The physics should be absurd and readable, never gory. [decided]
 - Crashes are big and funny, and recovery is quick: ragdoll tumbles, the bike cartwheels, riders sometimes go over the rail, and the run-back starts fast. [decided]
-- Going over a bridge rail ends in a funny splash (a gator or a fisherman reacts), a time penalty and a respawn on the bridge. There is no swimming. [decided]
+- Going over a bridge rail ends in a funny splash (a gator or a fisherman reacts), a time penalty and a respawn on the bridge. There is no swimming. [decided] That is a LOW drop. A HIGH drop (over 25 m: the Golden Gate, Chuckanut's bluff) is the same fall with the same penalty and respawn, shown as a clean cut-away with no gag (the maintainer, 2026-10-06, "(a)": the same physics everywhere): the camera holds on the rail while the rider goes over and cuts to the respawn, with no splash, no gator or fisherman, no line and no splash sound. [decided]
 - Knocked-off rivals tumble, get up and shake a fist, and a grudge is noted. It is never gory or lingering. [decided]
 - A cop knocking you off means you're busted; crashing on your own near him does not (interview, 2026-10-02). [decided]
 - Landings are forgiving (interview, 2026-10-02: "Forgiving landings", after playtest 2's "It's too easy to crash after a jump"). [decided]

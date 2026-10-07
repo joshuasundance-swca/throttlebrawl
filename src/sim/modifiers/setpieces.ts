@@ -69,10 +69,11 @@ import {
   type EntityId,
   type SetPieceHeightKind,
 } from '../../core';
-import type { EdgeLink, RoadPos } from '../../road';
+import { standOffLanes, type EdgeLink, type RoadPos } from '../../road';
 import { addHeat, CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState, HEAT } from '../cops';
 import { placePed } from '../peds';
 import { riderState } from '../riders';
+import { PIECE_SOLIDS_KEY, type PieceSolid, type PieceSolids } from '../riders/features';
 import { slopeAt, startFlight } from '../riders/air';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
@@ -154,6 +155,14 @@ export const SET_PIECE = {
   barricadeScrub: 0.9,
   baleScrub: 0.8,
   wobbleKickRad: 0.22,
+  /**
+   * A person met before they are out of the way (rule 3: never a crash): the speed kept and the heading kick,
+   * a light kerb rider's soft contact (sim/traffic `traffic.kerbSoft`).
+   */
+  personScrub: 0.85,
+  personKickRad: 0.15,
+  /** How tall a rider is over its bike's contact, m: a part hanging lower than this over it is met. */
+  riderTallM: 2,
   /** The hay truck: crawl speed, metres between dropped bales, bales, and how close racers must be. */
   hayTruckMps: 12,
   baleEveryM: 16,
@@ -162,7 +171,33 @@ export const SET_PIECE = {
   /** The speed trap's default limit, m/s (about 65 mph), before the speed multiplier. */
   trapLimitMps: 29,
   gravity: 9.81,
+  /**
+   * A sign stands off every road's lanes (the maintainer, 2026-10-06: "a road race in a physical world with
+   * honest edges"; a sign is not touchable, so one in a lane is a ghost the rider rides through). What of it hangs
+   * low enough to meet a rider keeps this far off them, m, looked for out to `signMoveMaxM` past its spot:
+   * a serial sign's panel (render/event-props.ts SERIAL_M, 2.2 m wide from 1.4 m up, so half of it is
+   * `serialHalfM`), and a warning sign's post (`signPostHalfM`; its panel hangs from 2.2 m, over a rider's head).
+   */
+  signLanesClearM: 0.25,
+  serialHalfM: 1.1,
+  signPostHalfM: 0.1,
+  signMoveMaxM: 8,
 };
+
+/**
+ * The switch: the props with no contact before (signs, the radar, people, the gantry's post, a float's
+ * centrepiece) are met by the one rule (1), or ridden through as before (0). On by default [default]; a race
+ * whose tuning leaves it out (every recording made before) rides as before.
+ */
+export const PROP_CONTACT_KEY = 'modifiers.propContact';
+
+/** Whether this race's riders meet every set-piece prop by the one rule. */
+export function propContactOn(params: Readonly<Record<string, number>>): boolean {
+  return (params[PROP_CONTACT_KEY] ?? 0) >= 0.5;
+}
+
+/** The solid set-piece parts' keys start here, past every road hazard's (sim/riders `solidHazardsNear`). */
+const PIECE_SOLID_KEY0 = 1e12;
 
 /** One placed piece. Plain data (it hashes with the world). */
 export interface SetPiece {
@@ -732,6 +767,44 @@ function shoulderCd(config: SimConfig, c: Corridor, p: SetPiece, u: number, out:
   return p.side * Math.min(want, walled ? limit - 0.3 : limit + 0.6);
 }
 
+/**
+ * A sign's cd at u, on the piece's shoulder side: `out` metres past the outermost lane there (at the sign's own
+ * spot: the piece's own lane is the one nearest the centre line, so on a road of two lanes each way a sign `out`
+ * past it stood in the outer lane, the bot riding through its panel; the live check, 2026-10-06), and on out
+ * until all `half` of it either side stands SET_PIECE.signLanesClearM off every road's lanes (a branch, a
+ * shortcut, a road alongside). It may stand past a rail or a wall: nothing reaches it there. Null where no spot
+ * within SET_PIECE.signMoveMaxM is clear (the sign is left out).
+ */
+function signCd(
+  config: SimConfig,
+  c: Corridor,
+  p: SetPiece,
+  u: number,
+  out: number,
+  half: number,
+): number | null {
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  fromCorridor(c, u, 0, c.routeDir, pos);
+  const o = c.o[c.edges.indexOf(pos.edge)] ?? 1;
+  // The side in the edge's own d, and the outermost lane's edge on it.
+  const side = p.side * o > 0 ? 1 : -1;
+  let edgeD = 0;
+  for (const lane of config.road.lanesAt(pos.edge, pos.s))
+    edgeD = Math.max(edgeD, side * (lane.dCenterM + (side * lane.widthM) / 2));
+  const from = Math.max(edgeD + out, edgeD + half + SET_PIECE.signLanesClearM);
+  const d = standOffLanes(
+    config.road,
+    pos.edge,
+    pos.s,
+    side,
+    side * from,
+    half,
+    SET_PIECE.signLanesClearM,
+    SET_PIECE.signMoveMaxM,
+  );
+  return d === null ? null : d * o;
+}
+
 /** The drivable band's outer edge on the piece's side at u, as a distance from the centre line. */
 function bandEdge(config: SimConfig, c: Corridor, p: SetPiece, u: number): number {
   const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
@@ -840,25 +913,24 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
   p.phase = 1;
   p.startTick = world.tick;
   // The warning sign, on the shoulder side, ahead of everything (unless serial signs stand in for it).
-  if (keepsSign(e))
+  const warnCd = keepsSign(e)
+    ? signCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2, SET_PIECE.signPostHalfM)
+    : null;
+  if (warnCd !== null)
     addProp(st, index, {
       kind: 'sign',
       variant: p.piece,
       label: str(e, 'signText', ''),
       u: at(-SET_PIECE.signLeadM),
-      cd: shoulderCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2),
+      cd: warnCd,
     });
   // Serial signs (W-T): one joke over up to four small signs, punchline last.
   const serial = serialOf(e);
-  serialLeads(serial.length, SET_PIECE.signLeadM, keepsSign(e)).forEach((lead, i) =>
-    addProp(st, index, {
-      kind: 'sign',
-      variant: 'serial',
-      label: serial[i] ?? '',
-      u: at(-lead),
-      cd: shoulderCd(config, c, p, at(-lead), 0.9),
-    }),
-  );
+  serialLeads(serial.length, SET_PIECE.signLeadM, keepsSign(e)).forEach((lead, i) => {
+    const cd = signCd(config, c, p, at(-lead), 0.9, SET_PIECE.serialHalfM);
+    if (cd !== null)
+      addProp(st, index, { kind: 'sign', variant: 'serial', label: serial[i] ?? '', u: at(-lead), cd });
+  });
   switch (p.piece) {
     case 'roadwork': {
       // A taper from the shoulder edge to the lane's inner edge over 30 m, then a line to the truck.
@@ -875,8 +947,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
           u: at(50),
           cd: p.laneCd,
           attach: truck,
-          along: -3.2,
-          up: 2.6,
+          ...onVehicle('arrowBoard'),
           variant: theme,
         });
       addProp(st, index, {
@@ -900,8 +971,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
           u: at(56),
           cd: p.laneCd,
           attach: tow,
-          along: 2.2,
-          up: 2.5,
+          ...onVehicle('lightbar'),
           variant: theme,
         });
       addProp(st, index, {
@@ -931,8 +1001,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
             u: at(along),
             cd: p.laneCd,
             attach: v,
-            along: 0,
-            up: 1.2,
+            ...onVehicle('floatDecor'),
           });
           if (i === 0 && e['inflatable'] === true)
             addProp(st, index, {
@@ -941,8 +1010,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
               u: at(along),
               cd: p.laneCd,
               attach: v,
-              along: 0,
-              up: 7,
+              ...onVehicle('inflatable'),
             });
         }
       });
@@ -967,8 +1035,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
           u: at(20),
           cd: p.laneCd,
           attach: truck,
-          along: -1.4,
-          up: 1.3,
+          ...onVehicle('hayLoad'),
         });
         p.nextDropU = at(20);
       }
@@ -1052,6 +1119,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
     default:
       break;
   }
+  standSignsOff(config, c, st, index);
   emit(world, 'modifierStart', -1, { id: m.contentId, kind: m.kind, piece: p.piece });
 }
 
@@ -1311,6 +1379,7 @@ export function stepSetPieces(world: World, config: SimConfig, over: boolean): v
   });
   stepProps(world, config, st, riders, dt);
   publishDecks(world, config, st);
+  publishSolids(world, config, st);
 }
 
 /**
@@ -1702,6 +1771,168 @@ export function extent(kind: PropKind): [number, number] {
 }
 
 /**
+ * How a rider meets each kind of set-piece prop: the one rule (docs/content-packs.md, "Contact outcomes: one
+ * rule"; the maintainer, 2026-10-06: "a road race in a physical world with honest edges", everything drawn
+ * that a rider can reach is physical at its drawn shape, nothing a ghost and nothing an invisible wall).
+ * - `light`: knocked flying and ridden through, a wobble (a cone or a flare: a scrub only), never a crash.
+ * - `standing`: light, ridden through with a wobble, and it stays standing (a sign on its stand).
+ * - `dodges`: gets out of the way; met before it has, a soft wobble and it stumbles aside, never a crash.
+ * - `solid`: heavy and fixed, by closing speed: the riders' solid-hazard contact (a gantry's post), published
+ *   each tick (`publishSolids`, sim/riders `PIECE_SOLIDS_KEY`).
+ * - `hop`: a shed log, its own rule (a hop over it).
+ * - `vehicle`: drawn on a vehicle and inside its box, so the vehicle is what is met (traffic's one rule); a
+ *   float's centrepiece over its top is a solid box of its own.
+ * - `overhead`: drawn wholly over anyone, a rider on the float's top included (the launch float's balloon).
+ * The boxes are the drawn shapes at their read-at-speed scale (render/event-props.ts), held within 0.15 m by
+ * the hitbox audits (scripts/hitboxes.test.ts for the cone, flare, sawhorse, bale and log;
+ * scripts/set-piece-shapes.test.ts for the rest), and tests/sim/set-piece-ride-column.test.ts rides every
+ * live piece of three regions' races and fails on a drawn part in a lane with no sim shape behind it.
+ */
+export type PropContactRule = 'light' | 'standing' | 'dodges' | 'solid' | 'hop' | 'vehicle' | 'overhead';
+export const PROP_CONTACT: Readonly<Record<PropKind, PropContactRule>> = {
+  cone: 'light',
+  flare: 'light',
+  barricade: 'light',
+  hayBale: 'light',
+  radar: 'light',
+  sign: 'standing',
+  person: 'dodges',
+  gantry: 'solid',
+  log: 'hop',
+  arrowBoard: 'vehicle',
+  lightbar: 'vehicle',
+  hayLoad: 'vehicle',
+  floatDecor: 'vehicle',
+  inflatable: 'overhead',
+};
+
+/**
+ * One box a rider meets of a prop, in the prop's own frame, m: its middle `along` ahead (the way the prop
+ * faces, the route's way) and `across` to its right, its half sizes along and across, and its bottom and top
+ * over the prop's foot (a prop riding a vehicle stands `up` over the road). `solid` boxes are met by the
+ * riders' solid-hazard contact, from the ground to their top.
+ */
+export interface PropBox {
+  along: number;
+  across: number;
+  hu: number;
+  hd: number;
+  bottom: number;
+  top: number;
+  solid?: boolean;
+}
+
+/** People's half size along their facing, by look: a wide sun hat, a radar gun held out (render's PEOPLE). */
+const PERSON_HALF_ALONG: Readonly<Record<string, number>> = {
+  'marcher-keys': 0.4,
+  'crossing-guard': 0.4,
+  'cop-radar': 0.3,
+};
+/** People's drawn top, by look: a paddle or a placard held up over the head (else the hat, 2.03 m). */
+const PERSON_TOP: Readonly<Record<string, number>> = {
+  flagger: 2.36,
+  'crossing-guard': 2.44,
+  'marcher-sf': 2.49,
+};
+/**
+ * A float's centrepiece on its top, by its dressing (render's floatDecor: the theme, then the float's index,
+ * odd or even), over the prop's foot (1.2 m up): a solid box from the ground (inside the float's own box,
+ * so only a rider up on the float's deck reaches it) to the centrepiece's top.
+ */
+const FLOAT_CENTRE: Readonly<Record<string, PropBox>> = {
+  'keys-0': { along: 0.425, across: 0, hu: 1.625, hd: 0.7, bottom: -1.2, top: 6.7, solid: true },
+  'keys-1': { along: 0.05, across: 0, hu: 1.65, hd: 1.1, bottom: -1.2, top: 5.45, solid: true },
+  sf: { along: 0, across: 0, hu: 1.5, hd: 1.25, bottom: -1.2, top: 6.72, solid: true },
+  pnw: { along: 0.025, across: 0, hu: 3.83, hd: 0.7, bottom: -1.2, top: 5.7, solid: true },
+};
+
+/** A lane vote gantry's post: how far past its span it stands, its half size and its height, m. */
+export const GANTRY_POST = { outM: 0.4, halfM: 0.15, topM: 6.4, minSpanM: 4 };
+
+/**
+ * The boxes a rider meets of a prop (none for one drawn on a vehicle or over everyone: the vehicle, or
+ * nothing). A float's dressing has its centrepiece's solid box over the float's deck.
+ */
+export function propBoxes(kind: PropKind, variant = '', spanM = 0): readonly PropBox[] {
+  const touch = touchableKind(kind);
+  if (touch) {
+    const [hu, hd] = extent(kind);
+    return [{ along: 0, across: 0, hu, hd, bottom: 0, top: SET_PIECE_PROP_HEIGHT_M[touch] }];
+  }
+  switch (kind) {
+    case 'log':
+      return [
+        {
+          along: 0,
+          across: 0,
+          hu: MOVING.logHalfDepthM,
+          hd: MOVING.logHalfLenM,
+          bottom: 0,
+          top: SET_PIECE_PROP_HEIGHT_M.log,
+        },
+      ];
+    case 'radar':
+      // The tripod, its head and the placard under it (render draws them 1.4 times life size).
+      return [{ along: 0.07, across: 0, hu: 0.5, hd: 0.32, bottom: 0, top: 1.99 }];
+    case 'sign':
+      // The post (behind the panel, toward the riders' way) and the panel: a serial sign's hangs from 1.4 m,
+      // in a rider's reach; a warning sign's from 2.2 m, over a rider on the road (render's signPanel).
+      return variant === 'serial'
+        ? [
+            { along: 0.1, across: 0, hu: 0.06, hd: 0.06, bottom: 0, top: 2.2 },
+            { along: 0, across: 0, hu: 0.05, hd: 1.1, bottom: 1.4, top: 3.6 },
+          ]
+        : [
+            { along: 0.12, across: 0, hu: 0.07, hd: 0.07, bottom: 0, top: 3.6 },
+            { along: 0, across: 0, hu: 0.05, hd: 1.5, bottom: 2.2, top: 5.2 },
+          ];
+    case 'person':
+      return [
+        {
+          along: 0,
+          across: 0,
+          hu: PERSON_HALF_ALONG[variant] ?? 0.2,
+          hd: 0.5,
+          bottom: 0,
+          top: PERSON_TOP[variant] ?? 2.03,
+        },
+      ];
+    case 'gantry': {
+      const half = Math.max(GANTRY_POST.minSpanM, spanM) / 2 + GANTRY_POST.outM;
+      const h = GANTRY_POST.halfM;
+      return [{ along: 0, across: half, hu: h, hd: h, bottom: 0, top: GANTRY_POST.topM, solid: true }];
+    }
+    case 'floatDecor': {
+      const [theme = '', index = '0'] = variant.split('-');
+      const centre =
+        FLOAT_CENTRE[theme === 'sf' || theme === 'pnw' ? theme : `keys-${(Number(index) || 0) % 2}`];
+      return centre ? [centre] : [];
+    }
+    default:
+      return [];
+  }
+}
+
+/**
+ * The props riding a vehicle: how far ahead of its middle and how high over the road each stands, m (the
+ * work truck's arrow board on its back, the tow truck's light bar on its roof, the hay on the farm truck, a
+ * float's dressing and the balloon over the lead float). scripts/set-piece-shapes.test.ts holds what is drawn
+ * of each inside its vehicle's box, or over it.
+ */
+export const ON_VEHICLE: Readonly<Partial<Record<PropKind, { along: number; up: number }>>> = {
+  arrowBoard: { along: -3.2, up: 2.4 },
+  lightbar: { along: 2.2, up: 2.5 },
+  hayLoad: { along: -1.4, up: 1.3 },
+  floatDecor: { along: 0, up: 1.2 },
+  inflatable: { along: 0, up: 7.5 },
+};
+
+/** Where a prop rides on its vehicle (ON_VEHICLE), as addProp's `along` and `up`. */
+function onVehicle(kind: PropKind): { along: number; up: number } {
+  return ON_VEHICLE[kind] ?? { along: 0, up: 0 };
+}
+
+/**
  * Whether a rider meets a standing prop of this kind: on the bike, on the road or in the air below
  * its drawn top (core SET_PIECE_PROP_HEIGHT_M, the hitbox audit's contract). It was a flat 0.8 m for
  * a rider on the road only, so a jump through a cone passed through it.
@@ -1728,6 +1959,7 @@ function stepProps(
   const c = tr.corridor;
   const dir = c.routeDir;
   const g = SET_PIECE.gravity;
+  const contact = propContactOn(world.params);
   for (const q of st.props) {
     // Riding on a vehicle: follow it.
     if (q.attach >= 0) {
@@ -1745,6 +1977,7 @@ function stepProps(
       continue;
     }
     if (q.kind === 'person') {
+      if (contact) bumpPerson(world, config, st, q, riders, dir);
       stepPerson(q, riders, dir, dt);
       continue;
     }
@@ -1752,6 +1985,8 @@ function stepProps(
       stepLog(world, config, q, riders, dir, dt);
       continue;
     }
+    if (contact && !q.moving && (q.kind === 'sign' || q.kind === 'radar'))
+      meetLight(world, config, st, q, riders, dir);
     const [hu, hd] = extent(q.kind);
     if (hu > 0 && !q.moving) {
       // Riders through it: the prop flies, the rider pays a little (a bale or a sawhorse wobbles).
@@ -1884,6 +2119,156 @@ function knock(q: SetProp, along: number, side: number, speed: number): void {
   q.spin = heavy ? 1 : 6;
   q.yaw += side * 0.6;
   q.moving = true;
+}
+
+/**
+ * The first rider whose box meets one of a standing prop's own boxes (not its solid ones, which the riders
+ * meet), the prop facing the route's way, in the air below a box's top and over its bottom too; or null. A
+ * rider already met (`hit`) is passed over, so one touch is one contact.
+ */
+function riderInBoxes(
+  config: SimConfig,
+  q: SetProp,
+  riders: readonly RiderAt[],
+  dir: number,
+): RiderAt | null {
+  const boxes = propBoxes(q.kind, q.variant, q.span);
+  for (const r of riders) {
+    if ((r.m.mode !== 'Road' && r.m.mode !== 'Airborne') || r.m.id === q.hit) continue;
+    const box = riderHitbox(config, r.m.riderIndex);
+    const h = r.m.h - q.h;
+    for (const b of boxes) {
+      if (b.solid || h >= b.top || h + SET_PIECE.riderTallM <= b.bottom) continue;
+      if (Math.abs(r.u - (q.u + dir * b.along)) > b.hu + box.lengthM / 2) continue;
+      if (Math.abs(r.cd - (q.cd + dir * b.across)) > b.hd + box.widthM / 2) continue;
+      return r;
+    }
+  }
+  return null;
+}
+
+/**
+ * A light prop the one rule rides through (a sign on its stand, the speed trap's radar on its tripod): a
+ * wobble, a heading kick away from it and a little speed, never a crash. The radar is knocked flying; a sign
+ * stays standing (its post is planted), so each rider meets it once.
+ */
+function meetLight(
+  world: World,
+  config: SimConfig,
+  st: SetPieceState,
+  q: SetProp,
+  riders: readonly RiderAt[],
+  dir: number,
+): void {
+  const r = riderInBoxes(config, q, riders, dir);
+  if (!r) return;
+  q.hit = r.m.id;
+  if (PROP_CONTACT[q.kind] === 'light') knock(q, r.dir * dir * r.m.speed, q.cd >= r.cd ? 1 : -1, r.m.speed);
+  r.m.speed *= SET_PIECE.barricadeScrub;
+  const away = q.cd >= r.cd ? -1 : 1;
+  r.m.yaw = clamp(r.m.yaw + away * r.dir * SET_PIECE.wobbleKickRad, -1.2, 1.2);
+  emit(world, 'wobble', r.m.id, { cause: 'setPiece', prop: q.kind, piece: st.pieces[q.piece]?.piece ?? '' });
+}
+
+/**
+ * A rider who meets a person before they are out of the way (rule 3, `dodges`: never a crash): a soft
+ * wobble, as a light kerb rider's (a little speed and a small heading kick), and the person stumbles on
+ * aside, away from the rider's line.
+ */
+function bumpPerson(
+  world: World,
+  config: SimConfig,
+  st: SetPieceState,
+  q: SetProp,
+  riders: readonly RiderAt[],
+  dir: number,
+): void {
+  const r = riderInBoxes(config, q, riders, dir);
+  if (!r) return;
+  q.hit = r.m.id;
+  r.m.speed *= SET_PIECE.personScrub;
+  const away = q.cd >= r.cd ? -1 : 1;
+  r.m.yaw = clamp(r.m.yaw + away * r.dir * SET_PIECE.personKickRad, -1.2, 1.2);
+  emit(world, 'wobble', r.m.id, {
+    cause: 'setPiece',
+    prop: 'person',
+    piece: st.pieces[q.piece]?.piece ?? '',
+  });
+  q.dodging = 1;
+  q.dodgeTo = q.cd + (q.cd >= r.cd ? 1 : -1) * (SET_PIECE.dodgeAcrossM + 1.5);
+  q.yaw = q.cd >= r.cd ? 1.2 : -1.2;
+  q.moving = true;
+  q.walk = 0;
+}
+
+/**
+ * A piece's signs stand off its road's lanes (a sign is met by the one rule now, so one in a lane is a rider's
+ * wobble): each moves out from where it was placed until what of it a rider on the road reaches (a serial
+ * sign's panel, which hangs from 1.4 m; a warning sign's post, its panel hanging from 2.2 m over a rider's
+ * head) is SIGN_CLEAR_M past the outermost lane at its spot, shoulders included. It was placed `out` past the
+ * piece's own lane, the one nearest the centre line, so on a road of two lanes each way it stood in the outer
+ * lane (the set pieces' ride-column check, 2026-10-06: a serial sign's panel in the lane the moving ramp truck
+ * drives, the rider wobbling off its line). A sign already clear stays where it is.
+ */
+function standSignsOff(config: SimConfig, c: Corridor, st: SetPieceState, index: number): void {
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  for (const q of st.props) {
+    if (q.piece !== index || q.kind !== 'sign') continue;
+    fromCorridor(c, q.u, q.cd, c.routeDir, pos);
+    const o = c.o[c.edges.indexOf(pos.edge)] ?? 1;
+    const side = q.cd >= 0 ? 1 : -1;
+    let edge = 0;
+    for (const lane of config.road.lanesAt(pos.edge, pos.s))
+      edge = Math.max(edge, side * o * lane.dCenterM + lane.widthM / 2);
+    const reach = propBoxes('sign', q.variant)
+      .filter((b) => b.bottom < SET_PIECE.riderTallM)
+      .reduce((w, b) => Math.max(w, Math.abs(b.across) + b.hd), 0);
+    q.cd = side * Math.max(Math.abs(q.cd), edge + reach + SIGN_CLEAR_M);
+  }
+}
+
+/** How far past the lanes a sign's reachable part stands, m (render draws the post and panel round its middle). */
+const SIGN_CLEAR_M = 0.25;
+
+/**
+ * Publishes the live props' solid boxes (a lane vote's gantry post, a float's centrepiece) for the tick the
+ * riders step next, each as a solid hazard of the road it stands on (sim/riders `PIECE_SOLIDS_KEY`): the one
+ * rule for heavy fixed things meets them. Made with the first and never otherwise, so a race with none hashes
+ * as before.
+ */
+function publishSolids(world: World, config: SimConfig, st: SetPieceState): void {
+  const live: PieceSolid[] = [];
+  if (propContactOn(world.params)) {
+    const c = trafficState(world).corridor;
+    const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+    for (const q of st.props) {
+      if (q.attach === -2 || st.pieces[q.piece]?.phase !== 1) continue;
+      for (const b of propBoxes(q.kind, q.variant, q.span)) {
+        if (!b.solid) continue;
+        fromCorridor(c, q.u + c.routeDir * b.along, q.cd + c.routeDir * b.across, c.routeDir, pos);
+        live.push({
+          edge: pos.edge,
+          key: PIECE_SOLID_KEY0 + q.id,
+          feature: {
+            kind: 'hazard',
+            id: `set-piece-${q.kind}-${q.id}`,
+            s0: pos.s - b.hu,
+            s1: pos.s + b.hu,
+            d0: pos.d - b.hd,
+            d1: pos.d + b.hd,
+            params: {
+              solid: true,
+              object: q.kind === 'gantry' ? 'gantry-post' : q.kind,
+              heightM: q.h + b.top,
+            },
+          },
+        });
+      }
+    }
+  }
+  const registry = world.systems[PIECE_SOLIDS_KEY] as PieceSolids | undefined;
+  if (registry) registry.live = live;
+  else if (live.length > 0) systemState<PieceSolids>(world, PIECE_SOLIDS_KEY, () => ({ live }));
 }
 
 /** People step toward the verge when a rider bears down on them, and marchers walk on. */
