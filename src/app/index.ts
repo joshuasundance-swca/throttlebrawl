@@ -49,6 +49,7 @@ import { createHaptics, createInput, type ActionState } from '../input';
 import {
   APP_ID,
   installOffer,
+  paceBuildFetches,
   runStartTap,
   startOffline,
   watchLifecycle,
@@ -407,8 +408,12 @@ function safeStorage(): StorageLike | null {
  * What the first screen needs before `createApp`: the Keys' hand-made road data, which ships as
  * JSON files beside the build instead of in the first-load JavaScript (run W-S), for the default
  * race and the menu's backdrop. main.ts awaits it; a failed fetch rejects and can be tried again.
+ * The page's fetch goes to platform/'s loader first, so these 37 files get its rules too: no pacing
+ * until the host asks, its waits, the retry and the offline caches' read (polish batch O's check,
+ * punch item 3).
  */
 export function loadBootContent(): Promise<void> {
+  paceBuildFetches();
   return loadBaseRoads();
 }
 

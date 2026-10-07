@@ -69,8 +69,8 @@ test.beforeEach(async ({ page }) => {
  */
 async function expectedKey(page: Page): Promise<{ id: string; key: string }> {
   // The key moves once, when the Keys' real roads arrive after boot (app/index.ts `roadsArrived`: a pack's
-  // hash covers its road data). They are fetched in the background a few files at a time
-  // (platform/retry-fetch.ts FETCH_LANES), so they may land after the start tap: the key is read once
+  // hash covers its road data). They are fetched in the background (a few files at a time once the
+  // host has asked for pacing: platform/retry-fetch.ts), so they may land after the start tap: the key is read once
   // they are in, which the route picker shows by offering a road beside the region's own.
   await expect(page.locator('#route-picker .route-row > :not(#route-own)').first()).toBeAttached({
     timeout: 30_000,
