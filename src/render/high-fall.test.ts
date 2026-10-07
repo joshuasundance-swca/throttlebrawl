@@ -252,6 +252,21 @@ describe('a splash: low keeps its gag, a high drop has none', () => {
     expect(fx.counts().drops).toBe(40);
   });
 
+  it('out of bounds onto ground, or a low drop onto dry ground: the plain quick reset, no water and no gag', () => {
+    // The course's honest edges (2026-10-06, [decided]: a low splash keeps its gag, a high drop is a clean
+    // cut-away, anything else a plain quick reset): the lot behind a block, ground past the verge, a city
+    // bridge over a street.
+    for (const data of [
+      { over: true, past: 'ground', dropM: 0, high: false },
+      { over: true, past: 'drop', dropM: 6, high: false },
+    ]) {
+      const { fx } = splashAt(data);
+      expect(fx.counts().drops, data.past).toBe(0);
+      expect(fx.counts().rings, data.past).toBe(0);
+      expect(fx.counts().reactors, data.past).toBe(0);
+    }
+  });
+
   it('a low splash at Lake Samish is at the lake’s level (82.85 m), not the sea’s', () => {
     const { fx } = splashAt(LOW, 82.85);
     const ring = fx.root.children.find((c) => c.name === 'feel-splash-ring' && c.visible);

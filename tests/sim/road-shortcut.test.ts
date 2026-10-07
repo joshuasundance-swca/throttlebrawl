@@ -220,6 +220,7 @@ function ridePastSplit(
   let minSpeedAfter = Infinity;
   let dAtSplit = NaN;
   let lastRunD = NaN;
+  let maxRunD = -Infinity;
   for (let t = 0; t < 60 * 90; t++) {
     const me = sim.snapshot().entities[0] as EntitySnapshot;
     const { edge, s, d, dir, yaw } = me.road;
@@ -228,6 +229,7 @@ function ridePastSplit(
       edges.push(name(edge));
     }
     if (edge === run) lastRunD = d;
+    if (edge === run && me.mode === 'Road') maxRunD = Math.max(maxRunD, d);
     progress.push({ edge: name(edge), progress: me.progress });
     if ((edge === E('m1-marina-bends') || edge === E('m1-boat-ramp-cut')) && s > 150) break;
     const a = blank();
@@ -256,6 +258,7 @@ function ridePastSplit(
     edges,
     walls,
     dAtSplit,
+    maxRunD,
     progress,
     speedAtTrigger,
     minSpeedAfter,
@@ -344,10 +347,13 @@ describe('playtest 1c: an early commit to the boat-ramp cut meets no wall', () =
   it('guard: outside the split zone, holding right rides out onto the verge, not along the zone', () => {
     // Off-road (run W-R): before the guide's lead-in the road's edge is the verge's (the lanes end at
     // d 5.5), so holding right leaves the lanes for the ground beside them and is not guided onto the cut.
+    // With the course's honest edges (2026-10-06, sim/riders/course.ts) he holds right on through the
+    // marina's fence into the yard behind it, and past the yard's end (nothing drawn there) he is out: the
+    // quick reset, and he wakes on the road where he left it. Either way he rode out over the verge.
     const r = ridePastSplit('holdRight', 120);
     console.log(
-      `hold right from s 120: d at split ${r.dAtSplit.toFixed(2)}; ${r.walls.join(', ') || 'no walls'}`,
+      `hold right from s 120: furthest out on the marina run d ${r.maxRunD.toFixed(2)}; d at split ${r.dAtSplit.toFixed(2)}; ${r.walls.join(', ') || 'no walls'}`,
     );
-    expect(r.dAtSplit).toBeGreaterThan(6);
+    expect(r.maxRunD).toBeGreaterThan(6);
   });
 });

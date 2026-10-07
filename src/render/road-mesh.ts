@@ -420,6 +420,34 @@ function barriersFor(
   return spans;
 }
 
+/**
+ * The barriers this layer draws on one side of an edge, as spans of s: the barrier's band (a rail on posts, a wall)
+ * from its dressing (a rail only on a bridge or a drop), less any gap's hole, with `look` where a barrier look draws
+ * it instead (the verge layer's panels, barrier-looks.ts). The same rule the scene builds from, before the cut where
+ * another road's lanes lie under it. For the tests that hold the sim's walls to what is drawn
+ * (tests/sim/no-invisible-walls.test.ts; the maintainer, 2026-10-06: "never an invisible wall").
+ */
+export function drawnBarrierSpans(
+  road: RoadNetwork,
+  dressing: RoadDressing | undefined,
+  edge: number,
+  side: 'left' | 'right',
+): { s0: number; s1: number; kind: 'rail' | 'wall'; look: boolean }[] {
+  const e = road.edges[edge];
+  if (!e) return [];
+  const dress = dressingOf(e, dressing);
+  const gaps = gapSpans(road, e, dress);
+  return barriersFor(road, e, dress, side)
+    .flatMap((x) => cutByGaps(x, gaps))
+    .map((b) => ({
+      s0: Math.max(0, b.s0),
+      s1: Math.min(e.length, b.s1),
+      kind: b.kind === 'wall' ? ('wall' as const) : ('rail' as const),
+      look: barrierLookAt(b, e.tags, side, (Math.max(0, b.s0) + Math.min(e.length, b.s1)) / 2) !== undefined,
+    }))
+    .filter((b) => b.s1 > b.s0);
+}
+
 /** A rail stands this clear of another road's lanes, m, and is probed for them this often, m. [default] */
 const RAIL_CLEAR_M = 0.3;
 const RAIL_PROBE_M = 1;

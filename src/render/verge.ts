@@ -1166,6 +1166,47 @@ export class VergeLayer {
     };
   }
 
+  /**
+   * Where the edge kit stands (world x and z): each fence panel's middle, each fern clump and each hedge panel, for
+   * the tests that hold the sim's edges to what is drawn (tests/sim/no-invisible-walls.test.ts).
+   */
+  edgeKitPoints(): {
+    fences: readonly { x: number; z: number }[];
+    ferns: readonly { x: number; z: number }[];
+    hedges: readonly { x: number; z: number }[];
+  } {
+    return {
+      fences: this.panels.map((p) => ({ x: p.at.x, z: p.at.z })),
+      ferns: this.clumps,
+      hedges: this.hedges,
+    };
+  }
+
+  /**
+   * The tallest of each edge kit as built, m above the road beside it: a fence panel, a fern clump (its size
+   * drawn in), a hedge panel; 0 for a kit this road builds none of. The sim clears these in the air (road/beyond.ts
+   * GROUND_EDGE_TOP_M), held to them by tests/sim/no-invisible-walls.test.ts.
+   */
+  edgeKitTops(): { fence: number; fern: number; hedge: number } {
+    const top = (mesh: InstancedMesh, list: readonly { m: Matrix4 }[]): number => {
+      mesh.geometry.computeBoundingBox();
+      const high = mesh.geometry.boundingBox?.max.y ?? 0;
+      let best = 0;
+      for (const it of list) {
+        const e = it.m.elements;
+        // The instance's height scale (its matrix's y column), and its foot 5 cm under the road beside it.
+        const sy = Math.hypot(e[4] ?? 0, e[5] ?? 0, e[6] ?? 0);
+        best = Math.max(best, sy * high - 0.05);
+      }
+      return best;
+    };
+    return {
+      fence: top(this.fenceMesh, this.panels),
+      fern: top(this.brushMesh, this.clumps),
+      hedge: top(this.hedgeMesh, this.hedges),
+    };
+  }
+
   /** Where each panel of a barrier look stands (world x and z), for the tests that walk a whole road. */
   lookPanelPoints(look: BarrierLook): readonly { x: number; z: number }[] {
     return this.lookSets.get(look)?.panels ?? [];
