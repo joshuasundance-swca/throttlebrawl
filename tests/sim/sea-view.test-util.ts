@@ -55,22 +55,55 @@ const encode = (v: number) => {
 const decode = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 
 /**
- * The colour (display sRGB, 0..1) of the sea where its vertex tint is `tint`, `depthM` ahead of the camera, in the
- * default look (the ink look `kodak`) at `timeOfDay`. The ink water shader's body is
- * `diffuse * exposure * (0.94 + 0.12 h)` with `h` a per-cell hash that averages 1 over the sea (the wave glints
- * and strokes are left out: they sit on both sides of every patch edge); then three's linear fog, a smoothstep
- * from the fog's near to its far, toward the haze colour (the look's horizon colour); then the final pass's grade.
+ * What the ink water shader (`FRAGMENT_WATER`) does to a far pixel of the sea, one the wave coordinate's screen
+ * derivative has gone wide over (about 30 m out and farther: `far` is 0.73 at NEAREST_M): the body is
+ * `diffuse * exposure * 0.94`, and the wave stroke is a flat 0.07 (times 0.8) of a mix toward
+ * `uInkColor * 0.5 + diffuse * 0.3`.
  */
-export function seenSea(tint: Rgb, depthM: number, timeOfDay: string): [number, number, number] {
+const FAR_BODY = 0.94;
+const FAR_STROKE = 0.07 * 0.8;
+const INK_LINEAR = toLinear(KODAK.ink);
+/** The final pass's vignette: the Tuning default (`vignette` 0.4) times the look's own (1). */
+const VIGNETTE = 0.4;
+
+/**
+ * The colour (display sRGB, 0..1) of the sea where its vertex tint is `tint`, `depthM` ahead of the camera, in the
+ * default look (the ink look `kodak`) at `timeOfDay`, at the screen place `at` (`u` from the left, `v` from the
+ * bottom, 0 to 1; the middle of the screen when none is given). The ink water shader's far body (`FAR_BODY`,
+ * `FAR_STROKE`; the near waves' glints and strokes are left out: they sit on both sides of every patch edge);
+ * then three's linear fog, a smoothstep from the fog's near to its far, toward the haze colour (the look's
+ * horizon colour); then the final pass's grade and its vignette (a darker, warmer edge of the frame; its grain is
+ * left out).
+ */
+export function seenSea(
+  tint: Rgb,
+  depthM: number,
+  timeOfDay: string,
+  at: { u: number; v: number } = { u: 0.5, v: 0.5 },
+  /** The model as #635 had it (control): the body as it was lit, no wave stroke, no vignette. */
+  plain = false,
+): [number, number, number] {
   const sky = skyOf(KODAK, timeOfDay);
   const water = toLinear(KODAK.palette.water ?? '#1e8e98');
   const haze = toLinear(sky.horizon);
   const f = smoothstep(FOG_NEAR_M, FOG_FAR_M, depthM);
   const out = [0, 1, 2].map((k) => {
-    const lit = Math.min(1, (water[k] ?? 0) * (tint[k] ?? 1) * sky.exposure);
+    const diffuse = (water[k] ?? 0) * (tint[k] ?? 1);
+    if (plain) return encode(Math.min(1, diffuse * sky.exposure) * (1 - f) + (haze[k] ?? 0) * f);
+    const body = diffuse * sky.exposure * FAR_BODY;
+    const lit = Math.min(
+      1,
+      body * (1 - FAR_STROKE) + ((INK_LINEAR[k] ?? 0) * 0.5 + diffuse * 0.3) * FAR_STROKE,
+    );
     return encode(lit * (1 - f) + (haze[k] ?? 0) * f);
   });
-  return kodachromeGrade(out[0] ?? 0, out[1] ?? 0, out[2] ?? 0);
+  const [r, g, b] = kodachromeGrade(out[0] ?? 0, out[1] ?? 0, out[2] ?? 0);
+  if (plain) return [r, g, b];
+  // post.ts: `v = smoothstep(0.42, 1.05, length(uv - 0.5) * 1.41421) * uVignette`, `s *= 1 - v * 0.6`, then
+  // `mix(s, s * (1, 0.9, 0.78), v)`.
+  const v = smoothstep(0.42, 1.05, Math.hypot(at.u - 0.5, at.v - 0.5) * Math.SQRT2) * VIGNETTE;
+  const dim = 1 - v * 0.6;
+  return [r * dim, g * dim * (1 - v * 0.1), b * dim * (1 - v * 0.22)];
 }
 
 /** CIE L*a*b* (D65) of a display sRGB colour. */
