@@ -19,6 +19,8 @@ import {
   type BakedNetwork,
   type BakedRoad,
   type RoadNetwork,
+  loadPnwPlacesLayout,
+  loadWaterfrontLayout,
 } from '../road';
 import { planBlocks } from './chinatown-northbeach';
 import { planDowntown, planPortland } from './downtown';
@@ -84,7 +86,7 @@ const STRUCTURES = new Set([
 const KNOWN: Readonly<Record<string, { upTo: number; why: string }>> = {
   'pdx-rack': {
     upTo: 90,
-    why: "Portland's bike racks: light pieces placed among its blocks by render/downtown.ts planPortland, which reads the drawn land and the street gaps its buildings leave; a rider rides through one with no wobble until they are planned",
+    why: "Portland's bike racks: placed among its blocks by road/structures/downtown.ts planPdxDowntown, a structure of the plan (a `wall`) since the physical world's port (2026-10-06), but the sim does not meet the structure plan yet, so a rider rides through one with no wobble until it does",
   },
 };
 /** A prop this far inside a band's outer edge stands on the band, m (a front's anchor is on the edge). */
@@ -154,7 +156,10 @@ describe('nothing drawn on a ridable band is a ghost (playtest 4)', () => {
         for (const i of planDowntown({ road, dressing, seed: SEED }).items)
           props.push({ src: 'downtown', rule: i.rule, edge: i.edge, s: i.s, d: i.d });
       if (['promenade', 'wharf', 'ferry-plaza', 'wharf-lot'].some((t) => tags.has(t)))
-        for (const i of planWaterfront({ road, dressing, seed: SEED }, loaded).items)
+        for (const i of planWaterfront(
+          { road, seed: SEED, layout: (await loadWaterfrontLayout()).waterfrontLayout(road, SEED) },
+          loaded,
+        ).items)
           props.push({ src: 'waterfront', rule: i.rule, edge: i.edge, s: i.s, d: i.d });
       if (['shopfronts', 'murals', 'mascot-mural'].some((t) => tags.has(t)))
         for (const i of planMission({ road, dressing, seed: SEED }).items)
@@ -168,12 +173,12 @@ describe('nothing drawn on a ridable band is a ghost (playtest 4)', () => {
       }
       const pdx = loaded['pdxDowntown' as ModelKind];
       if (tags.has('pdx-blocks') && pdx) {
-        const reach = { landReach: (e: number, side: -1 | 1, s: number) => built.landReach(e, side, s) };
-        for (const i of planPortland({ road, dressing, seed: SEED, portland: reach }, pdx).items)
+        for (const i of planPortland({ road, dressing, seed: SEED, portland: true }).items)
           props.push({ src: 'portland', rule: i.rule, edge: i.edge, s: i.s, d: i.d });
       }
       // The Pacific Northwest's places: its hazards' props are the sim's solid hazards (`threat`).
-      for (const i of placeItems(road, SEED, (e, side, s) => built.landReach(e, side, s)))
+      const places = (await loadPnwPlacesLayout()).pnwPlacesLayout(road, SEED);
+      for (const i of placeItems(road, SEED, places, (e, side, s) => built.landReach(e, side, s)))
         if (!i.threat) props.push({ src: 'places', rule: i.kind, edge: i.edge, s: i.s, d: i.d });
       const scenesKey = Object.keys(sceneFiles).find((k) =>
         k.endsWith(`/scenes/${/regions\/([^/]+)\//.exec(path)?.[1] ?? ''}.json`),

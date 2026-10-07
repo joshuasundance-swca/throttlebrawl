@@ -41,6 +41,7 @@ import type {
   SimTrafficTypeDef,
 } from '../sim/api';
 import { loadChunk } from '../content';
+import { loadPnwPlacesLayout, loadWaterfrontLayout } from '../road';
 import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
@@ -561,16 +562,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     const m = downtownModule;
     if (!m || !roadArgs) return;
     const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
-    const rs = roadScene;
     if (m.hasPortland(tags)) {
-      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit and the land the road scene drew.
+      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit, where the road's plan stands them
+      // (road/structures/downtown.ts, on the land the road scene draws).
       const pdx = models.pdxDowntown;
-      if (!pdx || !rs) return;
+      if (!pdx) return;
       downtown = new m.DowntownLayer(pdx, undefined, undefined, look, {
         road: roadArgs.road,
         dressing: roadArgs.dressing,
         seed: sceneSeed,
-        portland: { landReach: (e, side, s) => rs.landReach(e, side, s) },
+        portland: true,
       });
     } else {
       const kit = models.sfDowntown;
@@ -627,6 +628,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.
   // It is rebuilt with the road (a new seed, the palms arriving) and keeps off the staged scenes.
   let waterfrontModule: typeof import('./waterfront') | null = null;
+  // Where its buildings stand is the road's plan (road/structures/waterfront.ts, a lazy chunk of its own).
+  let waterfrontPlan: Awaited<ReturnType<typeof loadWaterfrontLayout>> | null = null;
   let waterfrontLoading = false;
   let waterfront: WaterfrontLayer | null = null;
   const buildWaterfront = () => {
@@ -638,21 +641,25 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!m) {
       if (waterfrontLoading || !['promenade', 'wharf'].some((t) => tags.has(t))) return;
       waterfrontLoading = true;
-      void chunk('waterfront', () => import('./waterfront')).then((w) => {
-        if (!w) {
+      void Promise.all([
+        chunk('waterfront', () => import('./waterfront')),
+        chunk('waterfront layout', loadWaterfrontLayout),
+      ]).then(([w, plan]) => {
+        if (!w || !plan) {
           waterfrontLoading = false; // tried again at the next road build
           return;
         }
         waterfrontModule = w;
+        waterfrontPlan = plan;
         buildWaterfront();
       });
       return;
     }
-    if (!m.hasWaterfront(tags)) return;
+    if (!m.hasWaterfront(tags) || !waterfrontPlan) return;
     waterfront = new m.WaterfrontLayer(models, look, {
       road: roadArgs.road,
-      dressing: roadArgs.dressing,
       seed: sceneSeed,
+      layout: waterfrontPlan.waterfrontLayout(roadArgs.road, sceneSeed),
       reserved: scenes?.reserved() ?? [],
     });
     scene.add(waterfront.group);
@@ -775,16 +782,19 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // Run W-U: the Pacific Northwest's places (pnw-places.ts: the ferry, the clear-cut, the Stump Social), a
   // lazy chunk loaded only for a road with their tags. Built with the road scene, whose land it stands on.
   let placesModule: typeof import('./pnw-places') | null = null;
+  // Where its shops and its ferry stand is the road's plan (road/structures/pnw-places.ts, a lazy chunk of its own).
+  let placesPlan: Awaited<ReturnType<typeof loadPnwPlacesLayout>> | null = null;
   let places: PnwPlacesLayer | null = null;
   const buildPlaces = () => {
     places?.dispose();
     places = null;
     const rs = roadScene;
-    if (!placesModule || !roadArgs || !rs) return;
+    if (!placesModule || !placesPlan || !roadArgs || !rs) return;
     if (!placesModule.hasPnwPlaces(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
     places = new placesModule.PnwPlacesLayer(look, {
       road: roadArgs.road,
       seed: sceneSeed,
+      layout: placesPlan.pnwPlacesLayout(roadArgs.road, sceneSeed),
       landReach: (e, side, s) => rs.landReach(e, side, s),
     });
     scene.add(places.group);
@@ -988,9 +998,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       const placeTags = networkTags(road, dressing).tags;
       if (!placesModule && ['ferry', 'clearcut', 'festival'].some((t) => placeTags.has(t)))
-        void chunk('Pacific Northwest places', () => import('./pnw-places')).then((m) => {
-          if (!m) return;
+        void Promise.all([
+          chunk('Pacific Northwest places', () => import('./pnw-places')),
+          chunk('Pacific Northwest places layout', loadPnwPlacesLayout),
+        ]).then(([m, plan]) => {
+          if (!m || !plan) return;
           placesModule = m;
+          placesPlan = plan;
           buildPlaces();
         });
       backdrop.setRoad(road);

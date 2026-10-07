@@ -265,6 +265,17 @@ describe('the shoulder of a tagged road ends in the look its tag names', () => {
       edges: [...base.edges, ramp],
       vergeAt: (edge: number, s: number, side: 'left' | 'right') =>
         edge === 1 ? { ...noBand, side } : base.vergeAt(edge, s, side),
+      // Nor has it lanes of its own here: the layer asks where every other edge's lanes lie (it has none),
+      // and its frame is the line of its points.
+      lanesAt: (edge: number, s: number) => (edge === 1 ? [] : base.lanesAt(edge, s)),
+      frameAt: (edge: number, s: number) => {
+        if (edge !== 1) return base.frameAt(edge, s);
+        const i = Math.max(0, Math.min(pts.length - 2, Math.floor(s / 2)));
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+        return { ...base.frameAt(0, 400), x: a.x, z: a.z, tx: (b.x - a.x) / len, tz: (b.z - a.z) / len };
+      },
     } as RoadNetwork;
     const plain = layerOf(base);
     const verge = layerOf(withRamp);

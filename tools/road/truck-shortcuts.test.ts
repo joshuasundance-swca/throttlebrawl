@@ -6,7 +6,6 @@ import { tuningDefaults } from '../../src/core';
 import {
   createRoadNetwork,
   createRouteProgress,
-  jumpableWallAt,
   rampTruckShape,
   type BakedNetwork,
   type BakedRoad,
@@ -23,7 +22,8 @@ import type { SimConfig, SimEvent } from '../../src/sim/types';
 // Playtest 3, T5.2 (the maintainer, round 1: "The ramp trucks could be in motion and the static one
 // could be used to get to shortcuts or something."): a static ramp truck on each of two hand-made
 // networks, the Pacific Northwest's Mill Yard Cut and San Francisco's Plaza Cut. Each is a branch
-// that stands behind a low `jumpable` wall beside the road, with its split zone past the lanes' outer
+// that stands behind a low wall beside the road (marked `jumpable` then; since 2026-10-06 every barrier
+// is flown over above its top, src/road/beyond.ts), with its split zone past the lanes' outer
 // edge: nobody on the ground can pick it, a bike that leaves the truck's lip and steers right flies
 // over the wall and lands on it, and one that misses the truck simply stays on the road. These are
 // the live checks, by sim ticks and on the baked files: the structure, who can get on, and what the
@@ -115,6 +115,20 @@ function live(cut: Cut): Live {
 /** The outer edge of the avenue's lanes at s, on the right. */
 function rightEdge(road: RoadNetwork, edge: number, s: number): number {
   return Math.max(...road.lanesAt(edge, s).map((l) => l.dCenterM + l.widthM / 2));
+}
+
+/**
+ * The wall on one side at s, or null. Once a `jumpable` wall; since 2026-10-06 every barrier is
+ * flown over above its top (the over-the-barrier rule, src/road/beyond.ts), so it is any wall.
+ */
+function wallAt(
+  road: RoadNetwork,
+  edge: number,
+  s: number,
+  side: 'left' | 'right',
+): { heightM: number } | null {
+  const b = road.barrierAt(edge, s, side);
+  return b?.kind === 'wall' ? b : null;
 }
 
 /** What a step of the sim did: the events by type. */
@@ -257,24 +271,24 @@ describe.each(CUTS)('$name', (cut) => {
     expect(zone.s0 - lip).toBeGreaterThanOrEqual(0);
     expect(zone.s1 - lip).toBeLessThanOrEqual(30);
     expect(truck.d0).toBeGreaterThan(0);
-    // The wall: jumpable, 1.2 m, on the right from the lip (at the latest) to the end of the avenue's piece,
+    // The wall: 1.2 m, on the right from the lip (at the latest) to the end of the avenue's piece,
     // on along the split connector and the first 125 m of the next piece (155 m past the split, as far
     // as the sim's hand-over between the roads looks), and nowhere else on the avenue's pieces.
     const connector = avenue + 1;
     const yard = avenue + 2;
     for (let s = lip; s <= len; s += 1)
-      expect(jumpableWallAt(l.road, avenue, s, 'right')?.heightM, `s ${s}`).toBe(1.2);
+      expect(wallAt(l.road, avenue, s, 'right')?.heightM, `s ${s}`).toBe(1.2);
     for (let s = 0; s < truck.s0 - 40; s += 5)
-      expect(jumpableWallAt(l.road, avenue, s, 'right'), `s ${s}`).toBeNull();
+      expect(wallAt(l.road, avenue, s, 'right'), `s ${s}`).toBeNull();
     for (let s = 0; s <= (l.road.edges[connector]?.length ?? 0); s += 1)
-      expect(jumpableWallAt(l.road, connector, s, 'right')?.heightM, `connector s ${s}`).toBe(1.2);
+      expect(wallAt(l.road, connector, s, 'right')?.heightM, `connector s ${s}`).toBe(1.2);
     for (let s = 0; s <= 125; s += 5)
-      expect(jumpableWallAt(l.road, yard, s, 'right')?.heightM, `yard s ${s}`).toBe(1.2);
+      expect(wallAt(l.road, yard, s, 'right')?.heightM, `yard s ${s}`).toBe(1.2);
     for (let s = 126; s <= (l.road.edges[yard]?.length ?? 0); s += 5)
-      expect(jumpableWallAt(l.road, yard, s, 'right'), `yard s ${s}`).toBeNull();
+      expect(wallAt(l.road, yard, s, 'right'), `yard s ${s}`).toBeNull();
     for (const e of [avenue, connector, yard])
       for (let s = 0; s <= (l.road.edges[e]?.length ?? 0); s += 5)
-        expect(jumpableWallAt(l.road, e, s, 'left'), `left ${e} ${s}`).toBeNull();
+        expect(wallAt(l.road, e, s, 'left'), `left ${e} ${s}`).toBeNull();
     // The cut's band starts inside the lanes' outer 2 m only, as far as a rider's centre goes, so a
     // grounded rider is never handed across (the sim tests below ride it).
     const first = l.road.edges[l.road.edgeIndex(cut.roads[0] ?? '')];

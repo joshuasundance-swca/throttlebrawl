@@ -1,13 +1,14 @@
 // road/gap.ts: where a road has no surface, and where a rider who fell through it wakes (playtest
 // 3; the maintainer, 2026-10-03: "the 7 mile bridge has an old road parallel to it. Jumps could let
 // you get from one to the other"; round 3: "the real 80 m missing span is the big jump (a miss =
-// splash, respawn on the highway)"), plus the walls an airborne rider may fly over ("the static one
-// could be used to get to shortcuts"). docs/architecture.md, "Jumps, ramps and airtime".
+// splash, respawn on the highway)"). docs/architecture.md, "Jumps, ramps and airtime". The walls an
+// airborne rider may fly over are no longer a flag here: every barrier is, above its top
+// (road/beyond.ts, 2026-10-06).
 //
 // Pure queries over the network's data, + - * / only, like the rest of road/, so the sim reads them:
 // sim/riders/gap.ts for the fall, sim/tumble for the bodies and the respawn.
 import { sRateFactor, type RoadNetwork, type RoadPos } from './network';
-import { gapParams, type BakedBarrier, type BakedFeature } from './types';
+import { gapParams, type BakedFeature } from './types';
 
 /**
  * The `gap` feature whose box (s0..s1 × d0..d1, edges included) holds (s, d) on an edge, or null.
@@ -105,18 +106,4 @@ export function nearestOnEdges(
     }
   }
   return best;
-}
-
-/** The `jumpable` wall on one side of an edge at s, or null (a rail never is one). */
-export function jumpableWallAt(
-  road: RoadNetwork,
-  edge: number,
-  s: number,
-  side: 'left' | 'right',
-): BakedBarrier | null {
-  for (const b of road.edges[edge]?.barriers ?? []) {
-    if (b.kind !== 'wall' || b.jumpable !== true) continue;
-    if (s >= b.s0 && s <= b.s1 && (b.side === side || b.side === 'both')) return b;
-  }
-  return null;
 }

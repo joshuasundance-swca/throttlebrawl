@@ -3,8 +3,10 @@
 // hitboxes"). A rider in the air clears a vehicle only when it is above the vehicle's height (the
 // type's `heightM`, else its category's default); below it, the contact is decided like any other by
 // ./contact-rule.ts: its closing speed along the contact's normal, against `traffic.solidHitMps`.
-// Landing on the roof, the normal is up: a glancing touch-down wobbles and rides off the roof, a
-// square drop crashes. Into its side or end in the air, the normal is the road's, as on the ground.
+// Landing on the roof, the normal is up: under the old rule (`riders.supports` off) a glancing
+// touch-down wobbles and rides off the roof, a square drop crashes; with supports (the maintainer,
+// 2026-10-06; sim/riders/supports.ts) a roof that holds the bike is ground the rider lands on. Into its
+// side or end in the air, the normal is the road's, as on the ground.
 // A wheelie's hood or trunk launch still launches clear of the car it left. A rider whose file or
 // bike gives a hitbox (the lawnmower, the parking trike) meets traffic with that box. Fixture road,
 // only the riders and traffic stepping, counted in sim ticks.
@@ -94,7 +96,7 @@ const PLAYER: SimRiderDef = {
 /** The lawnmower's box (packs: its bike file's `hitbox`). */
 const MOWER = { lengthM: 1.65, widthM: 1.15 };
 
-function makeConfig(rider: SimRiderDef = PLAYER): SimConfig {
+function makeConfig(rider: SimRiderDef = PLAYER, tuning: Record<string, number> = {}): SimConfig {
   const road = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 2000, kappa: 0 }]));
   const route = createRouteProgress(road, {
     id: 'r',
@@ -126,6 +128,7 @@ function makeConfig(rider: SimRiderDef = PLAYER): SimConfig {
       // No population: every vehicle here is placed by hand.
       'traffic.densitySame': 0,
       'traffic.densityOncoming': 0,
+      ...tuning,
     },
     difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1 },
     assists: 'off',
@@ -205,6 +208,8 @@ function untilDown(sc: Scene, max = 240): SimEvent[] {
 }
 
 const LINE = TRAFFIC_HIT_DEFAULT_MPS;
+/** The old roof rule: supports off (sim/riders/supports.ts). */
+const OLD_ROOF = { 'riders.supports': 0 };
 
 describe('a rider in the air clears a vehicle only above its height', () => {
   // The same jump at each: 1.5 m behind the vehicle's box, 2.0 m up and rising at 5 m/s, at 25 m/s.
@@ -256,10 +261,14 @@ describe('a rider in the air clears a vehicle only above its height', () => {
 
 describe('landing on a roof, and an air hit into a side: the closing-speed rule', () => {
   // Over the sedan's middle, at 8 m/s along the road, just above the roof (1.5 m).
-  const onRoof = (vy: number) =>
-    scene({ s: 299, dOff: 0, speed: 8, air: { h: 1.6, vy } }, { type: T_SEDAN, u: 300 });
+  const onRoof = (vy: number, tuning: Record<string, number> = OLD_ROOF) =>
+    scene(
+      { s: 299, dOff: 0, speed: 8, air: { h: 1.6, vy } },
+      { type: T_SEDAN, u: 300 },
+      makeConfig(PLAYER, tuning),
+    );
 
-  it('a glancing touch-down (3 m/s down) wobbles, rides the roof, then drops off past the car', () => {
+  it('old rule: a glancing touch-down (3 m/s down) wobbles, rides the roof, then drops off past the car', () => {
     const sc = onRoof(-3);
     const lowest: number[] = [];
     for (let t = 0; t < 240; t++) {
@@ -284,7 +293,18 @@ describe('landing on a roof, and an air hit into a side: the closing-speed rule'
     expect(sc.rider.pos.s).toBeGreaterThan(300 + SEDAN.lengthM / 2);
   });
 
-  it('a square drop onto the roof (12 m/s down) crashes, the body starting on the roof', () => {
+  it('with supports, the same touch-downs land on the roof (a 12 m/s drop clean, under the 14 m/s wobble)', () => {
+    for (const vy of [-3, -12]) {
+      const sc = onRoof(vy, {});
+      const down = untilDown(sc).find((e) => e.type === 'land' || e.type === 'crash');
+      expect(down?.type).toBe('land');
+      expect(down?.data).toMatchObject({ quality: 'clean', on: 'vehicle' });
+      expect(sc.events.filter(isTraffic)).toEqual([]);
+      expect(sc.rider.h).toBeCloseTo(SEDAN.heightM ?? 0, 6);
+    }
+  });
+
+  it('old rule: a square drop onto the roof (12 m/s down) crashes, the body starting on the roof', () => {
     const sc = onRoof(-12);
     const hit = untilDown(sc).find(isTraffic);
     console.log(`[examined] square drop: ${JSON.stringify(hit?.data)}, h ${sc.rider.h.toFixed(2)}`);
@@ -323,8 +343,12 @@ describe('a light kerb rider is never a crash, from above either (the live check
   // The live check's repro: coming down from the air onto an e-scooter rider, at 8 m/s along the road,
   // just above its top. It was met as a car's roof: a crash from 10 m/s falling, and a slower drop left
   // the bike riding on top of the scooter rider.
-  const dropOnto = (type: number, top: number, vy: number) =>
-    scene({ s: 299.6, dOff: 0, speed: 8, air: { h: top + 0.1, vy } }, { type, u: 300 });
+  const dropOnto = (type: number, top: number, vy: number, tuning: Record<string, number> = {}) =>
+    scene(
+      { s: 299.6, dOff: 0, speed: 8, air: { h: top + 0.1, vy } },
+      { type, u: 300 },
+      makeConfig(PLAYER, tuning),
+    );
 
   for (const vy of [-12, -3]) {
     it(`a drop at ${-vy} m/s onto the scooter rider: never a crash, never held on its top; the bike lands`, () => {
@@ -352,11 +376,18 @@ describe('a light kerb rider is never a crash, from above either (the live check
     });
   }
 
-  it('control: the same 12 m/s drop onto a sedan is a crash on its roof', () => {
-    const sc = dropOnto(T_SEDAN, SEDAN.heightM ?? 0, -12);
-    const hit = untilDown(sc).find(isTraffic);
+  // A sedan does have a roof: under the old rule the same drop is a crash on it, and with supports
+  // (sim/riders/supports.ts) the bike lands on it, where it is never held over the scooter rider.
+  it('control: the same 12 m/s drop onto a sedan meets its roof (old rule: a crash on it; supports: a landing on it)', () => {
+    const old = dropOnto(T_SEDAN, SEDAN.heightM ?? 0, -12, OLD_ROOF);
+    const hit = untilDown(old).find(isTraffic);
     expect(hit?.type).toBe('crash');
     expect(hit?.data).toMatchObject({ hit: 'top', air: true });
+    const held = dropOnto(T_SEDAN, SEDAN.heightM ?? 0, -12);
+    const down = untilDown(held).find((e) => e.type === 'land' || e.type === 'crash');
+    expect(down?.type).toBe('land');
+    expect(down?.data).toMatchObject({ on: 'vehicle' });
+    expect(held.rider.h).toBeCloseTo(SEDAN.heightM ?? 0, 6);
   });
 });
 

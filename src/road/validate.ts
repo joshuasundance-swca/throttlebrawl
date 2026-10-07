@@ -549,6 +549,16 @@ function lintPlaytest3(
     if (b.jumpable === true && b.kind !== 'wall') {
       add('features', `/barriers/${i}/jumpable`, `a ${b.kind} cannot be jumpable: only a wall may be`);
     }
+    // Over the barrier (2026-10-06): a flying rider passes over a barrier above its top, so every
+    // barrier says how tall it stands, as drawn (road/beyond.ts).
+    const h: unknown = (b as { heightM?: unknown }).heightM;
+    if (!(typeof h === 'number' && Number.isFinite(h) && h > 0 && h <= MAX_HEIGHT_M)) {
+      add(
+        'features',
+        `/barriers/${i}/heightM`,
+        `a ${String(b.kind)} needs its height above the deck as drawn (heightM, above 0 and at most ${MAX_HEIGHT_M} m; got ${JSON.stringify(h)}): an airborne rider passes over it above its top`,
+      );
+    }
   });
 }
 

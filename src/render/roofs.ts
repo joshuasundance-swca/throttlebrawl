@@ -5,19 +5,11 @@
 // camera stands under one; the renderer then stops the rain there. Presentation only, and small
 // enough to sit in the main chunk: the ferry's builder (a lazy chunk) takes its roof numbers from here,
 // so what is drawn and where the rain stops are one fact.
-import type { RoadNetwork } from '../road';
+import { FERRY_ROOF, ferrySections, type RoadNetwork } from '../road';
 
-/** The car ferry's roof, m [default]: how far its passenger deck stands over the car deck, and how wide. */
-export const FERRY_ROOF = {
-  /** The underside of the passenger deck above the car deck. */
-  heightM: 6.6,
-  /** Half the hull's width: the roof covers the road out to here each side. */
-  halfWidthM: 12,
-  /** The passenger deck stops this far short of each end of the hull. */
-  insetM: 20,
-  /** About how long one hull section is (the ferry is built in sections of about this length). */
-  sectionM: 18,
-} as const;
+// The ferry's roof numbers and its sections moved to road/ferry.ts (the physical world's port of the Pacific
+// Northwest's places: the ferry is a solid structure now, planned in road/, drawn from the same numbers).
+export { FERRY_ROOF, ferrySections };
 
 /** One stretch of road with a roof over it. */
 export interface RoofSpan {
@@ -28,20 +20,6 @@ export interface RoofSpan {
   halfWidthM: number;
   /** The roof's underside, m above the road's surface. */
   heightM: number;
-}
-
-/** The sections a ferry stretch s0..s1 is built in, and which of them carry the passenger deck. */
-export function ferrySections(
-  s0: number,
-  s1: number,
-): { n: number; len: number; cabin: (i: number) => boolean } {
-  const n = Math.max(1, Math.round((s1 - s0) / FERRY_ROOF.sectionM));
-  const len = (s1 - s0) / n;
-  const cabin = (i: number) => {
-    const s = s0 + (i + 0.5) * len;
-    return s > s0 + FERRY_ROOF.insetM && s < s1 - FERRY_ROOF.insetM;
-  };
-  return { n, len, cabin };
 }
 
 /** Every roof over a network's roads: the ferries' passenger decks, by their `ferry` tag. */
