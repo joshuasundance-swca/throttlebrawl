@@ -9,7 +9,9 @@
 // - rides the route: the centre of a travel lane in its direction, or a `shortcut` lane when the
 //   road offers one; and it takes road-2's ramp shortcut once: in the last SHORTCUT_APPROACH_M
 //   before a split zone on the route (`RouteProgress.shortcuts`) it moves into the zone, holds off
-//   fights, and follows a car rather than swerve out of the zone;
+//   fights, and follows a car going its way rather than swerve out of the zone; while a car coming
+//   the other way is in the zone's line it keeps to its own side and rides on, never stopping in
+//   that car's path;
 // - avoids traffic: a vehicle ahead in its line makes it pick another lane of its own direction,
 //   pass in the oncoming lane when that is clear far enough ahead, or brake and follow (the lanes of
 //   its own direction come first, whichever is nearer). Only vehicles count: riders pass through
@@ -123,6 +125,12 @@ const TRAFFIC_LOOKAHEAD_M = 45;
 const PASS_CLEAR_M = 160;
 /** Half the width the bot keeps clear around its line (half a bike plus margin), m. */
 const LINE_HALF_WIDTH_M = 1.3;
+/**
+ * Following a car in its line: the gap at which the bot wants to be stopped, and the gap over which
+ * it eases up to the car's pace from there, m.
+ */
+const FOLLOW_STOP_M = 4;
+const FOLLOW_EASE_M = 16;
 /** How far before a split zone the bot starts moving into it, m. */
 export const SHORTCUT_APPROACH_M = 150;
 /** The bot's line in a split zone: this far into the zone from its inner edge, m. */
@@ -236,16 +244,54 @@ export function createBot(): BotController {
   /** The tick until which a remounted bot keeps to its own side (see REMOUNT_OWN_SIDE_TICKS). */
   let ownSideUntil = -1;
 
-  /** Is a stretch of road clear of vehicles around lateral `d`, from s0 to s1 ahead? */
-  function clearAt(snap: SimSnapshot, me: EntitySnapshot, d: number, s0: number, s1: number): boolean {
+  /**
+   * The nearest vehicle around lateral `d`, from s0 to s1 ahead, or null when that stretch is clear.
+   * With `onlyDir`, only vehicles travelling that way along the road count.
+   */
+  function blockerAt(
+    snap: SimSnapshot,
+    me: EntitySnapshot,
+    d: number,
+    s0: number,
+    s1: number,
+    onlyDir?: 1 | -1,
+  ): { o: EntitySnapshot; ds: number } | null {
+    let best: { o: EntitySnapshot; ds: number } | null = null;
     for (const o of snap.entities) {
       // Only traffic blocks a line: riders (rivals, the cop) and pedestrians never collide with it.
       if (o.kind !== 'vehicle') continue;
+      if (onlyDir !== undefined && o.road.dir !== onlyDir) continue;
       const rel = relative(me, o);
       if (!rel || rel.ds < s0 || rel.ds > s1) continue;
-      if (Math.abs(o.road.d - d) < 1.2 + LINE_HALF_WIDTH_M) return false;
+      if (Math.abs(o.road.d - d) >= 1.2 + LINE_HALF_WIDTH_M) continue;
+      if (!best || rel.ds < best.ds) best = { o, ds: rel.ds };
     }
-    return true;
+    return best;
+  }
+
+  const clearAt = (
+    snap: SimSnapshot,
+    me: EntitySnapshot,
+    d: number,
+    s0: number,
+    s1: number,
+    onlyDir?: 1 | -1,
+  ): boolean => blockerAt(snap, me, d, s0, s1, onlyDir) === null;
+
+  /**
+   * Following the vehicle in its line around `d`: the throttle and brake that hold the bot to that
+   * vehicle's pace along the bot's way, easing to a stop as the gap closes to FOLLOW_STOP_M. A car
+   * going its way that pulls away is followed off a standstill: braking whatever the car did held a
+   * stopped bot still for good behind a moving queue (dense traffic on Bridge City, the never-stuck
+   * lane: 941 ticks stopped in the oncoming lane, both lanes of its own way flowing at 9 m/s). A car
+   * coming the other way is not a pace to follow: the bot stops for it.
+   */
+  function follow(snap: SimSnapshot, me: EntitySnapshot, d: number): { throttle: number; brake: number } {
+    const lead = blockerAt(snap, me, d, 0.5, TRAFFIC_LOOKAHEAD_M);
+    if (!lead) return { throttle: 1, brake: 0 };
+    const pace = lead.o.road.dir === me.road.dir ? lead.o.speed : 0;
+    const want = pace * clamp((lead.ds - FOLLOW_STOP_M) / FOLLOW_EASE_M, 0, 1);
+    return { throttle: me.speed < want - 0.5 ? 1 : 0, brake: me.speed > want + 1 ? 0.5 : 0 };
   }
 
   /** The lane the bot rides: a shortcut lane while it has not taken one, else the nearest drive lane. */
@@ -399,8 +445,16 @@ export function createBot(): BotController {
       let throttle = 1;
       let brake = 0;
 
-      // road-2's ramp shortcut: a split zone ahead on this edge, not yet taken.
-      const zone = shortcutDone ? undefined : zonesOf(route).find((z) => approaching(z, edge, s, dir));
+      // road-2's ramp shortcut: a split zone ahead on this edge, not yet taken. Not while a vehicle
+      // coming the other way is in the zone's line (Bridge City's cut leaves across the oncoming
+      // lanes): following it means stopping in its path, at full lock across the centre line, where
+      // the cars coming down the road stop for the bot in turn (polish H's punch item 5: 4,000+ ticks
+      // on Broadway). It rides on, on its own side, and goes for the zone once the line is clear.
+      const zoneAhead = shortcutDone ? undefined : zonesOf(route).find((z) => approaching(z, edge, s, dir));
+      const zone =
+        zoneAhead && clearAt(snap, me, zoneLine(zoneAhead), 0.5, TRAFFIC_LOOKAHEAD_M, -dir as 1 | -1)
+          ? zoneAhead
+          : undefined;
       if (zone) {
         stats.shortcutApproachTicks++;
         targetD = zoneLine(zone);
@@ -475,8 +529,7 @@ export function createBot(): BotController {
       targetD = clamp(targetD, bounds.lo, bounds.hi);
       if (zone && !clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
         // Committed to the zone: follow the car rather than swerve out of it.
-        throttle = 0;
-        brake = 0.5;
+        ({ throttle, brake } = follow(snap, me, targetD));
       } else if (!clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
         // Another lane of its own direction first (nearest first); the oncoming lane only when none
         // is free, so a car ahead does not put it across the centre line while a lane on its own
@@ -494,8 +547,7 @@ export function createBot(): BotController {
           targetD = free.d;
         } else {
           // Nowhere to go: follow at the blocker's pace.
-          throttle = 0;
-          brake = 0.5;
+          ({ throttle, brake } = follow(snap, me, targetD));
         }
       } else {
         dodging = false;
