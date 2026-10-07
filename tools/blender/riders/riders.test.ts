@@ -558,6 +558,7 @@ describe("the player's bike: the garage's model and the career paint (GameRender
             : { id, source: 'procedural', value: standIn(), fellBack: true, error: `no asset ${id}` },
         );
       },
+      onRetryReady: () => () => {},
     } as unknown as AssetManifest;
     const views = new EntityViews(look, { params });
     const rigs = new RiderRigs(look, manifest, params);
