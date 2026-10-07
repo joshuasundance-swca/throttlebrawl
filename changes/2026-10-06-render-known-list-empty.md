@@ -23,3 +23,5 @@ For devs:
 - **Not fixed.** Nothing on the list. The check runs seed 1 (Bridge City 1 to 3); other seeds were not swept.
 
 Not phone-verified. No local browser was run.
+
+The keeper, after the quick check failed on ab3984d: the shoulders that yield left holes at the Jones Street choice (`junction-sweep.test.ts`, 20 places on Russian Hill: the shortcut was clipped where the main road's shoulder hid it, and that shoulder now yields to the shortcut's lanes, so neither road drew there). A shortcut is now clipped only under the span the main road still draws (`drawnSpan` in `road-mesh.ts`: the outer span less its yield, held over a sample step either side, so a yield that begins between rows leaves no sliver). And `barrier-looks.test.ts`'s ramp stub gains a `toWorld`, which the yield asks of every edge (it threw "no edge 1"). Examined: `junction-sweep`, `barrier-looks`, `ground-yield`, `road-clear-keys`, `-sf` and `-pnw`, `road-split`, `scene-cost`, `-sf` and `-pnw` and `edge-kit-overlap` pass.

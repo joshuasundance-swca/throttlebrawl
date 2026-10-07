@@ -509,6 +509,8 @@ const LINE_M = 0.15;
 /** How far down the shortcut the split zone's inner edge keeps bounding it, m. */
 const GORE_REACH_M = 150;
 
+/** How far either side a main road's drawn span is held when a shortcut under it is clipped, m (a sample step). */
+const ROW_HOLD_M = 2;
 /** The drawn span of an edge, verges included: what hides a surface drawn under it. */
 function outerSpan(e: Edge): readonly [number, number] {
   return [e.dMin - VERGE_M, e.dMax + VERGE_M];
@@ -1040,10 +1042,40 @@ export function buildRoadScene(
     return !!edge && (dressingOf(edge, dressing).tags ?? []).some((t) => t.tag === 'secret');
   };
   const zones = road.splitZones().filter((z) => !secretEdge(z.toEdge));
+  /**
+   * The span a main road draws at s: its outer span, less the shoulder it leaves out over a lower road's lanes
+   * (`yieldReach` below, the same `clearReach`). A shortcut under the part a main road leaves out is not hidden
+   * there, so it is not clipped there either: clipped under a shoulder that yields to it, the Jones Street choice's
+   * shortcut drew nothing where neither road did (the junction sweep's holes on Russian Hill).
+   */
+  const drawnSpanAt = (o: Edge, os: number): readonly [number, number] => {
+    const [lo, hi] = outerSpan(o);
+    const l = laneSpans(road.lanesAt(o.index, os));
+    const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
+    const left = locator.clearReach(o.index, os, llo, lo, -0.02, GROUND_YIELD_MARGIN_M, GROUND_OVER_ROAD_M);
+    const right = locator.clearReach(o.index, os, lhi, hi, -0.02, GROUND_YIELD_MARGIN_M, GROUND_OVER_ROAD_M);
+    return [left ?? llo, right ?? lhi];
+  };
+  // Held over a sample step either side: both roads' edges run straight between their own rows, so where the
+  // yield begins or ends between rows, the shortcut is drawn rather than leave a sliver that neither draws.
+  const drawnSpan = (o: Edge, os: number): readonly [number, number] => {
+    let lo = -Infinity;
+    let hi = Infinity;
+    for (const at of [os - ROW_HOLD_M, os, os + ROW_HOLD_M]) {
+      const sp = drawnSpanAt(o, Math.max(0, Math.min(o.length, at)));
+      lo = Math.max(lo, sp[0]);
+      hi = Math.min(hi, sp[1]);
+    }
+    return [lo, hi];
+  };
   /** Whether a main (non-shortcut) road draws its surface under a point of edge e. */
   const underMain = (e: Edge, s: number, d: number): boolean => {
     const p = w(e.index, s, d, 0);
-    return locator.covered(p.x, p.z, e.index, outerSpan, (o) => !hasShortcut(o));
+    const main = (o: Edge) => !hasShortcut(o);
+    return (
+      locator.covered(p.x, p.z, e.index, outerSpan, main) &&
+      locator.covered(p.x, p.z, e.index, drawnSpan, main)
+    );
   };
   /** Whether another road's lanes (drive or shortcut) run under a point of edge e. */
   const onOtherLanes = (e: Edge, s: number, d: number): boolean => {
