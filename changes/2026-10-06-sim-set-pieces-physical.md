@@ -17,3 +17,5 @@ Tests:
 - `tests/sim/ramp-truck-cuts.test.ts` finds every ramp-truck shortcut on every network and rides each from its approach. Its control at an 18 m/s lip hits the wall.
 
 Not phone-verified.
+
+The keeper, after train 426: `tests/sim/batch.ts`'s `ISOLATED` profile turns the new switch off (`'modifiers.propContact': 0`), as `tests/sim/isolation-profile.test.ts` asks of every `system: true` switch. Its seeded tests already ran without road events (`modifiers.setPieceChance` 0), so none of them moves.
