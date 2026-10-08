@@ -17,12 +17,14 @@ const builderModel = args && args.builderModel;
 if (typeof builderModel !== 'string' || !builderModel.trim())
   throw new Error('args.builderModel must explicitly name the execution model');
 const builderEffort = args.builderEffort ?? 'medium';
+const hasControl = (p) => [...p].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127);
+const absolutePath = (p) =>
+  typeof p === 'string' &&
+  /^(?:[a-z]:[\\/]|\/)/i.test(p) &&
+  !hasControl(p) &&
+  !p.split(/[\\/]/).includes('..');
 const REPORTS = args.reportDirectory;
-if (
-  typeof REPORTS !== 'string' ||
-  !/^(?:[a-z]:[\\/]|\/)/i.test(REPORTS) ||
-  REPORTS.split(/[\\/]/).includes('..')
-)
+if (!absolutePath(REPORTS))
   throw new Error('args.reportDirectory must be an absolute launch-checkout report directory');
 const reportPath = (key) => REPORTS.replace(/[\\/]+$/, '') + '/' + key + '-report.md';
 const normalPath = (p) => String(p).replace(/\\/g, '/');
@@ -43,8 +45,12 @@ for (const l of lanes) {
     if (
       typeof p !== 'string' ||
       !p.trim() ||
+      hasControl(p) ||
       /[\\:*?]|^\//.test(p) ||
-      p.split('/').some((s) => s === '..' || s === '.')
+      p
+        .replace(/\/$/, '')
+        .split('/')
+        .some((s) => !s || s === '..' || s === '.' || s.trim() !== s || s.endsWith('.'))
     )
       throw new Error('lane ' + l.key + ': ownedPaths must be literal repo-relative files or folders');
     const key = p.replace(/\/+$/, '').toLowerCase();
@@ -127,8 +133,9 @@ function hasHandoff(r, key) {
   return (
     r &&
     r.ready === true &&
-    r.branch &&
-    r.worktree &&
+    typeof r.branch === 'string' &&
+    /^lane\/[a-z0-9-]+\/[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*$/.test(r.branch) &&
+    absolutePath(r.worktree) &&
     /^[a-f0-9]{40}$/.test(r.head) &&
     /^[a-f0-9]{40}$/.test(r.base) &&
     normalPath(r.reportPath) === normalPath(reportPath(key)) &&
