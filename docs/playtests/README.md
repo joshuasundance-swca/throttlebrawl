@@ -13,6 +13,8 @@ Tags mean what they mean in [the product spec](../product-spec.md#how-to-read-th
 
 ## Decision rounds between playtests
 
+**Development checkpoint, 2026-10-08.** The correction batch after playtest 4 reached main at `eca4491`: the full integration suite and production deployment passed, followed by a combined eight-scene desktop live check, replay/tamper checks and results rematch. This is developer acceptance, not a phone playtest. Playtest 5 has no feedback recorded yet; phone verification and remaining M5 launch work remain pending. See [verification and run completion](../engineering.md#handoff-and-completion).
+
 Two rounds of answers came without a playtest. They are carried in the design docs:
 
 - **2026-10-01** ("the maintainer's answers"): build out the three regions instead of adding new ones ("polish and build out the regions we have now (more roads, GIS-based network maybe, better visuals and experience, stuff like that)"); the four staged real roads become routes ("Yes, add as routes"); Ink + 60s film is the default look ("ink+60s but may change later based on improvements, opinions, etc"); voices go in, from open models only, never cloning a real person, one consistent voice per rival, with a Voices volume, an off switch and "cut this" for voice lines; the code-made music stays ("I actually like the music lol"); race types and new regions stay held. See [the roadmap](../roadmap.md#regions-alongside-the-milestones) and [the product spec's settings](../product-spec.md#settings).

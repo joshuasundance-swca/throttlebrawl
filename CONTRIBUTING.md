@@ -69,7 +69,7 @@ the full path too, but a fork author cannot arm auto-merge, so a maintainer merg
    a smaller bundle and runs again, and whatever passes lands. A PR that fails alone gets `gate` =
    failure and a comment naming the failing tests; fix it and push. A PR that no longer merges with
    `main` gets a comment too: merge `origin/main` into your branch and push.
-7. **After the merge**, `main` runs its checks again and the game deploys by itself.
+7. **After the merge**, `main` checks whether a trusted full PR or train already tested its exact code tree. If so, it runs identity validation, a stamped production build and a browser boot check; otherwise it runs the full suite. A green main run deploys its own build.
 
 A new push gives the PR a new head commit, which rides a later train. When a PR's CI run goes red,
 its first red job cancels the rest of that run to free the runners, and the run's own `quick` or `gate`
@@ -179,8 +179,10 @@ meant to say why. If they do not, that is a bug in the train: please say so in t
 a PR that rode a train and was then closed and reopened on the full path keeps the train's `gate`
 line; push a new commit (an empty one is fine) to start clean.
 
-After every merge, `main` runs the full suite again as a backstop, unless a full-path PR run already
-tested exactly the code `main` now has; then `main` runs only the production build before it deploys.
+An exact full-suite record from a trusted PR or train avoids repeating that suite on `main`. A
+quick check never supplies that record. Intermediate subsets of a bundle still need full acceptance
+when their tree has no record; they can queue ahead of the final build. See
+[CI and tree reuse](docs/engineering.md#ci-on-github-actions).
 
 ## What always needs the maintainer
 
