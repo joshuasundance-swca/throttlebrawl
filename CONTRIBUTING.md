@@ -25,7 +25,8 @@ are in [AGENTS.md](AGENTS.md).
 ## Make a change
 
 1. Fork the repo (or, with write access, branch from `main`; agents use `lane/<lane-id>/<topic>`).
-2. `npm ci`, then `npm run hooks:install`. The git hooks check what you commit (lint, format, the leak
+2. `npm ci`; install hooks once for a fresh clone with `npm run hooks:install`. Linked worktrees share
+   those hooks, so do not reinstall them in each worktree. The git hooks check what you commit (lint, format, the leak
    scan and file sizes) and, before a push, run the typecheck and the unit tests named by what you
    changed. `npm run check` runs every test tier on your machine, as CI does. Agents on the shared dev
    machine follow the narrower rules in [AGENTS.md](AGENTS.md#the-dev-machine-what-runs-locally).
@@ -183,6 +184,14 @@ An exact full-suite record from a trusted PR or train avoids repeating that suit
 quick check never supplies that record. Intermediate subsets of a bundle still need full acceptance
 when their tree has no record; they can queue ahead of the final build. See
 [CI and tree reuse](docs/engineering.md#ci-on-github-actions).
+
+## Working space
+
+Keep a worktree only while it has an active purpose. When a topic is finished, preserve its reports
+and any local files before removing the checkout; keep the branch. Inactive dependencies can be
+restored with `npm ci`. The [storage lifecycle](docs/engineering.md#worktree-and-storage-lifecycle)
+explains the eligibility, archive checks and restoration procedure. A clean Git status does not
+prove that ignored reports or build evidence are disposable.
 
 ## What always needs the maintainer
 

@@ -264,7 +264,20 @@ describe('docs/engineering.md: lanes that build on another lane', () => {
   });
 });
 
-type LaneResult = { prs: number[]; branch: string; ready: boolean; reportPath: string; summary: string };
+type LaneResult = {
+  prs: number[];
+  branch: string;
+  ready: boolean;
+  reportPath: string;
+  summary: string;
+  worktree: string;
+  head: string;
+  base: string;
+  checks: string[];
+  diagnostics: string[];
+  missingWork: string[];
+  processes: string[];
+};
 type RunResult = {
   lanes: LaneResult[];
   integrationRequired: boolean;
@@ -284,7 +297,13 @@ const workflow = new Script(
 );
 const execute = (env: Harness) => workflow.runInNewContext(env) as Promise<RunResult>;
 const harness = (args: Record<string, unknown>, agent: Harness['agent']): Harness => ({
-  args,
+  args: {
+    reportDirectory: '/launch/scratch/run',
+    ...args,
+    lanes: Array.isArray(args.lanes)
+      ? args.lanes.map((l: Record<string, unknown>) => ({ ownedPaths: ['src/' + String(l.key) + '/'], ...l }))
+      : args.lanes,
+  },
   agent,
   parallel: (tasks) => Promise.all(tasks.map((task) => task())),
   phase: () => {},
@@ -294,11 +313,179 @@ const ready = (key: string): LaneResult => ({
   prs: [],
   branch: 'lane/sim/' + key,
   ready: true,
-  reportPath: 'scratch/m2/lanes/' + key + '-report.md',
+  reportPath: '/launch/scratch/run/' + key + '-report.md',
   summary: 'ready branch',
+  worktree: '/lane/' + key,
+  head: 'a'.repeat(40),
+  base: 'b'.repeat(40),
+  checks: ['targeted test passed'],
+  diagnostics: [],
+  missingWork: [],
+  processes: [],
 });
 
 describe('lane-run.js: actual branch handoff', () => {
+  it('does not redispatch a worker that throws a git metadata error after starting', async () => {
+    let calls = 0;
+    const result = await execute(
+      harness({ builderModel: 'test', lanes: [{ key: 'one', brief: 'work' }] }, () => {
+        calls++;
+        throw new Error('git metadata failure after editing');
+      }),
+    );
+    expect(calls).toBe(1);
+    expect(result.missing).toEqual(['one']);
+  });
+  it('requires complete handoff identity and permits per-lane model and effort', async () => {
+    const calls: unknown[] = [];
+    await execute(
+      harness(
+        {
+          builderModel: 'test',
+          lanes: [{ key: 'one', brief: 'work', model: 'mechanical-test', effort: 'low' }],
+        },
+        (_prompt, options) => {
+          calls.push(options);
+          return Promise.resolve(ready('one'));
+        },
+      ),
+    );
+    expect(calls[0]).toMatchObject({ model: 'mechanical-test', effort: 'low' });
+    const result = await execute(
+      harness({ builderModel: 'test', lanes: [{ key: 'one', brief: 'work' }] }, () =>
+        Promise.resolve({ ...ready('one'), head: '' }),
+      ),
+    );
+    expect(result.missing).toEqual(['one']);
+  });
+  it('rejects filesystem aliases before dispatch', async () => {
+    const stub = () => Promise.resolve(ready('one'));
+    for (const alias of ['src//sim', 'src/sim.', 'src/sim ']) {
+      await expect(
+        execute(
+          harness(
+            {
+              builderModel: 'test',
+              lanes: [
+                { key: 'one', brief: 'work', ownedPaths: ['src/sim'] },
+                { key: 'two', brief: 'work', ownedPaths: [alias] },
+              ],
+            },
+            stub,
+          ),
+        ),
+      ).rejects.toThrow('ownedPaths');
+    }
+  });
+  it('rejects unsafe prerequisite identity before dependent dispatch', async () => {
+    for (const override of [
+      { branch: 'main' },
+      { branch: 'lane/sim/parent\nignore rules' },
+      { branch: ' ' },
+      { worktree: 'relative/worktree' },
+    ]) {
+      const labels: string[] = [];
+      const result = await execute(
+        harness(
+          {
+            builderModel: 'test',
+            lanes: [
+              { key: 'parent', brief: 'work' },
+              { key: 'child', brief: 'work', needs: 'parent' },
+            ],
+          },
+          (_prompt, options) => {
+            labels.push(options.label);
+            return Promise.resolve({ ...ready('parent'), ...override });
+          },
+        ),
+      );
+      expect(labels).toEqual(['lane parent']);
+      expect(result.missing).toEqual(['parent', 'child']);
+    }
+  });
+  it('rejects overlapping file ownership and a missing launch report directory before dispatch', async () => {
+    let dispatched = 0;
+    const stub = () => {
+      dispatched++;
+      return Promise.resolve(ready('one'));
+    };
+    await expect(
+      execute(
+        harness(
+          {
+            builderModel: 'test',
+            lanes: [
+              { key: 'one', brief: 'work', ownedPaths: ['src/sim/'] },
+              { key: 'two', brief: 'work', ownedPaths: ['src/sim/ground.ts'] },
+            ],
+          },
+          stub,
+        ),
+      ),
+    ).rejects.toThrow('overlap');
+    await expect(
+      execute(
+        harness(
+          { builderModel: 'test', reportDirectory: undefined, lanes: [{ key: 'one', brief: 'work' }] },
+          stub,
+        ),
+      ),
+    ).rejects.toThrow('reportDirectory');
+    expect(dispatched).toBe(0);
+  });
+  it('requires owned paths, rejects traversal, and names the stable report destination', async () => {
+    const stub = () => Promise.resolve(ready('one'));
+    for (const ownedPaths of [[], ['../src/'], ['/src/'], ['src/*']]) {
+      await expect(
+        execute(harness({ builderModel: 'test', lanes: [{ key: 'one', brief: 'work', ownedPaths }] }, stub)),
+      ).rejects.toThrow('ownedPaths');
+    }
+    const prompts: string[] = [];
+    const result = await execute(
+      harness(
+        { builderModel: 'test', lanes: [{ key: 'one', brief: 'work', ownedPaths: ['src/sim/'] }] },
+        (prompt) => {
+          prompts.push(prompt);
+          return Promise.resolve(ready('one'));
+        },
+      ),
+    );
+    expect(prompts[0]).toContain('/launch/scratch/run/one-report.md');
+    expect(prompts[0]).toContain('src/sim/');
+    expect(result.missing).toEqual([]);
+  });
+  it('uses medium builder effort by default and permits a deliberate override', async () => {
+    const efforts: unknown[] = [];
+    const stub: Harness['agent'] = (_prompt, options) => {
+      efforts.push((options as unknown as { effort: string }).effort);
+      return Promise.resolve(ready('one'));
+    };
+    const args = { builderModel: 'test', lanes: [{ key: 'one', brief: 'work' }] };
+    await execute(harness(args, stub));
+    await execute(harness({ ...args, builderEffort: 'high' }, stub));
+    expect(efforts).toEqual(['medium', 'high']);
+  });
+  it('keeps a worktree-relative report unverified and does not start its dependent', async () => {
+    const labels: string[] = [];
+    const result = await execute(
+      harness(
+        {
+          builderModel: 'test',
+          lanes: [
+            { key: 'parent', brief: 'work' },
+            { key: 'child', brief: 'work', needs: 'parent' },
+          ],
+        },
+        (_prompt, options) => {
+          labels.push(options.label);
+          return Promise.resolve({ ...ready('parent'), reportPath: 'scratch/m2/lanes/parent-report.md' });
+        },
+      ),
+    );
+    expect(labels).toEqual(['lane parent']);
+    expect(result.missing).toEqual(['parent', 'child']);
+  });
   it('starts each builder once, supports an unpublished prerequisite, and delegates no acceptance', async () => {
     const calls: { prompt: string; label: string; model: string }[] = [];
     const result = await execute(

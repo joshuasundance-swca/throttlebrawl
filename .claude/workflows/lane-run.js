@@ -3,7 +3,7 @@ export const meta = {
   description:
     'Build independent branches, then hand explicit results to the coordinator for integration and one live check',
   whenToUse:
-    'Pass args { lanes: [{ key, brief, needs? }], builderModel, maxBuilders? }. The coordinator selects the execution model and owns CI, landing and the live check.',
+    'For useful independent work only: pass args { lanes: [{ key, brief, ownedPaths, needs?, model?, effort? }], builderModel, builderEffort?, reportDirectory, maxBuilders? }. reportDirectory is an absolute ignored directory in the launch checkout. The coordinator owns CI, landing and the live check.',
   phases: [{ title: 'Build', detail: 'independent worktrees; ready branches and evidence' }],
 };
 
@@ -16,16 +16,55 @@ if (!lanes.length) throw new Error('args.lanes must be a non-empty array of { ke
 const builderModel = args && args.builderModel;
 if (typeof builderModel !== 'string' || !builderModel.trim())
   throw new Error('args.builderModel must explicitly name the execution model');
+const builderEffort = args.builderEffort ?? 'medium';
+const hasControl = (p) => [...p].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127);
+const absolutePath = (p) =>
+  typeof p === 'string' &&
+  /^(?:[a-z]:[\\/]|\/)/i.test(p) &&
+  !hasControl(p) &&
+  !p.split(/[\\/]/).includes('..');
+const REPORTS = args.reportDirectory;
+if (!absolutePath(REPORTS))
+  throw new Error('args.reportDirectory must be an absolute launch-checkout report directory');
+const reportPath = (key) => REPORTS.replace(/[\\/]+$/, '') + '/' + key + '-report.md';
+const normalPath = (p) => String(p).replace(/\\/g, '/');
 const POOL = args.maxBuilders ?? 2;
 if (!Number.isInteger(POOL) || POOL < 1 || POOL > 5)
   throw new Error('args.maxBuilders must be an integer from 1 to 5, within the active harness capacity');
 const seen = new Set();
+const ownership = [];
 for (const l of lanes) {
   if (!l || !/^[a-z0-9][a-z0-9-]*$/.test(String(l.key)) || typeof l.brief !== 'string' || !l.brief.trim()) {
     throw new Error('each lane needs a lowercase key (letters, digits, dashes) and a non-empty brief');
   }
   if (seen.has(l.key)) throw new Error('duplicate lane key: ' + l.key);
   seen.add(l.key);
+  if (!Array.isArray(l.ownedPaths) || !l.ownedPaths.length)
+    throw new Error('lane ' + l.key + ': ownedPaths must name files or folders');
+  for (const p of l.ownedPaths) {
+    if (
+      typeof p !== 'string' ||
+      !p.trim() ||
+      hasControl(p) ||
+      /[\\:*?]|^\//.test(p) ||
+      p
+        .replace(/\/$/, '')
+        .split('/')
+        .some((s) => !s || s === '..' || s === '.' || s.trim() !== s || s.endsWith('.'))
+    )
+      throw new Error('lane ' + l.key + ': ownedPaths must be literal repo-relative files or folders');
+    const key = p.replace(/\/+$/, '').toLowerCase();
+    if (
+      !key ||
+      ownership.some((x) => x.key === key || x.key.startsWith(key + '/') || key.startsWith(x.key + '/'))
+    )
+      throw new Error('lane ' + l.key + ': ownedPaths overlap another allocation');
+    ownership.push({ key, lane: l.key });
+  }
+  if (typeof (l.model ?? builderModel) !== 'string' || !(l.model ?? builderModel).trim())
+    throw new Error('lane ' + l.key + ': model must name an execution model');
+  if (!['low', 'medium', 'high'].includes(l.effort ?? builderEffort))
+    throw new Error('lane ' + l.key + ': effort must be low, medium or high');
 }
 // A lane may name one lane it `needs` (that lane's unmerged work). It starts when the parent lane has
 // finished, builds on the parent's ready branch, then hands back without waiting for its merge
@@ -41,7 +80,6 @@ for (const l of lanes) {
   }
 }
 
-const REPORTS = 'scratch/m2/lanes/';
 const LANE_OUT = {
   type: 'object',
   properties: {
@@ -50,8 +88,28 @@ const LANE_OUT = {
     ready: { type: 'boolean' },
     reportPath: { type: 'string' },
     summary: { type: 'string', maxLength: 900 },
+    worktree: { type: 'string' },
+    head: { type: 'string' },
+    base: { type: 'string' },
+    checks: { type: 'array', items: { type: 'string' } },
+    diagnostics: { type: 'array', items: { type: 'string' } },
+    missingWork: { type: 'array', items: { type: 'string' } },
+    processes: { type: 'array', items: { type: 'string' } },
   },
-  required: ['prs', 'branch', 'ready', 'reportPath', 'summary'],
+  required: [
+    'prs',
+    'branch',
+    'ready',
+    'reportPath',
+    'summary',
+    'worktree',
+    'head',
+    'base',
+    'checks',
+    'diagnostics',
+    'missingWork',
+    'processes',
+  ],
 };
 let running = 0;
 const waiters = [];
@@ -69,19 +127,20 @@ function release() {
   else running--;
 }
 
-// Worktree creation sometimes fails when many start at once; retry those, nothing else.
-async function withRetry(fn) {
-  for (let i = 0; ; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (i < 2 && /WorktreeIsolation|git metadata/i.test(String(e))) {
-        log('worktree creation failed; retrying');
-        continue;
-      }
-      throw e;
-    }
-  }
+// An agent call may have edited files before throwing. The coordinator reconciles any failure
+// before redispatch; matching error text is never proof that no worker started.
+function hasHandoff(r, key) {
+  return (
+    r &&
+    r.ready === true &&
+    typeof r.branch === 'string' &&
+    /^lane\/[a-z0-9-]+\/[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*$/.test(r.branch) &&
+    absolutePath(r.worktree) &&
+    /^[a-f0-9]{40}$/.test(r.head) &&
+    /^[a-f0-9]{40}$/.test(r.base) &&
+    normalPath(r.reportPath) === normalPath(reportPath(key)) &&
+    ['checks', 'diagnostics', 'missingWork', 'processes'].every((k) => Array.isArray(r[k]))
+  );
 }
 
 function lanePrompt(l, parent) {
@@ -96,10 +155,11 @@ function lanePrompt(l, parent) {
     'Follow AGENTS.md (already loaded); your task: ' +
     l.brief.trim() +
     onParent +
-    "; do not edit another lane's files. No browser or dev server. Write your report to " +
-    REPORTS +
-    l.key +
-    "-report.md before returning. Return your exact branch, readiness, PRs if any and report path. Follow your harness's push boundary; a dependent ready branch is a handoff, not a reason to wait for CI."
+    "; you are not alone in the codebase: do not revert another lane's edits. Own only " +
+    l.ownedPaths.join(', ') +
+    '. No browser or dev server. Write your full report to ' +
+    reportPath(l.key) +
+    " in the launch checkout before returning; if that boundary refuses the write, report not ready. Include owned files, check results, diagnostic paths and running process IDs/stop commands in that report. Return the exact worktree, branch, head/base, readiness, PRs if any, report path, checks, diagnostics, missingWork and processes. Follow your harness's push boundary; a dependent ready branch is a handoff, not a reason to wait for CI."
   );
 }
 
@@ -126,18 +186,16 @@ async function runLaneOnce(l) {
   }
   await acquire();
   try {
-    const r = await withRetry(() =>
-      agent(lanePrompt(l, parent), {
-        label: 'lane ' + l.key,
-        phase: 'Build',
-        model: builderModel,
-        effort: 'high',
-        isolation: 'worktree',
-        schema: LANE_OUT,
-      }),
-    );
+    const r = await agent(lanePrompt(l, parent), {
+      label: 'lane ' + l.key,
+      phase: 'Build',
+      model: l.model ?? builderModel,
+      effort: l.effort ?? builderEffort,
+      isolation: 'worktree',
+      schema: LANE_OUT,
+    });
     return r
-      ? { ...r, key: l.key }
+      ? { ...r, key: l.key, ownedPaths: l.ownedPaths, ready: Boolean(hasHandoff(r, l.key)) }
       : {
           key: l.key,
           prs: [],
@@ -167,5 +225,6 @@ return {
   lanes: built,
   integrationRequired: true,
   liveCheckRequired: true,
+  evidenceVerificationRequired: true,
   missing,
 };
