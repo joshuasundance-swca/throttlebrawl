@@ -60,6 +60,11 @@ describe('the current forward takedown cost views', () => {
       const f = road.frameAt(e, s);
       for (const base of ['chase', 'far', 'helmet']) {
         const normal = views.find((v) => v.name === base)!;
+        if (base === 'helmet') {
+          expect((normal.eye.x - rider.x) * f.tx * dir + (normal.eye.z - rider.z) * f.tz * dir).toBeCloseTo(
+            c.helmetForwardM,
+          );
+        }
         const celebration = views.filter((v) => v.name === `takedown-${base}`);
         expect(celebration).toHaveLength(3);
         for (const [i, v] of celebration.entries()) {

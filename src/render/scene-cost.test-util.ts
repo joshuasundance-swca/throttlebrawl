@@ -252,6 +252,7 @@ const CAMERA_KEYS = [
   'farHeightM',
   'farLookAheadM',
   'helmetHeightM',
+  'helmetForwardM',
   'helmetLookAheadM',
   'helmetAimHeightM',
   'helmetFovDeg',
@@ -338,7 +339,11 @@ export function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c:
     },
     {
       name: 'helmet',
-      eye: { x: rider.x, y: rider.y + c.helmetHeightM, z: rider.z },
+      eye: {
+        x: rider.x + fx * c.helmetForwardM,
+        y: rider.y + c.helmetHeightM,
+        z: rider.z + fz * c.helmetForwardM,
+      },
       aim: ahead(c.helmetLookAheadM, c.helmetAimHeightM, true),
       fov: c.helmetFovDeg + c.fovKickDeg,
     },

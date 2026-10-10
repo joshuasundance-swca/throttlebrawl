@@ -218,7 +218,7 @@ describe('camera-3: the far chase cam', () => {
 });
 
 describe('camera-3: the helmet cam', () => {
-  it('caps the elevated takedown lens at the chase maximum while retaining a lower FOV', () => {
+  it('caps the elevated takedown lens at the normal top-speed chase FOV while retaining a lower FOV', () => {
     const road = straightRoad();
     const cap = def('fovBaseDeg') + def('fovKickDeg');
     for (const speed of [0, 45])
