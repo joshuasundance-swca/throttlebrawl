@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { rideFirstCareerRace } from './career-start';
 
@@ -64,22 +65,25 @@ async function startRace(
     await expect(page.locator('#hud-objective')).toBeVisible();
   } else {
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     if (opts.mirror) {
+      await openMainMenu(page);
       await page.locator('#menu-settings').click();
       await page.locator('#settings-tab-controls').click();
       await page.locator('#settings-mirror').check();
       await page.keyboard.press('Escape');
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
     }
     if (opts.textSize) {
+      await openMainMenu(page);
       await page.locator('#menu-settings').click();
       await page.locator('#settings-tab-access').click();
       await page.locator(`#settings-textSize [data-value="${opts.textSize}"]`).click();
       await page.keyboard.press('Escape');
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
     }
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
   }

@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { domId, menuRegions, offeredRoutes } from './packs-on-disk';
 
@@ -28,10 +29,11 @@ async function toMenu(page: Page) {
   });
   await page.goto('./?settings=all');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 async function setTextSize(page: Page, size: 'normal' | 'large' | 'largest') {
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-access').click();
   await page.locator(`#settings-textSize [data-value="${size}"]`).click();
@@ -40,7 +42,7 @@ async function setTextSize(page: Page, size: 'normal' | 'large' | 'largest') {
     'true',
   );
   await page.locator('#settings-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 /** The region with the most roads: its chips are the longest row (San Francisco today). */
@@ -202,10 +204,11 @@ for (const [where, width, height] of [
       const region = widestRegion();
       expect(region.roads, 'the widest region offers several roads').toBeGreaterThan(4);
       await toMenu(page);
-      await page.locator(region.chip).click();
-      await expect(page.locator(`${ROW} button.route`)).toHaveCount(region.roads, { timeout: 30_000 });
       const cardUp = await page.locator('#whats-new').isVisible();
       expect(cardUp, `${where}: a first visit shows the card`).toBe(true);
+      await openQuickPlay(page);
+      await page.locator(region.chip).click();
+      await expect(page.locator(`${ROW} button.route`)).toHaveCount(region.roads, { timeout: 30_000 });
 
       let sawScroll = false;
       // The card is up through the three sizes, then dismissed and the sizes walked back.
@@ -219,7 +222,8 @@ for (const [where, width, height] of [
       ] as const;
       let current = 'normal';
       for (const [size, card] of steps) {
-        if (!card && (await page.locator('#whats-new').isVisible())) {
+        if (!card && !(await page.locator('#whats-new').evaluate((e) => (e as HTMLElement).hidden))) {
+          await openMainMenu(page);
           await page.locator('#whats-new-ok').click();
           await expect(page.locator('#whats-new')).toBeHidden();
         }
@@ -227,13 +231,14 @@ for (const [where, width, height] of [
           await setTextSize(page, size);
           current = size;
         }
+        await openQuickPlay(page);
         await expect(page.locator(`${ROW} button.route`)).toHaveCount(region.roads);
         const label = `${where}, ${size} text, card ${card ? 'up' : 'dismissed'}`;
         const m = await measure(page, REAL);
         console.log(
           `${label}: ${m.chips.length} chips, row ${Math.round((m.row?.right ?? 0) - (m.row?.left ?? 0))} px, scrolls ${m.scrolls}, card ${m.card ? 'shown' : 'hidden'}`,
         );
-        expect(!!m.card, `${label}: the card is ${card ? 'up' : 'away'}`).toBe(card);
+        expect(!!m.card, `${label}: news stays out of Quick Play`).toBe(false);
         expect(m.chips.length, `${label}: chips examined`).toBe(region.roads);
         expect(placeProblems(m), `${label}: placement`).toEqual([]);
         // The arrows follow the row's size by a frame (a ResizeObserver), so poll for the settled state.
@@ -303,12 +308,15 @@ test.describe('the road chip checks name what is wrong (negative controls)', () 
   test('a box over the chips fails the placement check', async ({ page }) => {
     const region = widestRegion();
     await toMenu(page);
+    await openQuickPlay(page);
     await page.locator(region.chip).click();
     await expect(page.locator(`${ROW} button.route`)).toHaveCount(region.roads, { timeout: 30_000 });
     expect(placeProblems(await measure(page, REAL)), 'the real menu is clean').toEqual([]);
     await page.evaluate(() => {
       const strip = document.querySelector('#route-picker .route-scroll')!.getBoundingClientRect();
       const card = document.querySelector<HTMLElement>('#whats-new')!;
+      card.hidden = false;
+      card.style.setProperty('display', 'flex', 'important');
       Object.assign(card.style, {
         position: 'fixed',
         left: `${strip.left + 20}px`,

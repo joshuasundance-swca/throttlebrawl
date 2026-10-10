@@ -39,7 +39,7 @@ export interface RaceOptionsView {
 }
 
 export type RaceOptionId =
-  'kind' | 'bike' | 'time' | 'weather' | 'rivals' | 'cops' | 'difficulty' | 'length' | 'traffic';
+  'kind' | 'bike' | 'field' | 'time' | 'weather' | 'rivals' | 'cops' | 'difficulty' | 'length' | 'traffic';
 
 export interface RaceOptionRow {
   id: RaceOptionId;
@@ -115,6 +115,16 @@ const option = <K extends keyof RaceOptions>(
 const ROWS: readonly RowDef[] = [
   option('kind', 'Type', 'kind', () => RACE_KINDS.map((k) => ({ value: k, label: KIND_LABELS[k] }))),
   option('bike', 'Bike', 'bike', (v) => v.bikes),
+  {
+    id: 'field',
+    label: 'Competition',
+    choices: () => [
+      { value: 'open', label: 'Open field' },
+      { value: 'matched', label: 'Same bike' },
+    ],
+    read: (s, c) => indexOf(c, s.quickPlayField === 'matched' ? 'matched' : 'open'),
+    write: (s, v) => ({ ...s, quickPlayField: v === 'matched' ? 'matched' : 'open' }),
+  },
   option('time', 'Time', 'timeOfDay', (v) => v.times),
   option('weather', 'Weather', 'weather', () => WEATHER),
   option('rivals', 'Rivals', 'rivals', (v) => v.rivals),

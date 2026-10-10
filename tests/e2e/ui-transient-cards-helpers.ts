@@ -1,3 +1,4 @@
+import { openMainMenu } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 import { buildIdFindings, screenFitFindings, type BuildIdPlace } from '../../src/ui/screen-fit';
@@ -284,16 +285,27 @@ export function fit(p: Painted, viewport: { width: number; height: number }): st
 /** The scroll room a screen has (0 where it all fits). */
 export async function scrollRoom(page: Page, screenSel: string): Promise<number> {
   return page.evaluate((sel) => {
-    const e = document.querySelector<HTMLElement>(sel);
+    const outer = document.querySelector<HTMLElement>(sel);
+    const e =
+      outer?.querySelector<HTMLElement>('.action-details, #quick-play:not([hidden]) .flow-details') ?? outer;
     return e ? Math.max(0, e.scrollHeight - e.clientHeight) : 0;
   }, screenSel);
 }
 
 export async function scrollTo(page: Page, screenSel: string, top: number) {
-  await page.evaluate(({ sel, top }) => document.querySelector<HTMLElement>(sel)?.scrollTo({ top }), {
-    sel: screenSel,
-    top,
-  });
+  await page.evaluate(
+    ({ sel, top }) => {
+      const outer = document.querySelector<HTMLElement>(sel);
+      const target =
+        outer?.querySelector<HTMLElement>('.action-details, #quick-play:not([hidden]) .flow-details') ??
+        outer;
+      target?.scrollTo({ top });
+    },
+    {
+      sel: screenSel,
+      top,
+    },
+  );
 }
 
 /**
@@ -447,6 +459,18 @@ export async function checkScreen(
     for (const at of room > 0 ? [0, 0.5, 1] : [0]) {
       await scrollTo(page, screenSel, room * at);
       const where = `${label} at ${size.name}, scrolled ${at * 100}% of ${Math.round(room)} px`;
+      // Result outcome and main actions remain on screen while only the details scroll.
+      const fixed = page.locator(`${screenSel} .action-heading, ${screenSel} .action-actions button`);
+      for (const node of await fixed.all()) {
+        if (!(await node.isVisible())) continue;
+        const box = await node.boundingBox();
+        expect.soft(box!.y, `${where}: fixed outcome/action top`).toBeGreaterThanOrEqual(0);
+        expect
+          .soft(box!.y + box!.height, `${where}: fixed outcome/action bottom`)
+          .toBeLessThanOrEqual(size.height + 0.5);
+        if (await node.evaluate((e) => e.tagName === 'BUTTON'))
+          expect.soft(box!.height, `${where}: fixed action has room`).toBeGreaterThanOrEqual(44);
+      }
       const p = await paint(page, screenSel, cardIds);
       const found = [...judge(p, size), ...fit(p, size)];
       console.log(
@@ -489,13 +513,14 @@ export async function checkRace(page: Page, label: string) {
 }
 
 export async function setTextSize(page: Page, textSize: (typeof TEXT_SIZES)[number]) {
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-access').click();
   const pick = page.locator(`#settings-textSize [data-value="${textSize}"]`);
   await pick.click();
   await expect(pick).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#settings-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 export async function rideToTheEnd(page: Page, what: string) {
@@ -565,7 +590,7 @@ export const linesSaying = (page: Page, words: RegExp, plantDoubled: string | nu
 export async function toMenu(page: Page) {
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 export { buildIdFindings, screenFitFindings } from '../../src/ui/screen-fit';

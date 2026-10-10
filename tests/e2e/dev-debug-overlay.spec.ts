@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // `?debug=1` (docs/milestones/M1.md, dev-2): an overlay with frames per second, frame time, the
 // renderer string and the measured display refresh rate. It must show real numbers during a race
@@ -13,6 +14,7 @@ test('?debug=1 shows fps, frame time, sim step, refresh rate and the renderer', 
   const overlay = page.locator('#debug-overlay');
   await expect(overlay).toBeVisible();
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(
     () =>

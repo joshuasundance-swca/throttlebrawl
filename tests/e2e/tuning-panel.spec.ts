@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync, writeFileSyn
 import { tuningPresetSchema } from '../../src/content/schema';
 import { parseDebugFile } from '../../src/dev/report/summary';
 import { decodeReplay, HASH_EVERY_TICKS } from '../../src/replay';
+import { openQuickPlay } from './menu-navigation';
 import type { SimEvent } from '../../src/sim/api';
 import { fastForwardDone } from './lockstep';
 
@@ -39,7 +40,7 @@ async function boot(page: Page): Promise<string[]> {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   return problems;
 }
 
@@ -56,6 +57,7 @@ async function startSeededRace(page: Page): Promise<void> {
     w.__game?.setSeed(seed);
     w.__game?.setBot(true);
   }, SEED);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
 }

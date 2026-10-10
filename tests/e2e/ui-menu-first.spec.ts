@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
@@ -131,8 +132,8 @@ for (const [where, width, height] of [
           return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
         };
         const start = document.getElementById('menu-career');
-        const race = document.getElementById('menu-race');
-        if (!start || !race) throw new Error('the menu has no career or race button');
+        const race = document.getElementById('menu-quick-play');
+        if (!start || !race) throw new Error('the menu has no career or Quick Play button');
         const big = [...document.querySelectorAll<HTMLElement>('#menu .big')]
           .filter((e) => e.checkVisibility())
           .sort(
@@ -157,13 +158,13 @@ for (const [where, width, height] of [
         b.left >= -0.5 && b.top >= -0.5 && b.right <= vw + 0.5 && b.bottom <= vh + 0.5;
       console.log(`${where}: ${JSON.stringify(m)}`);
       expect(onScreen(m.startBox), `${where}: Start career is on the screen`).toBe(true);
-      expect(onScreen(m.raceBox), `${where}: Race is on the screen`).toBe(true);
+      expect(onScreen(m.raceBox), `${where}: Quick Play is on the screen`).toBe(true);
       expect(m.tapLands, `${where}: a tap at the centre of Start career lands on it`).toBe(true);
       expect(
         m.firstBig,
         `${where}: Start career is the first of the big buttons, top to bottom, left to right`,
       ).toBe('menu-career');
-      expect(m.startBg, `${where}: Start career is drawn apart from Race`).not.toBe(m.raceBg);
+      expect(m.startBg, `${where}: Start career is drawn apart from Quick Play`).not.toBe(m.raceBg);
 
       // The what's-new card is up on a first launch; the stamp is over none of its words, nor any
       // other word of the menu.
@@ -227,6 +228,7 @@ async function startFreePlayRace(page: Page) {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
 }
 

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { InputFlag, type SimInput } from '../../src/sim/types.ts';
+import { openQuickPlay } from './menu-navigation';
 
 // input-2 browser spec (docs/milestones/M2.md, "input-2"): a mocked Gamepad API in the production
 // build drives the player's recorded SimInput, including a kick. navigator.getGamepads is replaced
@@ -127,6 +128,7 @@ test('gamepad: a mocked standard pad steers, throttles, brakes, attacks and kick
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
   await page.waitForFunction(() => ((window as TestWindow).__game?.inputs().length ?? 0) > 30);

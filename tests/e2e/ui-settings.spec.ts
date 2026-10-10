@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tiltAngleFromEuler } from '../../src/input/devices/tilt.ts';
@@ -67,6 +68,7 @@ async function startRace(page: Page, query = '') {
   await page.goto(`./${query}`);
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
 }
@@ -244,6 +246,7 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
   // From the main menu, the same rows carry no "applies next race" tag.
   await page.keyboard.press('Escape');
   await page.locator('#pause-quit').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-race').click();
   for (let i = 0; i < tagCount; i++) await expect(tags.nth(i)).toBeHidden();
@@ -270,6 +273,7 @@ type Probe = (page: Page) => Promise<void>;
  */
 async function rideIntoRace(page: Page) {
   await page.evaluate(() => (window as TestWindow).__game?.fastForward((s) => s.tick > 60, { then: null }));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(
     () =>
@@ -400,6 +404,7 @@ async function waitLast(page: Page, ok: (s: SimInput) => boolean): Promise<SimIn
 async function raceUntilHapticEvent(page: Page) {
   await page.locator('#settings-back').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 5);
   const from = await page.evaluate(() => {
@@ -826,6 +831,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
     effect: async (page) => {
       await page.locator('#settings-back').click();
+      await openQuickPlay(page);
       await page.locator('#menu-race').click();
       await page.keyboard.press('Escape');
       await expect(page.locator('#pause-tuning')).toBeVisible();
@@ -855,6 +861,7 @@ test.describe('every setting on screen persists across a reload and changes some
       await page.goto('./');
       await page.locator('#start-screen').click();
       await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+      await openMainMenu(page);
       await page.locator('#menu-settings').click();
       const shown = await page.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>('#settings [data-setting]')]
@@ -884,10 +891,12 @@ test.describe('every setting on screen persists across a reload and changes some
         await page.reload();
         await page.locator('#start-screen').click();
         await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+        await openMainMenu(page);
         await page.locator('#menu-settings').click();
         await probe.persisted(page);
         console.log(`${id}: still set after a reload`);
         await probe.effect(page);
+        await openMainMenu(page);
         await page.locator('#menu-settings').click();
       }
       expect(problems).toEqual([]);
@@ -901,6 +910,7 @@ test('vibration on (the default): the player\'s hits buzz (the control for the "
   test.setTimeout(180_000);
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-controls').click();
   await expect(page.locator('#settings-haptics')).toBeChecked();
@@ -923,6 +933,7 @@ test('where tilt and vibration cannot work, their settings stay hidden', async (
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   const shown = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('#settings [data-setting]')]

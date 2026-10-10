@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { frames } from './lockstep';
+import { openQuickPlay } from './menu-navigation';
 
 /**
  * How long "the race stands still" is watched: drawn frames, the loop's own unit (it was 500 and
@@ -66,6 +67,7 @@ test('hiding the page pauses the race, and coming back lands on the pause screen
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
 
@@ -117,6 +119,7 @@ test('pagehide pauses the race, and pageshow lands on the pause screen', async (
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
   const tick = () => page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? -1);

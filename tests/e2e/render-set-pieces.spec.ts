@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // Set pieces from the race seed, in the real game (playtest 1c item 2, 2026-09-30: "I want
 // randomness so you don't see the same cars in the same order, ramp truck in the same place").
@@ -49,8 +50,10 @@ for (const region of REGIONS) {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openQuickPlay(page);
     await page.locator(region.chip).click();
     await page.evaluate(() => (window as TestWindow).__game?.setSeed(1));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     const first = await drawnAfterStart(page);
     expect(first.length, 'the race draws its set pieces').toBeGreaterThan(0);

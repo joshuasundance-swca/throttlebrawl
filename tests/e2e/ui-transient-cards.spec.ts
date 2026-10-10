@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 // Unchanged transient-card checks split by workload; shared paint and setup live beside this spec.
 import { expect, test } from '@playwright/test';
 import {
@@ -32,7 +33,7 @@ for (const textSize of TEXT_SIZES) {
     // The Text size is saved first, so the start screen after a reload draws at it.
     await page.goto('./?settings=all');
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     await setTextSize(page, textSize);
     await page.reload();
 
@@ -42,7 +43,7 @@ for (const textSize of TEXT_SIZES) {
     await checkScreen(page, '#start-screen', flowCardsOn('start'), [], `start, ${textSize}`);
     await page.setViewportSize({ width: 915, height: 412 });
     await page.locator('#start-screen .title').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     // A notice on the start screen is carried to the menu the tap opens (polish batch E, punch 4), and
     // sits first in the menu's column.
     await expect(page.locator('#ui-notice'), 'the notice is carried to the menu').toBeVisible();
@@ -54,13 +55,7 @@ for (const textSize of TEXT_SIZES) {
 
     // The menu: what's new, the did-not-load card and a notice together.
     await raise(page, flowCardsOn('menu'));
-    const menuControls = [
-      '#menu-career',
-      '#menu-race',
-      '#menu-options',
-      '#menu-settings',
-      '#region-picker button.region',
-    ];
+    const menuControls = ['#menu-career', '#menu-quick-play', '#menu-more > summary', '#menu-settings'];
     await checkScreen(page, '#menu', flowCardsOn('menu'), menuControls, `menu, ${textSize}`);
     if (textSize === 'normal') {
       // Negative control 1: the did-not-load card where #614 put it (a layer at the top centre). At
@@ -107,7 +102,7 @@ for (const textSize of TEXT_SIZES) {
       const raceAt = await page.evaluate(() => {
         const menu = document.getElementById('menu')!;
         const m = menu.getBoundingClientRect();
-        const race = document.getElementById('menu-race')!.getBoundingClientRect();
+        const race = document.getElementById('menu-quick-play')!.getBoundingClientRect();
         return {
           top: race.top - m.top + menu.scrollTop + race.height / 2 - 8,
           left: race.left - m.left + menu.scrollLeft,
@@ -123,13 +118,21 @@ for (const textSize of TEXT_SIZES) {
       const covered = fit(await paint(page, '#menu', []), { width: 568, height: 320 });
       console.log(`negative control 4: ${JSON.stringify(covered)}`);
       expect(
-        covered.filter((f) => f.startsWith('the footer covers the control button#menu-race')),
+        covered.filter((f) => f.startsWith('the footer covers the control button#menu-quick-play')),
       ).not.toEqual([]);
       await overRace.evaluate((e) => (e as HTMLElement).remove());
     }
 
     // The race options: the cards raised there sit in its flow; Back takes them down.
     await page.setViewportSize({ width: 915, height: 412 });
+    await openQuickPlay(page);
+    await checkScreen(
+      page,
+      '#menu',
+      ['load-retry', 'ui-notice'],
+      ['#menu-race', '#menu-options', '#region-picker button.region'],
+      `Quick Play, ${textSize}`,
+    );
     await page.locator('#menu-options').click();
     await expect(page.locator('#race-options')).toBeVisible();
     await expect(page.locator('#load-retry'), 'the menu card went with the menu').toBeHidden();
@@ -172,6 +175,7 @@ for (const textSize of TEXT_SIZES) {
     await page.setViewportSize({ width: 915, height: 412 });
 
     // The career: the K2 card hid its Map and Garage tabs.
+    await openMainMenu(page);
     await page.locator('#menu-career').click();
     await expect(page.locator('#career')).toBeVisible();
     await raise(page, flowCardsOn('career'));
@@ -205,10 +209,11 @@ for (const textSize of TEXT_SIZES) {
     }
     await page.setViewportSize({ width: 915, height: 412 });
     await page.locator('#career-back').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     await expect(page.locator('#load-retry'), 'the career card went with the career').toBeHidden();
 
     // A race: the slow-frames offer in its slot, then the race's result with every card it can carry.
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
     await raise(page, ['look-offer']);
@@ -235,6 +240,7 @@ for (const textSize of TEXT_SIZES) {
     await expect(page.locator('#load-retry')).toBeHidden();
 
     // The career's result (the first event, ridden by the bot).
+    await openMainMenu(page);
     await page.locator('#menu-career').click();
     await page.locator('.career-node.suggested').click();
     await page.locator('#career-ride').click();

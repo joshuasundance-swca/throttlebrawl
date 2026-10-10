@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // render-1 (docs/milestones/M1.md): a browser test that forces a WebGL context loss sees the scene
 // come back. It loses the game canvas's context with WEBGL_lose_context mid-race, checks that the
@@ -35,6 +36,7 @@ test('the scene comes back after a forced WebGL context loss', async ({ page }) 
 
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120);
 

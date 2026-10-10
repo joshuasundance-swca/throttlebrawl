@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
@@ -130,6 +131,7 @@ test('the pause radio panel names what plays, switches stations and songs, and c
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
   await page.locator('#hud-pause').click();
@@ -231,6 +233,7 @@ test('without a radio from app/, the pause menu shows no radio panel', async ({ 
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 10);
   await page.locator('#hud-pause').click();
@@ -271,6 +274,7 @@ test('the real radio: Next station in the pause panel tunes the race to a band',
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
   await page.locator('#hud-pause').click();

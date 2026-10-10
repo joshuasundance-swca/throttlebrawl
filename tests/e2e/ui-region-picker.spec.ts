@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,7 +37,8 @@ async function toMenu(page: Page) {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
+  await openQuickPlay(page);
 }
 
 /** The recorded event of the race running now, from the debug file's replay header. */
@@ -110,6 +112,7 @@ test('the menu offers the regions, the Keys picked by default, and a pick starts
     await chip.click();
     await expect(chip).toHaveAttribute('aria-checked', 'true');
     await expect(checked).toHaveCount(1);
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await expect(page.locator('#hud-position')).toBeVisible();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
@@ -120,7 +123,7 @@ test('the menu offers the regions, the Keys picked by default, and a pick starts
     await page.screenshot({ path: `test-results/region-race-${bare(id)}.png` });
     await page.locator('#hud-pause').click();
     await page.locator('#pause-quit').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     // The pick survives the trip back to the menu.
     await expect(chip).toHaveAttribute('aria-checked', 'true');
   }

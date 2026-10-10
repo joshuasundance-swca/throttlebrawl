@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { fastForwardDone } from './lockstep';
@@ -40,7 +41,8 @@ async function toMenu(page: Page) {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
+  await openQuickPlay(page);
 }
 
 /** The recording's header, from the debug file's replay line. */
@@ -170,6 +172,7 @@ test('a picked real road is raced to the finish by the bot, and the recording na
     g?.setSeed(s);
     g?.setBot(true);
   }, SEED);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 240, null, {

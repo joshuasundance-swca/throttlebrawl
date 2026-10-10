@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { fastForwardDone, frames } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // W-P road events (the maintainer, 2026-10-01b: "events and set pieces: roadwork, crash scenes,
 // parades, a farm truck shedding hay, speed traps"). In the real game, the bot races the region's
@@ -126,6 +127,7 @@ async function startRace(page: Page, region: (typeof REGIONS)[number], seed: num
   } else {
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openQuickPlay(page);
     await page.locator(region.chip).click();
   }
   await page.evaluate((s) => {
@@ -133,6 +135,7 @@ async function startRace(page: Page, region: (typeof REGIONS)[number], seed: num
     g?.setSeed(s);
     g?.setBot(true);
   }, seed);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
   // The race running is this seed's, in this region: its recording began with it.

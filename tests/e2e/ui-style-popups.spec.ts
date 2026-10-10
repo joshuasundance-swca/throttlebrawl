@@ -1,3 +1,4 @@
+import { openMainMenu, openMenuMore, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { PROMPTS } from '../../src/career/onboarding.ts';
@@ -446,15 +447,17 @@ async function startRace(page: Page, opts: { mirror?: boolean; classic?: boolean
     await expect(page.locator('#hud-objective')).toBeVisible();
   } else {
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     if (opts.mirror) {
+      await openMainMenu(page);
       await page.locator('#menu-settings').click();
       await page.locator('#settings-tab-controls').click();
       await page.locator('#settings-mirror').check();
       await page.keyboard.press('Escape');
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
     }
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
   }
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 20);
@@ -1244,12 +1247,12 @@ async function stampCover(page: Page, forced = false) {
       if (r.width === 0 || r.height === 0) continue;
       if (sb && shown && hit(sb, r))
         under.push(`${e.id || e.tagName.toLowerCase()} "${(e.textContent ?? '').trim().slice(0, 20)}"`);
-      if (e.id !== 'menu-race') continue;
+      if (e.id !== 'menu-race' && e.id !== 'menu-quick-play') continue;
       const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
       const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
       const top = document.elementFromPoint(x, y);
       if (top !== e && !e.contains(top))
-        blocked.push(`#menu-race: the tap lands on ${top?.id || top?.tagName}`);
+        blocked.push(`#${e.id}: the tap lands on ${top?.id || top?.tagName}`);
     }
     return {
       shown,
@@ -1323,7 +1326,7 @@ for (const [where, width, height, finePointer] of [
       expect(start.shown, `${where}: the stamp shows on the start screen`).toBe(true);
 
       await page.locator('#start-screen').click();
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
       await expectStampClear(page, `${where}, menu`);
 
       await press(page, '#menu-settings', where);
@@ -1338,6 +1341,7 @@ for (const [where, width, height, finePointer] of [
       }
       await press(page, '#settings-back', where);
 
+      await openMenuMore(page);
       await press(page, '#menu-changelog', where);
       await expect(page.locator('#changelog')).toBeVisible();
       // The changelog and the credits fetch their words after the screen shows, and the stamp checks again
@@ -1346,16 +1350,18 @@ for (const [where, width, height, finePointer] of [
       await expect(page.locator('#changelog-list h3').first()).toBeAttached();
       await expectStampClear(page, `${where}, changelog`);
       await press(page, '#changelog-back', where);
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
 
+      await openMenuMore(page);
       await press(page, '#menu-credits', where);
       await expect(page.locator('#credits')).toBeVisible();
       await expect(page.locator('#credits-list .credit-entry').first()).toBeAttached();
       await expectStampClear(page, `${where}, credits`);
       await press(page, '#credits-back', where);
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
 
       // The tap on Race lands: the race starts, and the stamp is out of the race.
+      await openQuickPlay(page);
       await page.locator('#menu-race').click();
       await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
       await expect(page.locator('#build-stamp')).toBeHidden();
@@ -1376,7 +1382,7 @@ for (const [where, width, height, finePointer] of [
 async function menuOffScreen(page: Page) {
   return page.evaluate(() => {
     const picks =
-      '#menu-career, #menu-race, #menu-settings, #menu-changelog, #menu-credits, #menu-copy-report, #region-picker .region, #menu .menu-main, #menu .title';
+      '#menu-career, #menu-quick-play, #menu-more > summary, #menu-race, #menu-settings, #menu-changelog, #menu-credits, #menu-copy-report, #region-picker .region, #menu .menu-main, #menu .title';
     const off: string[] = [];
     let examined = 0;
     for (const e of document.querySelectorAll<HTMLElement>(picks)) {
@@ -1408,7 +1414,7 @@ for (const [where, width, height] of [
       });
       await page.goto('./');
       await page.locator('#start-screen').click();
-      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
       await settleStamp(page);
       const card = page.locator('#whats-new');
       const cardUp = await card.isVisible();
@@ -1430,7 +1436,12 @@ for (const [where, width, height] of [
         );
         expect(after.off, `${where}: menu pieces off the screen (card dismissed)`).toEqual([]);
       }
+      await openQuickPlay(page);
+      const setup = await menuOffScreen(page);
+      expect(setup.off, `${where}: Quick Play controls stay on screen`).toEqual([]);
+      await expectStampClear(page, `${where}, Quick Play`);
       // Settings takes a real tap here, not a dispatch.
+      await openMainMenu(page);
       await page.locator('#menu-settings').click();
       await expect(page.locator('#settings-back')).toBeVisible();
     });
@@ -1444,7 +1455,7 @@ test('the menu fit check names a control that is off the screen (negative contro
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   // The start tap may take the page fullscreen, and a fullscreen window cannot be resized.
   await page.evaluate(() => (document.fullscreenElement ? document.exitFullscreen() : undefined));
   await page.setViewportSize({ width: 568, height: 120 });
@@ -1463,7 +1474,7 @@ test('the stamp check catches a control under the stamp, and the stamp steps awa
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await settleStamp(page);
   // The stamp at its home corner (left), shown, wherever the menu had put it.
   await page.evaluate(() => {

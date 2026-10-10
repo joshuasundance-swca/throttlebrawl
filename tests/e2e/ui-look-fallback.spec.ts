@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
@@ -44,6 +45,7 @@ const saved = (page: Page) =>
 /** From the menu into a bot race, past its first ticks. */
 async function race(page: Page) {
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => {
     const g = (window as TestWindow).__game;
@@ -77,6 +79,7 @@ test('a new save starts on Ink + 60s film; slow frames offer Classic, in the rac
   await page.goto('./');
   await page.locator('#start-screen').click();
   expect(await look(page)).toBe('kodak');
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-display').click();
   await expect(page.locator('#settings-look [data-value="kodak"]')).toHaveAttribute('aria-pressed', 'true');
@@ -122,6 +125,7 @@ test('a new save starts on Ink + 60s film; slow frames offer Classic, in the rac
   await page.reload();
   await page.locator('#start-screen').click();
   expect(await look(page)).toBe('classic');
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-display').click();
   await expect(page.locator('#settings-look [data-value="classic"]')).toHaveAttribute('aria-pressed', 'true');

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience"). In a
 // real browser, for each region: race there with the bot, and the region's own Blender models are
@@ -76,8 +77,10 @@ for (const region of REGIONS) {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openQuickPlay(page);
     await page.locator(region.chip).click();
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 300, null, {

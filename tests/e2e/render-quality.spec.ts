@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // Roadmap M5, the A16 speed pass (docs/architecture.md, "Quality tiers and dynamic resolution"):
 // through the real loop and renderer, frames that stay slow step the scene's resolution down (never
@@ -35,6 +36,7 @@ const quality = (page: Page) =>
 
 async function race(page: Page) {
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => {
     const g = (window as TestWindow).__game;

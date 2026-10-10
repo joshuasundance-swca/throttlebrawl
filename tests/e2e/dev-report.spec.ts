@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { openMenuMore, openQuickPlay } from './menu-navigation';
 
 // dev-3's browser tests (docs/milestones/M1.md, dev-3): "copy debug report" puts a summary with the
 // build id and the replay key on a (mocked) clipboard, within 2 KB, from the menu and from the
@@ -124,9 +125,11 @@ test('copy debug report puts the build id and replay key on the clipboard, withi
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   const { id, key } = await expectedKey(page);
 
   // From the menu, before any race.
+  await openMenuMore(page);
   await page.locator('#menu-copy-report').click();
   const fromMenu = await lastCopied(page, 1);
   console.log(`menu report: ${Buffer.byteLength(fromMenu, 'utf8')} bytes\n${fromMenu}`);
@@ -139,6 +142,7 @@ test('copy debug report puts the build id and replay key on the clipboard, withi
 
   // From the pause screen, mid-race: the race's state, tick and events are in it too.
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 300);
   await page.locator('#hud-pause').click();
@@ -172,8 +176,10 @@ test("save debug file: the file's replay loads and matches its hashes; the share
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   const { id, key } = await expectedKey(page);
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 720, null, {
     timeout: 120_000,

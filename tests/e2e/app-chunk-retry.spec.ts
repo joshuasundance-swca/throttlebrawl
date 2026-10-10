@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { fastForwardDone } from './lockstep';
+import { openQuickPlay } from './menu-navigation';
 
 // A lazy chunk whose import failed is fetched again (polish batch K's check, mustFix 1). Chromium keeps
 // a failed `import()` under its URL: on the live game, after a dropped or 404 first request, the 2nd and
@@ -42,7 +43,7 @@ const racePartsIn = (page: Page) =>
 async function toMenu(page: Page) {
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 async function rideToTheEnd(page: Page, what: string) {
@@ -165,6 +166,7 @@ test('a chunk the host no longer has: each race asks the host again, and after a
   // The control race (no deploy): the race's road asks again with a new URL, and the result offers
   // nothing, because a missing file the host's build still lists is no deploy.
   let before = retries();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
   await expect.poll(retries, { timeout: 60_000 }).toBeGreaterThan(before);

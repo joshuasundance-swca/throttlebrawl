@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // Run W-P: the Keys' real-road data (the Bahia Honda run, built from map data) is not in the
 // first-load JavaScript any more. The app fetches it after boot, the route picker then offers it,
@@ -55,6 +56,7 @@ async function raceAndCheck(page: Page, seed: number) {
     g?.setSeed(s);
     g?.setBot(true);
   }, seed);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120, null, {
     timeout: 60_000,

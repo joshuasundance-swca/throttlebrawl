@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
@@ -182,8 +183,9 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await page.evaluate(() => (window as TestWindow).__game?.setSeed(1));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 5);
 
@@ -298,6 +300,7 @@ test('the style pop-ups setting turns the chips off mid-race and is kept after a
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 5);
   type SeamWindow = FeedWindow & { __uiTicker?: (items: unknown[]) => void };
@@ -335,6 +338,7 @@ test('the style pop-ups setting turns the chips off mid-race and is kept after a
   // Kept after a reload.
   await page.reload();
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-display').click();
   await expect(page.locator('#settings-stylePopups')).not.toBeChecked();

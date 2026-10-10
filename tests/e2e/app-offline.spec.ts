@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { openMenuMore, openQuickPlay } from './menu-navigation';
 
 // Offline play and installing as an app (roadmap M5, launch polish; the maintainer: "Offline
 // definitely preferable"). The rules: once the game has loaded, its worker has cached everything the
@@ -89,7 +90,7 @@ test.describe('offline', () => {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     // The control: the first load, before the worker, has the build's preload hints.
     const firstLoadPreloads = await preloadLinks();
     expect(firstLoadPreloads).toBeGreaterThan(0);
@@ -160,13 +161,14 @@ test.describe('offline', () => {
     preloadWarnings.length = 0;
     await page.reload();
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     const workerPreloads = await preloadLinks();
     console.log(
       `[print] preload hints: ${firstLoadPreloads} on the first load, ${workerPreloads} from the worker`,
     );
     expect(workerPreloads).toBe(0);
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120, null, {
       timeout: 120_000,
@@ -213,8 +215,9 @@ test.describe('offline', () => {
 
     await page.goto('./');
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60, null, {
       timeout: 120_000,
@@ -264,7 +267,7 @@ test.describe('offline', () => {
 
     // The reloaded page's worker caches the whole build and takes the page.
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
       timeout: 120_000,
       polling: 250,
@@ -280,8 +283,9 @@ test.describe('offline', () => {
     await context.setOffline(true);
     await page.reload();
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120, null, {
       timeout: 120_000,
@@ -301,7 +305,7 @@ test('a region whose map files a deploy renamed reloads the tab once to the curr
   const build = await hostBuild(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await openQuickPlay(page);
 
   // The deploy lands: San Francisco's map files answer 404, and the host's worker file names another
   // build. (That the same 404s reload nothing while the host serves this build is unit-tested in
@@ -331,7 +335,8 @@ test('the menu offers Install only while the browser does, and only its tap open
   type InstallWindow = Window & { __prompted?: number; __prevented?: boolean };
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
+  await openMenuMore(page);
   const install = page.locator('#menu-install');
   // A headless browser offers no install: the button is not there to tap.
   await expect(install).toBeHidden();

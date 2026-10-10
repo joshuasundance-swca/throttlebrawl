@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
@@ -60,6 +61,7 @@ test('the picker offers the Keys, the Pacific Northwest and San Francisco, the K
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await expect(page.locator('#region-picker')).toBeVisible();
   const chips = page.locator('#region-picker .region');
   await expect(chips).toHaveText(['The Keys', 'The Pacific Northwest', 'San Francisco']);
@@ -85,6 +87,7 @@ for (const region of REGIONS) {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openQuickPlay(page);
     await page.locator(region.chip).click();
     await expect(page.locator(region.chip)).toHaveAttribute('aria-checked', 'true');
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));

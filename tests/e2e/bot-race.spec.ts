@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // The browser bot race (docs/milestones/M1.md, dev-1; docs/engineering.md, "Bot playthrough"):
 // the BotController rides a real race in the production build at the phone-landscape viewport,
@@ -159,7 +160,7 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   };
 
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await page.evaluate((n) => {
     const w = window as TestWindow;
     w.__game?.setBot(true);
@@ -175,6 +176,7 @@ test('the bot races to results with a placing at phone landscape', async ({ page
     };
     requestAnimationFrame(sample);
   }, LOCKSTEP);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
 

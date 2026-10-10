@@ -1,3 +1,4 @@
+import { openMainMenu } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
@@ -22,6 +23,7 @@ const voicesBus = (page: Page) =>
 
 async function soundTab(page: Page) {
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-sound').click();
 }

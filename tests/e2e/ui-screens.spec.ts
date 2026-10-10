@@ -1,3 +1,4 @@
+import { openMainMenu, openMenuMore, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { FAST_FORWARD_GUARD_MS, frames } from './lockstep';
@@ -159,11 +160,13 @@ test('start, menu and settings: controls card, build id and sliders', async ({ p
   await shot(page, 'start');
 
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await expect(page.locator('#menu-settings')).toBeVisible();
   await expect(page.locator('#menu-build')).toHaveText(/^build [0-9a-f]{7}$/);
   await expectNoOverflow(page, 'menu');
   await shot(page, 'menu');
+
+  await openMainMenu(page);
 
   await page.locator('#menu-settings').click();
   for (const bus of ['master', 'music', 'effects', 'voices']) {
@@ -175,7 +178,7 @@ test('start, menu and settings: controls card, build id and sliders', async ({ p
   await expectNoOverflow(page, 'settings');
   await shot(page, 'settings');
   await page.locator('#settings-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 
   expect(problems).toEqual([]);
 });
@@ -189,9 +192,10 @@ test('the mirror moves the buttons: the attack button and your health bar change
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 
   // Without the mirror the attack button sits on the right; with it, on the left.
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#touch-attack')).toBeVisible();
   const vw = page.viewportSize()?.width ?? 0;
@@ -202,10 +206,12 @@ test('the mirror moves the buttons: the attack button and your health bar change
   await page.keyboard.press('Escape');
   await page.locator('#pause-quit').click();
   await expect(page.locator('#menu')).toBeVisible();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-controls').click(); // the mirror lives on the Controls tab (ui-2)
   await page.locator('#settings-mirror').check();
   await page.keyboard.press('Escape'); // back to the menu
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   const mirrored = await page.locator('#touch-attack').boundingBox();
   expect(mirrored && mirrored.x + mirrored.width < vw / 2, 'attack button on the left').toBe(true);
@@ -239,6 +245,7 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
     g?.setSeed(110);
     g?.setBot(true);
   });
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
 
   // The target bar follows the player's auto-target all race: sampled on every drawn frame (it was
@@ -440,6 +447,7 @@ test('credits: every ledger entry is listed, AI-made ones are labelled, the lice
   await page.setViewportSize({ width: 568, height: 320 });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openMenuMore(page);
   await expect(page.locator('#menu-credits')).toBeVisible();
   await expectNoOverflow(page, 'menu with the Credits button');
 
@@ -452,6 +460,8 @@ test('credits: every ledger entry is listed, AI-made ones are labelled, the lice
     `dist/credits.json: ${file.entries.length} entries (${ai} AI-made), ${file.licences.length} licence texts`,
   );
   expect(file.entries.length).toBeGreaterThan(0);
+
+  await openMenuMore(page);
 
   await page.locator('#menu-credits').click();
   const list = page.locator('#credits-list');
@@ -472,7 +482,7 @@ test('credits: every ledger entry is listed, AI-made ones are labelled, the lice
   await expectNoOverflow(page, 'credits with the licence texts open');
 
   await page.locator('#credits-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   expect(problems).toEqual([]);
 });
 
@@ -554,6 +564,7 @@ for (const size of CREDITS_SIZES) {
       const problems = watchErrors(page);
       await page.goto('./');
       await page.locator('#start-screen').click();
+      await openMenuMore(page);
       await page.locator('#menu-credits').click();
       const list = page.locator('#credits-list');
       await expect(list.locator('.credit-entry').first()).toBeVisible();

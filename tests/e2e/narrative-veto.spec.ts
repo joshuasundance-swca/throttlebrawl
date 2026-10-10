@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import type { VetoFlag } from '../../src/ui/narrative/veto';
+import { openQuickPlay } from './menu-navigation';
 
 // narrative-2 in the real build (docs/milestones/M2.md, narrative-2, "Automated acceptance"):
 // - a long-press (500 ms or more) on a rival's bark on the top ticker opens "cut this" with the line on it,
@@ -117,8 +118,9 @@ async function startRace(page: Page) {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
 }
 

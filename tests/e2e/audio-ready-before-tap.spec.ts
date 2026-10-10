@@ -74,7 +74,7 @@ test('the context is made before the start tap, suspended, and the tap only resu
   expect(before?.resumes, 'nothing resumed it before the tap').toEqual([]);
 
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   // The sound starts from the gesture: the context was resumed inside the click, with the page
   // activated by it, and the tap made no context of its own.
   const after = await logOf(page);

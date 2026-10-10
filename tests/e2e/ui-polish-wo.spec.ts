@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
@@ -73,6 +74,7 @@ test('the R key saves the radio choice at once, with no pause or settings in bet
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await raceStarted(page);
   expect(await savedRadio(page)).not.toBe('score');
@@ -89,6 +91,7 @@ test('the R key saves the radio choice at once, with no pause or settings in bet
   // Kept across a reload, and the Radio row shows it.
   await page.reload();
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-sound').click();
   await expect(page.locator('#settings-radio [data-value="off"]')).toHaveAttribute('aria-pressed', 'true');
@@ -127,6 +130,7 @@ async function cutNote(page: Page) {
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await raceStarted(page);
   await page.keyboard.press('Escape');
@@ -211,6 +215,7 @@ test.describe('portrait', () => {
     await page.goto('./');
     await page.locator('#start-screen').click();
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     const bubble = page.locator('#hud-ticker[data-cls="bark"]');
     await expect(bubble).toBeVisible({ timeout: 15_000 });
