@@ -153,6 +153,7 @@ import {
 import {
   keepOff,
   lawBarredZone,
+  lawMayTake,
   lawNeverTakes,
   lineOutsideZone,
   STRAY_GAIN,
@@ -1120,6 +1121,8 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
   // directions leaves him room to ride through (a cop splitting the lanes).
   let vWant = 0;
   let dWant = lane ? lane.dCenterM - lane.direction * (lane.widthM / 2) : pos.d;
+  const shortcutLane = config.road.lanesAt(pos.edge, pos.s).find((l) => l.kind === 'shortcut');
+  if (shortcutLane) dWant = shortcutLane.dCenterM;
   // He may stop in a lane only beside his target (a downed one he is busting, or one who has
   // stopped with him alongside) or with the man he busted; anywhere else, only off the lanes.
   let mayStop = false;
@@ -1238,6 +1241,22 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
   // who has just gone by him (he falls in behind once the player is clear).
   const until = st.patrolUntil[cop.id] ?? 0;
   if (until > 0 && st.clock < until - (PATROL.chaseS - PATROL.holdLineS) * 60) dWant = pos.d;
+  // Follow a target onto an allowed branch through its actual split, rather than waiting on the
+  // highway until the paths rejoin. The ordinary bike and traffic rules still judge the run-up.
+  const targetBranch = target ? config.route.branchAt(target.pos.edge) : null;
+  const split = targetBranch?.choice;
+  if (
+    split &&
+    split.edge === pos.edge &&
+    pos.dir === 1 &&
+    pos.s >= split.s0 - 150 &&
+    pos.s <= split.s1 &&
+    lawMayTake(config, split)
+  ) {
+    dWant = (split.d0 + split.d1) / 2;
+    vWant = bike.topSpeedMps;
+    feedBrake = 0;
+  }
   // Never stand still in a travel lane: below the crawl, head for the shoulder and keep rolling
   // until he is clear of the lane (traffic never passes a stopped rider in its lane).
   if (!mayStop && vWant < CRAWL_MPS && !clearOfLanes(config, pos)) {

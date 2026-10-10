@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
-// Rivals and cops stay on the highway (playtest 3, round 3: "rivals and cops on the highway only";
-// wave C, G3). T9.2 (#475) found the Seven Mile's field could still be PUSHED onto the old road
+// An explicitly barred route keeps rivals and cops off its branch. The live Seven Mile policy
+// now permits participation; this fixture sets aiTake 0 as a negative control. T9.2 (#475) found
+// the Seven Mile's field could still be PUSHED onto the old road
 // (aiTake 0): a kick, or a pack passing a car, put a rider against the rail inside the turn-off's
 // split zone and the split handed it over; once, a cop and Chad Speedwell rode the old road on. The
 // rule (sim/ai/branches.ts): approaching that split, and just past it where the turn-off still
@@ -175,7 +176,7 @@ function race(seed: number): Result {
   };
 }
 
-describe('the Seven Mile: rivals and cops stay on the highway, shoved at the turn-off or not', () => {
+describe('an explicitly barred Seven Mile branch excludes rivals and cops, including forced shoves', () => {
   it(
     'no AI rider or cop reaches the old road far end over a band of seeded races with forced shoves',
     { timeout: 600_000 },

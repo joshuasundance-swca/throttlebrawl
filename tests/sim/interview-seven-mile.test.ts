@@ -6,6 +6,7 @@ import { createSimWithWorld } from '../../src/sim/create';
 import { COP_CHASING, copsState } from '../../src/sim/cops';
 import { aiState } from '../../src/sim/ai';
 import { ISOLATED } from './batch';
+import { createRouteProgress } from '../../src/road';
 
 const all = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -51,17 +52,16 @@ it('a rival rides from the turn-off through the branch and returns to the highwa
   )!;
   const zone = branch.choice!;
   const rival = config.riders.find((r) => r.controller.kind === 'ai')!;
-  const player = config.riders.find((r) => r.controller.kind === 'player')!;
   const cfg = {
     ...config,
-    riders: [{ ...rival, controller: { kind: 'ai' as const, style: 'racer' }, bike: player.bike }],
+    riders: [rival],
     trafficTypes: [],
     modifiers: [],
   };
   const { sim, world } = createSimWithWorld(cfg);
   const m = world.movers[0]!;
   m.pos = { edge: zone.edge, s: zone.s0, d: (zone.d0 + zone.d1) / 2, dir: 1 };
-  m.speed = player.bike.topSpeedMps;
+  m.speed = rival.bike.topSpeedMps;
   aiState(world).shortcuts[0] = 0xffffffff;
   const visited = new Set<number>();
   const crashes: unknown[] = [];
@@ -87,14 +87,11 @@ it.each(['rival', 'police'] as const)(
       b.edges.some((e) => config.road.featuresOf(e, 'rampTruck').length),
     )!;
     const rival = config.riders.find((r) => r.controller.kind === 'ai')!;
-    const participant =
-      kind === 'rival'
-        ? { ...rival, controller: { kind: 'ai' as const, style: 'racer' } }
-        : config.riders.find((r) => r.controller.kind === 'cop')!;
+    const participant = kind === 'rival' ? rival : config.riders.find((r) => r.controller.kind === 'cop')!;
     const player = config.riders.find((r) => r.controller.kind === 'player')!;
     const cfg = {
       ...config,
-      riders: [{ ...participant, bike: player.bike }, player],
+      riders: [participant, player],
       trafficTypes: [],
       modifiers: [],
     };
@@ -104,7 +101,7 @@ it.each(['rival', 'police'] as const)(
       const { sim, world } = createSimWithWorld(cfg);
       const m = world.movers[0]!;
       m.pos = { edge, s: Math.max(0, gaps[0]!.s0 - 180), d: 0, dir: 1 };
-      m.speed = player.bike.topSpeedMps;
+      m.speed = participant.bike.topSpeedMps;
       if (kind === 'police') {
         const p = world.movers[1]!;
         p.pos = { edge, s: gaps[0]!.s1 + 120, d: 3, dir: 1 };
@@ -126,5 +123,52 @@ it.each(['rival', 'police'] as const)(
       expect(crashes, cfg.road.edges[edge]!.id).toEqual([]);
       expect(landed, cfg.road.edges[edge]!.id).toBe(true);
     }
+  },
+);
+
+it.each([0.2, 0, null])(
+  'police highway-to-branch pursuit respects aiTake %s with its configured bike',
+  (aiTake) => {
+    const branch = config.route.branches.find((b) => b.choice)!;
+    const zone = branch.choice!;
+    const cop = config.riders.find((r) => r.controller.kind === 'cop')!;
+    const player = config.riders.find((r) => r.controller.kind === 'player')!;
+    const raw = lookup(all.routes, 'base:osm-seven-mile-run');
+    const route = createRouteProgress(config.road, {
+      ...raw,
+      branches: raw.branches?.map((b) => {
+        const altered = { ...b };
+        if (aiTake === null) delete altered.aiTake;
+        else altered.aiTake = aiTake;
+        return altered;
+      }),
+    });
+    const cfg = { ...config, route, riders: [cop, player], trafficTypes: [], modifiers: [] };
+    const { sim, world } = createSimWithWorld(cfg);
+    const m = world.movers[0]!;
+    const p = world.movers[1]!;
+    m.pos = { edge: zone.edge, s: zone.s0 - 100, d: 1.7, dir: 1 };
+    m.speed = cop.bike.topSpeedMps;
+    p.pos = { edge: zone.toEdge, s: 5, d: 0, dir: 1 };
+    p.speed = player.bike.topSpeedMps;
+    const st = copsState(world);
+    st.phase[m.id] = COP_CHASING;
+    st.target[m.id] = p.id;
+    const visited = new Set<number>();
+    const crashes: unknown[] = [];
+    for (let tick = 0; tick < 60 * 500; tick++) {
+      const steer = Math.max(-1, Math.min(1, -0.8 * p.pos.d - 6 * p.yaw));
+      sim.step([{ steer: Math.round(steer * 127), throttle: 255, brake: 0, flags: 0 }]);
+      if (branch.edges.includes(m.pos.edge)) visited.add(m.pos.edge);
+      for (const e of sim.events()) if (e.type === 'crash' && e.actor === m.id) crashes.push(e.data);
+      if (
+        crashes.length ||
+        (visited.size === branch.edges.length && !branch.edges.includes(m.pos.edge) && m.mode === 'Road')
+      )
+        break;
+    }
+    expect(crashes).toEqual([]);
+    expect([...visited].sort()).toEqual(aiTake ? [...branch.edges].sort() : []);
+    expect(branch.edges.includes(m.pos.edge)).toBe(false);
   },
 );
