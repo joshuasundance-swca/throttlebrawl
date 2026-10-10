@@ -35,6 +35,7 @@ import {
   toDom,
   type GigCard,
 } from './career-show';
+import { actionScreenParts, ACTION_SCREEN_CSS } from './action-screen';
 
 export interface CareerCallbacks {
   onRegion(regionId: string): void;
@@ -175,7 +176,7 @@ export const CAREER_CSS = `
 #career > *, #career-results > *, #career-teaser > * { flex-shrink: 0; }
 .career-col { width: min(720px, 100%); display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
 .career-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
-.career-top .small { min-height: 40px; }
+.career-top .small { min-height: 44px; }
 .career-wallet { font: 800 0.9375rem ui-monospace, 'Courier New', monospace; color: #f5c542; text-align: right; }
 .career-wallet small { display: block; color: #f2ead8; font-weight: 600; font-size: 0.75rem; }
 .career-wallet .swatch { display: inline-block; width: 12px; height: 12px; border: 2px solid #111; margin-right: 4px;
@@ -285,7 +286,8 @@ export const CAREER_CSS = `
     font-size: 0.6875rem; line-height: 1.2; padding: 2px 6px; }
 }
 .career-show { display: flex; flex-direction: column; gap: 8px; }
-${SHOW_CSS}`;
+${SHOW_CSS}
+${ACTION_SCREEN_CSS}`;
 
 type ButtonFn = (id: string, cls: 'big' | 'small', text: string, onClick: () => void) => HTMLButtonElement;
 
@@ -735,6 +737,9 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
   const overlays = el('div', { id: 'career-overlays' }, promptBox, objective);
   // ---- The pause screen's map (run W-S; interview, 2026-10-02: "Maybe just map on pause") ------
   const pauseMap = el('section', { id: 'pause-map', className: 'card', hidden: true });
+  const pauseGoal = el('div', { id: 'pause-goal', hidden: true });
+  const pauseFigure = el('div', { id: 'pause-map-figure', hidden: true });
+  pauseMap.append(pauseGoal, pauseFigure);
   let promptTimer: ReturnType<typeof setTimeout> | null = null;
 
   let msgTimer: ReturnType<typeof setTimeout> | null = null;
@@ -771,30 +776,36 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
         ),
       );
       const buttons = [
-        button('career-results-map', 'big', 'Map', () => cb.onMap()),
-        button('career-results-retry', 'small', 'Race it again', () => cb.onRetry()),
+        button('career-results-retry', r.nextName ? 'small' : 'big', 'Retry', () => cb.onRetry()),
       ];
-      if (r.nextName)
-        buttons.push(button('career-results-next', 'small', `Next: ${r.nextName}`, () => cb.onNext()));
+      if (r.nextName) buttons.push(button('career-results-next', 'big', 'Next', () => cb.onNext()));
+      buttons.push(button('career-results-map', 'small', 'Map', () => cb.onMap()));
       results.replaceChildren(
-        el(
-          'div',
-          { className: 'career-col' },
-          el('div', { className: 'title', id: 'career-results-title', textContent: r.title }),
-          el('div', { className: 'career-tally', textContent: r.eventName }),
-          ...(r.paper ? [toDom(paperNode(r.paper))] : []),
-          el('ul', { className: 'career-results-list', id: 'career-results-objectives' }, ...items),
-          toDom(ledgerNode(r.lines, r.fine, r.cashAfter)),
-          ...r.news.map((line) => el('div', { className: 'career-news', textContent: line })),
-          ...[r.texts ? textsNode(r.texts) : null].flatMap((t) => (t ? [toDom(t)] : [])),
-          el('div', { className: 'row' }, ...buttons),
+        ...actionScreenParts(
+          'career-results',
+          [
+            el('div', { className: 'title', id: 'career-results-title', textContent: r.title }),
+            el('div', { className: 'career-tally', textContent: r.eventName }),
+          ],
+          [
+            ...(r.paper ? [toDom(paperNode(r.paper))] : []),
+            el('ul', { className: 'career-results-list', id: 'career-results-objectives' }, ...items),
+            toDom(ledgerNode(r.lines, r.fine, r.cashAfter)),
+            ...r.news.map((line) => el('div', { className: 'career-news', textContent: line })),
+            ...[r.texts ? textsNode(r.texts) : null].flatMap((t) => (t ? [toDom(t)] : [])),
+            ...(r.nextName
+              ? [el('div', { className: 'career-news', textContent: `Next: ${r.nextName}` })]
+              : []),
+          ],
+          buttons,
         ),
       );
     },
     showPauseMap(v) {
-      pauseMap.hidden = v === null;
+      pauseFigure.hidden = v === null;
+      pauseMap.hidden = v === null && pauseGoal.hidden;
       if (!v) {
-        pauseMap.replaceChildren();
+        pauseFigure.replaceChildren();
         return;
       }
       const fig = mapFigure(v.panel, () => undefined);
@@ -809,7 +820,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
         (dot.lastChild as SVGTitleElement).textContent = 'You are here';
         svgRoot.append(dot);
       }
-      pauseMap.replaceChildren(fig);
+      pauseFigure.replaceChildren(fig);
     },
     showTeaser(t) {
       const next = t.next;
@@ -833,6 +844,9 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     },
     setObjective(text) {
       objective.hidden = text === null;
+      pauseGoal.hidden = text === null;
+      pauseGoal.textContent = text === null ? '' : `Goal: ${text}`;
+      pauseMap.hidden = pauseFigure.hidden && pauseGoal.hidden;
       if (text !== null && objective.textContent !== text) objective.textContent = text;
       if (text === null) {
         promptBox.hidden = true;

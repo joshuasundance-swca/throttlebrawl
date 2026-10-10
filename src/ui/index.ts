@@ -69,6 +69,8 @@ import { pickStampSpot } from './stamp';
 import { COUNTDOWN_CSS, createCountdownView } from './countdown-view';
 import { FINISH_SHOT_CSS, setFinishShotFlag } from './finish-shot-hud';
 import { careerButtonText, MENU_FIRST_CSS, START_HERE_CLASS } from './menu-first';
+import { createMenuFlow, MENU_FLOW_CSS } from './menu-flow';
+import { actionScreenParts, ACTION_SCREEN_CSS } from './action-screen';
 import { hudStyle } from './placement';
 import { ROOT_FONT_PCT, textScaleOf } from './text-size';
 import {
@@ -740,7 +742,14 @@ function healthWidget(id: string, label: string) {
 export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const cb = opts.callbacks;
   const style = el('style', {
-    textContent: CSS + ROUTE_PICKER_CSS + COUNTDOWN_CSS + MENU_FIRST_CSS + FINISH_SHOT_CSS,
+    textContent:
+      CSS +
+      ROUTE_PICKER_CSS +
+      COUNTDOWN_CSS +
+      MENU_FIRST_CSS +
+      FINISH_SHOT_CSS +
+      MENU_FLOW_CSS +
+      ACTION_SCREEN_CSS,
   });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
@@ -858,31 +867,33 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     className: 'menu-build-line',
     textContent: `build ${buildId}`,
   });
+  const menuFlow = createMenuFlow(button, {
+    career: cb.onCareer ? careerButton : null,
+    settings: button('menu-settings', 'big', 'Settings', () => show('settings')),
+    region: regionPicker,
+    route: routePicker.root,
+    race: button('menu-race', 'big', 'Race', () => cb.onRace()),
+    options: cb.raceOptions ? button('menu-options', 'small', 'Setup', () => show('raceOptions')) : null,
+    secondary: [
+      button('menu-changelog', 'small', "What's new", () => show('changelog')),
+      button('menu-credits', 'small', 'Credits', () => show('credits')),
+      button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      ...(install ? [installButton] : []),
+    ],
+    onChange: () => {
+      menu.classList.toggle('quick-setup', menuFlow.isQuick);
+      menu.classList.toggle('with-news', !menuFlow.isQuick && !whatsNewCard.root.hidden);
+      placeCards();
+      queueStampCheck();
+    },
+  });
   // The menu's main column: its transient cards sit first in it, above the title (placeCards).
   const menuMain = el(
     'div',
     { className: 'menu-main' },
     el('div', { className: 'title', textContent: 'throttlebrawl' }),
-    regionPicker,
-    routePicker.root,
-    el(
-      'div',
-      { className: 'row' },
-      ...(cb.onCareer ? [careerButton] : []),
-      button('menu-race', 'big', 'Race', () => cb.onRace()),
-      // The menu race's options (playtest 4, P4-12 and P4-13), beside the Race they set up. Small, so
-      // Start career stays the first big tap (P4-5).
-      ...(cb.raceOptions ? [button('menu-options', 'small', 'Options', () => show('raceOptions'))] : []),
-    ),
-    el(
-      'div',
-      { className: 'row' },
-      button('menu-settings', 'small', 'Settings', () => show('settings')),
-      button('menu-changelog', 'small', "What's new", () => show('changelog')),
-      button('menu-credits', 'small', 'Credits', () => show('credits')),
-      button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
-      ...(install ? [installButton] : []),
-    ),
+    menuFlow.home,
+    menuFlow.quick,
     // The build id as the last line of the column, in the flow, shown only while the menu scrolls
     // (keepFooterClear): the footer and the corner stamp give way then, and the id must stay findable.
     menuBuildLine,
@@ -1449,7 +1460,21 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // The legend and the "recently seen" list (mounted below, once the narrative exists) share a
   // column, so on a short phone screen neither pushes the other off it (playtest 1c item 8). The
   // radio panel heads it: small, and the thing most often wanted mid-race.
-  const pauseCards = el('div', { id: 'pause-cards' }, pauseKeys);
+  const pauseCards = el(
+    'div',
+    { id: 'pause-cards' },
+    el('div', { className: 'row' }, controlsButton, tuningButton),
+    pauseKeys,
+    el(
+      'div',
+      { className: 'row' },
+      entry(
+        button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+        'report',
+      ),
+      saveFileButton,
+    ),
+  );
   const pauseScreen = el(
     'div',
     { id: 'pause-screen', className: 'screen', hidden: true },
@@ -1472,17 +1497,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
           }),
           'quit',
         ),
-        controlsButton,
-        tuningButton,
-      ),
-      el(
-        'div',
-        { className: 'row' },
-        entry(
-          button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
-          'report',
-        ),
-        saveFileButton,
       ),
     ),
     pauseCards,
@@ -1543,6 +1557,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     stickPointer = null;
     ring.hidden = true;
     cb.onPause?.();
+    pauseScreen.querySelector<HTMLButtonElement>('#pause-resume')?.focus({ preventScroll: true });
   }
   function resume() {
     if (!paused) return;
@@ -1557,14 +1572,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const results = el(
     'div',
     { id: 'results', className: 'screen', hidden: true },
-    resultPlace,
-    resultPrize,
-    resultTally,
-    el(
-      'div',
-      { className: 'row' },
-      button('results-menu', 'big', 'Back to menu', () => cb.onBackToMenu()),
-      button('results-race', 'small', 'Race again', () => cb.onRace()),
+    ...actionScreenParts(
+      'results',
+      [resultPlace],
+      [resultPrize, resultTally],
+      [
+        button('results-race', 'big', 'Retry', () => cb.onRace()),
+        button('results-menu', 'small', 'Menu', () => cb.onBackToMenu()),
+      ],
     ),
   );
 
@@ -1719,7 +1734,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (settings.lastSeenBuild !== buildId) change({ kind: 'seen', build: buildId });
   };
   const offerNews = () => {
-    if (!pendingNews || current !== 'menu') return;
+    if (!pendingNews || current !== 'menu' || menuFlow.isQuick) return;
     whatsNewCard.show(pendingNews);
     menu.classList.add('with-news');
     // Never scrolled into view (reveal): on a short screen it sits under the menu, a scroll away, so the
@@ -1971,7 +1986,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         if (esc) closeSettings();
       } else if (paused) resume();
       else pause();
-    } else if (current === 'settings' || current === 'raceOptions' || current === 'credits') show('menu');
+    } else if (current === 'menu' && menuFlow.isQuick) menuFlow.back();
+    else if (
+      current === 'settings' ||
+      current === 'raceOptions' ||
+      current === 'credits' ||
+      current === 'changelog'
+    )
+      show('menu');
   });
 
   const screens: Record<Screen, HTMLElement[]> = {
@@ -2221,15 +2243,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       case 'start':
         return start;
       case 'menu':
-        return menuMain;
+        return menuFlow.isQuick ? menuFlow.details : menuMain;
       case 'raceOptions':
         return raceOptionsScreen?.root ?? null;
       case 'career':
         return realCareer?.map ?? null;
       case 'results':
-        return results;
+        return results.querySelector<HTMLElement>('#results-details');
       case 'careerResults':
-        return realCareer?.results ?? null;
+        return realCareer?.results.querySelector<HTMLElement>('#career-results-details') ?? null;
       default:
         return null;
     }
@@ -2278,6 +2300,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
 
   function show(screen: Screen) {
+    const previous = current;
     current = screen;
     // A transient card shown on the screen being left goes with it (transient-cards.ts); a notice on
     // the start screen is carried to the menu, where its time starts again.
@@ -2307,6 +2330,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // The gauge shows only in a race, and only while a wheelie is up (updateRace draws it).
     if (screen !== 'race') wheelieGauge?.update(gaugeView(null, 0));
     if (screen === 'menu') {
+      if (previous !== 'raceOptions' && menuFlow.isQuick) menuFlow.back();
+      if (previous === 'raceOptions')
+        menu.querySelector<HTMLButtonElement>('#menu-options')?.focus({ preventScroll: true });
       syncCareerButton();
       checkNews();
       offerNews();

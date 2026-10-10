@@ -78,7 +78,7 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
     node(
       'div',
       { className: 'ro-head' },
-      node('div', { className: 'ro-title', textContent: 'Race options' }),
+      node('div', { className: 'ro-title', textContent: 'Quick Play setup' }),
       where,
     ),
     list,
