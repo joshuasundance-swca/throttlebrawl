@@ -1244,7 +1244,7 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
     vWant = Math.min(CRAWL_MPS, bike.topSpeedMps);
     if (shoulder) dWant = shoulder.dCenterM;
   }
-  // The law stays on the highway (playtest 3, round 3: "rivals and cops stay on the highway"): a
+  // The law avoids explicitly barred branches (sim/ai/branches.ts): a
   // branch the route bars to them (`aiTake` 0, or a gap with no `aiTake`: sim/ai/branches.ts) is
   // never entered. His line, chasing a man who takes it, keeps out of its split zone, and he rides
   // the main path on to wait where it rejoins. (He does not share the rivals' shortcut roll.)
@@ -1282,8 +1282,8 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
   // Dodging traffic, he swerves as briskly as a rival does (sim/ai: 5 m/s across).
   let gain = st.closing[cop.id] === 1 || guard.dodging ? 1.6 : 0.8;
   let latMax = guard.dodging ? 5 : 3;
-  // The law stays on the highway (wave C, G3; sim/ai/branches.ts), when a shove puts him where his
-  // line never goes. On a branch barred to the law, while it still overlaps the main road, he brakes
+  // The law avoids explicitly barred branches even when shoved onto one (wave C, G3;
+  // sim/ai/branches.ts). While the barred branch still overlaps the main road, he brakes
   // to a crawl and rides for that edge, where the road's handover puts him back on the main road; past
   // that point he stops where he is (a cop never turns round), and his chase is over: the heat can
   // send him again from there, as any cop whose chase ended (sendHeatCop puts him on the main road).

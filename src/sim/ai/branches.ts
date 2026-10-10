@@ -1,5 +1,6 @@
-// sim/ai/branches: who may take a branch off the route's main path (playtest 3, round 3: "rivals and
-// cops stay on the highway"; docs/content-packs.md, route `branches[].aiTake`). One rule, read by
+// sim/ai/branches: who may take a branch off the route's main path (docs/content-packs.md, route
+// `branches[].aiTake`). The law avoids explicitly barred branches; Seven Mile now permits some
+// participants (the 2026-10-10 interview supersedes its highway-only policy). One rule, read by
 // the rivals' shortcut roll (sim/ai index.ts) and by the cops' line (sim/cops), so they agree:
 //   - a route file's `aiTake` is the share of rivals that take the branch (0 never, 1 always), and
 //     it holds for every rider, whatever their nerve;
