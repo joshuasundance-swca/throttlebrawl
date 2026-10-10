@@ -176,6 +176,22 @@ for (const [where, width, height] of [
       expect(words?.words ?? 0, `${where}: words were measured`).toBeGreaterThan(5);
       expect(words?.under, `${where}: words under the stamp`).toEqual([]);
       await shot(page, `menu-first-${where}`);
+      // Home keeps location/setup out of the primary navigation. Keyboard entry and Escape follow
+      // the same pane transitions as touch, with focus returned to the control that opened it.
+      await expect(page.locator('#menu-settings')).toBeVisible();
+      await expect(page.locator('#region-picker')).toBeHidden();
+      await expect(page.locator('#menu-options')).toBeHidden();
+      await page.locator('#menu-quick-play').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#quick-play')).toBeVisible();
+      await expect(page.locator('#quick-play-back')).toBeFocused();
+      await expect(page.locator('#region-picker')).toBeVisible();
+      await expect(page.locator('#menu-options')).toBeVisible();
+      await expect(page.locator('#menu-race')).toBeVisible();
+      await expect(page.locator('#whats-new')).toBeHidden();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#menu-quick-play')).toBeFocused();
+      await expect(page.locator('#quick-play')).toBeHidden();
 
       // The check can fire: words planted exactly under the stamp, with the stamp forced shown at its
       // home corner, are named (all in one step, so the stamp's own check cannot step away between).

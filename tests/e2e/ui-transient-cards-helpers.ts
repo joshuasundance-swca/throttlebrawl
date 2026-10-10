@@ -468,6 +468,14 @@ export async function checkScreen(
         expect
           .soft(box!.y + box!.height, `${where}: fixed outcome/action bottom`)
           .toBeLessThanOrEqual(size.height + 0.5);
+        if (await node.evaluate((e) => e.tagName === 'BUTTON')) {
+          const hit = await node.evaluate((e) => {
+            const r = e.getBoundingClientRect();
+            const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return at === e || e.contains(at);
+          });
+          expect.soft(hit, `${where}: action is uncovered while details scroll`).toBe(true);
+        }
         if (await node.evaluate((e) => e.tagName === 'BUTTON'))
           expect.soft(box!.height, `${where}: fixed action has room`).toBeGreaterThanOrEqual(44);
       }
