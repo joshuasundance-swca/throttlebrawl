@@ -69,6 +69,21 @@ function botInput(me: EntitySnapshot | undefined, config: SimConfig) {
 const RACER_STATUSES: readonly RiderStatus[] = ['finished', 'down', 'busted'];
 
 describe('riders-3: the start grid', () => {
+  it('puts hunt targets ahead of the player without changing classic race grid order', () => {
+    const config = testConfig({ edges: TRACK, rivals: 5, start: { road: 'a', s: 60, dir: 1 } });
+    const hunt = {
+      ...config,
+      riders: [...config.riders].reverse(),
+      event: { ...config.event, kind: 'takedown-hunt' as const },
+    };
+    const player = hunt.riders.findIndex((r) => r.controller.kind === 'player');
+    const p = gridPosition(hunt, player);
+    for (let i = 0; i < hunt.riders.length; i++) {
+      if (i === player) continue;
+      expect(gridPosition(hunt, i).s).toBeGreaterThanOrEqual(p.s);
+      expect(gridPosition(hunt, i).s - p.s).toBeLessThanOrEqual(24);
+    }
+  });
   it('lays the grid out from the route: rows behind the line, across the travel lane', () => {
     const config = testConfig({
       edges: TRACK,

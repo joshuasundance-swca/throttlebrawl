@@ -32,6 +32,19 @@ export const BOLD_RISK = 0.8;
 /** A line kept this far outside a zone's inner edge by a rider that does not take it, m. */
 export const SHORTCUT_CLEAR_M = 0.9;
 
+/** A jump run-up on the current road: build momentum and hold its launch line, without changing physics. */
+export function jumpRunUp(config: SimConfig, pos: RoadPos): number | null {
+  if (pos.dir !== 1) return null;
+  const features = [
+    ...config.road.featuresOf(pos.edge, 'rampTruck'),
+    ...config.road.featuresOf(pos.edge, 'ramp'),
+  ];
+  const gap = config.road.featuresOf(pos.edge, 'gap').find((g) => g.s1 > pos.s && g.s0 - pos.s < 220);
+  if (!gap) return null;
+  const launch = features.find((f) => f.s1 >= gap.s0 - 60 && f.s0 <= gap.s0 && f.s1 > pos.s);
+  return launch ? (launch.d0 + launch.d1) / 2 : null;
+}
+
 const holds = new WeakMap<RouteBranch, boolean>();
 
 /** Whether any road of the branch holds a `gap` feature. */

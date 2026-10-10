@@ -114,6 +114,21 @@ const mix = (over: Partial<SimEventCops>): SimEventCops => ({
   ...over,
 });
 
+it('an escape starts a nearby pursuit after the siren lead, without waiting for the normal spawn delay', () => {
+  const base = config(mix({ baseCount: 1 }), { tuning: { 'cops.spawnDelayS': 20, 'cops.sirenLeadS': 3 } });
+  const cfg = { ...base, event: { ...base.event, kind: 'cop-escape' as const } };
+  const h = lawWorld(cfg);
+  const player = h.world.movers[PLAYER_ID]!;
+  const first = h.world.movers[COPS[0]!]!;
+  expect(Math.abs(player.pos.s - first.pos.s)).toBeLessThanOrEqual(16);
+  h.step(1);
+  expect(h.sirens()).toHaveLength(1);
+  expect(copsState(h.world).phase[first.id]).not.toBe(COP_CHASING);
+  h.step(180);
+  expect(copsState(h.world).phase[first.id]).toBe(COP_CHASING);
+  expect(copsState(h.world).target[first.id]).toBe(PLAYER_ID);
+});
+
 /** A world with only the cops system stepping; `hitsEvery` injects a player hit every n ticks. */
 function lawWorld(cfg: SimConfig) {
   const world: World = createWorld(cfg);

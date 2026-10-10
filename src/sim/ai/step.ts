@@ -34,6 +34,7 @@ import {
   STRAY_LATERAL_MPS,
   STRAY_GAIN,
   STRAY_RETURN_MPS,
+  jumpRunUp,
 } from './branches';
 import { droppedBikesSeen } from './dropped';
 import { aggressionScale } from './level';
@@ -729,6 +730,12 @@ function driveRider(
     const side = Math.sign((inner === d0 ? d1 : d0) - inner);
     const limit = inner - side * SHORTCUT_CLEAR_M;
     if ((dTarget - limit) * side > 0) dTarget = clamp(limit, dLo, dHi);
+  }
+
+  const launchLine = jumpRunUp(config, pos);
+  if (launchLine !== null && racing && (!strayOn || !rivalNeverTakes(config, strayOn, prof.riskTaking))) {
+    dTarget = clamp(launchLine, dLo, dHi);
+    speedTarget = def?.bike.topSpeedMps ?? speedTarget;
   }
 
   // A fight or weave line into the path of traffic is not worth it: back to its own spot in its

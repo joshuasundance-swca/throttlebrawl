@@ -174,6 +174,7 @@ import {
   see,
   type Obstacle,
 } from '../ai/sense';
+import { jumpRunUp } from '../ai/branches';
 import { vehicleInfo } from '../traffic';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 import { lateSteps } from '../late';
@@ -1226,6 +1227,12 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
       if (heatBurst > 0 || far) vWant = Math.max(vWant, bike.topSpeedMps + burst);
     }
   }
+  const launchLine = jumpRunUp(config, pos);
+  if (launchLine !== null && st.phase[cop.id] === COP_CHASING) {
+    dWant = launchLine;
+    vWant = bike.topSpeedMps;
+    feedBrake = 0;
+  }
   vWant = clamp(vWant, 0, bike.topSpeedMps + burst);
   // A patrol cop holds his line for his first seconds out, so he never swerves into the player
   // who has just gone by him (he falls in behind once the player is clear).
@@ -1640,6 +1647,8 @@ export const copsSystem: SimSystem = {
     const mix = config.event.cops;
     for (const m of world.movers) {
       if (defOf(config, m)?.controller.kind !== 'cop') continue;
+      const escapeLead = config.event.kind === 'cop-escape' && st.cops.length === 0;
+      const player = escapeLead ? world.movers.find((r) => isPlayer(config, r)) : undefined;
       // From the lot, not the grid; each further cop waits PARK_GAP_M further back along the road.
       if (spawn) {
         const len = config.road.edges[spawn.edge]?.length ?? spawn.s;
@@ -1648,11 +1657,18 @@ export const copsSystem: SimSystem = {
         m.yaw = 0;
         m.speed = 0;
       }
+      if (player) {
+        m.pos = { ...player.pos, s: player.pos.s - player.pos.dir * 12 };
+        config.road.advance(m.pos);
+        m.yaw = 0;
+        m.speed = 0;
+      }
       st.cops.push(m.id);
       st.phase[m.id] = COP_PARKED;
       // One roll per cop per race, always drawn (so the stream advances the same on every preset).
       const chance = clamp((world.params['cops.spawnChance'] ?? 1) * config.difficulty.copFrequency, 0, 1);
       st.spawns[m.id] = nextFloat(world.rng.cops) < chance ? 1 : 0;
+      if (escapeLead && config.difficulty.copFrequency > 0) st.spawns[m.id] = 1;
       st.sirenOn[m.id] = 0;
       st.target[m.id] = -1;
       st.chaosUntil[m.id] = 0;
@@ -1671,7 +1687,10 @@ export const copsSystem: SimSystem = {
     if (!mix) return;
     // cops-3's spawn mix: the first `count` cops come out (each still on his roll), a wave gap
     // apart; the rest wait in the lot for a chaos summon (or, below, go on patrol).
-    const count = startingCopCount(world, config);
+    const count = Math.max(
+      config.event.kind === 'cop-escape' && config.difficulty.copFrequency > 0 ? 1 : 0,
+      startingCopCount(world, config),
+    );
     const gapTicks = Math.max(0, world.params['cops.waveGapS'] ?? 8) * 60;
     st.cops.forEach((id, k) => {
       const jittered = jitter(world, mix.randomness); // always drawn, so the stream stays aligned

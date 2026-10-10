@@ -22,6 +22,7 @@ import { buildSimConfig, createStreamCache, regionChoices } from '../../src/app'
 import { createRng, nextFloat } from '../../src/core';
 import { lookup, registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
+import { createRouteProgress } from '../../src/road';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimConfig } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
@@ -55,7 +56,7 @@ const CAP_TICKS = 6 * 60 * 60;
 function seven(seed: number): SimConfig {
   const choice = regionChoices(ALL).find((c) => lookup(ALL.events, c.eventId).region === 'florida-keys');
   if (!choice) throw new Error('no Keys free-play event');
-  return buildSimConfig(ALL, STREAMS.forEvent(ALL, choice.eventId, undefined, ROUTE), {
+  const config = buildSimConfig(ALL, STREAMS.forEvent(ALL, choice.eventId, undefined, ROUTE), {
     seed,
     eventId: choice.eventId,
     route: ROUTE,
@@ -67,6 +68,15 @@ function seven(seed: number): SimConfig {
       'cops.sirenLeadS': 0,
     },
   });
+  // The highway-only decision was superseded. Keep this as an explicit barred-route control.
+  const raw = lookup(ALL.routes, ROUTE);
+  return {
+    ...config,
+    route: createRouteProgress(config.road, {
+      ...raw,
+      branches: raw.branches?.map((b) => ({ ...b, aiTake: 0 })),
+    }),
+  };
 }
 
 interface OnBranch {
