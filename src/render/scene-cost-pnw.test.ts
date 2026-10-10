@@ -25,14 +25,15 @@ describe('the still scene along every Pacific Northwest route, at its peak view'
 });
 
 describe("the sweep covers the frame that cost Bridge City 112 of its 120 draw calls (polish G's check)", () => {
-  // Seed 3, Broadway South, tick 5472: the takedown framing three seconds after the player's takedown, standing 9 m
+  // Historical camera before the 2026-10-10 forward change, seed 3, Broadway South, tick 5472:
+  // the takedown framing three seconds after the player's takedown, standing 9 m
   // behind the rider and aimed down a side street. The pose is what a headless replay of that seed gives the camera
   // rig (the live frame's camera stood at x -568.18, y 28.74, z 237.10); the world is the pack's own road data.
   const EYE = { x: -568.2, y: 28.8, z: 237.0 };
   const AIM = { x: -563.9, y: 25.9, z: 236.0 };
   const FOV = 61;
 
-  it("draws more from that pose than any chase, helmet, look-back or aimed-at-the-rider view at the same road does, and the sweep's takedown views reach it", async () => {
+  it('draws more from that historical pose than the road-facing views, and the retained safety envelope reaches it', async () => {
     const c = await cameraParams();
     const { road, scene } = await stillSceneOf('osm-pnw-portland', 3);
     const e = road.edgeIndex('osm-pnw-pdx-broadway-south');
@@ -65,9 +66,9 @@ describe("the sweep covers the frame that cost Bridge City 112 of its 120 draw c
     const aimed = r.drawsByCamera.get(CINEMATIC_CAMERA) ?? 0;
     print(
       `[examined] Bridge City, Broadway South, both ways every 2 m: the frame's pose draws ${pose} still calls; ` +
-        `the chase, far, helmet, look-back and aimed-at-the-rider views peak ${old}; the takedown aimed anywhere round the rider peaks ${aimed}`,
+        `the normal and current forward takedown views peak ${old}; the historical all-around safety envelope peaks ${aimed}`,
     );
-    // The old views never faced that way: 9 calls apart here, so a sweep without the new views could not see it.
+    // Road-facing views do not cover this hazard; retaining the historical envelope is an extra safety check.
     expect(pose - old).toBeGreaterThanOrEqual(5);
     // The aims are eight bearings apart and the poses every 2 m: close, not exact.
     expect(aimed).toBeGreaterThanOrEqual(pose - 4);

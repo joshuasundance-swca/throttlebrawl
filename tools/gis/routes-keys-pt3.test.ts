@@ -2,13 +2,15 @@
 // Playtest 3's two Keys bakes (T9.2; tools/gis networks/osm-keys-seven-mile.json and
 // osm-keys-duval.json), checked against what the maintainer asked for:
 //
-// - The Seven Mile Bridge (round 3): "real geometry and length (about 11 km); ramp trucks on repair
+// - Historical Playtest 3 request (2026-10-04, round 3): "real geometry and length (about 11 km); ramp trucks on repair
 //   platforms hop about 30 m between the bridges; the real 80 m missing span is the big jump (a
 //   miss = splash, respawn on the highway); rivals and cops stay on the highway". The critic's C1
 //   resolution: the old bridge from its OSM ways including way D onto Little Duck Key, bridges
 //   sampled at 6 m, and the kicker sized so the Rustbucket at full throttle clears the Moser gap
 //   with a small margin while a rider well under top speed misses (measured here in the sim, with
 //   its air drag, per bike: T3.1 found the vacuum figures too optimistic).
+//   The highway-only rule was superseded on 2026-10-10: capable rivals and police may occasionally
+//   use the old road. Its real gaps, risky jumps and splash respawns remain.
 // - Duval Street (round 1: "Duval St, downtown Portland, Golden Gate"; "real landmarks"): Whitehead,
 //   South and Duval at their real size, the buoy and the Mile 0 marker where the real ones stand, and
 //   Mallory Square's pier where the finish can see it (T10.4: its real spot is about 190 m from the
@@ -222,12 +224,13 @@ describe('the Seven Mile Bridge: real geometry, the old road beside it', () => {
     expect(Math.abs(top * bridge.sampleSpacingM - beside.s)).toBeLessThan(60);
   });
 
-  it('is one alternate branch, marked, with aiTake 0, its decks tagged old-bridge', () => {
+  it('is one marked alternate branch with occasional participation, its decks tagged old-bridge', () => {
     expect(SM.route.branches ?? []).toHaveLength(1);
     for (const b of SM.route.branches ?? []) {
       expect(b.kind).toBe('alternate');
       expect(b.marked).toBe(true);
-      expect(b.aiTake).toBe(0);
+      expect(b.aiTake).toBeGreaterThan(0);
+      expect(b.aiTake).toBeLessThan(0.5);
     }
     for (const id of ['osm-sm-old-east', 'osm-sm-old-moser', 'osm-sm-old-west']) {
       const r = roadOf(SM.roads, id);
@@ -545,15 +548,15 @@ describe('the repair platforms: a ramp truck hops the 30 m gap between the bridg
   });
 });
 
-// ---- Rivals and cops stay on the highway --------------------------------------------------------
+// ---- The accessible turn-off and continuing race field ------------------------------------------
 
-describe('the turn-off: a rider who keeps right takes the old road, the field rides on', () => {
+describe('the turn-off: a rider who keeps right takes the old road, the field keeps racing', () => {
   it("puts the split zone over the shoulder: well inside a rider's reach, clear of the travel lane's centre, out to the edge", () => {
     // Playtest 4 (P4-10, the maintainer: "too hard to get on"; the feel audit's F10a): the zone used to
     // start 0.05 m inside a rider's reach (BIKE_HALF_WIDTH_M inside the rail), so only a bike pressed
     // against the rail took the turn-off; every other shortcut's zone starts 2 to 3 m inside it. It
-    // sat past the lines the AI keeps so the field would not be swept onto the old road; since #489
-    // the sim keeps rivals and cops off it (sim/ai/branches.ts), so the zone no longer has that job.
+    // sat past the lines the AI keeps so the field would not be swept onto the old road. The current
+    // branch controllers deliberately aim for the zone when participation and capability allow it.
     // A rider holding the right lane's centre line still rides on along the highway.
     const zone = SM_ROAD.splitZones().find((z) =>
       OLD_ROAD?.roads.includes(SM_ROAD.edges[z.toEdge]?.id ?? ''),
@@ -574,7 +577,7 @@ describe('the turn-off: a rider who keeps right takes the old road, the field ri
   });
 
   it(
-    'in a race, a rider keeping right rides the old road to the finish while the field races the bridge',
+    'in a race, a rider keeping right rides the old road to the finish while the field keeps progressing',
     { timeout: 300_000 },
     () => {
       const reg = registryFromGlob(
@@ -636,7 +639,7 @@ describe('the turn-off: a rider who keeps right takes the old road, the field ri
       );
       expect(playerOn).toBeGreaterThan(60 * 60);
       expect(finishTick).toBeGreaterThan(0);
-      // The field raced the bridge past the old road's span.
+      // The field keeps progressing beyond the turn-off, whichever road each participant chooses.
       const leave = config.route.progressAt(config.road.edgeIndex('osm-sm-bridge'), 0);
       expect(field.filter(({ i }) => (farthest.get(i) ?? 0) > leave + 1000).length).toBeGreaterThan(0);
     },

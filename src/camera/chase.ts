@@ -686,7 +686,9 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       lookX: t.x + s.aimX.x + rx * Math.max(-2, Math.min(2, focus.x.x * rx + focus.z.x * rz)),
       lookY: t.y + s.aimY.x,
       lookZ: t.z + s.aimZ.x + rz * Math.max(-2, Math.min(2, focus.x.x * rx + focus.z.x * rz)),
-      fov: s.fov.x,
+      // The elevated chase eye uses the chase lens: the helmet's wider lens here brought extra
+      // road chunks into view and spent the still scene's draw-call share. Keep calmer FOVs.
+      fov: Math.min(s.fov.x, params.fovBaseDeg + params.fovKickDeg),
       roll: 0,
     };
   };

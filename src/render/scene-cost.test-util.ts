@@ -255,28 +255,17 @@ const CAMERA_KEYS = [
   'helmetLookAheadM',
   'helmetAimHeightM',
   'helmetFovDeg',
+  'tightBendRadiusM',
+  'tightBendMinShare',
   'takedownDistanceM',
   'takedownHeightM',
   'takedownSwingDeg',
-  'takedownFocus',
   'lookBackDistanceM',
   'lookBackHeightM',
   'lookBackAimM',
 ] as const;
-/** The camera's declared defaults, and the one constant the takedown framing keeps beside them (the victim's reach). */
-type CameraParams = Record<(typeof CAMERA_KEYS)[number] | 'takedownReachM', number>;
-
-/**
- * How far a flung victim is framed as being, m: camera/chase.ts's own `TAKEDOWN_REACH_M`, read as text for the
- * reason `cameraDefaults` is (render may not import camera). A renamed or removed constant fails here.
- */
-async function takedownReachM(): Promise<number> {
-  const mod: string = 'node:fs';
-  const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string, enc: 'utf8'): string };
-  const m = /const TAKEDOWN_REACH_M = (\d+(?:\.\d+)?)/.exec(fs.readFileSync('src/camera/chase.ts', 'utf8'));
-  if (!m) throw new Error('camera/chase.ts declares no TAKEDOWN_REACH_M');
-  return Number(m[1]);
-}
+/** The current camera's declared defaults; the legacy safety envelope has its own frozen calibration. */
+type CameraParams = Record<(typeof CAMERA_KEYS)[number], number>;
 
 interface View {
   name: string;
@@ -289,7 +278,7 @@ interface View {
  * The views of a rider at s on edge e riding in `dir`, as camera/chase.ts frames them (on the road's
  * centre line, the frame's tangent as the travel direction): each at its widest field of view.
  */
-function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: CameraParams): View[] {
+export function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: CameraParams): View[] {
   const edge = road.edges[e]!;
   const at = (u: number, up: number) => road.toWorld(e, Math.max(0, Math.min(edge.length, u)), 0, up);
   const rider = at(s, 0);
@@ -305,7 +294,29 @@ function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: Camera
       : ASPECT >= c.wideAspectFull
         ? 1
         : 0;
-  const ahead = (m: number, up: number) => at(s + dir * m, up);
+  // Settled centre-line goalFor: shorten the forward aim on a tight bend, advance across road
+  // boundaries, and use its tangent fallback at a dead end. No rider motion or target bias here.
+  const ahead = (m: number, up: number, shorten = false) => {
+    let lookM = m;
+    if (shorten && m > 0 && c.tightBendRadiusM > 0) {
+      const pos = { edge: e, s, d: 0, dir };
+      let kappa = 0;
+      for (let a = 0; a <= m; a += 2) {
+        if (a > 0) {
+          pos.s += dir * 2;
+          if (road.advance(pos) === 'deadEnd') break;
+        }
+        kappa = Math.max(kappa, Math.abs(road.kappaAt(pos.edge, pos.s)));
+      }
+      if (kappa > 0) lookM *= Math.min(1, Math.max(c.tightBendMinShare, 1 / kappa / c.tightBendRadiusM));
+    }
+    const pos = { edge: e, s: s + dir * lookM, d: 0, dir };
+    road.advance(pos);
+    const p = road.toWorld(pos.edge, pos.s, 0, up);
+    return shorten && Math.hypot(p.x - rider.x, p.z - rider.z) < 2
+      ? { x: rider.x + fx * lookM, y: rider.y + up, z: rider.z + fz * lookM }
+      : p;
+  };
   const behindAt = (back: number, height: number) => ({
     x: rider.x - fx * back,
     y: rider.y + height,
@@ -316,19 +327,19 @@ function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: Camera
     {
       name: 'chase',
       eye: behindAt(c.chaseDistanceM + wide * c.wideDistanceM, c.heightM + wide * c.wideHeightM),
-      aim: ahead(c.lookAheadM, c.lookHeightM),
+      aim: ahead(c.lookAheadM, c.lookHeightM, true),
       fov: top,
     },
     {
       name: 'far',
       eye: behindAt(c.farDistanceM + wide * c.wideDistanceM, c.farHeightM + wide * c.wideHeightM),
-      aim: ahead(c.farLookAheadM, c.lookHeightM),
+      aim: ahead(c.farLookAheadM, c.lookHeightM, true),
       fov: top,
     },
     {
       name: 'helmet',
       eye: { x: rider.x, y: rider.y + c.helmetHeightM, z: rider.z },
-      aim: ahead(c.helmetLookAheadM, c.helmetAimHeightM),
+      aim: ahead(c.helmetLookAheadM, c.helmetAimHeightM, true),
       fov: c.helmetFovDeg + c.fovKickDeg,
     },
     {
@@ -342,34 +353,42 @@ function viewsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: Camera
       fov: c.fovBaseDeg,
     },
   ];
-  // The takedown framing: higher and further back, swung to the side away from the victim, aimed at the rider.
+  // Current settled takedownPlacement: retain the base view's road aim and FOV, biasing at most 2 m
+  // toward the victim laterally. Its eye swings away from that victim; zero bias covers the centre.
   const a = (c.takedownSwingDeg * Math.PI) / 180;
-  for (const away of [-1, 1]) {
-    const bx = -fx * Math.cos(a) + rx * Math.sin(a) * away;
-    const bz = -fz * Math.cos(a) + rz * Math.sin(a) * away;
-    views.push({
-      name: away < 0 ? 'takedown-left' : 'takedown-right',
-      eye: {
-        x: rider.x + bx * c.takedownDistanceM,
-        y: rider.y + c.takedownHeightM,
-        z: rider.z + bz * c.takedownDistanceM,
-      },
-      aim: { x: rider.x, y: rider.y + c.lookHeightM, z: rider.z },
-      fov: c.fovBaseDeg,
-    });
-  }
+  for (const base of views.slice(0, 3))
+    for (const bias of [-2, 0, 2]) {
+      const away = bias > 0 ? -1 : 1;
+      const bx = -fx * Math.cos(a) + rx * Math.sin(a) * away;
+      const bz = -fz * Math.cos(a) + rz * Math.sin(a) * away;
+      views.push({
+        name: `takedown-${base.name}`,
+        eye: {
+          x: rider.x + bx * c.takedownDistanceM,
+          y: rider.y + c.takedownHeightM,
+          z: rider.z + bz * c.takedownDistanceM,
+        },
+        aim: { x: base.aim.x + rx * bias, y: base.aim.y, z: base.aim.z + rz * bias },
+        fov: Math.min(base.fov, top),
+      });
+    }
   return views;
 }
 
-/** The name the takedown and slow-motion framing's views are counted under. */
+/** Historical all-around takedown safety envelope; current forward views have takedown-{base} names. */
 export const CINEMATIC_CAMERA = 'takedown-aim';
 /**
  * The takedown framing is seen from every this-many samples (every 10 m): it moves slowly against a 160 m block
  * and a 512 m chunk, and each sample costs 48 counts. [default]
  */
 export const CINEMATIC_EVERY = 2;
-/** The aim's distances from the rider, m: a victim just down the road, and one at the framing's full focus. */
+/** Historical near focus, m. */
 const CINEMATIC_NEAR_AIM_M = 12;
+/** Calibrated against 3c7cd92d's camera defaults, before the 2026-10-10 forward camera change.
+ * Keep this safety envelope independent of current tuning: 9 m back, 3.6 m up, 30 degree swing,
+ * 60 degree FOV, 0.9 m aim height, 40 m victim reach with 0.6 focus (24 m).
+ */
+const LEGACY_TAKEDOWN = { distanceM: 9, heightM: 3.6, swingDeg: 30, fov: 60, aimHeightM: 0.9, focusM: 24 };
 /** The aim's bearings round the rider, from the travel direction: eight, 45 degrees apart. */
 const CINEMATIC_BEARINGS = 8;
 
@@ -381,7 +400,7 @@ interface Shot {
 }
 
 /**
- * The takedown framing and its slow motion (camera/chase.ts takedownPlacement, trackVictim): the camera stands
+ * The historical victim-facing safety envelope (3c7cd92d's takedownPlacement, trackVictim): the camera stands
  * `takedownDistanceM` back and `takedownHeightM` up, swung `takedownSwingDeg` to the side away from the victim,
  * and aims between the rider and the victim, so the aim sits anywhere round the rider out to `takedownFocus` of
  * the victim's reach (`TAKEDOWN_REACH_M`): ahead, beside or behind, near or far. The swing flips as the victim
@@ -390,7 +409,7 @@ interface Shot {
  * South at tick 5472) stood at swing 0 with the aim 10 m behind the rider and 4 m to the side: a view down a side
  * street that no chase view faces, which sees nine road chunks and fourteen downtown stretches at once.
  */
-function cinematicShotsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, c: CameraParams): Shot[] {
+function cinematicShotsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1): Shot[] {
   const edge = road.edges[e]!;
   const rider = road.toWorld(e, Math.max(0, Math.min(edge.length, s)), 0, 0);
   const frame = road.frameAt(e, s);
@@ -398,32 +417,31 @@ function cinematicShotsAt(road: RoadNetwork, e: number, s: number, dir: 1 | -1, 
   const fz = frame.tz * dir;
   const rx = -fz;
   const rz = fx;
-  const focusM = Math.min(1, Math.max(0, c.takedownFocus)) * c.takedownReachM;
   const shots: Shot[] = [];
   for (const swing of [-1, 0, 1]) {
-    const a = (swing * c.takedownSwingDeg * Math.PI) / 180;
+    const a = (swing * LEGACY_TAKEDOWN.swingDeg * Math.PI) / 180;
     const bx = -fx * Math.cos(a) + rx * Math.sin(a);
     const bz = -fz * Math.cos(a) + rz * Math.sin(a);
     const aims: Shot['aims'] = [];
-    for (const r of [CINEMATIC_NEAR_AIM_M, focusM]) {
+    for (const r of [CINEMATIC_NEAR_AIM_M, LEGACY_TAKEDOWN.focusM]) {
       for (let k = 0; k < CINEMATIC_BEARINGS; k++) {
         const t = (k * 2 * Math.PI) / CINEMATIC_BEARINGS;
         aims.push({
           label: `aim ${r.toFixed(0)} m at ${((k * 360) / CINEMATIC_BEARINGS).toFixed(0)} deg`,
           x: rider.x + (fx * Math.cos(t) + rx * Math.sin(t)) * r,
-          y: rider.y + c.lookHeightM,
+          y: rider.y + LEGACY_TAKEDOWN.aimHeightM,
           z: rider.z + (fz * Math.cos(t) + rz * Math.sin(t)) * r,
         });
       }
     }
     shots.push({
-      label: `swing ${swing * c.takedownSwingDeg} deg`,
+      label: `legacy swing ${swing * LEGACY_TAKEDOWN.swingDeg} deg`,
       eye: {
-        x: rider.x + bx * c.takedownDistanceM,
-        y: rider.y + c.takedownHeightM,
-        z: rider.z + bz * c.takedownDistanceM,
+        x: rider.x + bx * LEGACY_TAKEDOWN.distanceM,
+        y: rider.y + LEGACY_TAKEDOWN.heightM,
+        z: rider.z + bz * LEGACY_TAKEDOWN.distanceM,
       },
-      fov: c.fovBaseDeg,
+      fov: LEGACY_TAKEDOWN.fov,
       aims,
     });
   }
@@ -673,7 +691,7 @@ const sumOf = (parts: Map<string, Load>): Load =>
 /**
  * Rides every leg of the route every `step` m, both ways (or forward only, as the old checkpoints did),
  * and counts each camera's view. `extra` is drawn too (the negative control's heavy prop). With `cinematic`,
- * every CINEMATIC_EVERY-th sample is also seen through the takedown and slow-motion framing (cinematicShotsAt).
+ * every CINEMATIC_EVERY-th sample also sees the historical all-around safety envelope (cinematicShotsAt).
  */
 export function sweep(
   road: RoadNetwork,
@@ -732,7 +750,7 @@ export function sweep(
           see(v.name, `${id}@${s.toFixed(0)}${heading} ${v.name}`, main);
         }
         if (!opts.cinematic || i % CINEMATIC_EVERY !== 0) continue;
-        for (const shot of cinematicShotsAt(road, e, s, dir, c)) {
+        for (const shot of cinematicShotsAt(road, e, s, dir)) {
           // The layers move to the eye once, with no aim to leave anything out: what stands behind an aim is
           // seen by another of the shot's aims, so no count is lower than the renderer's.
           scene.update(shot.eye.x, shot.eye.z);
@@ -763,7 +781,7 @@ export const describeParts = (parts: Map<string, Load>, by: 'tris' | 'draws') =>
 
 export async function cameraParams(): Promise<CameraParams> {
   const all = await cameraDefaults();
-  const out: Partial<CameraParams> = { takedownReachM: await takedownReachM() };
+  const out: Partial<CameraParams> = {};
   for (const k of CAMERA_KEYS) {
     const v = all[k];
     if (v === undefined || !Number.isFinite(v)) throw new Error(`camera/index.ts declares no camera.${k}`);
@@ -797,7 +815,7 @@ export async function checkRoute(route: Route): Promise<void> {
   const cinematic = r.peakByCamera.get(CINEMATIC_CAMERA);
   if (cinematic)
     print(
-      `[examined] ${route.id}: the takedown framing's busiest view, ${cinematic.total.draws} still draw calls (${STILL_DRAWS_MAX - cinematic.total.draws} under ${STILL_DRAWS_MAX}), ` +
+      `[examined] ${route.id}: the historical takedown safety envelope's busiest view, ${cinematic.total.draws} still draw calls (${STILL_DRAWS_MAX - cinematic.total.draws} under ${STILL_DRAWS_MAX}), ` +
         `${budget.drawCallsMax - cinematic.total.draws - TAKEDOWN_MOVERS_DRAWS} calls of headroom with ${TAKEDOWN_MOVERS_DRAWS} for what moves, at ${cinematic.at}: ${describeParts(cinematic.parts, 'draws')}`,
     );
   expect(r.views).toBeGreaterThan(100);
@@ -805,10 +823,14 @@ export async function checkRoute(route: Route): Promise<void> {
   for (const [camera, draws] of r.drawsByCamera)
     if (DRAWS_HELD(camera))
       expect(draws, `${route.id}: draw calls, ${camera} view`).toBeLessThanOrEqual(STILL_DRAWS_MAX);
-  if (cinematic && HEADROOM_HELD_ROUTES.includes(route.id))
-    expect(
-      cinematic.total.draws,
-      `${route.id}: still draw calls in its takedown framing at ${cinematic.at} (${TAKEDOWN_HEADROOM_DRAWS} calls of headroom with ${TAKEDOWN_MOVERS_DRAWS} for what moves)`,
-    ).toBeLessThanOrEqual(TAKEDOWN_STILL_DRAWS_MAX);
+  for (const [name, peak] of r.peakByCamera)
+    if (
+      (name === CINEMATIC_CAMERA || name.startsWith('takedown-')) &&
+      HEADROOM_HELD_ROUTES.includes(route.id)
+    )
+      expect(
+        peak.total.draws,
+        `${route.id}: still draw calls in ${name} at ${peak.at} (${TAKEDOWN_HEADROOM_DRAWS} calls of headroom with ${TAKEDOWN_MOVERS_DRAWS} for what moves)`,
+      ).toBeLessThanOrEqual(TAKEDOWN_STILL_DRAWS_MAX);
   expect(r.tris.total.tris, `${route.id}: triangles at ${r.tris.at}`).toBeLessThanOrEqual(STILL_TRIS_MAX);
 }
