@@ -235,6 +235,8 @@ export interface Settings {
   vetoes: VetoFlag[];
   /** The menu race's options (playtest 4, P4-12 and P4-13); they feed the next menu race. */
   raceOptions: RaceOptions;
+  /** Quick Play only: open opposition, or rivals riding the player's selected bike. Additive. */
+  quickPlayField?: 'open' | 'matched';
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -280,6 +282,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
   raceOptions: DEFAULT_RACE_OPTIONS,
+  quickPlayField: 'open',
 };
 
 /** The Effects default before playtest 4: the one saved level `migrateEffects` moves. */
@@ -495,6 +498,7 @@ export function sanitiseSettings(data: unknown): Settings {
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
     vetoes: sanitiseVetoes(d['vetoes']),
     raceOptions: sanitiseRaceOptions(d['raceOptions']),
+    quickPlayField: oneOf(d['quickPlayField'], ['open', 'matched'], 'open'),
   };
 }
 
