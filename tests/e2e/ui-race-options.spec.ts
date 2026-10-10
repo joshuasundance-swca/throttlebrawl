@@ -227,6 +227,15 @@ for (const [where, width, height] of [
         again.under.some((u) => u.includes('PLANTED WORDS')),
         'the stamp measure names the planted words',
       ).toBe(true);
+      // Both ways back restore the setup control's focus within the retained Quick Play pane.
+      await page.locator('#race-options-back').click();
+      await expect(page.locator('#quick-play')).toBeVisible();
+      await expect(page.locator('#menu-options')).toBeFocused();
+      await page.locator('#menu-options').click();
+      await expect(page.locator('#race-options')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#quick-play')).toBeVisible();
+      await expect(page.locator('#menu-options')).toBeFocused();
       expect(problems).toEqual([]);
     });
   });
