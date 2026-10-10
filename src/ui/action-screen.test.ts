@@ -26,7 +26,12 @@ describe('results action frames', () => {
     const heading = new ElementDouble();
     const detail = new ElementDouble();
     const action = new ElementDouble();
-    const parts = actionScreenParts('results', [heading], [detail], [action]) as unknown as ElementDouble[];
+    const parts = actionScreenParts(
+      'results',
+      [heading as unknown as HTMLElement],
+      [detail as unknown as HTMLElement],
+      [action as unknown as HTMLElement],
+    ) as unknown as ElementDouble[];
     expect(parts.map((n) => n.id)).toEqual(['results-heading', 'results-details', 'results-actions']);
     expect(parts[0]!.children).toContain(heading);
     expect(parts[1]!.children).not.toContain(action);
