@@ -65,6 +65,8 @@ const m2Custom: Settings = {
   frameRateCap: 'half',
   // Roadmap M5 (the A16 speed pass): a pinned quality tier.
   qualityTier: 'low',
+  // Interview refinement: additive Quick Play competition, distinct from career progression.
+  quickPlayField: 'matched',
   look: 'brush',
   lookFallbackDismissed: true,
   showTuningPanel: true,
@@ -134,6 +136,7 @@ const M2_FIELDS = [
   'qualityTier',
   // 2026-10-05: key remaps.
   'keyBindings',
+  'quickPlayField',
 ] as const;
 
 describe('the M2 settings record', () => {
