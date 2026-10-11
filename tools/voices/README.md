@@ -143,13 +143,22 @@ The already applied reference pitch is not applied to generated output again.
 
 Output must be a new directory outside packs and shipped files (within this checkout,
 use `scratch/`). An existing directory is refused, including a partially failed run; keep
-that evidence and choose a new directory. Files are `<variant>/<pack>/<set>/<line>.ogg`
+that evidence and choose a new directory. Variant names and all planned file paths must
+be unique after case folding, so case-only names cannot overwrite on Windows or a
+case-insensitive host mount. Files are `<variant>/<pack>/<set>/<line>.ogg`
 and `.segment-<index>.wav`, plus `manifest.json`. Raw FLOAT WAVs preserve generator samples;
 Opus uses the shared cleanup. The manifest records subtitle, segment words/controls,
-gaps/cuts/lead/tail, reference and checkpoint digests, revision, model licence/source,
+gaps/cuts/lead/tail, reference and checkpoint digests, declared revision and model licence/source,
 installed package version, seeds, cleanup targets and measured decoded Opus LUFS,
-true peak, duration, bytes and digest. Upstream watermarking is retained; raw generation
-is not de-watermarked. Listening, transcripts and speaker continuity remain pending.
+true peak, duration, bytes and digest. Origin and licence fields are declarations:
+`declaredSource`, `declaredLicense`, `declaredRevision` and `declaredSyntheticModel`.
+`provenanceStatus` says "declared; byte hashes checked, origin not authenticated".
+Checkpoint hashes are captured during planning, including optional `conds.pt` if present;
+model/reference bytes are checked before model loading and generation and at completion.
+A changed or missing input rejects the run rather than publishing a stale manifest.
+This adds hashing work for each segment. The generator is left unchanged; watermark
+survival through cleanup and encoding is not measured. Listening, transcripts and speaker
+continuity remain pending.
 
 Variant defaults change only segments without explicit cast line/segment controls. The
 optional `base:mayor-core#mayor-down-comment` preserves its second segment's explicit
@@ -167,6 +176,7 @@ See [the audition contract](../../docs/milestones/local-voice-auditions.md).
 ## Licences
 
 Kokoro-82M is Apache-2.0; its model card lists CC BY training data (Koniwa, CC BY 3.0; SIWIS, CC BY
-4.0), credited in `THIRD_PARTY_ASSETS.md`. Chatterbox is MIT, and every file it makes carries Resemble
-AI's inaudible "Perth" watermark. Whisper is MIT and is used only to check the clips. The clips are
+4.0), credited in `THIRD_PARTY_ASSETS.md`. Chatterbox is MIT; its upstream generator applies
+Resemble AI's inaudible "Perth" watermark. This tool does not measure survival through cleanup
+and encoding. Whisper is MIT and is used only to check the clips. The clips are
 labelled AI-generated in `THIRD_PARTY_ASSETS.md`.

@@ -9,18 +9,24 @@ audition tool: selection and listening remain separate from shipping clips.
 - Require an existing model directory, explicit revision, reference directory, new output
   directory outside packs, exact line keys and named exaggeration/cfg variants. Reject
   missing model/reference files and unknown or vetoed keys before model loading.
+- Reject case-only duplicate variant names and case-folded collisions of every planned
+  raw WAV/Opus path before loading, including on case-insensitive host mounts.
 - Use only `ChatterboxTTS.from_local`; never download, load a token, select a default
   reference, fall back to a provider or write shipped content.
 - Reuse cast selection, spoken segments, stable line seeds and shared DSP. Preserve each
   subtitle, segment word, gap, cut, lead and tail. Explicit segment and line controls
   override variant defaults. Never shift an already shifted reference or output again.
 - Keep raw segment WAVs, cleaned Opus and a manifest in the requested new directory;
-  refuse overwrite. Record cast/reference digest, model revision and licence/source/package
-  provenance, per-segment settings/seeds, cleanup targets and decoded Opus measurements.
-  Listening remains pending.
+  refuse overwrite. Record cast/reference digest, declared model revision/licence/source,
+  installed package version, per-segment settings/seeds, cleanup targets and decoded Opus
+  measurements. Distinguish declared origin from measured byte identity; never claim origin
+  authentication or watermark survival. Listening remains pending.
+- Capture checkpoint hashes during planning and recheck model/reference bytes before
+  model loading/generation and at completion. Input mutation rejects manifest publication.
 - Pure injected-generator tests cover missing references, exact/vetoed selection, segmented
   controls, gaps/cuts/lead/tail, seeds, no double pitch, output boundaries, overwrite refusal
-  and provenance. No real model runs belong to the unit gate.
+  provenance declarations, case-folded collisions and input mutations. No real model runs
+  belong to the unit gate.
 
 ## Listening acceptance
 

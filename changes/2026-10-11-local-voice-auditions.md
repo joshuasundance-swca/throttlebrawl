@@ -11,6 +11,11 @@ keeps raw audio and decoded Opus measurements, and records complete segment prov
 Existing output and shipped-content destinations are refused. It does not download models,
 load provider credentials or apply clips to the game.
 
+Case-only output collisions are rejected before model loading. Model and reference hashes
+are captured before loading and rechecked through completion; a changed input prevents a
+manifest from claiming stale byte identity. Model origin, licences and synthetic reference
+origin are declared provenance, not authenticated facts. Watermark survival is not measured.
+
 Pure tests cover validation, exact and vetoed line selection, cast reference provenance,
 segment controls and cleanup, matched seeds, output isolation and overwrite refusal.
 Actual model compatibility and delivery quality require runtime generation and listening;

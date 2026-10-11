@@ -185,14 +185,23 @@ def test_segments_controls_cleanup_seeds_and_manifest(
     assert [c[5] for c in calls[:2]] == [c[5] for c in calls[2:]]
     assert calls[1][5] == calls[0][5] + 1
     assert all(c[1] == refs.resolve() / f"{sid}.wav" for c in calls)
-    assert manifest["model"]["revision"] == "pinned-revision"
+    assert manifest["model"]["declaredRevision"] == "pinned-revision"
+    assert manifest["provenanceStatus"] == "declared; byte hashes checked, origin not authenticated"
+    assert manifest["model"]["declaredSource"] == "https://huggingface.co/ResembleAI/chatterbox"
+    assert manifest["model"]["declaredLicense"] == "MIT"
+    assert manifest["model"]["watermarkPolicy"] == "upstream generator unchanged; survival not measured"
+    assert "source" not in manifest["model"] and "watermark" not in manifest["model"]
     assert manifest["model"]["packageVersion"] == "test-fake"
+    assert manifest["model"]["checkpoints"] == plan.checkpoint_hashes
+    assert plan.checkpoint_hashes == {name: audition.digest(model / name) for name in audition.MODEL_FILES}
     take = manifest["takes"][0]
     assert take["subtitle"] == plan.jobs[0].line.text
     assert take["leadS"] == 0.12 and take["tailS"] == cast.speakers[sid].tail_s
     assert take["segments"][1]["gap_s"] == 0.25
     assert take["segments"][0]["cut_tail_s"] == 0.1
     assert take["reference"]["cast"] == cast.speakers[sid].reference.model_dump()
+    assert take["reference"]["declaredSyntheticModel"] == "hexgrad/Kokoro-82M"
+    assert take["reference"]["declaredLicense"] == "Apache-2.0"
     assert take["reference"]["sha256"] == audition.digest(refs / f"{sid}.wav")
     assert take["listening"] == take["transcript"] == take["speakerContinuity"] == "pending"
     clip = plan.output / take["output"]["path"]
@@ -316,3 +325,68 @@ def test_cli_validates_before_optional_model_loading(tmp_path: Path, monkeypatch
     with pytest.raises(ValueError, match="reference"):
         audition.main()
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("collision", ["variant", "line"])
+def test_casefold_output_collisions_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, collision: str
+) -> None:
+    audition = module()
+    model, refs = inputs(tmp_path)
+    reference(audition, refs, "kevin-from-accounting")
+    key = "base:kevin-core#kevin-pass-email"
+    keys = [key]
+    variants = [audition.Variant("b", 0.4, 0.5)]
+    if collision == "variant":
+        variants.append(audition.Variant("B", 0.7, 0.4))
+    else:
+        lines = audition.read_lines(REPO)
+        line = next(line for line in lines if line.key == key)
+        alias = replace(line, line_id=line.line_id.upper())
+        keys.append(alias.key)
+        monkeypatch.setattr(audition, "read_lines", lambda repo: [*lines, alias])
+    with pytest.raises(ValueError, match="case-insensitive"):
+        audition.plan_auditions(REPO, model, "rev", refs, tmp_path / "out", keys, variants)
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("changed", ["model", "reference"])
+@pytest.mark.parametrize("stage", ["before-load", "before-generation", "completion"])
+def test_input_mutations_are_rejected_without_publishing_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str, stage: str
+) -> None:
+    audition = module()
+    model, refs = inputs(tmp_path)
+    reference(audition, refs, "kevin-from-accounting")
+    plan = audition.plan_auditions(
+        REPO,
+        model,
+        "rev",
+        refs,
+        tmp_path / "out",
+        ["base:kevin-core#kevin-pass-email"],
+        [audition.Variant("b", 0.4, 0.5)],
+    )
+    target = model / "ve.safetensors" if changed == "model" else plan.jobs[0].reference
+    if stage != "completion":
+        target.write_bytes(b"changed after planning")
+
+    def forbidden(*args: Any) -> Any:
+        pytest.fail("mutated inputs must be rejected before model loading or generation")
+
+    if stage == "before-load":
+        monkeypatch.setattr(audition.importlib.metadata, "version", forbidden)
+        with pytest.raises(ValueError, match="changed"):
+            audition.local_generator(plan, "cpu")
+    else:
+
+        def fake(*args: Any) -> tuple[dsp.Audio, int]:
+            if stage == "before-generation":
+                forbidden()
+            target.write_bytes(b"changed during generation")
+            t = np.arange(dsp.SR) / dsp.SR
+            return np.asarray(0.2 * np.sin(2 * np.pi * 180 * t), dtype=np.float64), dsp.SR
+
+        with pytest.raises(ValueError, match="changed"):
+            audition.render_auditions(plan, fake, "fake", "cpu")
+    assert not (plan.output / "manifest.json").exists()
