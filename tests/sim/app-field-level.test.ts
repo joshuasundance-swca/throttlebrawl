@@ -3,7 +3,8 @@
 // field levels up every tier"; round 2: "Season 2+ with a harder field and remixed events"; round
 // 3: "Season 2 on the finished save, plus a 'New career' button that keeps the old save as a backup
 // code"). The oracle is the career's own numbers (`fieldLevel`, `remixPatch`): buildSimConfig must
-// apply exactly what they say, and a race given neither must build the config it always built. Every
+// apply exactly what they say, except Hunt's fixed selected-bike pace floor (hunt-contact-pace.md).
+// A race given neither keeps the authored config apart from that Hunt exception. Every
 // expectation reads the packs and the career's output, so a retuned tier or a new event keeps them
 // true.
 import { describe, expect, it } from 'vitest';
@@ -12,6 +13,7 @@ import {
   buildSimConfig,
   copIds,
   eventLength,
+  qualifyIn,
   raceField,
   raceTimeOfDay,
   withEventPatch,
@@ -51,6 +53,10 @@ function build(node: CareerNode, extra: { fieldLevel?: FieldLevel; eventPatch?: 
 }
 
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
+const preset = lookup(REG.riders, 'base:player');
+const playerTop = lookup(REG.bikes, qualifyIn('base', preset.bike)).handling.topSpeedMps;
+const expectedPace = (kind: string, fieldPace: number) =>
+  kind === 'takedown-hunt' ? Math.max(fieldPace, playerTop * 0.9) : fieldPace;
 
 /** The first career node (any region) whose event fields cops, and the first that fields none. */
 const allNodes = DEFS.flatMap((def) => def.nodes.map((node) => ({ def, node })));
@@ -100,12 +106,12 @@ function finished(): Profile {
 }
 
 describe('buildSimConfig without a field level or a patch', () => {
-  it("builds the event file's own race: its pace, its riders' own bikes and numbers, no level", () => {
+  it("builds the event file's own race, with Hunt's starting pace floor and no field level", () => {
     for (const { node } of allNodes.slice(0, 6)) {
       const event = lookup(REG.events, node.event);
       const plain = build(node);
       expect('level' in plain.event, node.id).toBe(false);
-      expect(plain.event.paceMps, node.id).toBe(event.field.paceMps ?? 30);
+      expect(plain.event.paceMps, node.id).toBe(expectedPace(event.kind, event.field.paceMps ?? 30));
       expect(plain.event.kind, node.id).toBe(event.kind);
       for (const r of plain.riders.filter((x) => x.controller.kind === 'ai')) {
         const file = REG.riders[r.contentId];
@@ -136,12 +142,13 @@ describe('the field level', () => {
       const aiOf = (c: typeof base) => c.riders.filter((r) => r.controller.kind === 'ai');
 
       it('sets the event pace and the rival bike from the level, and leaves the player alone', () => {
-        expect(leveled.event.paceMps).toBe(level.paceMps);
+        const pace = expectedPace(lookup(REG.events, node.event).kind, level.paceMps);
+        expect(leveled.event.paceMps).toBe(pace);
         const top = REG.bikes[level.rivalBike ?? '']?.handling.topSpeedMps ?? 0;
         expect(aiOf(leveled).length).toBeGreaterThan(0);
         for (const r of aiOf(leveled)) {
           expect(r.bike.contentId).toBe(level.rivalBike);
-          expect(r.bike.topSpeedMps).toBe(Math.max(top, level.paceMps));
+          expect(r.bike.topSpeedMps).toBe(Math.max(top, pace));
         }
         expect(leveled.riders.find((r) => r.controller.kind === 'player')).toEqual(
           base.riders.find((r) => r.controller.kind === 'player'),
@@ -213,13 +220,21 @@ describe('the field level', () => {
     });
   });
 
-  it('a later tier or season is never a weaker config: the pace does not fall', () => {
+  it('tier pace never falls, and the applied pace never falls within an event family', () => {
     for (const def of DEFS) {
-      const nodes = regular(def);
-      const paces = [...nodes]
-        .sort((a, b) => a.tier - b.tier)
-        .map((n) => build(n, { fieldLevel: fieldLevel(REG, DEFS, def, n, 1) as FieldLevel }).event.paceMps);
-      paces.forEach((p, i) => expect(p).toBeGreaterThanOrEqual(paces[i - 1] ?? 0));
+      const nodes = [...regular(def)].sort((a, b) => a.tier - b.tier);
+      const paces = nodes.map((n) => {
+        const level = fieldLevel(REG, DEFS, def, n, 1) as FieldLevel;
+        const kind = lookup(REG.events, n.event).kind;
+        const actual = build(n, { fieldLevel: level }).event.paceMps;
+        expect(actual, n.id).toBe(expectedPace(kind, level.paceMps));
+        return { kind, tierPace: level.paceMps, actual };
+      });
+      paces.forEach((p, i) => expect(p.tierPace).toBeGreaterThanOrEqual(paces[i - 1]?.tierPace ?? 0));
+      for (const kind of new Set(paces.map((p) => p.kind))) {
+        const family = paces.filter((p) => p.kind === kind);
+        family.forEach((p, i) => expect(p.actual).toBeGreaterThanOrEqual(family[i - 1]?.actual ?? 0));
+      }
     }
   });
 });

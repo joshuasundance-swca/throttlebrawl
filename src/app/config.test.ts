@@ -5,11 +5,15 @@ import {
   LAW_HABITS,
   loadBasePack,
   lookup,
+  packOf,
   registryFromGlob,
   SIGNATURE_MOVES,
 } from '../content';
 import { LAW_HABIT_IDS, SIGNATURE_IDS } from '../sim/api';
-import { aiController, buildSimConfig, streamForEvent } from './config';
+import type { FieldLevel } from '../sim/api';
+import { DEFAULT_RACE_OPTIONS } from '../save';
+import { aiController, buildSimConfig, qualifyIn, raceField, streamForEvent, type RaceSetup } from './config';
+import { quickPlaySetup } from './quick-play-events';
 
 const shove = {
   type: 'weapon',
@@ -36,6 +40,138 @@ function configWith(weapon: Record<string, unknown>) {
   ]);
   return buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
 }
+
+describe('app/config: Hunt starts with useful pace for the resolved player bike', () => {
+  const all = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+  const id = Object.keys(all.events)
+    .filter((key) => all.events[key]?.kind === 'takedown-hunt')
+    .sort((a, b) => (all.events[a]?.tier ?? 0) - (all.events[b]?.tier ?? 0) || a.localeCompare(b))[0]!;
+  const event = lookup(all.events, id);
+  const fast = 'base:superbike-1000';
+  const starter = qualifyIn('base', lookup(all.riders, 'base:player').bike);
+  const level: FieldLevel = {
+    paceMps: event.field.paceMps ?? 30,
+    rivalBike: starter,
+    copBike: starter,
+    copTopCapMps: all.bikes[starter]!.handling.topSpeedMps,
+    healthScale: 1.1,
+    powerScale: 1.07,
+    aggressionScale: 1.1,
+    signatureGapScale: 0.9,
+    fineScale: 1.2,
+  };
+  const build = (setup: Partial<RaceSetup> = {}, reg = all) =>
+    buildSimConfig(reg, streamForEvent(reg, id), { seed: 1, eventId: id, ...setup });
+  const rivals = (c: ReturnType<typeof build>) => c.riders.filter((r) => r.controller.kind === 'ai');
+
+  it.each([fast, 'region-pnw:grand-tourer-1100', undefined, 'base:missing-bike'])(
+    'uses the selected bike or the same preset fallback: %s',
+    (playerBike) => {
+      const c = build(playerBike === undefined ? {} : { playerBike });
+      const ridden = playerBike && all.bikes[playerBike] ? playerBike : starter;
+      const top = all.bikes[ridden]!.handling.topSpeedMps;
+      expect(c.riders.find((r) => r.controller.kind === 'player')?.bike.contentId).toBe(ridden);
+      expect(c.event.paceMps).toBe(Math.max(event.field.paceMps ?? 30, top * 0.9));
+      for (const r of rivals(c)) {
+        expect(r.bike.topSpeedMps).toBe(
+          Math.max(all.bikes[r.bike.contentId]!.handling.topSpeedMps, c.event.paceMps),
+        );
+      }
+    },
+  );
+
+  it('raises the career field after its normal tier override, preserving handling, fighting and law', () => {
+    const c = build({ playerBike: fast, fieldLevel: level });
+    const control = build({ playerBike: fast, fieldLevel: level, eventPatch: { kind: 'classic-race' } });
+    expect(c.event.paceMps).toBe(Math.max(level.paceMps, all.bikes[fast]!.handling.topSpeedMps * 0.9));
+    for (const [i, r] of rivals(c).entries()) {
+      const was = rivals(control)[i]!;
+      expect({ ...r, bike: { ...r.bike, topSpeedMps: was.bike.topSpeedMps } }).toEqual(was);
+      expect(r.bike.contentId).toBe(level.rivalBike);
+    }
+    expect(c.riders.filter((r) => r.controller.kind === 'cop')).toEqual(
+      control.riders.filter((r) => r.controller.kind === 'cop'),
+    );
+    expect(c.riders.some((r) => r.controller.kind === 'cop')).toBe(true);
+    expect(c.tuning).toEqual(control.tuning);
+    expect(c.difficulty).toEqual(control.difficulty);
+    expect(c.event.byPlaceCash).toEqual(control.event.byPlaceCash);
+    expect(c.event.style).toEqual(control.event.style);
+    expect(c.event.level).toEqual(control.event.level);
+  });
+
+  it('preserves faster authored opposition even on a slow bike', () => {
+    const paceMps = all.bikes[fast]!.handling.topSpeedMps * 1.2;
+    const reg = { ...all, events: { ...all.events, [id]: { ...event, field: { ...event.field, paceMps } } } };
+    expect(build({ playerBike: starter }, reg).event.paceMps).toBe(paceMps);
+    expect(build({ playerBike: fast }, reg).event.paceMps).toBe(paceMps);
+  });
+
+  it('applies to a season patch changing an ordinary event into a Hunt', () => {
+    const ordinary = Object.keys(all.events).find((key) => all.events[key]?.kind === 'classic-race')!;
+    const c = buildSimConfig(all, streamForEvent(all, ordinary), {
+      seed: 1,
+      eventId: ordinary,
+      playerBike: fast,
+      fieldLevel: level,
+      eventPatch: { kind: 'takedown-hunt', rules: { targets: 'any', targetCount: 2, endOnCount: true } },
+    });
+    expect(c.event.kind).toBe('takedown-hunt');
+    expect(c.event.paceMps).toBe(Math.max(level.paceMps, all.bikes[fast]!.handling.topSpeedMps * 0.9));
+  });
+
+  it.each([false, true])('keeps generic or named Quick Play field identity (named=%s)', (named) => {
+    const authored = (event.field.riders ?? []).map((r) => qualifyIn(packOf(id), r));
+    const reg = named
+      ? {
+          ...all,
+          events: {
+            ...all.events,
+            [id]: { ...event, rules: { ...event.rules, targets: authored.slice(0, 1) } },
+          },
+        }
+      : all;
+    const selected = quickPlaySetup(
+      reg,
+      id,
+      { ...DEFAULT_RACE_OPTIONS, bike: fast },
+      { owned: [fast], current: fast },
+      'open',
+      1,
+      'normal',
+      {},
+    );
+    const c = build(selected, reg);
+    expect(selected.freePlay).toBe(!named);
+    expect(rivals(c).map((r) => r.contentId)).toEqual(
+      named ? authored : raceField(reg, id, 1, true, undefined, selected.rivals),
+    );
+    expect(c.event.paceMps).toBe(
+      Math.max(event.field.paceMps ?? 30, all.bikes[fast]!.handling.topSpeedMps * 0.9),
+    );
+    expect(reg.events[id]?.rules).toEqual(
+      named ? { ...event.rules, targets: authored.slice(0, 1) } : event.rules,
+    );
+  });
+
+  it.each(['classic-race', 'grudge-match', 'cop-escape'])(
+    'does not change %s field pace or bikes when the player switches gear',
+    (kind) => {
+      const eventId = Object.keys(all.events).find((key) => all.events[key]?.kind === kind)!;
+      const e = lookup(all.events, eventId);
+      for (const fieldLevel of [undefined, level]) {
+        const setup = { seed: 1, eventId, ...(fieldLevel === undefined ? {} : { fieldLevel }) };
+        const control = buildSimConfig(all, streamForEvent(all, eventId), setup);
+        const c = buildSimConfig(all, streamForEvent(all, eventId), { ...setup, playerBike: fast });
+        expect(c.event.paceMps).toBe(fieldLevel?.paceMps ?? e.field.paceMps ?? 30);
+        expect(c.event).toEqual(control.event);
+        expect(c.riders.filter((r) => r.controller.kind !== 'player')).toEqual(
+          control.riders.filter((r) => r.controller.kind !== 'player'),
+        );
+      }
+    },
+  );
+});
 
 describe('app: buildSimConfig resolves weapons', () => {
   it('carries knockback speed and stagger (in ticks) into SimWeaponDef', () => {
