@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { SignaturePhase } from '../../src/sim/api';
 import { diskCareers, diskEvents, diskName, diskRegions, qualifyIn, type DiskCareer } from './packs-on-disk';
 
@@ -26,7 +27,7 @@ const regions = diskRegions();
 const chapter = regions.find((r) => r.key === career.region)?.chapter;
 if (!chapter) throw new Error('No Timber boss chapter');
 const fixture = JSON.parse(readFileSync('tests/fixtures/save/profile-v1.json', 'utf8')) as {
-  data: { regions: Record<string, unknown> };
+  data: { regions: Record<string, unknown>; bikes: { owned: string[]; current: string } };
 };
 // Same content-derived unlock rule as old-growth-encounter.spec.ts; only this boss is left unwon.
 fixture.data.regions = Object.fromEntries(
@@ -46,6 +47,23 @@ fixture.data.regions = Object.fromEntries(
     ];
   }),
 );
+// Match a rider reaching this boss with a final-tier bike, as in the served encounter fixture.
+// Select from current shop/content data instead of copying today's bike id or handling cap.
+const finalTier = career.tiers.at(-1)?.id;
+const bike = career.shop
+  .filter((b) => b.unlockTier === finalTier)
+  .map((b) => {
+    const key = qualifyIn(career.pack, b.bike);
+    const [pack, id] = key.split(':');
+    const content = JSON.parse(readFileSync(join('packs', pack!, 'bikes', `${id}.json`), 'utf8')) as {
+      handling: { topSpeedMps: number };
+    };
+    return { key, speed: content.handling.topSpeedMps };
+  })
+  .sort((a, b) => b.speed - a.speed || a.key.localeCompare(b.key))[0];
+if (!bike) throw new Error('No final-tier Timber boss bike');
+fixture.data.bikes.current = bike.key;
+fixture.data.bikes.owned = [...new Set([...fixture.data.bikes.owned, bike.key])];
 
 const phases: readonly [SignaturePhase, string][] = [
   ['tell', 'WINDUP'],
