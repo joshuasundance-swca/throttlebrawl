@@ -6,6 +6,8 @@ The maintainer approved the recommended Quick Play event access and representati
 
 Expose existing Race, Hunt, Escape and Grudge events in Quick Play, with understandable objectives and workable setups. Tune a small set of existing bikes to offer handling tradeoffs beyond top speed. Preserve career progression, ordinary clean racing, replay determinism and save compatibility. No new event kinds, paid generation or budget increases.
 
+Quick Play prefers the lowest-tier workable event in each family and excludes regional finales. A tier boss can supply the introductory Grudge. Hunts and Grudges retain their authored road; named-target Hunts and Grudges retain their authored opposition. Other Hunts enforce enough rivals, and Escape enforces active law. Race and Escape retain the route picker. The setup screen explains these constraints. `[default]`
+
 ## Automated acceptance
 
 1. Each loaded region offers its existing supported event kinds, with a deterministic available event for each choice. Missing or removed event families fall back safely. Content additions do not require a hardcoded event list.

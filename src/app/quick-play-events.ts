@@ -34,7 +34,7 @@ export const huntMinimum = (reg: ContentRegistry, id: string): number => {
   );
 };
 
-/** One safe non-finale event per family, preferring free play then the first tier. */
+/** One workable non-finale event per family, preferring the first tier. */
 export function quickPlayEvents(reg: ContentRegistry, region: string): QuickPlayEvent[] {
   return QUICK_PLAY_KINDS.flatMap((kind) => {
     const ids = Object.keys(reg.events)
