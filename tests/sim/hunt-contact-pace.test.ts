@@ -44,7 +44,7 @@ function configFor(mode: Mode, seed: number, control: boolean): SimConfig {
       ? quickPlaySetup(
           REG,
           EVENT,
-          { ...DEFAULT_RACE_OPTIONS, kind: 'hunt', bike: BIKE, cops: false },
+          { ...DEFAULT_RACE_OPTIONS, bike: BIKE, cops: false },
           { owned: [BIKE], current: BIKE },
           'open',
           seed,
@@ -52,19 +52,15 @@ function configFor(mode: Mode, seed: number, control: boolean): SimConfig {
           TUNING,
         )
       : {};
-  const built = buildSimConfig(REG, streamForEvent(REG, EVENT, career?.length.id), {
+  const built = buildSimConfig(REG, streamForEvent(REG, EVENT, career?.length?.id), {
     seed,
     eventId: EVENT,
     playerBike: BIKE,
     cops: false,
     tuning: TUNING,
-    ...(career
-      ? {
-          fieldLevel: career.fieldLevel ?? undefined,
-          length: career.length.id,
-          eventPatch: career.patch ?? undefined,
-        }
-      : {}),
+    ...(career?.fieldLevel ? { fieldLevel: career.fieldLevel } : {}),
+    ...(career?.length ? { length: career.length.id } : {}),
+    ...(career?.patch ? { eventPatch: career.patch } : {}),
     ...picks,
     ...(control ? { eventPatch: { ...career?.patch, kind: 'classic-race' } } : {}),
   });

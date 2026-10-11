@@ -67,7 +67,7 @@ describe('app/config: Hunt starts with useful pace for the resolved player bike'
   it.each([fast, 'region-pnw:grand-tourer-1100', undefined, 'base:missing-bike'])(
     'uses the selected bike or the same preset fallback: %s',
     (playerBike) => {
-      const c = build({ playerBike });
+      const c = build(playerBike === undefined ? {} : { playerBike });
       const ridden = playerBike && all.bikes[playerBike] ? playerBike : starter;
       const top = all.bikes[ridden]!.handling.topSpeedMps;
       expect(c.riders.find((r) => r.controller.kind === 'player')?.bike.contentId).toBe(ridden);
@@ -160,7 +160,7 @@ describe('app/config: Hunt starts with useful pace for the resolved player bike'
       const eventId = Object.keys(all.events).find((key) => all.events[key]?.kind === kind)!;
       const e = lookup(all.events, eventId);
       for (const fieldLevel of [undefined, level]) {
-        const setup = { seed: 1, eventId, fieldLevel };
+        const setup = { seed: 1, eventId, ...(fieldLevel === undefined ? {} : { fieldLevel }) };
         const control = buildSimConfig(all, streamForEvent(all, eventId), setup);
         const c = buildSimConfig(all, streamForEvent(all, eventId), { ...setup, playerBike: fast });
         expect(c.event.paceMps).toBe(fieldLevel?.paceMps ?? e.field.paceMps ?? 30);
