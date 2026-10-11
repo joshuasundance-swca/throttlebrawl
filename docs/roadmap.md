@@ -22,6 +22,7 @@ This doc owns *when* things are built. *What* they are lives in the [product spe
 
 ## Contents
 
+- [Current development priorities](#current-development-priorities)
 - [The shape at a glance](#the-shape-at-a-glance)
 - [How work flows, and why nothing waits for the maintainer](#how-work-flows-and-why-nothing-waits-for-the-maintainer)
 - [M1 · Crude everything](#m1--crude-everything)
@@ -37,6 +38,17 @@ This doc owns *when* things are built. *What* they are lives in the [product spe
 - [After v1](#after-v1)
 - [Open decisions](#open-decisions)
 - [Sources](#sources)
+
+## Current development priorities
+
+`[default]` Execution order, 2026-10-11. The milestone sections below retain the broader plan; this section says what to work on now. The focus is a reliable, compelling journey through the existing Keys, Pacific Northwest and San Francisco careers. Gameplay and menu work belong in the same playable slice when the menu is needed to understand or reach the gameplay.
+
+1. **Finish and verify the current competition work.** Follow the [refinement](./milestones/interview-refinement.md) and [competition](./milestones/competition-depth.md) acceptance lists: accessible existing event types, usable Hunt/Escape setups, bike tradeoffs and preserved clean racing. Fix real CI or served-build failures before starting another feature. A green test suite establishes the checked behavior; it does not establish human challenge or phone performance.
+2. **Make career choices and regional finales understandable.** Follow [finale payoff](./milestones/finale-payoff.md), [bike choice clarity](./milestones/bike-choice-clarity.md) and [returning chapter](./milestones/returning-chapter.md): identify the boss and existing rewards, explain a bike against the ridden bike, and reopen the chapter played this season. The [Old Growth](./milestones/old-growth-encounter.md) and [Pivot](./milestones/pivot-encounter.md) encounter plans supply focused tactics and counterplay. Verify the actual card, encounter and payoff together before extending that pattern. Do not infer a need for global difficulty increases from presentation gaps or bot wins.
+3. **Build regional and rival identity where the ride exposes a gap.** Prefer a recognizable place or readable character behavior on an existing route over another region or a broad new system. Inspect the chase-camera result and preserve collision behavior and performance/download budgets. Voice candidates remain auditions until their acting and character continuity justify replacing shipped clips; generation volume is not the goal.
+4. **Consolidate a launch candidate.** Follow [M5](./milestones/M5.md): first minutes, accessibility, offline/reload behavior and the M5 soak/report tools. Repair demonstrated gaps and make phone feedback easy to provide. Phone feel, visual identity, performance and personality remain separate launch judgments; naming, hosting changes and a launch announcement retain their existing approval boundaries.
+
+For the current batch, stop adding features once the named acceptance checks, full CI and one coordinated served-build check pass. Record the playable outcome and remaining human questions, then select the next concrete gap from item 3 or 4. Useful development continues while phone feedback is pending; it does not expand the scope to every idea in the interview. New regions, new objective kinds and broad persistence systems keep their existing holds.
 
 ## The shape at a glance
 
