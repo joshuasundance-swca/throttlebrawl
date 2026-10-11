@@ -80,6 +80,8 @@ export interface GarageBikeRow {
   steps?: number;
   /** What one crash costs in repairs on this bike. */
   repairCash?: number;
+  /** Comparison with the currently ridden bike, or absent when unavailable. */
+  handlingNote?: string;
 }
 
 export interface GaragePaintRow {
