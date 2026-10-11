@@ -8,7 +8,6 @@
 import {
   DEFAULT_RACE_OPTIONS,
   sanitiseRaceOptions,
-  type RaceKind,
   type RaceOptions,
   type RaceTraffic,
   type RaceWeather,
@@ -49,7 +48,7 @@ export interface RaceOptionRow {
 }
 
 /** The race types' words (P4-12's new types are [open]: one today, so its row stays hidden). */
-const KIND_LABELS: Readonly<Record<RaceKind, string>> = {
+const KIND_LABELS: Readonly<Record<string, string>> = {
   race: 'Race',
   hunt: 'Hunt',
   escape: 'Escape',

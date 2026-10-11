@@ -104,8 +104,10 @@ export interface RaceOptions {
   /** How busy the road is, as a scale on the `traffic.density` slider. */
   traffic: RaceTraffic;
 }
-export type RaceKind = 'race' | 'hunt' | 'escape' | 'grudge';
-export const RACE_KINDS: readonly RaceKind[] = ['race', 'hunt', 'escape', 'grudge'];
+export type RaceKind = 'race';
+export const RACE_KINDS: readonly RaceKind[] = ['race'];
+export type QuickPlayKind = 'race' | 'hunt' | 'escape' | 'grudge';
+export const QUICK_PLAY_KINDS: readonly QuickPlayKind[] = ['race', 'hunt', 'escape', 'grudge'];
 export type RaceWeather = 'local' | 'dry' | 'rain';
 export const RACE_WEATHER: readonly RaceWeather[] = ['local', 'dry', 'rain'];
 export type RaceTraffic = 'none' | 'light' | 'usual' | 'heavy';
@@ -236,6 +238,8 @@ export interface Settings {
   raceOptions: RaceOptions;
   /** Quick Play only: open opposition, or rivals riding the player's selected bike. Additive. */
   quickPlayField?: 'open' | 'matched';
+  /** Top-level so previous builds preserve the unknown selection through a settings save. */
+  quickPlayKind?: QuickPlayKind;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -282,6 +286,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
   raceOptions: DEFAULT_RACE_OPTIONS,
   quickPlayField: 'open',
+  quickPlayKind: 'race',
 };
 
 /** The Effects default before playtest 4: the one saved level `migrateEffects` moves. */
@@ -498,6 +503,7 @@ export function sanitiseSettings(data: unknown): Settings {
     vetoes: sanitiseVetoes(d['vetoes']),
     raceOptions: sanitiseRaceOptions(d['raceOptions']),
     quickPlayField: oneOf(d['quickPlayField'], ['open', 'matched'], 'open'),
+    quickPlayKind: oneOf(d['quickPlayKind'], QUICK_PLAY_KINDS, 'race'),
   };
 }
 
