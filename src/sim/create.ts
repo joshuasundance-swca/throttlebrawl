@@ -5,6 +5,7 @@ import { waterLevelOf } from '../road';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
+import { pursuitTargetOf } from './cops/pursuit';
 import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
 import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
@@ -150,6 +151,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       health: riders.health[m.id] ?? 0,
       healthMax: def?.healthMax ?? 0,
       ...combatView(world, m.id),
+      pursuitTargetId: pursuitTargetOf(world, config, m.id),
       // The aim marker (playtest 4, P4-6): who a tap by the player would hit.
       aimId: def?.controller.kind === 'player' ? aimPreview(world, config, m.id) : -1,
       progress: race.progress[m.id] ?? 0,

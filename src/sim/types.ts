@@ -88,6 +88,13 @@ export interface EntitySnapshot {
   /** Current auto-target, or -1. */
   targetId: EntityId;
   /**
+   * The police system's current pursuit target while its phase is chasing, otherwise -1.
+   * Separate from the combat auto-target; an idle, unarmed cop can still pursue someone.
+   * Pursuit intent survives a cop's fall until the chase ends: callers measuring immediate
+   * on-road pressure also check `mode`. Optional for hand-built snapshots; the sim fills it.
+   */
+  pursuitTargetId?: EntityId;
+  /**
    * The rider a tap would hit now (playtest 4, P4-6: the aim marker): the attack's own target during
    * an attack, else what an auto-sided press aims at; -1 for nobody. Set for a player's rider only
    * (a rival's is -1), and presentation only. Optional for hand-built snapshots.
