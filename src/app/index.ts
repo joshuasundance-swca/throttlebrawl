@@ -49,6 +49,7 @@ import { createHaptics, createInput, type ActionState } from '../input';
 import {
   APP_ID,
   installOffer,
+  keepAwake,
   paceBuildFetches,
   runStartTap,
   startOffline,
@@ -124,6 +125,7 @@ import {
 import { motionAmounts, osPrefersReducedMotion } from './motion';
 import { clearLoadRetry, failureOf, offerLoadRetry, routesNoteView, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
+import { createRaceWakeSync } from './race-wake';
 import { raceOptionsView } from './race-options';
 import {
   huntMinimum,
@@ -820,6 +822,8 @@ export function createApp(opts: AppOptions): AppHandle {
     const next = transition(state, e);
     if (next) {
       state = next;
+      // A launch acquires only after its new snapshot and screen are ready; exits release now.
+      if (state !== 'race') syncWake();
       // After the tap's own steps: Restart and Race again pass through the menu on their way back
       // into a race, and must not reload there.
       if (staleBuild)
@@ -837,7 +841,10 @@ export function createApp(opts: AppOptions): AppHandle {
   // timestep and the loop": "a resume always lands behind the pause menu, never straight back into
   // a race").
   const holds = new Set<'hidden' | 'context'>();
+  const raceWake = createRaceWakeSync(keepAwake);
+  const syncWake = () => raceWake(state, ui.paused, holds.size > 0);
   const syncRunning = () => {
+    syncWake();
     if (holds.size > 0 || ui.paused) {
       loop.pause();
       audio.suspend();
@@ -992,19 +999,20 @@ export function createApp(opts: AppOptions): AppHandle {
       },
       onResume: unpause,
       onRestart: () => {
-        unpause();
         // A career race restarts its own map node (the abandoned try pays nothing and records nothing).
         const c = careerRace;
         if (c && state === 'race') {
           startCareerRace(c.def, c.node);
+          syncRunning();
           return;
         }
         if (go('back')) handle.startRace();
+        syncRunning();
       },
       onQuit: () => {
-        unpause();
         if (careerRace && state === 'race') quitCareerRace();
         else handle.backToMenu();
+        syncRunning();
       },
       onSettingsChange: (next) => {
         const changedKind = next.quickPlayKind !== settings.quickPlayKind;
@@ -1491,6 +1499,7 @@ export function createApp(opts: AppOptions): AppHandle {
     if (me) camera.snap(me, { aspect: viewAspect() });
     input.calibrateTilt(); // the phone's angle now is straight ahead
     ui.show('race');
+    syncRunning();
     return true;
   }
 
