@@ -8,10 +8,11 @@ import { createSim, quantizeInput, type SimConfig } from '../../src/sim/api';
 import { firstSeed, ISOLATED, seedRange } from './batch';
 
 const REG = loadBasePack();
-const eventId = Object.keys(REG.events)
+const selectedEventId = Object.keys(REG.events)
   .filter((id) => REG.events[id]?.kind === 'cop-escape' && REG.events[id]?.rules?.['escapeBy'] === 'survive')
   .sort((a, b) => (REG.events[a]?.tier ?? 0) - (REG.events[b]?.tier ?? 0) || a.localeCompare(b))[0];
-if (!eventId) throw new Error('the shipped content must have a survival Escape');
+if (!selectedEventId) throw new Error('the shipped content must have a survival Escape');
+const eventId: string = selectedEventId;
 const PLAN = eventPlan(REG, eventId);
 
 function run(seed: number) {
