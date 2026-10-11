@@ -139,33 +139,42 @@ export async function paint(
         const top = document.elementFromPoint(x, y);
         return !!top && card.contains(top);
       };
-      const cards = ids.map((id, i) => {
+      const cards = ids.flatMap((id, i) => {
         const card = cardEls[i];
         const shown = !!card && !!screen && seen(card) && seen(screen);
         const empty = { left: 0, top: 0, right: 0, bottom: 0 };
         if (!card || !shown)
-          return { id, shown: false, inScreen: false, positioned: [], onTop: false, box: empty };
+          return [{ id, shown: false, inScreen: false, positioned: [], onTop: false, box: empty }];
         const positioned: string[] = [];
         for (let p: HTMLElement | null = card; p && p !== screen; p = p.parentElement) {
           const pos = getComputedStyle(p).position;
           if (pos === 'fixed' || pos === 'sticky' || pos === 'absolute') positioned.push(pos);
         }
         const r = card.getBoundingClientRect();
-        // Nothing lies over the card: a tap at its centre (a flow card takes touches on itself) and on
-        // each of its buttons lands on the card.
+        // Cards and controls use the same painted bounds. A scroller can clip a card's DOM box
+        // behind the fixed outcome/actions; those clipped pixels neither cover them nor take taps.
+        // Fixed layers escape the scroll clip, so the planted old-position negative controls still
+        // measure their visible obstruction and fail the flow rule.
+        const clipFrom = positioned.includes('fixed') ? screen : card.parentElement;
+        const visible = painted(boxOf(r), clipFrom);
+        if (!visible) return [];
         const points = [...card.querySelectorAll('button')]
           .filter(seen)
           .map((b) => b.getBoundingClientRect())
-          .map((b) => [b.left + b.width / 2, b.top + b.height / 2] as const);
-        if (!race) points.push([r.left + r.width / 2, r.top + r.height / 2]);
-        return {
-          id,
-          shown,
-          inScreen: !!screen && screen.contains(card),
-          positioned,
-          onTop: points.every(([x, y]) => insideCard(card, x, y)),
-          box: boxOf(r),
-        };
+          .map((b) => painted(boxOf(b), clipFrom))
+          .filter((b): b is B => b !== null)
+          .map((b) => [b.left + (b.right - b.left) / 2, b.top + (b.bottom - b.top) / 2] as const);
+        if (!race) points.push([(visible.left + visible.right) / 2, (visible.top + visible.bottom) / 2]);
+        return [
+          {
+            id,
+            shown,
+            inScreen: !!screen && screen.contains(card),
+            positioned,
+            onTop: points.every(([x, y]) => insideCard(card, x, y)),
+            box: visible,
+          },
+        ];
       });
       type Thing = {
         name: string;
@@ -374,9 +383,15 @@ export async function checkInView(
       await raise(page, [id]);
       const p = await paint(page, screenSel, [id]);
       const card = p.cards[0];
-      const found = card ? inViewFindings(id, card.box, size) : [`${id} was not measured`];
+      // This is a full-card visibility check, unlike paint's overlap check: clipping a card
+      // cannot turn a partly off-screen card into an in-view one.
+      const raw = await page.locator(`#${id}`).boundingBox();
+      const box = raw
+        ? { left: raw.x, top: raw.y, right: raw.x + raw.width, bottom: raw.y + raw.height }
+        : undefined;
+      const found = card && box ? inViewFindings(id, box, size) : [`${id} was not measured`];
       const where = `${label} at ${size.name}: ${id} raised with the screen scrolled ${at * 100}% of ${Math.round(room)} px`;
-      console.log(`${where}: box ${JSON.stringify(card?.box)}; findings ${JSON.stringify(found)}`);
+      console.log(`${where}: box ${JSON.stringify(box)}; findings ${JSON.stringify(found)}`);
       expect.soft(found, where).toEqual([]);
     }
   }

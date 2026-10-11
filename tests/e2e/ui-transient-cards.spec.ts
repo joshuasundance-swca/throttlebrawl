@@ -201,8 +201,15 @@ for (const textSize of TEXT_SIZES) {
       const room = await scrollRoom(page, '#career');
       expect(room, 'the career scrolls at 915x412 (the control needs room)').toBeGreaterThan(100);
       await scrollTo(page, '#career', room);
-      const away = (await paint(page, '#career', ['load-retry'])).cards[0];
-      const found = away ? inViewFindings('load-retry', away.box, view) : [];
+      // Full-card visibility uses its uncut bounds; paint omits pixels outside the scroller.
+      const away = await page.locator('#load-retry').boundingBox();
+      const found = away
+        ? inViewFindings(
+            'load-retry',
+            { left: away.x, top: away.y, right: away.x + away.width, bottom: away.y + away.height },
+            view,
+          )
+        : [];
       console.log(`negative control 5: ${JSON.stringify(found)}`);
       expect(found.filter((f) => f.startsWith('load-retry is out of view'))).not.toEqual([]);
       await scrollTo(page, '#career', 0);

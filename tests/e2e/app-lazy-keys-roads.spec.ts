@@ -78,9 +78,10 @@ test('the Keys real roads load after boot, outside the first-load scripts, and r
   page.on('pageerror', (err) => problems.push(err.message));
   await page.goto('./');
   await page.locator('#start-screen').click();
-  // Offered once its data is in (fetched in the background at boot).
+  // Attached once its data is in (fetched in the background at boot). Home hides the setup
+  // pane; measure boot requests before opening Quick Play, then check visibility for the race.
   const bahia = page.locator('#route-base-osm-bahia-honda-run');
-  await expect(bahia).toBeVisible({ timeout: 30_000 });
+  await expect(bahia).toBeAttached({ timeout: 30_000 });
   const fetched = await fetchedRoads(page);
   console.log(`[print] real-road files fetched at boot: ${fetched.sort().join(', ')}`);
   expect(fetched).toEqual(
@@ -104,6 +105,8 @@ test('the Keys real roads load after boot, outside the first-load scripts, and r
   // Bahia Honda, from the menu.
   await page.keyboard.press('Escape');
   await page.locator('#pause-quit').click();
+  await openQuickPlay(page);
+  await expect(bahia).toBeVisible();
   await bahia.click();
   await expect(bahia).toHaveAttribute('aria-checked', 'true');
   const real = await raceAndCheck(page, 4);
