@@ -342,6 +342,7 @@ export function bikeNotes(b: BikeNoteRow, cash: number, racePay?: number): strin
   const tag = b.step ? `Step ${b.step} of ${b.steps ?? b.step}` : b.secret ? '' : 'Novelty ride';
   const first = [tag, b.speed, b.current ? 'riding it' : ''].filter(Boolean).join(' · ');
   const out = [first];
+  if (b.handlingNote) out.push(b.handlingNote);
   if (b.state === 'owned') {
     if (b.current && b.repairCash) out.push(`a crash costs about ${money(b.repairCash)} to fix`);
     return out;
