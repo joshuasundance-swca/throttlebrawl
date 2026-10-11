@@ -346,10 +346,13 @@ async function installLayoutProbe(page: Page) {
       children?: NodeLike[];
       add?: (node: NodeLike) => void;
       remove?: (node: NodeLike) => void;
-      background?: {
-        clone(): NonNullable<Observed['background']>;
-        setRGB(r: number, g: number, b: number): unknown;
-      } | null;
+      background?:
+        | {
+            clone(): NonNullable<Observed['background']>;
+            setRGB(r: number, g: number, b: number): unknown;
+          }
+        | null
+        | undefined;
       getContext?: () => WebGL2RenderingContext;
       getRenderTarget?: () => unknown;
       setRenderTarget?: (target: unknown) => void;
