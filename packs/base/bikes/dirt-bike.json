@@ -6,9 +6,9 @@
   "tags": ["novelty"],
   "handling": {
     "topSpeedMps": 31.3,
-    "accelMps2": 5.6,
+    "accelMps2": 6.8,
     "brakeMps2": 8.5,
-    "steerRateMps": 7.0,
+    "steerRateMps": 7.4,
     "massKg": 115,
     "grip": 0.8
   },
@@ -17,7 +17,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A novelty ride: a light dirt bike, about 70 mph, quick off the line and nimble. Sold in the Pacific Northwest garage, for the fire roads and the logging spur.",
+    "notes": "A light dirt bike, about 70 mph: a quick initial launch and nimble steering, traded for a low speed ceiling, longer braking distance than the Streetfighter and more displacement in rider contact. Sold in the Pacific Northwest garage, for the fire roads and the logging spur. Stunt balance follows the shared riding rules.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
