@@ -36,14 +36,25 @@ export const SHORTCUT_CLEAR_M = 0.9;
 /** A jump run-up on the current road: build momentum and hold its launch line, without changing physics. */
 export function jumpRunUp(config: SimConfig, pos: RoadPos): number | null {
   if (pos.dir !== 1) return null;
-  const features = [
-    ...config.road.featuresOf(pos.edge, 'rampTruck'),
-    ...config.road.featuresOf(pos.edge, 'ramp'),
-  ];
-  const gap = config.road.featuresOf(pos.edge, 'gap').find((g) => g.s1 > pos.s && g.s0 - pos.s < 220);
+  // The unfiltered public query returns the road's existing array. Kind queries filter and allocate;
+  // this runs for every forward-driving rival and cop, including roads with no jump.
+  const features = config.road.featuresOf(pos.edge);
+  let gap: (typeof features)[number] | undefined;
+  for (const f of features)
+    if (f.kind === 'gap' && f.s1 > pos.s && f.s0 - pos.s < 220) {
+      gap = f;
+      break;
+    }
   if (!gap) return null;
-  const launch = features.find((f) => f.s1 >= gap.s0 - 60 && f.s0 <= gap.s0 && f.s1 > pos.s);
-  return launch ? (launch.d0 + launch.d1) / 2 : null;
+  let ramp: (typeof features)[number] | undefined;
+  for (const f of features) {
+    if (f.kind !== 'rampTruck' && f.kind !== 'ramp') continue;
+    if (f.s1 < gap.s0 - 60 || f.s0 > gap.s0 || f.s1 <= pos.s) continue;
+    // Match the previous truck-first launch order even when the pack lists a ramp first.
+    if (f.kind === 'rampTruck') return (f.d0 + f.d1) / 2;
+    ramp ??= f;
+  }
+  return ramp ? (ramp.d0 + ramp.d1) / 2 : null;
 }
 
 const holds = new WeakMap<RouteBranch, boolean>();
