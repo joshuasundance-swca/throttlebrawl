@@ -7,7 +7,9 @@
 // the rest are fixed here. The screen's DOM is a lazy chunk (race-options-view.ts).
 import {
   DEFAULT_RACE_OPTIONS,
+  RACE_KINDS,
   sanitiseRaceOptions,
+  type RaceKind,
   type RaceOptions,
   type RaceTraffic,
   type RaceWeather,
@@ -48,12 +50,7 @@ export interface RaceOptionRow {
 }
 
 /** The race types' words (P4-12's new types are [open]: one today, so its row stays hidden). */
-const KIND_LABELS: Readonly<Record<string, string>> = {
-  race: 'Race',
-  hunt: 'Hunt',
-  escape: 'Escape',
-  grudge: 'Grudge',
-};
+const KIND_LABELS: Readonly<Record<RaceKind, string>> = { race: 'Race' };
 const WEATHER: readonly OptionChoice<RaceWeather>[] = [
   { value: 'local', label: 'Local', note: 'as the region has it' },
   { value: 'dry', label: 'Dry' },
@@ -116,7 +113,7 @@ const option = <K extends keyof RaceOptions>(
 
 /** The rows in screen order. [default] */
 const ROWS: readonly RowDef[] = [
-  option('kind', 'Type', 'kind', () => [{ value: 'race', label: KIND_LABELS.race }]),
+  option('kind', 'Type', 'kind', () => RACE_KINDS.map((k) => ({ value: k, label: KIND_LABELS[k] }))),
   option('bike', 'Bike', 'bike', (v) => v.bikes),
   {
     id: 'field',
