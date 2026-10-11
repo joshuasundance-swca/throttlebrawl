@@ -1,5 +1,5 @@
 # The gate (docs/engineering.md, "CI on GitHub Actions" and "The bundle train"). The suite itself
-# (static, unit in two slices, sim in eight, browser in eight with perf in the last) lives in
+# (static, unit in three slices, sim in eight, browser in ten with perf in the last) lives in
 # suite.yml, shared with the bundle train (train.yml) so the two can never drift. `gate` is the
 # single required status check.
 #
@@ -8,7 +8,7 @@
 #   "[full-gate]" escape hatch (in the title, or alone on a line of the body) and PRs that change
 #   .github/ (a train runs main's workflows, not the PR's), and while the train is off (.github/train.json, "live": false) every PR but a
 #   docs-only one. Only this path records the tree it tested, for main's skip path (below).
-# - train: the quick check (static plus the build and its size budget, and the two unit slices).
+# - train: the quick check (static plus the build and its size budget, and the three unit slices).
 #   Its aggregate is named `quick`, never `gate`, so auto-merge waits for the train, which runs the
 #   full suite once on a bundle of ready PRs and posts `gate` as a commit status on each head.
 # - docs: the same quick check, and its aggregate is the PR's `gate` (no sim or browser tier
