@@ -87,8 +87,8 @@ export const RADIO_SETTINGS: readonly RadioSetting[] = ['score', 'station', 'off
  */
 export interface RaceOptions {
   /**
-   * Quick Play's existing event family. The loaded region decides which families it offers.
-   * Additive values in the version-one record; missing or unknown values still select Race.
+   * Legacy Race-only option. Event family is stored separately in top-level quickPlayKind
+   * so previous builds preserve new selections when saving their known options object.
    */
   kind: RaceKind;
   /** A bike (qualified id, `base:superbike-1000`), or null for the career garage's bike. */
