@@ -38,6 +38,25 @@ const shown = (s: Settings, id: string) => {
 };
 
 describe('the race options screen as data', () => {
+  it('offers only loaded event families, saves the family separately and removes unsafe controls', () => {
+    const view: RaceOptionsView = {
+      ...VIEW,
+      kinds: [
+        { value: 'race', label: 'Race' },
+        { value: 'hunt', label: 'Hunt' },
+        { value: 'escape', label: 'Escape' },
+      ],
+      lawRequired: true,
+      rivals: [],
+    };
+    const hunt = stepRaceOption(view, DEFAULT_SETTINGS, 'kind', 1);
+    expect(hunt.quickPlayKind).toBe('hunt');
+    expect(hunt.raceOptions).toEqual(DEFAULT_SETTINGS.raceOptions);
+    expect(sanitiseSettings(hunt).quickPlayKind).toBe('hunt');
+    expect(ids(hunt, view)).not.toContain('cops');
+    expect(ids(hunt, view)).not.toContain('rivals');
+    expect(stepRaceOption(view, { ...hunt, quickPlayKind: 'grudge' }, 'kind', 1).quickPlayKind).toBe('hunt');
+  });
   it('shows every option with a choice to make, at the record’s values', () => {
     expect(ids(DEFAULT_SETTINGS)).toEqual([
       'bike',

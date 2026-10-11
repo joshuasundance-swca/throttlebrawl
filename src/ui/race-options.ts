@@ -7,9 +7,8 @@
 // the rest are fixed here. The screen's DOM is a lazy chunk (race-options-view.ts).
 import {
   DEFAULT_RACE_OPTIONS,
-  RACE_KINDS,
   sanitiseRaceOptions,
-  type RaceKind,
+  type QuickPlayKind,
   type RaceOptions,
   type RaceTraffic,
   type RaceWeather,
@@ -26,6 +25,9 @@ export interface OptionChoice<T> {
 
 /** The choices app/ offers for the next menu race (they depend on the region, the road and the garage). */
 export interface RaceOptionsView {
+  kinds?: readonly OptionChoice<QuickPlayKind>[];
+  objective?: string;
+  lawRequired?: boolean;
   /** Where the race runs, in words ("The Keys, Overseas Highway"): the menu's pickers choose it. */
   where: string;
   /** The garage's bike first (null), then every bike on offer. */
@@ -50,7 +52,12 @@ export interface RaceOptionRow {
 }
 
 /** The race types' words (P4-12's new types are [open]: one today, so its row stays hidden). */
-const KIND_LABELS: Readonly<Record<RaceKind, string>> = { race: 'Race' };
+const KIND_LABELS: Readonly<Record<QuickPlayKind, string>> = {
+  race: 'Race',
+  hunt: 'Hunt',
+  escape: 'Escape',
+  grudge: 'Grudge',
+};
 const WEATHER: readonly OptionChoice<RaceWeather>[] = [
   { value: 'local', label: 'Local', note: 'as the region has it' },
   { value: 'dry', label: 'Dry' },
@@ -113,7 +120,13 @@ const option = <K extends keyof RaceOptions>(
 
 /** The rows in screen order. [default] */
 const ROWS: readonly RowDef[] = [
-  option('kind', 'Type', 'kind', () => RACE_KINDS.map((k) => ({ value: k, label: KIND_LABELS[k] }))),
+  {
+    id: 'kind',
+    label: 'Event',
+    choices: (v) => v.kinds ?? [{ value: 'race', label: KIND_LABELS.race }],
+    read: (s, c) => indexOf(c, s.quickPlayKind ?? 'race'),
+    write: (s, v) => ({ ...s, quickPlayKind: v as QuickPlayKind }),
+  },
   option('bike', 'Bike', 'bike', (v) => v.bikes),
   {
     id: 'field',
@@ -128,7 +141,7 @@ const ROWS: readonly RowDef[] = [
   option('time', 'Time', 'timeOfDay', (v) => v.times),
   option('weather', 'Weather', 'weather', () => WEATHER),
   option('rivals', 'Rivals', 'rivals', (v) => v.rivals),
-  option('cops', 'Cops', 'cops', () => COPS),
+  option('cops', 'Cops', 'cops', (v) => (v.lawRequired ? [{ value: true, label: 'On for Escape' }] : COPS)),
   {
     id: 'difficulty',
     label: 'Difficulty',
