@@ -880,10 +880,23 @@ class Rig {
           else lean += 0.3;
           break;
         case 'timber':
-          if (ph === 'tell') headYaw = Math.sin(t * 10) * 0.4;
-          else {
-            lean += 0.4;
-            headPitch += 0.3;
+          if (ph === 'tell') {
+            // Brace with both hands on the bars, looking toward the intended charge.
+            lean += 0.12;
+            headYaw = -sigSide * 0.35;
+            headPitch -= 0.12;
+          } else if (ph === 'act') {
+            // Committed: low over the tank, gaze down the bike's line rather than after a dodge.
+            lean += 0.45;
+            headYaw = 0;
+            headPitch += 0.05;
+          } else {
+            // Winded: sit out of the charge, sink onto the seat and let the head hang.
+            // The small breath follows the snapshot's phase time, including while muted.
+            lean -= 0.15;
+            hips.y -= 0.025;
+            headYaw = 0;
+            headPitch += 0.65 + 0.04 * Math.sin(sig.seconds * 4);
           }
           break;
         case 'pivot': {
