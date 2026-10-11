@@ -97,6 +97,73 @@ uv run scripts/check_local.py --out ../../scratch/voices/redo.json --clips ../..
   better than the old take's. The pick goes in the line's `audioNote` and the set's
   `meta.voice.review` (`kept`, `redone`, `cut`), so the maintainer can veto it later.
 
+## Local expressive auditions (optional environment)
+
+`scripts/audition_local.py` compares exact existing lines with the original English
+`chatterbox-tts==0.1.7` API. It requires an already downloaded model, an explicit model
+revision, prepared synthetic cast references and named emotion/pace settings. It performs
+no acquisition, paid calls, token loading or pack updates. Run it with a compatible existing
+Python environment that also has this tool's core dependencies available:
+
+```sh
+python tools/voices/scripts/audition_local.py \
+  --model-dir scratch/voices/models/chatterbox --model-revision <checkpoint-revision> \
+  --references scratch/voices/refs --out scratch/voices/auditions/new-comparison \
+  --device cuda --variant restrained:0.4:0.5 --variant expressive:0.7:0.4 \
+  --line 'base:deacon-core#deacon-start-ditch' \
+  --line 'base:kevin-core#kevin-pass-email' \
+  --line 'region-pnw:juniper-core#juniper-taken-name-wrong' \
+  --line 'region-sf:pivot-core#pivot-crash-burn'
+```
+
+The model directory must contain `ve.safetensors`, `t3_cfg.safetensors`,
+`s3gen.safetensors` and `tokenizer.json`. The adapter calls `from_local`, then supplies an
+explicit `audio_prompt_path` on every segment; Python, NumPy and Torch are seeded per
+segment. Fixed seeds permit matched comparisons, but do not promise bit-identical GPU
+output across environments.
+
+Each reference is `<cast-speaker-id>.wav`, prepared by the existing synthetic-reference
+chain (`pipeline.make_reference`): Kokoro preset, passage, speed and pitch, followed by its
+existing DSP. The reference directory must contain `manifest.json`, keyed by cast speaker id:
+
+```json
+{
+  "cast-speaker-id": {
+    "sha256": "<digest-of-the-reference-wav>",
+    "reference": {"voice": "<preset>", "lang": "american-english", "speed": 1.0,
+                  "pitch_semis": 0.0, "text": "<exact-cast-reference-passage>"}
+  }
+}
+```
+
+Prepare this record with the synthetic reference, using the exact `reference.model_dump()`
+from the cast. The script checks the digest and complete cast record; this validates the
+declared chain, not the origin of an arbitrary recording. Never use real-person recordings.
+The already applied reference pitch is not applied to generated output again.
+
+Output must be a new directory outside packs and shipped files (within this checkout,
+use `scratch/`). An existing directory is refused, including a partially failed run; keep
+that evidence and choose a new directory. Files are `<variant>/<pack>/<set>/<line>.ogg`
+and `.segment-<index>.wav`, plus `manifest.json`. Raw FLOAT WAVs preserve generator samples;
+Opus uses the shared cleanup. The manifest records subtitle, segment words/controls,
+gaps/cuts/lead/tail, reference and checkpoint digests, revision, model licence/source,
+installed package version, seeds, cleanup targets and measured decoded Opus LUFS,
+true peak, duration, bytes and digest. Upstream watermarking is retained; raw generation
+is not de-watermarked. Listening, transcripts and speaker continuity remain pending.
+
+Variant defaults change only segments without explicit cast line/segment controls. The
+optional `base:mayor-core#mayor-down-comment` preserves its second segment's explicit
+exaggeration 0.9, cfg 0.3 and 0.25-second gap in both variants. Listen to the shipped clip
+and both candidates on each line before selecting; Kevin is the restraint control.
+No audition is automatically applied, and the paid `apply` attribution is not suitable
+for a local-model selection without a separate provenance update.
+
+This script adds no core dependency or lockfile change. Chatterbox's upstream dependency
+pins are separate from any experimentally installed compatibility environment. Successful
+pure tests establish planning/DSP behavior only; Windows support, actual GPU execution,
+model compatibility and emotion quality require recorded runtime and listening evidence.
+See [the audition contract](../../docs/milestones/local-voice-auditions.md).
+
 ## Licences
 
 Kokoro-82M is Apache-2.0; its model card lists CC BY training data (Koniwa, CC BY 3.0; SIWIS, CC BY
