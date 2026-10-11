@@ -203,7 +203,7 @@ export function nodeTag(c: Pick<NodeCard, 'boss' | 'tierBoss'>): string {
  */
 export function tierHead(t: TierView): { status: string; why: string } {
   if (!t.open) return { status: 'locked', why: t.nodes.find((c) => c.reason)?.reason ?? '' };
-  const boss = t.nodes.find((c) => c.tierBoss);
+  const boss = t.nodes.find((c) => c.tierBoss || c.boss);
   const wins = Math.min(t.wins, t.requiredWins);
   if (boss) {
     if (boss.state === 'won') return { status: 'boss beaten', why: '' };

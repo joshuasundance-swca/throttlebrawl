@@ -204,7 +204,7 @@ export function resultView(
     : null;
   const title =
     report.outcome === 'won'
-      ? (plan.rules.rule === 'timber' || plan.key === 'region-sf:sf-boss-pivot') &&
+      ? def.nodes.some((node) => node.id === def.boss && node.event === plan.key) &&
         plan.rules.rival &&
         report.map?.finale
         ? `${riderName(reg, plan.rules.rival).toUpperCase()} BEATEN`

@@ -137,10 +137,21 @@ describe('the career map screen', () => {
         r.plan.rules.rule === undefined &&
         Number(param(r, 'orKnockdowns') ?? 0) > 0,
     );
-    expect(boss.card.objective).toBe(
-      `Beat ${rival(boss)} to the line, or knock ${rival(boss)} down ${words(Number(param(boss, 'orKnockdowns')))} times.`,
-    );
-    expect(boss.card.kindLabel).toBe('Boss');
+    const victory = `Beat ${rival(boss)} to the line, or knock ${rival(boss)} down ${words(Number(param(boss, 'orKnockdowns')))} times.`;
+    // Finale-payoff contract: the victory rule stays exact, followed by the carried chapter/ride
+    // stakes. The earlier exact bare-objective assertion omitted those now-required stakes.
+    const next = DEFS.find((d) => d.regionKey === boss.def.ending.next);
+    const awards = boss.def.unlocks
+      .filter((u) => u.kind === 'boss-beaten' && REG.bikes[u.grant])
+      .map((u) => REG.bikes[u.grant]?.name);
+    const stake =
+      boss.def.ending.freePlayAfter && boss.def.ending.next === null
+        ? ` Win for free play${awards.length ? ` and ${awards.join(', ')}` : ''}.`
+        : awards.length
+          ? ` A win unlocks ${awards.join(', ')}.`
+          : '';
+    expect(boss.card.objective).toBe(victory + (next ? ` Win to open ${next.regionName}.` : '') + stake);
+    expect(boss.card.kindLabel).toBe(`Region boss · ${rival(boss)}`);
 
     // A locked card in an open tier names the events it waits on, by their card names.
     const waiting = first(
