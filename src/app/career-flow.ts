@@ -23,6 +23,7 @@ import {
   posterView,
   progressOf,
   newCareer,
+  objectiveText,
   regionOpen,
   repairBill,
   riderTexts,
@@ -200,7 +201,9 @@ export function resultView(
     : null;
   const title =
     report.outcome === 'won'
-      ? plan.rules.rule === 'timber' && plan.rules.rival && report.map?.finale
+      ? (plan.rules.rule === 'timber' || plan.key === 'region-sf:sf-boss-pivot') &&
+        plan.rules.rival &&
+        report.map?.finale
         ? `${riderName(reg, plan.rules.rival).toUpperCase()} BEATEN`
         : (cleared ?? 'WON')
       : report.outcome === 'busted'
@@ -213,6 +216,7 @@ export function resultView(
   const news: string[] = [];
   const nextRegion = report.teaser?.next ? defs.find((d) => d.regionKey === report.teaser?.next) : undefined;
   if (nextRegion) news.push(`${nextRegion.regionName} is open.`);
+  if (report.teaser?.freePlayAfter && report.teaser.next === null) news.push('Free play is open.');
   for (const t of report.map?.tiersOpened ?? []) news.push(`${t} is open.`);
   const claimed = report.map?.claimed.length ?? 0;
   if (claimed > 0) news.push(`${claimed === 1 ? 'A road' : `${claimed} roads`} claimed on the map.`);
@@ -225,7 +229,14 @@ export function resultView(
   return {
     title,
     eventName: plan.name,
-    objectives: status.objectives.map((o) => ({ label: o.label, met: o.met, required: o.required })),
+    objectives: status.objectives.map((o) => ({
+      label:
+        plan.key === 'region-sf:sf-boss-pivot' && o.kind === 'beat-rival'
+          ? objectiveText(reg, plan)
+          : o.label,
+      met: o.met,
+      required: o.required,
+    })),
     lines: report.lines,
     fine: report.fine,
     cashAfter: report.cashAfter,

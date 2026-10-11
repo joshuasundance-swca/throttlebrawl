@@ -323,12 +323,25 @@ export function careerView(
     const winBonus = plan.objectives.filter((o) => o.required).reduce((s, o) => s + o.rewardCash, 0);
     const roadKey = qualify(def.pack, n.road);
     const timberBoss = n.id === def.boss && plan.rules.rule === 'timber' && plan.rules.rival;
+    const pivotBoss = n.id === def.boss && plan.key === 'region-sf:sf-boss-pivot' && plan.rules.rival;
+    const namedBoss = timberBoss || pivotBoss;
     const nextRegion = timberBoss ? defs.find((d) => d.regionKey === def.ending.next) : undefined;
+    const finalAwards = pivotBoss
+      ? def.unlocks
+          .filter((u) => u.kind === 'boss-beaten' && reg.bikes[u.grant])
+          .map((u) => reg.bikes[u.grant]?.name ?? bare(u.grant))
+      : [];
+    const finalStake =
+      pivotBoss && def.ending.freePlayAfter && def.ending.next === null
+        ? progress.finaleBeaten
+          ? ' Free play is open.'
+          : ` Win for free play${finalAwards.length ? ` and ${finalAwards.join(', ')}` : ''}.`
+        : '';
     return {
       id: n.id,
       name: plan.name,
-      kindLabel: timberBoss
-        ? `Region boss · ${riderName(reg, timberBoss)}`
+      kindLabel: namedBoss
+        ? `Region boss · ${riderName(reg, namedBoss)}`
         : n.id === def.boss
           ? 'Boss'
           : (KIND_LABEL[plan.kind] ?? plan.kind),
@@ -338,7 +351,8 @@ export function careerView(
           ? regionOpen(defs, profile, nextRegion)
             ? ` ${nextRegion.regionName} is open.`
             : ` Win to open ${nextRegion.regionName}.`
-          : ''),
+          : '') +
+        finalStake,
       bonuses: bonusTexts(plan),
       route: routeName(reg, route),
       km: routeKm(reg, route),

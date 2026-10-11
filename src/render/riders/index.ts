@@ -900,12 +900,15 @@ class Rig {
           }
           break;
         case 'pivot': {
-          const arm: Side = sigSide > 0 ? 'r' : 'l';
-          if (ph === 'tell')
-            wantArm[arm] = this.shoulder(arm, new Vector3())
-              .add(new Vector3(sigSide * 0.72, 0.02, 0))
-              .clone();
-          else if (ph === 'act') lean += 0.35;
+          // The snapshot carries no committed swap direction. Prepare with both hands on
+          // the bars; never borrow a fight target/side to imply the private line. An earned
+          // combat animation takes precedence for its entire visible overlay.
+          if (ph === 'tell') {
+            if (!attacking) {
+              lean += 0.12;
+              headPitch -= 0.1;
+            }
+          } else if (ph === 'act') lean += 0.35;
           else {
             lean -= 0.18;
             headPitch += 0.45;

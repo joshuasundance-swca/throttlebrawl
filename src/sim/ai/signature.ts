@@ -180,6 +180,8 @@ const BUSY_D = 3;
 const BAD_CONNECTION: MoveSpec = { tell: 45, act: 60, open: 30, gap: 360, spread: 240 };
 /** The named Timber encounter: earlier eligibility, a readable brace, and a longer opening. */
 const TIMBER_ENCOUNTER: MoveSpec = { first: 240, tell: 48, act: 90, open: 90, gap: 360, spread: 180 };
+/** The canonical SF finale: neutral preparation, committed swap/burst, actual battery sag. */
+const PIVOT_ENCOUNTER: MoveSpec = { first: 240, tell: 48, act: 45, open: 120, gap: 540, spread: 360 };
 export const BAD_CONNECTION_JUMP_M = 15;
 /** The reconnect lands only where nothing is within this many metres along, and a lane across. */
 const BAD_CONNECTION_CLEAR_S = 6;
@@ -304,6 +306,7 @@ export function initSignature(
   move: SignatureId | undefined,
   gapScale = 1,
   timberEncounter = false,
+  pivotEncounter = false,
 ): void {
   const sg = signatureState(world);
   if (gapScale !== 1) sg.gapScale = gapScale;
@@ -325,6 +328,10 @@ export function initSignature(
   if (move === 'timber' && timberEncounter) {
     sg.timing ??= {};
     sg.timing[id] = TIMBER_ENCOUNTER;
+  }
+  if (move === 'pivot' && pivotEncounter) {
+    sg.timing ??= {};
+    sg.timing[id] = PIVOT_ENCOUNTER;
   }
   // A move that answers a hit (Kevin's counter) is ready at once; the others wait out the start.
   const spec = move && move !== 'counter' ? specOf(sg, id, move) : null;
@@ -958,7 +965,8 @@ function timber(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | nul
 /** Pivot: the blinker, then a swap to the other side with a burst; then his battery sags. */
 function pivot(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null): SignatureOut {
   const id = c.m.id;
-  if (phase === 'tell') return {};
+  const encounter = specOf(sg, id, 'pivot') === PIVOT_ENCOUNTER;
+  if (phase === 'tell') return encounter ? { noSwing: true } : {};
   if (phase === 'act') {
     return {
       dTarget: sg.lineD[id] ?? c.m.pos.d,
@@ -966,6 +974,11 @@ function pivot(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null
       lateralGain: 2.5,
       speedTarget: c.speedTarget * PIVOT_BURST,
     };
+  }
+  if (encounter && phase === 'open') {
+    sg.openSpeed ??= {};
+    const cap = (sg.openSpeed[id] ??= Math.min(c.speedTarget, c.m.speed) * PIVOT_SAG);
+    return { speedTarget: Math.min(c.speedTarget * PIVOT_SAG, cap), noSwing: true };
   }
   return { speedTarget: c.speedTarget * PIVOT_SAG, noSwing: true };
 }
