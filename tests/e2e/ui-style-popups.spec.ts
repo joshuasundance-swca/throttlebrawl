@@ -1726,9 +1726,10 @@ test.describe('phone portrait', () => {
     test.setTimeout(150_000);
     const problems = watchErrors(page);
     await startRace(page, { career: true });
-    const m = await tickerAndMeasure(page, [LONGEST_BARK]);
+    const m = await tickerAndMeasure(page, [LONGEST_BARK], { prompts: CAREER_PROMPTS });
     expectClear(m, 'phone portrait');
     expectCompact(m, 'phone portrait');
+    expect(momentFindings(m, 'phone portrait, every prompt', true)).toEqual([]);
     await shot(page, 'portrait');
     await expectWholeLayout(page, m, 'phone portrait');
     expect(problems).toEqual([]);
