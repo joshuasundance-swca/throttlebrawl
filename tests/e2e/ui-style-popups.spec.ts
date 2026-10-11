@@ -162,8 +162,9 @@ type TestWindow = Window & {
   __uiTicker?: (items: TickerItemLike[], hold?: boolean) => void;
   /** The layout probe (installLayoutProbe): every painted HUD widget and overlay. */
   __layoutPieces?: () => Piece[];
-  /** The layout probe: the player's bike as the last frame drew it (its screen box), or null. */
+  /** Historical riding hull, retained only for the independent riding fit/calibration control. */
   __playerBike?: () => Box | null;
+  __playerParts?: () => { kind: 'bike' | 'rider'; box: Box }[];
 };
 
 /** A rival's bark with the base pack's longest line: the widest content the strip carries. */
@@ -233,7 +234,9 @@ function layoutFindings(
     // The bike is what the road ahead is kept clear for: it may sit in it.
     if (a.name !== BIKE && overlaps(a.box, look)) out.add(`${a.name} in the road ahead`);
     for (const b of against ? pieces : pieces.slice(i + 1))
-      if (b !== a && overlaps(a.box, b.box)) out.add([a.name, b.name].sort().join(' × '));
+      // BIKE is reserved for this probe's followed player's parts, never a HUD widget.
+      if (b !== a && !(a.name === BIKE && b.name === BIKE) && overlaps(a.box, b.box))
+        out.add([a.name, b.name].sort().join(' × '));
   }
   return [...out].sort();
 }
@@ -279,8 +282,9 @@ function watchErrors(page: Page): string[] {
  * the player's bike. `__playerBike()` finds the player's
  * rider frame (render/views.ts: the group a rider's boxes or its rig are drawn on, at its ground
  * point, turned with its heading, lean and pitch) nearest the player's snapshot position, and
- * projects a box round the bike and rider through the camera the renderer last drew the race with
- * (caught by wrapping its `render`).
+ * keeps the original riding hull as a separate fit/calibration control. Layout checks project
+ * actually posed rider and bike geometry per bone (riders/index.ts's rigid skin), preserving
+ * empty space between detached bodies and the actual riding wheelie/slip/whip transforms.
  */
 async function installLayoutProbe(page: Page) {
   await page.addInitScript(() => {
@@ -289,6 +293,13 @@ async function installLayoutProbe(page: Page) {
       rotation: { order: string };
       matrixWorld: { elements: ArrayLike<number> };
       children: NodeLike[];
+      parent?: NodeLike;
+      visible: boolean;
+      geometry?: {
+        attributes: Record<string, { array: ArrayLike<number>; itemSize: number; count: number }>;
+        drawRange: { count: number };
+      };
+      skeleton?: { bones: NodeLike[]; boneInverses: { elements: ArrayLike<number> }[] };
     }
     interface CameraLike {
       isPerspectiveCamera?: boolean;
@@ -322,9 +333,10 @@ async function installLayoutProbe(page: Page) {
       __THREE_DEVTOOLS__?: EventTarget;
       __layoutPieces?: () => { name: string; box: Box }[];
       __playerBike?: () => Box | null;
+      __playerParts?: (calibration?: boolean) => { kind: 'bike' | 'rider'; box: Box }[];
       __game?: {
         playerId(): number;
-        snapshot(): { entities?: { id: number; x: number; y: number; z: number }[] } | null;
+        snapshot(): { entities?: { id: number; x: number; y: number; z: number; mode: string }[] } | null;
       };
     };
     w.__THREE_DEVTOOLS__ = hook;
@@ -334,10 +346,10 @@ async function installLayoutProbe(page: Page) {
       { min: [-0.35, 0, -0.95], max: [0.35, 1.05, 0.95] },
       { min: [-0.45, 0.5, -0.45], max: [0.45, 1.75, 0.35] },
     ];
-    w.__playerBike = () => {
+    w.__playerParts = (calibration = false) => {
       const canvas = seen.find((s) => s.isWebGLRenderer)?.domElement;
       const game = w.__game;
-      if (!drawn || !canvas || !game) return null;
+      if (!drawn || !canvas || !game) return [];
       const me = game.playerId();
       const self = game.snapshot()?.entities?.find((e) => e.id === me);
       const riders = drawn.scene.getObjectByName?.('entities')?.children ?? [];
@@ -349,7 +361,7 @@ async function installLayoutProbe(page: Page) {
         const d = Math.hypot((m[12] ?? 0) - self.x, (m[13] ?? 0) - self.y, (m[14] ?? 0) - self.z);
         if (d < bestD) [best, bestD] = [r, d];
       }
-      if (!best) return null;
+      if (!best || !self) return [];
       const m = best.matrixWorld.elements;
       const v = drawn.camera.matrixWorldInverse.elements;
       const p = drawn.camera.projectionMatrix.elements;
@@ -358,6 +370,137 @@ async function installLayoutProbe(page: Page) {
           (i) => (e[i] ?? 0) * x + (e[4 + i] ?? 0) * y + (e[8 + i] ?? 0) * z + (e[12 + i] ?? 0) * wv,
         ) as [number, number, number, number];
       const c = canvas.getBoundingClientRect();
+      // Views.ts places the get-up/tumbling rider and bike independently. Riding rigs also
+      // add wheelie/slip/whip transforms, so their actual vertices are the overlap oracle too.
+      // riders/index.ts bakes each vertex to ONE bone (weight 1). Measure its actually posed
+      // geometry per bone, rather than inventing a riding bike at the walker or unioning the
+      // empty screen between detached bodies. SHAPE below remains an independent calibration.
+      if (!calibration) {
+        const all: NodeLike[] = [];
+        const visit = (node: NodeLike) => {
+          all.push(node);
+          node.children.forEach(visit);
+        };
+        riders.forEach(visit);
+        const belongs = (node: NodeLike, name: string): boolean => {
+          for (let n: NodeLike | undefined = node; n; n = n.parent) if (n.name === name) return true;
+          return false;
+        };
+        const rigs = all
+          .filter((node) => node.name === 'rig-mesh' && node.visible && node.skeleton)
+          .map((node) => {
+            let root = node.skeleton?.bones.find((bone) => belongs(bone, 'rig-rider'));
+            while (root?.parent && root.name !== 'rig-rider') root = root.parent;
+            const bm = root?.matrixWorld.elements;
+            // Nearest to the already selected rendered root, not the current sim snapshot.
+            // Riding pivots can shift the rig origin; detached roots copy it exactly.
+            const distance = bm
+              ? Math.hypot(
+                  (bm[12] ?? 0) - (m[12] ?? 0),
+                  (bm[13] ?? 0) - (m[13] ?? 0),
+                  (bm[14] ?? 0) - (m[14] ?? 0),
+                )
+              : Infinity;
+            return { node, distance };
+          })
+          .sort((a, b) => a.distance - b.distance);
+        const candidate = rigs[0];
+        const detached = self.mode === 'OnFoot' || self.mode === 'Tumble';
+        const mesh = candidate && candidate.distance < (detached ? 0.001 : 6) ? candidate.node : undefined;
+        const boxes = new Map<number, { kind: 'bike' | 'rider'; box: Box }>();
+        const add = (key: number, kind: 'bike' | 'rider', world: readonly number[]) => {
+          const view = mul(v, world[0] ?? 0, world[1] ?? 0, world[2] ?? 0, 1);
+          const [cx, cy, , cw] = mul(p, view[0], view[1], view[2], 1);
+          if (!(cw > 0.05)) return;
+          const sx = c.left + ((cx / cw + 1) / 2) * c.width;
+          const sy = c.top + ((1 - cy / cw) / 2) * c.height;
+          const entry = boxes.get(key) ?? {
+            kind,
+            box: { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity },
+          };
+          entry.box.left = Math.min(entry.box.left, sx);
+          entry.box.right = Math.max(entry.box.right, sx);
+          entry.box.top = Math.min(entry.box.top, sy);
+          entry.box.bottom = Math.max(entry.box.bottom, sy);
+          boxes.set(key, entry);
+        };
+        if (mesh?.geometry && mesh.skeleton) {
+          const attrs = mesh.geometry.attributes;
+          const pos = attrs['position'];
+          const skin = attrs['skinIndex'];
+          const weights = attrs['skinWeight'];
+          if (!pos || !skin || !weights)
+            throw new Error('posed player geometry has no rigid skin attributes');
+          const count = Math.min(pos.count, mesh.geometry.drawRange.count);
+          for (let i = 0; i < count; i++) {
+            if (
+              weights.array[i * weights.itemSize] !== 1 ||
+              [1, 2, 3].some((j) => weights.array[i * weights.itemSize + j] !== 0)
+            )
+              throw new Error(`player vertex ${i} is not rigidly weighted to one bone`);
+            const boneId = skin.array[i * skin.itemSize] ?? -1;
+            const bone = mesh.skeleton.bones[boneId];
+            const inverse = mesh.skeleton.boneInverses[boneId];
+            if (!bone || !inverse) throw new Error('posed player vertex has no bone');
+            const local = mul(
+              inverse.elements,
+              pos.array[i * 3] ?? 0,
+              pos.array[i * 3 + 1] ?? 0,
+              pos.array[i * 3 + 2] ?? 0,
+              1,
+            );
+            add(
+              boneId,
+              belongs(bone, 'rig-bike') ? 'bike' : 'rider',
+              mul(bone.matrixWorld.elements, local[0], local[1], local[2], 1),
+            );
+          }
+        } else {
+          // Before models load, the visible fallback meshes are the actual drawing too.
+          // Views.riderView adds root, parked and tumbleBike consecutively to entities.
+          // Their identity persists even when detached bodies separate far from the rider.
+          const at = riders.indexOf(best);
+          const paired = [riders[at + 1], riders[at + 2]].filter(
+            (node): node is NodeLike =>
+              !!node &&
+              node.visible &&
+              (node.name === 'views-parked-bike' || node.name === 'views-tumble-bike'),
+          );
+          const roots = [best, ...paired];
+          roots.forEach((root, key) => {
+            const walk = (node: NodeLike) => {
+              if (!node.visible) return;
+              const pos = node.geometry?.attributes['position'];
+              if (pos)
+                for (let i = 0; i < pos.count; i++)
+                  add(
+                    key,
+                    root === best ? 'rider' : 'bike',
+                    mul(
+                      node.matrixWorld.elements,
+                      pos.array[i * pos.itemSize] ?? 0,
+                      pos.array[i * pos.itemSize + 1] ?? 0,
+                      pos.array[i * pos.itemSize + 2] ?? 0,
+                      1,
+                    ),
+                  );
+              node.children.forEach(walk);
+            };
+            walk(root);
+          });
+        }
+        return [...boxes.values()]
+          .map(({ kind, box }) => ({
+            kind,
+            box: {
+              left: Math.max(c.left, box.left),
+              top: Math.max(c.top, box.top),
+              right: Math.min(c.right, box.right),
+              bottom: Math.min(c.bottom, box.bottom),
+            },
+          }))
+          .filter(({ box }) => box.right > box.left && box.bottom > box.top);
+      }
       const box = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
       for (const b of SHAPE)
         for (const x of [b.min[0], b.max[0]])
@@ -374,15 +517,21 @@ async function installLayoutProbe(page: Page) {
               box.top = Math.min(box.top, sy);
               box.bottom = Math.max(box.bottom, sy);
             }
-      if (!(box.right > box.left)) return null;
+      if (!(box.right > box.left)) return [];
       // Only what is on screen is painted.
-      return {
-        left: Math.max(c.left, box.left),
-        top: Math.max(c.top, box.top),
-        right: Math.min(c.right, box.right),
-        bottom: Math.min(c.bottom, box.bottom),
-      };
+      return [
+        {
+          kind: 'bike',
+          box: {
+            left: Math.max(c.left, box.left),
+            top: Math.max(c.top, box.top),
+            right: Math.min(c.right, box.right),
+            bottom: Math.min(c.bottom, box.bottom),
+          },
+        },
+      ];
     };
+    w.__playerBike = () => w.__playerParts?.(true).find((part) => part.kind === 'bike')?.box ?? null;
     w.__layoutPieces = () => {
       const out: { name: string; box: Box }[] = [];
       const sel = [
@@ -402,8 +551,7 @@ async function installLayoutProbe(page: Page) {
         const name = e.id || `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`;
         out.push({ name, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
       }
-      const bike = w.__playerBike?.() ?? null;
-      if (bike) out.push({ name: 'player-bike', box: bike });
+      for (const part of w.__playerParts?.() ?? []) out.push({ name: 'player-bike', box: part.box });
       return out;
     };
   });
@@ -764,9 +912,9 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
     const toastWasHidden = toast?.hidden ?? false;
     const stacked = document.getElementById('ui')?.dataset['top'] === 'stacked';
     if (toast && !stacked) toast.hidden = false;
-    const t0 = performance.now();
-    // 90 frames: the camera's settle after a touchdown takes about 1.3 s of the race. 6 s is a hang guard.
-    for (let i = 0; i < 90 && performance.now() - t0 < 6000; i++) {
+    // Complete the same 90 rendered samples on every renderer, including crash/get-up/remount.
+    // The enclosing test timeout is the hang guard; elapsed wall time never truncates coverage.
+    for (let i = 0; i < 90; i++) {
       await new Promise((r) => requestAnimationFrame(r));
       const pieces = w.__layoutPieces?.() ?? [];
       const strip = pieces.find((p) => p.name === 'hud-ticker');
@@ -785,7 +933,7 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
   console.log(
     `${where}: the strip as a landing line in ${samples.length} frames: ${JSON.stringify(samples.slice(0, 3).map((s) => roundBox(s.strip)))} ...`,
   );
-  expect(samples.length, `${where}: the strip showed the landing line and was measured`).toBeGreaterThan(20);
+  expect(samples.length, `${where}: all 90 rendered landing/remount samples measured`).toBe(90);
   const checked = new Set(['career-prompt', 'look-offer', BIKE]);
   const found = new Set<string>();
   const bikes: Box[] = [];
@@ -801,8 +949,7 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
   expect(bikes.length, `${where}: the bike was measured in every landing frame`).toBe(samples.length);
   // The strip never covers the bike, on any frame: the check the HUD run's live check asked for.
   const covering = samples.filter((s) => {
-    const bike = s.pieces.find((p) => p.name === BIKE);
-    return !!bike && overlaps(s.strip, bike.box);
+    return s.pieces.some((p) => p.name === BIKE && overlaps(s.strip, p.box));
   });
   expect(covering.length, `${where}: frames where the landing line covers the bike`).toBe(0);
   const first = samples[0];
@@ -929,6 +1076,79 @@ test('the known layout list only shrinks', () => {
   expect(entries.length, 'KNOWN_LAYOUT_CAP must equal the list: lower it when you fix one').toBe(
     KNOWN_LAYOUT_CAP,
   );
+});
+
+async function offBikeCoverControl(page: Page) {
+  for (const mode of ['Tumble', 'OnFoot']) {
+    await page.evaluate((mode) => {
+      const g = (window as TestWindow).__game;
+      if (!g) throw new Error('race seam missing');
+      const from = g.snapshot()?.tick ?? 0;
+      g.fastForward(
+        (s) =>
+          s.tick > from + 1200 ||
+          (g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as { mode?: string } | undefined)
+            ?.mode === mode,
+        { then: 0 },
+      );
+    }, mode);
+    await fastForwardDone(page, `off-bike cover control: ${mode}`);
+    const result = await page.evaluate(() => {
+      const w = window as TestWindow;
+      const self = w.__game?.snapshot()?.entities?.find((e) => e.id === w.__game?.playerId()) as
+        { mode?: string } | undefined;
+      const parts = w.__playerParts?.() ?? [];
+      const covers = ['bike', 'rider'].map((kind) => {
+        const part = parts
+          .filter((p) => p.kind === kind)
+          .sort(
+            (a, b) =>
+              (b.box.right - b.box.left) * (b.box.bottom - b.box.top) -
+              (a.box.right - a.box.left) * (a.box.bottom - a.box.top),
+          )[0];
+        if (!part) return null;
+        const d = document.createElement('div');
+        d.id = `planted-${kind}-cover`;
+        Object.assign(d.style, {
+          position: 'fixed',
+          left: `${part.box.left}px`,
+          top: `${part.box.top}px`,
+          width: `${part.box.right - part.box.left}px`,
+          height: `${part.box.bottom - part.box.top}px`,
+          background: '#f0f',
+          zIndex: '99',
+        });
+        document.getElementById('hud')?.append(d);
+        return d.id;
+      });
+      return {
+        mode: self?.mode,
+        kinds: [...new Set(parts.map((p) => p.kind))],
+        covers,
+        pieces: w.__layoutPieces?.() ?? [],
+        w: innerWidth,
+        h: innerHeight,
+      };
+    });
+    expect(result.mode, 'the real race reached the detached state').toBe(mode);
+    expect(result.kinds.sort(), `${mode}: both actual bodies measured`).toEqual(['bike', 'rider']);
+    const found = layoutFindings(result.pieces, result.w, result.h);
+    for (const kind of ['bike', 'rider'])
+      expect(found, `${mode}: visible ${kind} cover detected`).toContain(`planted-${kind}-cover × ${BIKE}`);
+    await page.evaluate(() =>
+      document.querySelectorAll('[id^="planted-"][id$="-cover"]').forEach((e) => e.remove()),
+    );
+  }
+}
+
+test('detached bike and get-up body stay measured through real mode transitions (negative control)', async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  await startRace(page, { career: true });
+  await heatMoment(page, 'off-bike control');
+  await rideToPaidLanding(page, 'off-bike control');
+  await offBikeCoverControl(page);
 });
 
 test('phone landscape: the ticker sits clear of the road ahead, stays small and fades quickly', async ({
@@ -1145,7 +1365,7 @@ test('the look-ahead and layout checks catch a centred widget and overlapped wid
 
   // The player's bike is measured where the chase camera puts it (low in the middle, a rider-sized
   // box), and it may sit in the road ahead.
-  const bike = m.layout.find((p) => p.name === BIKE)?.box;
+  const bike = await page.evaluate(() => (window as TestWindow).__playerBike?.() ?? null);
   console.log(`negative control: the player's bike ${JSON.stringify(bike && roundBox(bike))}`);
   expect(bike, 'the probe measured the player bike').toBeDefined();
   if (!bike) return;
