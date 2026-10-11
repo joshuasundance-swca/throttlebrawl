@@ -1241,6 +1241,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     const speedSlot = elementOf('speedometer');
     const corner: Box[] = [
       ...buttonBoxes,
+      // Upright keyboard play puts the prompt beside both bottom text widgets.
+      ...(!coarse && w < h ? bottomTexts.map(({ box }) => box) : []),
       ...(speedSlot && speedSlot.anchor.startsWith('bottom')
         ? [placedBox(speedSlot, w, h, layout.mirror, HUD_SIZE.speed)]
         : []),
