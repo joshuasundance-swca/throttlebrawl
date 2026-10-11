@@ -322,21 +322,22 @@ export function careerView(
     const route = length?.route ?? '';
     const winBonus = plan.objectives.filter((o) => o.required).reduce((s, o) => s + o.rewardCash, 0);
     const roadKey = qualify(def.pack, n.road);
-    const timberBoss = n.id === def.boss && plan.rules.rule === 'timber' && plan.rules.rival;
-    const pivotBoss = n.id === def.boss && plan.key === 'region-sf:sf-boss-pivot' && plan.rules.rival;
-    const namedBoss = timberBoss || pivotBoss;
-    const nextRegion = timberBoss ? defs.find((d) => d.regionKey === def.ending.next) : undefined;
-    const finalAwards = pivotBoss
+    const isBoss = n.id === def.boss;
+    const namedBoss = isBoss && plan.rules.rival;
+    const nextRegion = isBoss ? defs.find((d) => d.regionKey === def.ending.next) : undefined;
+    const finalAwards = isBoss
       ? def.unlocks
           .filter((u) => u.kind === 'boss-beaten' && reg.bikes[u.grant])
           .map((u) => reg.bikes[u.grant]?.name ?? bare(u.grant))
       : [];
     const finalStake =
-      pivotBoss && def.ending.freePlayAfter && def.ending.next === null
+      isBoss && def.ending.freePlayAfter && def.ending.next === null
         ? progress.finaleBeaten
           ? ' Free play is open.'
           : ` Win for free play${finalAwards.length ? ` and ${finalAwards.join(', ')}` : ''}.`
-        : '';
+        : isBoss && !progress.finaleBeaten && finalAwards.length
+          ? ` A win unlocks ${finalAwards.join(', ')}.`
+          : '';
     return {
       id: n.id,
       name: plan.name,
