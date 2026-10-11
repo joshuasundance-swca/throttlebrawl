@@ -27,6 +27,8 @@ import {
   takePickup,
   combatState,
   BUMP_AFTER_TICKS,
+  selectStealHolder,
+  swingingHeld,
   type CombatState,
   type ActivePhase,
   type Flight,
@@ -61,8 +63,7 @@ export const THROW_HIT_S_M = 1.2;
 
 export const THROW_HIT_D_M = 0.9;
 
-/** A thrown weapon can be snatched in its wind-up only from this close, m (its reach is its range). */
-export const THROW_SNATCH_M = 1.6;
+export { THROW_SNATCH_M } from './index';
 
 /** A thrown weapon leaves the hand this high, comes down to THROW_END_H and arcs THROW_ARC_M over. */
 const THROW_START_H = 1.2;
@@ -946,20 +947,6 @@ function canTake(world: World, config: SimConfig, st: CombatState, m: Mover): bo
 }
 
 /**
- * Whether a rider may steal now: riding, conscious and not a cop. Full hands are fine: the thief
- * drops what he holds and takes the swung weapon (the W-O polish run, [default]).
- */
-function canSteal(world: World, config: SimConfig, m: Mover): boolean {
-  return isRiding(m) && (riderState(world).health[m.id] ?? 0) > 0 && !isLaw(config, m);
-}
-
-/** Whether `holder` is winding up its held weapon (not a kick it switched to). */
-function swingingHeld(st: CombatState, holder: Mover): boolean {
-  const id = holder.id;
-  return st.phase[id] === 'windup' && !!st.held[id] && st.weapon[id] === st.held[id];
-}
-
-/**
  * The steal pass, before any attack advances this tick. `pressed` marks the riders whose attack
  * press rose this tick; a steal consumes the thief's press. The wind-up's age this tick is its
  * elapsed scaled time plus this tick's timeScale: on tick T + k of a wind-up started on tick T,
@@ -968,31 +955,9 @@ function swingingHeld(st: CombatState, holder: Mover): boolean {
 function stealPass(world: World, config: SimConfig, st: CombatState, pressed: boolean[], ts: number): void {
   for (const thief of world.movers) {
     if (thief.kind !== 'rider' || !pressed[thief.id]) continue;
-    if (st.phase[thief.id] !== 'idle' || (st.stagger[thief.id] ?? 0) > EPS) continue;
-    if (!canSteal(world, config, thief)) continue;
-    let best: { holder: Mover; mine: boolean; dist2: number } | null = null;
-    for (const holder of world.movers) {
-      if (holder.id === thief.id || holder.kind !== 'rider' || !isRiding(holder)) continue;
-      if (!swingingHeld(st, holder) || !inReachHeight(world, holder, thief)) continue;
-      const w = weaponById(config, st.held[holder.id] ?? '');
-      if (!w?.steal) continue;
-      const age = (st.elapsed[holder.id] ?? 0) + ts;
-      if (age + EPS < w.steal.startTick || age - EPS > w.steal.endTick) continue;
-      // The thief must be where the weapon is going: inside the holder's reach box, either side. A
-      // thrown weapon's reach is its throw range, so its snatch box stays at arm's length (W-T).
-      const thrownW = behaviourOf(w) === 'throw.burst';
-      const boxS = thrownW ? Math.min(w.reachSM, THROW_SNATCH_M) : w.reachSM;
-      const boxD = thrownW ? Math.min(w.reachDM, THROW_SNATCH_M) : w.reachDM;
-      const rel = relative(config.road, holder, thief, boxS + 2);
-      if (!rel || Math.abs(rel.ds) > boxS || Math.abs(rel.dd) > boxD) continue;
-      const mine = st.targetId[holder.id] === thief.id;
-      const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
-      if (!best || (mine && !best.mine) || (mine === best.mine && dist2 < best.dist2)) {
-        best = { holder, mine, dist2 };
-      }
-    }
-    if (!best) continue;
-    const hid = best.holder.id;
+    const holder = selectStealHolder(world, config, st, thief, ts);
+    if (!holder) continue;
+    const hid = holder.id;
     const weapon = st.held[hid] ?? '';
     const age = (st.elapsed[hid] ?? 0) + ts;
     const cause = st.cause[hid] ?? 0;

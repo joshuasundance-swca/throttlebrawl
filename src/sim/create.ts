@@ -3,7 +3,7 @@
 import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
 import { waterLevelOf } from '../road';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
-import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
+import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon, stealPreview } from './combat';
 import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
 import { pursuitTargetOf } from './cops/pursuit';
 import { GROUND_TUNING, groundUnder } from './ground';
@@ -154,6 +154,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       pursuitTargetId: pursuitTargetOf(world, config, m.id),
       // The aim marker (playtest 4, P4-6): who a tap by the player would hit.
       aimId: def?.controller.kind === 'player' ? aimPreview(world, config, m.id) : -1,
+      stealId: def?.controller.kind === 'player' ? stealPreview(world, config, m.id) : -1,
       progress: race.progress[m.id] ?? 0,
       distanceToFinish: race.distanceToFinish[m.id] ?? 0,
       place: race.place[m.id] ?? 0,

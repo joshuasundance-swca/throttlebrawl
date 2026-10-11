@@ -3,7 +3,15 @@
 // wreck. Hand-placed riders on the combat harness; the pipe is the M1 starting numbers.
 import { describe, expect, it } from 'vitest';
 import type { SimEvent } from '../types';
-import { combatState, combatView, pickupCount, roadsideSpots, spawnPickup, STOWED_H } from './index';
+import {
+  combatState,
+  combatView,
+  pickupCount,
+  roadsideSpots,
+  spawnPickup,
+  stealPreview,
+  STOWED_H,
+} from './index';
 import {
   F,
   flags,
@@ -278,6 +286,7 @@ describe('combat-2: the steal', () => {
     const pid = arm(h, 0);
     const counts: number[] = [];
     for (let t = 0; t < SWING + 40; t++) {
+      if (h.world.tick === SWING + 10) expect(stealPreview(h.world, h.config, 1)).toBe(0);
       h.run(1);
       counts.push(pipeCount(h, pid));
     }
@@ -303,7 +312,10 @@ describe('combat-2: the steal', () => {
     );
     const swung = arm(h, 0);
     const own = arm(h, 1);
-    h.run(SWING + 40);
+    const end = h.world.tick + SWING + 40;
+    h.run(SWING + 10 - h.world.tick);
+    expect(stealPreview(h.world, h.config, 1)).toBe(0); // full hands still preview the swap
+    h.run(end - h.world.tick);
     const steal = grabs(h.events, 'steal');
     expect(steal).toHaveLength(1);
     expect(steal[0]).toMatchObject({ actor: 1, target: 0 });
