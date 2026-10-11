@@ -282,7 +282,7 @@ function watchErrors(page: Page): string[] {
  * the career's objective and prompt, the touch buttons, the slow-frames toast, the notice card and
  * the player's bike. `__playerBike()` finds the player's
  * rider frame (render/views.ts: the group a rider's boxes or its rig are drawn on, at its ground
- * point, turned with its heading, lean and pitch) nearest the player's snapshot position, and
+ * point, turned with its heading, lean and pitch) with the followed player's exact entityId, and
  * keeps the original riding hull as a separate fit/calibration control. Layout checks project
  * actually posed rider and bike geometry per bone (riders/index.ts's rigid skin), preserving
  * empty space between detached bodies and the actual riding wheelie/slip/whip transforms.
@@ -947,20 +947,26 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
     const toastWasHidden = toast?.hidden ?? false;
     const stacked = document.getElementById('ui')?.dataset['top'] === 'stacked';
     if (toast && !stacked) toast.hidden = false;
-    // Complete the same 90 rendered samples on every renderer, including crash/get-up/remount.
-    // The enclosing test timeout is the hang guard; elapsed wall time never truncates coverage.
-    for (let i = 0; i < 90; i++) {
+    // replace() draws synchronously, but its fade-in starts at zero opacity: the painted-piece
+    // oracle correctly excludes that initial invisible line. Retain the first visible sample,
+    // then require 89 consecutive visible samples; never skip a later disappearance.
+    // These are 90 visible post-landing samples. The enclosing test timeout guards readiness
+    // hangs; elapsed wall time never truncates coverage. Remount is observed in this seeded run.
+    while (out.length < 90) {
       await new Promise((r) => requestAnimationFrame(r));
       const pieces = w.__layoutPieces?.() ?? [];
       const strip = pieces.find((p) => p.name === 'hud-ticker');
       const el = document.getElementById('hud-ticker');
-      if (strip && el?.dataset['cls'] === 'line')
-        out.push({
-          strip: strip.box,
-          pieces: pieces.filter((p) => p !== strip),
-          vw: innerWidth,
-          vh: innerHeight,
-        });
+      if (!strip || el?.dataset['cls'] !== 'line' || !el.classList.contains('held')) {
+        if (out.length > 0) throw new Error('held landing line disappeared after sampling began');
+        continue;
+      }
+      out.push({
+        strip: strip.box,
+        pieces: pieces.filter((p) => p !== strip),
+        vw: innerWidth,
+        vh: innerHeight,
+      });
     }
     if (toast) toast.hidden = toastWasHidden;
     return out;
@@ -968,7 +974,7 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
   console.log(
     `${where}: the strip as a landing line in ${samples.length} frames: ${JSON.stringify(samples.slice(0, 3).map((s) => roundBox(s.strip)))} ...`,
   );
-  expect(samples.length, `${where}: all 90 rendered landing/remount samples measured`).toBe(90);
+  expect(samples.length, `${where}: all 90 consecutive visible post-landing samples measured`).toBe(90);
   const checked = new Set(['career-prompt', 'look-offer', BIKE]);
   const found = new Set<string>();
   const bikes: Box[] = [];
