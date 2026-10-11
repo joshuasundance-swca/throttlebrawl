@@ -27,14 +27,15 @@ export const RACE_OPTIONS_CSS = `
 #ui #race-options .ro-step { min-height: 44px; padding: 0; cursor: pointer;
   font: 900 1.25rem ui-monospace, monospace; color: #111; background: #f2ead8; border: 2px solid #111; }
 #ui #race-options .ro-step:active, #ui #race-options .ro-value:active { transform: translate(1px, 1px); }
-#ui #race-options .ro-value { min-width: 0; min-height: 44px; padding: 2px 6px; cursor: pointer;
+#ui #race-options .ro-content { min-width: 0; text-align: left; color: #f2ead8; }
+#ui #race-options .ro-value { width: 100%; min-width: 0; min-height: 44px; padding: 2px 6px; cursor: pointer;
   display: block; align-content: center; text-align: left;
   color: #f2ead8; background: transparent; border: 0; font: 800 0.9375rem/1.15 ui-monospace, monospace; }
 #ui #race-options :is(.ro-label, .ro-choice, .ro-note) { display: block; }
 #ui #race-options .ro-label { font: 700 0.625rem/1.1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;
   color: #f5c542; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ui #race-options .ro-choice { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#ui #race-options .ro-note { max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+#ui #race-options .ro-note { max-width: 100%; padding: 2px 6px; white-space: normal; overflow-wrap: anywhere;
   font: 500 0.75rem/1.3 system-ui, sans-serif; }
 #ui #race-options .ro-note[hidden] { display: none; }
 #ui #race-options .ro-foot { display: flex; gap: 12px; justify-content: center; align-items: center; flex-shrink: 0; }
@@ -124,14 +125,13 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
       { type: 'button', className: 'ro-value', id: `race-option-${id}-value` },
       label,
       choice,
-      note,
     );
     value.addEventListener('click', () => cb.onStep(id, 1));
     const row = node(
       'div',
       { className: 'ro-row', id: `race-option-${id}` },
       step(-1, '‹', 'prev'),
-      value,
+      node('div', { className: 'ro-content' }, value, note),
       step(1, '›', 'next'),
     );
     row.dataset['option'] = id;

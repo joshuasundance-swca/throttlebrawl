@@ -56,7 +56,7 @@ async function noteFindings(page: Page, selector: string) {
 async function quickNoteLayout(page: Page) {
   return page.locator('#race-option-bike .ro-note').evaluate((element) => {
     const row = element.closest('.ro-row');
-    const value = element.closest('button');
+    const value = element.closest('.ro-content') ?? element.closest('button');
     const list = document.getElementById('race-options-list');
     const footer = document.querySelector('#race-options .ro-foot');
     if (!row || !value || !list || !footer) throw new Error('Missing Quick Play layout');
@@ -145,7 +145,7 @@ for (const textSize of ['normal', 'large', 'largest']) {
     const layout = await quickNoteLayout(page);
     expect(layout.lines).toBeGreaterThan(0);
     expect(layout.outsideRow, `${textSize}: complete note inside bike row`).toBe(false);
-    expect(layout.outsideValue, `${textSize}: complete note inside its button`).toBe(false);
+    expect(layout.outsideValue, `${textSize}: complete note inside its content cell`).toBe(false);
     expect(layout.outsideList, `${textSize}: scrolled note fully painted in list`).toBe(false);
     expect(layout.overlappingRows, `${textSize}: note overlaps another option`).toEqual([]);
     expect(layout.underFooter, `${textSize}: note overlaps fixed actions`).toBe(false);
