@@ -165,7 +165,9 @@ type TestWindow = Window & {
   /** Historical riding hull, retained only for the independent riding fit/calibration control. */
   __playerBike?: () => Box | null;
   __playerParts?: () => { kind: 'bike' | 'rider'; box: Box }[];
-  __playerIdentityControl?: () => { planted: boolean; unchanged: boolean };
+  __playerIdentityControl?: () => { planted: boolean; unchanged: boolean; maskBound?: boolean };
+  __playerMaskEmptyControl?: (mode?: 'visibility' | 'straight' | 'premultiplied') => void;
+  __playerDepthControl?: () => { negative: Piece[]; positive: Piece[]; w: number; h: number };
 };
 
 /** A rival's bark with the base pack's longest line: the widest content the strip carries. */
@@ -284,8 +286,9 @@ function watchErrors(page: Page): string[] {
  * rider frame (render/views.ts: the group a rider's boxes or its rig are drawn on, at its ground
  * point, turned with its heading, lean and pitch) with the followed player's exact entityId, and
  * keeps the original riding hull as a separate fit/calibration control. Layout checks project
- * actually posed rider and bike geometry per bone (riders/index.ts's rigid skin), preserving
- * empty space between detached bodies and the actual riding wheelie/slip/whip transforms.
+ * the actual depth-visible player raster, with the film pass's bounded ink reach. Posed per-bone
+ * geometry remains a separate calibration/depth-occlusion control. Empty space between detached
+ * bodies stays empty; real riding wheelie/slip/whip transforms and exact entity identity remain.
  */
 async function installLayoutProbe(page: Page) {
   await page.addInitScript(() => {
@@ -296,7 +299,11 @@ async function installLayoutProbe(page: Page) {
       children: NodeLike[];
       parent?: NodeLike;
       visible: boolean;
+      clone(recursive?: boolean): NodeLike;
+      matrixAutoUpdate: boolean;
+      matrix: { fromArray(elements: number[]): unknown };
       userData: { entityId?: number };
+      material?: MaskMaterial | MaskMaterial[];
       geometry?: {
         attributes: Record<string, { array: ArrayLike<number>; itemSize: number; count: number }>;
         drawRange: { count: number };
@@ -305,8 +312,29 @@ async function installLayoutProbe(page: Page) {
     }
     interface CameraLike {
       isPerspectiveCamera?: boolean;
-      matrixWorldInverse: { elements: ArrayLike<number> };
+      matrixWorldInverse: {
+        elements: ArrayLike<number>;
+        clone(): { invert(): { elements: ArrayLike<number> } };
+      };
       projectionMatrix: { elements: ArrayLike<number> };
+    }
+    interface MaskShader {
+      fragmentShader: string;
+    }
+    interface MaskMaterial {
+      opacity: number;
+      transparent: boolean;
+      premultipliedAlpha: boolean;
+      needsUpdate: boolean;
+      colorWrite: boolean;
+      depthWrite: boolean;
+      copy(original: MaskMaterial): MaskMaterial;
+      clone(): MaskMaterial;
+      dispose(): void;
+      onBeforeCompile: (shader: MaskShader) => void;
+      customProgramCacheKey: () => string;
+      color?: NonNullable<Observed['background']>;
+      uniforms?: Record<string, { value: unknown }>;
     }
     interface Observed {
       isScene?: boolean;
@@ -315,10 +343,184 @@ async function installLayoutProbe(page: Page) {
       domElement?: HTMLCanvasElement;
       getObjectByName?: (name: string) => NodeLike | undefined;
       render?: (scene: Observed, camera: CameraLike) => void;
+      children?: NodeLike[];
+      add?: (node: NodeLike) => void;
+      remove?: (node: NodeLike) => void;
+      background?: {
+        clone(): NonNullable<Observed['background']>;
+        setRGB(r: number, g: number, b: number): unknown;
+      } | null;
+      getContext?: () => WebGL2RenderingContext;
+      getRenderTarget?: () => unknown;
+      setRenderTarget?: (target: unknown) => void;
+      info?: { render: Record<string, number> };
     }
     const seen: Observed[] = [];
     // The race's own draw: the last perspective camera and the scene it drew.
-    let drawn: { scene: Observed; camera: CameraLike } | null = null;
+    let drawn: {
+      scene: Observed;
+      camera: CameraLike;
+      renderer: Observed;
+      render: NonNullable<Observed['render']>;
+      target: unknown;
+      serial: number;
+      inkRadius: number;
+    } | null = null;
+    let drawSerial = 0;
+    let maskSerial = -1;
+    let painted: Box[] = [];
+    let primaryPainted: Box[] = [];
+    let maskAssignments: { name: string; entity: number | undefined; white: boolean }[] = [];
+    const maskMaterials = new Map<MaskMaterial, [MaskMaterial, MaskMaterial]>();
+    const maskStats = { draws: 0, totalMs: 0, maxMs: 0 };
+    window.addEventListener('pagehide', () => {
+      for (const pair of maskMaterials.values()) pair.forEach((m) => m.dispose());
+      maskMaterials.clear();
+    });
+    const maskMaterial = (original: MaskMaterial, player: boolean, xray: boolean) => {
+      let pair = maskMaterials.get(original);
+      if (!pair) {
+        pair = [original.clone(), original.clone()];
+        maskMaterials.set(original, pair);
+      }
+      const m = pair[player ? 1 : 0];
+      // Fade/ghost opacity and shader flags change during a race. copy() synchronizes the actual
+      // current material; Three's public copy does not copy these compilation callbacks.
+      m.copy(original);
+      if (xray && !player) {
+        m.colorWrite = false;
+        m.depthWrite = false;
+      }
+      // Preserve the actual shader's skinning/instancing, map alpha, discard, side and depth.
+      // Only the final RGB is semantic: player white, everything else black. Alpha/blending
+      // remain real, so a translucent occluder does not erase the player beneath it.
+      m.onBeforeCompile = (shader) => {
+        original.onBeforeCompile(shader);
+        if (!/}\s*$/.test(shader.fragmentShader)) throw new Error('mask shader has no main end');
+        shader.fragmentShader = shader.fragmentShader.replace(
+          /}\s*$/,
+          player
+            ? `
+#ifdef PREMULTIPLIED_ALPHA
+gl_FragColor.rgb = vec3(gl_FragColor.a);
+#else
+gl_FragColor.rgb = vec3(1.0);
+#endif
+}`
+            : 'gl_FragColor.rgb = vec3(0.0); }',
+        );
+      };
+      m.customProgramCacheKey = () => `layout-mask-${player}-${original.customProgramCacheKey()}`;
+      m.needsUpdate = true;
+      return m;
+    };
+    const paintMask = (
+      renderer: Observed,
+      scene: Observed,
+      camera: CameraLike,
+      render: NonNullable<Observed['render']>,
+      xray = false,
+    ) => {
+      const gl = renderer.getContext?.();
+      const canvas = renderer.domElement;
+      const me = (window as TestWindow).__game?.playerId();
+      if (!gl || !canvas || me === undefined || !drawn)
+        throw new Error('painted player mask has no actual race draw');
+      const started = performance.now();
+      const saved: { node: NodeLike; material: MaskMaterial | MaskMaterial[] }[] = [];
+      const background = scene.background;
+      const target = renderer.getRenderTarget?.();
+      const info = renderer.info?.render;
+      const counters = info ? { ...info } : null;
+      maskAssignments = [];
+      const walk = (node: NodeLike, entity?: number) => {
+        const id = node.userData.entityId ?? entity;
+        if (node.material) {
+          maskAssignments.push({ name: node.name, entity: id, white: id === me });
+          const original = node.material;
+          saved.push({ node, material: original });
+          node.material = Array.isArray(original)
+            ? original.map((m) => maskMaterial(m, id === me, xray))
+            : maskMaterial(original, id === me, xray);
+        }
+        node.children.forEach((child) => walk(child, id));
+      };
+      try {
+        renderer.setRenderTarget?.(drawn.target);
+        scene.children?.forEach((node) => walk(node));
+        const seed =
+          background ??
+          saved.flatMap((s) => (Array.isArray(s.material) ? s.material : [s.material])).find((m) => m.color)
+            ?.color;
+        if (!seed) throw new Error('painted mask has no colour seed');
+        scene.background = seed.clone();
+        scene.background.setRGB(0, 0, 0);
+        // Run only for a consumed layout frame, using its actual race target. Restore the normal
+        // drawing afterward; Classic's canvas and the film pass's texture both stay unchanged.
+        render.call(renderer, scene, camera);
+        const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
+        const width = viewport[2] ?? 0;
+        const height = viewport[3] ?? 0;
+        const pixels = new Uint8Array(width * height * 4);
+        gl.readPixels(viewport[0] ?? 0, viewport[1] ?? 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        if (gl.getError() !== gl.NO_ERROR) throw new Error('painted player mask readPixels failed');
+        const rect = canvas.getBoundingClientRect();
+        // LookPost uses center + four axial samples at ±width, not an iterative outline.
+        // Expand by the observed pass's bounded device-pixel reach (zero in Classic), preserving
+        // gaps between bodies. This conservatively includes film ink, not exact ink ownership.
+        const rx = (drawn.inkRadius * rect.width) / width;
+        const ry = (drawn.inkRadius * rect.height) / height;
+        const runs: Box[] = [];
+        let previous = new Map<string, Box>();
+        for (let row = 0; row < height; row++) {
+          const current = new Map<string, Box>();
+          let from = -1;
+          for (let x = 0; x <= width; x++) {
+            const at = (row * width + x) * 4;
+            const white =
+              x < width && ((pixels[at] ?? 0) > 0 || (pixels[at + 1] ?? 0) > 0 || (pixels[at + 2] ?? 0) > 0);
+            if (white && from < 0) from = x;
+            if (!white && from >= 0) {
+              const box = {
+                left: rect.left + (from * rect.width) / width,
+                right: rect.left + (x * rect.width) / width,
+                top: rect.top + ((height - row - 1) * rect.height) / height,
+                bottom: rect.top + ((height - row) * rect.height) / height,
+              };
+              const key = `${from}:${x}`;
+              const adjacent = previous.get(key);
+              if (adjacent) adjacent.top = box.top;
+              else runs.push(box);
+              current.set(key, adjacent ?? box);
+              from = -1;
+            }
+          }
+          previous = current;
+        }
+        primaryPainted = runs;
+        painted = runs.map((box) => ({
+          left: Math.max(rect.left, box.left - rx),
+          right: Math.min(rect.right, box.right + rx),
+          top: Math.max(rect.top, box.top - ry),
+          bottom: Math.min(rect.bottom, box.bottom + ry),
+        }));
+        maskSerial = drawn.serial;
+      } finally {
+        for (const s of saved) s.node.material = s.material;
+        scene.background = background;
+        try {
+          render.call(renderer, scene, camera);
+        } finally {
+          renderer.setRenderTarget?.(target);
+          if (info && counters) Object.assign(info, counters);
+        }
+        const elapsed = performance.now() - started;
+        maskStats.draws++;
+        maskStats.totalMs += elapsed;
+        maskStats.maxMs = Math.max(maskStats.maxMs, elapsed);
+        (window as Window & { __playerMaskStats?: typeof maskStats }).__playerMaskStats = maskStats;
+      }
+    };
     const hook = new EventTarget();
     hook.addEventListener('observe', (e) => {
       const d = (e as CustomEvent<Observed>).detail;
@@ -326,7 +528,29 @@ async function installLayoutProbe(page: Page) {
       const render = d?.isWebGLRenderer ? d.render : undefined;
       if (d && render) {
         d.render = function (this: Observed, scene: Observed, camera: CameraLike) {
-          if (camera?.isPerspectiveCamera && scene?.isScene) drawn = { scene, camera };
+          if (camera?.isPerspectiveCamera && scene?.isScene) {
+            drawn = {
+              scene,
+              camera,
+              renderer: this,
+              render,
+              target: this.getRenderTarget?.(),
+              serial: ++drawSerial,
+              inkRadius: 0,
+            };
+          } else if (drawn) {
+            for (const node of scene.children ?? []) {
+              const materials = Array.isArray(node.material) ? node.material : [node.material];
+              for (const material of materials) {
+                const u = material?.uniforms;
+                if (u?.['uInkWidth'] && u['uInk'])
+                  drawn.inkRadius =
+                    Number(u['uInk'].value) > 0
+                      ? Math.ceil(Number(u['uInkWidth'].value) * (1 + 0.6 * Number(u['uBrush']?.value ?? 0)))
+                      : 0;
+              }
+            }
+          }
           render.call(this, scene, camera);
         };
       }
@@ -336,7 +560,9 @@ async function installLayoutProbe(page: Page) {
       __layoutPieces?: () => { name: string; box: Box }[];
       __playerBike?: () => Box | null;
       __playerParts?: (calibration?: boolean) => { kind: 'bike' | 'rider'; box: Box }[];
-      __playerIdentityControl?: () => { planted: boolean; unchanged: boolean };
+      __playerIdentityControl?: () => { planted: boolean; unchanged: boolean; maskBound?: boolean };
+      __playerMaskEmptyControl?: (mode?: 'visibility' | 'straight' | 'premultiplied') => void;
+      __playerDepthControl?: () => { negative: Piece[]; positive: Piece[]; w: number; h: number };
       __game?: {
         playerId(): number;
         snapshot(): { entities?: { id: number; x: number; y: number; z: number; mode: string }[] } | null;
@@ -514,6 +740,208 @@ async function installLayoutProbe(page: Page) {
       ];
     };
     w.__playerBike = () => w.__playerParts?.(true).find((part) => part.kind === 'bike')?.box ?? null;
+    w.__playerDepthControl = () => {
+      if (!drawn) throw new Error('depth control has no actual race draw');
+      w.__layoutPieces?.();
+      const baseline = [...primaryPainted];
+      const span = [...baseline].sort(
+        (a, b) => (b.right - b.left) * (b.bottom - b.top) - (a.right - a.left) * (a.bottom - a.top),
+      )[0];
+      if (!span) throw new Error('depth control has no visible player span');
+      const nodes: NodeLike[] = [];
+      let playerMaterial: MaskMaterial | undefined;
+      const visit = (n: NodeLike, entity?: number, visible = true) => {
+        nodes.push(n);
+        const id = n.userData.entityId ?? entity;
+        const shown = visible && n.visible;
+        if (shown && id === w.__game?.playerId() && n.material) {
+          const materials = Array.isArray(n.material) ? n.material : [n.material];
+          playerMaterial ??= materials.find((m) => !m.transparent && m.opacity === 1);
+        }
+        n.children.forEach((child) => visit(child, id, shown));
+      };
+      drawn.scene.children?.forEach((n) => visit(n));
+      // views.ts builds this object from a solid box. Reuse its real geometry, with the player's
+      // actual opaque material, as a small camera-facing environmental depth fixture.
+      const box = nodes.find((n) => n.name === 'views-glint' && n.geometry);
+      if (!box?.geometry || !playerMaterial)
+        throw new Error('depth fixture needs the real box and opaque player material');
+      const occluder = box.clone(false);
+      occluder.name = 'layout-depth-fixture';
+      occluder.userData = { entityId: -1 };
+      occluder.visible = true;
+      occluder.material = playerMaterial;
+      occluder.matrixAutoUpdate = false;
+      const a = box.geometry.attributes['position'];
+      if (!a) throw new Error('depth fixture box has no vertices');
+      const low = [Infinity, Infinity, Infinity],
+        high = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < a.count; i++)
+        for (let axis = 0; axis < 3; axis++) {
+          const value = a.array[i * a.itemSize + axis] ?? 0;
+          low[axis] = Math.min(low[axis] ?? Infinity, value);
+          high[axis] = Math.max(high[axis] ?? -Infinity, value);
+        }
+      const rect = drawn.renderer.domElement?.getBoundingClientRect();
+      if (!rect) throw new Error('depth fixture has no canvas');
+      const p = drawn.camera.projectionMatrix.elements;
+      const world = drawn.camera.matrixWorldInverse.clone().invert().elements;
+      const width = Math.max(8, (span.right - span.left) * 0.6),
+        height = Math.max(12, span.bottom - span.top + 8);
+      const cx = (span.left + span.right) / 2,
+        cy = (span.top + span.bottom) / 2;
+      const tx = (((cx - rect.left) / rect.width) * 2 - 1) / (p[0] ?? 1);
+      const ty = (1 - ((cy - rect.top) / rect.height) * 2) / (p[5] ?? 1);
+      const sizes = [
+        ((width / rect.width) * 2) / (p[0] ?? 1),
+        ((height / rect.height) * 2) / (p[5] ?? 1),
+        0.01,
+      ];
+      const scales = sizes.map((size, axis) => size / ((high[axis] ?? 0) - (low[axis] ?? 0)));
+      const center = low.map((value, axis) => (value + (high[axis] ?? 0)) / 2);
+      const local = [
+        tx - (center[0] ?? 0) * (scales[0] ?? 1),
+        ty - (center[1] ?? 0) * (scales[1] ?? 1),
+        -1 - (center[2] ?? 0) * (scales[2] ?? 1),
+      ];
+      const matrix = new Array<number>(16).fill(0);
+      for (let axis = 0; axis < 3; axis++)
+        for (let row = 0; row < 3; row++)
+          matrix[axis * 4 + row] = (world[axis * 4 + row] ?? 0) * (scales[axis] ?? 1);
+      for (let row = 0; row < 3; row++)
+        matrix[12 + row] =
+          (world[12 + row] ?? 0) +
+          local.reduce((sum, value, axis) => sum + value * (world[axis * 4 + row] ?? 0), 0);
+      matrix[15] = 1;
+      occluder.matrix.fromArray(matrix);
+      const plates: HTMLElement[] = [];
+      const plate = (id: string, b: Box) => {
+        const d = document.createElement('div');
+        d.id = id;
+        Object.assign(d.style, {
+          position: 'fixed',
+          left: `${b.left}px`,
+          top: `${b.top}px`,
+          width: `${b.right - b.left}px`,
+          height: `${b.bottom - b.top}px`,
+          background: '#f0f',
+          zIndex: '99',
+        });
+        document.getElementById('hud')?.append(d);
+        plates.push(d);
+      };
+      const material = playerMaterial.clone();
+      occluder.material = material;
+      drawn.scene.add?.(occluder);
+      try {
+        paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render);
+        const normal = [...painted];
+        const visiblePrimary = [...primaryPainted];
+        if (!normal.length) throw new Error('partial depth fixture hid the entire player');
+        paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render, true);
+        const intersects = (a: Box, b: Box) =>
+          a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        let hidden: Box | undefined;
+        for (const run of primaryPainted) {
+          for (let y = run.top + 1; y < run.bottom - 2 && !hidden; y++)
+            for (let x = run.left + 1; x < run.right - 2; x++) {
+              const candidate = { left: x, right: x + 2, top: y, bottom: y + 2 };
+              if (
+                baseline.some(
+                  (b) =>
+                    b.left <= candidate.left &&
+                    b.right >= candidate.right &&
+                    b.top <= candidate.top &&
+                    b.bottom >= candidate.bottom,
+                ) &&
+                !normal.some((b) => intersects(b, candidate))
+              ) {
+                hidden = candidate;
+                break;
+              }
+            }
+          if (hidden) break;
+        }
+        if (!hidden) throw new Error('controlled opaque fixture produced no occluded player pixels');
+        painted = normal;
+        maskSerial = drawn.serial;
+        plate('planted-depth-hidden', hidden);
+        const negative = w.__layoutPieces?.() ?? [];
+        plates.forEach((d) => d.remove());
+        plates.length = 0;
+        const visible = visiblePrimary.sort(
+          (a, b) => (b.right - b.left) * (b.bottom - b.top) - (a.right - a.left) * (a.bottom - a.top),
+        )[0];
+        if (!visible) throw new Error('depth fixture has no remaining visible player');
+        plate('planted-depth-visible', visible);
+        return { negative, positive: w.__layoutPieces?.() ?? [], w: innerWidth, h: innerHeight };
+      } finally {
+        plates.forEach((d) => d.remove());
+        drawn.scene.remove?.(occluder);
+        maskSerial = -1;
+        try {
+          paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render);
+        } finally {
+          maskSerial = -1;
+          maskMaterials.get(material)?.forEach((m) => m.dispose());
+          maskMaterials.delete(material);
+          material.dispose();
+        }
+      }
+    };
+    w.__playerMaskEmptyControl = (mode = 'visibility') => {
+      if (!drawn) throw new Error('empty-mask control has no actual race draw');
+      const me = w.__game?.playerId();
+      const own: NodeLike[] = [];
+      const visit = (node: NodeLike) => {
+        if (node.userData.entityId === me) own.push(node);
+        node.children.forEach(visit);
+      };
+      drawn.scene.children?.forEach(visit);
+      if (!own.length) throw new Error('empty-mask control found no actual player nodes');
+      const visible = own.map((node) => node.visible);
+      const materials = new Set<MaskMaterial>();
+      const collect = (node: NodeLike) => {
+        if (node.material)
+          (Array.isArray(node.material) ? node.material : [node.material]).forEach((m) => materials.add(m));
+        node.children.forEach(collect);
+      };
+      own.forEach(collect);
+      const saved = [...materials].map((m) => ({
+        m,
+        opacity: m.opacity,
+        transparent: m.transparent,
+        premultipliedAlpha: m.premultipliedAlpha,
+      }));
+      try {
+        // Prime the cache first, then change actual fade/ghost material state on the same frame.
+        if (mode !== 'visibility') {
+          w.__layoutPieces?.();
+          for (const m of materials) {
+            m.opacity = 0;
+            m.transparent = true;
+            m.premultipliedAlpha = mode === 'premultiplied';
+            m.needsUpdate = true;
+          }
+        } else
+          own.forEach((node) => {
+            node.visible = false;
+          });
+        maskSerial = -1;
+        w.__layoutPieces?.();
+      } finally {
+        own.forEach((node, i) => {
+          node.visible = visible[i] ?? false;
+        });
+        for (const { m, opacity, transparent, premultipliedAlpha } of saved) {
+          m.opacity = opacity;
+          m.transparent = transparent;
+          m.premultipliedAlpha = premultipliedAlpha;
+          m.needsUpdate = true;
+        }
+        maskSerial = -1;
+      }
+    };
     w.__playerIdentityControl = () => {
       const me = w.__game?.playerId();
       const nodes: NodeLike[] = [];
@@ -556,7 +984,16 @@ async function installLayoutProbe(page: Page) {
         siblings.unshift(rival);
         roots.splice(roots.indexOf(rivalRoot), 1);
         roots.unshift(rivalRoot);
-        return { planted: true, unchanged: before === JSON.stringify(w.__playerParts?.()) };
+        const unchanged = before === JSON.stringify(w.__playerParts?.());
+        if (!drawn) throw new Error('identity control has no actual race draw');
+        paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render);
+        const maskBound =
+          maskAssignments.some((a) => a.name === 'rig-mesh' && a.entity === me && a.white) &&
+          maskAssignments.some(
+            (a) => a.name === 'rig-mesh' && a.entity === rival.userData.entityId && !a.white,
+          ) &&
+          maskAssignments.filter((a) => a.entity !== undefined && a.entity !== me).every((a) => !a.white);
+        return { planted: true, unchanged, maskBound };
       } finally {
         moved.forEach((n, i) =>
           saved[i]?.forEach((v, j) => {
@@ -565,9 +1002,13 @@ async function installLayoutProbe(page: Page) {
         );
         siblings.splice(0, siblings.length, ...order);
         roots.splice(0, roots.length, ...rootOrder);
+        maskSerial = -1;
       }
     };
     w.__layoutPieces = () => {
+      if (!drawn) throw new Error('layout sample has no actual race draw');
+      if (maskSerial !== drawn.serial) paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render);
+      if (painted.length === 0) throw new Error('layout sample has no painted player pixels');
       const out: { name: string; box: Box }[] = [];
       const sel = [
         '#hud > *',
@@ -586,7 +1027,7 @@ async function installLayoutProbe(page: Page) {
         const name = e.id || `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`;
         out.push({ name, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
       }
-      for (const part of w.__playerParts?.() ?? []) out.push({ name: 'player-bike', box: part.box });
+      for (const box of painted) out.push({ name: 'player-bike', box });
       return out;
     };
   });
@@ -1123,6 +1564,9 @@ async function offBikeCoverControl(page: Page) {
   const identity = await page.evaluate(() => (window as TestWindow).__playerIdentityControl?.());
   expect(identity?.planted, 'a real rival rig was planted at the followed player').toBe(true);
   expect(identity?.unchanged, 'nearby rival geometry never replaces followed-player geometry').toBe(true);
+  expect(identity?.maskBound, 'actual mask assigns followed-player white and rival materials black').toBe(
+    true,
+  );
   for (const mode of ['Tumble', 'OnFoot']) {
     await page.evaluate((mode) => {
       const g = (window as TestWindow).__game;
@@ -1343,6 +1787,36 @@ test('the look-ahead and layout checks catch a centred widget and overlapped wid
   page,
 }) => {
   await startRace(page);
+  const depth = await page.evaluate(() => (window as TestWindow).__playerDepthControl?.());
+  expect(depth, 'actual controlled depth fixture measured').toBeDefined();
+  if (depth) {
+    expect(layoutFindings(depth.negative, depth.w, depth.h)).not.toContain(`planted-depth-hidden × ${BIKE}`);
+    expect(layoutFindings(depth.positive, depth.w, depth.h)).toContain(`planted-depth-visible × ${BIKE}`);
+  }
+  const empty = await page.evaluate(() => {
+    try {
+      (window as TestWindow).__playerMaskEmptyControl?.();
+      return 'empty mask incorrectly accepted';
+    } catch (error) {
+      return String(error);
+    }
+  });
+  expect(empty, 'an actual scene without its player cannot pass as a clean mask').toContain(
+    'no painted player pixels',
+  );
+  for (const mode of ['straight', 'premultiplied'] as const) {
+    const faded = await page.evaluate((mode) => {
+      try {
+        (window as TestWindow).__playerMaskEmptyControl?.(mode);
+        return 'faded mask incorrectly accepted';
+      } catch (error) {
+        return String(error);
+      }
+    }, mode);
+    expect(faded, `a primed ${mode} player mask follows current zero opacity`).toContain(
+      'no painted player pixels',
+    );
+  }
   const first = await tickerAndMeasure(page, [LONGEST_BARK]);
   const strip = first.ticker?.box;
   expect(strip, 'the ticker was up to plant against').toBeDefined();
