@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { placeElement, type TouchLayout } from '../../src/core/layout.ts';
 import { InputFlag, type SimEvent, type SimInput } from '../../src/sim/types.ts';
 import { openQuickPlay } from './menu-navigation';
+import { inputDefaults } from '../../src/input';
 
 // Playtest 1 (2026-09-30), item 3: "Can't kick". A scripted 180 ms swipe down on the attack
 // button, a natural swipe rather than M1's 80 ms flick, produces a kick and not a punch, end to end
@@ -10,8 +11,8 @@ import { openQuickPlay } from './menu-navigation';
 // reaches the sim, and the player's attack ends in a `base:kick`.
 //
 // Two paths:
-// - burst: the whole swipe arrives at once, stamped over 180 ms, so input sees the swipe before
-//   the press is sampled and the attack starts as a kick (input's window alone), with no punch
+// - burst: RAF callbacks are held until the real stamped touch gesture has been delivered, so
+//   input sees the swipe before the press is sampled and the attack starts as a kick, with no punch
 //   outcome at all;
 // - late: the rest of the swipe is sent only after the sim has sampled the press, so the punch has
 //   already started when the kick flag arrives. The gesture is judged by the events' stamps, so
@@ -20,16 +21,29 @@ import { openQuickPlay } from './menu-navigation';
 // arrives (combat.kickConvertMs, 15 ticks). tests/sim/input-kick-convert-window.test.ts checks that
 // at exact ticks, for every lag. This spec used to check it here, with a real-time swipe that
 // reached the sim 7-15 ticks after its press only when the runner's load allowed (up to four
-// attempts), and it waited a fixed 1.5 s between swipes. Every wait below is on the sim's own state.
+// attempts), and it waited a fixed 1.5 s between swipes. Waits now use sim or pointer-delivery state.
 
 interface Handle {
   inputs(from?: number): SimInput[];
   events(): readonly SimEvent[];
   playerId(): number;
-  /** The player's attack phase is 'idle' once a swing and its cooldown end ('cooldown' until then). */
-  snapshot(): { entities: { attackPhase: string }[] } | null;
+  /** A player's attack returns to idle after its own recovery, with no extra cooldown. */
+  snapshot(): { tick: number; entities: { attackPhase: string }[] } | null;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+interface GestureDelivery {
+  type: string;
+  x: number;
+  y: number;
+  pointerId: number;
+  timeStamp: number;
+}
+type TestWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __game?: Handle;
+  __gestureRafGate?: { held: boolean; pause(): void; resume(): void };
+  __gestureDelivery?: GestureDelivery[];
+  __swingFrom?: number;
+};
 type ChainEvent = { tick: number; type: string; causeId: number | undefined; data: SimEvent['data'] };
 
 type Point = { x: number; y: number; id: number };
@@ -47,7 +61,62 @@ function attackCenter(width: number, height: number) {
 async function startRace(page: Page, problems: string[]) {
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
   await page.addInitScript(() => {
-    (window as TestWindow).__GAME_TEST__ = true;
+    const w = window as TestWindow;
+    w.__GAME_TEST__ = true;
+    // Hold app callbacks only: native pointer events and their gesture timestamps remain real.
+    const nativeRequest = window.requestAnimationFrame.bind(window);
+    const nativeCancel = window.cancelAnimationFrame.bind(window);
+    const callbacks = new Map<number, { callback: FrameRequestCallback; nativeId: number | null }>();
+    let serial = 0;
+    const gate = {
+      held: false,
+      pause() {
+        gate.held = true;
+      },
+      resume() {
+        gate.held = false;
+        for (const [id, entry] of callbacks) if (entry.nativeId === null) schedule(id, entry);
+      },
+    };
+    const schedule = (id: number, entry: { callback: FrameRequestCallback; nativeId: number | null }) => {
+      entry.nativeId = nativeRequest((now) => {
+        entry.nativeId = null;
+        if (!callbacks.has(id) || gate.held) return;
+        callbacks.delete(id);
+        entry.callback.call(window, now);
+      });
+    };
+    w.__gestureRafGate = gate;
+    window.requestAnimationFrame = (callback) => {
+      const id = ++serial;
+      const entry = { callback, nativeId: null as number | null };
+      callbacks.set(id, entry);
+      schedule(id, entry);
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+      const entry = callbacks.get(id);
+      callbacks.delete(id);
+      if (entry?.nativeId !== null && entry?.nativeId !== undefined) nativeCancel(entry.nativeId);
+    };
+    w.__gestureDelivery = [];
+    // Button visuals have pointer-events:none; observe native touches in the capture phase.
+    for (const type of ['pointerdown', 'pointermove', 'pointerup'])
+      document.addEventListener(
+        type,
+        (event) => {
+          const e = event as PointerEvent;
+          if (e.pointerType !== 'touch') return;
+          w.__gestureDelivery!.push({
+            type,
+            x: e.clientX,
+            y: e.clientY,
+            pointerId: e.pointerId,
+            timeStamp: e.timeStamp,
+          });
+        },
+        { capture: true, passive: true },
+      );
     // The Classic look, through the saved record: the lighter look keeps a software-rendered CI
     // runner's frames short (PR #232's first CI run timed the old real-time swipe out in the Ink look).
     localStorage.setItem(
@@ -72,8 +141,8 @@ async function startRace(page: Page, problems: string[]) {
 /**
  * One 26 px swipe down, stamped over `durS` (default 180 ms; 24 px, kickSwipePx, is crossed only at
  * the end). With `late`, the rest of the swipe is sent only once the sim has sampled the press;
- * otherwise the whole swipe goes at once. `dir` is the swipe's unit direction in screen px (default
- * straight down; playtest 2's directional kick swipes up, or down to a side).
+ * otherwise RAF sampling is held until the complete native gesture arrives. `dir` is the swipe's
+ * direction in screen px (default straight down; directional swipes go up, or down to a side).
  */
 async function swipe(
   page: Page,
@@ -85,40 +154,114 @@ async function swipe(
 ) {
   const view = page.viewportSize() ?? { width: 915, height: 412 };
   const attack = attackCenter(view.width, view.height);
-  const from = await page.evaluate(() => (window as TestWindow).__game!.inputs().length);
-  const after = await page.evaluate(() => {
-    const ev = (window as TestWindow).__game!.events();
-    return ev.length ? ev[ev.length - 1]!.tick : 0;
+  await page.waitForFunction(() => {
+    const g = (window as TestWindow).__game!;
+    return g.snapshot()?.entities[g.playerId()]?.attackPhase === 'idle';
   });
+  const before = await page.evaluate((isLate) => {
+    const w = window as TestWindow;
+    if (!isLate) w.__gestureRafGate!.pause();
+    w.__gestureDelivery = [];
+    const g = w.__game!;
+    return { tick: g.snapshot()!.tick, from: g.inputs().length, after: g.events().at(-1)?.tick ?? 0 };
+  }, late);
+  const { from, after } = before;
   const t0 = Date.now() / 1000;
   const moves = [
     [8, durS / 3],
     [16, (2 * durS) / 3],
     [26, durS],
   ] as const;
-  const sendMoves = () =>
-    Promise.all(
-      moves.map(([r, dt]) =>
-        touch(cdp, 'touchMove', [{ x: attack.x + r * dir.x, y: attack.y + r * dir.y, id }], t0 + dt),
-      ),
-    );
-  if (late) {
+  let touching = true;
+  let delivery: GestureDelivery[];
+  try {
     await touch(cdp, 'touchStart', [{ ...attack, id }], t0);
-    // The sim has sampled the press: its attack flag is in the recorded inputs.
+    if (late) {
+      // The sim has sampled the press: its attack flag is in the recorded inputs.
+      await page.waitForFunction(
+        ([f, attackFlag]) =>
+          ((window as TestWindow).__game?.inputs(f) ?? []).some((s) => (s.flags & attackFlag) !== 0),
+        [from, InputFlag.attack] as const,
+        { timeout: 30_000 },
+      );
+      const sampledPress = await page.evaluate(
+        ([f, attackFlag]) =>
+          (window as TestWindow).__game!.inputs(f).find((s) => (s.flags & attackFlag) !== 0),
+        [from, InputFlag.attack] as const,
+      );
+      expect(sampledPress!.flags & InputFlag.kick, 'late press is sampled before kick recognition').toBe(0);
+    }
+    for (const [r, dt] of moves)
+      await touch(cdp, 'touchMove', [{ x: attack.x + r * dir.x, y: attack.y + r * dir.y, id }], t0 + dt);
+    const terminal = { x: attack.x + 26 * dir.x, y: attack.y + 26 * dir.y };
     await page.waitForFunction(
-      ([f, attackFlag]) =>
-        ((window as TestWindow).__game?.inputs(f) ?? []).some((s) => (s.flags & attackFlag) !== 0),
-      [from, InputFlag.attack] as const,
-      { timeout: 30_000 },
+      ({ x, y }) => {
+        const delivered = (window as TestWindow).__gestureDelivery!;
+        const down = delivered.find((e) => e.type === 'pointerdown');
+        return (
+          !!down &&
+          delivered.some(
+            (e) =>
+              e.type === 'pointermove' &&
+              e.pointerId === down.pointerId &&
+              Math.abs(e.x - x) < 1 &&
+              Math.abs(e.y - y) < 1,
+          )
+        );
+      },
+      terminal,
+      { polling: 100, timeout: 30_000 },
     );
-    await sendMoves();
-  } else {
-    await Promise.all([touch(cdp, 'touchStart', [{ ...attack, id }], t0), sendMoves()]);
+    await touch(cdp, 'touchEnd', [], t0 + durS + 0.01);
+    touching = false;
+    await page.waitForFunction(
+      () => {
+        const delivered = (window as TestWindow).__gestureDelivery!;
+        const down = delivered.find((e) => e.type === 'pointerdown');
+        return !!down && delivered.some((e) => e.type === 'pointerup' && e.pointerId === down.pointerId);
+      },
+      null,
+      { polling: 100, timeout: 30_000 },
+    );
+    const held = await page.evaluate(() => {
+      const w = window as TestWindow;
+      return {
+        tick: w.__game!.snapshot()!.tick,
+        count: w.__game!.inputs().length,
+        delivery: w.__gestureDelivery!,
+      };
+    });
+    delivery = held.delivery;
+    console.log(`swipe transport ${id}: ${JSON.stringify({ late, before, held })}`);
+    const down = delivery.find((e) => e.type === 'pointerdown');
+    const move = delivery.filter((e) => e.type === 'pointermove').at(-1);
+    const up = delivery.find((e) => e.type === 'pointerup');
+    if (!down || !move || !up) throw new Error('incomplete native touch delivery');
+    expect(move.pointerId).toBe(down.pointerId);
+    expect(up.pointerId).toBe(down.pointerId);
+    expect(
+      Math.abs(move.timeStamp - down.timeStamp - durS * 1000),
+      'native gesture duration matches CDP stamps',
+    ).toBeLessThan(1);
+    expect(
+      Math.hypot(move.x - down.x, move.y - down.y),
+      'delivered move crosses the kick distance',
+    ).toBeGreaterThanOrEqual(inputDefaults().kickSwipePx);
+    if (!late) {
+      expect(held.tick, 'burst does not advance the sim before gesture delivery').toBe(before.tick);
+      expect(held.count, 'burst does not sample input before gesture delivery').toBe(from);
+    }
+  } catch (error) {
+    console.log(
+      `failed swipe transport ${id}: ${JSON.stringify(await page.evaluate(() => (window as TestWindow).__gestureDelivery))}`,
+    );
+    throw error;
+  } finally {
+    if (touching) await touch(cdp, 'touchEnd', [], t0 + durS + 0.01).catch(() => {});
+    await page.evaluate(() => (window as TestWindow).__gestureRafGate!.resume());
   }
-  await touch(cdp, 'touchEnd', [], t0 + durS + 0.01);
   // The swing plays out: the press reached the sim, the player's attack from it started, and the
-  // attack phase is back to 'idle' (the snapshot says 'cooldown' until the kick's 30-tick cooldown
-  // ends, and a kick asked for while the last one cools down is a punch by design). The start is
+  // attack phase is back to 'idle' after the player's own recovery. The start is
   // latched in the page (an attackStart event, or a phase other than 'idle', after the press), as the
   // page keeps only its latest events. All of it is sim state, so a slow runner only takes longer;
   // the timeout is a hang guard.
@@ -145,6 +288,17 @@ async function swipe(
   const inputs = await page.evaluate((f) => (window as TestWindow).__game!.inputs(f), from);
   const press = inputs.findIndex((s) => (s.flags & InputFlag.attack) !== 0);
   const kick = inputs.findIndex((s) => (s.flags & InputFlag.kick) !== 0);
+  console.log(
+    `swipe samples ${id}: attack at +${press}, kick at +${kick}; flags ${JSON.stringify(inputs.map((s) => s.flags))}; delivery ${JSON.stringify(delivery)}`,
+  );
+  if (!late) {
+    expect(press, 'burst press reaches the sim').toBeGreaterThanOrEqual(0);
+    expect(kick, 'first burst attack sample already carries kick').toBe(press);
+    const flags = inputs[press]!.flags;
+    const sideBits = InputFlag.attackSideLeft | InputFlag.attackSideRight;
+    expect(flags & InputFlag.kick).toBe(InputFlag.kick);
+    expect(flags & sideBits).toBe(dir.y < 0 ? sideBits : dir.x < 0 ? InputFlag.attackSideLeft : 0);
+  }
   const events = await page.evaluate((t) => {
     const g = (window as TestWindow).__game!;
     const player = g.playerId();
@@ -155,6 +309,10 @@ async function swipe(
   }, after);
   const first = events.find((e) => e.type === 'attackStart');
   const chain: ChainEvent[] = first ? events.filter((e) => e.causeId === first.causeId) : [];
+  if (!late) {
+    expect(first?.data['weapon'], 'the pre-sampled swipe starts directly as a kick').toBe('base:kick');
+    expect(hasPunchOutcome(chain), 'the pre-sampled swipe has no punch outcome').toBe(false);
+  }
   return { press, kick, chain };
 }
 
@@ -235,7 +393,9 @@ test('playtest 2: a swipe up is the straight kick, a swipe down-left kicks left'
   expect(upStart?.data['straight'], 'and it is the straight kick').toBe(true);
 
   const left = await swipe(page, cdp, 22, false, 0.15, { x: -0.75, y: 0.66 });
-  console.log(`swipe down-left: attack at +${left.press}; ${JSON.stringify(left.chain)}`);
+  console.log(
+    `swipe down-left: attack at +${left.press}, kick flag at +${left.kick}; ${JSON.stringify(left.chain)}`,
+  );
   const leftStart = left.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
   expect(leftStart, 'the swipe down-left starts a kick').toBeDefined();
   expect(leftStart?.data['side'], 'to the left').toBe(-1);
