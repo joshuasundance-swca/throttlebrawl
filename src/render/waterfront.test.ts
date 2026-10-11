@@ -6,6 +6,7 @@
 // across a side street; nothing on the road or in a sign's, a pad's or a lot's way; the sea lions
 // only on their stretch of water; the seawall's land and its sheer drop; and the layer's cost.
 import { describe, expect, it } from 'vitest';
+import type { BufferGeometry } from 'three';
 import {
   createRoadNetwork,
   loadWaterfrontLayout,
@@ -25,9 +26,12 @@ import {
   CLOCK_TIMES,
   fontCovers,
   hasWaterfront,
+  FRONT_ONLY,
+  Shape,
   planWaterfront,
   TOWER_TOP_M,
   WATERFRONT_DRAW_M,
+  WATERFRONT_COLOURS,
   WaterfrontLayer,
   type WaterfrontPlan,
 } from './waterfront';
@@ -86,7 +90,131 @@ const widthOf = (it: { geometry: { boundingBox: unknown; computeBoundingBox(): v
   return b.max.x - b.min.x;
 };
 
+type SignPoint = readonly [number, number, number];
+/** Front-facing triangles in the raised middle, excluding its cornice and lower trim. */
+function signPoints(geometry: BufferGeometry, colour: string): SignPoint[] {
+  const p = geometry.getAttribute('position');
+  const n = geometry.getAttribute('normal');
+  const c = geometry.getAttribute('color');
+  const rgb = [1, 3, 5].map((offset) => parseInt(colour.slice(offset, offset + 2), 16) / 255);
+  const points: SignPoint[] = [];
+  for (let i = 0; i < p.count; i += 3) {
+    const vertices = [i, i + 1, i + 2];
+    if (
+      vertices.every(
+        (v) =>
+          n.getZ(v) > 0.99 &&
+          p.getY(v) > 10.4 &&
+          p.getY(v) <= 13 &&
+          Math.abs(c.getX(v) - rgb[0]!) < 1e-6 &&
+          Math.abs(c.getY(v) - rgb[1]!) < 1e-6 &&
+          Math.abs(c.getZ(v) - rgb[2]!) < 1e-6,
+      )
+    )
+      for (const v of vertices) points.push([p.getX(v), p.getY(v), p.getZ(v)]);
+  }
+  return points;
+}
+
+function signChecks(backing: readonly SignPoint[], letters: readonly SignPoint[], width: number) {
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-5;
+  const numbers = letters.filter(([x]) => x > 0);
+  return {
+    coverage:
+      backing.length === 6 &&
+      near(Math.min(...backing.map(([x]) => x)), -6) &&
+      near(Math.max(...backing.map(([x]) => x)), 6) &&
+      near(Math.min(...backing.map(([, y]) => y)), 10.45) &&
+      near(Math.max(...backing.map(([, y]) => y)), 12.95),
+    height:
+      numbers.length > 0 &&
+      near(Math.min(...numbers.map(([, y]) => y)), 10.55) &&
+      near(Math.max(...numbers.map(([, y]) => y)), 12.85),
+    depth:
+      backing.length > 0 &&
+      letters.length > 0 &&
+      backing.every(([, , z]) => near(z, 0.08)) &&
+      letters.every(([, , z]) => near(z, 0.14)),
+    fit:
+      letters.length > 0 &&
+      [...backing, ...letters].every(
+        ([x, y]) => Math.abs(x) <= 6 && Math.abs(x) < width * 0.2 && y > 10.4 && y < 13,
+      ) &&
+      letters.every(([, y]) => y >= 10.45 && y <= 12.95),
+  };
+}
+
+function expectedSign(pier: number): Shape {
+  const sign = new Shape();
+  sign.box([12, 2.5, 0.04], [0, 11.7, 0.06], WATERFRONT_COLOURS.pierText, { omit: FRONT_ONLY });
+  sign.text('PIER', -2.1, 11.075, 0.12, 0.25, WATERFRONT_COLOURS.shedTrim);
+  sign.text(String(pier), 2.1, 10.55, 0.12, 0.46, WATERFRONT_COLOURS.shedTrim);
+  return sign;
+}
+
 describe('San Francisco waterfront: what stands along the bay', () => {
+  it('gives every planned pier an ivory label and taller number on a fitted dark backing', () => {
+    let examined = 0;
+    for (const seed of [7, 8]) {
+      const input = inputOf(seed);
+      const drawn = planWaterfront(input, MODELS);
+      const sheds = input.layout.fronts.filter((f) => f.kind === 'shed');
+      expect(sheds.length).toBeGreaterThan(0);
+      for (const f of sheds) {
+        const item = drawn.items.find((i) => i.rule === f.rule && i.edge === f.edge && i.s === f.s);
+        if (!item) throw new Error(`missing pier ${f.pier}`);
+        const backing = signPoints(item.geometry, WATERFRONT_COLOURS.pierText);
+        const letters = signPoints(item.geometry, WATERFRONT_COLOURS.shedTrim);
+        expect(signChecks(backing, letters, f.width), `seed ${seed}, pier ${f.pier}`).toEqual({
+          coverage: true,
+          height: true,
+          depth: true,
+          fit: true,
+        });
+        const expected = expectedSign(f.pier).geometry();
+        expect(letters).toEqual(signPoints(expected, WATERFRONT_COLOURS.shedTrim));
+        expect(backing).toEqual(signPoints(expected, WATERFRONT_COLOURS.pierText));
+        const old = new Shape();
+        old.text(`PIER ${f.pier}`, 0, 10.8, 0.05, 0.42, WATERFRONT_COLOURS.pierText);
+        expect(expected.getAttribute('position').count / 3 - old.triangles).toBe(2);
+        expected.dispose();
+        examined++;
+      }
+    }
+    print(
+      `[examined] ${examined} seeded pier signs: exact source numbers, contrast, height, depth, fit; two added panel triangles per shed`,
+    );
+  });
+
+  it('sign controls reject old number height, missing backing, behind-wall letters and escaped letters', () => {
+    const geometry = expectedSign(12).geometry();
+    const backing = signPoints(geometry, WATERFRONT_COLOURS.pierText);
+    const letters = signPoints(geometry, WATERFRONT_COLOURS.shedTrim);
+    expect(Object.values(signChecks(backing, letters, 40))).toEqual([true, true, true, true]);
+    const oldHeight = letters.map(([x, y, z]): SignPoint => [
+      x,
+      x > 0 ? 10.55 + ((y - 10.55) * 2.1) / 2.3 : y,
+      z,
+    ]);
+    expect(signChecks(backing, oldHeight, 40).height).toBe(false);
+    expect(signChecks([], letters, 40).coverage).toBe(false);
+    expect(
+      signChecks(
+        backing,
+        letters.map(([x, y]): SignPoint => [x, y, -0.1]),
+        40,
+      ).depth,
+    ).toBe(false);
+    expect(
+      signChecks(
+        backing,
+        letters.map(([x, y, z]): SignPoint => [x + 10, y, z]),
+        40,
+      ).fit,
+    ).toBe(false);
+    geometry.dispose();
+  });
+
   it('loads the palms and the city kit for the waterfront only, and draws on no other network', () => {
     expect(needs('sf-waterfront')).toEqual(expect.arrayContaining(['palms', 'sfRoadside']));
     expect(needs('sf-hills')).not.toContain('palms');
