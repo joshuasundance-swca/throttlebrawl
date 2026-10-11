@@ -90,6 +90,7 @@ for (const textSize of ['normal', 'large', 'largest']) {
     );
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await expect(page.locator('#ui')).toHaveAttribute('data-text', textSize);
     await page.locator('#menu-career').click();
     await page.locator(`#career-region-${def.region.slice(def.region.indexOf(':') + 1)}`).click();
     await expect(page.locator('.career-map').first()).toBeVisible();
