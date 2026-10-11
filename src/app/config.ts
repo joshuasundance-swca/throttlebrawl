@@ -344,6 +344,11 @@ export function resolveDifficulty(
 const validSpeed = (m: number | undefined) =>
   m !== undefined && Number.isFinite(m) && m > 0 && m <= 1 ? m : 1;
 
+// Hunts need contact after the opening pass. A fixed 90% floor keeps a fast bike able to catch
+// the field, while the ordinary AI still owns acceleration, personality and safe navigation.
+// This applies after career/season resolution; other event families keep their tier pace.
+const HUNT_PACE_SHARE = 0.9;
+
 /** True when a network was baked from public map data (tools/gis), not drawn by hand. */
 function isRealRoad(network: unknown): boolean {
   const provenance = (network as { provenance?: { origin?: unknown } } | undefined)?.provenance;
@@ -852,7 +857,19 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const routeId = raceRouteKey(race, eventId, lengthId, setup.route);
   const routeDef = lookup(race.routes, routeId);
   const route = stream.routeFor(routeDef);
-  const pace = level?.paceMps ?? event.field.paceMps ?? 30;
+  const fieldPace = level?.paceMps ?? event.field.paceMps ?? 30;
+  // Resolve once through the same cross-pack override/fallback as the player's actual bike.
+  const player = riderDef(
+    race,
+    qualifyIn('base', PLAYER_PRESET),
+    { kind: 'player', slot: 0 },
+    fieldPace,
+    setup.playerBike,
+  );
+  const pace =
+    event.kind === 'takedown-hunt'
+      ? Math.max(fieldPace, player.bike.topSpeedMps * HUNT_PACE_SHARE)
+      : fieldPace;
   const rivalLevel: RiderLevel | undefined = level && {
     healthScale: level.healthScale,
     powerScale: level.powerScale,
@@ -879,13 +896,6 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const lawOff = setup.cops === false;
   const cops = (lawOff ? [] : copIds(race, eventId, tier)).map((id) =>
     riderDef(race, id, { kind: 'cop' }, pace, level?.copBike ?? undefined, copLevel),
-  );
-  const player = riderDef(
-    race,
-    qualifyIn('base', PLAYER_PRESET),
-    { kind: 'player', slot: 0 },
-    pace,
-    setup.playerBike,
   );
   const riders = [...rivals, player, ...cops];
   const weapons: SimWeaponDef[] = Object.entries(race.weapons).map(([contentId, w]) => ({
