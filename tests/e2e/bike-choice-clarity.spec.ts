@@ -52,6 +52,45 @@ async function noteFindings(page: Page, selector: string) {
   );
 }
 
+/** Complete painted lines must belong to the bike row, clear its neighbours and the fixed footer. */
+async function quickNoteLayout(page: Page) {
+  return page.locator('#race-option-bike .ro-note').evaluate((element) => {
+    const row = element.closest('.ro-row');
+    const value = element.closest('.ro-content') ?? element.closest('button');
+    const list = document.getElementById('race-options-list');
+    const footer = document.querySelector('#race-options .ro-foot');
+    if (!row || !value || !list || !footer) throw new Error('Missing Quick Play layout');
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lines = [...range.getClientRects()].filter((line) => line.width > 0 && line.height > 0);
+    const rowBox = row.getBoundingClientRect();
+    const valueBox = value.getBoundingClientRect();
+    const listBox = list.getBoundingClientRect();
+    const footerBox = footer.getBoundingClientRect();
+    const inside = (line: DOMRect, box: DOMRect) =>
+      line.left >= box.left - 1 &&
+      line.right <= box.right + 1 &&
+      line.top >= box.top - 1 &&
+      line.bottom <= box.bottom + 1;
+    const overlaps = (line: DOMRect, box: DOMRect) =>
+      line.left < box.right - 1 &&
+      line.right > box.left + 1 &&
+      line.top < box.bottom - 1 &&
+      line.bottom > box.top + 1;
+    const neighbours = [...list.querySelectorAll('.ro-row')].filter((other) => other !== row);
+    return {
+      lines: lines.length,
+      outsideRow: lines.some((line) => !inside(line, rowBox)),
+      outsideValue: lines.some((line) => !inside(line, valueBox)),
+      outsideList: lines.some((line) => !inside(line, listBox)),
+      overlappingRows: neighbours
+        .filter((other) => lines.some((line) => overlaps(line, other.getBoundingClientRect())))
+        .map((other) => other.id),
+      underFooter: lines.some((line) => overlaps(line, footerBox)),
+    };
+  });
+}
+
 for (const textSize of ['normal', 'large', 'largest']) {
   test(`bike comparisons remain readable and follow the ridden bike at 568x320/${textSize}`, async ({
     page,
@@ -103,6 +142,20 @@ for (const textSize of ['normal', 'large', 'largest']) {
     expect(measured).toHaveLength(1);
     expect(measured[0]?.visible).toBe(true);
     expect(measured[0]?.clipped || measured[0]?.overflow).toBe(false);
+    const layout = await quickNoteLayout(page);
+    expect(layout.lines).toBeGreaterThan(0);
+    expect(layout.outsideRow, `${textSize}: complete note inside bike row`).toBe(false);
+    expect(layout.outsideValue, `${textSize}: complete note inside its content cell`).toBe(false);
+    expect(layout.outsideList, `${textSize}: scrolled note fully painted in list`).toBe(false);
+    expect(layout.overlappingRows, `${textSize}: note overlaps another option`).toEqual([]);
+    expect(layout.underFooter, `${textSize}: note overlaps fixed actions`).toBe(false);
+    // The containment measure must catch the escaped short-row defect, independently of width.
+    await page.locator('#race-option-bike').evaluate((row) => {
+      Object.assign((row as HTMLElement).style, { height: '44px', minHeight: '0' });
+    });
+    const shortRow = await quickNoteLayout(page);
+    expect(shortRow.outsideRow, 'a planted short row loses vertical containment').toBe(true);
+    await page.locator('#race-option-bike').evaluate((row) => row.removeAttribute('style'));
     // A forced narrow container must be caught by the same measure.
     await page.addStyleTag({
       content: `${quickNote} { width: 1px !important; white-space: nowrap !important; }`,
