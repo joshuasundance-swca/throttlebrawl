@@ -1,13 +1,13 @@
 # The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
 # they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
 # it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (three slices), sim
-# (eight slices) and browser (eight slices, the last also running perf) run in parallel, each
+# (eight slices) and browser (ten slices, the last also running perf) run in parallel, each
 # running its tiers of `npm run check`. Every slice is planned as its whole job (setup, build and
 # tests; scripts/shard-plan.mjs) at no more than two thirds of its timeout-minutes, which
 # scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
 # for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
-# - full: true runs every tier: the full gate, 20 jobs. full: false is the quick check, 4 jobs:
+# - full: true runs every tier: the full gate, 22 jobs. full: false is the quick check, 4 jobs:
 #   static (plus the build and its size budget, `--tier static,budget`) and the three unit slices.
 # - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
 #   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
@@ -285,11 +285,13 @@ jobs:
   # in #176); the slice plan gives that slice fewer e2e seconds to make room. With fail-fast off (a
   # push to main, a train) a red slice never hides another's result; on a PR the first red job
   # cancels the run (see static). Full suite only. [default]
-  # Eight slices since 2026-10-06: with seven, the plan counted test seconds only, and slices planned
-  # at 355 s took 410 to 573 s as jobs (setup, the Chromium install and the build add 37 to 70 s;
-  # runs 37439710625, 37442774709). The refreshed table puts the largest at 391 s of job (2026-10-07,
-  # job setup included), within the unchanged 400 s line. Transient-card coverage and loading checks
-  # run in separate spec files: before the split that file alone cost 357.3 + 49 = 406.3 s of job.
+  # Ten slices since 2026-10-11: the fresh measured table's current ten-slice plan has a 367 s
+  # maximum against the unchanged 400 s line. The pending Pivot coverage brings the inventory to 64 browser specs; that model probe
+  # predicts maxima of 435 s for eight, 403 s for nine and 363 s for ten; those are predictions, not
+  # measured job times. The extra two browser jobs trade queueing against headroom; no faster
+  # wall-clock or cost result is claimed. The last slice still runs perf and keeps the dist artifact,
+  # keyed by strategy.job-total. Transient-card coverage and loading checks run in separate spec
+  # files: before the split that file alone cost 357.3 + 49 = 406.3 s of job.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
@@ -298,7 +300,7 @@ jobs:
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@v7
         with:
