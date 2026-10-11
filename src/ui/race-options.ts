@@ -51,7 +51,7 @@ export interface RaceOptionRow {
   index: number;
 }
 
-/** The race types' words (P4-12's new types are [open]: one today, so its row stays hidden). */
+/** The existing event families' labels; app supplies the region's available choices. */
 const KIND_LABELS: Readonly<Record<QuickPlayKind, string>> = {
   race: 'Race',
   hunt: 'Hunt',
