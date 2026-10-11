@@ -81,7 +81,7 @@ for (const textSize of ['normal', 'large', 'largest']) {
             version: 1,
             build: 'test',
             savedAt: '2026-10-10T00:00:00Z',
-            data: { textSize, volume: { master: 0 } },
+            data: { textSize, volumes: { master: 0 } },
           }),
         );
       },
