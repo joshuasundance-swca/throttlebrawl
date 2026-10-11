@@ -67,6 +67,7 @@ const m2Custom: Settings = {
   qualityTier: 'low',
   // Interview refinement: additive Quick Play competition, distinct from career progression.
   quickPlayField: 'matched',
+  quickPlayKind: 'grudge',
   look: 'brush',
   lookFallbackDismissed: true,
   showTuningPanel: true,
@@ -137,6 +138,7 @@ const M2_FIELDS = [
   // 2026-10-05: key remaps.
   'keyBindings',
   'quickPlayField',
+  'quickPlayKind',
 ] as const;
 
 describe('the M2 settings record', () => {
