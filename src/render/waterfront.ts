@@ -433,7 +433,10 @@ export function pierShed(width: number, pier: number, drop: number): Shape {
   }
   sh.box([7, 6, 0.06], [0, 3, 0.03], C.door, { omit: FRONT_ONLY });
   windows(sh, width * 0.9, 7.6, 4, [1.8, 1.6]);
-  sh.text(`PIER ${pier}`, 0, 10.8, 0.05, 0.42, C.pierText);
+  // Keep the sign above the lower cornice and pilasters, inside the raised middle.
+  sh.box([12, 2.5, 0.04], [0, 11.7, 0.06], C.pierText, { omit: FRONT_ONLY });
+  sh.text('PIER', -2.1, 11.075, 0.12, 0.25, C.shedTrim);
+  sh.text(String(pier), 2.1, 10.55, 0.12, 0.46, C.shedTrim);
   return sh;
 }
 
