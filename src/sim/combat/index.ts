@@ -213,7 +213,7 @@
 import { clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
 import { riderState } from '../riders';
-import type { AttackPhase, SimConfig, SimWeaponDef } from '../types';
+import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef } from '../types';
 import { addMover, systemState, type Mover, type SimSystem, type World } from '../world';
 import { lateSteps } from '../late';
 
@@ -616,6 +616,9 @@ export const STOWED_H = -20;
 /** pickupHolder of a weapon that is used up (charges spent, or broken): gone for the race. */
 export const SPENT = -2;
 
+/** A thrown weapon's wind-up can be snatched only from arm's length, not its throw range. */
+export const THROW_SNATCH_M = 1.6;
+
 /** The registered weapon behaviours (weapons-2): a closed list; the file header says what each adds. */
 export const WEAPON_BEHAVIOURS = [
   'melee.swing',
@@ -910,6 +913,61 @@ export function aimPreview(world: World, config: SimConfig, id: EntityId): Entit
   const st = combatState(world);
   if ((st.phase[id] ?? 'idle') !== 'idle') return st.targetId[id] ?? -1;
   return aim(world, config, a, 0).target;
+}
+
+/** Whether `holder` is winding up its held weapon (not a kick it switched to). */
+export function swingingHeld(st: CombatState, holder: Mover): boolean {
+  const id = holder.id;
+  return st.phase[id] === 'windup' && !!st.held[id] && st.weapon[id] === st.held[id];
+}
+
+/**
+ * The existing steal selection, shared by resolution and its next-press preview. Resolution has
+ * already decremented stagger; the preview supplies `staggerAdvance` for that future decrement.
+ * Full hands, kick intent and side flags do not change this rule. Exact ties keep iteration order.
+ */
+export function selectStealHolder(
+  world: World,
+  config: SimConfig,
+  st: CombatState,
+  thief: Mover,
+  ts: number,
+  staggerAdvance = 0,
+): Mover | null {
+  if (st.phase[thief.id] !== 'idle' || Math.max(0, (st.stagger[thief.id] ?? 0) - staggerAdvance) > EPS)
+    return null;
+  if (!isRiding(thief) || (riderState(world).health[thief.id] ?? 0) <= 0 || isLaw(config, thief)) return null;
+  let best: { holder: Mover; mine: boolean; dist2: number } | null = null;
+  for (const holder of world.movers) {
+    if (holder.id === thief.id || holder.kind !== 'rider' || !isRiding(holder)) continue;
+    if (!swingingHeld(st, holder) || !inReachHeight(world, holder, thief)) continue;
+    const w = weaponById(config, st.held[holder.id] ?? '');
+    if (!w?.steal) continue;
+    const age = (st.elapsed[holder.id] ?? 0) + ts;
+    if (age + EPS < w.steal.startTick || age - EPS > w.steal.endTick) continue;
+    const thrownW = behaviourOf(w) === 'throw.burst';
+    const boxS = thrownW ? Math.min(w.reachSM, THROW_SNATCH_M) : w.reachSM;
+    const boxD = thrownW ? Math.min(w.reachDM, THROW_SNATCH_M) : w.reachDM;
+    const rel = relative(config.road, holder, thief, boxS + 2);
+    if (!rel || Math.abs(rel.ds) > boxS || Math.abs(rel.dd) > boxD) continue;
+    const mine = st.targetId[holder.id] === thief.id;
+    const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
+    if (!best || (mine && !best.mine) || (mine === best.mine && dist2 < best.dist2))
+      best = { holder, mine, dist2 };
+  }
+  return best?.holder ?? null;
+}
+
+/**
+ * Holder a fresh attack on the next combat tick would select, at current positions and scale.
+ * A held attack must be released first. This reads state only: later movement, interruption and
+ * competing thieves can change the result before the press resolves.
+ */
+export function stealPreview(world: World, config: SimConfig, id: EntityId): EntityId {
+  const st = world.systems['combat'] as CombatState | undefined;
+  const thief = world.movers.find((m) => m.id === id);
+  if (!st || !thief || ((st.prevFlags[id] ?? 0) & InputFlag.attack) !== 0) return -1;
+  return selectStealHolder(world, config, st, thief, world.timeScale, world.timeScale)?.id ?? -1;
 }
 
 /** A takedown count, for the results screen and M4's takedown hunts. */

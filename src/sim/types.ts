@@ -100,6 +100,13 @@ export interface EntitySnapshot {
    * (a rival's is -1), and presentation only. Optional for hand-built snapshots.
    */
   aimId?: EntityId;
+  /**
+   * Holder a fresh attack on the next combat tick would select for a player, using current
+   * positions and timeScale; -1 for no candidate or a non-player entity. A held attack requires
+   * release first. Movement, interruptions and competing thieves may change the result before
+   * resolution. Presentation only; optional for hand-built snapshots.
+   */
+  stealId?: EntityId;
   lastAttackerId: EntityId;
   /** Metres from the start line along the route. */
   progress: number;
