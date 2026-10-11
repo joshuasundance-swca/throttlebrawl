@@ -322,11 +322,17 @@ export function careerView(
     const route = length?.route ?? '';
     const winBonus = plan.objectives.filter((o) => o.required).reduce((s, o) => s + o.rewardCash, 0);
     const roadKey = qualify(def.pack, n.road);
+    const timberBoss = n.id === def.boss && plan.rules.rule === 'timber' && plan.rules.rival;
+    const nextRegion = timberBoss ? defs.find((d) => d.regionKey === def.ending.next) : undefined;
     return {
       id: n.id,
       name: plan.name,
-      kindLabel: n.id === def.boss ? 'Boss' : (KIND_LABEL[plan.kind] ?? plan.kind),
-      objective: objectiveText(reg, plan),
+      kindLabel: timberBoss
+        ? `Region boss · ${riderName(reg, timberBoss)}`
+        : n.id === def.boss
+          ? 'Boss'
+          : (KIND_LABEL[plan.kind] ?? plan.kind),
+      objective: objectiveText(reg, plan) + (nextRegion ? ` Win to open ${nextRegion.regionName}.` : ''),
       bonuses: bonusTexts(plan),
       route: routeName(reg, route),
       km: routeKm(reg, route),

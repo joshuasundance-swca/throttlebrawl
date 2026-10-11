@@ -200,7 +200,9 @@ export function resultView(
     : null;
   const title =
     report.outcome === 'won'
-      ? (cleared ?? 'WON')
+      ? plan.rules.rule === 'timber' && plan.rules.rival && report.map?.finale
+        ? `${riderName(reg, plan.rules.rival).toUpperCase()} BEATEN`
+        : (cleared ?? 'WON')
       : report.outcome === 'busted'
         ? 'BUSTED'
         : report.outcome === 'quit'
@@ -209,6 +211,8 @@ export function resultView(
             ? `${ordinal(place).toUpperCase()} OF ${racers}. NOT ENOUGH.`
             : 'LOST';
   const news: string[] = [];
+  const nextRegion = report.teaser?.next ? defs.find((d) => d.regionKey === report.teaser?.next) : undefined;
+  if (nextRegion) news.push(`${nextRegion.regionName} is open.`);
   for (const t of report.map?.tiersOpened ?? []) news.push(`${t} is open.`);
   const claimed = report.map?.claimed.length ?? 0;
   if (claimed > 0) news.push(`${claimed === 1 ? 'A road' : `${claimed} roads`} claimed on the map.`);
