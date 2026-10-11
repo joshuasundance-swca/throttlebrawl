@@ -61,7 +61,6 @@ describe('returning career chapter', () => {
   const unusable: [string, Partial<EventResult>][] = [
     ['old season', { season: 2 }],
     ['future season', { season: 4 }],
-    ['missing season', { season: undefined }],
     ['free play', { node: null }],
     ['unknown region', { region: 'missing-region' }],
     ['qualified region', { region: later.regionKey }],
@@ -74,6 +73,15 @@ describe('returning career chapter', () => {
       first.regionId,
     );
     expect(returningCareerRegion(defs, played([invalid], 3))).toBeNull();
+  });
+
+  it('skips a newer result with no season after Season 1, using an earlier valid row or null', () => {
+    const missing = result(later);
+    expect('season' in missing).toBe(false);
+    expect(returningCareerRegion(defs, played([result(first, { season: 3 }), missing], 3))).toBe(
+      first.regionId,
+    );
+    expect(returningCareerRegion(defs, played([missing], 3))).toBeNull();
   });
 
   it('accepts a replaced historical event while its current chapter and node still exist', () => {
