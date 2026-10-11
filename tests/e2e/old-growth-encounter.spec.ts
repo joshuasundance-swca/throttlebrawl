@@ -44,8 +44,9 @@ const fixture = JSON.parse(readFileSync('tests/fixtures/save/profile-v1.json', '
   data: { regions: Record<string, unknown> };
 };
 const regions = diskRegions();
-const chapter = regions.find((r) => r.key === def.region)?.chapter;
-if (!chapter) throw new Error('No boss chapter order');
+const selectedChapter = regions.find((r) => r.key === def.region)?.chapter;
+if (!selectedChapter) throw new Error('No boss chapter order');
+const chapter = selectedChapter;
 fixture.data.regions = Object.fromEntries(
   careers.map((c) => {
     const region = c.region.slice(c.region.indexOf(':') + 1);
