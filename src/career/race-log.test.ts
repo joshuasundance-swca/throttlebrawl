@@ -262,13 +262,15 @@ describe('cop escape: survive or lose the heat', () => {
 
   it('combat targeting, NPC pursuit, a parked siren and a downed cop do not start the escape clock', () => {
     const r = race(survive, [obj('escape')]);
-    r.setCop({ targetId: ME });
     r.step([{ type: 'siren', actor: COP, data: { on: true } }], 600);
+    expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
+    r.setCop({ targetId: ME, attackPhase: 'active' });
+    r.step([], 600);
     expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
     r.setCop({ pursuitTargetId: RIVAL });
     r.step([], 600);
     expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
-    r.setCop({ targetId: -1, pursuitTargetId: -1 });
+    r.setCop({ targetId: -1, attackPhase: 'idle', pursuitTargetId: -1 });
     r.setRival({ pursuitTargetId: ME });
     r.step([], 600);
     expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
@@ -279,9 +281,9 @@ describe('cop escape: survive or lose the heat', () => {
 
   it('continuous pursuit stays active through a gap in combat attacks', () => {
     const r = race({ ...survive, surviveS: 600 }, [obj('escape')]);
-    r.setCop({ pursuitTargetId: ME, targetId: ME });
+    r.setCop({ pursuitTargetId: ME, targetId: ME, attackPhase: 'active' });
     r.step([], Math.round(MIN_CHASE_S * 60));
-    r.setCop({ targetId: -1 });
+    r.setCop({ targetId: -1, attackPhase: 'idle' });
     r.step([], Math.round((LOSE_HEAT_S + 1) * 60));
     expect(r.log.status().state).toBe('running');
     expect(r.log.status().headline).toMatch(/^SURVIVE /);
