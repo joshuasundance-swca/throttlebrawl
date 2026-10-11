@@ -10,6 +10,8 @@ type ObservationWindow = Window & {
     samples: Readonly<AppDrawnFrame>[];
     first: number;
     second: number;
+    cleanupArmed: boolean;
+    cleanupDelivered: boolean;
     offFirst: () => void;
     offSecond: () => void;
     offSamples: () => void;
@@ -42,6 +44,8 @@ test('built AppHandle observes real race, fast-forward hand-back, pause/menu, co
       samples: [],
       first: 0,
       second: 0,
+      cleanupArmed: false,
+      cleanupDelivered: false,
       offFirst: () => {},
       offSecond: () => {},
       offSamples: () => {},
@@ -68,7 +72,10 @@ test('built AppHandle observes real race, fast-forward hand-back, pause/menu, co
         observed.handBack = sample;
     }, errors);
     observed.offFirst = app.subscribeFrames(() => observed.first++, errors);
-    observed.offSecond = app.subscribeFrames(() => observed.second++, errors);
+    observed.offSecond = app.subscribeFrames(() => {
+      observed.second++;
+      if (observed.cleanupArmed) observed.cleanupDelivered = true;
+    }, errors);
     const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
     observed.ext = canvas.getContext('webgl2')!.getExtension('WEBGL_lose_context');
     canvas.addEventListener('webglcontextlost', () => {
@@ -169,20 +176,47 @@ test('built AppHandle observes real race, fast-forward hand-back, pause/menu, co
     const observed = (window as ObservationWindow).__observation!;
     observed.offFirst();
     observed.offFirst();
+    observed.cleanupArmed = true;
     return { first: observed.first, second: observed.second };
   });
-  await page.waitForFunction(
-    (before) => (window as ObservationWindow).__observation!.second > before,
+  await page.waitForFunction(() => (window as ObservationWindow).__observation!.cleanupDelivered);
+  expect(await page.evaluate(() => (window as ObservationWindow).__observation!.first)).toBe(stopped.first);
+  expect(await page.evaluate(() => (window as ObservationWindow).__observation!.second)).toBeGreaterThan(
     stopped.second,
   );
-  expect(await page.evaluate(() => (window as ObservationWindow).__observation!.first)).toBe(stopped.first);
   const collector = createSoakFrameCollector();
   const samples = await page.evaluate(() => (window as ObservationWindow).__observation!.samples);
+  const expected = {
+    eligibleIntervals: 0,
+    eligibleMs: 0,
+    excludedIntervals: 0,
+    excludedMs: 0,
+    epochBreaks: 0,
+  };
+  for (let i = 1; i < samples.length; i++) {
+    const previous = samples[i - 1]!;
+    const sample = samples[i]!;
+    const delta = sample.timestampMs - previous.timestampMs;
+    if (delta <= 0) continue;
+    if (previous.eligible && sample.eligible && previous.epoch === sample.epoch) {
+      expected.eligibleIntervals++;
+      expected.eligibleMs += delta;
+    } else {
+      expected.excludedIntervals++;
+      expected.excludedMs += delta;
+      if (previous.epoch !== sample.epoch) expected.epochBreaks++;
+    }
+  }
   for (const sample of samples) collector.record(sample);
   const report = collector.report();
-  expect(report.eligibleMs).toBeGreaterThan(0);
-  expect(report.epochBreaks).toBeGreaterThan(0);
-  expect(report.excludedIntervals).toBeGreaterThan(0);
+  expect(expected.eligibleIntervals).toBeGreaterThan(0);
+  expect(expected.epochBreaks).toBeGreaterThan(0);
+  expect(expected.excludedIntervals).toBeGreaterThan(0);
+  expect(report.distribution.samples).toBe(expected.eligibleIntervals);
+  expect(report.eligibleMs).toBe(expected.eligibleMs);
+  expect(report.excludedIntervals).toBe(expected.excludedIntervals);
+  expect(report.excludedObservedMs).toBe(expected.excludedMs);
+  expect(report.epochBreaks).toBe(expected.epochBreaks);
   expect(report.state).toBe('collecting'); // this regression is not a production 15-minute soak
   await page.evaluate(() => {
     const observed = (window as ObservationWindow).__observation!;
