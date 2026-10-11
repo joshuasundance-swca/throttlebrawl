@@ -41,6 +41,7 @@ describe('the race options screen as data', () => {
   it('shows every option with a choice to make, at the record’s values', () => {
     expect(ids(DEFAULT_SETTINGS)).toEqual([
       'bike',
+      'field',
       'time',
       'weather',
       'rivals',
@@ -125,5 +126,19 @@ describe('the race options screen as data', () => {
 
   it('an unknown row changes nothing', () => {
     expect(stepRaceOption(VIEW, DEFAULT_SETTINGS, 'nope' as 'bike', 1)).toEqual(DEFAULT_SETTINGS);
+  });
+  it('offers open or same-bike competition, keeps it through reload, and defaults missing/invalid values to open', () => {
+    expect(shown(DEFAULT_SETTINGS, 'field')).toBe('Open field');
+    const missing = { ...DEFAULT_SETTINGS };
+    delete missing.quickPlayField;
+    expect(shown(missing, 'field')).toBe('Open field');
+    expect(shown({ ...DEFAULT_SETTINGS, quickPlayField: 'invalid' } as unknown as Settings, 'field')).toBe(
+      'Open field',
+    );
+    const matched = stepRaceOption(VIEW, missing, 'field', 1);
+    expect(matched.quickPlayField).toBe('matched');
+    expect(shown(sanitiseSettings(JSON.parse(JSON.stringify(matched))), 'field')).toBe('Same bike');
+    expect(stepRaceOption(VIEW, matched, 'field', 1).quickPlayField).toBe('open');
+    expect(matched.raceOptions).toEqual(missing.raceOptions);
   });
 });

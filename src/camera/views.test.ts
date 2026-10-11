@@ -218,6 +218,36 @@ describe('camera-3: the far chase cam', () => {
 });
 
 describe('camera-3: the helmet cam', () => {
+  it('caps the elevated takedown lens at the normal top-speed chase FOV while retaining a lower FOV', () => {
+    const road = straightRoad();
+    const cap = def('fovBaseDeg') + def('fovKickDeg');
+    for (const speed of [0, 45])
+      for (const motion of [0, 1])
+        for (const slow of [false, true]) {
+          const t = riderOn(road, 300, 1.7, { speed });
+          const cam = camOn(2, road);
+          cam.setShakeAmount(1);
+          cam.setMotionAmount(motion);
+          const normal = cam.snap(t);
+          cam.onEvents([
+            { tick: 1, type: 'takedown', actor: ME, target: VICTIM, causeId: 3, data: {} },
+            ...(slow ? [{ tick: 1, type: 'slowmoStart' as const, actor: ME, data: {} }] : []),
+          ]);
+          const p = cam.update(t, DT);
+          expect(cam.mode).toBe('takedown');
+          expect(p.fov).toBeCloseTo(Math.min(normal.fov, cap));
+          expect(behind(p, t)).toBeGreaterThan(def('takedownDistanceM') * 0.5);
+          expect(p.lookX).toBeCloseTo(normal.lookX);
+          expect(p.lookY).toBeCloseTo(normal.lookY);
+          expect(p.lookZ).toBeCloseTo(normal.lookZ);
+          expect(normal.fov).toBeCloseTo(
+            def('helmetFovDeg') + (speed ? def('fovKickDeg') * (motion ? 1 : def('helmetCalm')) : 0),
+          );
+          expect(cam.update(t, DT, { lookBack: true }).fov).toBe(def('fovBaseDeg'));
+          expect(cam.snap(t).fov).toBeCloseTo(normal.fov);
+        }
+  });
+
   it("sits at the rider's own helmet (render's near plane hides it), leaning and weaving", () => {
     const road = straightRoad();
     let examined = 0;

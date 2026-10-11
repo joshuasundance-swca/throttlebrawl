@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { openQuickPlay } from './menu-navigation';
 
 // Spoken barks (the maintainer, 2026-10-01: "Voices go in"), in a real browser:
 // - offline, through the real WebAudio graph and a real clip from the pack: a said line is heard on
@@ -163,9 +164,10 @@ test('voices in the build: no clip in the first load; the first bark fetches its
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   expect(clips, 'no clip loads before a race').toEqual([]);
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   const bubble = page.locator('#hud-ticker[data-cls="bark"]');
   await expect(bubble).toBeVisible({ timeout: 15_000 });

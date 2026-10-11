@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // A fresh seed per race in the real game (playtest 1c item 2, 2026-09-30: "I want randomness so
 // you don't see the same cars in the same order"). This page runs WITHOUT the test flag, as a
@@ -46,6 +47,7 @@ test('each race draws a fresh seed, and the debug report shows it', async ({ pag
   // A new device's first tap lands on the menu; Race starts a free-play race. Restart below
   // restarts that race.
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
   // eslint-disable-next-line no-restricted-syntax -- this page runs as a player's, without the test flag, so there is no tick to wait on: a moment of race before the pause

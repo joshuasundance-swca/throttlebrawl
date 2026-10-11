@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { frames } from './lockstep';
 
@@ -57,6 +58,7 @@ async function boot(page: Page, withPad = false) {
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 60_000 });
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');

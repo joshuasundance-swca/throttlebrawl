@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { placeElement, placeTouchButtons, type TouchLayout } from '../../src/core/layout.ts';
 import { inputDefaults } from '../../src/input/tuning.ts';
 import { InputFlag, type SimInput } from '../../src/sim/types.ts';
+import { openQuickPlay } from './menu-navigation';
 
 // input-1 browser device-path specs (docs/milestones/M1.md, "input-1"): real touches, sent through
 // Chrome's touch emulation so they arrive as real Pointer Events with real pointer ids, and real
@@ -28,6 +29,7 @@ async function startRace(page: Page): Promise<string[]> {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
   await page.waitForFunction(() => ((window as TestWindow).__game?.inputs().length ?? 0) > 30);

@@ -173,6 +173,18 @@ describe('camera-2: the takedown framing', () => {
   const road = straightRoad();
   const S = 300;
 
+  it.each([true, false])('keeps the upcoming road visible with slow motion %s', (slow) => {
+    const { cam } = pair(road);
+    const t = riderOn(road, S, 1.7);
+    cam.snap(t);
+    cam.onEvents(slow ? [takedownAt(0), slowmo('slowmoStart', 0)] : [takedownAt(0)]);
+    const victim = road.toWorld(0, S - 35, -30, 0);
+    for (let n = 0; n < 48; n++) {
+      const p = cam.update(t, DT, { entities: [{ id: VICTIM, ...victim }] });
+      expect(inView(p, road.toWorld(0, S + 60, 1.7, 0)), `road, frame ${n}`).toBe(true);
+    }
+  });
+
   /** The victim: starts alongside 6 m ahead in the other lane, then is flung sideways at 9 m/s. */
   function victimAt(seconds: number): { id: number; x: number; y: number; z: number } {
     const w = road.toWorld(0, S + 6, -1.7 - 9 * seconds, 0);

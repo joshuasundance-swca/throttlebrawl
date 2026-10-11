@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 // Playtest 1 (2026-09-30): "idk how to kick on the laptop", and "don't clutter the in-game HUD with
@@ -14,6 +15,7 @@ async function toRace(page: Page) {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
@@ -53,6 +55,7 @@ test.describe('laptop', () => {
     console.log(`pause legend: ${JSON.stringify(text)}`);
     for (const line of LEGEND) expect(text).toContain(line);
     // It fits on the screen: the whole card is inside the viewport.
+    await legend.scrollIntoViewIfNeeded();
     const box = await legend.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.y).toBeGreaterThanOrEqual(0);
@@ -80,7 +83,13 @@ test('phone: the legend is one folded line on the pause screen, and opens on a t
   // The pause screen's buttons stay on the phone's screen with the legend folded.
   const view = page.viewportSize()!;
   for (const id of ['#pause-resume', '#pause-quit', '#pause-copy-report', '#pause-keys summary']) {
+    await page.locator(id).scrollIntoViewIfNeeded();
     const b = await page.locator(id).boundingBox();
+    for (const primary of ['#pause-resume', '#pause-quit']) {
+      const action = await page.locator(primary).boundingBox();
+      expect(action!.y).toBeGreaterThanOrEqual(0);
+      expect(action!.y + action!.height).toBeLessThanOrEqual(view.height);
+    }
     expect(b, id).not.toBeNull();
     expect(b!.y + b!.height, `${id} is on screen`).toBeLessThanOrEqual(view.height);
   }

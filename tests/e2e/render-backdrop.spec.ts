@@ -2,6 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { fastForwardDone, frames } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // The backdrop (W-P "fill the world", the maintainer, 2026-10-01b: "distance and skyline: hills,
 // mountains, city skylines, water, bridges on the horizon"). In a real browser at the phone's
@@ -105,6 +106,7 @@ async function race(page: Page, c: (typeof CASES)[number], look: string): Promis
   }, look);
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator(c.chip).click();
   if (c.route) {
     const r = page.locator(c.route);
@@ -116,6 +118,7 @@ async function race(page: Page, c: (typeof CASES)[number], look: string): Promis
     g?.setSeed(3);
     g?.setBot(true);
   });
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
   await rideTo(page, 420);
@@ -217,12 +220,14 @@ test("San Francisco's far ground leaves the bay beside the road as sea (seed 3, 
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#region-region-sf-san-francisco').click();
   await page.evaluate(() => {
     const g = (window as TestWindow).__game;
     g?.setSeed(3);
     g?.setBot(true);
   });
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
   await rideTo(page, 700);

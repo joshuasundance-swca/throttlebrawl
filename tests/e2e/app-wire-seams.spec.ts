@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // The integration round (2026-10-01): seams built last run, now reachable in the real game.
 // - The camera views (camera-3): C and gamepad d-pad up step low chase, far chase, helmet, and the
@@ -78,6 +79,7 @@ async function boot(page: Page, withPad = false) {
 async function race(page: Page, chip?: string, bot = true) {
   if (chip) await page.locator(chip).click();
   await page.evaluate((on) => (window as TestWindow).__game?.setBot(on), bot);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 60_000 });
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
@@ -222,6 +224,7 @@ test("the radio follows the region: the Keys stations, then the Pacific Northwes
   // Back to the menu, pick the Pacific Northwest, race there.
   await page.keyboard.press('Escape');
   await page.locator('#pause-quit').click();
+  await openQuickPlay(page);
   await race(page, '#region-region-pnw-pacific-northwest');
   const pnw = (await view(page)).radio;
   // Playtest 2 (2026-10-02, "different stations and music in different regions"): the region's
@@ -272,6 +275,7 @@ test("a Pacific Northwest race's locals talk, with the region pack's lines", asy
   const problems = watch(page);
   const pnwLines = barkLines('region-pnw');
   await boot(page);
+  await openQuickPlay(page);
   await race(page, '#region-region-pnw-pacific-northwest');
   const heard: { speaker: string; text: string }[] = [];
   const deadline = Date.now() + 150_000;

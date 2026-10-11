@@ -1,3 +1,4 @@
+import { openMainMenu } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 import { buildIdFindings, screenFitFindings, type BuildIdPlace } from '../../src/ui/screen-fit';
@@ -138,33 +139,42 @@ export async function paint(
         const top = document.elementFromPoint(x, y);
         return !!top && card.contains(top);
       };
-      const cards = ids.map((id, i) => {
+      const cards = ids.flatMap<Painted['cards'][number]>((id, i) => {
         const card = cardEls[i];
         const shown = !!card && !!screen && seen(card) && seen(screen);
         const empty = { left: 0, top: 0, right: 0, bottom: 0 };
         if (!card || !shown)
-          return { id, shown: false, inScreen: false, positioned: [], onTop: false, box: empty };
+          return [{ id, shown: false, inScreen: false, positioned: [], onTop: false, box: empty }];
         const positioned: string[] = [];
         for (let p: HTMLElement | null = card; p && p !== screen; p = p.parentElement) {
           const pos = getComputedStyle(p).position;
           if (pos === 'fixed' || pos === 'sticky' || pos === 'absolute') positioned.push(pos);
         }
         const r = card.getBoundingClientRect();
-        // Nothing lies over the card: a tap at its centre (a flow card takes touches on itself) and on
-        // each of its buttons lands on the card.
+        // Cards and controls use the same painted bounds. A scroller can clip a card's DOM box
+        // behind the fixed outcome/actions; those clipped pixels neither cover them nor take taps.
+        // Fixed layers escape the scroll clip, so the planted old-position negative controls still
+        // measure their visible obstruction and fail the flow rule.
+        const clipFrom = positioned.includes('fixed') ? screen : card.parentElement;
+        const visible = painted(boxOf(r), clipFrom);
+        if (!visible) return [];
         const points = [...card.querySelectorAll('button')]
           .filter(seen)
           .map((b) => b.getBoundingClientRect())
-          .map((b) => [b.left + b.width / 2, b.top + b.height / 2] as const);
-        if (!race) points.push([r.left + r.width / 2, r.top + r.height / 2]);
-        return {
-          id,
-          shown,
-          inScreen: !!screen && screen.contains(card),
-          positioned,
-          onTop: points.every(([x, y]) => insideCard(card, x, y)),
-          box: boxOf(r),
-        };
+          .map((b) => painted(boxOf(b), clipFrom))
+          .filter((b): b is B => b !== null)
+          .map((b) => [b.left + (b.right - b.left) / 2, b.top + (b.bottom - b.top) / 2] as const);
+        if (!race) points.push([(visible.left + visible.right) / 2, (visible.top + visible.bottom) / 2]);
+        return [
+          {
+            id,
+            shown,
+            inScreen: !!screen && screen.contains(card),
+            positioned,
+            onTop: points.every(([x, y]) => insideCard(card, x, y)),
+            box: visible,
+          },
+        ];
       });
       type Thing = {
         name: string;
@@ -284,16 +294,27 @@ export function fit(p: Painted, viewport: { width: number; height: number }): st
 /** The scroll room a screen has (0 where it all fits). */
 export async function scrollRoom(page: Page, screenSel: string): Promise<number> {
   return page.evaluate((sel) => {
-    const e = document.querySelector<HTMLElement>(sel);
+    const outer = document.querySelector<HTMLElement>(sel);
+    const e =
+      outer?.querySelector<HTMLElement>('.action-details, #quick-play:not([hidden]) .flow-details') ?? outer;
     return e ? Math.max(0, e.scrollHeight - e.clientHeight) : 0;
   }, screenSel);
 }
 
 export async function scrollTo(page: Page, screenSel: string, top: number) {
-  await page.evaluate(({ sel, top }) => document.querySelector<HTMLElement>(sel)?.scrollTo({ top }), {
-    sel: screenSel,
-    top,
-  });
+  await page.evaluate(
+    ({ sel, top }) => {
+      const outer = document.querySelector<HTMLElement>(sel);
+      const target =
+        outer?.querySelector<HTMLElement>('.action-details, #quick-play:not([hidden]) .flow-details') ??
+        outer;
+      target?.scrollTo({ top });
+    },
+    {
+      sel: screenSel,
+      top,
+    },
+  );
 }
 
 /**
@@ -342,6 +363,22 @@ export async function raise(page: Page, ids: readonly string[]) {
   }
 }
 
+/** A raised card must be wholly visible, including inside any nested scrolling pane. */
+export function wholeCardFindings(
+  id: string,
+  raw: PaintedCard['box'],
+  painted: PaintedCard['box'] | undefined,
+  viewport: { width: number; height: number },
+): string[] {
+  const found = inViewFindings(id, raw, viewport);
+  if (
+    !painted ||
+    (['left', 'top', 'right', 'bottom'] as const).some((edge) => Math.abs(raw[edge] - painted[edge]) > 1)
+  )
+    found.push(`${id} is clipped by its scrolling pane`);
+  return found;
+}
+
 /**
  * Each card, raised again with its screen scrolled to the end and to the top, comes up in view: the
  * screen brings it there (polish batch E's check, mustFix 1).
@@ -362,9 +399,15 @@ export async function checkInView(
       await raise(page, [id]);
       const p = await paint(page, screenSel, [id]);
       const card = p.cards[0];
-      const found = card ? inViewFindings(id, card.box, size) : [`${id} was not measured`];
+      // This is a full-card visibility check, unlike paint's overlap check: clipping a card
+      // cannot turn a partly off-screen card into an in-view one.
+      const raw = await page.locator(`#${id}`).boundingBox();
+      const box = raw
+        ? { left: raw.x, top: raw.y, right: raw.x + raw.width, bottom: raw.y + raw.height }
+        : undefined;
+      const found = box ? wholeCardFindings(id, box, card?.box, size) : [`${id} was not measured`];
       const where = `${label} at ${size.name}: ${id} raised with the screen scrolled ${at * 100}% of ${Math.round(room)} px`;
-      console.log(`${where}: box ${JSON.stringify(card?.box)}; findings ${JSON.stringify(found)}`);
+      console.log(`${where}: box ${JSON.stringify(box)}; findings ${JSON.stringify(found)}`);
       expect.soft(found, where).toEqual([]);
     }
   }
@@ -447,6 +490,26 @@ export async function checkScreen(
     for (const at of room > 0 ? [0, 0.5, 1] : [0]) {
       await scrollTo(page, screenSel, room * at);
       const where = `${label} at ${size.name}, scrolled ${at * 100}% of ${Math.round(room)} px`;
+      // Result outcome and main actions remain on screen while only the details scroll.
+      const fixed = page.locator(`${screenSel} .action-heading, ${screenSel} .action-actions button`);
+      for (const node of await fixed.all()) {
+        if (!(await node.isVisible())) continue;
+        const box = await node.boundingBox();
+        expect.soft(box!.y, `${where}: fixed outcome/action top`).toBeGreaterThanOrEqual(0);
+        expect
+          .soft(box!.y + box!.height, `${where}: fixed outcome/action bottom`)
+          .toBeLessThanOrEqual(size.height + 0.5);
+        if (await node.evaluate((e) => e.tagName === 'BUTTON')) {
+          const hit = await node.evaluate((e) => {
+            const r = e.getBoundingClientRect();
+            const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return at === e || e.contains(at);
+          });
+          expect.soft(hit, `${where}: action is uncovered while details scroll`).toBe(true);
+        }
+        if (await node.evaluate((e) => e.tagName === 'BUTTON'))
+          expect.soft(box!.height, `${where}: fixed action has room`).toBeGreaterThanOrEqual(44);
+      }
       const p = await paint(page, screenSel, cardIds);
       const found = [...judge(p, size), ...fit(p, size)];
       console.log(
@@ -489,13 +552,14 @@ export async function checkRace(page: Page, label: string) {
 }
 
 export async function setTextSize(page: Page, textSize: (typeof TEXT_SIZES)[number]) {
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-access').click();
   const pick = page.locator(`#settings-textSize [data-value="${textSize}"]`);
   await pick.click();
   await expect(pick).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#settings-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 export async function rideToTheEnd(page: Page, what: string) {
@@ -565,7 +629,7 @@ export const linesSaying = (page: Page, words: RegExp, plantDoubled: string | nu
 export async function toMenu(page: Page) {
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 export { buildIdFindings, screenFitFindings } from '../../src/ui/screen-fit';

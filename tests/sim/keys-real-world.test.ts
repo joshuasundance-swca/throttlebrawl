@@ -1,10 +1,11 @@
 /// <reference types="vite/client" />
 // The real world in the Keys career (playtest 3, wave C, T10.4; critic W1: "the real world never
 // reaches the career"; the maintainer, round 1: "Duval St"; round 3: the Seven Mile's old bridge, "rivals
-// and cops on the highway only"). Rules, not lists: where a real route's event sits, what the Seven Mile
-// escape asks, what a roadside zone may name, where the Old Town's own people and vehicles may turn up,
+// and cops on the highway only", withdrawn 2026-10-10). Rules, not lists: where a real route's event sits,
+// what the Seven Mile escape asks, what a roadside zone may name, where the Old Town's own people and vehicles may turn up,
 // and that the tour of Duval Street meets them. The route and the old road themselves are
-// tools/gis/routes-keys-pt3.test.ts; the field staying on the highway is ai-stay-on-highway.test.ts.
+// tools/gis/routes-keys-pt3.test.ts; occasional participation is interview-seven-mile.test.ts and
+// explicitly barred routes remain covered by ai-stay-on-highway.test.ts.
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, createStreamCache } from '../../src/app';
 import { BAR_STYLES } from '../../src/audio/soundscape';
@@ -59,7 +60,7 @@ describe('the real routes in the career', () => {
     expect(eventPlan(REG, seven?.event ?? '').kind).toBe('cop-escape');
   });
 
-  it('the Seven Mile escape is not over before the old road can be taken, and the law never takes it', () => {
+  it('the Seven Mile escape is not over before the old road can be taken, and the law may follow', () => {
     const seven = NODES.find((n) => routeOf(n.event).key === 'base:osm-seven-mile-run');
     const { key, plan } = routeOf(seven?.event ?? '');
     const cfg = buildSimConfig(REG, STREAMS.forRoute(REG, key), {
@@ -67,15 +68,17 @@ describe('the real routes in the career', () => {
       eventId: seven?.event ?? '',
       route: key,
     });
-    // The old road is a branch the field is never handed onto (aiTake 0); its first road starts at the
-    // turn-off. An escape ridden by distance must ask more than the highway's length to that turn-off
-    // and the repair platform's hop beyond it, or the old road is never the way out.
-    const old = cfg.route.branches.find((b) => b.aiTake === 0);
-    expect(old, 'a branch the AI never takes').toBeDefined();
+    // Identify the old road by its stable pack identity rather than its former zero-participation rule.
+    // Its first road starts at the turn-off. An escape ridden by distance must ask more than the
+    // highway's length to that turn-off and the repair platform's hop beyond it, or the old road is never the way out.
+    const old = cfg.route.branches.find((b) => b.id === 'osm-sm-old-road');
+    expect(old, 'the configured old-road branch').toBeDefined();
+    expect(old?.aiTake, 'occasional old-road participation').toBeGreaterThan(0);
+    expect(old?.aiTake, 'the highway remains the usual path').toBeLessThan(0.5);
     const turnOff = cfg.route.progressAt(old?.edges[0] ?? 0, 0);
     expect(plan.rules.escapeBy).toBe('distance');
     expect(plan.rules.escapeDistanceM ?? 0).toBeGreaterThan(turnOff + 300);
-    // Law in every race: the chase is what the old road shakes.
+    // Law in every race: the old road remains a risky escape route, rather than a guaranteed safe exit.
     const cops = REG.events[seven?.event ?? '']?.cops;
     expect(cops?.mode).toBe('every-race');
     expect(cops?.baseCount ?? 0).toBeGreaterThan(0);
@@ -108,7 +111,7 @@ describe('the old road as the way out of the Seven Mile escape', () => {
         roadIds: config.road.edges.map((e) => e.id),
         secrets: KEYS.secrets,
       });
-      const branch = config.route.branches.find((b) => b.aiTake === 0);
+      const branch = config.route.branches.find((b) => b.id === 'osm-sm-old-road');
       const zone = branch?.choice;
       if (!branch || !zone) throw new Error('no old road with a turn-off');
       const side = zone.d0 + zone.d1 >= 0 ? 1 : -1;
@@ -135,6 +138,7 @@ describe('the old road as the way out of the Seven Mile escape', () => {
       expect(ticksOnOld / 60, `seed ${seed}: took the old road`).toBeGreaterThan(TOOK_IT_S);
       expect(log.tally().busted, `seed ${seed}`).toBe(false);
       expect(status.state, `seed ${seed}`).toBe('won');
+      expect(status.endNow || log.tally().finished, `seed ${seed}: the career race ends`).toBe(true);
     }
   }, 900_000);
 });

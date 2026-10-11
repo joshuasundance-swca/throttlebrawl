@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 // The Text size setting at its largest (M5's a11y-1; playtest 4 run B, B13; docs/product-spec.md,
@@ -107,10 +108,11 @@ async function bootToMenu(page: Page) {
   });
   await page.goto('./?settings=all');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 async function setLargest(page: Page) {
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-access').click();
   await page.locator('#settings-textSize [data-value="largest"]').click();
@@ -119,7 +121,7 @@ async function setLargest(page: Page) {
     'true',
   );
   await page.locator('#settings-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
 async function checkScreens(page: Page, label: string) {
@@ -137,6 +139,8 @@ async function checkScreens(page: Page, label: string) {
   expect(found.out, `${label}: the menu`).toEqual([]);
   await expectButtonsReachable(page, `${label}: the menu`, '#menu');
 
+  await openMainMenu(page);
+
   await page.locator('#menu-settings').click();
   const tabs = await page.locator('[id^="settings-tab-"]:visible').evaluateAll((els) => els.map((e) => e.id));
   expect(tabs, `${label}: the Access tab is there`).toContain('settings-tab-access');
@@ -150,6 +154,7 @@ async function checkScreens(page: Page, label: string) {
 
   // The pause menu over a race.
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
   await page.keyboard.press('Escape');

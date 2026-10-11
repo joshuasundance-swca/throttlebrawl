@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { grainShare, NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // Playtest 1b item 6 (render/looks): the maintainer's favourite look, "Ink + 1960s film" (`kodak`),
 // is a playable look next to `classic`, switchable in Settings. In a real browser:
@@ -72,6 +73,7 @@ async function race(page: Page, look?: string, light?: string, steps?: number) {
     g?.setBot(true);
     if (n !== undefined) g?.lockstep(n);
   }, steps);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
 }
 

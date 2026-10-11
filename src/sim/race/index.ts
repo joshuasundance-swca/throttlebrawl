@@ -122,6 +122,15 @@ export function gridPosition(config: SimConfig, index: number): RoadPos {
     if (i < index) slot++;
     racers++;
   }
+  if (config.event.kind === 'takedown-hunt' && !isLaw(config, index)) {
+    // Put targets in front from the outset; this never changes pace or an earned lead.
+    const player = config.riders[index]?.controller.kind === 'player';
+    slot = config.riders.filter(
+      (r, i) =>
+        r.faction !== 'law' &&
+        (player ? r.controller.kind !== 'player' || i < index : r.controller.kind !== 'player' && i < index),
+    ).length;
+  }
   if (isLaw(config, index)) {
     let before = 0;
     for (let i = 0; i < index; i++) if (isLaw(config, i)) before++;

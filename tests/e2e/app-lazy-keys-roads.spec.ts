@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // Run W-P: the Keys' real-road data (the Bahia Honda run, built from map data) is not in the
 // first-load JavaScript any more. The app fetches it after boot, the route picker then offers it,
@@ -55,6 +56,7 @@ async function raceAndCheck(page: Page, seed: number) {
     g?.setSeed(s);
     g?.setBot(true);
   }, seed);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120, null, {
     timeout: 60_000,
@@ -76,9 +78,10 @@ test('the Keys real roads load after boot, outside the first-load scripts, and r
   page.on('pageerror', (err) => problems.push(err.message));
   await page.goto('./');
   await page.locator('#start-screen').click();
-  // Offered once its data is in (fetched in the background at boot).
+  // Attached once its data is in (fetched in the background at boot). Home hides the setup
+  // pane; measure boot requests before opening Quick Play, then check visibility for the race.
   const bahia = page.locator('#route-base-osm-bahia-honda-run');
-  await expect(bahia).toBeVisible({ timeout: 30_000 });
+  await expect(bahia).toBeAttached({ timeout: 30_000 });
   const fetched = await fetchedRoads(page);
   console.log(`[print] real-road files fetched at boot: ${fetched.sort().join(', ')}`);
   expect(fetched).toEqual(
@@ -102,6 +105,8 @@ test('the Keys real roads load after boot, outside the first-load scripts, and r
   // Bahia Honda, from the menu.
   await page.keyboard.press('Escape');
   await page.locator('#pause-quit').click();
+  await openQuickPlay(page);
+  await expect(bahia).toBeVisible();
   await bahia.click();
   await expect(bahia).toHaveAttribute('aria-checked', 'true');
   const real = await raceAndCheck(page, 4);

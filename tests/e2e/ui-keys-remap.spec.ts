@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { InputFlag, type SimInput } from '../../src/sim/types.ts';
@@ -34,6 +35,7 @@ test.beforeEach(async ({ page }) => {
 async function startRace(page: Page, query = '') {
   await page.goto(`./${query}`);
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
 }
@@ -120,6 +122,7 @@ test('phone landscape: the Keys tab over the paused race fits, both devices (pre
 test('phone, touch only: no Keys tab (the touch controls never change)', async ({ page }) => {
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await expect(page.locator('#settings-tab-controls')).toBeVisible();
   await expect(page.locator('#settings-tab-keys')).toBeHidden();
@@ -135,6 +138,7 @@ test.describe('laptop', () => {
     const problems = watchErrors(page);
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openMainMenu(page);
     await page.locator('#menu-settings').click();
     await page.locator('#settings-tab-keys').click();
     for (const device of ['gamepad', 'keyboard'] as const) {
@@ -172,12 +176,14 @@ test.describe('laptop', () => {
     // A reload keeps it.
     await page.reload();
     await page.locator('#start-screen').click();
+    await openMainMenu(page);
     await page.locator('#menu-settings').click();
     await page.locator('#settings-tab-keys').click();
     await expect(page.locator('#settings-bind-keyboard-attack-0')).toHaveText('F');
     await page.locator('#settings-back').click();
 
     // The race: F punches, J no longer does; the pause legend shows F.
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
     const punched = async (key: string) => {
@@ -228,6 +234,7 @@ test.describe('laptop', () => {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openMainMenu(page);
     await page.locator('#menu-settings').click();
     await page.locator('#settings-tab-keys').click();
     await page.locator('#settings-keys-gamepad').click();

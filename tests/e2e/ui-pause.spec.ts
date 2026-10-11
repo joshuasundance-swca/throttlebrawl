@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { frames } from './lockstep';
 
@@ -39,12 +40,14 @@ test('pause stops the race, resume restarts it, and restart and quit work', asyn
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
 
   // Esc pauses: no sim ticks while the pause screen is up.
   await page.keyboard.press('Escape');
   await expect(page.locator('#pause-screen')).toBeVisible();
+  await expect(page.locator('#pause-resume')).toBeFocused();
   const pausedAt = await tick(page);
   await frames(page, 30); // drawn frames, the loop's unit (it was 750 ms of wall time)
   const later = await tick(page);
@@ -63,6 +66,7 @@ test('pause stops the race, resume restarts it, and restart and quit work', asyn
   // Restart: a fresh race from the grid, running.
   await page.locator('#hud-pause').click();
   await expect(page.locator('#pause-restart')).toBeVisible();
+  await expect(page.locator('#pause-resume')).toBeFocused();
   const beforeRestart = await tick(page);
   await page.locator('#pause-restart').click();
   await expect(page.locator('#pause-screen')).toBeHidden();
@@ -77,9 +81,11 @@ test('pause stops the race, resume restarts it, and restart and quit work', asyn
 
   // Quit: back to the menu, and the next race runs.
   await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-resume')).toBeFocused();
   await page.locator('#pause-quit').click();
   await expect(page.locator('#menu')).toBeVisible();
   expect(await state(page)).toBe('menu');
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
   expect(await state(page)).toBe('race');
@@ -137,6 +143,7 @@ test('the master slider changes the master gain, mute silences it, and settings 
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.waitForFunction(() => ((window as TestWindow).__gainLog?.entries.length ?? 0) > 0);
 
@@ -174,6 +181,7 @@ test('the master slider changes the master gain, mute silences it, and settings 
   // The settings are saved: after a reload the slider still says 50%.
   await page.reload();
   await page.locator('#start-screen').click();
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await expect(page.locator('#settings-volume-master-value')).toHaveText('50%');
   await expect(page.locator('#settings-mute')).not.toBeChecked();

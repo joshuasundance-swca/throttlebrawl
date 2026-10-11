@@ -1,5 +1,6 @@
-// sim/ai/branches: who may take a branch off the route's main path (playtest 3, round 3: "rivals and
-// cops stay on the highway"; docs/content-packs.md, route `branches[].aiTake`). One rule, read by
+// sim/ai/branches: who may take a branch off the route's main path (docs/content-packs.md, route
+// `branches[].aiTake`). The law avoids explicitly barred branches; Seven Mile now permits some
+// participants (the 2026-10-10 interview supersedes its highway-only policy). One rule, read by
 // the rivals' shortcut roll (sim/ai index.ts) and by the cops' line (sim/cops), so they agree:
 //   - a route file's `aiTake` is the share of rivals that take the branch (0 never, 1 always), and
 //     it holds for every rider, whatever their nerve;
@@ -31,6 +32,30 @@ export const BOLD_RISK = 0.8;
 
 /** A line kept this far outside a zone's inner edge by a rider that does not take it, m. */
 export const SHORTCUT_CLEAR_M = 0.9;
+
+/** A jump run-up on the current road: build momentum and hold its launch line, without changing physics. */
+export function jumpRunUp(config: SimConfig, pos: RoadPos): number | null {
+  if (pos.dir !== 1) return null;
+  // The unfiltered public query returns the road's existing array. Kind queries filter and allocate;
+  // this runs for every forward-driving rival and cop, including roads with no jump.
+  const features = config.road.featuresOf(pos.edge);
+  let gap: (typeof features)[number] | undefined;
+  for (const f of features)
+    if (f.kind === 'gap' && f.s1 > pos.s && f.s0 - pos.s < 220) {
+      gap = f;
+      break;
+    }
+  if (!gap) return null;
+  let ramp: (typeof features)[number] | undefined;
+  for (const f of features) {
+    if (f.kind !== 'rampTruck' && f.kind !== 'ramp') continue;
+    if (f.s1 < gap.s0 - 60 || f.s0 > gap.s0 || f.s1 <= pos.s) continue;
+    // Match the previous truck-first launch order even when the pack lists a ramp first.
+    if (f.kind === 'rampTruck') return (f.d0 + f.d1) / 2;
+    ramp ??= f;
+  }
+  return ramp ? (ramp.d0 + ramp.d1) / 2 : null;
+}
 
 const holds = new WeakMap<RouteBranch, boolean>();
 

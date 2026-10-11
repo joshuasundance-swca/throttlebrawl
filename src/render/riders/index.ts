@@ -359,6 +359,7 @@ class Rig {
     geo.setAttribute('skinWeight', new Float32BufferAttribute(weight, 4));
     this.mesh = new SkinnedMesh(geo, lookStyle.material('rider', { vertexColors: true }));
     this.mesh.name = 'rig-mesh';
+    this.mesh.userData['entityId'] = id;
     this.mesh.frustumCulled = false;
     this.mesh.bind(new Skeleton(all, inverses), new Matrix4());
 

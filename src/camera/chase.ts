@@ -20,8 +20,8 @@
 //   road, and a hard cut back on release. A cut is the quickest read, and nothing swings through
 //   the rider.
 // - `takedown`: when the followed rider is credited with a takedown, the camera blends (smoothstep,
-//   takedown.ts) to a higher, wider framing swung away from the victim and aimed between the rider
-//   and the victim, then blends back after the slow motion ends.
+//   takedown.ts) to a higher, wider forward chase framing, with a small lateral victim bias,
+//   then blends back after the slow motion ends. A victim flung behind never pulls the aim back.
 // - The hit jolt (jolt.ts) and the trauma shake (shake.ts) are added to the output pose only, and
 //   both scale with `camera.shakeScale` times the reduce-shake setting.
 //
@@ -671,7 +671,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   const basePlacement = (t: CameraTarget, view: ViewMode): Placement =>
     view === 'helmet' ? helmetPlacement(t) : chasePlacement(t);
 
-  /** Higher and wider, swung to the side away from the victim, aimed between rider and victim. */
+  /** Higher and wider, keeping the road aim and only a bounded lateral victim bias. */
   const takedownPlacement = (t: CameraTarget): Placement => {
     const { fx, fz, rx, rz } = axes();
     const lateral = victimOffset ? victimOffset.x * rx + victimOffset.z * rz : 0;
@@ -683,10 +683,12 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       x: t.x + bx * params.takedownDistanceM,
       y: t.y + params.takedownHeightM,
       z: t.z + bz * params.takedownDistanceM,
-      lookX: t.x + focus.x.x,
-      lookY: t.y + params.lookHeightM + focus.y.x,
-      lookZ: t.z + focus.z.x,
-      fov: params.fovBaseDeg,
+      lookX: t.x + s.aimX.x + rx * Math.max(-2, Math.min(2, focus.x.x * rx + focus.z.x * rz)),
+      lookY: t.y + s.aimY.x,
+      lookZ: t.z + s.aimZ.x + rz * Math.max(-2, Math.min(2, focus.x.x * rx + focus.z.x * rz)),
+      // The elevated chase eye uses the chase lens: the helmet's wider lens here brought extra
+      // road chunks into view and spent the still scene's draw-call share. Keep calmer FOVs.
+      fov: Math.min(s.fov.x, params.fovBaseDeg + params.fovKickDeg),
       roll: 0,
     };
   };

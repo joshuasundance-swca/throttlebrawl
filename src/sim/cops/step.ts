@@ -137,7 +137,8 @@ export function copTiming(world: World, config: SimConfig): { sirenTicks: number
   const frequency = config.difficulty.copFrequency;
   const delayTicks = frequency > 0 ? ((world.params['cops.spawnDelayS'] ?? 20) * 60) / frequency : Infinity;
   const leadTicks = Math.max(0, world.params['cops.sirenLeadS'] ?? 3) * 60;
-  const pullOutTicks = Math.max(delayTicks, leadTicks);
+  const pullOutTicks =
+    config.event.kind === 'cop-escape' && frequency > 0 ? leadTicks : Math.max(delayTicks, leadTicks);
   return { sirenTicks: pullOutTicks - leadTicks, pullOutTicks };
 }
 

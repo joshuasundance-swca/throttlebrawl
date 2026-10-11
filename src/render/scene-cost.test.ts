@@ -19,7 +19,7 @@
 // - every 5 m of every road the route allows (its main path and each branch), in BOTH directions,
 //   because a rider can ride a road either way (a U-turn, a branch taken back, a respawn facing back);
 // - from every camera the game frames a rider with, at its widest: the phone-shaped low chase and far
-//   chase at the top-speed field of view, the helmet view, the takedown framing swung to either side,
+//   chase at the top-speed field of view, the helmet view, the forward takedown with bounded lateral bias,
 //   and the look-back (camera/index.ts CAMERA_TUNING's defaults, read from that file below);
 // - counting the whole still frame: the backdrop (one mesh the renderer never culls), the region's
 //   staged scenes, the boards, and the roadside as the renderer builds it (keeping off the scenes'
@@ -44,7 +44,42 @@ import {
   sweep,
   SWEPT_PACKS,
   track,
+  viewsAt,
 } from './scene-cost.test-util';
+
+describe('the current forward takedown cost views', () => {
+  it('keeps each base view road aim and height with bounded victim bias and the capped chase lens', async () => {
+    const c = await cameraParams();
+    const route = ROUTES.find((r) => r.id === 'osm-seven-mile-run')!;
+    const { road } = track(route.network);
+    const e = road.edgeIndex(route.mainPath[0]!);
+    const s = 50;
+    for (const dir of [1, -1] as const) {
+      const views = viewsAt(road, e, s, dir, c);
+      const rider = road.toWorld(e, s, 0, 0);
+      const f = road.frameAt(e, s);
+      for (const base of ['chase', 'far', 'helmet']) {
+        const normal = views.find((v) => v.name === base)!;
+        if (base === 'helmet') {
+          expect((normal.eye.x - rider.x) * f.tx * dir + (normal.eye.z - rider.z) * f.tz * dir).toBeCloseTo(
+            c.helmetForwardM,
+          );
+        }
+        const celebration = views.filter((v) => v.name === `takedown-${base}`);
+        expect(celebration).toHaveLength(3);
+        for (const [i, v] of celebration.entries()) {
+          const bias = [-2, 0, 2][i]!;
+          expect(v.aim.x).toBeCloseTo(normal.aim.x - f.tz * dir * bias);
+          expect(v.aim.z).toBeCloseTo(normal.aim.z + f.tx * dir * bias);
+          expect(v.aim.y).toBeCloseTo(normal.aim.y);
+          expect(v.fov).toBe(Math.min(normal.fov, c.fovBaseDeg + c.fovKickDeg));
+          expect(v.eye.y - rider.y).toBeCloseTo(c.takedownHeightM);
+          expect(Math.hypot(v.eye.x - rider.x, v.eye.z - rider.z)).toBeCloseTo(c.takedownDistanceM);
+        }
+      }
+    }
+  });
+});
 
 describe('the still scene along every Keys route, at its peak view', () => {
   for (const route of routesOf('base')) {
@@ -128,16 +163,16 @@ describe('the sweep finds a peak the old checkpoints could not (negative control
   }, 300_000);
 });
 
-describe('the sweep sees the takedown framing, which no chase view faces (negative control)', () => {
-  it('sees a heavy block standing beside the road, which only a takedown aimed across the road shows', async () => {
+describe('the historical all-around takedown safety envelope (negative control)', () => {
+  it('retains the heavy block beside the road that current road-facing views do not show', async () => {
     const c = await cameraParams();
     const full = ROUTES.find((r) => r.id === 'osm-seven-mile-run') ?? ROUTES[0]!;
     const first = full.mainPath[0]!;
     const route = { ...full, mainPath: [first], allowedRoads: [first] };
     const { road, scene } = await stillSceneOf(route.network, 1);
     // A 150,000-triangle block 70 m to the side of the road and 30 m behind its start, level with the rider: every
-    // chase, helmet and look-back view looks along the road and the takedown views look at the rider, so it stands
-    // outside their frames; a takedown aimed behind and across the road faces it.
+    // chase, helmet, look-back and current forward takedown view looks along the road, so it stands
+    // outside their frames; the retained historical envelope aimed behind and across the road faces it.
     const e = road.edgeIndex(first);
     const p = road.toWorld(e, 0, 0, 0);
     const f = road.frameAt(e, 0);
@@ -162,7 +197,7 @@ describe('the sweep sees the takedown framing, which no chase view faces (negati
     print(
       `[examined] control: a ${boxTris}-triangle block 70 m beside and 30 m behind ${first}@0; ` +
         `at the start line the chase, helmet, look-back and takedown views peak ${Math.round(without.tris.total.tris)} at ${without.tris.at}; ` +
-        `with the takedown aimed anywhere round the rider the sweep peaks ${Math.round(withShots.tris.total.tris)} at ${withShots.tris.at}`,
+        `with the historical all-around safety envelope the sweep peaks ${Math.round(withShots.tris.total.tris)} at ${withShots.tris.at}`,
     );
     expect(boxTris).toBeGreaterThan(STILL_TRIS_MAX);
     expect(without.tris.total.tris).toBeLessThanOrEqual(STILL_TRIS_MAX);

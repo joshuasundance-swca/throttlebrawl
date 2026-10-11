@@ -153,6 +153,7 @@ import {
 import {
   keepOff,
   lawBarredZone,
+  lawMayTake,
   lawNeverTakes,
   lineOutsideZone,
   STRAY_GAIN,
@@ -174,6 +175,7 @@ import {
   see,
   type Obstacle,
 } from '../ai/sense';
+import { jumpRunUp } from '../ai/branches';
 import { vehicleInfo } from '../traffic';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 import { lateSteps } from '../late';
@@ -1119,6 +1121,8 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
   // directions leaves him room to ride through (a cop splitting the lanes).
   let vWant = 0;
   let dWant = lane ? lane.dCenterM - lane.direction * (lane.widthM / 2) : pos.d;
+  const shortcutLane = config.road.lanesAt(pos.edge, pos.s).find((l) => l.kind === 'shortcut');
+  if (shortcutLane) dWant = shortcutLane.dCenterM;
   // He may stop in a lane only beside his target (a downed one he is busting, or one who has
   // stopped with him alongside) or with the man he busted; anywhere else, only off the lanes.
   let mayStop = false;
@@ -1226,18 +1230,40 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
       if (heatBurst > 0 || far) vWant = Math.max(vWant, bike.topSpeedMps + burst);
     }
   }
+  const launchLine = jumpRunUp(config, pos);
+  if (launchLine !== null && st.phase[cop.id] === COP_CHASING) {
+    dWant = launchLine;
+    vWant = bike.topSpeedMps;
+    feedBrake = 0;
+  }
   vWant = clamp(vWant, 0, bike.topSpeedMps + burst);
   // A patrol cop holds his line for his first seconds out, so he never swerves into the player
   // who has just gone by him (he falls in behind once the player is clear).
   const until = st.patrolUntil[cop.id] ?? 0;
   if (until > 0 && st.clock < until - (PATROL.chaseS - PATROL.holdLineS) * 60) dWant = pos.d;
+  // Follow a target onto an allowed branch through its actual split, rather than waiting on the
+  // highway until the paths rejoin. The ordinary bike and traffic rules still judge the run-up.
+  const targetBranch = target ? config.route.branchAt(target.pos.edge) : null;
+  const split = targetBranch?.choice;
+  if (
+    split &&
+    split.edge === pos.edge &&
+    pos.dir === 1 &&
+    pos.s >= split.s0 - 150 &&
+    pos.s <= split.s1 &&
+    lawMayTake(config, split)
+  ) {
+    dWant = (split.d0 + split.d1) / 2;
+    vWant = bike.topSpeedMps;
+    feedBrake = 0;
+  }
   // Never stand still in a travel lane: below the crawl, head for the shoulder and keep rolling
   // until he is clear of the lane (traffic never passes a stopped rider in its lane).
   if (!mayStop && vWant < CRAWL_MPS && !clearOfLanes(config, pos)) {
     vWant = Math.min(CRAWL_MPS, bike.topSpeedMps);
     if (shoulder) dWant = shoulder.dCenterM;
   }
-  // The law stays on the highway (playtest 3, round 3: "rivals and cops stay on the highway"): a
+  // The law avoids explicitly barred branches (sim/ai/branches.ts): a
   // branch the route bars to them (`aiTake` 0, or a gap with no `aiTake`: sim/ai/branches.ts) is
   // never entered. His line, chasing a man who takes it, keeps out of its split zone, and he rides
   // the main path on to wait where it rejoins. (He does not share the rivals' shortcut roll.)
@@ -1275,8 +1301,8 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
   // Dodging traffic, he swerves as briskly as a rival does (sim/ai: 5 m/s across).
   let gain = st.closing[cop.id] === 1 || guard.dodging ? 1.6 : 0.8;
   let latMax = guard.dodging ? 5 : 3;
-  // The law stays on the highway (wave C, G3; sim/ai/branches.ts), when a shove puts him where his
-  // line never goes. On a branch barred to the law, while it still overlaps the main road, he brakes
+  // The law avoids explicitly barred branches even when shoved onto one (wave C, G3;
+  // sim/ai/branches.ts). While the barred branch still overlaps the main road, he brakes
   // to a crawl and rides for that edge, where the road's handover puts him back on the main road; past
   // that point he stops where he is (a cop never turns round), and his chase is over: the heat can
   // send him again from there, as any cop whose chase ended (sendHeatCop puts him on the main road).
@@ -1640,6 +1666,8 @@ export const copsSystem: SimSystem = {
     const mix = config.event.cops;
     for (const m of world.movers) {
       if (defOf(config, m)?.controller.kind !== 'cop') continue;
+      const escapeLead = config.event.kind === 'cop-escape' && st.cops.length === 0;
+      const player = escapeLead ? world.movers.find((r) => isPlayer(config, r)) : undefined;
       // From the lot, not the grid; each further cop waits PARK_GAP_M further back along the road.
       if (spawn) {
         const len = config.road.edges[spawn.edge]?.length ?? spawn.s;
@@ -1648,11 +1676,18 @@ export const copsSystem: SimSystem = {
         m.yaw = 0;
         m.speed = 0;
       }
+      if (player) {
+        m.pos = { ...player.pos, s: player.pos.s - player.pos.dir * 12 };
+        config.road.advance(m.pos);
+        m.yaw = 0;
+        m.speed = 0;
+      }
       st.cops.push(m.id);
       st.phase[m.id] = COP_PARKED;
       // One roll per cop per race, always drawn (so the stream advances the same on every preset).
       const chance = clamp((world.params['cops.spawnChance'] ?? 1) * config.difficulty.copFrequency, 0, 1);
       st.spawns[m.id] = nextFloat(world.rng.cops) < chance ? 1 : 0;
+      if (escapeLead && config.difficulty.copFrequency > 0) st.spawns[m.id] = 1;
       st.sirenOn[m.id] = 0;
       st.target[m.id] = -1;
       st.chaosUntil[m.id] = 0;
@@ -1671,7 +1706,10 @@ export const copsSystem: SimSystem = {
     if (!mix) return;
     // cops-3's spawn mix: the first `count` cops come out (each still on his roll), a wave gap
     // apart; the rest wait in the lot for a chaos summon (or, below, go on patrol).
-    const count = startingCopCount(world, config);
+    const count = Math.max(
+      config.event.kind === 'cop-escape' && config.difficulty.copFrequency > 0 ? 1 : 0,
+      startingCopCount(world, config),
+    );
     const gapTicks = Math.max(0, world.params['cops.waveGapS'] ?? 8) * 60;
     st.cops.forEach((id, k) => {
       const jittered = jitter(world, mix.randomness); // always drawn, so the stream stays aligned

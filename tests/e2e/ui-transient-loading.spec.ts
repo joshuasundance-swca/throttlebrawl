@@ -1,3 +1,4 @@
+import { openMainMenu, openQuickPlay } from './menu-navigation';
 // Unchanged transient-card checks split by workload; shared paint and setup live beside this spec.
 import { expect, test } from '@playwright/test';
 import { frames } from './lockstep';
@@ -18,41 +19,23 @@ import {
   KEYS_MAPS,
   linesSaying,
   toMenu,
-  buildIdFindings,
   inViewFindings,
 } from './ui-transient-cards-helpers';
 
 installTransientCards();
 
-test('the build id remains findable when a normal-text menu starts scrolling after a resize', async ({
-  page,
-}) => {
+test('the build id remains findable across home and Quick Play after a resize', async ({ page }) => {
   await toMenu(page);
-  await expect(page.locator('#route-own')).toBeVisible({ timeout: 30_000 });
   await setTextSize(page, 'normal');
+  await checkBuildId(page, 'home after resize', [SIZES[0], SIZES[1]]);
+  await openQuickPlay(page);
+  await expect(page.locator('#route-own')).toBeVisible({ timeout: 30_000 });
   await page.locator('#menu-options').click();
   await page.locator('#race-options-back').click();
   await expect(page.locator('#menu-race')).toBeVisible();
-  await leaveFullscreen(page);
-  await page.setViewportSize({ width: 915, height: 412 });
-  const before = await paint(page, '#menu', []);
-  expect(await scrollRoom(page, '#menu'), 'the first size fits without a fallback line').toBeLessThanOrEqual(
-    1,
-  );
-  await expect(page.locator('#menu-build-line')).toBeHidden();
-  expect(
-    buildIdFindings(
-      before.buildIds,
-      before.things.filter((t) => !t.inFooter),
-      SIZES[0],
-    ),
-  ).toEqual([]);
-
-  // The first normal-text transition from a fitting menu to an overflowing one: the resize queues
-  // keepFooterClear, which can show the fallback after the check has started (the full-suite failure
-  // at 854x480). The same check must find the actual painted id after scrolling that fallback to view.
-  await checkBuildId(page, 'normal menu starting to scroll', [SIZES[1]]);
-  expect(await scrollRoom(page, '#menu'), 'the resized menu needs the fallback').toBeGreaterThan(1);
+  await checkBuildId(page, 'Quick Play after setup and resize', [SIZES[0], SIZES[1]]);
+  // The compact setup deliberately has a plain build line: neither a scrolling detail list nor
+  // the fixed race actions can hide the identity of the build being reviewed.
   await expect(page.locator('#menu-build-line')).toBeVisible();
 });
 
@@ -61,6 +44,7 @@ test('the did-not-load card says what failed, goes with its screen and a busy li
 }) => {
   test.setTimeout(180_000);
   await toMenu(page);
+  await openQuickPlay(page);
   const sf = regionChip(page, 'San Francisco');
   const keys = regionChip(page, 'Keys');
   const card = page.locator('#load-retry');
@@ -80,13 +64,14 @@ test('the did-not-load card says what failed, goes with its screen and a busy li
   // It sits first in the menu's column, above the title, not over it; the card says it, so the
   // route row's word steps aside.
   const first = await page.evaluate(
-    () => document.querySelector('#menu .menu-main')?.firstElementChild?.id ?? '',
+    () => document.querySelector('#quick-play-details')?.firstElementChild?.id ?? '',
   );
   expect(first).toBe('load-retry');
   await expect(note).toBeHidden();
 
   // Race runs the load again under a busy "Loading San Francisco" line: the card is not left beside it,
   // and comes back when the load fails again.
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#busy')).toBeVisible();
   await expect(card).toBeHidden();
@@ -111,12 +96,14 @@ test('the did-not-load card says what failed, goes with its screen and a busy li
 
   // The card belongs to the menu: the career does not carry it, and coming back does not bring it
   // back. The menu still says why there is no route row (polish batch E's check, punch item 1).
+  await openMainMenu(page);
   await page.locator('#menu-career').click();
   await expect(page.locator('#career')).toBeVisible();
   await expect(card).toBeHidden();
   await expect(page.locator('#career-tab-map')).toBeVisible();
   await page.locator('#career-back').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
+  await openQuickPlay(page);
   await expect(card).toBeHidden();
   await expect(sf).toHaveAttribute('aria-checked', 'true');
   await expect(note).toBeVisible();
@@ -128,9 +115,11 @@ test('the did-not-load card says what failed, goes with its screen and a busy li
     ['#menu-settings', '#settings-back'],
     ['#menu-options', '#race-options-back'],
   ] as const) {
+    if (open === '#menu-settings') await openMainMenu(page);
+    else await openQuickPlay(page);
     await page.locator(open).click();
     await page.locator(back).click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await openQuickPlay(page);
     await expect(note, `back from ${open}`).toBeVisible();
   }
   // Control: a region whose roads are in has its route row and no word.
@@ -145,6 +134,7 @@ test('the host asked for a wait: every load path waits it out, with the same cou
 }) => {
   test.setTimeout(120_000);
   await toMenu(page);
+  await openQuickPlay(page);
   const sf = regionChip(page, 'San Francisco');
   const keys = regionChip(page, 'Keys');
   const card = page.locator('#load-retry');
@@ -173,8 +163,10 @@ test('the host asked for a wait: every load path waits it out, with the same cou
 
   // Polish batch I's check, punch 4: off the menu and back, the card has gone with its screen and the
   // route row's word says the time left, the card's own seconds (read in one step, so one tick).
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-back').click();
+  await openQuickPlay(page);
   const word = page.locator('#route-note');
   await expect(word).toBeVisible();
   await expect(word).toHaveText(
@@ -197,6 +189,7 @@ test('the host asked for a wait: every load path waits it out, with the same cou
   await expect(retry).toBeDisabled();
   await expect(retry).toHaveText(/^Retry in (30|29|28|27|26|25|24|23|22|21|20) s$/);
   expect(asked, 'a new pick during the wait asks the host nothing').toBe(askedAtCard);
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#busy')).toBeHidden({ timeout: 30_000 });
   await expect(card).toBeVisible();
@@ -209,6 +202,7 @@ test('the host asked for a wait: every load path waits it out, with the same cou
 test("a 404 says this build's files are gone and offers Reload, not Retry", async ({ page }) => {
   test.setTimeout(120_000);
   await toMenu(page);
+  await openQuickPlay(page);
   const card = page.locator('#load-retry');
   const button = page.locator('#load-retry-button');
   let asked = 0;
@@ -224,8 +218,10 @@ test("a 404 says this build's files are gone and offers Reload, not Retry", asyn
   await expect(button).toHaveText('Reload');
   await expect(button).toBeEnabled();
   // Off the menu and back, the route row's place says the same.
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-back').click();
+  await openQuickPlay(page);
   await expect(page.locator('#route-note')).toHaveText(
     "San Francisco did not load: this build's files are gone. Reload the game for the newest build.",
   );
@@ -233,6 +229,7 @@ test("a 404 says this build's files are gone and offers Reload, not Retry", asyn
   await expect(page.locator('#route-note-action')).toBeVisible();
   await expect(page.locator('#route-note-action')).toHaveText('Reload');
   // Race asks again and brings the card back; its Reload reloads the page.
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(card).toBeVisible({ timeout: 30_000 });
   expect(asked, 'the host was asked (the pick, then Race)').toBeGreaterThan(0);
@@ -249,9 +246,11 @@ test('a failed career ride raises the did-not-load card in view, on a career scr
   // Start career, the suggested event, Ride. The card came up 420 to 590 px above the screen's top.
   await page.route(KEYS_MAPS, (route) => route.fulfill({ status: 503, body: 'down' }));
   await toMenu(page);
+  await openQuickPlay(page);
   const card = page.locator('#load-retry');
   // The boot load's card is on the menu first (it waits for the menu); the career does not carry it.
   await expect(card).toBeVisible({ timeout: 60_000 });
+  await openMainMenu(page);
   await page.locator('#menu-career').click();
   await expect(page.locator('#career')).toBeVisible();
   await expect(card).toBeHidden();
@@ -309,7 +308,7 @@ test('the boot notice (settings from a newer build) is carried to the menu a qui
   // The tap at once, well inside the notice's 4 s: the menu says it (polish batch E's check, punch
   // item 4: it went with the start screen and was never said again).
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await expect(notice).toBeVisible();
   await expect(notice).toHaveText(words);
   expect(
@@ -325,6 +324,7 @@ test("the route row's Reload and its wait fit every size and Text size, and a ta
 }) => {
   test.setTimeout(300_000);
   await toMenu(page);
+  await openQuickPlay(page);
   const card = page.locator('#load-retry');
   await page.route(SF_MAPS, (route) => route.fulfill({ status: 404, body: 'gone' }));
   await regionChip(page, 'San Francisco').click();
@@ -332,12 +332,14 @@ test("the route row's Reload and its wait fit every size and Text size, and a ta
   for (const textSize of TEXT_SIZES) {
     await leaveFullscreen(page);
     await page.setViewportSize({ width: 915, height: 412 });
+    await openMainMenu(page);
     await page.locator('#menu-settings').click();
     await page.locator('#settings-tab-access').click();
     const pick = page.locator(`#settings-textSize [data-value="${textSize}"]`);
     await pick.click();
     await expect(pick).toHaveAttribute('aria-pressed', 'true');
     await page.locator('#settings-back').click();
+    await openQuickPlay(page);
     const action = page.locator('#route-note-action');
     await expect(action, `the Reload beside the word, ${textSize}`).toBeVisible();
     // The word and its button fit every phone size at every scroll, are hit where drawn, and the
@@ -384,12 +386,15 @@ test("the route row's Reload and its wait fit every size and Text size, and a ta
   // The wait too, at the largest Text size (the last of the loop, kept by the reload): the longest word
   // the row says.
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
+  await openQuickPlay(page);
   await regionChip(page, 'Keys').click();
   await regionChip(page, 'San Francisco').click();
   await expect(card).toBeVisible({ timeout: 30_000 });
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-back').click();
+  await openQuickPlay(page);
   await expect(page.locator('#route-note')).toHaveText(/ Tap Race to try again in \d+ s\.$/);
   await expect(action, 'a 429 offers no Reload').toBeHidden();
   expect(
@@ -409,8 +414,10 @@ test("the route row's Reload and its wait fit every size and Text size, and a ta
   await regionChip(page, 'San Francisco').click();
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('#load-retry .reload-offer-text')).toHaveText(/the game server had a problem/);
+  await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-back').click();
+  await openQuickPlay(page);
   await expect(page.locator('#route-note')).toHaveText(/ Tap Race to try again in \d+ s\.$/);
   await expect(action, 'control: a 404 inside the wait offers no Reload').toBeHidden();
   expect(asked, 'control: inside the wait the host is not asked').toBe(0);

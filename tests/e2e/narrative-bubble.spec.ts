@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { openQuickPlay } from './menu-navigation';
 
 // narrative-1 in the real build: a rival barks at race start on the top ticker (playtest 3, the
 // maintainer: "The black and white text pop-ups block the actual game"), a tag that names the
@@ -30,8 +31,9 @@ test('a rival barks at race start in a readable ticker line that then goes away'
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
 
   const bubble = page.locator('#hud-ticker[data-cls="bark"]');

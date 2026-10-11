@@ -737,7 +737,7 @@ export function createApp(opts: AppOptions): AppHandle {
         ? profile.bikes.current
           ? { playerBike: profile.bikes.current }
           : {}
-        : menuRaceSetup(registry, settings.raceOptions, profile.bikes)),
+        : menuRaceSetup(registry, settings.raceOptions, profile.bikes, settings.quickPlayField ?? 'open')),
       ...(careerRace ? { grudges: profile.grudges } : {}),
       // The career's field level (the rivals' and cops' bikes and strength) and the season's remix.
       ...(careerRace?.level ? { fieldLevel: careerRace.level } : {}),

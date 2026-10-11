@@ -1,3 +1,4 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 // Playtest 1c item 8 (2026-09-30): on a phone, the pause screen's keyboard legend hid the "cut this"
@@ -9,7 +10,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 // 412x915 case runs with a fine pointer (a narrow window), where the legend starts open anyway.
 //
 // "Reachable" here means: the legend's header, its last row, the list's title and its first row
-// are all inside the viewport AT ONCE, with nothing drawn over their centres, and tapping the
+// are each inside the viewport after scrolling the detail pane, with nothing drawn over their centres, and tapping the
 // first row opens the "cut this" card.
 
 interface Handle {
@@ -25,8 +26,9 @@ async function pausedWithSeenItems(page: Page) {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
   // The bot rides until a bark, sign or billboard lands in the "recently seen" list.
@@ -38,6 +40,7 @@ async function pausedWithSeenItems(page: Page) {
 
 /** The element's box is fully inside the viewport and its centre is not covered by anything else. */
 async function onScreenAndOnTop(page: Page, loc: Locator, name: string) {
+  await loc.scrollIntoViewIfNeeded();
   const view = page.viewportSize()!;
   const box = await loc.boundingBox();
   expect(box, `${name} has a box`).not.toBeNull();
@@ -53,6 +56,13 @@ async function onScreenAndOnTop(page: Page, loc: Locator, name: string) {
     return !!top && (top === el || el.contains(top));
   });
   expect(hit, `${name} is not drawn over`).toBe(true);
+  for (const id of ['pause-resume', 'pause-quit']) {
+    const control = page.locator(`#${id}`);
+    const bounds = await control.boundingBox();
+    expect(bounds, `${id} remains fixed during detail review`).not.toBeNull();
+    expect(bounds!.y).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(view.height + 0.5);
+  }
 }
 
 async function checkBothReachable(page: Page, shot: string) {

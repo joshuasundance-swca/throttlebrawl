@@ -1,5 +1,7 @@
+import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Playtest 4 (P4-12, P4-13): the menu race's options screen.
 //
@@ -38,6 +40,7 @@ function watchErrors(page: Page): string[] {
 
 async function openOptions(page: Page) {
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await expect(page.locator('#menu-options')).toBeVisible();
   await page.locator('#menu-options').click();
   await expect(page.locator('#race-options')).toBeVisible();
@@ -163,7 +166,16 @@ for (const [where, width, height] of [
       const m = await measure(page);
       console.log(`${where}: ${JSON.stringify(m)}`);
       expect(m.rows, `${where}: the options`).toEqual(
-        expect.arrayContaining(['bike', 'time', 'weather', 'rivals', 'cops', 'difficulty', 'traffic']),
+        expect.arrayContaining([
+          'bike',
+          'field',
+          'time',
+          'weather',
+          'rivals',
+          'cops',
+          'difficulty',
+          'traffic',
+        ]),
       );
       expect(m.controls, `${where}: three controls a row`).toBe(m.rows.length * 3);
       expect(m.off, `${where}: controls off the screen`).toEqual([]);
@@ -215,6 +227,15 @@ for (const [where, width, height] of [
         again.under.some((u) => u.includes('PLANTED WORDS')),
         'the stamp measure names the planted words',
       ).toBe(true);
+      // Both ways back restore the setup control's focus within the retained Quick Play pane.
+      await page.locator('#race-options-back').click();
+      await expect(page.locator('#quick-play')).toBeVisible();
+      await expect(page.locator('#menu-options')).toBeFocused();
+      await page.locator('#menu-options').click();
+      await expect(page.locator('#race-options')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#quick-play')).toBeVisible();
+      await expect(page.locator('#menu-options')).toBeFocused();
       expect(problems).toEqual([]);
     });
   });
@@ -278,5 +299,74 @@ test('the picks reach the race and its recording, and are remembered after a rel
   await expect(page.locator('#race-option-cops')).toHaveAttribute('data-value', 'false');
   await expect(page.locator('#race-option-rivals')).toHaveAttribute('data-value', '0');
   await expect(page.locator('#race-option-bike')).toHaveAttribute('data-value', bike);
+  expect(problems).toEqual([]);
+});
+
+// A real slow bike selected on screen: content supplies the speed, no copied list or lucky seed.
+test('Same bike fields rivals on the selected slow bike and remembers competition after reload', async ({
+  page,
+}) => {
+  const problems = watchErrors(page);
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+  const bikes = readdirSync('packs')
+    .flatMap((pack) => {
+      const dir = join('packs', pack, 'bikes');
+      if (!existsSync(dir)) return [];
+      return readdirSync(dir)
+        .filter((file) => file.endsWith('.json'))
+        .map((file) => {
+          const bike = JSON.parse(readFileSync(join(dir, file), 'utf8')) as {
+            id: string;
+            tags?: string[];
+            handling: { topSpeedMps: number };
+          };
+          return { id: `${pack}:${bike.id}`, tags: bike.tags ?? [], top: bike.handling.topSpeedMps };
+        });
+    })
+    .filter((bike) => !bike.tags.includes('secret'))
+    .sort((a, b) => a.top - b.top);
+  const slow = bikes[0]!;
+  expect(slow.top).toBeLessThan(bikes[bikes.length - 1]!.top);
+  await page.goto('./');
+  await openOptions(page);
+  // Step the actual bike control rather than changing settings through a test seam.
+  for (let i = 0; i <= bikes.length; i++) {
+    if ((await page.locator('#race-option-bike').getAttribute('data-value')) === slow.id) break;
+    await page.locator('#race-option-bike-next').click();
+  }
+  await expect(page.locator('#race-option-bike')).toHaveAttribute('data-value', slow.id);
+  await expect(page.locator('#race-option-rivals')).toHaveAttribute('data-value', '');
+  await page.locator('#race-option-field-next').click();
+  await expect(page.locator('#race-option-field')).toHaveAttribute('data-value', 'matched');
+  await page.locator('#race-options-race').click();
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 0);
+  const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const replay = JSON.parse(lines[lines.indexOf(REPLAY_MARKER) + 1] ?? 'null') as {
+    header?: {
+      config?: {
+        riders: { role: string; bike: { contentId: string; topSpeedMps: number } }[];
+        event: { paceMps: number };
+      };
+    };
+  } | null;
+  const config = replay?.header?.config;
+  expect(config).toBeDefined();
+  const player = config!.riders.find((rider) => rider.role === 'player')!;
+  const rivals = config!.riders.filter((rider) => rider.role === 'rival');
+  expect(rivals.length, 'default field still includes competition').toBeGreaterThan(0);
+  expect(player.bike.contentId).toBe(slow.id);
+  expect(player.bike.topSpeedMps).toBe(slow.top);
+  for (const rival of rivals) {
+    expect(rival.bike.contentId).toBe(player.bike.contentId);
+    expect(rival.bike.topSpeedMps).toBe(player.bike.topSpeedMps);
+  }
+  expect(config!.event.paceMps).toBeLessThanOrEqual(player.bike.topSpeedMps);
+  await page.reload();
+  await openOptions(page);
+  await expect(page.locator('#race-option-field')).toHaveAttribute('data-value', 'matched');
+  await expect(page.locator('#race-option-bike')).toHaveAttribute('data-value', slow.id);
   expect(problems).toEqual([]);
 });

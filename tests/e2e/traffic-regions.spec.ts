@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
+import { openQuickPlay } from './menu-navigation';
 
 // W-P "fill the world" (maintainer, 2026-10-01b: "traffic and people: more cars both ways,
 // pedestrians, cyclists, joggers, dogs, life that reacts to the player"; "UNIQUE REGIONAL FLAVOR
@@ -68,8 +69,10 @@ for (const region of REGIONS) {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openQuickPlay(page);
     await page.locator(region.chip).click();
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await expect(page.locator('#hud-position')).toBeVisible({ timeout: 30_000 });
 

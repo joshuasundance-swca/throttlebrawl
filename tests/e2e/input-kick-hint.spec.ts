@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openQuickPlay } from './menu-navigation';
 
 // Playtest 1 (2026-09-30), item 3: "Can't kick". The attack button carries a visible kick hint,
 // drawn inside the button on the phone-landscape touch layout.
@@ -11,6 +12,7 @@ test('the attack button shows a kick hint inside it', async ({ page }) => {
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   const button = page.locator('#touch-attack');
   const hint = page.locator('#touch-kick-hint');

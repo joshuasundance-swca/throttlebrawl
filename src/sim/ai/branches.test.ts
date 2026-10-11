@@ -1,4 +1,6 @@
-// Playtest 3, T3.2 (round 3: "rivals and cops stay on the highway"): who takes a branch. The rule
+// Historical Playtest 3 (2026-10-04), T3.2 (round 3: "rivals and cops stay on the highway").
+// The 2026-10-10 interview supersedes that blanket policy; explicit barred branches remain closed.
+// Who takes a branch: the rule
 // (branches.ts): a route's `aiTake` is the share of rivals that take it, for every rider; with none,
 // a branch holding a `gap` is left to the bold (`riskTaking` >= BOLD_RISK) and shut to the rest;
 // with none and no gap, `ai.shortcutChance` decides, as it always did. The law follows the same
@@ -9,6 +11,8 @@ import {
   createRoadNetwork,
   createRouteProgress,
   fixtureBranchNetwork,
+  fixtureNetwork,
+  type BakedFeature,
   type BakedRoute,
   type RouteBranch,
 } from '../../road';
@@ -19,6 +23,7 @@ import {
   BOLD_RISK,
   branchHoldsGap,
   keepOff,
+  jumpRunUp,
   lawBarredZone,
   lawMayTake,
   lineOutsideZone,
@@ -151,6 +156,44 @@ describe('the fixture', () => {
   });
 });
 
+describe('jump run-up launch selection', () => {
+  const ramp: BakedFeature = { kind: 'ramp', id: 'ramp', s0: 45, s1: 65, d0: 0, d1: 4, params: {} };
+  const truck: BakedFeature = { kind: 'rampTruck', id: 'truck', s0: 30, s1: 60, d0: 10, d1: 14, params: {} };
+  const gap: BakedFeature = { kind: 'gap', id: 'gap', s0: 80, s1: 110, d0: -5, d1: 5, params: {} };
+  function setup(features: BakedFeature[]) {
+    const f = fixtureNetwork([{ id: 'cut', lengthM: 600, kappa: 0 }]);
+    const road = createRoadNetwork({
+      network: f.network,
+      roads: f.roads.map((r) => (r.id === 'cut' ? { ...r, features } : r)),
+    });
+    return { ...world().config, road };
+  }
+  it('prefers a reachable truck launch over a ramp regardless of pack order, then uses the ramp once the truck is passed', () => {
+    for (const features of [
+      [ramp, truck, gap],
+      [truck, ramp, gap],
+    ]) {
+      const config = setup(features);
+      const edge = config.road.edgeIndex('cut');
+      expect(jumpRunUp(config, { edge, s: 0, d: 0, dir: 1 })).toBe(12);
+      expect(jumpRunUp(config, { edge, s: 60, d: 0, dir: 1 })).toBe(2);
+      expect(jumpRunUp(config, { edge, s: 65, d: 0, dir: 1 })).toBeNull();
+    }
+  });
+  it('requires a forward, unpassed gap within the approach distance and a launch within sixty metres', () => {
+    const config = setup([ramp, truck, gap]);
+    const edge = config.road.edgeIndex('cut');
+    const farther = setup([ramp, truck, gap].map((f) => ({ ...f, s0: f.s0 + 220, s1: f.s1 + 220 })));
+    expect(jumpRunUp(farther, { edge, s: 80, d: 0, dir: 1 })).toBeNull();
+    expect(jumpRunUp(farther, { edge, s: 81, d: 0, dir: 1 })).toBe(12);
+    expect(jumpRunUp(config, { edge, s: 110, d: 0, dir: 1 })).toBeNull();
+    expect(jumpRunUp(config, { edge, s: 0, d: 0, dir: -1 })).toBeNull();
+    expect(jumpRunUp(setup([ramp, truck]), { edge, s: 0, d: 0, dir: 1 })).toBeNull();
+    expect(jumpRunUp(setup([{ ...ramp, s0: 0, s1: 19 }, gap]), { edge, s: 0, d: 0, dir: 1 })).toBeNull();
+    expect(jumpRunUp(setup([{ ...ramp, s0: 0, s1: 20 }, gap]), { edge, s: 0, d: 0, dir: 1 })).toBe(2);
+  });
+});
+
 describe('the rivals take a branch by its aiTake, else by its gap, else by chance', () => {
   it('a branch with no gap and no aiTake is rolled as it always was: chance 1 takes it, 0 does not', () => {
     expect(picks({ chance: 1 })).toEqual([0, 1, 2, 3]);
@@ -215,7 +258,7 @@ describe('the rule as the pure function', () => {
   });
 });
 
-describe('the law stays on the highway', () => {
+describe('the law avoids explicitly barred branches', () => {
   it('may follow an open branch, and not one with aiTake 0 or a gap and no aiTake', () => {
     const z = (w: ReturnType<typeof world>) =>
       w.route.shortcuts[0] as NonNullable<(typeof w.route.shortcuts)[0]>;

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { openQuickPlay } from './menu-navigation';
 
 // radio-1 acceptance (docs/milestones/M4.md, "radio-1"), rendered offline in a real browser with
 // the real WebAudio graph (plucked-string buffers, the spring convolver, the slapback delay):
@@ -407,6 +408,7 @@ test.describe('in the game', () => {
     });
     await page.goto('./');
     await page.locator('#start-screen').click();
+    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await expect(page.locator('#hud-position')).toBeVisible();
     await page.waitForFunction(() => ((window as ProbeWindow).__game?.snapshot()?.tick ?? 0) > 30);

@@ -1,3 +1,4 @@
+import { openMenuMore } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
@@ -91,7 +92,7 @@ test('a first launch shows a short welcome beside the menu, and remembers the bu
     .poll(() => lastSeen(page), { message: 'lastSeenBuild is stored once the card is seen' })
     .toBe(build);
   // The card sits beside the menu: the Race button is not covered and still works.
-  const raceBox = await page.locator('#menu-race').boundingBox();
+  const raceBox = await page.locator('#menu-quick-play').boundingBox();
   const cardBox = await card.boundingBox();
   expect(
     raceBox && cardBox && raceBox.x + raceBox.width <= cardBox.x,
@@ -167,6 +168,7 @@ test('the changelog page lists every player note, with the developer notes behin
   console.log(`dist/changelog.json: ${players} player notes, ${devs} developer notes`);
   expect(players).toBeGreaterThan(0);
   await toMenu(page);
+  await openMenuMore(page);
   await page.locator('#menu-changelog').click();
   const list = page.locator('#changelog-list');
   await expect(list.locator('p')).toHaveCount(players);

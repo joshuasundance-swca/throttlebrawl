@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
+import { openQuickPlay } from './menu-navigation';
 
 // Run W-P, W-O's skeptic mustFix: the radio kept only its kind across a reload. In a Keys race, R
 // twice tunes keys-surf; after a reload the race played keys-rockabilly, the first station, because
@@ -48,6 +49,7 @@ const saved = (page: Page) =>
 async function race(page: Page) {
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await openQuickPlay(page);
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => {
     const g = (window as TestWindow).__game;

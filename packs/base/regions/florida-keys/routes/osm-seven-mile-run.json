@@ -55,7 +55,7 @@
       "kind": "alternate",
       "marked": true,
       "sign": "OLD ROAD: CLOSED. MOSTLY. Bring momentum.",
-      "aiTake": 0.0,
+      "aiTake": 0.2,
       "roads": [
         "osm-keys-seven-mile-old-road-in",
         "osm-sm-old-road",

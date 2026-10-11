@@ -47,6 +47,7 @@ function ride(
   tuning: Record<string, number>,
   maxTicks: number,
   done: (r: Ride) => boolean = () => false,
+  captureSnapshots = true,
 ): Ride {
   const { sim, config, playerId } = createHeadlessRace({ seed, eventId, tuning }, { registry: REG });
   const bot = createBot();
@@ -58,7 +59,7 @@ function ride(
     sim.step([toSimInput(a)]);
     snap = sim.snapshot();
     const evs = sim.events().filter((e) => e.type === 'law' || e.type === 'siren' || e.type === 'heat');
-    if (evs.length) r.snaps.set(sim.tick, snap);
+    if (captureSnapshots && evs.length) r.snaps.set(sim.tick, snap);
     r.events.push(...evs);
     if (snap.race.finishOrder.includes(playerId)) r.finished = true;
   }
@@ -212,6 +213,23 @@ describe('law with a personality: real races', () => {
     expect(
       snap?.entities.some((e) => e.faction === 'law' && e.targetId === r.playerId && e.mode === 'Road'),
     ).toBe(false);
+    // Omitting unused retained snapshots must leave the actual race and event stream unchanged.
+    if (found.seed === null) throw new Error('no qualifying seed');
+    expect(r.snaps.size).toBeGreaterThan(0);
+    const withoutSnapshots = ride(
+      event,
+      found.seed,
+      tuning,
+      r.ticks,
+      (race) => lawOf(race, 'jurisdiction').length > 0,
+      false,
+    );
+    expect(withoutSnapshots.events).toEqual(r.events);
+    expect(withoutSnapshots.first).toEqual(r.first);
+    expect(withoutSnapshots.playerId).toBe(r.playerId);
+    expect(withoutSnapshots.finished).toBe(r.finished);
+    expect(withoutSnapshots.ticks).toBe(r.ticks);
+    expect(withoutSnapshots.snaps.size).toBe(0);
   });
 
   // The whole world on, and heat that builds fast (tier 3 never comes in the isolation profile).
@@ -243,6 +261,8 @@ describe('law with a personality: real races', () => {
           { 'cops.heatScale': 30 },
           Math.min(ROADBLOCK_RACE_TICKS, left),
           (x) => radioed(x.events) > 0,
+          // firstSeed retains failed rides. This predicate needs events, not old world snapshots.
+          false,
         );
         spent += r.ticks;
         return r;

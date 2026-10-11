@@ -47,14 +47,35 @@ export function menuRaceSetup(
   reg: ContentRegistry,
   o: RaceOptions,
   garage: Garage,
-): Pick<RaceSetup, 'playerBike' | 'timeOfDay' | 'rivals' | 'cops' | 'trafficScale'> {
+  field: 'open' | 'matched' = 'open',
+): Pick<RaceSetup, 'playerBike' | 'timeOfDay' | 'rivals' | 'cops' | 'trafficScale' | 'fieldLevel'> {
   const bike = o.bike && menuBikes(reg, garage.owned).includes(o.bike) ? o.bike : garage.current;
+  // Match the bike the config can actually resolve, including its normal starter fallback.
+  const ridden =
+    bike && reg.bikes[bike]
+      ? bike
+      : qualifyIn('base', lookup(reg.riders, qualifyIn('base', PLAYER_PRESET)).bike);
   return {
     ...(bike ? { playerBike: bike } : {}),
     ...(o.timeOfDay ? { timeOfDay: o.timeOfDay } : {}),
     ...(o.rivals !== null ? { rivals: o.rivals } : {}),
     ...(o.cops ? {} : { cops: false }),
     ...(o.traffic !== 'usual' ? { trafficScale: TRAFFIC_SCALE[o.traffic] } : {}),
+    ...(field === 'matched'
+      ? {
+          fieldLevel: {
+            paceMps: topSpeed(reg, ridden) * 0.9,
+            rivalBike: ridden,
+            copBike: null,
+            copTopCapMps: null,
+            healthScale: 1,
+            powerScale: 1,
+            aggressionScale: 1,
+            signatureGapScale: 1,
+            fineScale: 1,
+          },
+        }
+      : {}),
   };
 }
 
