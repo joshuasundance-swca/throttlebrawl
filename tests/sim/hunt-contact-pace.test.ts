@@ -52,7 +52,7 @@ function configFor(mode: Mode, seed: number, control: boolean): SimConfig {
           TUNING,
         )
       : {};
-  return buildSimConfig(REG, streamForEvent(REG, EVENT, career?.length.id), {
+  const built = buildSimConfig(REG, streamForEvent(REG, EVENT, career?.length.id), {
     seed,
     eventId: EVENT,
     playerBike: BIKE,
@@ -68,6 +68,9 @@ function configFor(mode: Mode, seed: number, control: boolean): SimConfig {
     ...picks,
     ...(control ? { eventPatch: { ...career?.patch, kind: 'classic-race' } } : {}),
   });
+  // Only construction suppresses the new floor. Both physical runs are Hunts, including any
+  // future Hunt-specific sim behavior; the old policy differs solely in starting pace/caps.
+  return control ? { ...built, event: { ...built.event, kind: 'takedown-hunt' } } : built;
 }
 
 interface Window {
@@ -234,8 +237,21 @@ describe('Hunt contact after acceleration on the real opening grid', () => {
         SEEDS,
         (seed) => {
           const control = configFor(mode, seed, true);
+          const hunt = configFor(mode, seed, false);
+          const data = ({ road: _road, route: _route, ...plain }: SimConfig) => plain;
+          expect({
+            ...data(hunt),
+            event: { ...hunt.event, paceMps: control.event.paceMps },
+            riders: hunt.riders.map((r, i) =>
+              r.controller.kind === 'ai'
+                ? { ...r, bike: { ...r.bike, topSpeedMps: control.riders[i]!.bike.topSpeedMps } }
+                : r,
+            ),
+          }).toEqual(data(control));
+          expect(hunt.route.start).toEqual(control.route.start);
+          expect(hunt.route.mainEdges).toEqual(control.route.mainEdges);
           const before = ride(control);
-          const after = ride(configFor(mode, seed, false), before.input);
+          const after = ride(hunt, before.input);
           return { before, after };
         },
         ({ before, after }) =>

@@ -5,6 +5,7 @@ import {
   LAW_HABITS,
   loadBasePack,
   lookup,
+  packOf,
   registryFromGlob,
   SIGNATURE_MOVES,
 } from '../content';
@@ -120,7 +121,7 @@ describe('app/config: Hunt starts with useful pace for the resolved player bike'
   });
 
   it.each([false, true])('keeps generic or named Quick Play field identity (named=%s)', (named) => {
-    const authored = (event.field.riders ?? []).map((r) => qualifyIn('base', r));
+    const authored = (event.field.riders ?? []).map((r) => qualifyIn(packOf(id), r));
     const reg = named
       ? {
           ...all,
