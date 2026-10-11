@@ -289,7 +289,10 @@ async function rideIntoRace(page: Page) {
 
 async function raceHeaderHas(page: Page, needle: string, region?: string) {
   await page.locator('#settings-back').click();
-  if (region) await page.locator(region).click();
+  if (region) {
+    await openQuickPlay(page);
+    await page.locator(region).click();
+  }
   await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
   await rideIntoRace(page);
   const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');

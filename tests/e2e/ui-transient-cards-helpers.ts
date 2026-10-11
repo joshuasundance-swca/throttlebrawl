@@ -363,6 +363,22 @@ export async function raise(page: Page, ids: readonly string[]) {
   }
 }
 
+/** A raised card must be wholly visible, including inside any nested scrolling pane. */
+export function wholeCardFindings(
+  id: string,
+  raw: PaintedCard['box'],
+  painted: PaintedCard['box'] | undefined,
+  viewport: { width: number; height: number },
+): string[] {
+  const found = inViewFindings(id, raw, viewport);
+  if (
+    !painted ||
+    (['left', 'top', 'right', 'bottom'] as const).some((edge) => Math.abs(raw[edge] - painted[edge]) > 1)
+  )
+    found.push(`${id} is clipped by its scrolling pane`);
+  return found;
+}
+
 /**
  * Each card, raised again with its screen scrolled to the end and to the top, comes up in view: the
  * screen brings it there (polish batch E's check, mustFix 1).
@@ -389,7 +405,7 @@ export async function checkInView(
       const box = raw
         ? { left: raw.x, top: raw.y, right: raw.x + raw.width, bottom: raw.y + raw.height }
         : undefined;
-      const found = card && box ? inViewFindings(id, box, size) : [`${id} was not measured`];
+      const found = box ? wholeCardFindings(id, box, card?.box, size) : [`${id} was not measured`];
       const where = `${label} at ${size.name}: ${id} raised with the screen scrolled ${at * 100}% of ${Math.round(room)} px`;
       console.log(`${where}: box ${JSON.stringify(box)}; findings ${JSON.stringify(found)}`);
       expect.soft(found, where).toEqual([]);

@@ -108,11 +108,11 @@ test('the menu offers the regions, the Keys picked by default, and a pick starts
     ...ids.filter((id) => bare(id) === 'florida-keys'),
   ];
   for (const id of order) {
+    await openQuickPlay(page);
     const chip = picker.locator(`button.region[data-region="${id}"]`);
     await chip.click();
     await expect(chip).toHaveAttribute('aria-checked', 'true');
     await expect(checked).toHaveCount(1);
-    await openQuickPlay(page);
     await page.locator('#menu-race').click();
     await expect(page.locator('#hud-position')).toBeVisible();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);

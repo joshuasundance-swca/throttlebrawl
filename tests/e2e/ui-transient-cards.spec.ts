@@ -21,6 +21,7 @@ import {
   rideToTheEnd,
   buildIdFindings,
   inViewFindings,
+  wholeCardFindings,
 } from './ui-transient-cards-helpers';
 
 installTransientCards();
@@ -198,6 +199,39 @@ for (const textSize of TEXT_SIZES) {
       const view = { width: 915, height: 412 };
       const shown = (await paint(page, '#career', ['load-retry'])).cards[0];
       expect(shown && inViewFindings('load-retry', shown.box, view), 'raised: in view').toEqual([]);
+      // A raw box within the viewport can still lose its bottom inside an overflow ancestor.
+      // The same full-card judge must detect this, independently of viewport-only visibility.
+      await page.locator('#load-retry').evaluate((card) => {
+        const wrap = document.createElement('div');
+        wrap.id = 'probe-card-clip';
+        Object.assign(wrap.style, {
+          overflow: 'hidden',
+          height: `${card.getBoundingClientRect().height / 2}px`,
+          flexShrink: '0',
+        });
+        card.before(wrap);
+        wrap.append(card);
+      });
+      const partial = await page.locator('#load-retry').boundingBox();
+      expect(partial).not.toBeNull();
+      const rawPartial = {
+        left: partial!.x,
+        top: partial!.y,
+        right: partial!.x + partial!.width,
+        bottom: partial!.y + partial!.height,
+      };
+      expect(
+        inViewFindings('load-retry', rawPartial, view),
+        'the negative raw box remains in the viewport',
+      ).toEqual([]);
+      const cut = (await paint(page, '#career', ['load-retry'])).cards[0];
+      expect(wholeCardFindings('load-retry', rawPartial, cut?.box, view)).toContain(
+        'load-retry is clipped by its scrolling pane',
+      );
+      await page.locator('#probe-card-clip').evaluate((wrap) => {
+        wrap.before(...wrap.childNodes);
+        wrap.remove();
+      });
       const room = await scrollRoom(page, '#career');
       expect(room, 'the career scrolls at 915x412 (the control needs room)').toBeGreaterThan(100);
       await scrollTo(page, '#career', room);
