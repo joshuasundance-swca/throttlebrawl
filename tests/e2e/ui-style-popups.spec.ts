@@ -165,6 +165,7 @@ type TestWindow = Window & {
   /** Historical riding hull, retained only for the independent riding fit/calibration control. */
   __playerBike?: () => Box | null;
   __playerParts?: () => { kind: 'bike' | 'rider'; box: Box }[];
+  __playerIdentityControl?: () => { planted: boolean; unchanged: boolean };
 };
 
 /** A rival's bark with the base pack's longest line: the widest content the strip carries. */
@@ -295,6 +296,7 @@ async function installLayoutProbe(page: Page) {
       children: NodeLike[];
       parent?: NodeLike;
       visible: boolean;
+      userData: { entityId?: number };
       geometry?: {
         attributes: Record<string, { array: ArrayLike<number>; itemSize: number; count: number }>;
         drawRange: { count: number };
@@ -334,6 +336,7 @@ async function installLayoutProbe(page: Page) {
       __layoutPieces?: () => { name: string; box: Box }[];
       __playerBike?: () => Box | null;
       __playerParts?: (calibration?: boolean) => { kind: 'bike' | 'rider'; box: Box }[];
+      __playerIdentityControl?: () => { planted: boolean; unchanged: boolean };
       __game?: {
         playerId(): number;
         snapshot(): { entities?: { id: number; x: number; y: number; z: number; mode: string }[] } | null;
@@ -353,14 +356,9 @@ async function installLayoutProbe(page: Page) {
       const me = game.playerId();
       const self = game.snapshot()?.entities?.find((e) => e.id === me);
       const riders = drawn.scene.getObjectByName?.('entities')?.children ?? [];
-      let best: NodeLike | null = null;
-      let bestD = 6; // metres: farther than this is not the player's frame
-      for (const r of riders) {
-        if (r.name !== '' || r.rotation.order !== 'YXZ' || !self) continue;
-        const m = r.matrixWorld.elements;
-        const d = Math.hypot((m[12] ?? 0) - self.x, (m[13] ?? 0) - self.y, (m[14] ?? 0) - self.z);
-        if (d < bestD) [best, bestD] = [r, d];
-      }
+      const best = riders.find(
+        (r) => r.name === '' && r.rotation.order === 'YXZ' && r.userData.entityId === me,
+      );
       if (!best || !self) return [];
       const m = best.matrixWorld.elements;
       const v = drawn.camera.matrixWorldInverse.elements;
@@ -386,27 +384,10 @@ async function installLayoutProbe(page: Page) {
           for (let n: NodeLike | undefined = node; n; n = n.parent) if (n.name === name) return true;
           return false;
         };
-        const rigs = all
-          .filter((node) => node.name === 'rig-mesh' && node.visible && node.skeleton)
-          .map((node) => {
-            let root = node.skeleton?.bones.find((bone) => belongs(bone, 'rig-rider'));
-            while (root?.parent && root.name !== 'rig-rider') root = root.parent;
-            const bm = root?.matrixWorld.elements;
-            // Nearest to the already selected rendered root, not the current sim snapshot.
-            // Riding pivots can shift the rig origin; detached roots copy it exactly.
-            const distance = bm
-              ? Math.hypot(
-                  (bm[12] ?? 0) - (m[12] ?? 0),
-                  (bm[13] ?? 0) - (m[13] ?? 0),
-                  (bm[14] ?? 0) - (m[14] ?? 0),
-                )
-              : Infinity;
-            return { node, distance };
-          })
-          .sort((a, b) => a.distance - b.distance);
-        const candidate = rigs[0];
-        const detached = self.mode === 'OnFoot' || self.mode === 'Tumble';
-        const mesh = candidate && candidate.distance < (detached ? 0.001 : 6) ? candidate.node : undefined;
+        const mesh = all.find(
+          (node) =>
+            node.name === 'rig-mesh' && node.visible && node.skeleton && node.userData.entityId === me,
+        );
         const boxes = new Map<number, { kind: 'bike' | 'rider'; box: Box }>();
         const add = (key: number, kind: 'bike' | 'rider', world: readonly number[]) => {
           const view = mul(v, world[0] ?? 0, world[1] ?? 0, world[2] ?? 0, 1);
@@ -463,6 +444,7 @@ async function installLayoutProbe(page: Page) {
           const paired = [riders[at + 1], riders[at + 2]].filter(
             (node): node is NodeLike =>
               !!node &&
+              node.userData.entityId === me &&
               node.visible &&
               (node.name === 'views-parked-bike' || node.name === 'views-tumble-bike'),
           );
@@ -532,6 +514,59 @@ async function installLayoutProbe(page: Page) {
       ];
     };
     w.__playerBike = () => w.__playerParts?.(true).find((part) => part.kind === 'bike')?.box ?? null;
+    w.__playerIdentityControl = () => {
+      const me = w.__game?.playerId();
+      const nodes: NodeLike[] = [];
+      const visit = (node: NodeLike) => {
+        nodes.push(node);
+        node.children.forEach(visit);
+      };
+      drawn?.scene.getObjectByName?.('entities')?.children.forEach(visit);
+      const own = nodes.find(
+        (n) => n.name === '' && n.rotation.order === 'YXZ' && n.userData.entityId === me,
+      );
+      const rival = nodes.find(
+        (n) => n.name === 'rig-mesh' && n.visible && n.skeleton && n.userData.entityId !== me,
+      );
+      const rivalRoot = nodes.find(
+        (n) =>
+          n.name === '' && n.rotation.order === 'YXZ' && n.userData.entityId === rival?.userData.entityId,
+      );
+      const group = rival?.skeleton?.bones[0]?.parent;
+      if (!own || !rival?.skeleton || !group || !rival.parent || !rivalRoot?.parent)
+        return { planted: false, unchanged: false };
+      const before = JSON.stringify(w.__playerParts?.());
+      const moved = [group, rivalRoot, ...rival.skeleton.bones];
+      const saved = moved.map((n) => Array.from(n.matrixWorld.elements));
+      const delta = [12, 13, 14].map(
+        (i) => (own.matrixWorld.elements[i] ?? 0) - (group.matrixWorld.elements[i] ?? 0),
+      );
+      const siblings = rival.parent.children;
+      const order = [...siblings];
+      const roots = rivalRoot.parent.children;
+      const rootOrder = [...roots];
+      try {
+        for (const n of moved)
+          for (const [j, i] of [12, 13, 14].entries())
+            (n.matrixWorld.elements as number[])[i] = (n.matrixWorld.elements[i] ?? 0) + (delta[j] ?? 0);
+        for (const i of [12, 13, 14])
+          (rivalRoot.matrixWorld.elements as number[])[i] = own.matrixWorld.elements[i] ?? 0;
+        // A rival planted exactly at the player and first in traversal defeats nearest-node selection.
+        siblings.splice(siblings.indexOf(rival), 1);
+        siblings.unshift(rival);
+        roots.splice(roots.indexOf(rivalRoot), 1);
+        roots.unshift(rivalRoot);
+        return { planted: true, unchanged: before === JSON.stringify(w.__playerParts?.()) };
+      } finally {
+        moved.forEach((n, i) =>
+          saved[i]?.forEach((v, j) => {
+            (n.matrixWorld.elements as number[])[j] = v;
+          }),
+        );
+        siblings.splice(0, siblings.length, ...order);
+        roots.splice(0, roots.length, ...rootOrder);
+      }
+    };
     w.__layoutPieces = () => {
       const out: { name: string; box: Box }[] = [];
       const sel = [
@@ -1079,6 +1114,9 @@ test('the known layout list only shrinks', () => {
 });
 
 async function offBikeCoverControl(page: Page) {
+  const identity = await page.evaluate(() => (window as TestWindow).__playerIdentityControl?.());
+  expect(identity?.planted, 'a real rival rig was planted at the followed player').toBe(true);
+  expect(identity?.unchanged, 'nearby rival geometry never replaces followed-player geometry').toBe(true);
   for (const mode of ['Tumble', 'OnFoot']) {
     await page.evaluate((mode) => {
       const g = (window as TestWindow).__game;

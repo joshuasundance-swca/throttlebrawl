@@ -1065,6 +1065,8 @@ export class EntityViews {
     if (!view) {
       view = this.freeRiders.pop() ?? this.buildRider();
       this.riders.set(e.id, view);
+      // Nonvisual identity follows pooled views when assigned to another entity.
+      for (const node of [view.root, view.parked, view.tumbleBike]) node.userData['entityId'] = e.id;
       this.root.add(view.root, view.parked, view.tumbleBike);
       view.spin = freshSpin();
       view.scheme = '';
