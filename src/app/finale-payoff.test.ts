@@ -24,7 +24,11 @@ const finales = defs.flatMap((def) => {
   const node = def.nodes.find((n) => n.id === def.boss);
   if (!node) return [];
   const plan = eventPlan(reg, node.event);
-  return plan.rules.rival ? [{ def, node, plan, rival: plan.rules.rival }] : [];
+  const rival = plan.rules.rival;
+  if (!rival) return [];
+  const name = reg.riders[rival]?.name;
+  if (!name) throw new Error('No authored finale rival name');
+  return [{ def, node, plan, rival, name }];
 });
 function ready(def: CareerDef): Profile {
   let profile = startCareer(defs, { ...DEFAULT_PROFILE });
@@ -70,13 +74,13 @@ function outcome(def: CareerDef, node: CareerNode, profile: Profile, won = true)
 }
 describe('content-derived regional finale recognition and stakes', () => {
   it('examines actual named finales', () => expect(finales.length).toBeGreaterThan(0));
-  for (const { def, node, plan, rival } of finales) {
+  for (const { def, node, plan, name } of finales) {
     it(`${def.regionName}: identifies the boss and the carried progression stake`, () => {
       const before = ready(def);
       const card = careerView(reg, defs, before, def.regionId)
         .tiers.flatMap((t) => t.nodes)
         .find((n) => n.id === node.id);
-      expect(card?.kindLabel).toBe(`Region boss · ${reg.riders[rival]?.name}`);
+      expect(card?.kindLabel).toBe(`Region boss · ${name}`);
       const next = defs.find((d) => d.regionKey === def.ending.next);
       if (next) expect(card?.objective).toContain(`Win to open ${next.regionName}.`);
       for (const award of def.unlocks.filter((u) => u.kind === 'boss-beaten' && reg.bikes[u.grant]))
@@ -87,7 +91,7 @@ describe('content-derived regional finale recognition and stakes', () => {
           expect(card?.objective).toContain(reg.bikes[award.grant]?.name);
       }
       const after = outcome(def, node, before);
-      expect(after.view.title).toBe(`${reg.riders[rival]?.name.toUpperCase()} BEATEN`);
+      expect(after.view.title).toBe(`${name.toUpperCase()} BEATEN`);
       const done = careerView(reg, defs, after.profile, def.regionId)
         .tiers.flatMap((t) => t.nodes)
         .find((n) => n.id === node.id);
