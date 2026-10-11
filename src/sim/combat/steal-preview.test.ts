@@ -12,7 +12,7 @@ const stolen = (h: Harness) =>
   h.events.filter((e) => e.type === 'weaponGrab' && e.data['source'] === 'steal');
 
 /** Stop after a real wind-up tick, before the thief's next press; all positions are stationary. */
-function scene(age = 10, side = 1, scale = 1, thiefFlags = F.attack, holderFlags = F.attack) {
+function scene(age = 10, side = 1, scale = 1, thiefFlags: number = F.attack, holderFlags: number = F.attack) {
   let press = false;
   const h = makeHarness(
     [
@@ -307,7 +307,9 @@ describe('steal preview: holder selection and pure snapshots', () => {
     const hash = observed.sim.hash();
     const snap = observed.sim.snapshot();
     expect(snap.entities[0]?.stealId).toBe(1);
-    expect(snap.entities.filter((e) => e.kind !== 'rider').every((e) => e.stealId === -1)).toBe(true);
+    const nonRiders = snap.entities.filter((e) => e.kind !== 'rider');
+    expect(nonRiders.length).toBeGreaterThan(0);
+    expect(nonRiders.every((e) => e.stealId === -1)).toBe(true);
     for (let i = 0; i < 5; i++) {
       expect(observed.sim.snapshot()).toEqual(snap);
       expect(combat.stealPreview(observed.world, observed.sim.config, 0)).toBe(1);
