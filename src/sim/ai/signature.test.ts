@@ -4,7 +4,13 @@
 // window in which it cannot hurt you. Hits are injected as last tick's `hit` events, the way
 // combat reports them, since combat does not run here.
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } from '../../road';
+import {
+  createRoadNetwork,
+  createRouteProgress,
+  fixtureBranchNetwork,
+  fixtureNetwork,
+  type RoadPos,
+} from '../../road';
 import { raceSystem } from '../race';
 import { ridersSystem } from '../riders';
 import {
@@ -30,7 +36,15 @@ import {
   type World,
 } from '../world';
 import { aiState, aiSystem } from './index';
-import { BELL_TELL_TICKS, signatureState, signatureView } from './signature';
+import { see, weaponReach } from './sense';
+import {
+  BELL_TELL_TICKS,
+  interruptSignature,
+  signatureState,
+  signatureView,
+  stepSignature,
+  type SignatureCtx,
+} from './signature';
 
 const noop = (name: SystemName): SimSystem => ({ name, init() {}, step() {} });
 const SYSTEMS = orderSystems(
@@ -138,9 +152,18 @@ interface Scene {
 function scene(
   defs: SimRiderDef[],
   at: { s: number; d: number; v: number }[],
-  opts: { signatures?: number; vehicles?: { s: number; d: number; v: number; dir: 1 | -1 }[] } = {},
+  opts: {
+    signatures?: number;
+    rule?: NonNullable<SimConfig['event']['grudgeRule']> | null;
+    gapScale?: number;
+    quirks?: number;
+    vehicles?: { s: number; d: number; v: number; dir: 1 | -1 }[];
+  } = {},
 ): Scene {
   const cfg = config(defs, opts.signatures ?? 1);
+  if (opts.rule) cfg.event.grudgeRule = opts.rule;
+  if (opts.gapScale !== undefined) cfg.event.level = { aggressionScale: 1, signatureGapScale: opts.gapScale };
+  if (opts.quirks !== undefined) cfg.tuning = { ...cfg.tuning, 'ai.styleQuirks': opts.quirks };
   const world = createWorld(cfg);
   const riders = defs.map((_, i) => {
     const p = at[i] ?? { s: 30, d: 1.7, v: 0 };
@@ -237,6 +260,238 @@ describe('signature moves: the contract wire', () => {
       return worldHash(sc.world);
     };
     expect(run()).toBe(run());
+  });
+});
+
+// Old Growth encounter spec, Automated acceptance 1–2: fixture timing and counterplay are
+// deliberately separate from the authored career probe and the controller's traffic priorities.
+function timberScene(opts: Parameters<typeof scene>[2] = {}): Scene {
+  return scene(
+    [rival('heavy-hitter', 'timber', { aggression: 0 }), PLAYER],
+    [
+      { s: 100, d: 1.7, v: 26 },
+      { s: 120, d: 1.7, v: 26 },
+    ],
+    { rule: { rule: 'timber', rival: 'base:timber' }, ...opts },
+  );
+}
+
+function timberTick(sc: Scene, tick: number) {
+  sc.world.tick = tick;
+  const [m, me] = sc.riders as [Mover, Mover];
+  const road = sc.config.road;
+  const seen = see(road, m, me, 60);
+  const c: SignatureCtx = {
+    world: sc.world,
+    road,
+    m,
+    riders: seen ? [seen] : [],
+    obstacles: [],
+    target: seen,
+    players: [me.id],
+    free: true,
+    lastHitTick: -1,
+    lastHitBy: -1,
+    laneCentre: 1.7,
+    laneWidth: 3.4,
+    dLo: -4,
+    dHi: 4,
+    speedTarget: 30,
+    punch: weaponReach(sc.config, 'punch'),
+    kick: weaponReach(sc.config, 'kick'),
+  };
+  return stepSignature(c, 'timber');
+}
+
+describe('named Timber encounter timing and counterplay', () => {
+  it('selects earlier readiness only for the named Timber rival, leaving switches effective', () => {
+    const on = timberScene();
+    expect(signatureState(on.world).next[0]).toBeGreaterThanOrEqual(240);
+    expect(signatureState(on.world).next[0]).toBeLessThan(420);
+    for (const opts of [
+      { rule: null },
+      { rule: { rule: 'audit' as const, rival: 'base:timber' } },
+      { rule: { rule: 'timber' as const, rival: 'base:other' } },
+    ]) {
+      const ordinary = timberScene(opts);
+      expect(signatureState(ordinary.world).next[0]).toBeGreaterThanOrEqual(600);
+      expect(signatureState(ordinary.world).next[0]).toBeLessThan(960);
+    }
+    for (const opts of [{ signatures: 0 }, { quirks: 0 }]) {
+      const off = timberScene(opts);
+      now(off, 0);
+      for (let t = 0; t < 180; t++) step(off);
+      expect(signatureView(off.world, 0)).toBeNull();
+    }
+    const otherMove = scene([rival('weaver', 'lag')], [{ s: 100, d: 1.7, v: 26 }], {
+      rule: { rule: 'timber', rival: 'base:lag' },
+    });
+    expect(signatureState(otherMove.world).next[0]).toBeGreaterThanOrEqual(600);
+    expect(signatureState(otherMove.world).timing).toBeUndefined();
+  });
+
+  it.each([1, 0.5])('uses one spec for every scheduling path at gap scale %s', (gapScale) => {
+    const start = (sc: Scene) => {
+      const t = signatureState(sc.world).next[0] ?? -1;
+      timberTick(sc, t);
+      expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'tell', left: 48 / 60 });
+      timberTick(sc, t + 48);
+      expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'act', left: 90 / 60 });
+      return t + 48;
+    };
+    const nextGap = (sc: Scene, tick: number) => {
+      expect(signatureState(sc.world).next[0]).toBeGreaterThanOrEqual(tick + Math.round(360 * gapScale));
+      expect(signatureState(sc.world).next[0]).toBeLessThanOrEqual(tick + Math.round(540 * gapScale));
+    };
+    const timed = timberScene({ gapScale });
+    const act = start(timed);
+    timberTick(timed, act + 90);
+    expect(signatureView(timed.world, 0)).toMatchObject({ phase: 'open', left: 90 / 60 });
+    expect(signatureState(timed.world).openSpeed?.[0]).toBeCloseTo(26 * 0.88);
+    timberTick(timed, act + 180);
+    expect(signatureView(timed.world, 0)).toBeNull();
+    nextGap(timed, act + 180);
+    for (const d of [1.7, -1.2]) {
+      const early = timberScene({ gapScale });
+      const at = start(early);
+      const me = early.riders[1] as Mover;
+      me.pos.d = d;
+      if (d === 1.7) me.pos.s = 100.5; // contact, versus a real side escape
+      timberTick(early, at + 1);
+      expect(signatureView(early.world, 0)).toMatchObject({ phase: 'open', left: 90 / 60 });
+      expect(signatureState(early.world).openSpeed?.[0]).toBeCloseTo(26 * 0.88);
+      timberTick(early, at + 91);
+      nextGap(early, at + 91);
+    }
+    const lost = timberScene({ gapScale });
+    const lostAt = start(lost);
+    (lost.riders[1] as Mover).pos.s = 300;
+    timberTick(lost, lostAt + 1);
+    expect(signatureView(lost.world, 0)).toBeNull();
+    nextGap(lost, lostAt + 1);
+    const interrupted = timberScene({ gapScale });
+    const downAt = start(interrupted);
+    interrupted.world.tick = downAt + 1;
+    interruptSignature(interrupted.world, 0);
+    expect(signatureState(interrupted.world).next[0]).toBe(downAt + 1 + Math.round(360 * gapScale));
+    expect(signatureView(interrupted.world, 0)).toBeNull();
+    // The initial grace stays 240; only seeded spread is scaled, using the same draw.
+    const initial = signatureState(timberScene().world).next[0] ?? -1;
+    const fastInitial = signatureState(timberScene({ gapScale: 0.5 }).world).next[0] ?? -1;
+    expect(Math.abs((initial - 240) / 2 - (fastInitial - 240))).toBeLessThanOrEqual(1);
+  });
+
+  it('commits the act line, weakly steers, then a late sidestep opens a slower no-swing recovery', () => {
+    const sc = timberScene();
+    const t = signatureState(sc.world).next[0] ?? -1;
+    timberTick(sc, t);
+    const charge = timberTick(sc, t + 48);
+    expect(charge).toMatchObject({ dTarget: 1.7, lateralMax: 0.6, speedTarget: 33, noSwing: true });
+    const me = sc.riders[1] as Mover;
+    me.pos.d = 0.2; // late dodge within the sidestep threshold cannot move the committed line
+    expect(timberTick(sc, t + 49).dTarget).toBe(1.7);
+    me.pos.d = -1.2;
+    const opened = timberTick(sc, t + 50);
+    expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'open', left: 90 / 60 });
+    expect(opened.noSwing).toBe(true);
+    const recovery = timberTick(sc, t + 51);
+    expect(recovery.noSwing).toBe(true);
+    expect(recovery.speedTarget).toBeCloseTo(26 * 0.88);
+    (sc.riders[0] as Mover).speed = 40;
+    expect(timberTick(sc, t + 52).speedTarget).toBeCloseTo(26 * 0.88);
+    timberTick(sc, t + 140);
+    expect(signatureView(sc.world, 0)).toBeNull();
+    expect(signatureState(sc.world).openSpeed?.[0]).toBeUndefined();
+    for (const ahead of [4, 31, 200]) {
+      const away = timberScene();
+      (away.riders[1] as Mover).pos.s = 100 + ahead;
+      timberTick(away, signatureState(away.world).next[0] ?? -1);
+      expect(signatureView(away.world, 0)).toBeNull();
+    }
+  });
+
+  it('ordinary Timber keeps its existing recovery pace without an encounter cap', () => {
+    const sc = timberScene({ rule: null });
+    now(sc, 0);
+    timberTick(sc, 0);
+    timberTick(sc, 40);
+    timberTick(sc, 130);
+    expect(timberTick(sc, 131)).toMatchObject({ speedTarget: 26.4, noSwing: true });
+    expect(signatureState(sc.world).openSpeed).toBeUndefined();
+  });
+
+  it('lets the controller prioritize traffic over the charge line, separately from counterplay', () => {
+    const plain = timberScene();
+    const blocked = timberScene({ vehicles: [{ s: 109, d: 1.7, v: 0, dir: 1 }] });
+    for (const sc of [plain, blocked]) {
+      now(sc, 0);
+      timberTick(sc, 0);
+      timberTick(sc, 48);
+      expect(signatureView(sc.world, 0)?.phase).toBe('act');
+      step(sc, { steer: 0, throttle: 150, brake: 0, flags: 0 });
+    }
+    expect(Math.abs(blocked.world.inputs[0]?.steer ?? 0)).toBeGreaterThan(
+      Math.abs(plain.world.inputs[0]?.steer ?? 0),
+    );
+    expect(blocked.world.inputs[0]?.brake).toBeGreaterThan(plain.world.inputs[0]?.brake ?? 0);
+    expect(signatureState(blocked.world).lineD[0]).toBe(1.7);
+    expect(signatureView(blocked.world, 0)?.phase).toBe('act');
+  });
+
+  it('keeps shortcut navigation ahead of a committed charge line', () => {
+    const f = fixtureBranchNetwork();
+    const branchRoad = createRoadNetwork(f);
+    const cfg = config([rival('heavy-hitter', 'timber', { aggression: 0 }), PLAYER]);
+    cfg.event.grudgeRule = { rule: 'timber', rival: 'base:timber' };
+    cfg.road = branchRoad;
+    cfg.route = createRouteProgress(branchRoad, f.route);
+    const world = createWorld(cfg);
+    const riders = [160, 180].map((s, i) => {
+      const m = addMover(world, 'rider', { edge: branchRoad.edgeIndex('a'), s, d: 1.7, dir: 1 }, i);
+      m.speed = 26;
+      return m;
+    });
+    for (const s of SYSTEMS) s.init(world, cfg);
+    const sc = { world, config: cfg, riders, vehicles: [] };
+    aiState(world).shortcuts[0] = 1;
+    now(sc, 0);
+    timberTick(sc, 0);
+    timberTick(sc, 48);
+    expect(signatureState(world).lineD[0]).toBe(1.7);
+    stepWorld(world, cfg, SYSTEMS, [{ steer: 0, throttle: 150, brake: 0, flags: 0 }]);
+    expect(signatureView(world, 0)?.phase).toBe('act');
+    expect(world.inputs[0]?.steer).toBeGreaterThan(0);
+    // Taking the branch asks for its line (>2.4), while the stored charge line stays put.
+    expect(signatureState(world).lineD[0]).toBe(1.7);
+    aiState(world).shortcuts[0] = 0;
+    (riders[0] as Mover).yaw = 0;
+    (riders[0] as Mover).pos.d = 1.7;
+    stepWorld(world, cfg, SYSTEMS, [{ steer: 0, throttle: 150, brake: 0, flags: 0 }]);
+    expect(world.inputs[0]?.steer).toBeLessThanOrEqual(0);
+  });
+
+  it.each([
+    ['down', 'act'],
+    ['unsticking', 'act'],
+    ['down', 'open'],
+    ['unsticking', 'open'],
+  ])('the controller interrupts %s during %s with the encounter gap', (reason, phase) => {
+    const sc = timberScene({ gapScale: 0.5 });
+    now(sc, 0);
+    timberTick(sc, 0);
+    timberTick(sc, 48);
+    const tick = phase === 'open' ? 138 : 48;
+    if (phase === 'open') {
+      timberTick(sc, tick);
+      expect(signatureState(sc.world).openSpeed?.[0]).toBeCloseTo(26 * 0.88);
+    }
+    if (reason === 'down') (sc.riders[0] as Mover).mode = 'Tumble';
+    else aiState(sc.world).unstickUntil[0] = tick + 30;
+    step(sc);
+    expect(signatureView(sc.world, 0)).toBeNull();
+    expect(signatureState(sc.world).next[0]).toBe(tick + 180);
+    expect(signatureState(sc.world).openSpeed?.[0]).toBeUndefined();
+    expect(pressing(sc, 0)).toBe(false);
   });
 });
 
