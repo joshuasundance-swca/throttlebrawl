@@ -252,18 +252,86 @@ describe('rider poses', () => {
     expect(kickLeg.visible).toBe(false);
   });
 
-  it('glints a held weapon through the wind-up (the steal cue), and not otherwise', () => {
-    // By name: the rider's group also carries other unlit, single-child meshes (the boost flame).
-    const find = (g: Group, name: 'weapon' | 'glint'): Mesh | undefined => {
-      const o = g.getObjectByName(`views-${name}`);
-      return o instanceof Mesh ? o : undefined;
+  // steal-cue acceptance 5 replaces the old whole-wind-up premise. Timing, kick intent and
+  // readiness belong to the sim; these views consume its selected holder, never reimplement them.
+  const stealScene = () => {
+    const views = new EntityViews(createFlatLook());
+    const player = entity(9, 'rider', { slot: 0, stealId: 4 });
+    const holder = entity(4, 'rider', { attackPhase: 'windup', heldWeapon: 'base:lead-pipe' });
+    const other = entity(7, 'rider', { attackPhase: 'windup', heldWeapon: 'base:lead-pipe' });
+    const mesh = (id: number, name: 'weapon' | 'glint') => {
+      const group = views.root.children.find((g) => g.userData['entityId'] === id && g instanceof Group);
+      const found = group?.getObjectByName(`views-${name}`);
+      if (!(found instanceof Mesh)) throw new Error(`no ${name} for rider ${id}`);
+      return found;
     };
-    const windup = setup({ attackPhase: 'windup', heldWeapon: 'base:lead-pipe' }, 1);
-    const glint = find(windup.group, 'glint');
-    expect(glint?.visible).toBe(true);
-    expect(find(windup.group, 'weapon')?.visible).toBe(true);
-    const idle = setup({ attackPhase: 'idle', heldWeapon: 'base:lead-pipe' }, 1);
-    expect(find(idle.group, 'glint')?.visible).toBe(false);
+    const draw = (entities = [other, player, holder], prev: SimSnapshot | null = null, alpha = 1) =>
+      views.sync(prev, snap(entities), alpha, 0.05);
+    return { views, player, holder, other, mesh, draw };
+  };
+
+  it('glints only the holder selected by the local player, even when another wind-up is drawn first', () => {
+    const s = stealScene();
+    s.draw();
+    expect(s.mesh(s.holder.id, 'weapon').visible).toBe(true);
+    expect(s.mesh(s.holder.id, 'glint').visible).toBe(true);
+    expect(s.mesh(s.other.id, 'weapon').visible).toBe(true);
+    expect(s.mesh(s.other.id, 'glint').visible).toBe(false);
+    const previous = snap([s.other, s.player, s.holder]);
+    s.draw([s.other, { ...s.player, stealId: s.other.id }, s.holder], previous, 0);
+    expect(s.mesh(s.holder.id, 'glint').visible).toBe(false);
+    expect(s.mesh(s.other.id, 'glint').visible).toBe(true);
+  });
+
+  it.each(['early wind-up', 'held-weapon kick', 'player recovery'] as const)(
+    'hides the glint when the authoritative preview rejects %s',
+    (reason) => {
+      const s = stealScene();
+      s.draw();
+      expect(s.mesh(s.holder.id, 'glint').visible).toBe(true);
+      if (reason === 'held-weapon kick')
+        s.views.pushEvents([{ tick: 2, type: 'attackStart', actor: s.holder.id, data: { kind: 'kick' } }]);
+      const player = {
+        ...s.player,
+        stealId: -1,
+        attackPhase: reason === 'player recovery' ? ('recovery' as const) : s.player.attackPhase,
+      };
+      s.draw([s.other, player, s.holder]);
+      expect(s.mesh(s.holder.id, 'weapon').visible).toBe(true);
+      expect(s.mesh(s.holder.id, 'glint').visible).toBe(false);
+      expect(s.mesh(s.other.id, 'glint').visible).toBe(false);
+    },
+  );
+
+  it.each(['absent preview', 'spectator', 'other player', 'non-rider'] as const)(
+    'does not infer a glint from an %s snapshot',
+    (reason) => {
+      const s = stealScene();
+      s.draw();
+      expect(s.mesh(s.holder.id, 'glint').visible).toBe(true);
+      const player = { ...s.player };
+      if (reason === 'absent preview') delete player.stealId;
+      if (reason === 'spectator') player.slot = -1;
+      if (reason === 'other player') player.slot = 1;
+      if (reason === 'non-rider') player.kind = 'vehicle';
+      // An NPC's own preview must not act as the local player's cue.
+      s.draw([{ ...s.other, stealId: s.holder.id }, player, s.holder]);
+      expect(s.mesh(s.holder.id, 'glint').visible).toBe(false);
+    },
+  );
+
+  it('hides a selected weapon after it leaves the hand or the camera draw range', () => {
+    const s = stealScene();
+    s.draw();
+    expect(s.mesh(s.holder.id, 'glint').visible).toBe(true);
+    s.draw([s.player, { ...s.holder, heldWeapon: null }]);
+    expect(s.mesh(s.holder.id, 'weapon').visible).toBe(false);
+    expect(s.mesh(s.holder.id, 'glint').visible).toBe(false);
+    s.draw();
+    expect(s.mesh(s.holder.id, 'glint').visible).toBe(true);
+    s.views.sync(null, snap([s.player, s.holder]), 1, 0.1, { x: 1000, z: 1000 });
+    expect(s.mesh(s.holder.id, 'weapon').visible).toBe(false);
+    expect(s.mesh(s.holder.id, 'glint').visible).toBe(false);
   });
 
   it('draws the parked bike where the snapshot says while the rider runs back, and hides it otherwise', () => {

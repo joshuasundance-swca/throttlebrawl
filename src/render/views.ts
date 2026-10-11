@@ -701,11 +701,12 @@ export class EntityViews {
     for (const key of Object.keys(this.instanced)) slots[key] = 0;
     let riders = 0;
     let pickups = 0;
+    const stealId = curr.entities.find((e) => e.kind === 'rider' && e.slot === 0)?.stealId ?? -1;
     for (const e of curr.entities) {
       const a = this.prevById.get(e.id) ?? e;
       const p = lerpPose(a, e, t, this.pose);
       if (e.kind === 'rider') {
-        this.updateRider(this.riderView(e), e, a, p, curr);
+        this.updateRider(this.riderView(e), e, a, p, curr, e.id === stealId);
         this.seen.add(e.id);
         riders++;
       } else if (e.kind === 'pickup') {
@@ -1245,6 +1246,7 @@ export class EntityViews {
     prev: EntitySnapshot,
     p: Pose,
     curr: SimSnapshot,
+    stealCandidate: boolean,
   ): void {
     const time = this.now;
     const onFoot = e.mode === 'OnFoot';
@@ -1339,7 +1341,8 @@ export class EntityViews {
       const angle = e.attackPhase === 'windup' ? 0.5 : e.attackPhase === 'active' ? 1.35 : 0.7;
       view.kickLeg.rotation.set(0, 0, side * angle);
     }
-    // A held weapon rides in the attack-side fist; it glints through the wind-up (the steal cue).
+    // A held weapon rides in the attack-side fist. Only the sim's player-actionable holder glints;
+    // old snapshots without a preview stay quiet rather than guessing from the attack pose.
     const held = e.heldWeapon !== null && !tumbling;
     if (held && view.weapon.parent !== attackArm) attackArm.add(view.weapon);
     if (held) {
@@ -1350,7 +1353,7 @@ export class EntityViews {
       }
     }
     view.weapon.visible = held && this.weaponInView(p);
-    view.glint.visible = view.weapon.visible && e.attackPhase === 'windup';
+    view.glint.visible = view.weapon.visible && stealCandidate;
     if (view.glint.visible) {
       view.glint.scale.setScalar(0.8 + 0.7 * Math.abs(Math.sin(time * 18)));
       view.glint.rotation.z = time * 6;

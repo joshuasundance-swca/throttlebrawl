@@ -102,12 +102,56 @@ async function expectButtonsReachable(page: Page, where: string, scope: string) 
   expect(unreachable, `${where}: every button can be reached`).toEqual([]);
 }
 
+/** The start card's actual words stay reachable before its one-tap entry at either saved size. */
+async function checkStartHelp(page: Page, label: string) {
+  const help = page.locator('#start-controls');
+  await expect(help).toBeVisible();
+  await expect(help).toContainText(/finish your swing/i);
+  await expect(help).toContainText(/alongside/i);
+  await expect(help).toContainText(/weapon glints/i);
+  await expect(help).toContainText(/fresh press/i);
+  await expect(help).toContainText(/not a hold/i);
+  await expect(help).toContainText(/replaces your carried weapon/i);
+  const measured = await findOverflow(page);
+  expect(measured.examined, `${label}: start words examined`).toBeGreaterThan(0);
+  expect(measured.out, `${label}: start words fit or scroll`).toEqual([]);
+  const lines = await page.locator('#start-controls .snatch-help').all();
+  expect(lines.length, `${label}: snatch help rows found`).toBeGreaterThan(0);
+  for (const line of lines) {
+    await line.scrollIntoViewIfNeeded();
+    const painted = await line.evaluate((node) => {
+      const r = node.getBoundingClientRect();
+      return {
+        inside:
+          r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.top >= -0.5 && r.bottom <= innerHeight + 0.5,
+        opacity: Number(getComputedStyle(node).opacity),
+      };
+    });
+    expect(painted.inside, `${label}: snatch help can be scrolled onto the screen`).toBe(true);
+    expect(painted.opacity, `${label}: snatch help is painted`).toBeGreaterThan(0.5);
+  }
+  const startTap = page.locator('#start-screen > .big');
+  await startTap.scrollIntoViewIfNeeded();
+  const reachable = await startTap.evaluate((node) => {
+    const r = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      inside: r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.top >= -0.5 && r.bottom <= innerHeight + 0.5,
+      lands: hit === node || node.contains(hit),
+    };
+  });
+  expect(reachable.inside, `${label}: start tap is reachable`).toBe(true);
+  expect(reachable.lands, `${label}: the start tap is uncovered`).toBe(true);
+  await startTap.click();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
+}
+
 async function bootToMenu(page: Page) {
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
   });
   await page.goto('./?settings=all');
-  await page.locator('#start-screen').click();
+  await checkStartHelp(page, 'normal text');
   await expect(page.locator('#menu-quick-play')).toBeVisible();
 }
 
@@ -133,6 +177,14 @@ async function checkScreens(page: Page, label: string) {
     parseFloat(getComputedStyle(document.documentElement).fontSize),
   );
   expect(largestPx / normalPx, `${label}: the root size grows to the largest factor`).toBeCloseTo(1.4, 2);
+
+  // The setting persists into the start card too; exercise its scrolling words and actual entry.
+  await page.reload();
+  await checkStartHelp(page, `${label}, saved largest text`);
+  expect(
+    await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)),
+    `${label}: the largest size survived reload`,
+  ).toBeCloseTo(largestPx, 2);
 
   let found = await findOverflow(page);
   expect(found.examined, `${label}: menu text examined`).toBeGreaterThan(0);
