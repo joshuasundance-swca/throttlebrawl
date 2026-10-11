@@ -266,7 +266,7 @@ export const CAREER_CSS = `
 @media (max-width: 700px) and (orientation: portrait) and (pointer: fine) {
   #career-prompt { left: calc(var(--prompt-l, 0px) + (100vw - var(--prompt-l, 0px) - var(--prompt-r, 0px)) / 2);
     max-width: calc(100vw - var(--prompt-l, 0px) - var(--prompt-r, 0px) - 12px);
-    bottom: max(10px, env(safe-area-inset-bottom)); }
+    bottom: max(10px, env(safe-area-inset-bottom)); font-size: 0.8125rem; line-height: 1.2; padding: 4px 8px; }
 }
 /* Playtest 3: "The race objective sits over the heat meter." The objective's slot comes from
    ui/hud-layout.ts (--hl-obj-* on #ui), two lines at most where it has the row, three in the narrower column (--hl-obj-lines),
