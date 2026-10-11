@@ -14,7 +14,8 @@ type TestWindow = Window & {
   __wake: WakeProbe;
   __wakeContext?: WEBGL_lose_context;
 };
-const probe = (page: Page) => page.evaluate(() => (window as TestWindow).__wake);
+// The required probe exists only after this spec's init script; the global Window does not declare it.
+const probe = (page: Page) => page.evaluate(() => (window as unknown as TestWindow).__wake);
 const active = (page: Page, count: number) => expect.poll(async () => (await probe(page)).active).toBe(count);
 
 async function hidden(page: Page, value: boolean) {
@@ -38,7 +39,7 @@ test('real race start, pause, holds, restart, quit and results synchronize the s
     if (message.type() === 'error') problems.push(message.text());
   });
   await page.addInitScript(() => {
-    const w = window as TestWindow;
+    const w = window as unknown as TestWindow;
     w.__GAME_TEST__ = true;
     w.__wake = { active: 0, events: [], requests: [] };
     Object.defineProperty(navigator, 'wakeLock', {
@@ -84,8 +85,8 @@ test('real race start, pause, holds, restart, quit and results synchronize the s
   });
   expect((await probe(page)).events).toEqual(['request', 'release']);
   await page.evaluate(() => {
-    (window as TestWindow).__wake.events = [];
-    (window as TestWindow).__wake.requests = [];
+    (window as unknown as TestWindow).__wake.events = [];
+    (window as unknown as TestWindow).__wake.requests = [];
   });
   await page.locator('#start-screen').click();
   await openQuickPlay(page);
@@ -94,7 +95,7 @@ test('real race start, pause, holds, restart, quit and results synchronize the s
   await active(page, 1);
   expect((await probe(page)).requests.map((r) => [r.type, r.state])).toEqual([['screen', 'race']]);
   await page.evaluate(() => {
-    const g = (window as TestWindow).__game!;
+    const g = (window as unknown as TestWindow).__game!;
     g.setBot(true);
     g.fastForward((snap) => snap.tick > 120, { perFrame: 240 });
   });
@@ -113,11 +114,11 @@ test('real race start, pause, holds, restart, quit and results synchronize the s
     const gl = document.querySelector<HTMLCanvasElement>('canvas#game')?.getContext('webgl2');
     const ext = gl?.getExtension('WEBGL_lose_context');
     if (!ext) throw new Error('WEBGL_lose_context is unavailable');
-    (window as TestWindow).__wakeContext = ext;
+    (window as unknown as TestWindow).__wakeContext = ext;
     ext.loseContext();
   });
   await active(page, 0);
-  await page.evaluate(() => (window as TestWindow).__wakeContext!.restoreContext());
+  await page.evaluate(() => (window as unknown as TestWindow).__wakeContext!.restoreContext());
   await active(page, 1);
   const afterContext = await probe(page);
   expect(afterContext.events).toEqual(['request', 'release', 'request', 'release', 'request']);
@@ -152,7 +153,7 @@ test('real race start, pause, holds, restart, quit and results synchronize the s
   await active(page, 1);
   const beforeFinish = await probe(page);
   await page.evaluate(() => {
-    const g = (window as TestWindow).__game!;
+    const g = (window as unknown as TestWindow).__game!;
     g.setBot(true);
     g.fastForward(() => false, { perFrame: 1200 });
   });
