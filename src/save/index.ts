@@ -87,9 +87,8 @@ export const RADIO_SETTINGS: readonly RadioSetting[] = ['score', 'station', 'off
  */
 export interface RaceOptions {
   /**
-   * The race type (P4-12's "other race & challenge types" is [open]: the maintainer wants to compare
-   * first). Only `race` exists; the field is the seam a new type fills, and the screen shows the row
-   * once there are two.
+   * Quick Play's existing event family. The loaded region decides which families it offers.
+   * Additive values in the version-one record; missing or unknown values still select Race.
    */
   kind: RaceKind;
   /** A bike (qualified id, `base:superbike-1000`), or null for the career garage's bike. */
@@ -105,8 +104,8 @@ export interface RaceOptions {
   /** How busy the road is, as a scale on the `traffic.density` slider. */
   traffic: RaceTraffic;
 }
-export type RaceKind = 'race';
-export const RACE_KINDS: readonly RaceKind[] = ['race'];
+export type RaceKind = 'race' | 'hunt' | 'escape' | 'grudge';
+export const RACE_KINDS: readonly RaceKind[] = ['race', 'hunt', 'escape', 'grudge'];
 export type RaceWeather = 'local' | 'dry' | 'rain';
 export const RACE_WEATHER: readonly RaceWeather[] = ['local', 'dry', 'rain'];
 export type RaceTraffic = 'none' | 'light' | 'usual' | 'heavy';
