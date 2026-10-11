@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { placeElement, type TouchLayout } from '../../src/core/layout.ts';
 import { InputFlag, type SimEvent, type SimInput } from '../../src/sim/types.ts';
 import { openQuickPlay } from './menu-navigation';
-import { inputDefaults } from '../../src/input';
+import { inputDefaults } from '../../src/input/tuning.ts';
 
 // Playtest 1 (2026-09-30), item 3: "Can't kick". A scripted 180 ms swipe down on the attack
 // button, a natural swipe rather than M1's 80 ms flick, produces a kick and not a punch, end to end
