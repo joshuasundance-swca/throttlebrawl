@@ -16,6 +16,10 @@ const selectedNode = def.nodes.find((n) => n.id === def.boss);
 if (!selectedNode) throw new Error('No finale node');
 const node = selectedNode,
   plan = eventPlan(REG, node.event);
+const rivalKey = plan.rules.rival;
+if (!rivalKey) throw new Error('No authored finale rival');
+const authoredSignature = REG.riders[rivalKey]?.personality?.signature;
+if (authoredSignature !== 'pivot') throw new Error('No authored Pivot signature rider');
 const firstLength = plan.lengths[0];
 if (!firstLength) throw new Error('No authored finale length');
 const authoredRoute = REG.routes[firstLength.route];
@@ -160,7 +164,7 @@ describe('the authored Downtown Pivot encounter', () => {
     expect(plan.rules.rival).toBe('region-sf:pivot');
     expect(config.riders.find((r) => r.contentId === plan.rules.rival)?.controller).toMatchObject({
       kind: 'ai',
-      personality: { signature: REG.riders[plan.rules.rival!]!.personality.signature },
+      personality: { signature: authoredSignature },
     });
     expect(length.route).toBe(plan.lengths.find((l) => l.id === length.id)?.route);
     expect(config.route.routeId).toBe(length.route.split(':').at(-1));

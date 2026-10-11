@@ -28,14 +28,21 @@ const node = boss,
 const rival = plan.rules.rival;
 if (!rival) throw new Error('No named rival');
 const authoredRival = REG.riders[rival];
-if (!authoredRival?.name || authoredRival.personality.signature !== 'pivot')
+if (!authoredRival?.name || authoredRival.personality?.signature !== 'pivot')
   throw new Error('No named Pivot signature rider');
 const rivalName = authoredRival.name;
 const count = Number(
   plan.objectives.find((o) => o.required && o.kind === 'beat-rival')?.params['orKnockdowns'],
 );
 if (!(count > 0)) throw new Error('No alternative falls victory');
-const awards = def.unlocks.filter((u) => u.kind === 'boss-beaten' && REG.bikes[u.grant]).map((u) => u.grant);
+const awardEntries = def.unlocks
+  .filter((u) => u.kind === 'boss-beaten' && REG.bikes[u.grant])
+  .map((u) => {
+    const bike = REG.bikes[u.grant];
+    if (!bike?.name) throw new Error(`No authored bike award name for ${u.grant}`);
+    return { key: u.grant, name: bike.name };
+  });
+const awards = awardEntries.map((award) => award.key);
 const ME = 1,
   BOSS = 0,
   NPC = 2,
@@ -227,7 +234,7 @@ describe('the authored Pivot finale scoring and final payoff', () => {
     expect(card?.kindLabel).toBe(`Region boss · ${rivalName}`);
     expect(card?.objective).toContain(objectiveText(REG, plan));
     expect(card?.objective).toContain('Win for free play');
-    for (const key of awards) expect(card?.objective).toContain(REG.bikes[key]!.name);
+    for (const award of awardEntries) expect(card?.objective).toContain(award.name);
     const r = race();
     r.finish(ME);
     const first = r.settle(profile);
@@ -245,7 +252,7 @@ describe('the authored Pivot finale scoring and final payoff', () => {
     expect(view.title).toBe(`${rivalName.toUpperCase()} BEATEN`);
     expect(view.objectives.find((o) => o.required)?.label).toBe(objectiveText(REG, plan));
     expect(view.news).toContain('Free play is open.');
-    for (const key of awards) expect(view.news.some((s) => s.includes(REG.bikes[key]!.name))).toBe(true);
+    for (const award of awardEntries) expect(view.news.some((s) => s.includes(award.name))).toBe(true);
     const replayCard = careerView(REG, defs, first.profile, def.regionId)
       .tiers.flatMap((t) => t.nodes)
       .find((c) => c.id === node.id);
