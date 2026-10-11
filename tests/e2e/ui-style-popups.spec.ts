@@ -1722,13 +1722,38 @@ test('phone landscape, left-handed mirror: the ticker stays clear with the rival
 // screen no player sees).
 test.describe('phone portrait', () => {
   test.use({ viewport: { width: 412, height: 915 }, isMobile: false, hasTouch: false });
+  for (const textSize of ['normal', 'large', 'largest'])
+    test(`mirrored prompts stay clear with ${textSize} text`, async ({ page }) => {
+      await page.addInitScript((size) => {
+        localStorage.setItem(
+          'mbrawl:settings',
+          JSON.stringify({
+            format: 'settings',
+            version: 1,
+            build: 'test',
+            savedAt: '2026-10-10T00:00:00.000Z',
+            data: { mirror: true, textSize: size },
+          }),
+        );
+      }, textSize);
+      await startRace(page, { career: true });
+      const m = await tickerAndMeasure(page, [LONGEST_BARK], { prompts: CAREER_PROMPTS });
+      expect(momentFindings(m, `portrait mirrored ${textSize}`, true)).toEqual([]);
+      for (const p of m.prompts) {
+        expect(p.hidden, 'the tutorial remains visible').toBe(false);
+        expect(p.box.top, 'the prompt stays below the reserved rider area').toBeGreaterThan(
+          m.viewport.h * 0.82,
+        );
+      }
+    });
   test('the ticker sits clear of the road ahead', async ({ page }) => {
     test.setTimeout(150_000);
     const problems = watchErrors(page);
     await startRace(page, { career: true });
-    const m = await tickerAndMeasure(page, [LONGEST_BARK]);
+    const m = await tickerAndMeasure(page, [LONGEST_BARK], { prompts: CAREER_PROMPTS });
     expectClear(m, 'phone portrait');
     expectCompact(m, 'phone portrait');
+    expect(momentFindings(m, 'phone portrait, every prompt', true)).toEqual([]);
     await shot(page, 'portrait');
     await expectWholeLayout(page, m, 'phone portrait');
     expect(problems).toEqual([]);
