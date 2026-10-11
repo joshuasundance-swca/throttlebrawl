@@ -35,6 +35,8 @@ interface Ride {
   /** The snapshot after each step, only on ticks with a law or siren event (and the first). */
   snaps: Map<number, SimSnapshot>;
   first: SimSnapshot;
+  /** Immediate pre-crossing positive control, retained only when snapshots are requested. */
+  beforeJurisdiction?: SimSnapshot;
   finished: boolean;
   /** The sim ticks the ride ran. */
   ticks: number;
@@ -56,10 +58,13 @@ function ride(
   while (!sim.isOver() && sim.tick < maxTicks && !done(r)) {
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
+    const before = snap;
     sim.step([toSimInput(a)]);
     snap = sim.snapshot();
     const evs = sim.events().filter((e) => e.type === 'law' || e.type === 'siren' || e.type === 'heat');
     if (captureSnapshots && evs.length) r.snaps.set(sim.tick, snap);
+    if (captureSnapshots && evs.some((e) => e.type === 'law' && e.data['kind'] === 'jurisdiction'))
+      r.beforeJurisdiction = before;
     r.events.push(...evs);
     if (snap.race.finishOrder.includes(playerId)) r.finished = true;
   }
@@ -192,7 +197,11 @@ describe('law with a personality: real races', () => {
       'the Keys jurisdiction sign',
       seedRange(1, 6),
       (seed) => ride(event, seed, tuning, seconds(300), (r) => lawOf(r, 'jurisdiction').length > 0),
-      (r) => lawOf(r, 'jurisdiction').length > 0,
+      (r) =>
+        lawOf(r, 'jurisdiction').length > 0 &&
+        !!r.beforeJurisdiction?.entities.some(
+          (e) => e.faction === 'law' && e.pursuitTargetId === r.playerId && e.mode === 'Road',
+        ),
     );
     const r = found.result;
     expect(r, found.summary).not.toBeNull();
@@ -208,10 +217,19 @@ describe('law with a personality: real races', () => {
         `${(Number(crossed.data['heatBefore']) * 100).toFixed(0)}\n`,
     );
     expect(crossed.target).toBe(r.playerId);
+    if (!snap || !r.beforeJurisdiction) throw new Error('missing crossing snapshot pair');
+    expect(r.beforeJurisdiction.tick + 1).toBe(snap.tick);
+    expect(r.beforeJurisdiction.law?.heat).toBeGreaterThan(0);
+    // A cessation assertion needs an immediate positive chase, not merely an idle combat target.
+    expect(
+      r.beforeJurisdiction.entities.some(
+        (e) => e.faction === 'law' && e.pursuitTargetId === r.playerId && e.mode === 'Road',
+      ),
+    ).toBe(true);
     expect(snap?.law?.heat).toBe(0);
     // Nobody chases him on the tick he crosses.
     expect(
-      snap?.entities.some((e) => e.faction === 'law' && e.targetId === r.playerId && e.mode === 'Road'),
+      snap.entities.some((e) => e.faction === 'law' && e.pursuitTargetId === r.playerId && e.mode === 'Road'),
     ).toBe(false);
     // Omitting unused retained snapshots must leave the actual race and event stream unchanged.
     if (found.seed === null) throw new Error('no qualifying seed');
@@ -230,6 +248,7 @@ describe('law with a personality: real races', () => {
     expect(withoutSnapshots.finished).toBe(r.finished);
     expect(withoutSnapshots.ticks).toBe(r.ticks);
     expect(withoutSnapshots.snaps.size).toBe(0);
+    expect(withoutSnapshots.beforeJurisdiction).toBeUndefined();
   });
 
   // The whole world on, and heat that builds fast (tier 3 never comes in the isolation profile).
