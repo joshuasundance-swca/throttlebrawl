@@ -231,6 +231,11 @@ describe('the authored Timber regional boss', () => {
     const replay = win.settle(first.profile);
     expect(replay.report).toMatchObject({ replay: true, unlocked: [], teaser: null });
     expect(replay.profile.bikes.owned).toEqual(first.profile.bikes.owned);
+    const replayCard = careerView(REG, defs, first.profile, def.regionId)
+      .tiers.flatMap((t) => t.nodes)
+      .find((c) => c.id === node.id);
+    expect(replayCard?.objective).toContain(`${next.regionName} is open.`);
+    expect(replayCard?.objective).not.toContain('Win to open');
   });
   it('names the region boss and chapter stake before and after victory', () => {
     const profile = ready();

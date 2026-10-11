@@ -332,7 +332,13 @@ export function careerView(
         : n.id === def.boss
           ? 'Boss'
           : (KIND_LABEL[plan.kind] ?? plan.kind),
-      objective: objectiveText(reg, plan) + (nextRegion ? ` Win to open ${nextRegion.regionName}.` : ''),
+      objective:
+        objectiveText(reg, plan) +
+        (nextRegion
+          ? regionOpen(defs, profile, nextRegion)
+            ? ` ${nextRegion.regionName} is open.`
+            : ` Win to open ${nextRegion.regionName}.`
+          : ''),
       bonuses: bonusTexts(plan),
       route: routeName(reg, route),
       km: routeKm(reg, route),
