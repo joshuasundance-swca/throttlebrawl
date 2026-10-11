@@ -125,7 +125,7 @@ test('Pivot identity, victory routes and final payoff at small landscape/all tex
   let successfulSeed: number | null = null;
   for (const textSize of ['normal', 'large', 'largest']) {
     const context = await browser.newContext({
-      baseURL,
+      ...(baseURL === undefined ? {} : { baseURL }),
       viewport: { width: 568, height: 320 },
       deviceScaleFactor: 1,
       isMobile: true,

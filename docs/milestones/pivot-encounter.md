@@ -37,7 +37,9 @@ contract, content, asset, dependency, budget, physics change or forced acquisiti
 4. Matched obstruction/control shows navigation can veto line/speed while lifecycle remains finite.
    Do not demand a complete swap through an obstacle.
 5. Geometry distinguishes neutral preparation, burst and slump using existing rigs. Left/right
-   targets and inactive attackSide cannot direct preparation. Punch/kick windup/active/recovery
+   targets and prior left/right attack poses cannot direct idle/cooldown preparation. Exercise
+   prior punches/kicks through actual attackStart events and supported target snapshots.
+   Punch/kick windup/active/recovery
    preserve ordinary combat geometry and suppress preparation, which returns afterward.
    Neutral/non-Pivot geometry stays unchanged. Inspect actual served phases muted after deployment.
 6. Content-derived scoring covers finish-ahead and exactly three attributed named-rival falls,

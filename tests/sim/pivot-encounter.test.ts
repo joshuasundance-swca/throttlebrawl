@@ -16,6 +16,10 @@ const selectedNode = def.nodes.find((n) => n.id === def.boss);
 if (!selectedNode) throw new Error('No finale node');
 const node = selectedNode,
   plan = eventPlan(REG, node.event);
+const firstLength = plan.lengths[0];
+if (!firstLength) throw new Error('No authored finale length');
+const authoredRoute = REG.routes[firstLength.route];
+if (!authoredRoute) throw new Error('No authored finale route');
 const profile = onTierBike(REG, def, node, startCareer(defs, { ...DEFAULT_PROFILE }));
 const LIMIT = 3600,
   SEEDS = seedRange(1, 8);
@@ -160,7 +164,7 @@ describe('the authored Downtown Pivot encounter', () => {
     });
     expect(length.route).toBe(plan.lengths.find((l) => l.id === length.id)?.route);
     expect(config.route.routeId).toBe(length.route.split(':').at(-1));
-    expect(REG.routes[length.route]?.network).toBe(REG.routes[plan.lengths[0]!.route]?.network);
+    expect(REG.routes[length.route]?.network).toBe(authoredRoute.network);
     expect(config.riders.find((r) => r.controller.kind === 'player')?.bike.contentId).toBe(
       tierBike(def, node)?.key,
     );

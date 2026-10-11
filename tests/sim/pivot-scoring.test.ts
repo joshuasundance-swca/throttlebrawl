@@ -26,9 +26,11 @@ if (!boss) throw new Error('No finale node');
 const node = boss,
   plan = eventPlan(REG, node.event);
 const rival = plan.rules.rival;
-if (!rival || REG.riders[rival]?.personality.signature !== 'pivot')
-  throw new Error('No Pivot signature rival');
-const rivalName = REG.riders[rival].name;
+if (!rival) throw new Error('No named rival');
+const authoredRival = REG.riders[rival];
+if (!authoredRival?.name || authoredRival.personality.signature !== 'pivot')
+  throw new Error('No named Pivot signature rider');
+const rivalName = authoredRival.name;
 const count = Number(
   plan.objectives.find((o) => o.required && o.kind === 'beat-rival')?.params['orKnockdowns'],
 );

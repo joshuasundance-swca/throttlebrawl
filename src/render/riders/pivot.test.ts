@@ -116,17 +116,43 @@ describe('Pivot geometry: prepare, burst and slump', () => {
     w.pose(entity());
     same(w, neutral);
   });
-  it('ignores left/right signature targets, combat targets, attackSide and duration in preparation', () => {
+  it('ignores left/right signature targets, combat targets and duration in preparation', () => {
     const neutralTell = measured({ signature: sig('tell') });
     for (const targetX of [-10, 10]) {
-      for (const attackSide of [-1, 1] as const) {
-        same(
-          measured({ signature: { ...sig('tell'), targetId: 1, left: 8 }, targetId: 1, attackSide }, targetX),
-          neutralTell,
-        );
-      }
+      same(
+        measured({ signature: { ...sig('tell'), targetId: 1, left: 8 }, targetId: 1 }, targetX),
+        neutralTell,
+      );
     }
   });
+  it.each(['idle', 'cooldown'] as const)(
+    'ignores prior left/right punches and kicks during %s preparation',
+    (attackPhase) => {
+      const neutralTell = measured({ signature: sig('tell'), attackPhase });
+      for (const kick of [false, true]) {
+        for (const priorTargetX of [-10, 10]) {
+          for (const targetX of [-10, 10]) {
+            const w = world();
+            w.pose(entity()); // Build the rig before delivering its real combat event.
+            w.rigs.pushEvents([
+              { tick: 60, type: 'attackStart', actor: 0, data: { kind: kick ? 'kick' : 'punch' } },
+            ]);
+            w.pose(entity({ targetId: 1, attackPhase: 'active' }), priorTargetX);
+            const limb = kick
+              ? priorTargetX > 0
+                ? 'thigh_r'
+                : 'thigh_l'
+              : priorTargetX > 0
+                ? 'upper_arm_r'
+                : 'upper_arm_l';
+            expect(w.rotation(limb).angleTo(measured().rotation(limb))).toBeGreaterThan(0.1);
+            w.pose(entity({ signature: sig('tell'), targetId: 1, attackPhase }), targetX);
+            same(w, neutralTell);
+          }
+        }
+      }
+    },
+  );
   it.each(['windup', 'active', 'recovery'] as const)(
     'preserves ordinary punch and kick geometry in %s then resumes preparation',
     (attackPhase) => {
