@@ -361,6 +361,11 @@ export const aiSystem: SimSystem = {
         signatureGapScale(config),
         config.event.grudgeRule?.rule === 'timber' &&
           config.riders[m.riderIndex]?.contentId === config.event.grudgeRule.rival,
+        // Unruled grudge events do not carry arbitrary named-rival overrides in SimConfig.
+        // This is deliberately the canonical content-keyed finale, not a general selector.
+        config.event.contentId === 'region-sf:sf-boss-pivot' &&
+          config.event.kind === 'grudge-match' &&
+          config.riders[m.riderIndex]?.contentId === 'region-sf:pivot',
       );
     }
   },

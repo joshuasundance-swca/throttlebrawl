@@ -4,6 +4,7 @@
 // window in which it cannot hurt you. Hits are injected as last tick's `hit` events, the way
 // combat reports them, since combat does not run here.
 import { describe, expect, it } from 'vitest';
+import { nextFloat, streamSeed } from '../../core';
 import {
   createRoadNetwork,
   createRouteProgress,
@@ -158,9 +159,11 @@ function scene(
     gapScale?: number;
     quirks?: number;
     vehicles?: { s: number; d: number; v: number; dir: 1 | -1 }[];
+    event?: SimConfig['event'];
   } = {},
 ): Scene {
   const cfg = config(defs, opts.signatures ?? 1);
+  if (opts.event) cfg.event = opts.event;
   if (opts.rule) cfg.event.grudgeRule = opts.rule;
   if (opts.gapScale !== undefined) cfg.event.level = { aggressionScale: 1, signatureGapScale: opts.gapScale };
   if (opts.quirks !== undefined) cfg.tuning = { ...cfg.tuning, 'ai.styleQuirks': opts.quirks };
@@ -276,7 +279,7 @@ function timberScene(opts: Parameters<typeof scene>[2] = {}): Scene {
   );
 }
 
-function timberTick(sc: Scene, tick: number) {
+function timberTick(sc: Scene, tick: number, move: SignatureId = 'timber') {
   sc.world.tick = tick;
   const [m, me] = sc.riders as [Mover, Mover];
   const road = sc.config.road;
@@ -300,8 +303,202 @@ function timberTick(sc: Scene, tick: number) {
     punch: weaponReach(sc.config, 'punch'),
     kick: weaponReach(sc.config, 'kick'),
   };
-  return stepSignature(c, 'timber');
+  return stepSignature(c, move);
 }
+
+function pivotScene(
+  opts: Parameters<typeof scene>[2] = {},
+  contentId = 'region-sf:pivot',
+  move: SignatureId = 'pivot',
+) {
+  return scene(
+    [{ ...rival('racer', move, { aggression: 0, weave: 0 }), contentId }, PLAYER],
+    [
+      { s: 100, d: 2.4, v: 20 },
+      { s: 80, d: 1, v: 20 },
+    ],
+    { event: { ...config([]).event, contentId: 'region-sf:sf-boss-pivot', kind: 'grudge-match' }, ...opts },
+  );
+}
+const pivotTick = (sc: Scene, tick: number) => timberTick(sc, tick, 'pivot');
+
+describe('canonical Pivot encounter', () => {
+  it('scopes private timing to canonical event, grudge kind, rider and signature', () => {
+    const on = pivotScene();
+    const rng = { s: streamSeed(on.config.seed, 'ai.signature', 0) };
+    expect(signatureState(on.world).next[0]).toBe(240 + Math.floor(nextFloat(rng) * 360));
+    expect(signatureState(on.world).timing?.[0]).toMatchObject({ first: 240, tell: 48, act: 45, open: 120 });
+    for (const sc of [
+      pivotScene({ event: config([]).event }),
+      pivotScene({ event: { ...config([]).event, contentId: 'region-sf:sf-boss-pivot' } }),
+      pivotScene({}, 'region-sf:other'),
+      pivotScene({}, 'region-sf:pivot', 'lag'),
+    ]) {
+      expect(signatureState(sc.world).timing).toBeUndefined();
+      expect(signatureState(sc.world).next[0]).toBeGreaterThanOrEqual(600);
+    }
+    for (const opts of [{ signatures: 0 }, { quirks: 0 }]) {
+      const off = pivotScene(opts);
+      now(off, 0);
+      for (let t = 0; t < 180; t++) step(off);
+      expect(signatureView(off.world, 0)).toBeNull();
+    }
+  });
+
+  it.each([1, 0.5])('keeps exact readiness, phase and completion formulas at gap scale %s', (gapScale) => {
+    const sc = pivotScene({ gapScale });
+    const sg = signatureState(sc.world);
+    const rng = { s: streamSeed(sc.config.seed, 'ai.signature', 0) };
+    const start = 240 + Math.floor(nextFloat(rng) * Math.round(360 * gapScale));
+    expect(sg.next[0]).toBe(start);
+    expect(pivotTick(sc, start)).toEqual({ noSwing: true });
+    expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'tell', left: 48 / 60, targetId: -1 });
+    const line = sg.lineD[0];
+    expect(pivotTick(sc, start + 48)).toMatchObject({ dTarget: line, speedTarget: 34.5 });
+    (sc.riders[1] as Mover).pos.d = -2.8;
+    expect(pivotTick(sc, start + 49).dTarget).toBe(line);
+    expect(pivotTick(sc, start + 93)).toMatchObject({ speedTarget: 17, noSwing: true });
+    expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'open', left: 2 });
+    (sc.riders[0] as Mover).speed = 40;
+    expect(pivotTick(sc, start + 94).speedTarget).toBe(17);
+    expect(pivotTick(sc, start + 213)).toEqual({});
+    expect(signatureView(sc.world, 0)).toBeNull();
+    expect(sg.openSpeed?.[0]).toBeUndefined();
+    expect(sg.next[0]).toBe(
+      start +
+        213 +
+        Math.round(540 * gapScale) +
+        Math.floor(nextFloat(rng) * (Math.round(360 * gapScale) + 1)),
+    );
+  });
+
+  it('retains busy suppression, with a clear-rider positive control', () => {
+    const sc = pivotScene();
+    now(sc, 0);
+    (sc.riders[1] as Mover).pos.s = 99;
+    expect(pivotTick(sc, 0)).toEqual({});
+    expect(signatureView(sc.world, 0)).toBeNull();
+    (sc.riders[1] as Mover).pos.s = 80;
+    expect(pivotTick(sc, 1)).toEqual({ noSwing: true });
+    expect(signatureView(sc.world, 0)?.phase).toBe('tell');
+  });
+
+  it('ordinary Pivot keeps its original tell and uncapped recovery target', () => {
+    const sc = pivotScene({ event: config([]).event });
+    now(sc, 0);
+    expect(pivotTick(sc, 0)).toEqual({});
+    expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'tell', left: 0.5 });
+    expect(pivotTick(sc, 30)).toMatchObject({ speedTarget: 34.5 });
+    expect(pivotTick(sc, 75)).toMatchObject({ speedTarget: 25.5, noSwing: true });
+    expect(signatureState(sc.world).openSpeed).toBeUndefined();
+    pivotTick(sc, 195);
+    expect(signatureView(sc.world, 0)).toBeNull();
+  });
+
+  it('the controller suppresses new swings in tell and sag even with an aggressive rider in reach', () => {
+    const run = (encounter: boolean, phase: 'tell' | 'open') => {
+      const sc = pivotScene(encounter ? {} : { signatures: 0 });
+      const controller = sc.config.riders[0]!.controller;
+      if (controller.kind !== 'ai') throw new Error('No AI controller');
+      controller.personality = { ...controller.personality, aggression: 1 };
+      controller.style = 'heavy-hitter';
+      now(sc, 0);
+      // Swing readiness starts at tick 120; remain inside the progress-watch timeout.
+      pivotTick(sc, 120);
+      if (phase === 'open') {
+        pivotTick(sc, 168);
+        pivotTick(sc, 213);
+      }
+      if (encounter) expect(signatureView(sc.world, 0)?.phase).toBe(phase);
+      const [pv, me] = sc.riders as [Mover, Mover];
+      let presses = 0;
+      for (let t = 0; t < 40; t++) {
+        me.pos = { ...pv.pos, s: pv.pos.s - 0.5, d: pv.pos.d - 1.1 };
+        me.speed = pv.speed;
+        step(sc);
+        if (pressing(sc, 0)) presses++;
+      }
+      return presses;
+    };
+    for (const phase of ['tell', 'open'] as const) {
+      expect(run(true, phase)).toBe(0);
+      expect(run(false, phase), phase).toBeGreaterThan(0);
+    }
+  });
+
+  it('ordinary controls actually brake an early sag, resume driving and replay', () => {
+    const run = () => {
+      const sc = pivotScene();
+      now(sc, 0);
+      const pv = sc.riders[0] as Mover;
+      for (let t = 0; t < 100 && phase(sc, 0) !== 'open'; t++) step(sc);
+      expect(phase(sc, 0)).toBe('open');
+      const at = sc.world.tick,
+        speed = pv.speed;
+      expect(signatureState(sc.world).openSpeed?.[0]).toBeLessThan(speed);
+      let braked = false;
+      for (let t = 0; t < 121 && phase(sc, 0) === 'open'; t++) {
+        step(sc);
+        braked ||= (sc.world.inputs[0]?.brake ?? 0) > 0;
+        expect(pressing(sc, 0)).toBe(false);
+      }
+      expect(sc.world.tick - at).toBe(120);
+      expect(braked).toBe(true);
+      expect(pv.speed).toBeLessThan(speed - 1);
+      step(sc);
+      expect(sc.world.inputs[0]?.throttle).toBeGreaterThan(0);
+      return worldHash(sc.world);
+    };
+    expect(run()).toBe(run());
+  });
+
+  it.each(['down', 'unsticking'] as const)(
+    'interrupts %s without a random draw and preserves a later readiness',
+    (reason) => {
+      for (const phase of ['tell', 'act', 'open'] as const) {
+        for (const later of [false, true]) {
+          const sc = pivotScene({ gapScale: 0.5 });
+          now(sc, 0);
+          pivotTick(sc, 0);
+          const at = phase === 'tell' ? 0 : phase === 'act' ? 48 : 93;
+          if (phase === 'open') pivotTick(sc, 48);
+          if (at > 0) pivotTick(sc, at);
+          expect(signatureView(sc.world, 0)?.phase).toBe(phase);
+          const sg = signatureState(sc.world);
+          if (phase === 'open') expect(sg.openSpeed?.[0]).toBe(17);
+          const rng = sg.rng[0];
+          sg.next[0] = later ? at + 999 : 0;
+          if (reason === 'down') (sc.riders[0] as Mover).mode = 'Tumble';
+          else aiState(sc.world).unstickUntil[0] = at + 30;
+          step(sc);
+          expect(signatureView(sc.world, 0)).toBeNull();
+          expect(sg.next[0]).toBe(at + (later ? 999 : 270));
+          expect(sg.rng[0]).toBe(rng);
+          expect(sg.openSpeed?.[0]).toBeUndefined();
+          expect(pressing(sc, 0)).toBe(false);
+        }
+      }
+    },
+  );
+
+  it('retains obstacle avoidance priority without requiring a completed swap', () => {
+    const plain = pivotScene();
+    const blocked = pivotScene({ vehicles: [{ s: 109, d: 2.4, v: 0, dir: 1 }] });
+    for (const sc of [plain, blocked]) {
+      now(sc, 0);
+      pivotTick(sc, 0);
+      pivotTick(sc, 48);
+      step(sc);
+      expect(signatureView(sc.world, 0)?.phase).toBe('act');
+    }
+    expect(blocked.world.inputs[0]?.brake).toBeGreaterThan(plain.world.inputs[0]?.brake ?? 0);
+    const line = signatureState(blocked.world).lineD[0];
+    for (let t = 0; t < 166 && phase(blocked, 0) !== null; t++) step(blocked);
+    expect(signatureView(blocked.world, 0)).toBeNull();
+    expect(signatureState(blocked.world).lineD[0]).toBe(line);
+    expect(signatureState(blocked.world).openSpeed?.[0]).toBeUndefined();
+  });
+});
 
 describe('named Timber encounter timing and counterplay', () => {
   it('selects earlier readiness only for the named Timber rival, leaving switches effective', () => {
