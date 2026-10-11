@@ -1,7 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openQuickPlay } from './menu-navigation';
 import type { TestHandle } from '../../src/dev/handle';
-import profileFixture from '../fixtures/save/profile-v1.json';
+import { readFileSync } from 'node:fs';
+
+const profileFixture: unknown = JSON.parse(
+  readFileSync(new URL('../fixtures/save/profile-v1.json', import.meta.url), 'utf8'),
+);
 
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: TestHandle };
 interface Config {
