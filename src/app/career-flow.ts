@@ -394,6 +394,7 @@ export {
   withPromptsSeen,
 } from '../career';
 export { decodeExportCode, encodeExportCode } from '../save';
+export { returningCareerRegion } from './returning-chapter';
 
 /** This module, as app/index.ts holds it once loaded. */
 export type CareerFlow = typeof import('./career-flow');

@@ -1443,7 +1443,7 @@ export function createApp(opts: AppOptions): AppHandle {
     (m) => {
       C = m;
       defs = m.careerDefs(registry);
-      careerRegion ||= defs[0]?.regionId ?? '';
+      careerRegion ||= m.returningCareerRegion(defs, profile) ?? defs[0]?.regionId ?? '';
       return m;
     },
     (err: unknown) => {
