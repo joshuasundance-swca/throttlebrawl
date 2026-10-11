@@ -163,7 +163,7 @@ function scene(
   const cfg = config(defs, opts.signatures ?? 1);
   if (opts.rule) cfg.event.grudgeRule = opts.rule;
   if (opts.gapScale !== undefined) cfg.event.level = { aggressionScale: 1, signatureGapScale: opts.gapScale };
-  if (opts.quirks !== undefined) cfg.tuning['ai.styleQuirks'] = opts.quirks;
+  if (opts.quirks !== undefined) cfg.tuning = { ...cfg.tuning, 'ai.styleQuirks': opts.quirks };
   const world = createWorld(cfg);
   const riders = defs.map((_, i) => {
     const p = at[i] ?? { s: 30, d: 1.7, v: 0 };

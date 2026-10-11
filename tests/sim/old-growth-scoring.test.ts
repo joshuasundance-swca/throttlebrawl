@@ -28,6 +28,9 @@ const plan = eventPlan(REG, node.event);
 const selectedRival = plan.rules.rival;
 if (!selectedRival) throw new Error('No named Timber rival');
 const rival = selectedRival;
+const selectedRivalName = REG.riders[rival]?.name;
+if (!selectedRivalName) throw new Error('No boss name');
+const rivalName = selectedRivalName;
 const required = plan.objectives.find((o) => o.required && o.kind === 'beat-rival');
 const count = Number(required?.params['orKnockdowns']);
 if (!(count > 0)) throw new Error('No environmental alternative');
@@ -234,7 +237,7 @@ describe('the authored Timber regional boss', () => {
     const card = careerView(REG, defs, profile, def.regionId)
       .tiers.flatMap((t) => t.nodes)
       .find((c) => c.id === node.id);
-    expect(card?.kindLabel).toBe(`Region boss · ${REG.riders[rival]?.name}`);
+    expect(card?.kindLabel).toBe(`Region boss · ${rivalName}`);
     expect(card?.objective).toContain(`Win to open ${next.regionName}.`);
     const r = race();
     r.finish(ME);
@@ -250,7 +253,7 @@ describe('the authored Timber regional boss', () => {
       settled.profile,
       defs,
     );
-    expect(view.title).toBe(`${REG.riders[rival]?.name.toUpperCase()} BEATEN`);
+    expect(view.title).toBe(`${rivalName.toUpperCase()} BEATEN`);
     expect(view.news).toContain(`${next.regionName} is open.`);
   });
 });
