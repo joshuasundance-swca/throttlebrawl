@@ -8,7 +8,7 @@
 // node's field level and the season's remix), so what is measured is what a player meets. The
 // rules read the careers from the packs and hold for every region in chapter order:
 // - a career race carries its field level into the race (the harness used to build races without
-//   it, so the headless career rode today's field);
+//   it, so the headless career rode today's field), with Hunt's selected-bike pace floor;
 // - the rivals ride the best bike open at the tier from the tier its file says (`rivalBike`), the
 //   rank below before that, and the law rides theirs, capped under the best open top speed;
 // - on one shared road, so only the field level differs, the leading rival's speed climbs tier by
@@ -55,17 +55,30 @@ function riderAt(def: CareerDef, node: CareerNode): Profile {
 
 describe('a career race carries its field level (the headless career meets the field the player meets)', () => {
   for (const def of DEFS)
-    it(`${def.regionName}: every node's race runs at its level's pace, bikes and fight scales`, () => {
+    it(`${def.regionName}: every node's race uses tier pace or Hunt's bike floor, bikes and fight scales`, () => {
       for (const node of def.nodes) {
-        const { config, level } = careerRace(def, node, riderAt(def, node), 1);
+        const profile = riderAt(def, node);
+        const selected = REG.bikes[profile.bikes.current ?? ''];
+        if (!selected) throw new Error(`${node.id}: fixture has no selected registry bike`);
+        const { config, level, plan } = careerRace(def, node, profile, 1);
         if (!level) throw new Error(`${node.id}: no field level`);
         const rivals = config.riders.filter((r) => r.role === 'rival');
-        expect(config.event.paceMps, node.id).toBe(level.paceMps);
+        // docs/milestones/hunt-contact-pace.md: Hunt alone may exceed the career tier pace.
+        // Read the expected floor from the input profile and pack, independently of sim config.
+        const hunt = plan.kind === 'takedown-hunt';
+        const pace = hunt ? Math.max(level.paceMps, selected.handling.topSpeedMps * 0.9) : level.paceMps;
+        expect(config.event.paceMps, node.id).toBe(pace);
         expect(config.event.level, node.id).toEqual({
           aggressionScale: level.aggressionScale,
           signatureGapScale: level.signatureGapScale,
         });
-        for (const r of rivals) expect(r.bike.contentId, `${node.id} ${r.contentId}`).toBe(level.rivalBike);
+        for (const r of rivals) {
+          expect(r.bike.contentId, `${node.id} ${r.contentId}`).toBe(level.rivalBike);
+          if (hunt)
+            expect(r.bike.topSpeedMps, `${node.id} ${r.contentId}`).toBe(
+              Math.max(REG.bikes[r.bike.contentId]!.handling.topSpeedMps, pace),
+            );
+        }
         // A free-play race of the same event keeps the event file's own field.
         const free = careerRace(def, node, riderAt(def, node), 1, { free: true }).config;
         expect(free.event.level, node.id).toBeUndefined();

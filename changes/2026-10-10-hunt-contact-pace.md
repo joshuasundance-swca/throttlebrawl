@@ -22,3 +22,8 @@ The career configuration tests now assert Hunt's exact bike-derived floor. Their
 that every event family has the same tier pace is replaced by exact per-event pace, unchanged tier
 pace progression and monotonic pace within each event family. Field identity, fighting stats,
 ordinary-event pace, police and rewards keep their negative controls.
+
+The all-region career ladder test also replaces its universal exact tier-pace expectation with
+Hunt's exact selected-bike floor, derived from the input profile and pack data. Ordinary events keep
+exact tier pace, and Hunt rival caps are checked exactly. The garage, field identities, fight and
+police controls, shared-road speed bands, seeds and tick budgets stay in place.
