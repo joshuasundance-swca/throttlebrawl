@@ -117,13 +117,14 @@ async function openBoss(page: Page) {
   await page.locator(`.career-node[data-node="${boss!.id}"]`).click();
   await expect(page.locator('#career-ride')).toBeEnabled();
 }
-test('Pivot identity, victory routes and final payoff at small landscape/all text sizes', async ({
-  browser,
-  baseURL,
-}) => {
-  test.setTimeout(420_000); // Hang guard; discover a seed once, then replay it at other text sizes.
-  let successfulSeed: number | null = null;
-  for (const textSize of ['normal', 'large', 'largest']) {
+test.describe.configure({ mode: 'parallel' });
+for (const textSize of ['normal', 'large', 'largest']) {
+  test(`Pivot identity, victory routes and final payoff at small landscape/${textSize} text`, async ({
+    browser,
+    baseURL,
+  }) => {
+    test.setTimeout(420_000); // Hang guard; each independent case discovers its own successful seed.
+    const profile = structuredClone(fixture);
     const context = await browser.newContext({
       ...(baseURL === undefined ? {} : { baseURL }),
       viewport: { width: 568, height: 320 },
@@ -149,7 +150,7 @@ test('Pivot identity, victory routes and final payoff at small landscape/all tex
             }),
           );
         },
-        { fixture, textSize },
+        { fixture: profile, textSize },
       );
       await openBoss(page);
       await expect(page.locator('#ui')).toHaveAttribute('data-text', textSize);
@@ -175,8 +176,7 @@ test('Pivot identity, victory routes and final payoff at small landscape/all tex
       }, originalStyle);
       await layout(page, '.career-detail');
       let won = false;
-      const seeds: number[] =
-        successfulSeed === null ? Array.from({ length: 8 }, (_, i) => i + 1) : [successfulSeed];
+      const seeds = Array.from({ length: 8 }, (_, i) => i + 1);
       for (const [index, seed] of seeds.entries()) {
         if (index > 0) await openBoss(page);
         await expect.poll(() => page.evaluate(() => !!window.__game)).toBe(true);
@@ -202,13 +202,10 @@ test('Pivot identity, victory routes and final payoff at small landscape/all tex
         await expect(page.locator('#career-results')).toBeVisible({ timeout: 60_000 });
         const title = await page.locator('#career-results-title').textContent();
         console.log(
-          `[pivot-results-search] seed ${seed}; title ${title}; tick ${await page.evaluate(() => window.__game!.snapshot()?.tick)}`,
+          `[pivot-results-search] text ${textSize}; seed ${seed}; title ${title}; tick ${await page.evaluate(() => window.__game!.snapshot()?.tick)}`,
         );
         won = title === `${rivalName.toUpperCase()} BEATEN`;
-        if (won) {
-          successfulSeed = seed;
-          break;
-        }
+        if (won) break;
       }
       expect(won, 'one bounded ordinary bot finale must reach the actual final payoff').toBe(true);
       await expect(page.locator('#career-results-objectives')).toBeVisible();
@@ -234,5 +231,5 @@ test('Pivot identity, victory routes and final payoff at small landscape/all tex
     } finally {
       await context.close();
     }
-  }
-});
+  });
+}
