@@ -8,6 +8,7 @@ import { MAX_RACE_RIVALS, type RaceOptions, type RaceTraffic } from '../save';
 import { formatSpeed, type OptionChoice, type RaceOptionsView } from '../ui';
 import { eventKey, PLAYER_PRESET, qualifyIn, raceField, type RaceSetup } from './config';
 import { routeChoices } from './regions';
+import { bikeComparison } from './bike-comparison';
 
 /**
  * Each traffic pick as a scale on the `traffic.density` slider: none empties the road, light is
@@ -116,7 +117,9 @@ export function raceOptionsView(
     ...menuBikes(reg, garage.owned).map((id) => ({
       value: id,
       label: bikeName(id),
-      note: formatSpeed(topSpeed(reg, id), units),
+      note: [formatSpeed(topSpeed(reg, id), units), bikeComparison(reg, id, garage.current)]
+        .filter(Boolean)
+        .join(' · '),
     })),
   ];
   const times: OptionChoice<string | null>[] = [

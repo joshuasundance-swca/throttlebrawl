@@ -54,6 +54,7 @@ import type { EventPatch, FieldLevel } from '../sim/api';
 import { MAX_CAREER_BACKUPS, type Profile } from '../save';
 import type { CareerResultView, CareerShowView, GarageView, TeaserView } from '../ui';
 import { formatSpeed, ordinal } from '../ui';
+import { bikeComparison } from './bike-comparison';
 
 /**
  * About what one race pays now (playtest 3, the garage: "how many races each takes to afford"):
@@ -83,10 +84,12 @@ export function garageView(
     racePay: typicalRacePay(defs, profile),
     bikes: garageBikes(reg, defs, profile).map((b) => {
       const step = ladder.indexOf(b.key) + 1;
+      const handlingNote = bikeComparison(reg, b.key, current);
       return {
         key: b.key,
         name: b.name,
         speed: formatSpeed(b.topSpeedMps, units),
+        ...(handlingNote ? { handlingNote } : {}),
         priceCash: b.priceCash,
         state: b.state,
         current: b.current,
@@ -391,6 +394,7 @@ export {
   withPromptsSeen,
 } from '../career';
 export { decodeExportCode, encodeExportCode } from '../save';
+export { returningCareerRegion } from './returning-chapter';
 
 /** This module, as app/index.ts holds it once loaded. */
 export type CareerFlow = typeof import('./career-flow');

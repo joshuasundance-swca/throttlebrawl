@@ -31,6 +31,9 @@ export const RACE_OPTIONS_CSS = `
 #ui #race-options .ro-label { font: 700 0.625rem/1.1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;
   color: #f5c542; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ui #race-options .ro-choice { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ui #race-options .ro-note { max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+  font: 500 0.75rem/1.3 system-ui, sans-serif; }
+#ui #race-options .ro-note[hidden] { display: none; }
 #ui #race-options .ro-foot { display: flex; gap: 12px; justify-content: center; align-items: center; flex-shrink: 0; }
 @media (max-height: 360px) {
   #ui #race-options { gap: 4px; }
@@ -95,7 +98,7 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
   /** One row's elements, kept across draws so focus and the scroll position stay put. */
   const rows = new Map<
     RaceOptionId,
-    { row: HTMLElement; label: HTMLElement; choice: HTMLElement; value: HTMLButtonElement }
+    { row: HTMLElement; label: HTMLElement; choice: HTMLElement; note: HTMLElement; value: HTMLButtonElement }
   >();
   const rowFor = (id: RaceOptionId) => {
     const have = rows.get(id);
@@ -112,11 +115,13 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
     };
     const label = node('span', { className: 'ro-label' });
     const choice = node('span', { className: 'ro-choice' });
+    const note = node('span', { className: 'ro-note', hidden: true });
     const value = node(
       'button',
       { type: 'button', className: 'ro-value', id: `race-option-${id}-value` },
       label,
       choice,
+      note,
     );
     value.addEventListener('click', () => cb.onStep(id, 1));
     const row = node(
@@ -132,7 +137,7 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
       e.preventDefault();
       cb.onStep(id, e.key === 'ArrowLeft' ? -1 : 1);
     });
-    const made = { row, label, choice, value };
+    const made = { row, label, choice, note, value };
     rows.set(id, made);
     return made;
   };
@@ -148,7 +153,10 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
         const el = rowFor(r.id);
         const c = r.choices[r.index];
         const text = c?.label ?? '';
-        el.label.textContent = c?.note ? `${r.label} · ${c.note}` : r.label;
+        const bikeNote = r.id === 'bike' ? c?.note : undefined;
+        el.label.textContent = c?.note && !bikeNote ? `${r.label} · ${c.note}` : r.label;
+        el.note.textContent = bikeNote ?? '';
+        el.note.hidden = !bikeNote;
         el.choice.textContent = text;
         el.value.setAttribute(
           'aria-label',
