@@ -20,14 +20,17 @@ export const RACE_OPTIONS_CSS = `
 #ui #race-options .ro-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   width: min(820px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 4px 10px; align-content: start; padding: 2px; box-sizing: border-box; }
-#ui #race-options .ro-row { display: flex; align-items: stretch; gap: 4px; min-height: 44px; background: #000a;
+#ui #race-options .ro-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: stretch; gap: 4px; min-height: 44px; background: #000a;
   border: 1px dashed #fff6; }
-#ui #race-options .ro-step { flex: 0 0 44px; min-height: 44px; padding: 0; cursor: pointer;
+#ui #race-options #race-option-bike { grid-column: 1 / -1; }
+#ui #race-options .ro-step { min-height: 44px; padding: 0; cursor: pointer;
   font: 900 1.25rem ui-monospace, monospace; color: #111; background: #f2ead8; border: 2px solid #111; }
 #ui #race-options .ro-step:active, #ui #race-options .ro-value:active { transform: translate(1px, 1px); }
-#ui #race-options .ro-value { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 2px 6px; cursor: pointer;
-  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px; text-align: left;
+#ui #race-options .ro-value { min-width: 0; min-height: 44px; padding: 2px 6px; cursor: pointer;
+  display: block; align-content: center; text-align: left;
   color: #f2ead8; background: transparent; border: 0; font: 800 0.9375rem/1.15 ui-monospace, monospace; }
+#ui #race-options :is(.ro-label, .ro-choice, .ro-note) { display: block; }
 #ui #race-options .ro-label { font: 700 0.625rem/1.1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;
   color: #f5c542; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ui #race-options .ro-choice { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
