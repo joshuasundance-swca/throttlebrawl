@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { openQuickPlay } from '../e2e/menu-navigation';
 import { GUARD_FACTOR, guardLimits, judgeSoft, trendLine } from '../../scripts/perf-limits.mjs';
 
 // The perf check for the ink looks (render/looks): "Ink + 1960s film" (`kodak`, playtest 1b item 6),
@@ -77,7 +78,7 @@ for (const look of INK_LOOKS) {
     }, look);
     await page.goto('./');
     await page.locator('#start-screen').click();
-    await expect(page.locator('#menu-race')).toBeVisible();
+    await openQuickPlay(page);
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
     const cdp = await page.context().newCDPSession(page);
     await page.locator('#menu-race').click();

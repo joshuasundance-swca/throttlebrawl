@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { openQuickPlay } from '../e2e/menu-navigation';
 import {
   GUARD_FACTOR,
   guardLimits,
@@ -211,12 +212,13 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     );
   });
   await startScreen.click();
-  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-quick-play')).toBeVisible();
   await page.waitForFunction(() => (window as TestWindow).__startTap !== undefined, null, {
     timeout: 30_000,
   });
   const startTap = (await page.evaluate(() => (window as TestWindow).__startTap)) as StartTap;
   const startTapMs = Math.round((startTap.handlerMs + startTap.gapAudioMs + startTap.frameMs) * 10) / 10;
+  await openQuickPlay(page);
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   const cdp = await page.context().newCDPSession(page);
   await page.locator('#menu-race').click();
