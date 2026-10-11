@@ -19,7 +19,7 @@ export const RACE_OPTIONS_CSS = `
   text-shadow: 1px 1px 0 #111; }
 #ui #race-options .ro-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   width: min(820px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 4px 10px; align-content: start; padding: 2px; box-sizing: border-box; }
+  grid-auto-rows: max-content; gap: 4px 10px; align-content: start; padding: 2px; box-sizing: border-box; }
 #ui #race-options .ro-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: stretch; gap: 4px; min-height: 44px; background: #000a;
   border: 1px dashed #fff6; }
