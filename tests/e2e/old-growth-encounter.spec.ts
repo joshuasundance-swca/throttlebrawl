@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { diskCareers, diskEvents, diskRegions, qualifyIn, type DiskCareer } from './packs-on-disk';
 
+// Each font-size case owns a separate page and storage fixture.
+test.describe.configure({ mode: 'parallel' });
+
 type BossCareer = DiskCareer & {
   boss: string;
   ending: { next: string };
