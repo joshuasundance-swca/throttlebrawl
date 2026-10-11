@@ -501,8 +501,10 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         // Back on the bike (riding again) ends the fall; a crash this step already set it.
         if (meNow.mode === 'Road' || meNow.mode === 'Airborne') wasDown = false;
         progress = meNow.progress;
-        // The law: a cop whose target is the player is on them.
-        const heat = snap.entities.some((e) => e.faction === 'law' && e.targetId === me && e.mode === 'Road');
+        // Pursuit intent is separate from the combat target, which clears between attacks.
+        const heat = snap.entities.some(
+          (e) => e.faction === 'law' && e.pursuitTargetId === me && e.mode === 'Road',
+        );
         const dt = n(snap.timeScale, 1) / 60;
         if (heat) {
           if (chaseStartS < 0) {
