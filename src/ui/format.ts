@@ -105,3 +105,41 @@ export function targetOf(snapshot: SimSnapshot, player: EntitySnapshot | null): 
   const t = snapshot.entities.find((e) => e.id === player.targetId);
   return t && t.kind === 'rider' ? t : null;
 }
+
+/** Incoming Timber intent is separate from the player's combat auto-target (which can be idle).
+ * Only nearby riders sharing the player's road surface warn; closest wins, then lowest entity id.
+ * This reads the current snapshot only, so an ended warning never retains its former target.
+ */
+export function timberWarningOf(
+  snapshot: SimSnapshot,
+  player: EntitySnapshot | null,
+): { target: EntitySnapshot; label: string } | null {
+  if (!player || player.kind !== 'rider' || player.mode !== 'Road' || player.finished || !(player.health > 0))
+    return null;
+  let target: EntitySnapshot | null = null;
+  let distance = Infinity;
+  for (const rider of snapshot.entities) {
+    const signature = rider.signature;
+    const gap = Math.abs(rider.progress - player.progress);
+    if (
+      rider.id === player.id ||
+      rider.kind !== 'rider' ||
+      rider.mode !== 'Road' ||
+      rider.finished ||
+      !(rider.health > 0) ||
+      rider.road.edge !== player.road.edge ||
+      !(gap <= 35) ||
+      !(Math.abs(rider.road.h - player.road.h) <= 2) ||
+      signature?.move !== 'timber' ||
+      signature.targetId !== player.id
+    )
+      continue;
+    if (gap < distance || (gap === distance && rider.id < (target?.id ?? Infinity))) {
+      target = rider;
+      distance = gap;
+    }
+  }
+  if (!target?.signature) return null;
+  const phase = { tell: 'WINDUP', act: 'CHARGE', open: 'WINDED' }[target.signature.phase];
+  return { target, label: `${phase} ${target.name || target.contentId}` };
+}

@@ -37,6 +37,7 @@ import {
   resultText,
   riderCount,
   targetOf,
+  timberWarningOf,
   type RaceResult,
 } from './format';
 import {
@@ -2429,16 +2430,20 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       tally.noteSnapshotTally(player?.styleTally);
       stepTicker(player?.styleRun, tally.takePopups(), snapshot.moves, chainLossShown(player));
       wheelieGauge?.update(gaugeView(snapshot.moves, player?.wheelie));
-      const target = targetOf(snapshot, player);
+      const warning = timberWarningOf(snapshot, player);
+      const target = warning?.target ?? targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {
         targetShown = shown;
         targetHealth.root.hidden = !shown;
       }
       if (target) {
-        setText(targetHealth.name, target.name || target.contentId);
+        setText(targetHealth.name, warning?.label ?? (target.name || target.contentId));
         setFill(targetHealth.fill, healthFraction(target.health, target.healthMax));
       }
+      // Full warning text remains available if a future content name exceeds the existing line.
+      if (warning) targetHealth.name.title = warning.label;
+      else targetHealth.name.removeAttribute('title');
     },
     showResults(r) {
       // The tally is ui's own count unless app/ sends one (combat-4 counts takedowns in the sim).
