@@ -72,6 +72,34 @@ describe('app/loop: the frame-rate cap gate', () => {
     expect(renders).toBe(90);
   });
 
+  it('hands render raw accepted RAF timestamps and retains synthetic entry through hand-back', () => {
+    const seen: unknown[][] = [];
+    let accepted = true;
+    const loop = createLoop(
+      {
+        stepping: () => true,
+        shouldRunFrame: () => accepted,
+        step: () => loop.setLockstep(null),
+        render: (...args) => seen.push(args),
+      },
+      DT,
+    );
+    loop.start();
+    queue.shift()!(100);
+    accepted = false;
+    queue.shift()!(200);
+    expect(seen).toHaveLength(1);
+    accepted = true;
+    queue.shift()!(900);
+    expect(seen[1]).toEqual([expect.any(Number), MAX_FRAME_S, 900, false]);
+    loop.setLockstep(8);
+    queue.shift()!(916);
+    expect(loop.lockstep).toBeNull();
+    expect(seen[2]).toEqual([1, 0.016, 916, true]);
+    queue.shift()!(917);
+    expect(seen[3]?.slice(2)).toEqual([917, false]);
+  });
+
   it('skips frames the gate holds back, and keeps asking for frames', () => {
     let n = 0;
     const everyThird = () => n++ % 3 === 0;
