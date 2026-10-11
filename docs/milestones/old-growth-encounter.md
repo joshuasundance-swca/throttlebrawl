@@ -1,0 +1,29 @@
+# Old Growth / The Big Cut encounter
+
+[default] Make the existing regional boss recognizable through tactics, recovery and clear stakes. Continued development was authorized on 2026-10-10; exact timings and presentation remain implementation choices. Build on the accepted competition batch and the police pursuit repair.
+
+## Reason and limits
+
+The interview synthesis reports bosses as easy and sometimes unnoticed. The existing Pacific Northwest finale already has a committed charge, finite recovery, environmental takedowns or a clean finish-ahead win, and a San Francisco unlock. The tactical rendering currently gives act and open the same treatment. Prefer making this encounter readable and encounterable over increasing speed or health. No new event kinds, save/pack contracts, assets, paid generation, camera cutaways, mandatory combat, awards or global AI retune.
+
+## Proposed behavior
+
+1. A Timber encounter variant applies only to the named rider of the existing timber grudge rule. Ordinary Old Growth appearances and unrelated riders retain their current AI behavior. Select one internal encounter spec at initialization and use it consistently for first readiness, start/tell, timed transitions, target-loss finish, contact/sidestep opening, normal finish and down/unsticking interruption. Reuse internal AI configuration and the existing signature snapshot; no public contract change.
+2. Within existing sensing/physical constraints, make an eligible charge occur earlier in this encounter. Establish exact timing from fixed-tick probes of the actual career setup. Keep a substantial visible tell, commit the charge line at act start, retain weak steering and ordinary traffic/navigation priority, and provide a longer clearly winded recovery with no swings. Never teleport, home onto a late dodge, summon an opponent beside the player, or erase an earned lead. Initial candidate for probing: first readiness240ticks rather than600; tell48, act90, open90; gap360 plus seeded spread180. Numbers may change with evidence, never by weakening the acceptance below.
+   First readiness remains an unscaled start grace, as in the existing lifecycle; career signatureGapScale continues to scale gap/spread, not tell/act/open durations. Apply this explicitly to every scheduling path. Isolated committed-line counterplay and full traffic/navigation priority are separate checks because safety/navigation may override the signature line.
+3. Distinguish brace, charge and winded recovery in every existing Timber rider pose, using existing geometry and snapshot fields. This visual polish applies to ordinary Timber too; only the AI encounter timing is scoped. Keep neutral/non-Timber geometry unchanged and all phases legible with sound muted.
+4. Use existing NodeCard boss/kindLabel/objective/riders, the authored Timber rule name/line, boss result and successful next-region teaser/action to identify Old Growth as the region boss, explain finish-ahead OR three player-attributed traffic/scenery falls, and show the existing San Francisco payoff. Say traffic, not only log trucks. No new public view field. Quick Play must never promise career rewards. Preserve one-time unlock/reward settlement.
+
+## Automated acceptance
+
+1. Actual content-derived career setup retains the named rival, Timber rule, route and effective ladder bike. Scoped variant applies only to that rule's rival. Non-Timber events, a different named rival, ordinary Old Growth and disabled signatures/style quirks are negative controls.
+2. A fixed-input, tick-driven approach shows tell -> committed charge -> finite recovery. A sidestep can defeat the charge; its line does not track the late dodge; open reduces pace and disables swings. Outside acquisition range no charge starts. Down/unsticking interrupts. Ordinary traffic/navigation still constrains the move. Same seed/input produces the same hash. Preserve existing signature tests and negative controls.
+3. A probe of the actual authored boss setup observes the encounter tactic and its counterplay, with a bounded firstSeed search if needed. Report exact sim scope and tick budget, without claiming human difficulty or phone readability from bots.
+4. Rendering geometry distinguishes tell, act and open, with unchanged neutral-rider control; no added assets or first-load dependency. The coordinated served check examines the actual boss card and rendered phases, muted, after deployment.
+5. Add or retain focused scoring tests proving clean finish-ahead and exactly three attributed environmental falls succeed; health-only falls, wrong victims and NPC-attributed falls do not count. Add boss loss/bust settlement controls proving no map unlock/teaser. Preserve successful one-time next-region/award settlement and the new PR700 Quick Play completion/Retry profile-isolation test; do not duplicate its shared no-career-settlement coverage.
+6. Career presentation exposes boss identity, the two victory routes and the next-region stake at small landscape sizes/all text sizes. The full existing CI gate, leak scan and budgets stay green. Done remains not phone-verified.
+
+## Ownership and sequence
+
+The coordinator owns the final spec, integration, career text/presentation/tests, PR/CI, and the single served browser slot. An AI worker may own src/sim/ai and its focused tests plus a content-derived authored boss sim test. A render worker may own src/render/riders and its focused geometry tests. Workers use separate worktrees and do not network, push, build or run browsers. Disjoint commits integrate into one coherent feature PR after the consumed independent spec review and the coordinated PR700 served check. No builder starts until the coordinator consumes the spec review. Central typecheck occurs once after integration; workers run only their named tests.
+

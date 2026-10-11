@@ -58,6 +58,10 @@ export interface SignatureState {
    * a race without a level leaves the state, and its hash, exactly as it was.
    */
   gapScale?: number;
+  /** Encounter-only timing, selected once at init; absent preserves ordinary signature state. */
+  timing?: Record<number, MoveSpec>;
+  /** Encounter recovery ceiling, captured at opening entry and cleared on exit/interruption. */
+  openSpeed?: Record<number, number>;
 }
 
 const SIGNATURE_STATE = 'ai.signature';
@@ -110,6 +114,8 @@ export const BELL_TELL_TICKS = 24;
 const FIRST_TICK = 600;
 
 interface MoveSpec {
+  /** Unscaled first readiness grace; absent uses the ordinary start grace. */
+  first?: number;
   /** Ticks of the tell, the act (its longest) and the opening after it. */
   tell: number;
   act: number;
@@ -172,6 +178,8 @@ const BUSY_D = 3;
  * is the opening. [default]
  */
 const BAD_CONNECTION: MoveSpec = { tell: 45, act: 60, open: 30, gap: 360, spread: 240 };
+/** The named Timber encounter: earlier eligibility, a readable brace, and a longer opening. */
+const TIMBER_ENCOUNTER: MoveSpec = { first: 240, tell: 48, act: 90, open: 90, gap: 360, spread: 180 };
 export const BAD_CONNECTION_JUMP_M = 15;
 /** The reconnect lands only where nothing is within this many metres along, and a lane across. */
 const BAD_CONNECTION_CLEAR_S = 6;
@@ -251,6 +259,7 @@ function enter(
   sg.since[id] = tick;
   sg.until[id] = phase === null || ticks < 0 ? -1 : tick + ticks;
   sg.target[id] = phase === null ? -1 : target;
+  if (phase !== 'open' && sg.openSpeed) delete sg.openSpeed[id];
   if (phase === 'act') sg.count[id] = (sg.count[id] ?? 0) + 1;
 }
 
@@ -259,8 +268,19 @@ function scaled(sg: SignatureState, ticks: number): number {
   return sg.gapScale === undefined ? ticks : Math.round(ticks * sg.gapScale);
 }
 
+/** Every lifecycle path reads the same timing chosen for this rider at initialization. */
+function specOf(sg: SignatureState, id: EntityId, move: SignatureId): MoveSpec {
+  return sg.timing?.[id] ?? SPEC[move];
+}
+
 /** Ends the move now and schedules the next one from the move's gap. */
-function finish(world: World, sg: SignatureState, id: EntityId, move: SignatureId, spec = SPEC[move]): void {
+function finish(
+  world: World,
+  sg: SignatureState,
+  id: EntityId,
+  move: SignatureId,
+  spec = specOf(sg, id, move),
+): void {
   enter(sg, id, world.tick, null, 0);
   sg.aux[id] = 0;
   sg.next[id] =
@@ -283,6 +303,7 @@ export function initSignature(
   id: EntityId,
   move: SignatureId | undefined,
   gapScale = 1,
+  timberEncounter = false,
 ): void {
   const sg = signatureState(world);
   if (gapScale !== 1) sg.gapScale = gapScale;
@@ -301,10 +322,16 @@ export function initSignature(
   sg.seenHit[id] = -1;
   sg.aux[id] = 0;
   sg.lineD[id] = 0;
+  if (move === 'timber' && timberEncounter) {
+    sg.timing ??= {};
+    sg.timing[id] = TIMBER_ENCOUNTER;
+  }
   // A move that answers a hit (Kevin's counter) is ready at once; the others wait out the start.
-  const spec = move && move !== 'counter' ? SPEC[move] : null;
+  const spec = move && move !== 'counter' ? specOf(sg, id, move) : null;
   sg.next[id] =
-    spec && spec.spread > 0 ? FIRST_TICK + Math.floor(roll(world, id) * scaled(sg, spec.spread)) : 0;
+    spec && spec.spread > 0
+      ? (spec.first ?? FIRST_TICK) + Math.floor(roll(world, id) * scaled(sg, spec.spread))
+      : 0;
 }
 
 /** The rider is down, unsticking or out of the race: any move in progress ends (no new roll). */
@@ -315,7 +342,7 @@ export function interruptSignature(world: World, id: EntityId): void {
   if (!move || move === 'slow-burn') return;
   enter(sg, id, world.tick, null, 0);
   sg.aux[id] = 0;
-  sg.next[id] = Math.max(sg.next[id] ?? 0, world.tick + scaled(sg, SPEC[move].gap));
+  sg.next[id] = Math.max(sg.next[id] ?? 0, world.tick + scaled(sg, specOf(sg, id, move).gap));
 }
 
 // ---- Deacon: slow to anger, then relentless ---------------------------------------------------
@@ -503,7 +530,7 @@ export function stepSignature(c: SignatureCtx, move: SignatureId): SignatureOut 
   const id = m.id;
   const tick = world.tick;
   const bad = move === 'lag' && c.badConnection === true;
-  const spec = bad ? BAD_CONNECTION : SPEC[move];
+  const spec = bad ? BAD_CONNECTION : specOf(sg, id, move);
   const hitNow = c.lastHitTick >= 0 && c.lastHitTick > (sg.seenHit[id] ?? -1);
   if (hitNow) sg.seenHit[id] = c.lastHitTick;
   let phase = phaseOf(sg, id);
@@ -566,7 +593,7 @@ function startMove(c: SignatureCtx, move: SignatureId, sg: SignatureState, hitNo
   const id = m.id;
   const tick = world.tick;
   if (tick < (sg.next[id] ?? 0)) return false;
-  const tell = SPEC[move].tell;
+  const tell = specOf(sg, id, move).tell;
   switch (move) {
     case 'selfie':
     case 'pivot':
@@ -894,10 +921,22 @@ function cutIn(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null
   };
 }
 
+/** A winded recovery uses normal speed control; only the encounter captures a fixed ceiling. */
+function timberOpening(c: SignatureCtx, sg: SignatureState, spec: MoveSpec): SignatureOut {
+  const pace = c.speedTarget * TIMBER_OPEN_PACE;
+  if (spec !== TIMBER_ENCOUNTER) return { speedTarget: pace, noSwing: true };
+  // Early in the race he may still be accelerating toward normal pace. A fixed ceiling from
+  // opening entry makes this recovery winded too, through ordinary throttle/brake control.
+  sg.openSpeed ??= {};
+  const cap = (sg.openSpeed[c.m.id] ??= Math.min(c.speedTarget, c.m.speed) * TIMBER_OPEN_PACE);
+  return { speedTarget: Math.min(pace, cap), noSwing: true };
+}
+
 /** Old Growth: head down, then he charges whoever is ahead in his line, barely steering. */
 function timber(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null): SignatureOut {
   const id = c.m.id;
-  if (phase === 'open') return { speedTarget: c.speedTarget * TIMBER_OPEN_PACE, noSwing: true };
+  const spec = specOf(sg, id, 'timber');
+  if (phase === 'open') return timberOpening(c, sg, spec);
   const who = find(c, sg.target[id] ?? -1);
   if (!who) {
     finish(c.world, sg, id, 'timber');
@@ -905,8 +944,8 @@ function timber(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | nul
   }
   if (phase === 'tell') return { dTarget: c.m.pos.d, lateralMax: 1, noSwing: true };
   if (who.ahead < TIMBER_CONTACT_S || Math.abs(who.dd) > TIMBER_SIDESTEP_D) {
-    enter(sg, id, c.world.tick, 'open', SPEC.timber.open);
-    return { noSwing: true };
+    enter(sg, id, c.world.tick, 'open', spec.open);
+    return spec === TIMBER_ENCOUNTER ? timberOpening(c, sg, spec) : { noSwing: true };
   }
   return {
     dTarget: sg.lineD[id] ?? c.m.pos.d,

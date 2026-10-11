@@ -242,8 +242,10 @@ describe('law with a personality: real races', () => {
   // The search's cost is a budget of sim ticks, not a wall-clock timeout: each race stops once a
   // radioed-ahead roadblock fires, or at ROADBLOCK_RACE_TICKS, and the whole search stops at
   // ROADBLOCK_BUDGET_TICKS, so its worst case is the same number of steps on any machine. CI stepped
-  // about 1 ms a tick on 2026-10-05 (nine full races, 90 to 104 s), so the budget is about two thirds
-  // of the sim project's 90 s default. It was 8 races until the dev bot learned to follow a car at its
+  // 47,914 ticks in 95,931 ms and 92,457 ms on CI on 2026-10-11: both found seed 10 but exceeded the
+  // project's 90 s guard. The slower run extrapolates to 120,129 ms for the unchanged 60,000-tick
+  // budget; a 1.5x slowdown allowance rounded up to 10 s gives this test's 190 s guard. The sim
+  // budget, seed search and assertions remain unchanged. It was 8 races until the dev bot learned to follow a car at its
   // pace (#658): the first such race moved from seed 6 to seed 10, so the search now covers 12. Out of
   // budget with no radioed roadblock is the real "this never happens any more".
   it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
@@ -274,5 +276,5 @@ describe('law with a personality: real races', () => {
 `);
     expect(spent).toBeLessThanOrEqual(ROADBLOCK_BUDGET_TICKS);
     expect(found.result, found.summary).not.toBeNull();
-  });
+  }, 190_000);
 });

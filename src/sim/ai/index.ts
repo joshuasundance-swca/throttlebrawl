@@ -359,6 +359,8 @@ export const aiSystem: SimSystem = {
         m.id,
         c?.kind === 'ai' ? c.personality?.signature : undefined,
         signatureGapScale(config),
+        config.event.grudgeRule?.rule === 'timber' &&
+          config.riders[m.riderIndex]?.contentId === config.event.grudgeRule.rival,
       );
     }
   },
