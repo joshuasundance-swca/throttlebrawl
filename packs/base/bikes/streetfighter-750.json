@@ -8,7 +8,7 @@
     "topSpeedMps": 55.9,
     "accelMps2": 7.0,
     "brakeMps2": 12.0,
-    "steerRateMps": 6.6,
+    "steerRateMps": 5.8,
     "massKg": 190
   },
   "engineSound": {

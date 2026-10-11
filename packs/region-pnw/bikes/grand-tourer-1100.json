@@ -7,7 +7,7 @@
   "handling": {
     "topSpeedMps": 61.0,
     "accelMps2": 5.7,
-    "brakeMps2": 9.5,
+    "brakeMps2": 9.0,
     "steerRateMps": 4.8,
     "massKg": 260
   },
