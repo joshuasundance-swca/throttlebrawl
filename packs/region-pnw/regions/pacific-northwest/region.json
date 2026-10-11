@@ -124,11 +124,13 @@
     {
       "id": "spur-keep-right",
       "text": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
+      "tags": ["site"],
       "status": "live"
     },
     {
       "id": "lake-samish-keep-right",
       "text": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
+      "tags": ["site"],
       "status": "live"
     },
     {
@@ -257,24 +259,28 @@
     {
       "id": "ferry-bridge-out",
       "text": "BRIDGE OUT: TAKE THE FERRY. The ferry is not going anywhere either.",
+      "tags": ["site"],
       "status": "live",
       "note": "Run W-U (the pitch deck's #12, the PNW places)."
     },
     {
       "id": "ferry-engines-off",
       "text": "ENGINES OFF ON DECK. Especially you.",
+      "tags": ["site"],
       "status": "live",
       "note": "Run W-U (the pitch deck's #12, the PNW places)."
     },
     {
       "id": "ferry-far-side",
       "text": "THANKS FOR SAILING THE EVENTUALLY. It is still here.",
+      "tags": ["site"],
       "status": "live",
       "note": "Run W-U (the pitch deck's #12, the PNW places)."
     },
     {
       "id": "stump-social-closed",
       "text": "CLOSED FOR THE STUMP SOCIAL. Local traffic: you are not local.",
+      "tags": ["site"],
       "status": "live",
       "note": "Run W-U (the pitch deck's #12, the PNW places)."
     },
@@ -299,6 +305,7 @@
     {
       "id": "stump-social-end",
       "text": "END OF THE STUMP SOCIAL. Normal drizzle resumes.",
+      "tags": ["site"],
       "status": "live",
       "note": "Run W-U (the pitch deck's #12, the PNW places)."
     }
