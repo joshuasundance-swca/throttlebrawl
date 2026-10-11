@@ -12,7 +12,7 @@ const stolen = (h: Harness) =>
   h.events.filter((e) => e.type === 'weaponGrab' && e.data['source'] === 'steal');
 
 /** Stop after a real wind-up tick, before the thief's next press; all positions are stationary. */
-function scene(age = 10, side = 1, scale = 1, thiefFlags = F.attack, holderFlags = F.attack) {
+function scene(age = 10, side = 1, scale = 1, thiefFlags: number = F.attack, holderFlags: number = F.attack) {
   let press = false;
   const h = makeHarness(
     [
