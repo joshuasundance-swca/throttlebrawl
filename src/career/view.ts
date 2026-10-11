@@ -210,8 +210,8 @@ export function objectiveText(reg: ContentRegistry, plan: EventPlan): string {
       }
       case 'escape':
         return r.escapeBy === 'distance'
-          ? `Once a cop is on you, ride ${((r.escapeDistanceM ?? 0) / 1000).toFixed(1)} km without being knocked off, or lose him`
-          : `Once a cop is on you, last ${r.surviveS ?? 60} s without being knocked off, or lose him`;
+          ? `Once a cop is on you, ride ${((r.escapeDistanceM ?? 0) / 1000).toFixed(1)} km, lose the cops, or reach the finish`
+          : `Once a cop is on you, survive ${r.surviveS ?? 60} s, lose the cops, or reach the finish`;
       case 'beat-rival': {
         // Worded by the rival's rule, the way the race log judges it, so the line under the rule
         // card never contradicts it (live check, 2026-10-03: the Collab read "Beat Chad Speedwell

@@ -119,7 +119,14 @@ describe('the career map screen', () => {
       (r) => only(r, 'escape') && r.plan.rules.escapeBy !== 'distance',
     );
     expect(escape.card.objective).toBe(
-      `Once a cop is on you, last ${escape.plan.rules.surviveS ?? 60} s without being knocked off, or lose him.`,
+      `Once a cop is on you, survive ${escape.plan.rules.surviveS ?? 60} s, lose the cops, or reach the finish.`,
+    );
+    const distance = first(
+      'a cop escape by distance',
+      (r) => only(r, 'escape') && r.plan.rules.escapeBy === 'distance',
+    );
+    expect(distance.card.objective).toBe(
+      `Once a cop is on you, ride ${((distance.plan.rules.escapeDistanceM ?? 0) / 1000).toFixed(1)} km, lose the cops, or reach the finish.`,
     );
 
     const boss = first(

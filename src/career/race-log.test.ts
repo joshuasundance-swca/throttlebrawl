@@ -200,7 +200,7 @@ describe('cop escape: survive or lose the heat', () => {
     const r = race(survive, [obj('escape')]);
     r.step([], 600); // ten seconds, nobody chasing: no clock yet
     expect(r.log.status().objectives[0]?.label).toBe('LOSE THE COPS');
-    r.setCop({ targetId: ME });
+    r.setCop({ pursuitTargetId: ME });
     r.step([], 299);
     expect(r.log.status().state).toBe('running');
     r.step([], 2);
@@ -208,28 +208,28 @@ describe('cop escape: survive or lose the heat', () => {
   });
   it('a bust fails it', () => {
     const r = race(survive, [obj('escape')]);
-    r.setCop({ targetId: ME });
+    r.setCop({ pursuitTargetId: ME });
     r.step([], 60);
     r.step([{ type: 'bust', actor: COP, target: ME, data: { fineCash: 600 } }]);
     expect(r.log.status().state).toBe('lost');
   });
   it('losing the cops passes, but only after a real chase', () => {
     const r = race({ ...survive, surviveS: 600 }, [obj('escape')]);
-    r.setCop({ targetId: ME });
+    r.setCop({ pursuitTargetId: ME });
     r.step([], 60); // one second of chase, then he looks elsewhere: not a chase lost
-    r.setCop({ targetId: RIVAL });
+    r.setCop({ pursuitTargetId: RIVAL });
     r.step([], Math.round((LOSE_HEAT_S + 1) * 60));
     expect(r.log.status().state).toBe('running');
-    r.setCop({ targetId: ME });
+    r.setCop({ pursuitTargetId: ME });
     r.step([], Math.round(MIN_CHASE_S * 60));
-    r.setCop({ targetId: -1 });
+    r.setCop({ pursuitTargetId: -1 });
     r.step([], Math.round(LOSE_HEAT_S * 60) + 1);
     expect(r.log.status().objectives[0]?.label).toBe('LOST THE COPS');
     expect(r.log.status().state).toBe('won');
   });
   it('crossing the END OF JURISDICTION sign with the law on you loses them at once (run W-T)', () => {
     const r = race({ ...survive, surviveS: 600 }, [obj('escape')]);
-    r.setCop({ targetId: ME });
+    r.setCop({ pursuitTargetId: ME });
     r.step([], 60);
     expect(r.log.status().state).toBe('running');
     // Someone else's crossing, or another law event, does nothing.
@@ -250,7 +250,7 @@ describe('cop escape: survive or lose the heat', () => {
   it('by distance: the metres ridden since the chase began', () => {
     const r = race({ kind: 'cop-escape', escapeBy: 'distance', escapeDistanceM: 500 }, [obj('escape')]);
     r.setMe({ progress: 200 });
-    r.setCop({ targetId: ME });
+    r.setCop({ pursuitTargetId: ME });
     r.step();
     r.setMe({ progress: 650 });
     r.step();
@@ -258,6 +258,44 @@ describe('cop escape: survive or lose the heat', () => {
     r.setMe({ progress: 700 });
     r.step();
     expect(r.log.status().state).toBe('won');
+  });
+
+  it('combat targeting, NPC pursuit, a parked siren and a downed cop do not start the escape clock', () => {
+    const r = race(survive, [obj('escape')]);
+    r.step([{ type: 'siren', actor: COP, data: { on: true } }], 600);
+    expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
+    r.setCop({ targetId: ME, attackPhase: 'active' });
+    r.step([], 600);
+    expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
+    r.setCop({ pursuitTargetId: RIVAL });
+    r.step([], 600);
+    expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
+    r.setCop({ targetId: -1, attackPhase: 'idle', pursuitTargetId: -1 });
+    r.setRival({ pursuitTargetId: ME });
+    r.step([], 600);
+    expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
+    r.setCop({ pursuitTargetId: ME, mode: 'Tumble' });
+    r.step([], 600);
+    expect(r.log.status()).toMatchObject({ state: 'running', headline: 'LOSE THE COPS' });
+  });
+
+  it('continuous pursuit stays active through a gap in combat attacks', () => {
+    const r = race({ ...survive, surviveS: 600 }, [obj('escape')]);
+    r.setCop({ pursuitTargetId: ME, targetId: ME, attackPhase: 'active' });
+    r.step([], Math.round(MIN_CHASE_S * 60));
+    r.setCop({ targetId: -1, attackPhase: 'idle' });
+    r.step([], Math.round((LOSE_HEAT_S + 1) * 60));
+    expect(r.log.status().state).toBe('running');
+    expect(r.log.status().headline).toMatch(/^SURVIVE /);
+  });
+
+  it('a finish remains a way out without a chase; a jurisdiction event alone is not a chase', () => {
+    const r = race(survive, [obj('escape')]);
+    r.step([{ type: 'law', actor: COP, target: ME, data: { kind: 'jurisdiction' } }]);
+    expect(r.log.status().state).toBe('running');
+    r.finish(ME);
+    expect(r.log.status().state).toBe('won');
+    expect(r.log.tally().finished).toBe(true);
   });
 });
 
