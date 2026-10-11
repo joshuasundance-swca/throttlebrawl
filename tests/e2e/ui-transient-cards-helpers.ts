@@ -139,7 +139,7 @@ export async function paint(
         const top = document.elementFromPoint(x, y);
         return !!top && card.contains(top);
       };
-      const cards = ids.flatMap((id, i) => {
+      const cards = ids.flatMap<Painted['cards'][number]>((id, i) => {
         const card = cardEls[i];
         const shown = !!card && !!screen && seen(card) && seen(screen);
         const empty = { left: 0, top: 0, right: 0, bottom: 0 };
