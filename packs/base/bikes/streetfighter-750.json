@@ -6,8 +6,8 @@
   "tags": ["step-up"],
   "handling": {
     "topSpeedMps": 55.9,
-    "accelMps2": 6.1,
-    "brakeMps2": 10.0,
+    "accelMps2": 7.0,
+    "brakeMps2": 12.0,
     "steerRateMps": 5.8,
     "massKg": 190
   },
@@ -16,7 +16,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The career's middle bike (run W-R; the product spec's Bikes: three bikes, each a clear step up). About 125 mph (55.9 m/s), a quarter faster than the Rustbucket's 100, so the rivals' tier-two pace (41 m/s) is comfortable and tier three's (46) is a fight. Its model arrives with the bike-models PR (#300), id for id.",
+    "notes": "The career's middle bike, about 125 mph (55.9 m/s). A strong launch, sharper steering and shorter stops than the Grand Tourer reward late braking and quick line changes; its lower mass gives up more ground in rider contact. Top speed and career access are unchanged. Stunt balance follows the shared riding rules.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

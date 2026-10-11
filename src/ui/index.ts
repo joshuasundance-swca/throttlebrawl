@@ -2068,7 +2068,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   let raceView: RaceOptionsView | null = null;
   const drawRaceOptions = () => {
     if (!raceOptionsScreen || !raceView) return;
-    raceOptionsScreen.draw(raceOptionRows(raceView, settings), raceView.where);
+    raceOptionsScreen.draw(raceOptionRows(raceView, settings), raceView.where, raceView.objective);
   };
   const stepRaceOptions = (id: RaceOptionId, dir: 1 | -1) => {
     if (!raceView) return;
@@ -2076,6 +2076,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     settings = next;
     settingsScreen.sync(settings);
     cb.onSettingsChange?.(next);
+    raceView = cb.raceOptions?.() ?? raceView;
     drawRaceOptions();
   };
   if (cb.raceOptions)

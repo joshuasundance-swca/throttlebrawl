@@ -49,7 +49,7 @@ export type MakeButton = (
 export interface RaceOptionsScreen {
   readonly root: HTMLElement;
   /** Draws the rows and the line that says where the race runs. Focus stays on the row it was on. */
-  draw(rows: readonly RaceOptionRow[], where: string): void;
+  draw(rows: readonly RaceOptionRow[], where: string, objective?: string): void;
 }
 
 export interface RaceOptionsCallbacks {
@@ -71,6 +71,7 @@ function node<K extends keyof HTMLElementTagNameMap>(
 
 export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbacks): RaceOptionsScreen {
   const where = node('div', { className: 'ro-where' });
+  const objective = node('div', { className: 'ro-where', id: 'quick-play-objective' });
   const list = node('div', { className: 'ro-list', id: 'race-options-list' });
   const root = node(
     'div',
@@ -81,6 +82,7 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
       node('div', { className: 'ro-title', textContent: 'Quick Play setup' }),
       where,
     ),
+    objective,
     list,
     node(
       'div',
@@ -137,8 +139,10 @@ export function createRaceOptionsScreen(make: MakeButton, cb: RaceOptionsCallbac
 
   return {
     root,
-    draw(drawn, at) {
+    draw(drawn, at, goal) {
       where.textContent = at;
+      objective.textContent = goal ?? '';
+      objective.hidden = !goal;
       const shown: HTMLElement[] = [];
       for (const r of drawn) {
         const el = rowFor(r.id);

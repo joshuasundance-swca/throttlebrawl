@@ -13,6 +13,8 @@ export interface RaceResult {
   takedowns?: number;
   /** The player's style cash this race (the snapshot's `styleTally`). */
   styleCash?: number;
+  objectiveState?: 'running' | 'won' | 'lost';
+  objective?: string;
 }
 
 export function ordinal(n: number): string {
@@ -72,8 +74,13 @@ export function resultText(r: RaceResult): {
     };
   }
   return {
-    headline: `${ordinal(r.place)} of ${r.of}`,
-    detail: `${r.eventName}. Prize: ${cash(r.prizeCash)}. Nobody is paying it yet.`,
+    headline:
+      r.objectiveState && r.objectiveState !== 'running'
+        ? r.objectiveState === 'won'
+          ? 'Objective met'
+          : 'Objective missed'
+        : `${ordinal(r.place)} of ${r.of}`,
+    detail: `${r.eventName}. ${r.objective ? `${r.objective}. ` : ''}Prize: ${cash(r.prizeCash)}. Nobody is paying it yet.`,
     tally,
     busted: false,
   };

@@ -77,6 +77,7 @@ import {
   type FrameRateCap,
   type Profile,
   type RaceWeather,
+  type Settings,
   type StorageLike,
 } from '../save';
 import { cameraTargetOf } from './camera-target';
@@ -123,7 +124,14 @@ import {
 import { motionAmounts, osPrefersReducedMotion } from './motion';
 import { clearLoadRetry, failureOf, offerLoadRetry, routesNoteView, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
-import { menuRaceSetup, raceOptionsView } from './race-options';
+import { raceOptionsView } from './race-options';
+import {
+  huntMinimum,
+  quickPlayEvent,
+  quickPlayEvents,
+  quickPlayObjective,
+  quickPlaySetup,
+} from './quick-play-events';
 import { appReplayKey } from './replay-key';
 import type { CareerFlow } from './career-flow';
 import { createOutcome, raceResult, RESULTS_BEAT_TICKS, resultsDue } from './results';
@@ -428,7 +436,7 @@ export function createApp(opts: AppOptions): AppHandle {
   // first time a race there starts), the regions the menu offers, and the race's event.
   const library = createPackLibrary({ includeDrafts: build.channel !== 'prod' });
   let registry = library.registry();
-  const regions = regionChoices(registry);
+  const regions = regionChoices(registry).filter((r) => quickPlayEvents(registry, r.id).length > 0);
   const streams = createStreamCache();
   /** The race's content hashes: its own packs only, so the Keys' replay key never moves. */
   const raceHashes = (id: string) => contentHashes(packSubset(registry, packClosure(registry, packOf(id))));
@@ -452,6 +460,10 @@ export function createApp(opts: AppOptions): AppHandle {
   // Settings, tuning and replay.
   const settingsStore = createSettingsStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
   let settings = settingsStore.load();
+  let quickSettings: Settings | null = null;
+  let quickLog: RaceLog | null = null;
+  let quickDone: number | null = null;
+  let quickRetry: { eventId: string; route: string | null; settings: Settings } | null = null;
   // The career (run W-R): the profile record beside the settings, and every region's career map.
   const profileStore = createProfileStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
   let profile: Profile = profileStore.load();
@@ -664,7 +676,9 @@ export function createApp(opts: AppOptions): AppHandle {
    * the region's road data is in), the picked one kept while it is still offered.
    */
   const offerRoutes = () => {
-    const choices = routeChoices(registry, eventId);
+    const choices = routeChoices(registry, eventId).filter(
+      (c) => (event.kind !== 'takedown-hunt' && event.kind !== 'grudge-match') || c.id === null,
+    );
     if (route && !choices.some((c) => c.id === route)) route = null;
     ui.setRoutes(
       choices.map((c) => ({ id: c.id, name: c.name, blurb: c.blurb })),
@@ -721,13 +735,15 @@ export function createApp(opts: AppOptions): AppHandle {
   let stepListener: ((s: SimSnapshot, e: readonly SimEvent[]) => void) | null = null;
 
   const newSim = (seed: number): Sim => {
+    const pickedSettings = !careerRace && quickSettings ? quickSettings : settings;
+    const raceTuning = { ...tuning.simValues(), ...raceStartValues(tuning.decls, (id) => tuning.get(id)) };
     const config = buildSimConfig(registry, stream, {
       seed,
       eventId,
       // The settings that feed SimConfig (M2 save-2 and ui-2; wired in the integration round). Each
       // applies at the next race start or restart, never mid-race, and lands in the replay header.
       // A career race runs its map node's length; free play the Race length setting.
-      length: careerRace?.length ?? settings.raceLength,
+      length: careerRace?.length ?? pickedSettings.raceLength,
       // The career's bike rides a career race (the garage, run W-R); a menu race rides the bike its
       // options picked, else the garage's, and takes their light, field, law and traffic (playtest 4,
       // P4-12 and P4-13: app/race-options.ts; every pick lands in this config or the replay header).
@@ -737,7 +753,16 @@ export function createApp(opts: AppOptions): AppHandle {
         ? profile.bikes.current
           ? { playerBike: profile.bikes.current }
           : {}
-        : menuRaceSetup(registry, settings.raceOptions, profile.bikes, settings.quickPlayField ?? 'open')),
+        : quickPlaySetup(
+            registry,
+            eventId,
+            pickedSettings.raceOptions,
+            profile.bikes,
+            pickedSettings.quickPlayField ?? 'open',
+            seed,
+            pickedSettings.difficulty,
+            raceTuning,
+          )),
       ...(careerRace ? { grudges: profile.grudges } : {}),
       // The career's field level (the rivals' and cops' bikes and strength) and the season's remix.
       ...(careerRace?.level ? { fieldLevel: careerRace.level } : {}),
@@ -745,15 +770,15 @@ export function createApp(opts: AppOptions): AppHandle {
       // The road picked on the menu: a real road instead of the length's route (the replay header
       // records it as event.routeId).
       ...(route ? { route } : {}),
-      difficulty: settings.difficulty,
-      assists: [settingsAssists(settings)],
-      speedMultiplier: settings.speedMultiplier,
-      slowMo: settings.slowMo,
+      difficulty: pickedSettings.difficulty,
+      assists: [settingsAssists(pickedSettings)],
+      speedMultiplier: pickedSettings.speedMultiplier,
+      slowMo: pickedSettings.slowMo,
       // W-Q: a free-play race draws its rivals from the region's whole cast and its time of day from
       // the region's list, by the seed; a career race keeps its event's own field and time.
-      freePlay: !careerRace,
+      ...(careerRace ? { freePlay: false } : {}),
       // The sim's values plus the difficulty scales, read once at race start (app-3).
-      tuning: { ...tuning.simValues(), ...raceStartValues(tuning.decls, (id) => tuning.get(id)) },
+      ...(careerRace ? { tuning: raceTuning } : {}),
     });
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
     renderer.setTrafficTypes(config.trafficTypes);
@@ -871,8 +896,21 @@ export function createApp(opts: AppOptions): AppHandle {
       // Install as an app (roadmap M5): the menu offers it only while the browser does.
       install: installOffer(),
       raceOptions: () => {
-        const at = pickedChoice()?.eventId ?? eventId;
-        return raceOptionsView(registry, at, at === eventId ? route : null, profile.bikes, settings.units);
+        const region = pickedChoice()?.id ?? regionKeyOf(registry, eventId);
+        const chosen = quickPlayEvent(registry, region, settings.quickPlayKind ?? 'race');
+        const at = chosen?.eventId ?? eventId;
+        const view = raceOptionsView(registry, at, route, profile.bikes, settings.units);
+        const e = registry.events[at]!;
+        if (e.kind === 'grudge-match' || (e.kind === 'takedown-hunt' && Array.isArray(e.rules?.['targets'])))
+          view.rivals = [];
+        else if (e.kind === 'takedown-hunt')
+          view.rivals = view.rivals.filter((c) => c.value === null || c.value >= huntMinimum(registry, at));
+        return {
+          ...view,
+          kinds: quickPlayEvents(registry, region).map((c) => ({ value: c.kind, label: c.label })),
+          objective: quickPlayObjective(registry, at),
+          lawRequired: e.kind === 'cop-escape',
+        };
       },
       career: {
         onRegion: (id) => openCareer(id),
@@ -969,6 +1007,7 @@ export function createApp(opts: AppOptions): AppHandle {
         else handle.backToMenu();
       },
       onSettingsChange: (next) => {
+        const changedKind = next.quickPlayKind !== settings.quickPlayKind;
         settings = next;
         settingsStore.save(next);
         audio.setVolumes(audioVolumes(next), next.mute);
@@ -982,6 +1021,7 @@ export function createApp(opts: AppOptions): AppHandle {
         }
         applyShake(next);
         audio.setRadioCut(radioCut(next));
+        if (changedKind && state !== 'race') showPicked();
       },
     },
   });
@@ -1034,13 +1074,16 @@ export function createApp(opts: AppOptions): AppHandle {
       settleCareerRace(false);
       return;
     }
-    ui.showResults(
-      raceResult(curr, playerId, outcome, {
+    ui.showResults({
+      ...raceResult(curr, playerId, outcome, {
         id: event.id,
         name: event.name,
         byPlaceCash: event.rewards.byPlaceCash,
       }),
-    );
+      ...(quickLog && event.kind !== 'classic-race'
+        ? { objectiveState: quickLog.status().state, objective: quickLog.status().headline }
+        : {}),
+    });
     ui.show('results');
   };
 
@@ -1102,11 +1145,18 @@ export function createApp(opts: AppOptions): AppHandle {
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     outcome.note(events, playerId, tick);
     noteCareer(events, tick);
+    if (quickLog) {
+      quickLog.note(events, curr);
+      const status = quickLog.status();
+      ui.career.setObjective(status.headline);
+      if (status.endNow && quickDone === null) quickDone = tick;
+    }
     stepListener?.(curr, events);
     const careerDone = careerRace?.doneTick ?? null;
     if (
       resultsDue(outcome, tick, race.isOver()) ||
-      (careerDone !== null && tick >= careerDone + RESULTS_BEAT_TICKS)
+      (careerDone !== null && tick >= careerDone + RESULTS_BEAT_TICKS) ||
+      (quickDone !== null && tick >= quickDone + RESULTS_BEAT_TICKS)
     ) {
       recorder.finish(tick, race.hash());
       finishRace();
@@ -1305,7 +1355,9 @@ export function createApp(opts: AppOptions): AppHandle {
   const showPicked = () => {
     const choice = pickedChoice();
     if (!choice || state === 'race' || !library.hasRoads(choice.packId)) return;
-    useEvent(choice.eventId);
+    useEvent(
+      quickPlayEvent(registry, choice.id, settings.quickPlayKind ?? 'race')?.eventId ?? choice.eventId,
+    );
     // Offered again even when the event did not change (back to a region before another's road
     // data arrived), so the picker never stays empty.
     offerRoutes();
@@ -1356,6 +1408,7 @@ export function createApp(opts: AppOptions): AppHandle {
    * the region's own road. The menu backdrop follows the pick; Race races it.
    */
   const pickRoute = (id: string | null) => {
+    if (id && (event.kind === 'takedown-hunt' || event.kind === 'grudge-match')) return;
     if (id === route) return;
     route = id;
     if (state === 'race') return;
@@ -1406,7 +1459,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // W-Q: a free-play race's light is drawn by its seed, or picked in its options with its weather
     // (playtest 4, P4-12); a career race keeps its event's own.
     const seed = seeds.next();
-    const options = careerRace ? null : settings.raceOptions;
+    const options = careerRace ? null : (quickSettings ?? settings).raceOptions;
     showRegion(
       raceTimeOfDay(
         registry,
@@ -1449,6 +1502,9 @@ export function createApp(opts: AppOptions): AppHandle {
   function startCareerRace(def: CareerDef, node: CareerNode): void {
     const m = C;
     if (loadingRoads || !m) return;
+    quickLog = null;
+    quickDone = null;
+    quickSettings = null;
     // The one gate of every career ride (Ride, Next, Race it again, restart, dev hooks): a shut
     // region or a locked node never starts, whatever button asked (playtest 3, regions in order).
     const refusal = m.rideLock(registry, defs, profile, def, node);
@@ -1821,8 +1877,18 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     startRace() {
       if (transition(state, 'race') === null || loadingRoads) return;
+      if (!C) {
+        void careerReady.then((m) => {
+          if (m) handle.startRace();
+        });
+        return;
+      }
+      const retry = state === 'results' ? quickRetry : null;
       // The menu's Race is free play.
       careerRace = null;
+      quickLog = null;
+      quickDone = null;
+      quickSettings = retry?.settings ?? { ...settings, raceOptions: { ...settings.raceOptions } };
       ui.career.setObjective(null);
       // The race runs in the region picked on the menu. A region pack's road data is fetched the
       // first time (docs/content-packs.md, "Region packs at runtime"); the race starts after.
@@ -1836,16 +1902,39 @@ export function createApp(opts: AppOptions): AppHandle {
         });
         return;
       }
-      if (choice) useEvent(choice.eventId);
+      if (retry) {
+        useEvent(retry.eventId);
+        route = retry.route;
+      } else if (choice) {
+        const chosen = quickPlayEvent(registry, choice.id, settings.quickPlayKind ?? 'race');
+        if (!chosen) {
+          ui.notice('This region has no available Quick Play events.');
+          return;
+        }
+        useEvent(chosen.eventId);
+      }
       // The chosen race length's route (the settings' Race length; an id the event lacks means its
       // standard length), or the real road picked on the menu.
-      launchRace(settings.raceLength);
+      if (!launchRace(quickSettings.raceLength) || !race) return;
+      quickRetry = { eventId, route, settings: quickSettings };
+      const plan = C.eventPlan(registry, eventId);
+      quickLog = C.createRaceLog({
+        playerId,
+        rules: plan.rules,
+        objectives: plan.objectives,
+        routeId: race.config.event.routeId ?? '',
+        roadIds: race.config.road.edges.map((e) => e.id),
+      });
+      ui.career.setObjective(quickLog.status().headline);
     },
     backToMenu() {
       if (!go('back')) return;
       race = null;
       // A career race left this way is abandoned: it records nothing.
       careerRace = null;
+      quickLog = null;
+      quickDone = null;
+      quickSettings = null;
       ui.career.setObjective(null);
       ui.show('menu');
     },
