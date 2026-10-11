@@ -4,7 +4,7 @@
 
 ## Behavior
 
-Show the nearby living Timber rider targeting the player during tell, charge and winded recovery in the existing target-health widget. Include its content-derived name and a short plain phase label. An incoming Timber warning takes precedence over the ordinary auto-target; when the warning ends, restore the current ordinary target without retained state. Scope it to Road riders on the same edge, within 35 metres of progress, with a small vertical separation and no finished rider. Do not advertise an NPC-targeted or distant signature. Respect a removed target-health widget and existing HUD layout, text size and reduced-motion preferences. No flash, sound, new HUD box, camera change, AI retune, asset, save format or network dependency.
+Show the nearby living Timber rider targeting the player during tell, charge and winded recovery in the existing target-health widget. Include its content-derived name and a short plain phase label. An incoming Timber warning takes precedence over the ordinary auto-target; when the warning ends, restore the current ordinary target without retained state. Scope it to Road riders on the same edge, within 35 metres of progress, with at most 2 metres of road-relative height separation and no finished rider. World elevation changes along a hill do not exclude riders sharing that road surface. Do not advertise an NPC-targeted or distant signature. Respect a removed target-health widget and existing HUD layout, text size and reduced-motion preferences. No flash, sound, new HUD box, camera change, AI retune, asset, save format or network dependency.
 
 ## Automated acceptance
 
