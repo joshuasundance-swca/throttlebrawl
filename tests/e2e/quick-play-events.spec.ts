@@ -38,18 +38,18 @@ async function kind(page: Page, value: string) {
   await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', value);
 }
 
-test('loaded event choices reach the config and HUD, survive reload, and keep the career untouched', async ({
-  page,
-}) => {
-  await page.addInitScript((fixture) => {
-    (window as TestWindow).__GAME_TEST__ = true;
-    if (!localStorage.getItem('mbrawl:profile'))
-      localStorage.setItem('mbrawl:profile', JSON.stringify(fixture));
-  }, profileFixture);
-  await page.goto('./');
-  await options(page);
-  const before = await profile(page);
-  for (const family of ['race', 'hunt', 'escape', 'grudge']) {
+for (const family of ['race', 'hunt', 'escape', 'grudge'])
+  test(`${family} reaches the config and HUD, survives reload, and keeps the career untouched`, async ({
+    page,
+  }) => {
+    await page.addInitScript((fixture) => {
+      (window as TestWindow).__GAME_TEST__ = true;
+      if (!localStorage.getItem('mbrawl:profile'))
+        localStorage.setItem('mbrawl:profile', JSON.stringify(fixture));
+    }, profileFixture);
+    await page.goto('./');
+    await options(page);
+    const before = await profile(page);
     await kind(page, family);
     await expect(page.locator('#quick-play-objective')).toBeVisible();
     if (family === 'escape') {
@@ -76,8 +76,7 @@ test('loaded event choices reach the config and HUD, survive reload, and keep th
     await page.reload();
     await options(page);
     await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', family);
-  }
-});
+  });
 
 test('a clean Hunt finish misses the objective, and Retry preserves the event, bike, road and competition', async ({
   page,
