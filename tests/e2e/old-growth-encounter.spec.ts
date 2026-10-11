@@ -9,16 +9,18 @@ type BossCareer = DiskCareer & {
 };
 const events = diskEvents();
 const careers = diskCareers() as BossCareer[];
-const def = careers.find((c) =>
+const selectedDef = careers.find((c) =>
   events.some(
     (e) =>
       e.key === qualifyIn(c.pack, c.nodes.find((n) => n.id === c.boss)?.event ?? '') &&
       (e['rules'] as { rule?: string }).rule === 'timber',
   ),
 );
-if (!def) throw new Error('No Timber regional boss');
-const boss = def.nodes.find((n) => n.id === def.boss);
-if (!boss) throw new Error('No boss node');
+if (!selectedDef) throw new Error('No Timber regional boss');
+const def = selectedDef;
+const selectedBoss = def.nodes.find((n) => n.id === def.boss);
+if (!selectedBoss) throw new Error('No boss node');
+const boss = selectedBoss;
 const event = events.find((e) => e.key === qualifyIn(def.pack, boss.event));
 if (!event) throw new Error('No boss event');
 const rivalKey = qualifyIn(def.pack, (event['rules'] as { rival: string }).rival);
@@ -26,8 +28,9 @@ const [rivalPack, rivalId] = rivalKey.split(':');
 const rival = JSON.parse(readFileSync(`packs/${rivalPack}/riders/${rivalId}.json`, 'utf8')) as {
   name: string;
 };
-const next = diskRegions().find((r) => r.key === def.ending.next);
-if (!next?.name) throw new Error('No next chapter');
+const selectedNext = diskRegions().find((r) => r.key === def.ending.next);
+if (!selectedNext?.name) throw new Error('No next chapter');
+const next = selectedNext;
 const count = Number(
   (event['objectives'] as { kind: string; params: { orKnockdowns?: number } }[]).find(
     (o) => o.kind === 'beat-rival',

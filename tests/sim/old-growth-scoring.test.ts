@@ -16,20 +16,24 @@ import type { EntitySnapshot, SimEvent, SimSnapshot } from '../../src/sim/api';
 import { REG } from './career-harness';
 
 const defs = careerDefs(REG);
-const def = defs.find((d) =>
+const selectedDef = defs.find((d) =>
   d.nodes.some((n) => n.id === d.boss && eventPlan(REG, n.event).rules.rule === 'timber'),
 );
-if (!def) throw new Error('No Timber regional boss');
-const node = def.nodes.find((n) => n.id === def.boss);
-if (!node) throw new Error('No Timber boss node');
+if (!selectedDef) throw new Error('No Timber regional boss');
+const def = selectedDef;
+const selectedNode = def.nodes.find((n) => n.id === def.boss);
+if (!selectedNode) throw new Error('No Timber boss node');
+const node = selectedNode;
 const plan = eventPlan(REG, node.event);
-const rival = plan.rules.rival;
-if (!rival) throw new Error('No named Timber rival');
+const selectedRival = plan.rules.rival;
+if (!selectedRival) throw new Error('No named Timber rival');
+const rival = selectedRival;
 const required = plan.objectives.find((o) => o.required && o.kind === 'beat-rival');
 const count = Number(required?.params['orKnockdowns']);
 if (!(count > 0)) throw new Error('No environmental alternative');
-const next = defs.find((d) => d.regionKey === def.ending.next);
-if (!next) throw new Error('No next chapter');
+const selectedNext = defs.find((d) => d.regionKey === def.ending.next);
+if (!selectedNext) throw new Error('No next chapter');
+const next = selectedNext;
 const ME = 1,
   BOSS = 0,
   NPC = 2,
