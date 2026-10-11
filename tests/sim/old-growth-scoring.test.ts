@@ -174,30 +174,44 @@ describe('the authored Timber regional boss', () => {
     loss.finish(BOSS);
     expect(loss.log.status()).toMatchObject({ state: 'lost', endNow: true });
   });
-  it('a bust on the decisive tick wins no map, chapter, bike or teaser', () => {
-    const r = race();
-    for (let i = 0; i < count - 1; i++) r.step([r.fall('traffic')]);
-    r.step([r.fall('scenery'), { type: 'bust', actor: COP, target: ME, data: { fineCash: 100 } }]);
-    expect(r.log.status().state).toBe('lost');
-    const before = ready(),
-      after = r.settle(before);
-    expect(after.report).toMatchObject({
-      won: false,
-      outcome: 'busted',
-      map: null,
-      unlocked: [],
-      teaser: null,
-    });
-    expect(after.profile.bikes.owned).toEqual(before.bikes.owned);
-    expect(progressOf(def, after.profile.regions).finaleBeaten).toBe(false);
-    expect(regionOpen(defs, after.profile, next)).toBe(false);
-  });
+  it.each(['before', 'same'] as const)(
+    'a bust %s the decisive tick wins no map, chapter, bike or teaser',
+    (when) => {
+      const r = race();
+      for (let i = 0; i < count - 1; i++) r.step([r.fall('traffic')]);
+      const bust = { type: 'bust' as const, actor: COP, target: ME, data: { fineCash: 100 } };
+      if (when === 'before') r.step([bust]);
+      r.step([r.fall('scenery'), ...(when === 'same' ? [bust] : [])]);
+      expect(r.log.status().state).toBe('lost');
+      const before = ready(),
+        after = r.settle(before);
+      expect(after.report).toMatchObject({
+        won: false,
+        outcome: 'busted',
+        map: null,
+        unlocked: [],
+        teaser: null,
+      });
+      expect(after.profile.bikes.owned).toEqual(before.bikes.owned);
+      expect(progressOf(def, after.profile.regions).finaleBeaten).toBe(false);
+      expect(regionOpen(defs, after.profile, next)).toBe(false);
+      expect(teaserView(defs, after.report)).toBeNull();
+      expect(
+        resultView(REG, def, plan, r.log.status(), after.report, 0, r.log.tally().racers, after.profile, defs)
+          .title,
+      ).toBe('BUSTED');
+    },
+  );
   it('a loss leaves the next chapter shut; a win grants its rewards and teaser once', () => {
     const before = ready();
     expect(regionOpen(defs, before, next)).toBe(false);
     const loss = race();
     loss.finish(BOSS);
-    expect(loss.settle(before).report).toMatchObject({ map: null, unlocked: [], teaser: null });
+    const lost = loss.settle(before);
+    expect(lost.report).toMatchObject({ map: null, unlocked: [], teaser: null });
+    expect(regionOpen(defs, lost.profile, next)).toBe(false);
+    expect(progressOf(def, lost.profile.regions).finaleBeaten).toBe(false);
+    expect(lost.profile.bikes.owned).toEqual(before.bikes.owned);
     const win = race();
     win.finish(ME);
     const first = win.settle(before);
