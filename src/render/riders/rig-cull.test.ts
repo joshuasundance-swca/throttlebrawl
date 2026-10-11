@@ -4,7 +4,7 @@
 // which a posed rider leaves), so it drew whether or not the camera faced it. The rig is now shown only while a sphere
 // round the rider and the bike touches the camera's frustum (RiderRigs.setView).
 // The rig is driven the way the game drives it (EntityViews + RiderRigs on hand-built baked parts, no WebGL).
-import { Frustum, Matrix4, PerspectiveCamera } from 'three';
+import { Frustum, Matrix4, Mesh, PerspectiveCamera, SkinnedMesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimSnapshot } from '../../sim/api';
 import { createFlatLook } from '../look';
@@ -150,5 +150,43 @@ describe('a rig the camera cannot see is not drawn', () => {
     expect(f.planes.map((p) => p.constant.toFixed(4))).toEqual(
       manual.planes.map((p) => p.constant.toFixed(4)),
     );
+  });
+
+  it('copies the selected-holder glint into the real rig, and removes it when the preview clears', () => {
+    const w = world();
+    const player = rider(0, 0, -20, { stealId: 1 });
+    const holder = rider(1, 1, -20, {
+      slot: -1,
+      attackPhase: 'windup',
+      heldWeapon: 'base:lead-pipe',
+    });
+    const other = rider(2, -1, -20, { ...holder, id: 2 });
+    const weapon = (id: number) => {
+      const mesh = w.rigs.root.children.find(
+        (o) => o instanceof SkinnedMesh && o.userData['entityId'] === id,
+      );
+      if (!(mesh instanceof SkinnedMesh)) throw new Error(`no rig for rider ${id}`);
+      const found = mesh.skeleton.bones.flatMap((b) => b.children).find((o) => o.name === 'rig-weapon');
+      if (!(found instanceof Mesh)) throw new Error(`no rig weapon for rider ${id}`);
+      const glint = found.children.find((o) => o instanceof Mesh);
+      if (!(glint instanceof Mesh)) throw new Error(`no rig glint for rider ${id}`);
+      return { weapon: found, glint };
+    };
+    const shown = w.frame([player, holder, other]);
+    expect(shown.get(holder.id), 'the real holder rig is drawn').toBe(true);
+    expect(weapon(holder.id).weapon.visible).toBe(true);
+    expect(weapon(holder.id).glint.visible).toBe(true);
+    expect(weapon(other.id).weapon.visible).toBe(true);
+    expect(weapon(other.id).glint.visible).toBe(false);
+    w.frame([{ ...player, stealId: -1 }, holder, other]);
+    expect(weapon(holder.id).weapon.visible).toBe(true);
+    expect(weapon(holder.id).glint.visible).toBe(false);
+    w.frame([{ ...player, stealId: other.id }, holder, other]);
+    expect(weapon(other.id).glint.visible).toBe(true);
+    expect(weapon(holder.id).glint.visible).toBe(false);
+    const oldPlayer = { ...player };
+    delete oldPlayer.stealId;
+    w.frame([oldPlayer, holder, other]);
+    expect(weapon(other.id).glint.visible).toBe(false);
   });
 });

@@ -465,6 +465,7 @@ const CSS = `
   #ui #menu #whats-new { width: min(560px, 100%); }
 }
 #start-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+#start-controls .snatch-help { grid-column: 1 / -1; }
 #hud-speed, #hud-position, #hud-health, #hud-target { position: absolute; padding: 4px 10px; background: #0008;
   border-radius: 4px; white-space: nowrap; }
 #hud-speed, #hud-position { font-size: 22px; font-weight: 800; }
@@ -775,6 +776,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     el('div', { textContent: 'Sideways to steer, lift to coast' }),
     el('div', { textContent: 'Esc pause' }),
     el('div', { textContent: 'HIT to punch, swipe down on it to kick' }),
+    el('div', {
+      className: 'snatch-help',
+      textContent: 'Snatch: finish your swing, ride alongside, then tap attack as their weapon glints.',
+    }),
+    el('div', {
+      className: 'snatch-help',
+      textContent: 'Use a fresh press, not a hold. A snatch replaces your carried weapon.',
+    }),
   );
   const start = el(
     'div',
