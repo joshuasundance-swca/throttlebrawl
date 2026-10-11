@@ -53,7 +53,7 @@ vi.mock('../ui', async (original) => {
           if (key === 'pause')
             return () => {
               target.paused = true;
-              options.callbacks.onPause();
+              options.callbacks.onPause!();
             };
           return noop;
         },
@@ -160,8 +160,8 @@ describe('AppHandle actual render wiring', () => {
   };
   const pause = (on: boolean) => {
     boundary.ui.paused = on;
-    if (on) boundary.callbacks!.onPause();
-    else boundary.callbacks!.onResume();
+    if (on) boundary.callbacks!.onPause!();
+    else boundary.callbacks!.onResume!();
   };
   const context = (lost: boolean) => {
     boundary.lost = lost;
@@ -254,7 +254,7 @@ describe('AppHandle actual render wiring', () => {
     pause(false); // interruption wholly between observations
     expect(frame().epoch).toBeGreaterThan(start.epoch);
     const stable = seen.at(-1)!.epoch;
-    boundary.callbacks!.onResume();
+    boundary.callbacks!.onResume!();
     expect(frame().epoch).toBe(stable);
     visible.visibilityState = 'hidden';
     boundary.lifecycle!.onHidden('visibility');
@@ -269,7 +269,7 @@ describe('AppHandle actual render wiring', () => {
     const afterContext = frame();
     expect(afterContext.eligible).toBe(true);
     expect(afterContext.epoch).toBeGreaterThan(restored.epoch);
-    boundary.callbacks!.onRestart();
+    boundary.callbacks!.onRestart!();
     expect(frame(0).epoch).toBeGreaterThan(afterContext.epoch);
     expect(frame().eligible).toBe(true);
     app.backToMenu();
