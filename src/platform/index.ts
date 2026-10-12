@@ -9,6 +9,8 @@ import type { ResumeAudio } from '../core';
 import { readsOfflineCaches, type PageCacheEnv } from './page-cache';
 import { retryingFetch, type RetryEnv } from './retry-fetch';
 import { recoverStaleBuild, type StaleBuild } from './stale-build';
+import { createWakeLeases, type WakeLeaseOptions, type WakeLeaseResult } from './wake-lease';
+export type { WakeLease, WakeLeaseLoss, WakeLeaseResult } from './wake-lease';
 
 /**
  * The one place the app id appears. Storage keys, export prefixes and format strings derive from
@@ -44,6 +46,8 @@ export interface PlatformEnv {
 
 /** A held screen wake lock: the browser's `WakeLockSentinel`, reduced to what platform/ uses. */
 export interface WakeLockHandle {
+  /** Live native state; older ordinary-wake mocks may omit it. */
+  readonly released?: boolean | undefined;
   release(): Promise<void>;
   /** Called once when the lock ends, whether released by us or dropped by the browser. */
   onRelease(cb: () => void): void;
@@ -78,6 +82,8 @@ export interface Platform {
   keepAwake(on: boolean): void;
   /** Whether a wake lock is held right now (for the debug report and the M5 soak). */
   wakeLockHeld(): boolean;
+  /** An independent advisory screen sentinel, owned by this call alone. */
+  acquireWakeLease(options: WakeLeaseOptions): Promise<WakeLeaseResult>;
 }
 
 /** How long the tap's result waits for a lock that never settles (some browsers hold it). */
@@ -129,6 +135,23 @@ export function createPlatform(env: PlatformEnv): Platform {
   // Pause reasons; onHidden fires when the first one arrives, onShown when the last one clears.
   const reasons = new Set<PauseReason>();
   const watchers = new Set<LifecycleCallbacks>();
+  let leasePageHidden = false;
+  const leases = createWakeLeases(
+    () => env.requestWakeLock,
+    () => env.isHidden() || leasePageHidden || reasons.size > 0,
+  );
+  // These minimal listeners do not install ordinary lifecycle guards or broaden its policy.
+  env.doc.addEventListener('visibilitychange', () => {
+    if (env.isHidden()) leases.lose('visibility');
+  });
+  env.win.addEventListener('pagehide', () => {
+    leasePageHidden = true;
+    leases.lose('pagehide');
+  });
+  env.win.addEventListener('pageshow', () => {
+    leasePageHidden = false;
+    if (env.isHidden()) leases.lose('visibility');
+  });
   let armed = false; // the rotate screen only after the start tap
   let rotate = false;
   let wasFullscreen = env.isFullscreen();
@@ -168,6 +191,7 @@ export function createPlatform(env: PlatformEnv): Platform {
     if (reasons.has(reason)) return;
     const first = reasons.size === 0;
     reasons.add(reason);
+    leases.lose(reason);
     if (first) for (const w of watchers) w.onHidden(reason);
     syncWake();
   };
@@ -278,7 +302,8 @@ export function createPlatform(env: PlatformEnv): Platform {
       syncWake();
     },
 
-    wakeLockHeld: () => sentinel !== null,
+    wakeLockHeld: () => leases.held() || sentinel !== null,
+    acquireWakeLease: (options) => leases.acquire(options),
   };
   return platform;
 }
@@ -317,7 +342,7 @@ function showRotateScreen(need: boolean): void {
 /** The part of `navigator` the wake lock needs; the real one or a test's stand-in. */
 interface WakeLockNavigator {
   wakeLock?: {
-    request(type: 'screen'): Promise<EventTarget & { release(): Promise<void> }>;
+    request(type: 'screen'): Promise<EventTarget & { readonly released?: boolean; release(): Promise<void> }>;
   };
 }
 
@@ -332,6 +357,9 @@ export function wakeLockRequester(
   if (!api || typeof api.request !== 'function') return null;
   return () =>
     api.request('screen').then((s) => ({
+      get released() {
+        return s.released;
+      },
       release: () => s.release(),
       onRelease: (cb) => s.addEventListener('release', () => cb(), { once: true }),
     }));
@@ -412,6 +440,11 @@ export function keepAwake(on: boolean): void {
 /** Whether the screen wake lock is held right now. */
 export function wakeLockHeld(): boolean {
   return page().wakeLockHeld();
+}
+
+/** Acquires an independent screen-wake lease on the page's shared platform. */
+export function acquireWakeLease(options: WakeLeaseOptions): Promise<WakeLeaseResult> {
+  return page().acquireWakeLease(options);
 }
 
 // ---- Offline play and installing as an app (roadmap M5, launch polish) ----------------------
