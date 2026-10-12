@@ -398,97 +398,112 @@ describe('concrete UI pre-mutation deliveries', () => {
     get('career-code-load').dispatchEvent(new Event('click'));
     expect(importCode).toHaveBeenCalledExactlyOnceWith('old-code');
   });
-  it('real menu handlers gate region, navigation, race, setup, install and debug before their local changes', async () => {
-    vi.stubGlobal('fetch', () => Promise.resolve({ ok: false }));
-    const region = vi.fn(),
-      race = vi.fn(),
-      tap = vi.fn(),
-      install = vi.fn(),
-      debug = vi.fn(() => Promise.resolve());
-    const settings = vi.fn();
-    const registry = createPackLibrary({ includeDrafts: true }).registry();
-    const ui = createUi(root as unknown as HTMLElement, {
-      stampText: 'game · dev · unit · build',
-      layout: { id: 'unit', mirror: false, elements: [] },
-      tuning: createTuningRegistry([...BARK_TUNING, ...HUD_TUNING], () => {}),
-      settings: structuredClone(DEFAULT_SETTINGS),
-      regions: [
-        { id: 'one', name: 'One' },
-        { id: 'two', name: 'Two' },
-      ],
-      region: 'one',
-      actionGate(_action, deliver) {
-        order.push('gate');
-        if (phase === 'active') return;
-        generation++;
-        deliver();
-      },
-      captureNormal() {
-        const captured = generation;
-        return () => captured === generation && phase === 'normal';
-      },
-      callbacks: {
-        onStartTap: tap,
-        onRace: race,
-        onBackToMenu: vi.fn(),
-        onCopyReport: debug,
-        onRegionChange: region,
-        onSettingsChange: settings,
-        install: { available: () => true, prompt: install, onChange: () => {} },
-        raceOptions: () => ({
-          where: 'Fixture road',
-          bikes: [
-            { value: null, label: 'Garage' },
-            { value: Object.keys(registry.bikes)[0]!, label: 'Bike' },
-          ],
-          times: [{ value: null, label: 'Any' }],
-          rivals: [{ value: null, label: 'Default' }],
-          lengths: [],
-        }),
-      },
-    });
-    await vi.dynamicImportSettled();
-    ui.show('menu');
-    settings.mockClear();
-    phase = 'active';
-    for (const id of [
-      'region-two',
-      'menu-settings',
-      'menu-options',
-      'menu-race',
-      'menu-install',
-      'menu-copy-report',
-    ])
-      get(id).dispatchEvent(new Event('click'));
-    expect(ui.region).toBe('one');
-    expect(ui.screen()).toBe('menu');
-    expect(region).not.toHaveBeenCalled();
-    expect(race).not.toHaveBeenCalled();
-    expect(install).not.toHaveBeenCalled();
-    expect(debug).not.toHaveBeenCalled();
-    phase = 'normal';
-    get('region-two').dispatchEvent(new Event('click'));
-    expect(ui.region).toBe('two');
-    expect(region).toHaveBeenCalledExactlyOnceWith('two');
-    get('menu-race').dispatchEvent(new Event('click'));
-    get('menu-install').dispatchEvent(new Event('click'));
-    get('menu-copy-report').dispatchEvent(new Event('click'));
-    expect(race).toHaveBeenCalledTimes(1);
-    expect(install).toHaveBeenCalledTimes(1);
-    expect(debug).toHaveBeenCalledTimes(1);
-    get('menu-settings').dispatchEvent(new Event('click'));
-    expect(ui.screen()).toBe('settings');
-    ui.show('menu');
-    get('menu-options').dispatchEvent(new Event('click'));
-    expect(ui.screen()).toBe('raceOptions');
-    settings.mockClear();
-    const before = JSON.stringify(ui.settings);
-    phase = 'active';
-    get('race-option-bike-next').dispatchEvent(new Event('click'));
-    expect(JSON.stringify(ui.settings)).toBe(before);
-    expect(settings).not.toHaveBeenCalled();
-    phase = 'normal';
-    get('race-option-bike-next').dispatchEvent(new Event('click'));
-    expect(settings).toHaveBeenCalledTimes(1);
-  });
+  it.each([true, false])(
+    'real menu handlers gate local changes with optional measurement tool %s',
+    async (withTool) => {
+      vi.stubGlobal('fetch', () => Promise.resolve({ ok: false }));
+      const region = vi.fn(),
+        race = vi.fn(),
+        tap = vi.fn(),
+        install = vi.fn(),
+        debug = vi.fn(() => Promise.resolve());
+      const settings = vi.fn(),
+        measure = vi.fn();
+      const registry = createPackLibrary({ includeDrafts: true }).registry();
+      const ui = createUi(root as unknown as HTMLElement, {
+        stampText: 'game · dev · unit · build',
+        layout: { id: 'unit', mirror: false, elements: [] },
+        tuning: createTuningRegistry([...BARK_TUNING, ...HUD_TUNING], () => {}),
+        settings: structuredClone(DEFAULT_SETTINGS),
+        regions: [
+          { id: 'one', name: 'One' },
+          { id: 'two', name: 'Two' },
+        ],
+        region: 'one',
+        actionGate(_action, deliver) {
+          order.push('gate');
+          if (phase === 'active') return;
+          generation++;
+          deliver();
+        },
+        captureNormal() {
+          const captured = generation;
+          return () => captured === generation && phase === 'normal';
+        },
+        callbacks: {
+          onStartTap: tap,
+          onRace: race,
+          onBackToMenu: vi.fn(),
+          onCopyReport: debug,
+          ...(withTool ? { onMeasureFrames: measure } : {}),
+          onRegionChange: region,
+          onSettingsChange: settings,
+          install: { available: () => true, prompt: install, onChange: () => {} },
+          raceOptions: () => ({
+            where: 'Fixture road',
+            bikes: [
+              { value: null, label: 'Garage' },
+              { value: Object.keys(registry.bikes)[0]!, label: 'Bike' },
+            ],
+            times: [{ value: null, label: 'Any' }],
+            rivals: [{ value: null, label: 'Default' }],
+            lengths: [],
+          }),
+        },
+      });
+      await vi.dynamicImportSettled();
+      ui.show('menu');
+      const tools = nodes.filter((n) => n.id === 'menu-measure-frames');
+      expect(tools).toHaveLength(withTool ? 1 : 0);
+      if (withTool) {
+        expect(tools[0]!.parentElement?.parentElement?.id).toBe('menu-more');
+        tools[0]!.dispatchEvent(new Event('click'));
+        expect(measure).toHaveBeenCalledTimes(1);
+        measure.mockClear();
+      }
+      settings.mockClear();
+      phase = 'active';
+      for (const id of [
+        'region-two',
+        'menu-settings',
+        'menu-options',
+        'menu-race',
+        'menu-install',
+        'menu-copy-report',
+      ])
+        get(id).dispatchEvent(new Event('click'));
+      expect(ui.region).toBe('one');
+      expect(ui.screen()).toBe('menu');
+      expect(region).not.toHaveBeenCalled();
+      expect(race).not.toHaveBeenCalled();
+      expect(install).not.toHaveBeenCalled();
+      expect(debug).not.toHaveBeenCalled();
+      if (withTool) get('menu-measure-frames').dispatchEvent(new Event('click'));
+      expect(measure).not.toHaveBeenCalled();
+      phase = 'normal';
+      get('region-two').dispatchEvent(new Event('click'));
+      expect(ui.region).toBe('two');
+      expect(region).toHaveBeenCalledExactlyOnceWith('two');
+      get('menu-race').dispatchEvent(new Event('click'));
+      get('menu-install').dispatchEvent(new Event('click'));
+      get('menu-copy-report').dispatchEvent(new Event('click'));
+      expect(race).toHaveBeenCalledTimes(1);
+      expect(install).toHaveBeenCalledTimes(1);
+      expect(debug).toHaveBeenCalledTimes(1);
+      get('menu-settings').dispatchEvent(new Event('click'));
+      expect(ui.screen()).toBe('settings');
+      ui.show('menu');
+      get('menu-options').dispatchEvent(new Event('click'));
+      expect(ui.screen()).toBe('raceOptions');
+      settings.mockClear();
+      const before = JSON.stringify(ui.settings);
+      phase = 'active';
+      get('race-option-bike-next').dispatchEvent(new Event('click'));
+      expect(JSON.stringify(ui.settings)).toBe(before);
+      expect(settings).not.toHaveBeenCalled();
+      phase = 'normal';
+      get('race-option-bike-next').dispatchEvent(new Event('click'));
+      expect(settings).toHaveBeenCalledTimes(1);
+    },
+  );
 });

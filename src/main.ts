@@ -41,6 +41,12 @@ function boot(): AppHandle | null {
         simCodeHash: __SIM_CODE_HASH__,
       },
       callbacks: {
+        // A later menu action can supersede the tap while the DEV chunk loads.
+        onMeasureFrames: async (stillCurrent) => {
+          if (!app || !stillCurrent()) return;
+          const m = dev ?? (await loadDev());
+          if (app && stillCurrent()) m.openMeasurementTool(app);
+        },
         // Once the chunk is in, the copy starts inside the tap, before any await, as it always has.
         onCopyReport: () =>
           !app

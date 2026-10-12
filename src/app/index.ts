@@ -219,6 +219,8 @@ export interface AppBuild {
 /** Callbacks from the composition root (src/main.ts). */
 export interface AppCallbacks {
   onCopyReport: OnCopyReport;
+  /** Optional menu diagnostic; a delayed load must recheck this menu intent. */
+  onMeasureFrames?: (stillCurrent: () => boolean) => Promise<void>;
   /** The pause screen's "save debug file" (dev-3). The button stays hidden without it. */
   onSaveDebugFile?: () => Promise<void>;
 }
@@ -1183,6 +1185,16 @@ export function createApp(opts: AppOptions): AppHandle {
       onRouteChange: (id) => pickRoute(id),
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
+      ...(opts.callbacks.onMeasureFrames
+        ? {
+            onMeasureFrames: () => {
+              const current = captureNormal();
+              void opts.callbacks.onMeasureFrames!(
+                () => current() && state === 'menu' && ui.screen() === 'menu',
+              );
+            },
+          }
+        : {}),
       onCareer: () => {
         const current = captureNormal();
         void careerReady.then(() => {

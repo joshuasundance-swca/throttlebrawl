@@ -173,6 +173,8 @@ export interface UiCallbacks {
   onRace(): void;
   onBackToMenu(): void;
   onCopyReport: OnCopyReport;
+  /** Optional diagnostic entry in the menu's More tools. */
+  onMeasureFrames?: () => void;
   /** The pause screen opened (Esc, the pause button, or app/ calling `pause()`). */
   onPause?: () => void;
   /** Resume from the pause screen. */
@@ -907,6 +909,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       button('menu-changelog', 'small', "What's new", () => show('changelog')),
       button('menu-credits', 'small', 'Credits', () => show('credits')),
       button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      ...(cb.onMeasureFrames
+        ? [button('menu-measure-frames', 'small', 'Measure frames', () => cb.onMeasureFrames?.())]
+        : []),
       ...(install ? [installButton] : []),
     ],
     onChange: () => {
