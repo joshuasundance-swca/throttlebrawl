@@ -17,7 +17,7 @@ export interface Prompt {
 export const PROMPTS: Readonly<Record<string, string>> = {
   ride: 'THUMB UP ON THE LEFT TO RIDE. [W]',
   fight: 'TAP HIT TO PUNCH. SWIPE DOWN ON IT TO KICK. [J] [K]',
-  steal: 'HIT HIM AS HE SWINGS TO TAKE THE WEAPON.',
+  steal: 'FINISH YOUR SWING. RIDE ALONGSIDE. TAP HIT AT THE WEAPON GLINT.',
   down: 'TAP HIT TO SKIP THE RUN BACK. [SPACE]',
   cop: 'COP. HE ONLY BUSTS YOU IF HE KNOCKS YOU OFF.',
   air: 'IN THE AIR: HOLD BRAKE TO FLIP BACK, KICK TO FLIP FORWARD.',
