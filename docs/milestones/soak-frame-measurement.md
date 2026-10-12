@@ -100,6 +100,10 @@ this collector. Their absence cannot become zero GC pauses or a successful phone
 
 ## Follow-on sequence
 
+The additive [collector progress contract](./collector-progress.md) specifies direct readonly
+access to canonical collection state and eligible duration without recomputing a report per draw.
+Its acceptance and DEV-internal ownership apply before the real-frame consumer is built.
+
 After this contract and collector land, define an additive actual-frame subscription and an
 app-owned ephemeral Quick Play session. Review wake acquisition/loss ownership, fixed scene/seed,
 largest resolved field, traffic/law/default full rate, interruptions, repeated-race accounting,
