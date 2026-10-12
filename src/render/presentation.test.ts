@@ -1,0 +1,460 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Group } from 'three';
+import { createRoadNetwork, fixtureNetwork } from '../road';
+import { canvasFake, deferred } from './presentation.test-util';
+import { createRenderer, type RendererPresentationRecipe } from './index';
+import * as gateModule from './chunk-gate';
+import * as roadModule from './road-mesh';
+import * as backdropModule from './backdrop';
+import type { ChunkLoader } from './chunk-gate';
+import { EntityViews } from './views';
+import { riderLookOf } from './rider-looks';
+import * as roadApi from '../road';
+import type { SimEvent, SimSnapshot } from '../sim/api';
+
+vi.mock('three', async (original) => {
+  const { NativeRendererFake } = await import('./presentation.test-util');
+  return { ...(await original<typeof import('three')>()), WebGLRenderer: NativeRendererFake };
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+const recipe = (): RendererPresentationRecipe => ({
+  road: createRoadNetwork(fixtureNetwork([{ id: 'flat', lengthM: 80, kappa: 0 }])),
+  env: { timeOfDay: 'day' },
+  dressing: undefined,
+  boards: undefined,
+  trafficTypes: [],
+  riderLooks: [],
+  playerPaint: null,
+  sceneSeed: 9,
+  look: 'classic',
+  quality: { tier: 'high', scale: 1 },
+});
+
+const families = [
+  'film pass',
+  'race parts',
+  'rider rigs',
+  'verge',
+  'airboats',
+  'party lights',
+  'Pacific Northwest places',
+  'Pacific Northwest places layout',
+  'waterfront',
+  'waterfront layout',
+  'Chinatown and North Beach',
+  'mural alleys',
+  'landmarks',
+  'roadside scenes',
+  'text surfaces',
+  'models',
+  'roadside',
+  'downtown',
+] as const;
+
+function asyncScene(nestedFamily?: string) {
+  vi.stubGlobal('window', { devicePixelRatio: 1 });
+  const calls: { name: string; answer: ReturnType<typeof deferred<unknown>> }[] = [];
+  const installed: string[] = [];
+  const disposed: string[] = [];
+  const riderArrays: unknown[][] = [];
+  const retries: (() => void)[] = [];
+  const updates: { name: string; args: unknown[] }[] = [];
+  const layers: { name: string; pending: readonly SimEvent[] }[] = [];
+  const nested: { name: string; answer: ReturnType<typeof deferred<unknown>>; value: unknown }[] = [];
+  const result = (name: string, value: unknown): Promise<unknown> => {
+    if (name !== nestedFamily) return Promise.resolve(value);
+    const answer = deferred<unknown>();
+    nested.push({ name, answer, value });
+    return answer.promise;
+  };
+  const load: ChunkLoader = (name) => {
+    const answer = deferred<unknown>();
+    calls.push({ name, answer });
+    return answer.promise as Promise<never>;
+  };
+  const original = gateModule.createChunkGate;
+  vi.spyOn(gateModule, 'createChunkGate').mockImplementation((_load, scope) => {
+    const gate = original(load, scope);
+    return {
+      ...gate,
+      later: (ask) => {
+        retries.push(ask);
+        gate.later(ask);
+      },
+    };
+  });
+  vi.spyOn(backdropModule, 'backdropFilesFor').mockReturnValue({
+    network: '/probe/network',
+    region: '/packs/base/assets/backdrop/probe/region.json',
+  });
+  // Its actual Backdrop has no files for this fixture ID; the road-water request is independently controlled.
+  const waters: ReturnType<typeof deferred<((x: number, z: number) => number | null) | null>>[] = [];
+  vi.spyOn(backdropModule, 'loadNetworkWater').mockImplementation(() => {
+    const answer = deferred<((x: number, z: number) => number | null) | null>();
+    waters.push(answer);
+    return answer.promise;
+  });
+  vi.spyOn(roadModule, 'buildRoadScene').mockImplementation(
+    () =>
+      ({
+        group: new Group(),
+        stats: { setPieces: [] },
+        spots: [],
+        landReach: () => 10,
+        landTop: () => 0,
+        update: () => 1,
+        dispose: () => disposed.push('road'),
+      }) as unknown as ReturnType<typeof roadModule.buildRoadScene>,
+  );
+  const layer = (name: string) =>
+    class {
+      group = new Group();
+      root = this.group;
+      tint = new Group();
+      ready = true;
+      pending: readonly SimEvent[] = [];
+      name = name;
+      constructor() {
+        installed.push(name);
+        this.group.name = name;
+        layers.push(this);
+      }
+      dispose() {
+        disposed.push(name);
+      }
+      surfaces() {
+        return [{}];
+      }
+      reserved() {
+        return [];
+      }
+      setFronts() {}
+      hide() {}
+      pendingEvents() {
+        return [...this.pending];
+      }
+      setCamera() {}
+      setView() {}
+      setPlayerPaint() {}
+      setLooks(looks: readonly unknown[]) {
+        riderArrays.push([...looks]);
+      }
+      invalidatePresentation() {}
+      set() {}
+      fitTint() {}
+      resetTransient() {
+        this.pending = [];
+      }
+      pushEvents(events: readonly SimEvent[]) {
+        this.pending = [...this.pending, ...events];
+      }
+      update(...args: unknown[]) {
+        updates.push({ name, args });
+        return 1;
+      }
+      sync() {}
+      render() {}
+      endFrame() {}
+      setTreeShare() {}
+      counts() {
+        return {};
+      }
+      count() {
+        return 0;
+      }
+      batches() {
+        return { still: {} };
+      }
+    };
+  const kit = { variants: [], roles: [] };
+  const modules: Record<string, unknown> = {
+    'film pass': { LookPost: layer('film pass') },
+    'race parts': {
+      FeelEffects: layer('effects'),
+      SpeedLines: layer('lines'),
+      Rain: layer('rain'),
+      EventProps: layer('events'),
+      Smashables: layer('smashables'),
+      rainColourOf: () => null,
+    },
+    'rider rigs': { RiderRigs: layer('rider rigs') },
+    verge: { VergeLayer: layer('verge') },
+    airboats: { AirboatLayer: layer('airboats'), airboatRuns: () => [{}] },
+    'party lights': { PartyLights: layer('party lights') },
+    'Pacific Northwest places': {
+      PnwPlacesLayer: layer('Pacific Northwest places'),
+      hasPnwPlaces: () => true,
+    },
+    'Pacific Northwest places layout': { pnwPlacesLayout: () => ({}) },
+    waterfront: { WaterfrontLayer: layer('waterfront'), hasWaterfront: () => true },
+    'waterfront layout': { waterfrontLayout: () => ({}) },
+    'Chinatown and North Beach': { BlocksLayer: layer('Chinatown and North Beach') },
+    'mural alleys': { MissionLayer: layer('mural alleys'), raceShare: () => 0 },
+    landmarks: {
+      LandmarkLayer: layer('landmarks'),
+      landmarkKitsFor: () => [],
+      landmarkFootprints: () => [],
+      loadLandmarkKits: () => result('landmarks', new Map()),
+    },
+    'roadside scenes': {
+      ScenesLayer: layer('roadside scenes'),
+      loadScenes: () => result('roadside scenes', { pack: 'base', file: {} }),
+    },
+    'text surfaces': { TextSurfaceLayer: layer('text surfaces') },
+    models: {
+      modelKindsFor: () => ['sfDowntown', 'sfRoadside'],
+      retryableKinds: () => [],
+      mergeModelReports: (_old: unknown, next: unknown) => next,
+      paintModel: (model: unknown) => model,
+      loadSceneryModels: () =>
+        result('models', {
+          models: { sfDowntown: kit, sfRoadside: kit },
+          report: { loaded: ['sfDowntown', 'sfRoadside'], fellBack: [] },
+        }),
+    },
+    roadside: { RoadsideLayer: layer('roadside'), kitFor: () => 'sfRoadside', KITS: { sfRoadside: {} } },
+    downtown: { DowntownLayer: layer('downtown'), hasPortland: () => false, hasDowntown: () => true },
+  };
+  const baked = fixtureNetwork([{ id: 'flat', lengthM: 80, kappa: 0 }]);
+  const nextRecipe = {
+    ...recipe(),
+    road: createRoadNetwork({
+      ...baked,
+      roads: baked.roads.map((road) => ({
+        ...road,
+        features: [{ kind: 'landmark', s0: 0, s1: 1, d0: 0, d1: 1 }],
+      })),
+    }),
+  };
+  const pick: RendererPresentationRecipe = {
+    ...nextRecipe,
+    look: 'kodak',
+    dressing: {
+      flat: {
+        tags: ['airboats', 'ferry', 'promenade', 'lanterns', 'murals'].map((tag) => ({
+          tag,
+          s0: 0,
+          s1: 80,
+          side: 'both' as const,
+        })),
+        features: [{ kind: 'roadsideZone', s0: 0, s1: 80, d0: 0, d1: 1, params: { dressing: 'party' } }],
+      },
+    },
+  };
+  const renderer = createRenderer(canvasFake(), { assets: {} as never });
+  const resolve = async (call: (typeof calls)[number], value = modules[call.name]) => {
+    call.answer.resolve(value);
+    await call.answer.promise;
+    // Drain dependency continuations by their promise turns, never by clock/frame count.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+  const settleCurrent = async (start: number) => {
+    const settled = new Set<(typeof calls)[number]>();
+    for (;;) {
+      const next = calls.slice(start).find((c) => !settled.has(c));
+      if (!next) break;
+      settled.add(next);
+      await resolve(next);
+    }
+  };
+  return {
+    renderer,
+    pick,
+    calls,
+    installed,
+    disposed,
+    resolve,
+    settleCurrent,
+    waters,
+    nested,
+    riderArrays,
+    retries,
+    updates,
+    layers,
+  };
+}
+
+describe('presentation ownership at every top-level renderer chunk edge', () => {
+  it('rejects stale road-water completion on the same road and permits the current rebuild', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const old = t.waters[0]!;
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const before = [...t.disposed];
+    old.resolve(() => 2);
+    await old.promise;
+    await Promise.resolve();
+    expect(t.disposed).toEqual(before);
+    const current = t.waters[1]!;
+    current.resolve(() => 3);
+    await current.promise;
+    await Promise.resolve();
+    expect(t.disposed.length).toBeGreaterThan(before.length);
+  });
+  it.each(
+    families.flatMap((family) => [
+      { family, failed: false },
+      { family, failed: true },
+    ]),
+  )(
+    'retires delayed $family (failed=$failed) assignment/build/retry and permits the current positive control',
+    async ({ family, failed }) => {
+      const t = asyncScene();
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      // Resolve prerequisites until the named request exists, retaining that request itself.
+      const settled = new Set<(typeof t.calls)[number]>();
+      while (!t.calls.some((c) => c.name === family)) {
+        const next = t.calls.find((c) => c.name !== family && !settled.has(c));
+        if (!next) throw new Error(`fixture failed to request ${family}`);
+        settled.add(next);
+        await t.resolve(next);
+      }
+      const old = t.calls.find((c) => c.name === family)!;
+      const boundary = t.calls.length;
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      const before = [...t.installed];
+      const disposal = [...t.disposed];
+      const retries = [...t.retries];
+      await t.resolve(old, failed ? null : undefined);
+      expect(t.installed).toEqual(before);
+      expect(t.disposed).toEqual(disposal);
+      expect(t.retries).toEqual(retries);
+      await t.settleCurrent(boundary);
+      const label =
+        family === 'race parts'
+          ? 'effects'
+          : family === 'waterfront layout'
+            ? 'waterfront'
+            : family === 'Pacific Northwest places layout'
+              ? 'Pacific Northwest places'
+              : family === 'models'
+                ? 'downtown'
+                : family;
+      expect(t.installed, family).toContain(label);
+    },
+  );
+
+  it.each(['models', 'landmarks', 'roadside scenes'])(
+    'rejects retired %s data after the inner await, then installs the current positive result',
+    async (family) => {
+      const t = asyncScene(family);
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      await t.settleCurrent(0);
+      expect(t.nested.length, family).toBeGreaterThan(0);
+      const old = t.nested[0]!;
+      const boundary = t.calls.length;
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      const before = [...t.installed];
+      const disposal = [...t.disposed];
+      old.answer.resolve(old.value);
+      await old.answer.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(t.installed).toEqual(before);
+      expect(t.disposed).toEqual(disposal);
+      if (family === 'models') expect(t.renderer.scenery().models).toBeNull();
+      await t.settleCurrent(boundary);
+      const current = t.nested.at(-1)!;
+      expect(current).not.toBe(old);
+      current.answer.resolve(current.value);
+      await current.answer.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+      await t.settleCurrent(boundary);
+      expect(t.installed).toContain(family === 'models' ? 'downtown' : family);
+      if (family === 'models') expect(t.renderer.scenery().models!.loaded.length).toBeGreaterThan(0);
+    },
+  );
+});
+describe('atomic renderer presentation', () => {
+  it('preserves a queued verge event through coherent rebuild, while menu reset clears it', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    await t.settleCurrent(0);
+    const event: SimEvent = { tick: 1, type: 'wobble', actor: 7, data: { cause: 'fence' } };
+    t.renderer.pushEvents([event]);
+    expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([event]);
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([event]);
+    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
+    expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([]);
+  });
+  it('resets frame and downtown/mission clocks, scenery counts and the plan pointer before the restored CPU draw', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    await t.settleCurrent(0);
+    t.renderer.setLook('classic');
+    const plan = {} as NonNullable<ReturnType<typeof roadApi.structuresOf>>;
+    vi.spyOn(roadApi, 'structuresOf').mockReturnValue(plan);
+    let at = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => at);
+    const snap: SimSnapshot = {
+      tick: 1,
+      entities: [],
+      timeScale: 1,
+      race: { over: false, routeLength: 1, finishOrder: [] },
+    };
+    const pose = { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 };
+    const draw = (ms: number) => {
+      at = ms;
+      t.renderer.render(snap, snap, 1, pose);
+    };
+    draw(0);
+    draw(100);
+    draw(200);
+    draw(300);
+    draw(400);
+    expect(t.renderer.structures()).toBe(plan);
+    expect(t.renderer.scenery().visible).toBeGreaterThan(0);
+    expect(t.updates.filter((u) => u.name === 'downtown').at(-1)!.args[2]).toBe(0);
+    expect(t.updates.filter((u) => u.name === 'mural alleys').at(-1)!.args[2]).toBe(0);
+    t.renderer.applyPresentation({ ...t.pick, look: 'classic' }, { reset: 'measurement-to-menu' });
+    expect(t.renderer.structures()).toBeNull();
+    expect(t.renderer.scenery().visible).toBe(0);
+    draw(1000);
+    expect(t.updates.filter((u) => u.name === 'lines').at(-1)!.args[1]).toBe(0);
+    expect(t.renderer.structures()).toBe(plan);
+    draw(1100);
+    expect(t.updates.filter((u) => u.name === 'downtown').at(-1)!.args[2]).toBeGreaterThan(0);
+    expect(t.updates.filter((u) => u.name === 'mural alleys').at(-1)!.args[2]).toBeGreaterThan(0);
+  });
+  it('owns both recipe arrays and installs every recipe field with one synchronous road build', async () => {
+    const t = asyncScene();
+    const traffic = [...t.pick.trafficTypes];
+    const riders = [...t.pick.riderLooks];
+    const seen = vi.spyOn(EntityViews.prototype, 'setTrafficTypes');
+    const build = vi.mocked(roadModule.buildRoadScene);
+    build.mockClear();
+    const token = t.renderer.applyPresentation(
+      { ...t.pick, trafficTypes: traffic, riderLooks: riders },
+      { reset: 'preserve' },
+    );
+    expect(build).toHaveBeenCalledOnce();
+    expect(build.mock.calls[0]![0]).toBe(t.pick.road);
+    expect(seen.mock.calls[0]![0]).not.toBe(traffic);
+    expect(t.renderer.scenery().seed).toBe(t.pick.sceneSeed);
+    expect(t.renderer.look).toBe(t.pick.look);
+    expect(t.renderer.setPresentationQuality(token, 'high', 1)).toBe(true);
+    riders.push(riderLookOf({ contentId: 'base:probe', role: 'rival', bikeId: 'base:probe' }));
+    const pending = t.calls.filter((c) => c.name === 'rider rigs').at(-1)!;
+    await t.resolve(pending);
+    expect(t.riderArrays).toEqual([[]]);
+  });
+  it('retires prior tokens and accepts quality only for the current receipt', () => {
+    vi.stubGlobal('window', { devicePixelRatio: 1 });
+    const renderer = createRenderer(canvasFake());
+    const a = renderer.applyPresentation(recipe(), { reset: 'preserve' });
+    expect(renderer.setPresentationQuality(a, 'low', 0.7)).toBe(true);
+    const b = renderer.applyPresentation(recipe(), { reset: 'measurement-to-menu' });
+    const before = renderer.stats().pixelRatio;
+    expect(renderer.setPresentationQuality(a, 'low', 0.1)).toBe(false);
+    expect(renderer.stats().pixelRatio).toBe(before);
+    expect(renderer.setPresentationQuality(b, 'high', 0.9)).toBe(true);
+    expect(renderer.setPresentationQuality(b, 'high', 0.8)).toBe(true);
+  });
+});

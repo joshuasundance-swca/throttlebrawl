@@ -54,6 +54,7 @@ import { lightBarPhase } from '../calm';
 import type { RenderParams } from '../tuning';
 import { bakePart, paintedColors, RIDER_BONES, type BakedPart, type PartKind, type RiderBone } from './bake';
 import { Ghosts, respawnOpacity } from './ghost';
+import { UNOWNED_PRESENTATION, type PresentationScope } from '../presentation';
 import {
   bikeFrame,
   follow,
@@ -426,11 +427,23 @@ class Rig {
     return this.wearing;
   }
 
-  /**
-   * The fade (playtest 4): the look's own rider material, copied and made see-through, so every look
-   * keeps its shading and the ink outline (depth is still written). The copy defers to the look's
-   * shader patch, which is set on the instance and not carried by three's copy. [default]
-   */
+  /** Retire visual event poses without dropping loaded rider or bike parts. */
+  resetTransient(): void {
+    this.squatAt = -10;
+    this.getUpUntil = -1;
+    this.fistUntil = -1;
+    this.flinchUntil = -1;
+    this.flinchSide = 1;
+    this.kicking = false;
+    this.ghost = 1;
+    this.fade = 1;
+    this.lastTime = 0;
+    this.lastSmoke = 0;
+    this.wearing = 'rider';
+    this.mesh.material = this.lookStyle.material('rider', { vertexColors: true });
+  }
+
+  /** The player's respawn fade retains the current look's shader patch. */
   private fadeMaterial(): Material {
     if (this.fadeMat) return this.fadeMat;
     const own = this.lookStyle.material('rider', { vertexColors: true });
@@ -1312,7 +1325,8 @@ export class RiderRigs {
   private readonly looks = new Map<string, RiderLook>();
   private playerPaint: string | null = null;
   private readonly parts = new Map<string, PartLoad>();
-  private readonly loading = new Set<string>();
+  private readonly loading = new Map<string, () => boolean>();
+  private readonly retryOwners = new Map<string, () => boolean>();
   private readonly rigs = new Map<number, Rig>();
   private readonly cam = new Vector3();
   /** What the camera sees through this frame (setView); null draws every rig. */
@@ -1333,6 +1347,7 @@ export class RiderRigs {
     private readonly look: LookStyle,
     private readonly manifest: AssetManifest | null,
     private readonly params: RenderParams,
+    private readonly scope: PresentationScope = UNOWNED_PRESENTATION,
   ) {
     this.root.name = 'rider-rigs';
     this.smokeMesh = new InstancedMesh(
@@ -1347,14 +1362,16 @@ export class RiderRigs {
     // A model the host held back is asked for once its wait has passed, in this race (lane T2).
     manifest?.onRetryReady((id) => {
       const have = this.parts.get(id);
-      if (have?.retryable) this.request(id, have.kind, true);
+      if (have?.retryable && this.retryOwners.get(id)?.()) this.request(id, have.kind, true);
     });
   }
 
   /** The race's riders and their models; loading starts now (only the models this race needs). */
-  setLooks(looks: readonly RiderLook[]): void {
-    this.skids.clear(); // a new race starts on clean tarmac
+  setLooks(looks: readonly RiderLook[], preserve = false): void {
+    if (!preserve) this.skids.clear(); // a new race starts on clean tarmac
     for (const l of looks) {
+      this.retryOwners.set(l.riderModel, this.scope.capture());
+      this.retryOwners.set(l.bikeModel, this.scope.capture());
       // A rig built from an older look is rebuilt on its next update (rigFor compares looks).
       this.baseLooks.set(l.contentId, l);
       this.looks.set(l.contentId, withPlayerPaint(l, this.playerPaint));
@@ -1378,10 +1395,12 @@ export class RiderRigs {
     // (`again`), never from a frame's `rigFor`: once per race, not once per frame.
     const have = this.parts.get(id);
     if ((have && !(again && have.retryable)) || this.loading.has(id) || !this.manifest) return;
-    this.loading.add(id);
+    const current = this.scope.capture();
+    this.loading.set(id, current);
     void this.manifest
       .load<BakedPart | null>(id, () => null, { decode: (data) => bakePart(readGlb(data), kind) })
       .then((res) => {
+        if (!current()) return;
         this.parts.set(id, {
           part: res.value,
           error: res.value ? null : (res.error ?? 'no model'),
@@ -1391,9 +1410,30 @@ export class RiderRigs {
         });
       })
       .catch((err: unknown) => {
+        if (!current()) return;
         this.parts.set(id, { part: null, error: String(err), kind });
       })
-      .finally(() => this.loading.delete(id));
+      .finally(() => {
+        if (current() && this.loading.get(id) === current) this.loading.delete(id);
+      });
+  }
+
+  invalidatePresentation(): void {
+    this.loading.clear();
+    this.retryOwners.clear();
+  }
+
+  resetTransient(): void {
+    this.ghosts.clear();
+    this.now = 0;
+    this.drawn.clear();
+    this.lastDrawn.clear();
+    this.lateRigs = 0;
+    this.puffs.length = 0;
+    this.smokeMesh.count = 0;
+    this.smokeMesh.visible = false;
+    this.skids.clear();
+    for (const rig of this.rigs.values()) rig.resetTransient();
   }
 
   /** Bakes a part directly (tests and tools: no manifest). */

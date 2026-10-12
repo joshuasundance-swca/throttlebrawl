@@ -27,6 +27,16 @@ const second = (g: Ghosts, e: EntitySnapshot, from: number) =>
   Array.from({ length: 60 }, (_, i) => g.opacity(e, from + i / 60));
 
 describe('the Bad Connection ghost', () => {
+  it('explicit reset removes both dropped and reconnect histories for reused IDs', () => {
+    const g = new Ghosts();
+    g.push([bad(3, 'drop'), bad(4, 'drop')], 0);
+    g.push([bad(4, 'reconnect')], 0.1);
+    expect(g.opacity(frozen(3), 0.16)).toBeLessThan(1);
+    expect(g.opacity(rider(4), 0.16)).toBeLessThan(1);
+    g.clear();
+    expect(g.opacity(frozen(3), 0.16)).toBe(1);
+    expect(g.opacity(rider(4), 0.16)).toBe(1);
+  });
   it('a dropped connection draws him see-through, flickering at an uneven rate', () => {
     const g = new Ghosts();
     g.push([bad(3, 'screech')], 0);

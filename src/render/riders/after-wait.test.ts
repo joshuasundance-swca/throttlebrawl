@@ -8,6 +8,7 @@ import { EntityViews } from '../views';
 import type { BakedPart } from './bake';
 import { RiderRigs } from './index';
 import { fakeBike, fakeRider } from './rig-fixtures.test-util';
+import { deferred } from '../presentation.test-util';
 
 // A rider's models after the host's wait (polish batch L, lane L2; polish batch I's punch item 1): a
 // Keys race started inside San Francisco's 30 s wait never fetched deacon-vane.glb or chopper.glb, nor
@@ -18,6 +19,109 @@ import { fakeBike, fakeRider } from './rig-fixtures.test-util';
 const RIDER = 'models/riders/deacon';
 const BIKE = 'models/bikes/chopper';
 const RIDER_2 = 'models/riders/vane';
+
+describe('presentation-owned rider parts and retry callbacks', () => {
+  function held() {
+    let epoch = 0;
+    const calls: { id: string; answer: ReturnType<typeof deferred<AssetLoad<BakedPart | null>>> }[] = [];
+    const listeners = new Set<(id: string) => void>();
+    const manifest = {
+      load: (id: string) => {
+        const answer = deferred<AssetLoad<BakedPart | null>>();
+        calls.push({ id, answer });
+        return answer.promise;
+      },
+      onRetryReady: (listener: (id: string) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    } as unknown as AssetManifest;
+    const scope = {
+      capture: () => {
+        const at = epoch;
+        return () => at === epoch;
+      },
+    };
+    const rigs = new RiderRigs(createFlatLook(), manifest, defaultRenderParams(), scope);
+    const looks = [
+      riderLookOf({
+        contentId: 'base:deacon',
+        role: 'rival',
+        bikeId: 'base:chopper',
+        look: { riderModel: RIDER, bikeModel: 'chopper' },
+      }),
+    ];
+    const settle = async (list: typeof calls, retryable = false) => {
+      for (const call of list)
+        call.answer.resolve({
+          id: call.id,
+          source: 'baked',
+          value: retryable ? null : call.id === RIDER ? fakeRider() : fakeBike(),
+          fellBack: retryable,
+          ...(retryable ? { retryable: true, error: 'held' } : {}),
+        });
+      await Promise.all(list.map((c) => c.answer.promise));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    return {
+      rigs,
+      calls,
+      looks,
+      settle,
+      retire: () => {
+        epoch++;
+        rigs.invalidatePresentation();
+      },
+      retry: (id: string) => {
+        for (const l of listeners) l(id);
+      },
+    };
+  }
+  it.each(['fulfilled', 'rejected'] as const)(
+    'retired %s parts cannot assign/report or clear a current loading slot',
+    async (ending) => {
+      const t = held();
+      t.rigs.setLooks(t.looks);
+      const old = [...t.calls];
+      t.retire();
+      t.rigs.setLooks(t.looks);
+      const current = t.calls.slice(old.length);
+      expect(current.length).toBeGreaterThan(0);
+      if (ending === 'fulfilled') await t.settle(old);
+      else {
+        for (const c of old) c.answer.reject(new Error('retired'));
+        await Promise.all(old.map((c) => c.answer.promise.catch(() => undefined)));
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+      expect(t.rigs.counts().loaded).toEqual([]);
+      expect(t.rigs.counts().failed).toEqual([]);
+      const internal = t.rigs as unknown as { loading: Map<string, unknown> };
+      expect(internal.loading.size).toBe(current.length);
+      await t.settle(current);
+      expect(t.rigs.counts().loaded.length).toBe(current.length);
+      expect(internal.loading.size).toBe(0);
+    },
+  );
+  it('manifest retry callbacks are inert when retired and work for the current presentation', async () => {
+    const t = held();
+    t.rigs.setLooks(t.looks);
+    await t.settle([...t.calls], true);
+    t.retire();
+    const before = t.calls.length;
+    t.retry(RIDER);
+    expect(t.calls.length).toBe(before);
+    t.rigs.setLooks(t.looks);
+    await t.settle(t.calls.slice(before), true);
+    const after = t.calls.length;
+    t.retry(RIDER);
+    expect(t.calls.length).toBe(after + 1);
+    await t.settle(t.calls.slice(after));
+    expect(t.rigs.counts().loaded).toContain(RIDER);
+  });
+});
 
 type Step = 'ok' | 'held' | 'gone';
 
