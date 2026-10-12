@@ -20,7 +20,11 @@ import type {
   RaceStatus,
   RivalText,
 } from '../career';
-import { createAudio, type EngineSoundSpec } from '../audio';
+import { createAudio, radioKeyAction, type AudioSuspendLeaseResult, type EngineSoundSpec } from '../audio';
+import type { WakeLease, WakeLeaseResult } from '../platform';
+import type { QualitySetting, RendererPresentationRecipe, RendererPresentationToken } from '../render';
+import { resolveMeasurementScene, type MeasurementSceneResult } from './measurement-scene';
+import { createMeasurementRuntime } from './measurement-runtime';
 import {
   createFollowCamera,
   nearestFocus,
@@ -45,9 +49,10 @@ import {
   packSubset,
   type ContentRegistry,
 } from '../content';
-import { createHaptics, createInput, type ActionState } from '../input';
+import { createHaptics, createInput, keyMapFromBindings, type ActionState } from '../input';
 import {
   APP_ID,
+  acquireWakeLease,
   installOffer,
   keepAwake,
   paceBuildFetches,
@@ -154,7 +159,7 @@ import {
 } from './regions';
 import { boardSpots, spotOn, withIncidentSites, withReceiptBoards } from './receipt-boards';
 import { roadsForHeader } from './resume';
-import { createRaceSeeds, type SeedSource } from './seed';
+import { createRaceSeeds, cryptoSeed, type SeedSource } from './seed';
 import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
   createOutOfBounds,
@@ -201,6 +206,7 @@ export { APP_TUNING } from './tuning';
 export { createRaceSeeds, cryptoSeed } from './seed';
 export type { RaceSeeds, SeedSource } from './seed';
 export type { ActionState } from '../input';
+export type * from './measurement-scene';
 
 export interface AppBuild {
   id: string;
@@ -241,9 +247,175 @@ export interface AppOptions {
   seed?: number;
   /** Where a fresh race seed comes from when no seed is fixed (default: crypto random). */
   seedSource?: SeedSource;
+  measurementSeedSource?: SeedSource;
 }
 
 export type TickDriver = (snapshot: SimSnapshot, actions: ActionState) => void;
+
+type AppDeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer U)[]
+    ? readonly AppDeepReadonly<U>[]
+    : T extends object
+      ? { readonly [K in keyof T]: AppDeepReadonly<T[K]> }
+      : T;
+
+export type AppMeasurementScene = Extract<MeasurementSceneResult, { kind: 'ready' }>['scene'];
+
+export interface AppMeasurementRepeatRequest {
+  readonly index: number;
+}
+
+export interface AppMeasurementRequest {
+  readonly signal: AbortSignal;
+  readonly driverForRepeat: (repeat: Readonly<AppMeasurementRepeatRequest>) => TickDriver;
+}
+
+export type AppMeasurementRefusalReason =
+  | 'aborted'
+  | 'owner-busy'
+  | 'not-menu'
+  | 'wrong-ui-screen'
+  | 'ui-paused'
+  | 'normal-load-pending'
+  | 'normal-launch-pending'
+  | 'lifecycle-held'
+  | 'renderer-context-lost'
+  | 'lockstep-active'
+  | 'superseded-before-start'
+  | 'scene-refused'
+  | 'wake-refused'
+  | 'wake-lost-before-start'
+  | 'audio-suspend-refused';
+
+export interface AppMeasurementRefusal {
+  readonly kind: 'refused';
+  readonly reason: AppMeasurementRefusalReason;
+  readonly sceneRefusal: AppDeepReadonly<Extract<MeasurementSceneResult, { kind: 'refused' }>> | null;
+  readonly wakeRefusal: AppDeepReadonly<Extract<WakeLeaseResult, { kind: 'refused' }>> | null;
+  readonly audioRefusal: AppDeepReadonly<Extract<AudioSuspendLeaseResult, { kind: 'refused' }>> | null;
+}
+
+export type AppMeasurementStopReason =
+  | 'collector-target'
+  | 'collector-deadline'
+  | 'collector-bad-timestamp'
+  | 'collector-overflow'
+  | 'collector-feed-failed'
+  | 'caller-cancelled';
+
+export interface AppMeasurementRepeat {
+  readonly index: number;
+  readonly finalTick: number;
+  readonly reason: 'finished' | 'busted' | 'session-ended';
+}
+
+export interface AppMeasurementRestoration {
+  /** The ordinary state immediately before a superseding action is delivered. */
+  readonly logical: 'menu';
+  /**
+   * 'restored' means reset + receipt application + one CPU renderer call completed.
+   * It makes no GPU-completion or screen-presentation claim.
+   */
+  readonly visible: 'restored' | 'blocked-context' | 'draw-failed';
+}
+
+export interface AppMeasurementWorkload {
+  readonly simulation: 'qualified-default-isolated-repeat';
+  readonly replay: {
+    readonly policy: 'omitted';
+    readonly normalRecorder: 'untouched';
+  };
+  readonly audio: {
+    readonly policy: 'omitted';
+    readonly normalAudioPolicy: 'suspend-if-running';
+    readonly commitEvidence: 'no-context-or-suspended-or-closed';
+  };
+  readonly graphics: {
+    readonly policy: 'retain-current-setting';
+    readonly governor: 'separate-fresh-windows';
+    readonly frameDivisor: 1;
+  };
+}
+
+export interface AppMeasurementRuntime {
+  readonly phase: 'running' | 'ending' | 'ended';
+  readonly repeatIndex: number;
+  readonly tick: number;
+  readonly countdown: boolean;
+  readonly divisor: 1;
+  readonly quality: {
+    readonly setting: QualitySetting;
+    readonly tier: QualityTierId;
+    readonly scale: number;
+    readonly pixelRatio: number;
+  };
+  readonly wake: WakeLease['state'];
+}
+
+export type AppMeasurementEnd =
+  | {
+      readonly kind: 'stopped';
+      readonly reason: AppMeasurementStopReason;
+      readonly endedAtMs: number;
+      readonly repeats: readonly AppDeepReadonly<AppMeasurementRepeat>[];
+      readonly restored: AppDeepReadonly<AppMeasurementRestoration>;
+    }
+  | {
+      readonly kind: 'cancelled';
+      readonly reason: 'signal' | 'manual-pause' | 'back' | 'quit' | 'superseded';
+      readonly endedAtMs: number;
+      readonly repeats: readonly AppDeepReadonly<AppMeasurementRepeat>[];
+      readonly restored: AppDeepReadonly<AppMeasurementRestoration>;
+    }
+  | {
+      readonly kind: 'failed';
+      readonly reason:
+        | 'hidden'
+        | 'pagehide'
+        | 'fullscreen'
+        | 'rotate'
+        | 'context-lost'
+        | 'wake-lost'
+        | 'wake-observation-failed'
+        | 'synthetic-clock'
+        | 'scene-drift'
+        | 'driver-conflict'
+        | 'action-gate-failed'
+        | 'driver-factory-failed'
+        | 'driver-failed'
+        | 'draw-failed';
+      readonly endedAtMs: number;
+      readonly repeats: readonly AppDeepReadonly<AppMeasurementRepeat>[];
+      readonly restored: AppDeepReadonly<AppMeasurementRestoration>;
+    };
+
+export type AppMeasurementEvent =
+  | { readonly kind: 'repeat-start'; readonly index: number }
+  | {
+      readonly kind: 'repeat-end';
+      readonly repeat: AppDeepReadonly<AppMeasurementRepeat>;
+    }
+  | {
+      readonly kind: 'ended';
+      readonly end: AppDeepReadonly<AppMeasurementEnd>;
+    };
+
+export interface AppMeasurementSession {
+  readonly committedAtMs: number;
+  readonly scene: AppMeasurementScene;
+  readonly workload: AppDeepReadonly<AppMeasurementWorkload>;
+  readonly ended: Promise<AppDeepReadonly<AppMeasurementEnd>>;
+  inspect(): AppDeepReadonly<AppMeasurementRuntime>;
+  subscribe(
+    listener: (event: AppDeepReadonly<AppMeasurementEvent>) => void,
+    onError: (error: unknown) => void,
+  ): () => void;
+  stop(reason: AppMeasurementStopReason): void;
+}
+
+export type AppMeasurementStart =
+  AppMeasurementRefusal | { readonly kind: 'started'; readonly session: AppMeasurementSession };
 
 export interface FrameStats {
   samples: number;
@@ -289,6 +461,7 @@ export interface AppPresentation {
 
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
 export interface AppHandle {
+  beginMeasurement(request: AppMeasurementRequest): Promise<AppMeasurementStart>;
   readonly build: AppBuild;
   subscribeFrames(
     onFrame: (frame: Readonly<AppDrawnFrame>) => void,
@@ -437,6 +610,35 @@ export function loadBootContent(): Promise<void> {
 export function createApp(opts: AppOptions): AppHandle {
   const { build } = opts;
   let state: AppState = 'boot';
+  let normalGeneration = 0;
+  let deliveryDepth = 0;
+  let retireNormal = () => {};
+  let measurement: ReturnType<typeof createMeasurementRuntime> | null = null;
+  const actionGate = (action: import('./measurement-runtime').MeasurementAction, deliver: () => void) => {
+    const prepareDelivery = () => {
+      if (deliveryDepth === 0) {
+        normalGeneration++;
+        retireNormal();
+      }
+    };
+    const once = () => {
+      deliveryDepth++;
+      try {
+        deliver();
+      } finally {
+        deliveryDepth--;
+      }
+    };
+    if (measurement?.intercepted) measurement.action(action, once, prepareDelivery);
+    else {
+      prepareDelivery();
+      once();
+    }
+  };
+  const captureNormal = () => {
+    const generation = normalGeneration;
+    return () => generation === normalGeneration && !measurement?.intercepted;
+  };
   // A fresh seed per race unless one is fixed (playtest 1c item 2); the seed goes into SimConfig,
   // so the recording's header carries it and replay and resume reproduce the race.
   const seeds = createRaceSeeds(opts.seed, opts.seedSource);
@@ -553,7 +755,24 @@ export function createApp(opts: AppOptions): AppHandle {
   // Presentation. The renderer gets the road files as set dressing (rails, ramp stripes).
   const renderer = createRenderer(opts.canvas, { assets });
   // The look (playtest 1b item 6): render only, applied at once and never part of SimConfig.
-  renderer.setLook(settings.look);
+  let presentationToken: RendererPresentationToken | null = null;
+  let presentationRecipe: RendererPresentationRecipe | null = null;
+  let presentationConfig: Pick<
+    RendererPresentationRecipe,
+    'trafficTypes' | 'riderLooks' | 'playerPaint' | 'sceneSeed'
+  > | null = null;
+  let presentationRoad: Pick<RendererPresentationRecipe, 'road' | 'env' | 'dressing' | 'boards'> | null =
+    null;
+  const applyCompletePresentation = () => {
+    if (!presentationConfig || !presentationRoad) return;
+    presentationRecipe = {
+      ...presentationRoad,
+      ...presentationConfig,
+      look: settings.look,
+      quality: qualityOn() ? { ...quality.state } : { tier: 'high', scale: 1 },
+    };
+    presentationToken = renderer.applyPresentation(presentationRecipe, { reset: 'preserve' });
+  };
   // Quality tiers and dynamic resolution (roadmap M5): `auto` starts on the tier this device settled
   // on last time; the governor judges each drawn frame's interval (in the loop's render, below).
   const quality = createQualityGovernor({
@@ -561,7 +780,7 @@ export function createApp(opts: AppOptions): AppHandle {
     autoTier: loadAutoTier(safeStorage(), APP_ID),
   });
   const applyQuality = (q: { tier: QualityTierId; scale: number }) => {
-    if (qualityOn()) renderer.setQuality(q.tier, q.scale);
+    if (qualityOn() && presentationToken) renderer.setPresentationQuality(presentationToken, q.tier, q.scale);
   };
   applyQuality(quality.state);
   let drawnTier = quality.state.tier;
@@ -609,8 +828,10 @@ export function createApp(opts: AppOptions): AppHandle {
       shownReceipts === receipts &&
       shownWeather === weather &&
       shownEvent === eventId
-    )
+    ) {
+      applyCompletePresentation();
       return;
+    }
     shownRoad = stream.road;
     shownTime = timeOfDay;
     shownReceipts = receipts;
@@ -658,7 +879,8 @@ export function createApp(opts: AppOptions): AppHandle {
         ? C.incidentSites(registry, careerRace.def, profile.receipts, (r) => onRace.has(r), vetoed)
         : [];
     const shown = withIncidentSites(stream.road, withBoards.dressing, withBoards.catalog, sites);
-    renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
+    presentationRoad = { road: stream.road, env, dressing: shown.dressing, boards: shown.catalog };
+    applyCompletePresentation();
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road, sky.wet);
@@ -742,6 +964,24 @@ export function createApp(opts: AppOptions): AppHandle {
   let recent: SimEvent[] = [];
   let playerId = 0;
   let stepListener: ((s: SimSnapshot, e: readonly SimEvent[]) => void) | null = null;
+  let normalDriver: TickDriver | null = null;
+  let normalInputDriver: ((actions: ActionState) => void) | null = null;
+  let driverOwner: object | null = null;
+  let diagnostic: {
+    scene: Extract<MeasurementSceneResult, { kind: 'ready' }>;
+    sim: Sim;
+    prev: SimSnapshot | null;
+    curr: SimSnapshot;
+    playerId: number;
+    camera: ReturnType<typeof createFollowCamera>;
+    countdown: ReturnType<typeof createCountdown>;
+    governor: ReturnType<typeof createQualityGovernor>;
+    token: RendererPresentationToken;
+    driver: TickDriver | null;
+    index: number;
+    owner: object;
+  } | null = null;
+  let measurementShield: HTMLElement | null = null;
 
   const newSim = (seed: number): Sim => {
     const pickedSettings = !careerRace && quickSettings ? quickSettings : settings;
@@ -790,22 +1030,44 @@ export function createApp(opts: AppOptions): AppHandle {
       ...(careerRace ? { tuning: raceTuning } : {}),
     });
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
-    renderer.setTrafficTypes(config.trafficTypes);
-    renderer.setRiderLooks(riderLooks(config));
+
     // The garage's paint on the player's bike (run W-R's garage; the seam from the rider-models lane).
     // The bike that rides wears the garage's paint for it (none on a bike the garage has not painted).
     const ridden = config.riders[playerId]?.bike.contentId ?? null;
-    renderer.setPlayerPaint(
-      C ? C.currentPaintHex(defs, { ...profile, bikes: { ...profile.bikes, current: ridden } }) : null,
-    );
+    presentationConfig = {
+      trafficTypes: config.trafficTypes,
+      riderLooks: riderLooks(config),
+      playerPaint: C
+        ? C.currentPaintHex(defs, { ...profile, bikes: { ...profile.bikes, current: ridden } })
+        : null,
+      sceneSeed: seed,
+    };
     // The roadside scenery scatters from the race's seed (playtest 1c item 2).
-    renderer.setSceneSeed(seed);
+
     audio.setEngineSounds(engineSounds(config));
     return createSim(config);
   };
   // The attract scene: the grid, before anyone moves.
   curr = newSim(seeds.next()).snapshot();
   showRegion();
+  type MenuReceipt = {
+    recipe: RendererPresentationRecipe;
+    prev: SimSnapshot | null;
+    curr: SimSnapshot;
+    playerId: number;
+    recent: readonly SimEvent[];
+    pose: CameraPose;
+  };
+  let menuReceipt: MenuReceipt | null = null;
+  const rememberMenu = () => {
+    if (!curr || !presentationRecipe) return;
+    const me = interpolateEntity(null, curr, 0, playerId);
+    if (!me) return;
+    attractPose ??= camera.snap(me, { aspect: viewAspect() });
+    if (!attractPose) return;
+    menuReceipt = { recipe: presentationRecipe, prev, curr, playerId, recent, pose: attractPose };
+  };
+  rememberMenu();
 
   // A build the host no longer serves (platform/stale-build.ts; playtest 4 run A fix check, new
   // mustFix 2 and punch item 1): the page reloads to the current build only when that loses nothing.
@@ -834,8 +1096,10 @@ export function createApp(opts: AppOptions): AppHandle {
       if (state !== 'race') syncWake();
       // After the tap's own steps: Restart and Race again pass through the menu on their way back
       // into a race, and must not reload there.
+      const current = captureNormal();
       if (staleBuild)
         queueMicrotask(() => {
+          if (!current()) return;
           staleBuild?.settle();
           offerUpdate();
         });
@@ -850,6 +1114,9 @@ export function createApp(opts: AppOptions): AppHandle {
   // a race").
   const holds = new Set<'hidden' | 'context'>();
   let loadingRoads = false;
+  let pendingLoad: object | null = null;
+  let pendingLaunch: object | null = null;
+  const normalLoads = new Set<object>();
   const raceWake = createRaceWakeSync(keepAwake);
   const syncWake = () => raceWake(state, ui.paused, holds.size > 0);
   const syncRunning = () => {
@@ -862,7 +1129,7 @@ export function createApp(opts: AppOptions): AppHandle {
     }
     loop.resume();
     frames.refresh();
-    if (state !== 'boot' && state !== 'tapToStart') void audio.resume();
+    if (!measurement?.owned && state !== 'boot' && state !== 'tapToStart') void audio.resume();
   };
   const hold = (reason: 'hidden' | 'context', on: boolean) => {
     if (on) holds.add(reason);
@@ -871,6 +1138,8 @@ export function createApp(opts: AppOptions): AppHandle {
   };
   const unpause = syncRunning;
   const ui = createUi(opts.host, {
+    actionGate,
+    captureNormal,
     stampText: `throttlebrawl · ${build.channel} · ${build.branch} · ${build.id}`,
     layout,
     tuning,
@@ -906,7 +1175,12 @@ export function createApp(opts: AppOptions): AppHandle {
       onRouteChange: (id) => pickRoute(id),
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
-      onCareer: () => void careerReady.then(() => openCareer()),
+      onCareer: () => {
+        const current = captureNormal();
+        void careerReady.then(() => {
+          if (current()) openCareer();
+        });
+      },
       // Menu first (playtest 4, P4-5): until the career has started the menu says "Start career".
       careerStarted: () => careerStarted(profile),
       // The menu race's options (playtest 4, P4-12 and P4-13) for the region picked on the menu (its
@@ -943,7 +1217,9 @@ export function createApp(opts: AppOptions): AppHandle {
         onBuyPaint: (id) => C && garageAct(C.buyPaint(defs, profile, id)),
         onPaint: (id) => C && garageAct(C.paintBike(profile, profile.bikes.current, id)),
         onExport: async () => {
+          const current = captureNormal();
           const m = await careerReady;
+          if (!current()) return '';
           if (!m) return '';
           if (!profileStore.record()) profileStore.save(profile);
           const rec = profileStore.record() ?? {
@@ -956,14 +1232,25 @@ export function createApp(opts: AppOptions): AppHandle {
           return m.encodeExportCode({ profile: rec, settings: settingsStore.record() });
         },
         onImport: async (code) => {
+          const current = captureNormal();
           const m = await careerReady;
+          if (!current()) return '';
           if (!m) return 'The career did not load. Reload the page and try again.';
           const r = await m.decodeExportCode(code);
+          if (!current()) return '';
           if (r.kind === 'newer') return 'That code comes from a newer build. Nothing changed.';
           if (r.kind !== 'ok') return `That code did not load: ${r.reason}.`;
           // The career it replaces is kept as a backup code, so loading one never loses another.
           const replaced = profile.history.length > 0;
-          saveProfile(await m.restoreCareer(defs, profile, r.profile, build.id, new Date().toISOString()));
+          const restored = await m.restoreCareer(
+            defs,
+            profile,
+            r.profile,
+            build.id,
+            new Date().toISOString(),
+          );
+          if (!current()) return '';
+          saveProfile(restored);
           lastTexts = [];
           pendingTeaser = null;
           openCareer(careerRegion, 'garage');
@@ -1032,7 +1319,8 @@ export function createApp(opts: AppOptions): AppHandle {
         audio.setVolumes(audioVolumes(next), next.mute);
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
-        renderer.setLook(next.look);
+        applyCompletePresentation();
+        if (state === 'menu') rememberMenu();
         const q = quality.setSetting(next.qualityTier);
         if (q) {
           drawnTier = q.tier;
@@ -1112,9 +1400,10 @@ export function createApp(opts: AppOptions): AppHandle {
   const countdown = createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT));
   const frames = createFrameObservation(() => ({
     state,
-    race: race !== null,
-    snapshot: curr !== null,
-    tickZero: curr?.tick === 0,
+    measurementLive: measurement?.running === true,
+    race: diagnostic !== null || race !== null,
+    snapshot: diagnostic?.curr !== undefined || curr !== null,
+    tickZero: (diagnostic?.curr ?? curr)?.tick === 0,
     uiPaused: ui.paused,
     loopPaused: loop.paused,
     hidden: holds.has('hidden'),
@@ -1122,7 +1411,7 @@ export function createApp(opts: AppOptions): AppHandle {
     loading: loadingRoads,
     visible: document.visibilityState === 'visible',
     contextLost: renderer.contextLost,
-    countdown: countdown.holding,
+    countdown: diagnostic?.countdown.holding ?? countdown.holding,
     lockstep: loop.lockstep,
   }));
   // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input. It
@@ -1134,6 +1423,44 @@ export function createApp(opts: AppOptions): AppHandle {
     if (input.lastActions().pause) ui.pause();
   };
   const step = () => {
+    if (measurement?.running) {
+      const d = diagnostic;
+      const current = measurement.current();
+      if (!d) return;
+      if (driverOwner !== d.owner || loop.lockstep !== null) {
+        measurement.fail('driver-conflict');
+        return;
+      }
+      const grid = d.countdown.step();
+      measurement.progress(d.curr.tick, d.countdown.holding);
+      const cmd = input.sample(SIM_DT);
+      if (!current() || diagnostic !== d) return;
+      if (input.lastActions().pause) {
+        measurement.action('manual-pause', () => {});
+        return;
+      }
+      if (grid.hold) {
+        frames.refresh();
+        return;
+      }
+      d.sim.step([cmd]);
+      d.prev = d.curr;
+      d.curr = d.sim.snapshot();
+      measurement.progress(d.curr.tick, d.countdown.holding);
+      frames.refresh();
+      const events = d.sim.events();
+      d.camera.onEvents(events);
+      renderer.pushEvents(events);
+      const player = d.curr.entities[d.playerId];
+      const busted = events.some((e) => e.type === 'bust' && e.target === d.playerId);
+      if (d.sim.isOver() || player?.finished || busted) {
+        measurement.repeatEnd(busted ? 'busted' : 'finished');
+        if (!current() || diagnostic !== d) return;
+        startMeasurementRepeat(d.index + 1);
+      }
+      return;
+    }
+    if (measurement?.owned) return;
     if (!race) return;
     for (const change of pendingTuning.splice(0)) {
       race.applyParam(change.id, change.value);
@@ -1201,10 +1528,54 @@ export function createApp(opts: AppOptions): AppHandle {
 
   const loop = createLoop(
     {
-      stepping: () => state === 'race',
+      stepping: () => measurement?.running === true || state === 'race',
       step,
-      shouldRunFrame: () => frameGate.shouldRun(),
+      shouldRunFrame: () => measurement?.running === true || frameGate.shouldRun(),
       render(alpha, dt, timestampMs, synthetic) {
+        if (measurement?.running) {
+          const d = diagnostic;
+          const current = measurement.current();
+          if (!d) return;
+          if (synthetic) {
+            measurement.fail('synthetic-clock');
+            return;
+          }
+          if (
+            !preparationIntent ||
+            preparationIntent.generation !== normalGeneration ||
+            preparationIntent.region !== ui.region ||
+            preparationIntent.route !== route ||
+            ui.screen() !== 'menu'
+          ) {
+            measurement.fail('scene-drift');
+            return;
+          }
+          const me = interpolateEntity(d.prev, d.curr, alpha, d.playerId);
+          const pose = me
+            ? d.camera.update(cameraTargetOf(me, d.curr.entities[d.playerId]), dt, {
+                entities: d.curr.entities,
+                aspect: viewAspect(),
+                structures: renderer.structures(),
+              })
+            : null;
+          try {
+            frames.draw(timestampMs, synthetic, pose !== null, () => {
+              if (pose) renderer.render(d.prev, d.curr, alpha, pose);
+            });
+          } catch {
+            if (current() && diagnostic === d) measurement.fail('draw-failed');
+            return;
+          }
+          if (!current() || diagnostic !== d) return;
+          const q = d.governor.frame(dt * 1000, {
+            racing: !d.countdown.holding && d.curr.tick > 0,
+            divisor: 1,
+          });
+          if (q) renderer.setPresentationQuality(d.token, q.tier, q.scale);
+          return;
+        }
+        if (measurement?.owned) return;
+        const normalAtDraw = normalGeneration;
         const me = curr ? interpolateEntity(state === 'race' ? prev : null, curr, alpha, playerId) : null;
         let pose: CameraPose | null = attractPose;
         if (me && state === 'race') {
@@ -1242,6 +1613,7 @@ export function createApp(opts: AppOptions): AppHandle {
         frames.draw(timestampMs, synthetic, pose !== null, () => {
           if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         });
+        if (normalAtDraw !== normalGeneration || measurement?.owned) return;
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
         audio.frame(state === 'race' ? curr : null, playerId);
         // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
@@ -1267,7 +1639,7 @@ export function createApp(opts: AppOptions): AppHandle {
             if (settings.qualityTier === 'auto' && q.tier !== drawnTier)
               saveAutoTier(safeStorage(), APP_ID, q.tier);
             drawnTier = q.tier;
-            renderer.setQuality(q.tier, q.scale);
+            if (presentationToken) renderer.setPresentationQuality(presentationToken, q.tier, q.scale);
           }
         }
         const slowMs = testSlowFrameMs();
@@ -1285,19 +1657,33 @@ export function createApp(opts: AppOptions): AppHandle {
   watchLifecycle({
     // An app switch, a screen lock, a lost fullscreen or the rotate screen: mid-race the pause
     // screen opens, so the player comes back to it and resumes by choice.
-    onHidden: () => {
+    onHidden: (reason) => {
+      if (measurement?.owned) measurement.fail(reason === 'visibility' ? 'hidden' : reason);
       if (state === 'race') ui.pause();
       hold('hidden', true);
     },
     onShown: () => hold('hidden', false),
   });
+  retireNormal = () => {
+    pendingLaunch = null;
+    normalLoads.clear();
+    if (pendingLoad) {
+      pendingLoad = null;
+      loadingRoads = false;
+      frames.refresh();
+      ui.setBusy(null);
+    }
+  };
   // Offline play (roadmap M5): a production build's worker caches the whole build once the page
   // has loaded, so a loaded game plays with the network off; and the watch for a build the host no
   // longer serves, which reloads to the current one when that loses nothing.
-  staleBuild = startOffline(build.id, () => reloadLosesNothing(state));
+  staleBuild = startOffline(build.id, () => !measurement?.owned && reloadLosesNothing(state));
   staleBuild?.onWaiting(offerUpdate);
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
-  renderer.onContextChange((lost) => hold('context', lost));
+  renderer.onContextChange((lost) => {
+    if (lost && measurement?.owned) measurement.fail('context-lost');
+    hold('context', lost);
+  });
   window.addEventListener('resize', () => renderer.resize());
 
   // The region picker (playtest 1c): a pick fetches that region's road data in the background,
@@ -1369,15 +1755,20 @@ export function createApp(opts: AppOptions): AppHandle {
    * it fails.
    */
   const loadRegion = async (choice: RegionChoice): Promise<boolean> => {
+    const current = captureNormal();
+    const loadOwner = {};
+    pendingLoad = loadOwner;
     loadingRoads = true;
     frames.refresh();
     ui.setBusy(`Loading ${choice.name}`);
     if (!library.hasRoads(choice.packId)) sayPickedRoads(choice, 'loading');
     try {
       await Promise.all([...roadsMissing(choice).map((id) => library.loadRoads(id)), loadPlanners()]);
+      if (!current() || pendingLoad !== loadOwner) return false;
       roadsArrived(library.registry());
       return true;
     } catch (err) {
+      if (!current() || pendingLoad !== loadOwner) return false;
       console.warn('region road data did not load', err);
       const failure = failureOf(err, Date.now());
       // Retry goes on to the race the player asked for (the picked region, fetched again).
@@ -1385,9 +1776,12 @@ export function createApp(opts: AppOptions): AppHandle {
       sayPickedRoads(choice, failure);
       return false;
     } finally {
-      loadingRoads = false;
-      frames.refresh();
-      ui.setBusy(null);
+      if (pendingLoad === loadOwner) {
+        pendingLoad = null;
+        loadingRoads = false;
+        frames.refresh();
+        if (current()) ui.setBusy(null);
+      }
     }
   };
   /** The menu backdrop follows the pick: the grid on that region's road. */
@@ -1400,36 +1794,46 @@ export function createApp(opts: AppOptions): AppHandle {
     // Offered again even when the event did not change (back to a region before another's road
     // data arrived), so the picker never stays empty.
     offerRoutes();
-    showRegion();
     curr = newSim(seeds.next()).snapshot();
     prev = null;
+    showRegion();
+    rememberMenu();
     frames.refresh();
     frames.invalidate();
   };
   /** Fetches the picked region's road data in the background; says so, with Retry, if it fails. */
-  const loadPicked = (choice: RegionChoice) =>
-    void library.loadRoads(choice.packId).then(
-      (reg) => {
-        roadsArrived(reg);
-        showPicked();
-      },
-      (err: unknown) => {
-        console.warn('region road data did not load', err);
-        // Only for the region still picked: a pick made since has its own load and its own say.
-        if (pickedChoice()?.id !== choice.id) return;
-        const failure = failureOf(err, Date.now());
-        offerLoadRetry(
-          ui,
-          choice.name,
-          () => {
-            if (pickedChoice()?.id === choice.id) loadPicked(choice);
-          },
-          failure,
-          reloadPage,
-        );
-        sayPickedRoads(choice, failure);
-      },
-    );
+  const loadPicked = (choice: RegionChoice) => {
+    const current = captureNormal();
+    const loadOwner = {};
+    normalLoads.add(loadOwner);
+    void library
+      .loadRoads(choice.packId)
+      .then(
+        (reg) => {
+          if (!current()) return;
+          roadsArrived(reg);
+          showPicked();
+        },
+        (err: unknown) => {
+          if (!current()) return;
+          console.warn('region road data did not load', err);
+          // Only for the region still picked: a pick made since has its own load and its own say.
+          if (pickedChoice()?.id !== choice.id) return;
+          const failure = failureOf(err, Date.now());
+          offerLoadRetry(
+            ui,
+            choice.name,
+            () => {
+              if (pickedChoice()?.id === choice.id) loadPicked(choice);
+            },
+            failure,
+            reloadPage,
+          );
+          sayPickedRoads(choice, failure);
+        },
+      )
+      .finally(() => normalLoads.delete(loadOwner));
+  };
   const pickRegion = (id: string) => {
     const choice = regions.find((r) => r.id === id);
     if (!choice) return;
@@ -1454,9 +1858,10 @@ export function createApp(opts: AppOptions): AppHandle {
     route = id;
     if (state === 'race') return;
     stream = streams.forEvent(registry, eventId, settings.raceLength, route);
-    showRegion();
     curr = newSim(seeds.next()).snapshot();
     prev = null;
+    showRegion();
+    rememberMenu();
     frames.refresh();
     frames.invalidate();
   };
@@ -1467,14 +1872,26 @@ export function createApp(opts: AppOptions): AppHandle {
   // The Keys' own region (base's), whose route row waits on these roads too.
   const keysChoice = regions.find((r) => r.packId === 'base');
   const loadKeysRoads = () => {
+    const current = captureNormal();
+    const loadOwner = {};
+    normalLoads.add(loadOwner);
     sayPickedRoads(keysChoice, 'loading');
-    void library.loadRoads('base').then(roadsArrived, (err: unknown) => {
-      // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
-      console.warn('the Keys real-road data did not load', err);
-      const failure = failureOf(err, Date.now());
-      offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads, failure, reloadPage);
-      sayPickedRoads(keysChoice, failure);
-    });
+    void library
+      .loadRoads('base')
+      .then(
+        (reg) => {
+          if (current()) roadsArrived(reg);
+        },
+        (err: unknown) => {
+          if (!current()) return;
+          // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
+          console.warn('the Keys real-road data did not load', err);
+          const failure = failureOf(err, Date.now());
+          offerLoadRetry(ui, "The Keys' real roads", loadKeysRoads, failure, reloadPage);
+          sayPickedRoads(keysChoice, failure);
+        },
+      )
+      .finally(() => normalLoads.delete(loadOwner));
   };
   if (!library.hasRoads('base')) loadKeysRoads();
   // The physical world's planners, in the background too (a race that finds them missing fetches them
@@ -1503,6 +1920,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // (playtest 4, P4-12); a career race keeps its event's own.
     const seed = seeds.next();
     const options = careerRace ? null : (quickSettings ?? settings).raceOptions;
+    race = newSim(seed);
     showRegion(
       raceTimeOfDay(
         registry,
@@ -1514,7 +1932,6 @@ export function createApp(opts: AppOptions): AppHandle {
       ),
       options?.weather,
     );
-    race = newSim(seed);
     pendingTuning.length = 0;
     countdown.begin(countdownOn());
     // The full header (the SimConfig as plain data), so a saved debug file replays on its own, and a
@@ -1563,16 +1980,22 @@ export function createApp(opts: AppOptions): AppHandle {
     const missing = packClosure(registry, packOf(node.event)).filter((id) => !library.hasRoads(id));
     // Its roads, and the planners its world is planned from (loadPlanners).
     if (missing.length > 0 || !plannersIn) {
+      const current = captureNormal();
+      const loadOwner = {};
+      pendingLoad = loadOwner;
+      pendingLaunch = loadOwner;
       loadingRoads = true;
       frames.refresh();
       ui.setBusy(`Loading ${def.regionName}`);
       void Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()])
         .then(
           () => {
+            if (!current() || pendingLoad !== loadOwner) return false;
             roadsArrived(library.registry());
             return true;
           },
           (err: unknown) => {
+            if (!current() || pendingLoad !== loadOwner) return false;
             console.warn('career road data did not load', err);
             offerLoadRetry(
               ui,
@@ -1585,7 +2008,11 @@ export function createApp(opts: AppOptions): AppHandle {
           },
         )
         .then((ok) => {
+          if (pendingLoad !== loadOwner) return;
+          pendingLoad = null;
+          if (pendingLaunch === loadOwner) pendingLaunch = null;
           loadingRoads = false;
+          if (!current()) return;
           frames.refresh();
           ui.setBusy(null);
           if (ok) startCareerRace(def, node);
@@ -1830,6 +2257,7 @@ export function createApp(opts: AppOptions): AppHandle {
    * not started starts here. The map draws from the region's road data, fetched when it is not in.
    */
   function openCareer(region?: string, tab?: 'map' | 'garage'): void {
+    const current = captureNormal();
     const m = C;
     if (state === 'race' || !m) return;
     if (state === 'results') go('back');
@@ -1843,6 +2271,7 @@ export function createApp(opts: AppOptions): AppHandle {
     if (missing.length > 0)
       void Promise.all(missing.map((id) => library.loadRoads(id))).then(
         () => {
+          if (!current()) return;
           roadsArrived(library.registry());
           if (careerRegion === def.regionId && state !== 'race') drawCareer();
         },
@@ -1877,9 +2306,12 @@ export function createApp(opts: AppOptions): AppHandle {
    * Load brings it back) and a fresh career starts in the Keys. Resolves to the line to show.
    */
   async function startOver(): Promise<string> {
+    const current = captureNormal();
     const m = C ?? (await careerReady);
+    if (!current()) return '';
     if (!m || state === 'race') return 'The career did not load. Reload the page and try again.';
     const made = await m.startNewCareer(defs, profile, build.id, new Date().toISOString());
+    if (!current()) return '';
     if (!made.kept) return 'There is nothing to start over yet: ride a race first.';
     saveProfile(made.profile);
     lastTexts = [];
@@ -1899,15 +2331,188 @@ export function createApp(opts: AppOptions): AppHandle {
     drawCareer();
   }
 
+  let preparationIntent: { generation: number; region: string; route: string | null } | null = null;
+  const startMeasurementRepeat = (index: number) => {
+    const d = diagnostic;
+    if (!d || !measurement?.running) return;
+    const current = measurement.current();
+    d.sim = createSim(d.scene.config);
+    d.prev = null;
+    d.curr = d.sim.snapshot();
+    d.index = index;
+    d.countdown.begin(countdownOn());
+    measurement.progress(0, d.countdown.holding);
+    frames.invalidate();
+    d.driver = measurement.factory(index);
+    if (!current() || diagnostic !== d || !d.driver) return;
+    driverOwner = d.owner;
+    input.setDriver((actions) => {
+      if (!current() || diagnostic !== d || !d.driver) return;
+      try {
+        d.driver(d.curr, actions);
+      } catch {
+        if (current() && diagnostic === d) measurement?.fail('driver-failed');
+      }
+    });
+    if (!current()) return;
+    measurement.repeatStart();
+  };
+  measurement = createMeasurementRuntime({
+    preflight: () => {
+      if (state !== 'menu') return 'not-menu';
+      if (ui.screen() !== 'menu') return 'wrong-ui-screen';
+      if (ui.paused) return 'ui-paused';
+      if (holds.size > 0 || document.visibilityState !== 'visible') return 'lifecycle-held';
+      if (renderer.contextLost) return 'renderer-context-lost';
+      if (loadingRoads || pendingLoad || normalLoads.size > 0) return 'normal-load-pending';
+      if (pendingLaunch) return 'normal-launch-pending';
+      if (loop.lockstep !== null) return 'lockstep-active';
+      return null;
+    },
+    async prepare(signal) {
+      normalGeneration++;
+      const region = ui.region ?? regionKeyOf(registry, eventId);
+      preparationIntent = { generation: normalGeneration, region, route };
+      const selected = {
+        regionId: region,
+        routeId: route,
+        seed: (opts.measurementSeedSource ?? cryptoSeed)() >>> 0,
+        garage: { ...profile.bikes, owned: [...profile.bikes.owned] },
+        bike: settings.raceOptions.bike,
+        timeOfDay: settings.raceOptions.timeOfDay,
+        weather: settings.raceOptions.weather,
+      };
+      const classic = quickPlayEvent(registry, region, 'race');
+      const missing = classic
+        ? packClosure(registry, packOf(classic.eventId)).filter((id) => !library.hasRoads(id))
+        : [];
+      await Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()]);
+      // Only immutable content caches were filled. Selection and normal registry stay parked.
+      if (signal.aborted) throw new Error('Measurement preparation retired');
+      return resolveMeasurementScene(library.registry(), selected);
+    },
+    acquireWake: acquireWakeLease,
+    acquireAudio: (options) => audio.acquireSuspendLease(options),
+    audioState: () => audio.state(),
+    current: () =>
+      preparationIntent !== null &&
+      preparationIntent.generation === normalGeneration &&
+      preparationIntent.region === ui.region &&
+      preparationIntent.route === route &&
+      state === 'menu' &&
+      ui.screen() === 'menu' &&
+      !ui.paused &&
+      holds.size === 0 &&
+      !renderer.contextLost &&
+      document.visibilityState === 'visible' &&
+      loop.lockstep === null,
+    invalidate: () => frames.invalidate(),
+    quality: () => ({
+      setting: settings.qualityTier,
+      ...(diagnostic?.governor.state ?? quality.state),
+      pixelRatio: renderer.stats().pixelRatio,
+    }),
+    commit(scene) {
+      if (!menuReceipt) throw new Error('Menu receipt missing');
+      const reg = library.registry();
+      const roadPack = packOf(scene.scene.route.networkId);
+      const dressing = Object.fromEntries(
+        scene.stream.road.edges.map((e) => [e.id, lookup(reg.roads, qualifyIn(roadPack, e.id))]),
+      );
+      const sky = scene.scene.weather.sky;
+      const governor = createQualityGovernor({ setting: settings.qualityTier, autoTier: quality.state.tier });
+      const token = renderer.applyPresentation(
+        {
+          road: scene.stream.road,
+          env: {
+            timeOfDay: scene.scene.light.actualId,
+            palette: sky.palette,
+            ...(sky.weather ? { weather: sky.weather } : {}),
+          },
+          dressing,
+          boards: boardCatalog(reg, scene.scene.regionId, new Set(settings.vetoes.map((v) => v.contentRef))),
+          trafficTypes: scene.config.trafficTypes,
+          riderLooks: scene.config.riders.map((r) =>
+            riderLookOf({
+              contentId: r.contentId,
+              role: r.role,
+              bikeId: r.bike.contentId,
+              look: (reg.riders[r.contentId] as { look?: unknown } | undefined)?.look,
+            }),
+          ),
+          playerPaint: null,
+          sceneSeed: scene.scene.seed,
+          look: settings.look,
+          quality: { ...governor.state },
+        },
+        { reset: 'preserve' },
+      );
+      const sim = createSim(scene.config);
+      if (typeof document.createElement === 'function') {
+        measurementShield = document.createElement('div');
+        measurementShield.id = 'measurement-input-shield';
+        measurementShield.style.cssText =
+          'position:absolute;inset:0;z-index:45;pointer-events:auto;touch-action:none';
+        for (const kind of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'])
+          measurementShield.addEventListener(kind, (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          });
+        opts.host.append(measurementShield);
+      }
+      const diagnosticCamera = createFollowCamera({ road: scene.stream.road });
+      diagnosticCamera.setShakeAmount(shakeAmount);
+      diagnosticCamera.setMotionAmount(motionNow.camera);
+      diagnostic = {
+        scene,
+        sim,
+        prev: null,
+        curr: sim.snapshot(),
+        playerId: scene.config.riders.findIndex((r) => r.controller.kind === 'player'),
+        camera: diagnosticCamera,
+        countdown: createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT)),
+        governor,
+        token,
+        driver: null,
+        index: 0,
+        owner: {},
+      };
+      startMeasurementRepeat(0);
+    },
+    restore() {
+      const d = diagnostic;
+      diagnostic = null;
+      measurementShield?.remove();
+      measurementShield = null;
+      preparationIntent = null;
+      if (d && driverOwner === d.owner) {
+        driverOwner = null;
+        input.setDriver(normalInputDriver);
+      }
+      const saved = menuReceipt;
+      if (!saved) return { logical: 'menu', visible: 'draw-failed' };
+      presentationRecipe = { ...saved.recipe, quality: { ...quality.state } };
+      presentationToken = renderer.applyPresentation(presentationRecipe, { reset: 'measurement-to-menu' });
+      renderer.setPresentationQuality(presentationToken, quality.state.tier, quality.state.scale);
+      if (renderer.contextLost) return { logical: 'menu', visible: 'blocked-context' };
+      renderer.render(saved.prev, saved.curr, 0, saved.pose);
+      return { logical: 'menu', visible: 'restored' };
+    },
+  });
   const handle: AppHandle = {
+    beginMeasurement: (request) => measurement.begin(request),
     build,
     subscribeFrames: (onFrame, onError) => frames.subscribe(onFrame, onError),
     state: () => state,
     snapshot: () => curr,
     recentEvents: () => recent,
-    playerId: () => playerId,
+    playerId: () => diagnostic?.playerId ?? playerId,
     setTickDriver(driver) {
-      input.setDriver(driver ? (a) => (curr ? driver(curr, a) : undefined) : null);
+      normalDriver = driver;
+      driverOwner = null;
+      const captured = normalDriver;
+      normalInputDriver = captured ? (a) => (curr ? captured(curr, a) : undefined) : null;
+      input.setDriver(normalInputDriver);
     },
     onStep(listener) {
       stepListener = listener;
@@ -1927,9 +2532,15 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     startRace() {
       if (transition(state, 'race') === null || loadingRoads) return;
+      roadsArrived(library.registry());
       if (!C) {
+        const current = captureNormal();
+        const launchOwner = {};
+        pendingLaunch = launchOwner;
         void careerReady.then((m) => {
-          if (m) handle.startRace();
+          if (pendingLaunch !== launchOwner) return;
+          pendingLaunch = null;
+          if (m && current()) handle.startRace();
         });
         return;
       }
@@ -1947,8 +2558,13 @@ export function createApp(opts: AppOptions): AppHandle {
       // under a replay key that moves when they arrive.
       const choice = pickedChoice() ?? regions.find((r) => r.eventId === eventId);
       if (choice && (roadsMissing(choice).length > 0 || !plannersIn)) {
+        const current = captureNormal();
+        const launchOwner = {};
+        pendingLaunch = launchOwner;
         void loadRegion(choice).then((ok) => {
-          if (ok) handle.startRace();
+          if (pendingLaunch !== launchOwner) return;
+          pendingLaunch = null;
+          if (ok && current()) handle.startRace();
         });
         return;
       }
@@ -1988,6 +2604,7 @@ export function createApp(opts: AppOptions): AppHandle {
       quickSettings = null;
       ui.career.setObjective(null);
       ui.show('menu');
+      rememberMenu();
     },
     career: () => ({
       profile,
@@ -2006,7 +2623,7 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     openCareer: (region) => openCareer(region),
     rendererStats: () => renderer.stats(),
-    roadQueries: () => race?.config.route ?? null,
+    roadQueries: () => diagnostic?.scene.config.route ?? race?.config.route ?? null,
     getReplayAndSettings: () => ({
       replay: recorder.current(),
       settings: settingsStore.record() ?? settings,
@@ -2070,6 +2687,58 @@ export function createApp(opts: AppOptions): AppHandle {
       };
     },
   };
+
+  // Public mutators enter the same complete-delivery gate used by the UI handlers.
+  for (const key of [
+    'setTickDriver',
+    'onStep',
+    'setSeed',
+    'tap',
+    'startRace',
+    'backToMenu',
+    'rideCareer',
+    'openCareer',
+    'setLockstep',
+  ] as const) {
+    const original = handle[key].bind(handle);
+    Object.defineProperty(handle, key, {
+      value: (...args: unknown[]) => {
+        let result: unknown;
+        actionGate(key === 'backToMenu' ? 'back' : 'ordinary', () => {
+          result = Reflect.apply(original, handle, args);
+        });
+        return result;
+      },
+    });
+  }
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      const radioAction = radioKeyAction(event);
+      if (radioAction) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        actionGate('raw', () => {
+          if (radioAction === 'next') audio.nextRadio();
+          else audio.skipTrack();
+          ui.syncLive();
+        });
+        return;
+      }
+      if (!measurement?.intercepted) return;
+      const pauseKey =
+        event.code === 'Escape' || keyMapFromBindings(settings.keyBindings).pause.includes(event.code);
+      if (measurement.running || event.code === 'Backquote' || pauseKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        actionGate(event.code === 'Escape' ? 'back' : pauseKey ? 'manual-pause' : 'raw', () => {
+          if (pauseKey) ui.pause();
+          else if (event.code === 'Backquote') ui.tuningPanel.toggle();
+        });
+      }
+    },
+    { capture: true },
+  );
 
   go('booted');
   ui.show('start');

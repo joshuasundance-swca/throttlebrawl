@@ -38,6 +38,27 @@ function rig() {
 }
 
 describe('actual frame observation', () => {
+  it('uses the existing feed for live measurement and requires qualification at both render endpoints', () => {
+    const { context, feed, draw, seen } = rig();
+    context.state = 'menu';
+    context.measurementLive = true;
+    draw();
+    expect(seen.at(-1)!.eligible).toBe(true);
+    context.countdown = true;
+    feed.refresh();
+    draw(200, false, true, () => {
+      context.countdown = false;
+    });
+    expect(seen.at(-1)!.eligible).toBe(false);
+    draw(300);
+    expect(seen.at(-1)!.eligible).toBe(true);
+    const epoch = seen.at(-1)!.epoch;
+    delete context.measurementLive;
+    feed.refresh();
+    draw(400);
+    expect(seen.at(-1)!.eligible).toBe(false);
+    expect(seen.at(-1)!.epoch).toBeGreaterThan(epoch);
+  });
   it('fails explicitly at epoch exhaustion instead of wrapping or emitting an unsafe identity', () => {
     expect(nextFrameEpoch(0)).toBe(1);
     expect(nextFrameEpoch(Number.MAX_SAFE_INTEGER - 1)).toBe(Number.MAX_SAFE_INTEGER);

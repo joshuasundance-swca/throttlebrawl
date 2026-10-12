@@ -1,3 +1,4 @@
+import { gateUiEvent, guardUiCompletion } from './action-gate';
 // The career's screens, plain but phone-friendly (run W-R career lane; the career-show lane dresses
 // them): the map screen (region tabs, cash and bike, the region's network map with claimed roads
 // glowing, the tiers with their event cards, an event's card with Ride), the garage (bikes, paint,
@@ -375,7 +376,10 @@ export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLEle
     );
     pin.setAttribute('vector-effect', 'non-scaling-stroke');
     pin.dataset['node'] = p.id;
-    pin.addEventListener('click', () => onPin(p.id));
+    pin.addEventListener(
+      'click',
+      gateUiEvent<Event>(() => onPin(p.id)),
+    );
     root.append(pin);
   }
   for (const s of panel.secrets.filter((x) => x.found)) {
@@ -645,16 +649,19 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     const newCareer = button('career-new', 'small', 'New career', () => {
       if (armed === null) {
         newCareer.textContent = 'Tap again to start over';
-        armed = setTimeout(() => {
-          armed = null;
-          newCareer.textContent = 'New career';
-        }, 6000);
+        armed = setTimeout(
+          guardUiCompletion(garageBox, () => {
+            armed = null;
+            newCareer.textContent = 'New career';
+          }),
+          6000,
+        );
         return;
       }
       clearTimeout(armed);
       armed = null;
       newCareer.textContent = 'New career';
-      void cb.onNewCareer().then(message);
+      void cb.onNewCareer().then(guardUiCompletion(garageBox, message));
     });
     const keptRows = (g.backups ?? []).map((b, i) =>
       el(
@@ -669,7 +676,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
             codeBox.select();
           }),
           button(`career-backup-restore-${i}`, 'small', 'Restore', () => {
-            void cb.onImport(b.code).then(message);
+            void cb.onImport(b.code).then(guardUiCompletion(garageBox, message));
           }),
         ),
       ),
@@ -706,17 +713,19 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           'div',
           { className: 'row' },
           button('career-code-copy', 'small', 'Show and copy', () => {
-            void cb.onExport().then((code) => {
-              codeBox.value = code;
-              codeBox.select();
-              void navigator.clipboard?.writeText(code).then(
-                () => message('Code copied.'),
-                () => message('Code shown: copy it by hand.'),
-              );
-            });
+            void cb.onExport().then(
+              guardUiCompletion<string>(garageBox, (code) => {
+                codeBox.value = code;
+                codeBox.select();
+                void navigator.clipboard?.writeText(code).then(
+                  guardUiCompletion(garageBox, () => message('Code copied.')),
+                  guardUiCompletion(garageBox, () => message('Code shown: copy it by hand.')),
+                );
+              }),
+            );
           }),
           button('career-code-load', 'small', 'Load this code', () => {
-            void cb.onImport(codeBox.value).then(message);
+            void cb.onImport(codeBox.value).then(guardUiCompletion(garageBox, message));
           }),
         ),
       ),

@@ -387,10 +387,8 @@ describe('the playlist and the veto', () => {
 });
 
 describe('the radio in the mixer', () => {
-  const press = (target: EventTarget, shift = false) =>
-    target.dispatchEvent(
-      Object.assign(new Event('keydown'), { code: 'KeyR', shiftKey: shift, repeat: false }),
-    );
+  const press = (audio: ReturnType<typeof createAudio>, shift = false) =>
+    shift ? audio.skipTrack() : audio.nextRadio();
 
   async function racing(stations?: readonly RadioStation[]) {
     const { ctx, create } = fakeContextFactory();
@@ -414,8 +412,8 @@ describe('the radio in the mixer', () => {
   const theDial = (stations: readonly RadioStation[], region: string | null = null) =>
     stationsForRegion(stations, region).map((s) => s.id);
 
-  it('the R key cycles score, each station, off; switching changes the playing track', async () => {
-    const { keys, audio, tick } = await racing(baseStations());
+  it('APP radio actions cycle score, each station, off; switching changes the playing track', async () => {
+    const { audio, tick } = await racing(baseStations());
     const dial = theDial(baseStations());
     expect(dial.length).toBeGreaterThanOrEqual(2);
     // With no region, the dial is every dial station in the pack's order.
@@ -430,24 +428,24 @@ describe('the radio in the mixer', () => {
     // Each press tunes the next station on the dial, in its order, and plays one of its tracks.
     let t = 0.2;
     for (const id of dial) {
-      press(keys);
+      press(audio);
       tick((t += 0.05));
       const r = audio.inspect().radio;
       expect(r.tunedTo).toBe(id);
       expect(r.nowPlaying?.ref.startsWith(`base:station/${id}#`), `${id}: ${r.nowPlaying?.ref}`).toBe(true);
       expect(audio.inspect().musicPlaying).toBe(false);
     }
-    press(keys);
+    press(audio);
     tick(t + 0.05);
     expect(audio.inspect().radio.tunedTo).toBe('off');
     expect(audio.inspect().radio.nowPlaying).toBeNull();
     expect(audio.inspect().musicPlaying).toBe(false);
-    press(keys);
+    press(audio);
     expect(audio.inspect().radio.tunedTo).toBe('score');
     // Shift+R skips a track.
     audio.setParam('audio.radio', 3);
     const before = audio.inspect().radio.nowPlaying!.ref;
-    press(keys, true);
+    press(audio, true);
     expect(audio.inspect().radio.nowPlaying!.ref).not.toBe(before);
   });
 

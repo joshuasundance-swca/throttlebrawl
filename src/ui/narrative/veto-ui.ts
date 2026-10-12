@@ -1,3 +1,4 @@
+import { gateUiEvent, gateUiAction } from '../action-gate';
 // The DOM side of "cut this": the confirm card, the pause screen's "recently seen" list, and the
 // long-press watcher on the ticker. The rules live in veto.ts and long-press.ts.
 //
@@ -91,29 +92,38 @@ export function createCutMenu(host?: () => HTMLElement | null): CutMenu {
     keep.type = 'button';
     keep.textContent = 'Keep';
     // Taps on the card stay on the card: the pause screen and the race never see them.
-    card.addEventListener('pointerdown', (e) => e.stopPropagation());
-    confirm.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const run = pending;
-      close();
-      run?.();
-      if (!done) {
-        done = document.createElement('div');
-        done.id = 'cut-done';
-        done.setAttribute('role', 'status');
-        done.textContent = "Cut. You won't see it again on this device.";
-        hostOf(host).append(done);
-      }
-      done.hidden = false;
-      if (doneTimer !== null) clearTimeout(doneTimer);
-      doneTimer = setTimeout(() => {
-        if (done) done.hidden = true;
-      }, DONE_MS);
-    });
-    keep.addEventListener('click', (e) => {
-      e.stopPropagation();
-      close();
-    });
+    card.addEventListener(
+      'pointerdown',
+      gateUiEvent<PointerEvent>((e) => e.stopPropagation()),
+    );
+    confirm.addEventListener(
+      'click',
+      gateUiEvent<Event>((e) => {
+        e.stopPropagation();
+        const run = pending;
+        close();
+        run?.();
+        if (!done) {
+          done = document.createElement('div');
+          done.id = 'cut-done';
+          done.setAttribute('role', 'status');
+          done.textContent = "Cut. You won't see it again on this device.";
+          hostOf(host).append(done);
+        }
+        done.hidden = false;
+        if (doneTimer !== null) clearTimeout(doneTimer);
+        doneTimer = setTimeout(() => {
+          if (done) done.hidden = true;
+        }, DONE_MS);
+      }),
+    );
+    keep.addEventListener(
+      'click',
+      gateUiEvent<Event>((e) => {
+        e.stopPropagation();
+        close();
+      }),
+    );
     row.append(confirm, keep);
     card.append(title, label, row);
     hostOf(host).append(card);
@@ -161,7 +171,10 @@ export function mountRecentlySeen(
       kind.className = 'rs-kind';
       kind.textContent = item.kind;
       b.append(kind, item.label);
-      b.addEventListener('click', () => offer(item));
+      b.addEventListener(
+        'click',
+        gateUiEvent<Event>(() => offer(item)),
+      );
       li.append(b);
       return li;
     });
@@ -194,8 +207,13 @@ export function watchBubblePresses(bubble: BarkSurface, opts: BubblePressOptions
   const lp = createLongPress<ShownBark>({
     ...(opts.schedule ? { schedule: opts.schedule } : {}),
     onLongPress: (bark) => {
-      bubble.hold(false);
-      opts.onLongPress(bark);
+      const element = bubble.element();
+      const deliver = () => {
+        bubble.hold(false);
+        opts.onLongPress(bark);
+      };
+      if (element) gateUiAction(element, deliver);
+      else deliver();
     },
   });
   const onDown = (e: PointerEvent) => {

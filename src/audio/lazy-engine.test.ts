@@ -145,9 +145,7 @@ describe('the audio stand-in (audio/index.ts)', () => {
     expect(audio.inspect().lastCues).toEqual([]);
   });
 
-  it("listens for the R key from the start, so a listener added after it (ui's save) sees the new choice", async () => {
-    // ui/ saves the radio choice from its own keydown listener, added after createAudio. The engine
-    // loads later, so its listener alone would run after ui's and each save would lag a press.
+  it('leaves the R shortcut to APP before and after lazy engine installation', async () => {
     const chunk = deferredLoad();
     const keys = new EventTarget();
     const audio = createAudio({ ...quiet, radioKeys: keys, createContext: contexts().create }, chunk.load);
@@ -161,9 +159,13 @@ describe('the audio stand-in (audio/index.ts)', () => {
       );
     const before = audio.inspect().radio.choice;
     press();
+    expect(audio.inspect().radio.choice).toBe(before);
+    press();
     const after = audio.inspect().radio.choice;
-    expect(after).not.toBe(before);
-    expect(seen).toEqual([after]);
+    expect(after).toBe(before);
+    expect(seen).toEqual([before, before]);
+    audio.nextRadio();
+    expect(audio.inspect().radio.choice).not.toBe(before);
   });
 
   it('stays silent when the engine fails to load, and fetches it again at the next start tap', async () => {

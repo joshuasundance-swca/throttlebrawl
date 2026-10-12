@@ -86,6 +86,15 @@ import {
   type SettingsChange,
 } from './settings';
 import { createSettingsScreen, SETTINGS_CSS } from './settings-screen';
+import {
+  gateUiEvent,
+  gateUiAction,
+  registerUiActions,
+  captureUiCurrent,
+  installUiWhenCurrent,
+  guardUiCompletion,
+  type UiActionOwner,
+} from './action-gate';
 import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './changelog-screen';
 import { createRaceTally, createStyleMeter, type StylePop } from './race-feed';
 import { popItem, type TickerItem } from './ticker';
@@ -218,6 +227,7 @@ export interface UiCallbacks {
 }
 
 export interface GameUi {
+  screen(): Screen;
   show(screen: Screen): void;
   /** Skeleton form of the HUD update; `updateRace` also fills the health bars. */
   updateHud(player: EntitySnapshot | null, riders: number, units: 'mph' | 'kmh'): void;
@@ -348,6 +358,8 @@ export interface GameUi {
 export type CareerUi = Omit<CareerScreens, 'map' | 'results' | 'teaser' | 'overlays' | 'pauseMap'>;
 
 export interface UiOptions {
+  actionGate?: UiActionOwner['actionGate'];
+  captureNormal?: UiActionOwner['captureNormal'];
   stampText: string;
   layout: TouchLayout;
   tuning: TuningRegistry;
@@ -729,7 +741,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 function button(id: string, cls: 'big' | 'small', text: string, onClick: () => void): HTMLButtonElement {
   const b = el('button', { id, className: cls, textContent: text, type: 'button' });
-  b.addEventListener('click', onClick);
+  b.addEventListener('click', gateUiEvent<Event>(onClick));
   return b;
 }
 
@@ -755,6 +767,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
+  registerUiActions(root, {
+    actionGate: opts.actionGate ?? ((_action, deliver) => deliver()),
+    captureNormal: opts.captureNormal ?? (() => () => true),
+  });
   const stamp = el('div', { id: 'build-stamp', textContent: opts.stampText });
   const buildId = buildIdFromStamp(opts.stampText);
   let settings: Settings = opts.settings
@@ -792,7 +808,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     el('div', { className: 'big', textContent: 'Tap to start' }),
     controlsCard,
   );
-  start.addEventListener('click', () => cb.onStartTap());
+  start.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => cb.onStartTap()),
+  );
 
   // ---- The region picker (playtest 1c) -------------------------------------------------------
   // Above the Race button: one zine-style chip per region app/ offers, the Keys picked by default,
@@ -1060,21 +1079,26 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       heatBadgeLoading = true;
       // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): a badge that
       // did not load is not asked for again in this page, so a gone build is not asked every frame.
-      void loadChunk('heat badge', () => import('./heat-badge')).then((m) => {
-        if (!m) return;
-        const style = document.createElement('style');
-        style.textContent = m.HEAT_BADGE_CSS;
-        document.head.append(style);
-        heatBadge = m.createHeatBadge();
-        hud.insertBefore(heatBadge.root, pauseButton);
-      });
+      void loadChunk('heat badge', () => import('./heat-badge')).then(
+        installUiWhenCurrent(root, (m) => {
+          if (!m) return;
+          const style = document.createElement('style');
+          style.textContent = m.HEAT_BADGE_CSS;
+          document.head.append(style);
+          heatBadge = m.createHeatBadge();
+          hud.insertBefore(heatBadge.root, pauseButton);
+        }),
+      );
     }
   };
   // The race-start countdown's number (playtest 4, P4-11), small and beside the road ahead, never in it.
   const countdownView = createCountdownView();
   const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
   pauseButton.setAttribute('aria-label', 'Pause');
-  pauseButton.addEventListener('click', () => pause());
+  pauseButton.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => pause()),
+  );
   // Playtest 3's wheelie gauge (T6.3): the one new widget, beside the floating stick, only while a
   // wheelie is up. ui/moves-meter.ts says where it stands (the layout's settle rule) and what it shows.
   // Its DOM and styles (moves-gauge.ts) are a lazy chunk, fetched now, in long before a race starts.
@@ -1096,12 +1120,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     'health-target': targetHealth.root,
   };
   let targetShown = false;
-  void import('./moves-gauge').then((m) => {
-    style.textContent += m.movesMeterCss(GAUGE);
-    wheelieGauge = m.createWheelieGauge();
-    pauseButton.before(wheelieGauge.root);
-    placeGaugeNow();
-  });
+  void import('./moves-gauge').then(
+    installUiWhenCurrent(root, (m) => {
+      style.textContent += m.movesMeterCss(GAUGE);
+      wheelieGauge = m.createWheelieGauge();
+      pauseButton.before(wheelieGauge.root);
+      placeGaugeNow();
+    }),
+  );
 
   // ---- Touch visuals -----------------------------------------------------------------------
   const touchSurface = el('div', { id: 'touch-surface', hidden: true });
@@ -1443,31 +1469,33 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // chunk (radio-panel-view.ts, off the first-load JavaScript), fetched now, so it is in long before
   // a race can be paused; it slots in above the keyboard legend.
   let radioPanel: RadioPanel | null = null;
-  void import('./radio-panel-view').then((m) => {
-    style.textContent += m.RADIO_PANEL_CSS;
-    radioPanel = m.createRadioPanel({
-      tune: (choice) => {
-        tuneRadio(choice);
-        // The exact station is saved first (run W-P), so the kind's apply below keeps it.
-        const stations = radioSource?.state().stations ?? [];
-        const station =
-          radioSettingOf(choice) === 'station'
-            ? (stations[Math.round(choice) - RADIO_FIRST_STATION] ?? null)
-            : null;
-        const stationChanged = station !== null && station !== settings.radioStation;
-        if (stationChanged) settings = { ...settings, radioStation: station };
-        const kind = radioSettingOf(choice);
-        if (kind !== settings.radio) change({ kind: 'set', id: 'radio', value: kind });
-        else if (stationChanged) cb.onSettingsChange?.(settings);
-      },
-      onCut: (flag) => {
-        settings = withVeto(settings, flag);
-        cb.onSettingsChange?.(settings);
-      },
-    });
-    radioPanel.setSource(radioSource);
-    pauseKeys.before(radioPanel.root);
-  });
+  void import('./radio-panel-view').then(
+    installUiWhenCurrent(root, (m) => {
+      style.textContent += m.RADIO_PANEL_CSS;
+      radioPanel = m.createRadioPanel({
+        tune: (choice) => {
+          tuneRadio(choice);
+          // The exact station is saved first (run W-P), so the kind's apply below keeps it.
+          const stations = radioSource?.state().stations ?? [];
+          const station =
+            radioSettingOf(choice) === 'station'
+              ? (stations[Math.round(choice) - RADIO_FIRST_STATION] ?? null)
+              : null;
+          const stationChanged = station !== null && station !== settings.radioStation;
+          if (stationChanged) settings = { ...settings, radioStation: station };
+          const kind = radioSettingOf(choice);
+          if (kind !== settings.radio) change({ kind: 'set', id: 'radio', value: kind });
+          else if (stationChanged) cb.onSettingsChange?.(settings);
+        },
+        onCut: (flag) => {
+          settings = withVeto(settings, flag);
+          cb.onSettingsChange?.(settings);
+        },
+      });
+      radioPanel.setSource(radioSource);
+      pauseKeys.before(radioPanel.root);
+    }),
+  );
   let radioTimer: ReturnType<typeof setInterval> | null = null;
   // The legend and the "recently seen" list (mounted below, once the narrative exists) share a
   // column, so on a short phone screen neither pushes the other off it (playtest 1c item 8). The
@@ -1521,24 +1549,33 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (pressTimer !== null) clearTimeout(pressTimer);
     pressTimer = null;
   };
-  pauseBuild.addEventListener('pointerdown', () => {
-    cancelPress();
-    pressTimer = setTimeout(() => {
-      pressTimer = null;
-      tuningPanel.toggle(true);
-    }, LONG_PRESS_MS);
-  });
+  pauseBuild.addEventListener(
+    'pointerdown',
+    gateUiEvent<PointerEvent>(() => {
+      cancelPress();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        tuningPanel.toggle(true);
+      }, LONG_PRESS_MS);
+    }),
+  );
   for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
-    pauseBuild.addEventListener(type, cancelPress);
+    pauseBuild.addEventListener(type, gateUiEvent<PointerEvent>(cancelPress));
   }
   pauseBuild.addEventListener('contextmenu', (e) => e.preventDefault());
   const pauseTouches = new Set<number>();
-  pauseScreen.addEventListener('pointerdown', (e) => {
-    pauseTouches.add(e.pointerId);
-    if (pauseTouches.size >= 3) tuningPanel.toggle(true);
-  });
+  pauseScreen.addEventListener(
+    'pointerdown',
+    gateUiEvent<PointerEvent>((e) => {
+      pauseTouches.add(e.pointerId);
+      if (pauseTouches.size >= 3) tuningPanel.toggle(true);
+    }),
+  );
   for (const type of ['pointerup', 'pointercancel'] as const) {
-    pauseScreen.addEventListener(type, (e) => pauseTouches.delete(e.pointerId));
+    pauseScreen.addEventListener(
+      type,
+      gateUiEvent<PointerEvent>((e) => pauseTouches.delete(e.pointerId)),
+    );
   }
 
   const closePause = () => {
@@ -1732,11 +1769,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       fetch('credits.json').then((r) => (r.ok ? (r.json() as Promise<unknown>) : null)),
       import('./credits-screen'),
     ])
-      .then(([data, page]) => {
-        creditsDrawn = data !== null && page.showCredits(creditsList, data);
-        if (!creditsDrawn) say('The credits could not be loaded.');
-      })
-      .catch(() => say('The credits could not be loaded.'));
+      .then(
+        guardUiCompletion(root, ([data, page]) => {
+          creditsDrawn = data !== null && page.showCredits(creditsList, data);
+          if (!creditsDrawn) say('The credits could not be loaded.');
+        }),
+      )
+      .catch(guardUiCompletion(root, () => say('The credits could not be loaded.')));
   };
   // The card needs the record to keep the last build seen, or it would greet every launch.
   const newsAllowed = lastSeenPersists(sanitiseSettings) && buildId.length > 0;
@@ -1764,15 +1803,17 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       return;
     }
     if (sameBuild(seen, buildId)) return;
-    void loadChangelog().then((notes) => {
-      if (!notes) return; // unreadable: try again next launch, and keep the old mark
-      const w = whatsNewSince(notes, seen);
-      if (w.kind === 'none') markSeen();
-      else {
-        pendingNews = w;
-        offerNews();
-      }
-    });
+    void loadChangelog().then(
+      guardUiCompletion(root, (notes) => {
+        if (!notes) return; // unreadable: try again next launch, and keep the old mark
+        const w = whatsNewSince(notes, seen);
+        if (w.kind === 'none') markSeen();
+        else {
+          pendingNews = w;
+          offerNews();
+        }
+      }),
+    );
   };
 
   const tally = createRaceTally();
@@ -1919,11 +1960,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // first-load bundle. A request to open it before the chunk arrives is kept and applied then.
   let realPanel: TuningPanel | null = null;
   let pendingOpen: boolean | null = null;
-  void import('./tuning').then((m) => {
-    realPanel = m.createTuningPanel(root, opts.tuning);
-    if (pendingOpen !== null) realPanel.toggle(pendingOpen);
-    pendingOpen = null;
-  });
+  void import('./tuning').then(
+    installUiWhenCurrent(root, (m) => {
+      realPanel = m.createTuningPanel(root, opts.tuning);
+      if (pendingOpen !== null) realPanel.toggle(pendingOpen);
+      pendingOpen = null;
+    }),
+  );
   const tuningPanel: GameUi['tuningPanel'] = {
     toggle(open) {
       if (realPanel) realPanel.toggle(open);
@@ -1979,13 +2022,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
   narrative.mountRecentlySeen(pauseCards);
 
-  // The R key retunes the radio inside audio/ (its own window listener, registered before this
-  // one): the saved choice follows at once, not only when pause or settings opens (polish-1
-  // follow-up). Checked after every key, since ui does not own the binding; a no-op unless the
-  // radio's kind (score, station, off) changed.
-  window.addEventListener('keydown', () => {
-    if (radioSource) queueMicrotask(() => syncLive());
-  });
   // Esc pauses, resumes and backs out of a screen; the player's other pause keys (Settings, Keys)
   // pause and resume only.
   window.addEventListener('keydown', (e) => {
@@ -1993,19 +2029,25 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     const esc = e.code === 'Escape';
     if (!esc && !(current === 'race' && keyMapFromBindings(settings.keyBindings).pause.includes(e.code)))
       return;
-    if (current === 'race') {
-      if (!settingsScreen.root.hidden) {
-        if (esc) closeSettings();
-      } else if (paused) resume();
-      else pause();
-    } else if (current === 'menu' && menuFlow.isQuick) menuFlow.back();
-    else if (
-      current === 'settings' ||
-      current === 'raceOptions' ||
-      current === 'credits' ||
-      current === 'changelog'
-    )
-      show('menu');
+    gateUiEvent<KeyboardEvent>(
+      () => {
+        if (current === 'race') {
+          if (!settingsScreen.root.hidden) {
+            if (esc) closeSettings();
+          } else if (paused) resume();
+          else pause();
+        } else if (current === 'menu' && menuFlow.isQuick) menuFlow.back();
+        else if (
+          current === 'settings' ||
+          current === 'raceOptions' ||
+          current === 'credits' ||
+          current === 'changelog'
+        )
+          show('menu');
+      },
+      root,
+      esc ? 'back' : 'manual-pause',
+    )(e);
   });
 
   const screens: Record<Screen, HTMLElement[]> = {
@@ -2031,46 +2073,53 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const careerCalls: ((c: CareerScreens) => void)[] = [];
   const withCareer = (f: (c: CareerScreens) => void) => {
     if (realCareer) f(realCareer);
-    else careerCalls.push(f);
+    else {
+      const current = captureUiCurrent(root);
+      careerCalls.push((career) => {
+        if (current()) f(career);
+      });
+    }
   };
   const noop = () => undefined;
-  void import('./career-screen').then((m) => {
-    style.textContent += m.CAREER_CSS;
-    const c = m.createCareerScreens(
-      cb.career ?? {
-        onRegion: noop,
-        onRide: noop,
-        onBack: () => show('menu'),
-        onBuyBike: noop,
-        onRideBike: noop,
-        onBuyPaint: noop,
-        onPaint: noop,
-        onExport: () => Promise.resolve(''),
-        onImport: () => Promise.resolve(''),
-        onStartSeason: noop,
-        onNewCareer: () => Promise.resolve(''),
-        onRetry: noop,
-        onMap: noop,
-        onNext: noop,
-        onNextRegion: noop,
-      },
-      (id, cls, text, onClick) => button(id, cls, text, onClick),
-    );
-    hud.append(c.overlays);
-    // The pause screen's network map heads its cards (interview, 2026-10-02: "Maybe just map on pause").
-    pauseCards.prepend(c.pauseMap);
-    // Under the pause screen, the busy line and the notices, like the other screens.
-    settingsScreen.root.before(c.map, c.results, c.teaser);
-    screens.career.push(c.map);
-    screens.careerResults.push(c.results);
-    screens.teaser.push(c.teaser);
-    c.map.hidden = current !== 'career';
-    c.results.hidden = current !== 'careerResults';
-    c.teaser.hidden = current !== 'teaser';
-    realCareer = c;
-    for (const f of careerCalls.splice(0)) f(c);
-    placeCards();
-  });
+  void import('./career-screen').then(
+    installUiWhenCurrent(root, (m) => {
+      style.textContent += m.CAREER_CSS;
+      const c = m.createCareerScreens(
+        cb.career ?? {
+          onRegion: noop,
+          onRide: noop,
+          onBack: () => show('menu'),
+          onBuyBike: noop,
+          onRideBike: noop,
+          onBuyPaint: noop,
+          onPaint: noop,
+          onExport: () => Promise.resolve(''),
+          onImport: () => Promise.resolve(''),
+          onStartSeason: noop,
+          onNewCareer: () => Promise.resolve(''),
+          onRetry: noop,
+          onMap: noop,
+          onNext: noop,
+          onNextRegion: noop,
+        },
+        (id, cls, text, onClick) => button(id, cls, text, onClick),
+      );
+      hud.append(c.overlays);
+      // The pause screen's network map heads its cards (interview, 2026-10-02: "Maybe just map on pause").
+      pauseCards.prepend(c.pauseMap);
+      // Under the pause screen, the busy line and the notices, like the other screens.
+      settingsScreen.root.before(c.map, c.results, c.teaser);
+      screens.career.push(c.map);
+      screens.careerResults.push(c.results);
+      screens.teaser.push(c.teaser);
+      c.map.hidden = current !== 'career';
+      c.results.hidden = current !== 'careerResults';
+      c.teaser.hidden = current !== 'teaser';
+      realCareer = c;
+      for (const f of careerCalls.splice(0)) f(c);
+      placeCards();
+    }),
+  );
   // The menu race's options (playtest 4, P4-12 and P4-13): a lazy chunk too, fetched as the game
   // boots. Each step is a new settings record, saved like a settings row, so the picks are
   // remembered between races; app/ reads them at the next menu race.
@@ -2080,30 +2129,33 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (!raceOptionsScreen || !raceView) return;
     raceOptionsScreen.draw(raceOptionRows(raceView, settings), raceView.where, raceView.objective);
   };
-  const stepRaceOptions = (id: RaceOptionId, dir: 1 | -1) => {
-    if (!raceView) return;
-    const next = stepRaceOption(raceView, settings, id, dir);
-    settings = next;
-    settingsScreen.sync(settings);
-    cb.onSettingsChange?.(next);
-    raceView = cb.raceOptions?.() ?? raceView;
-    drawRaceOptions();
-  };
-  if (cb.raceOptions)
-    void import('./race-options-view').then((m) => {
-      style.textContent += m.RACE_OPTIONS_CSS;
-      const screen = m.createRaceOptionsScreen((id, cls, text, onClick) => button(id, cls, text, onClick), {
-        onStep: stepRaceOptions,
-        onBack: () => show('menu'),
-        onRace: () => cb.onRace(),
-      });
-      settingsScreen.root.before(screen.root);
-      screens.raceOptions.push(screen.root);
-      screen.root.hidden = current !== 'raceOptions';
-      raceOptionsScreen = screen;
+  const stepRaceOptions = (id: RaceOptionId, dir: 1 | -1) =>
+    gateUiAction(root, () => {
+      if (!raceView) return;
+      const next = stepRaceOption(raceView, settings, id, dir);
+      settings = next;
+      settingsScreen.sync(settings);
+      cb.onSettingsChange?.(next);
+      raceView = cb.raceOptions?.() ?? raceView;
       drawRaceOptions();
-      placeCards();
     });
+  if (cb.raceOptions)
+    void import('./race-options-view').then(
+      installUiWhenCurrent(root, (m) => {
+        style.textContent += m.RACE_OPTIONS_CSS;
+        const screen = m.createRaceOptionsScreen((id, cls, text, onClick) => button(id, cls, text, onClick), {
+          onStep: stepRaceOptions,
+          onBack: () => show('menu'),
+          onRace: () => cb.onRace(),
+        });
+        settingsScreen.root.before(screen.root);
+        screens.raceOptions.push(screen.root);
+        screen.root.hidden = current !== 'raceOptions';
+        raceOptionsScreen = screen;
+        drawRaceOptions();
+        placeCards();
+      }),
+    );
   const career: CareerUi = {
     showMap: (v, g, t, s) => withCareer((c) => c.showMap(v, g, t, s)),
     showPauseMap: (v) => withCareer((c) => c.showPauseMap(v)),
@@ -2350,7 +2402,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       checkNews();
       offerNews();
     }
-    if (screen === 'changelog') void loadChangelog().then((notes) => changelogScreen.setNotes(notes));
+    if (screen === 'changelog')
+      void loadChangelog().then(guardUiCompletion(root, (notes) => changelogScreen.setNotes(notes)));
     if (screen === 'credits') loadCredits();
     // The choices follow the region and the road the menu has picked, and the garage.
     if (screen === 'raceOptions') {
@@ -2429,6 +2482,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
 
   return {
+    screen: () => current,
     show,
     updateHud,
     updateRace(snapshot, playerId, units) {
