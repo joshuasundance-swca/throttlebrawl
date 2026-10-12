@@ -237,6 +237,17 @@ test.describe('offline', () => {
         readAt: performance.now(),
         menuVisible: (window as TestWindow).__offlineVisible?.['#menu-quick-play'],
         testMode: (window as TestWindow).__GAME_TEST__ === true,
+        navigation: performance.getEntriesByType('navigation').map((entry) => {
+          const nav = entry as PerformanceNavigationTiming;
+          return {
+            workerStart: nav.workerStart,
+            requestStart: nav.requestStart,
+            responseStart: nav.responseStart,
+            responseEnd: nav.responseEnd,
+            domInteractive: nav.domInteractive,
+            domContentLoaded: nav.domContentLoadedEventEnd,
+          };
+        }),
       }));
       console.log(
         `[print] production cached boot with network held: ${JSON.stringify(timing)}; ${heldRequests} held requests`,
