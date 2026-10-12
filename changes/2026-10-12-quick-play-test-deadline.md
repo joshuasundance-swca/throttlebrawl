@@ -13,5 +13,6 @@ replacement and clearing through the existing test hook. It checks the active st
 includes controls for a bark-only locator missing a replacement and stale fade attributes.
 Its wall-time expiry and elapsed-time assertions are removed: the ticker uses an injected
 clock, can freeze or be preempted, and extends for decoded speech. Exact natural expiry stays
-covered by the existing model and view unit tests. The browser check proves rendering and
+covered by the existing model tests; view tests cover semantic removal and stale fade attributes.
+The browser check proves rendering and
 controlled removal; it no longer claims natural end-to-end expiry timing.
