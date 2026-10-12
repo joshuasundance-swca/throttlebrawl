@@ -863,9 +863,21 @@ class Rig {
           break;
         }
         case 'ram':
-          roll += sigSide * (ph === 'act' ? 0.5 : 0.3);
-          lean += 0.15;
-          headYaw = -sigSide * 0.4;
+          // Combat owns the whole rig while its earned animation is showing. The snapshot
+          // has no committed ram direction: only preparation attends to the live target.
+          if (attacking) break;
+          if (ph === 'tell') {
+            lean += 0.12;
+            headYaw = -sigSide * 0.55;
+            headPitch -= 0.1;
+          } else if (ph === 'act') {
+            lean += 0.35;
+            headPitch += 0.1;
+          } else {
+            lean -= 0.18;
+            hips.y -= 0.025;
+            headPitch += 0.5 + 0.04 * Math.sin(sig.seconds * 4);
+          }
           break;
         case 'slow-burn':
           if (ph === 'tell') headPitch += 0.55;

@@ -4,6 +4,8 @@
 // window in which it cannot hurt you. Hits are injected as last tick's `hit` events, the way
 // combat reports them, since combat does not run here.
 import { describe, expect, it } from 'vitest';
+import rustEvent from '../../../packs/base/events/keys-boss-mother-rust.json';
+import rustRider from '../../../packs/base/riders/mother-rust.json';
 import { nextFloat, streamSeed } from '../../core';
 import {
   createRoadNetwork,
@@ -321,6 +323,277 @@ function pivotScene(
   );
 }
 const pivotTick = (sc: Scene, tick: number) => timberTick(sc, tick, 'pivot');
+
+function rustScene(
+  opts: Parameters<typeof scene>[2] = {},
+  contentId = `base:${rustRider.id}`,
+  move: SignatureId = 'ram',
+) {
+  return scene(
+    [
+      { ...rival('crew-boss', move, { aggression: rustRider.personality.aggression, weave: 0 }), contentId },
+      PLAYER,
+    ],
+    [
+      { s: 100, d: 2.8, v: 26 },
+      { s: 99, d: 1, v: 26 },
+    ],
+    { event: { ...config([]).event, contentId: `base:${rustEvent.id}`, kind: 'grudge-match' }, ...opts },
+  );
+}
+const rustTick = (sc: Scene, tick: number) => timberTick(sc, tick, 'ram');
+
+describe('canonical Mother Rust encounter', () => {
+  it('selects the authored event/kind/rider/move, retaining ordinary and disabled controls', () => {
+    expect(rustRider.personality.signature).toBe('ram');
+    expect(rustEvent.kind).toBe('grudge-match');
+    const on = rustScene();
+    expect(signatureState(on.world).timing?.[0]).toMatchObject({
+      first: 240,
+      tell: 48,
+      act: 36,
+      open: 90,
+      gap: 480,
+      spread: 180,
+    });
+    for (const sc of [
+      rustScene({ event: config([]).event }),
+      rustScene({ event: { ...config([]).event, contentId: `base:${rustEvent.id}` } }),
+      rustScene({}, 'base:other'),
+      rustScene({}, `base:${rustRider.id}`, 'lag'),
+    ]) {
+      expect(signatureState(sc.world).timing).toBeUndefined();
+      expect(signatureState(sc.world).next[0]).toBeGreaterThanOrEqual(600);
+    }
+    for (const opts of [{ signatures: 0 }, { quirks: 0 }]) {
+      const off = rustScene(opts);
+      now(off, 0);
+      for (let t = 0; t < 180; t++) step(off);
+      expect(signatureView(off.world, 0)).toBeNull();
+    }
+  });
+
+  it.each([1, 0.5])(
+    'commits at act and uses exact timer/contact recovery and RNG at scale %s',
+    (gapScale) => {
+      for (const contact of [false, true]) {
+        const sc = rustScene({ gapScale });
+        const sg = signatureState(sc.world),
+          rng = { s: streamSeed(sc.config.seed, 'ai.signature', 0) };
+        const at = 240 + Math.floor(nextFloat(rng) * Math.round(180 * gapScale));
+        expect(sg.next[0]).toBe(at);
+        expect(rustTick(sc, at)).toMatchObject({ dTarget: 4, noSwing: true });
+        expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'tell', left: 48 / 60, targetId: 1 });
+        expect(rustTick(sc, at + 48)).toMatchObject({ dTarget: 1, noSwing: true });
+        (sc.riders[1] as Mover).pos.d = -1.5;
+        expect(rustTick(sc, at + 49).dTarget).toBe(1);
+        const opening = at + (contact ? 50 : 84);
+        if (contact) (sc.riders[1] as Mover).pos.d = 2.5;
+        expect(rustTick(sc, opening)).toMatchObject({ speedTarget: 26 * 0.85, noSwing: true });
+        expect(signatureView(sc.world, 0)).toMatchObject({ phase: 'open', left: 90 / 60 });
+        (sc.riders[0] as Mover).speed = 40;
+        (sc.riders[1] as Mover).pos.s = 300;
+        const before = sg.rng[0];
+        expect(rustTick(sc, opening + 1)).toMatchObject({ speedTarget: 26 * 0.85, noSwing: true });
+        expect(sg.rng[0]).toBe(before);
+        expect(signatureView(sc.world, 0)?.phase).toBe('open');
+        rustTick(sc, opening + 90);
+        expect(signatureView(sc.world, 0)).toBeNull();
+        expect(sg.openSpeed?.[0]).toBeUndefined();
+        expect(sg.next[0]).toBe(
+          opening +
+            90 +
+            Math.round(480 * gapScale) +
+            Math.floor(nextFloat(rng) * (Math.round(180 * gapScale) + 1)),
+        );
+        expect(sg.rng[0]).toBe(rng.s);
+      }
+    },
+  );
+
+  it('ordinary ram still tracks the live target and retains its contact duration and pace', () => {
+    const sc = rustScene({ event: config([]).event });
+    now(sc, 0);
+    rustTick(sc, 0);
+    rustTick(sc, 30);
+    (sc.riders[1] as Mover).pos.d = -1.5;
+    expect(rustTick(sc, 31).dTarget).toBe(-1.5);
+    (sc.riders[1] as Mover).pos.d = 2.5;
+    expect(rustTick(sc, 32)).toEqual({ noSwing: true });
+    expect(signatureView(sc.world, 0)?.left).toBe(50 / 60);
+    expect(rustTick(sc, 33).speedTarget).toBe(30 * 0.95);
+    expect(signatureState(sc.world).openSpeed).toBeUndefined();
+  });
+
+  it('captures the ordinary target when it is lower than actual entry speed, only once', () => {
+    const sc = rustScene();
+    now(sc, 0);
+    rustTick(sc, 0);
+    rustTick(sc, 48);
+    (sc.riders[0] as Mover).speed = 40;
+    expect(rustTick(sc, 84).speedTarget).toBe(30 * 0.85);
+    (sc.riders[0] as Mover).speed = 10;
+    expect(rustTick(sc, 85).speedTarget).toBe(30 * 0.85);
+  });
+
+  it('suppresses new recovery swings with an aggressive in-reach ordinary positive control', () => {
+    const run = (selected: boolean) => {
+      const sc = rustScene(selected ? {} : { signatures: 0 });
+      now(sc, 0);
+      rustTick(sc, 120);
+      rustTick(sc, 168);
+      rustTick(sc, 204);
+      let presses = 0;
+      for (let t = 0; t < 40; t++) {
+        const [rust, me] = sc.riders as [Mover, Mover];
+        me.pos = { ...rust.pos, s: rust.pos.s - 0.5, d: rust.pos.d - 1.1 };
+        me.speed = rust.speed;
+        step(sc);
+        if (pressing(sc, 0)) presses++;
+      }
+      return presses;
+    };
+    expect(run(true)).toBe(0);
+    expect(run(false)).toBeGreaterThan(0);
+  });
+
+  it('rejects acquisition range and lateral offsets with an alongside positive control', () => {
+    for (const [s, d] of [
+      [104, 1],
+      [100, 2.5],
+      [100, -1],
+      [100, 1],
+    ]) {
+      const sc = rustScene();
+      now(sc, 0);
+      (sc.riders[1] as Mover).pos.s = s!;
+      (sc.riders[1] as Mover).pos.d = d!;
+      rustTick(sc, 0);
+      expect(signatureView(sc.world, 0)?.phase ?? null).toBe(s === 100 && d === 1 ? 'tell' : null);
+    }
+  });
+
+  it.each(['tell', 'act'] as const)(
+    'target loss before open in %s draws only rider-owned scheduling RNG',
+    (phase) => {
+      const sc = rustScene({ gapScale: 0.5 });
+      now(sc, 0);
+      rustTick(sc, 0);
+      const at = phase === 'tell' ? 1 : 49;
+      if (phase === 'act') rustTick(sc, 48);
+      const sg = signatureState(sc.world),
+        rng = { s: sg.rng[0]! },
+        other = sc.world.rng.ai.s;
+      (sc.riders[1] as Mover).pos.s = 300;
+      rustTick(sc, at);
+      expect(signatureView(sc.world, 0)).toBeNull();
+      expect(sg.next[0]).toBe(at + 240 + Math.floor(nextFloat(rng) * 91));
+      expect(sg.rng[0]).toBe(rng.s);
+      expect(sc.world.rng.ai.s).toBe(other);
+    },
+  );
+
+  it.each(['down', 'unsticking'] as const)(
+    'interrupts %s with no draw and preserves later readiness',
+    (reason) => {
+      for (const ph of ['tell', 'act', 'open'])
+        for (const later of [false, true]) {
+          const sc = rustScene({ gapScale: 0.5 });
+          now(sc, 0);
+          rustTick(sc, 0);
+          const at = ph === 'tell' ? 0 : ph === 'act' ? 48 : 84;
+          if (ph === 'open') rustTick(sc, 48);
+          if (at) rustTick(sc, at);
+          expect(signatureView(sc.world, 0)?.phase).toBe(ph);
+          const sg = signatureState(sc.world),
+            rng = sg.rng[0];
+          sg.next[0] = later ? at + 999 : 0;
+          if (reason === 'down') (sc.riders[0] as Mover).mode = 'Tumble';
+          else aiState(sc.world).unstickUntil[0] = at + 30;
+          step(sc);
+          expect(signatureView(sc.world, 0)).toBeNull();
+          expect(sg.openSpeed?.[0]).toBeUndefined();
+          expect(sg.next[0]).toBe(at + (later ? 999 : 240));
+          expect(sg.rng[0]).toBe(rng);
+        }
+    },
+  );
+
+  it('physically brakes, offers a pass and resumes throttle, with deterministic inputs', () => {
+    const run = () => {
+      const sc = rustScene();
+      now(sc, 0);
+      const [rust, me] = sc.riders as [Mover, Mover];
+      for (let t = 0; t < 100 && phase(sc, 0) !== 'open'; t++)
+        step(sc, cruise(me, phase(sc, 0) === 'act' ? -1.5 : 1, 26));
+      expect(phase(sc, 0)).toBe('open');
+      const at = sc.world.tick,
+        speed = rust.speed,
+        gap = me.pos.s - rust.pos.s;
+      let braked = false;
+      while (phase(sc, 0) === 'open' && sc.world.tick < at + 91) {
+        step(sc, cruise(me, -1.5, 32));
+        braked ||= (sc.world.inputs[0]?.brake ?? 0) > 0;
+        expect(pressing(sc, 0)).toBe(false);
+      }
+      expect(sc.world.tick - at).toBe(90);
+      expect(braked).toBe(true);
+      expect(rust.speed).toBeLessThan(speed - 1);
+      expect(me.pos.s - rust.pos.s).toBeGreaterThan(Math.max(0, gap + 1));
+      step(sc);
+      expect(sc.world.inputs[0]?.throttle).toBeGreaterThan(0);
+      return worldHash(sc.world);
+    };
+    expect(run()).toBe(run());
+  });
+
+  it('retains later obstacle priority while the acquired lifecycle remains finite', () => {
+    const plain = rustScene(),
+      blocked = rustScene({ vehicles: [{ s: 109, d: 2.8, v: 0, dir: 1 }] });
+    for (const sc of [plain, blocked]) {
+      now(sc, 0);
+      rustTick(sc, 0);
+      rustTick(sc, 48);
+      step(sc);
+      expect(phase(sc, 0)).toBe('act');
+    }
+    expect(blocked.world.inputs[0]?.brake).toBeGreaterThan(plain.world.inputs[0]?.brake ?? 0);
+    for (let t = 0; t < 140 && phase(blocked, 0) !== null; t++) step(blocked);
+    expect(phase(blocked, 0)).toBeNull();
+  });
+
+  it('keeps shortcut navigation ahead of the ram line with a matched no-shortcut control', () => {
+    const f = fixtureBranchNetwork(),
+      branchRoad = createRoadNetwork(f);
+    const run = (takes: boolean) => {
+      const cfg = rustScene().config;
+      cfg.road = branchRoad;
+      cfg.route = createRouteProgress(branchRoad, f.route);
+      const world = createWorld(cfg);
+      const riders = [160, 159].map((s, i) => {
+        const m = addMover(
+          world,
+          'rider',
+          { edge: branchRoad.edgeIndex('a'), s, d: i === 0 ? 2.8 : 1, dir: 1 },
+          i,
+        );
+        m.speed = 26;
+        return m;
+      });
+      for (const system of SYSTEMS) system.init(world, cfg);
+      const sc = { world, config: cfg, riders, vehicles: [] };
+      aiState(world).shortcuts[0] = takes ? 1 : 0;
+      now(sc, 0);
+      rustTick(sc, 0);
+      rustTick(sc, 48);
+      step(sc);
+      expect(signatureView(world, 0)?.phase).toBe('act');
+      expect(signatureState(world).lineD[0]).toBe(1);
+      return world.inputs[0]?.steer ?? 0;
+    };
+    expect(run(true)).toBeGreaterThan(run(false));
+  });
+});
 
 describe('canonical Pivot encounter', () => {
   it('scopes private timing to canonical event, grudge kind, rider and signature', () => {
