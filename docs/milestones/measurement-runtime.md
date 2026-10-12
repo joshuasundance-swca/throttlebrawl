@@ -149,6 +149,7 @@ export type AppMeasurementEnd =
   | {
       readonly kind: 'stopped';
       readonly reason: AppMeasurementStopReason;
+      readonly endedAtMs: number;
       readonly repeats: readonly AppDeepReadonly<AppMeasurementRepeat>[];
       readonly restored: AppDeepReadonly<AppMeasurementRestoration>;
     }
@@ -160,6 +161,7 @@ export type AppMeasurementEnd =
         | 'back'
         | 'quit'
         | 'superseded';
+      readonly endedAtMs: number;
       readonly repeats: readonly AppDeepReadonly<AppMeasurementRepeat>[];
       readonly restored: AppDeepReadonly<AppMeasurementRestoration>;
     }
@@ -180,6 +182,7 @@ export type AppMeasurementEnd =
         | 'driver-factory-failed'
         | 'driver-failed'
         | 'draw-failed';
+      readonly endedAtMs: number;
       readonly repeats: readonly AppDeepReadonly<AppMeasurementRepeat>[];
       readonly restored: AppDeepReadonly<AppMeasurementRestoration>;
     };
@@ -196,6 +199,7 @@ export type AppMeasurementEvent =
     };
 
 export interface AppMeasurementSession {
+  readonly committedAtMs: number;
   readonly scene: AppMeasurementScene;
   readonly workload: AppDeepReadonly<AppMeasurementWorkload>;
   readonly ended: Promise<AppDeepReadonly<AppMeasurementEnd>>;
@@ -239,6 +243,14 @@ content refusals. APP retires the pending owner and any acquired resources, then
 observation failures use its frozen refused result instead. Once a session object exists, all
 runtime terminal paths are represented by `ended`; none escapes through RAF, input, listener, or
 cleanup.
+
+The runtime captures `committedAtMs` once from raw `performance.now()` at commit, before
+the first driver factory or external publication. It captures `endedAtMs` once from the same
+clock when the terminal cause is latched, before restoration and terminal callbacks. These are
+finite nonnegative monotonic milliseconds, unchanged by delayed promise or subscriber delivery.
+Preparation is excluded; repeats preserve the commit instant. The [consumer contract](./measurement-consumer.md)
+uses these exact public values for its independent post-commit deadline and wall accounting.
+They are evidence, not a public clock override.
 
 ## Strict preflight and preparation
 
@@ -692,7 +704,7 @@ current scene. `reset: 'preserve'` changes none of those transient fields.
 
 The once-only terminal path is:
 
-1. latch the terminal cause and invalidate the measurement generation and frame epoch;
+1. latch the terminal cause, capture `endedAtMs`, and invalidate the measurement generation and frame epoch;
 2. set the session phase to ending and prevent further step/render/driver/factory callbacks;
 3. detach request/lifecycle callbacks, UI/input guards, and runtime-only consumers; retain session
    subscribers through the terminal event;
@@ -847,6 +859,11 @@ collector or phone launch threshold.
     contract; simulation is the qualified default isolated repeat, replay/audio are omitted, current
     graphics use a fresh governor, and divisor is one. No assertion turns this helper/runtime run
     into a qualifying phone or launch verdict.
+
+16. **Timing evidence:** delay the first factory/start publication and terminal subscription with
+    controlled monotonic time. `committedAtMs` precedes those callbacks; every end variant carries
+    the once-latched `endedAtMs` before restoration. Priming and the ended promise share the same
+    timestamp, preparation is excluded, and repeats never change commit time.
 
 ## Implementation sequence
 
