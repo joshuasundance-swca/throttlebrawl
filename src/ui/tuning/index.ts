@@ -1,3 +1,4 @@
+import { gateUiEvent, guardUiCompletion, captureUiCurrent } from '../action-gate';
 // ui/tuning: the hidden tuning panel (docs/milestones/M1.md, tuning-1; docs/architecture.md,
 // "Tuning"). It builds itself from the registry: one control per declaration, in the groups of
 // ./model. It stays open as a see-through overlay while the race runs, so it is usable mid-race.
@@ -133,7 +134,10 @@ export function createTuningPanel(
     };
     show(registry.get(d.id));
     updaters.set(d.id, show);
-    slider.addEventListener('input', () => show(registry.set(d.id, Number(slider.value))));
+    slider.addEventListener(
+      'input',
+      gateUiEvent<Event>(() => show(registry.set(d.id, Number(slider.value)))),
+    );
     return node('label', { className: 'tp-row' }, node('span', { textContent: d.label }), slider, out);
   };
 
@@ -145,7 +149,10 @@ export function createTuningPanel(
     for (const opt of frameCapOptions(null)) {
       const b = node('button', { type: 'button', textContent: opt.label });
       b.dataset['divisor'] = String(opt.divisor);
-      b.addEventListener('click', () => registry.set(d.id, opt.divisor));
+      b.addEventListener(
+        'click',
+        gateUiEvent<Event>(() => registry.set(d.id, opt.divisor)),
+      );
       capButtons.push(b);
       group.append(b);
     }
@@ -180,42 +187,57 @@ export function createTuningPanel(
 
   registry.onChange((id, value) => updaters.get(id)?.(value));
 
-  save.addEventListener('click', () => {
-    if (registry.saveToDevice(now())) status.textContent = 'Saved on this device. It loads next time.';
-    else if (!registry.canSaveToDevice)
-      status.textContent = 'This build cannot save presets on the device yet. Copy it instead.';
-    else status.textContent = registry.storeNotice ?? 'Could not save on this device.';
-  });
-  copy.addEventListener('click', () => {
-    const text = `${JSON.stringify(registry.exportPreset(now()), null, 2)}\n`;
-    json.value = text;
-    json.hidden = false;
-    const blocked = () => {
-      json.select();
-      status.textContent = 'Copy was blocked. The preset is in the box below: select it and copy.';
-    };
-    try {
-      const clip = navigator.clipboard as Clipboard | undefined;
-      if (!clip) {
+  save.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => {
+      if (registry.saveToDevice(now())) status.textContent = 'Saved on this device. It loads next time.';
+      else if (!registry.canSaveToDevice)
+        status.textContent = 'This build cannot save presets on the device yet. Copy it instead.';
+      else status.textContent = registry.storeNotice ?? 'Could not save on this device.';
+    }),
+  );
+  copy.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => {
+      const text = `${JSON.stringify(registry.exportPreset(now()), null, 2)}\n`;
+      json.value = text;
+      json.hidden = false;
+      const blocked = () => {
+        json.select();
+        status.textContent = 'Copy was blocked. The preset is in the box below: select it and copy.';
+      };
+      try {
+        const clip = navigator.clipboard as Clipboard | undefined;
+        if (!clip) {
+          blocked();
+          return;
+        }
+        clip.writeText(text).then(
+          guardUiCompletion(root, () => (status.textContent = 'Copied. Paste it in chat.')),
+          guardUiCompletion(root, blocked),
+        );
+      } catch {
         blocked();
-        return;
       }
-      clip.writeText(text).then(() => (status.textContent = 'Copied. Paste it in chat.'), blocked);
-    } catch {
-      blocked();
-    }
-  });
-  reset.addEventListener('click', () => {
-    registry.reset();
-    status.textContent = 'Back to the shipped preset.';
-  });
+    }),
+  );
+  reset.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => {
+      registry.reset();
+      status.textContent = 'Back to the shipped preset.';
+    }),
+  );
 
   // Keys pressed on the panel's controls stay on the panel (arrow keys would also steer the bike),
   // except the backquote that closes it.
   for (const type of ['keydown', 'keyup'] as const) {
-    panel.addEventListener(type, (e) => {
-      if (e.code !== 'Backquote') e.stopPropagation();
-    });
+    panel.addEventListener(
+      type,
+      gateUiEvent<KeyboardEvent>((e) => {
+        if (e.code !== 'Backquote') e.stopPropagation();
+      }),
+    );
   }
 
   root.append(panel);
@@ -226,9 +248,14 @@ export function createTuningPanel(
   const measure = () => {
     if (measuring || refreshHz !== null || typeof requestAnimationFrame !== 'function') return;
     measuring = true;
+    const current = captureUiCurrent(root);
     const intervals: number[] = [];
     let last = -1;
     const tick = (t: number) => {
+      if (!current()) {
+        measuring = false;
+        return;
+      }
       if (last >= 0) intervals.push(t - last);
       last = t;
       if (intervals.length < REFRESH_SAMPLES) {
@@ -291,8 +318,14 @@ export function createTuningPanel(
       measure();
     }
   };
-  close.addEventListener('click', () => setOpen(false));
-  minimise.addEventListener('click', () => setMinimised(!minimised()));
+  close.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => setOpen(false)),
+  );
+  minimise.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => setMinimised(!minimised())),
+  );
   const replace = () => {
     if (isOpen()) place();
   };
@@ -308,21 +341,38 @@ export function createTuningPanel(
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Backquote' && !e.repeat) setOpen(!isOpen());
+    if (e.code === 'Backquote' && !e.repeat)
+      gateUiEvent<KeyboardEvent>(() => setOpen(!isOpen()), root, 'raw')(e);
   });
 
   // Long-press on a marked element (the build id).
-  let press: { id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  let press: {
+    id: number;
+    x: number;
+    y: number;
+    timer: ReturnType<typeof setTimeout>;
+    current: () => boolean;
+  } | null = null;
   const cancelPress = () => {
     if (press) clearTimeout(press.timer);
     press = null;
   };
   // Three-finger tap inside a marked element (the pause screen).
   const fingers = new Set<number>();
+  const tuningPointerEvent = (listener: (event: PointerEvent) => void) => (event: PointerEvent) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (
+      !press &&
+      fingers.size === 0 &&
+      !target?.closest('[data-tuning-long-press], [data-tuning-three-finger]')
+    )
+      return;
+    gateUiEvent(listener, root, 'raw')(event);
+  };
 
   document.addEventListener(
     'pointerdown',
-    (e) => {
+    tuningPointerEvent((e) => {
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('[data-tuning-long-press]')) {
         cancelPress();
@@ -330,7 +380,10 @@ export function createTuningPanel(
           id: e.pointerId,
           x: e.clientX,
           y: e.clientY,
-          timer: setTimeout(() => setOpen(true), LONG_PRESS_MS),
+          current: captureUiCurrent(root),
+          timer: setTimeout(() => {
+            if (press?.id === e.pointerId && press.current()) setOpen(true);
+          }, LONG_PRESS_MS),
         };
       }
       if (e.pointerType === 'touch' && target?.closest('[data-tuning-three-finger]')) {
@@ -340,28 +393,29 @@ export function createTuningPanel(
           setOpen(true);
         }
       }
-    },
+    }),
     { capture: true },
   );
   document.addEventListener(
     'pointermove',
-    (e) => {
+    tuningPointerEvent((e) => {
+      if (press) press.current = captureUiCurrent(root);
       if (
         press &&
         e.pointerId === press.id &&
         Math.hypot(e.clientX - press.x, e.clientY - press.y) > LONG_PRESS_SLOP_PX
       )
         cancelPress();
-    },
+    }),
     { capture: true },
   );
   for (const type of ['pointerup', 'pointercancel'] as const) {
     document.addEventListener(
       type,
-      (e) => {
+      tuningPointerEvent((e) => {
         if (press && e.pointerId === press.id) cancelPress();
         fingers.delete(e.pointerId);
-      },
+      }),
       { capture: true },
     );
   }

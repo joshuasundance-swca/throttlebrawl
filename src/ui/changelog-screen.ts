@@ -1,3 +1,4 @@
+import { gateUiEvent } from './action-gate';
 // The DOM for ui-3 (docs/milestones/M2.md): the "what's new since you last played" card, which
 // sits beside the menu so the Race button stays in reach, and the changelog page, with the player
 // notes first and the developer notes behind a button (docs/engineering.md, "What-changed notes").
@@ -51,7 +52,7 @@ function node<K extends keyof HTMLElementTagNameMap>(
 
 function smallButton(id: string, text: string, onClick: () => void): HTMLButtonElement {
   const b = node('button', { id, className: 'small', type: 'button', textContent: text });
-  b.addEventListener('click', onClick);
+  b.addEventListener('click', gateUiEvent<Event>(onClick));
   return b;
 }
 

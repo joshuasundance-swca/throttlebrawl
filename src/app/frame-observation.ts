@@ -8,6 +8,7 @@ export interface AppDrawnFrame {
 /** Live context only: positive ticks and a frame's historical synthetic flag are excluded. */
 export interface FrameContext {
   state: string;
+  measurementLive?: boolean;
   race: boolean;
   snapshot: boolean;
   tickZero: boolean;
@@ -24,7 +25,7 @@ export interface FrameContext {
 
 export function liveFrameEligible(c: FrameContext): boolean {
   return (
-    c.state === 'race' &&
+    (c.state === 'race' || c.measurementLive === true) &&
     c.race &&
     c.snapshot &&
     !c.tickZero &&
@@ -64,7 +65,8 @@ export function createFrameObservation(context: () => FrameContext) {
     const next = context();
     if (
       signature &&
-      (Object.keys(next) as (keyof FrameContext)[]).some((key) => next[key] !== signature?.[key])
+      (next.measurementLive !== signature.measurementLive ||
+        (Object.keys(next) as (keyof FrameContext)[]).some((key) => next[key] !== signature?.[key]))
     )
       invalidate();
     signature = next;
@@ -99,7 +101,11 @@ export function createFrameObservation(context: () => FrameContext) {
         return;
       }
       if (entries.size === 0) return;
-      const sample = Object.freeze({ timestampMs, epoch, eligible: liveFrameEligible(after) && !synthetic });
+      const sample = Object.freeze({
+        timestampMs,
+        epoch,
+        eligible: liveFrameEligible(before) && liveFrameEligible(after) && !synthetic,
+      });
       for (const [token, entry] of [...entries]) {
         if (!entries.has(token)) continue;
         try {

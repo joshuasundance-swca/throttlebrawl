@@ -16,16 +16,10 @@
 // The tuning declarations (tuning.ts) and the station tables (stations.ts) load at boot.
 import { stationsForRegion, type RadioStation } from './stations';
 import type { AudioInspect, AudioOptions, AudioSystem } from './system';
-import {
-  busTargets,
-  DEFAULT_VOLUMES,
-  RADIO_FIRST_STATION,
-  radioKeyAction,
-  VOICE_DEFAULTS,
-  type Volumes,
-} from './tuning';
+import { busTargets, DEFAULT_VOLUMES, RADIO_FIRST_STATION, VOICE_DEFAULTS, type Volumes } from './tuning';
 
 export {
+  radioKeyAction,
   AUDIO_TUNING,
   busTargets,
   DEFAULT_VOLUMES,
@@ -237,16 +231,6 @@ export function createAudio(
     return attempt.promise;
   };
   void fetchEngine();
-
-  // The R key, listened for from now, not from when the engine loads: ui/ saves the radio choice
-  // from its own keydown listener, added after this one, and it must see the choice the key made.
-  const keys =
-    opts.radioKeys === undefined ? (typeof window === 'undefined' ? null : window) : opts.radioKeys;
-  keys?.addEventListener('keydown', (ev) => {
-    const action = radioKeyAction(ev);
-    if (action === 'skip') engine?.skipTrack();
-    else if (action === 'next') engine?.nextRadio();
-  });
 
   /** Calls the engine now, or keeps the call for when it loads. */
   const set = (call: (a: AudioSystem) => void) => {
