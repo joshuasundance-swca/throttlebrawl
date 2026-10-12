@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMeasurementRuntime } from './measurement-runtime';
 import type { AppMeasurementEvent, TickDriver } from './index';
 import type { MeasurementSceneResult } from './measurement-scene';
+import type { WakeLeaseResult } from '../platform';
+import type { AudioSuspendLeaseResult } from '../audio';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 function fixture() {
   const order: string[] = [];
@@ -19,8 +29,10 @@ function fixture() {
   const host = {
     preflight: vi.fn(() => null),
     prepare: vi.fn(() => Promise.resolve(scene)),
-    acquireWake: vi.fn(() => Promise.resolve({ kind: 'acquired' as const, lease: wake })),
-    acquireAudio: vi.fn(() => Promise.resolve({ kind: 'acquired' as const, lease: audio })),
+    acquireWake: vi.fn((): Promise<WakeLeaseResult> => Promise.resolve({ kind: 'acquired', lease: wake })),
+    acquireAudio: vi.fn((): Promise<AudioSuspendLeaseResult> =>
+      Promise.resolve({ kind: 'acquired', lease: audio }),
+    ),
     audioState: vi.fn((): import('../audio').AudioObservedState => 'none'),
     current: vi.fn(() => true),
     commit: vi.fn(),
@@ -46,6 +58,258 @@ function fixture() {
 }
 
 describe('measurement ownership', () => {
+  it.each([
+    ['wake', 'abort'],
+    ['wake', 'supersede'],
+    ['audio', 'abort'],
+    ['audio', 'supersede'],
+  ] as const)(
+    'retires hung %s on %s and releases its late lease without affecting a new owner',
+    async (stage, cause) => {
+      const f = fixture();
+      const entered = deferred<void>();
+      const late = deferred<WakeLeaseResult & AudioSuspendLeaseResult>();
+      const lateLease = {
+        state: 'held' as const,
+        observedState: 'none' as const,
+        wasRunningIntent: true,
+        release: vi.fn(),
+      };
+      const acquire = () => {
+        entered.resolve();
+        return late.promise;
+      };
+      if (stage === 'wake') f.host.acquireWake.mockImplementationOnce(acquire);
+      else f.host.acquireAudio.mockImplementationOnce(acquire);
+      const factory = vi.fn(() => vi.fn());
+      const pending = f.runtime.begin({ signal: f.controller.signal, driverForRepeat: factory });
+      await entered.promise;
+      expect(f.runtime.owned).toBe(true);
+      expect(f.host.commit).not.toHaveBeenCalled();
+      const delivery = vi.fn();
+      if (cause === 'abort') f.controller.abort();
+      else f.runtime.action('ordinary', delivery);
+      expect(await pending).toMatchObject({
+        kind: 'refused',
+        reason: cause === 'abort' ? 'aborted' : 'superseded-before-start',
+      });
+      expect(delivery).toHaveBeenCalledTimes(cause === 'abort' ? 0 : 1);
+      expect(f.runtime.owned).toBe(false);
+      expect(factory).not.toHaveBeenCalled();
+      expect(f.wake.release).toHaveBeenCalledTimes(stage === 'audio' ? 1 : 0);
+      const next = await f.runtime.begin({ signal: new AbortController().signal, driverForRepeat: factory });
+      expect(next.kind).toBe('started');
+      if (next.kind !== 'started') throw new Error(next.reason);
+      const events = vi.fn();
+      next.session.subscribe(events, vi.fn());
+      events.mockClear();
+      late.resolve({ kind: 'acquired', lease: lateLease });
+      await late.promise;
+      expect(lateLease.release).toHaveBeenCalledTimes(1);
+      expect(f.host.commit).toHaveBeenCalledTimes(1);
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(events).not.toHaveBeenCalled();
+      expect(next.session.inspect().phase).toBe('running');
+      next.session.stop('collector-target');
+      expect(await next.session.ended).toMatchObject({ kind: 'stopped' });
+      expect(lateLease.release).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('refuses an acquired wake already lost and releases it without acquiring audio', async () => {
+    const f = fixture();
+    const release = vi.fn();
+    f.host.acquireWake.mockResolvedValueOnce({ kind: 'acquired', lease: { state: 'lost', release } });
+    expect(
+      await f.runtime.begin({ signal: f.controller.signal, driverForRepeat: () => vi.fn() }),
+    ).toMatchObject({ reason: 'wake-lost-before-start' });
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(f.host.acquireAudio).not.toHaveBeenCalled();
+    expect(f.host.commit).not.toHaveBeenCalled();
+    expect(f.runtime.owned).toBe(false);
+    const session = await f.begin();
+    expect(f.host.commit).toHaveBeenCalledTimes(1);
+    session.stop('collector-target');
+  });
+
+  it('refuses a held wake lost while audio acquisition awaits and releases both unpublished leases', async () => {
+    const f = fixture();
+    let wakeState: 'held' | 'lost' = 'held';
+    const release = vi.fn();
+    f.host.acquireWake.mockResolvedValueOnce({
+      kind: 'acquired',
+      lease: {
+        get state() {
+          return wakeState;
+        },
+        release,
+      },
+    });
+    const entered = deferred<void>();
+    const audio = deferred<AudioSuspendLeaseResult>();
+    f.host.acquireAudio.mockImplementationOnce(() => {
+      entered.resolve();
+      return audio.promise;
+    });
+    const pending = f.runtime.begin({ signal: f.controller.signal, driverForRepeat: () => vi.fn() });
+    await entered.promise;
+    expect(wakeState).toBe('held');
+    wakeState = 'lost';
+    audio.resolve({ kind: 'acquired', lease: f.audio });
+    expect(await pending).toMatchObject({ reason: 'wake-lost-before-start' });
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(f.audio.release).toHaveBeenCalledTimes(1);
+    expect(f.host.commit).not.toHaveBeenCalled();
+    const session = await f.begin();
+    expect(f.host.commit).toHaveBeenCalledTimes(1);
+    session.stop('collector-target');
+  });
+
+  it.each(['scene', 'wake'] as const)(
+    'rejects the original unexpected %s exception and permits a following start',
+    async (stage) => {
+      const f = fixture();
+      const error = new Error(stage);
+      if (stage === 'scene')
+        f.host.prepare.mockImplementationOnce(() => {
+          throw error;
+        });
+      else f.host.acquireWake.mockRejectedValueOnce(error);
+      await expect(
+        f.runtime.begin({ signal: f.controller.signal, driverForRepeat: () => vi.fn() }),
+      ).rejects.toBe(error);
+      expect(f.runtime.owned).toBe(false);
+      expect(f.host.commit).not.toHaveBeenCalled();
+      const session = await f.begin();
+      expect(f.host.commit).toHaveBeenCalledTimes(1);
+      session.stop('collector-target');
+    },
+  );
+
+  it.each(['throw', 'reject', 'refuse'] as const)(
+    'maps audio %s to exact nested refusal and releases the unpublished wake',
+    async (mode) => {
+      const f = fixture();
+      const nested = {
+        kind: 'refused' as const,
+        reason: 'not-suspended' as const,
+        observedState: 'running' as const,
+      };
+      if (mode === 'throw')
+        f.host.acquireAudio.mockImplementationOnce(() => {
+          throw new Error('audio');
+        });
+      else if (mode === 'reject') f.host.acquireAudio.mockRejectedValueOnce(new Error('audio'));
+      else f.host.acquireAudio.mockResolvedValueOnce(nested);
+      const result = await f.runtime.begin({ signal: f.controller.signal, driverForRepeat: () => vi.fn() });
+      expect(result).toEqual({
+        kind: 'refused',
+        reason: 'audio-suspend-refused',
+        sceneRefusal: null,
+        wakeRefusal: null,
+        audioRefusal:
+          mode === 'refuse' ? nested : { kind: 'refused', reason: 'suspend-failed', observedState: null },
+      });
+      if (result.kind !== 'refused') throw new Error('Expected refusal');
+      expect(Object.isFrozen(result.audioRefusal)).toBe(true);
+      expect(f.wake.release).toHaveBeenCalledTimes(1);
+      expect(f.host.commit).not.toHaveBeenCalled();
+      const session = await f.begin();
+      expect(f.host.commit).toHaveBeenCalledTimes(1);
+      session.stop('collector-target');
+    },
+  );
+
+  it('contains a throwing onError, removes its listener, and continues sibling publication', async () => {
+    const f = fixture();
+    const session = await f.begin();
+    const listenerError = new Error('listener');
+    const callbackError = new Error('onError');
+    const listener = vi.fn((event: AppMeasurementEvent) => {
+      if (event.kind === 'repeat-end') throw listenerError;
+    });
+    const onError = vi.fn(() => {
+      throw callbackError;
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      session.subscribe(listener, onError);
+      const sibling = vi.fn<(event: AppMeasurementEvent) => void>();
+      session.subscribe(sibling, vi.fn());
+      sibling.mockClear();
+      expect(() => f.runtime.repeatEnd('finished')).not.toThrow();
+      expect(onError).toHaveBeenCalledExactlyOnceWith(listenerError);
+      expect(log).toHaveBeenCalledExactlyOnceWith('Measurement error callback failed', callbackError);
+      expect(sibling).toHaveBeenCalledTimes(1);
+      expect(session.inspect().phase).toBe('running');
+      const calls = listener.mock.calls.length;
+      if (f.runtime.factory(1)) f.runtime.repeatStart();
+      session.stop('collector-target');
+      await session.ended;
+      expect(listener).toHaveBeenCalledTimes(calls);
+      expect(sibling.mock.calls.map(([event]) => event.kind)).toEqual([
+        'repeat-end',
+        'repeat-start',
+        'repeat-end',
+        'ended',
+      ]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('primes reentrant terminal subscribers after outer publication with the same frozen end', async () => {
+    const f = fixture();
+    const session = await f.begin();
+    const order: string[] = [];
+    const ends: unknown[] = [];
+    session.subscribe((event) => {
+      if (event.kind === 'repeat-end') {
+        order.push('first:repeat-end');
+        session.subscribe((prime) => {
+          order.push(`from-repeat:${prime.kind}`);
+          if (prime.kind === 'ended') ends.push(prime.end);
+        }, vi.fn());
+        session.stop('caller-cancelled');
+      } else if (event.kind === 'ended') {
+        order.push('first:ended');
+        ends.push(event.end);
+        session.subscribe((prime) => {
+          order.push(`from-ended:${prime.kind}`);
+          if (prime.kind === 'ended') ends.push(prime.end);
+        }, vi.fn());
+      }
+    }, vi.fn());
+    session.subscribe((event) => {
+      if (event.kind === 'ended') {
+        order.push('sibling:ended');
+        ends.push(event.end);
+      }
+    }, vi.fn());
+    void session.ended.then(() => order.push('promise'));
+    f.runtime.repeatEnd('finished');
+    const end = await session.ended;
+    expect(order).toEqual([
+      'first:repeat-end',
+      'first:ended',
+      'sibling:ended',
+      'from-repeat:ended',
+      'from-ended:ended',
+      'promise',
+    ]);
+    expect(ends).toHaveLength(4);
+    for (const evidence of ends) expect(evidence).toBe(end);
+    expect(Object.isFrozen(end)).toBe(true);
+    expect(f.host.restore).toHaveBeenCalledTimes(1);
+    session.stop('collector-target');
+    const post = vi.fn();
+    const remove = session.subscribe(post, vi.fn());
+    remove();
+    remove();
+    expect(post).toHaveBeenCalledExactlyOnceWith({ kind: 'ended', end });
+    expect(f.host.restore).toHaveBeenCalledTimes(1);
+  });
+
   it('settles a cancelled hung preparation before delivering one ordinary action', async () => {
     const order: string[] = [];
     const runtime = createMeasurementRuntime({
