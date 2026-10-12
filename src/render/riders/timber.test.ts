@@ -171,20 +171,20 @@ describe('Timber: brace, committed charge and winded opening', () => {
   });
 
   it.each(['tell', 'act', 'open'] as const)(
-    'retains the existing non-Timber ram geometry during %s',
+    'retains the existing non-Timber counter geometry during %s',
     (phase) => {
       const neutral = measured(null);
-      const ram = measured(sig(phase, 0, 'ram'));
+      // Mother Rust now owns redesigned ram geometry, including ordinary ram appearances.
+      // Keep this independent non-Timber baseline on an unchanged signature instead.
+      const counter = measured(sig(phase, 0, 'counter'));
       const seat = seating(riderFrame(fakeRider()), bikeFrame(fakeBike()));
-      const expected = new Quaternion()
-        .setFromAxisAngle(new Vector3(0, 0, 1), phase === 'act' ? 0.5 : 0.3)
-        .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -(seat.chestLean + 0.15)));
-      expect(ram.rotation('chest').angleTo(expected)).toBeLessThan(1e-7);
-      expect(ram.position('hips').distanceTo(neutral.position('hips'))).toBeLessThan(1e-8);
+      const expected = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -seat.chestLean);
+      expect(counter.rotation('chest').angleTo(expected)).toBeLessThan(1e-7);
+      expect(counter.position('hips').distanceTo(neutral.position('hips'))).toBeLessThan(1e-8);
       const head = new Quaternion()
-        .setFromAxisAngle(new Vector3(0, 1, 0), -0.4)
+        .setFromAxisAngle(new Vector3(0, 1, 0), phase === 'tell' ? -1.3 : 0)
         .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.12 * seat.chestLean));
-      expect(ram.rotation('head').angleTo(head)).toBeLessThan(1e-7);
+      expect(counter.rotation('head').angleTo(head)).toBeLessThan(1e-7);
     },
   );
 });
