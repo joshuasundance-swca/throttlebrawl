@@ -63,7 +63,7 @@ for (const family of ['race', 'hunt', 'escape', 'grudge'])
   }) => {
     // This case boots twice and launches a real race. The default 30-second whole-test
     // deadline expired during reload navigation on CI after its launch checks passed.
-    // Readiness assertions and gameplay checks retain their existing limits and rules.
+    // Explicit expectation limits and all gameplay checks keep their existing rules.
     test.setTimeout(90_000);
     await page.addInitScript((fixture) => {
       (window as TestWindow).__GAME_TEST__ = true;

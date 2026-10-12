@@ -4,8 +4,9 @@ import { openQuickPlay } from './menu-navigation';
 
 // narrative-1 in the real build: a rival barks at race start on the top ticker (playtest 3, the
 // maintainer: "The black and white text pop-ups block the actual game"), a tag that names the
-// speaker and a line from the base pack's bark sets with its content reference, and goes away after
-// max(2 s, characters / 15 per second). The race is ridden by the stub bot.
+// speaker and a line from the base pack's bark sets with its content reference. The real strip's
+// replacement/clear state is driven by its public test hook. Exact dwell, voice-tail and held-item
+// expiry are injected-clock checks in ticker.test.ts; they are not wall-time browser guarantees.
 
 interface BarkSetFile {
   id: string;
@@ -17,9 +18,18 @@ for (const f of readdirSync('packs/base/barks')) {
   for (const l of set.lines) LINES.set(`base:bark-set/${set.id}#${l.id}`, l.text);
 }
 
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: { setBot(on: boolean): void } };
+type TestWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __game?: { setBot(on: boolean): void };
+  __uiTicker?: (
+    items: { cls: string; text: string; tag?: string; contentRef?: string }[],
+    hold?: boolean,
+  ) => void;
+};
 
-test('a rival barks at race start in a readable ticker line that then goes away', async ({ page }) => {
+test('a race-start rival bark is readable, and ticker replacement and clear use active state', async ({
+  page,
+}) => {
   test.setTimeout(60_000);
   const problems: string[] = [];
   page.on('console', (msg) => {
@@ -36,9 +46,8 @@ test('a rival barks at race start in a readable ticker line that then goes away'
   await openQuickPlay(page);
   await page.locator('#menu-race').click();
 
-  const bubble = page.locator('#hud-ticker[data-cls="bark"]');
+  const bubble = page.locator('#hud-ticker.up[data-cls="bark"]');
   await expect(bubble).toBeVisible({ timeout: 10_000 });
-  const shownAt = Date.now();
   // Everything about the painted line is read in one go, while it is up: a slow software-rendered
   // screenshot can outlast a 2 s bark, so nothing is measured after the screenshot.
   const seen = await bubble.evaluate((el) => {
@@ -55,6 +64,7 @@ test('a rival barks at race start in a readable ticker line that then goes away'
       opacity: s.opacity,
       visibility: s.visibility,
       fontSize: parseFloat(s.fontSize),
+      active: el.classList.contains('up'),
     };
   });
   const { ref, speaker, text, box, viewport } = seen;
@@ -73,29 +83,54 @@ test('a rival barks at race start in a readable ticker line that then goes away'
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(seen.opacity).toBe('1');
   expect(seen.visibility).toBe('visible');
+  expect(seen.active).toBe(true);
   expect(seen.fontSize).toBeGreaterThanOrEqual(12);
   expect(seen.fontSize).toBeLessThanOrEqual(15);
   mkdirSync('test-results/screenshots', { recursive: true });
   await page.screenshot({ path: 'test-results/screenshots/narrative-ticker.png' });
 
-  const durationS = Math.max(2, [...text].length / 15);
-  // A voiced line (the maintainer, 2026-10-01: "Voices go in") keeps its subtitle up until the voice
-  // finishes, and the next rival's bark may then follow it straight away: the line goes away when
-  // the strip hides or shows another line.
-  await expect
-    .poll(
-      () =>
-        bubble.evaluate(
-          (el: HTMLElement, first: string) =>
-            el.hidden || el.dataset['cls'] !== 'bark' || el.getAttribute('data-content-ref') !== first,
-          ref,
-        ),
-      { timeout: durationS * 1000 + 6000, intervals: [100] },
-    )
-    .toBe(true);
-  const shownS = (Date.now() - shownAt) / 1000;
-  console.log(`bark up about ${shownS.toFixed(2)} s (expected ${durationS.toFixed(2)} s)`);
-  expect(shownS).toBeGreaterThan(durationS - 1);
+  // A bark-filtered locator cannot inspect another class replacing it. Clearing also leaves
+  // hidden/data attributes unchanged until the fade timer fires. Read the stable root and .up,
+  // with both old-oracle failures as negative controls, in one synchronous browser task.
+  const transition = await page.evaluate(
+    ({ ref, speaker, text }) => {
+      const root = document.getElementById('hud-ticker');
+      const replace = (window as TestWindow).__uiTicker;
+      if (!root || !replace) throw new Error('Ticker and its public test hook are required');
+      const original = { cls: 'bark', tag: speaker, text, contentRef: ref };
+      const originalActive = () =>
+        root.classList.contains('up') && root.dataset['cls'] === 'bark' && root.dataset['contentRef'] === ref;
+      replace([original]);
+      const activeBefore = originalActive();
+      replace([{ cls: 'system', text: 'Replacement control' }]);
+      const originalAfterReplacement = originalActive();
+      const replacementActive = root.classList.contains('up') && root.dataset['cls'] === 'system';
+      const oldLocatorMissesReplacement = document.querySelector('#hud-ticker[data-cls="bark"]') === null;
+      replace([original]);
+      const activeAgain = originalActive();
+      replace([]);
+      return {
+        activeBefore,
+        originalAfterReplacement,
+        replacementActive,
+        oldLocatorMissesReplacement,
+        activeAgain,
+        upAfterClear: root.classList.contains('up'),
+        legacyGhostAfterClear:
+          !root.hidden && root.dataset['cls'] === 'bark' && root.dataset['contentRef'] === ref,
+      };
+    },
+    { ref, speaker, text },
+  );
+  expect(transition).toEqual({
+    activeBefore: true,
+    originalAfterReplacement: false,
+    replacementActive: true,
+    oldLocatorMissesReplacement: true,
+    activeAgain: true,
+    upAfterClear: false,
+    legacyGhostAfterClear: true,
+  });
   // The old black-on-white bubble is gone for good.
   await expect(page.locator('#bark-bubble')).toHaveCount(0);
   expect(problems).toEqual([]);
