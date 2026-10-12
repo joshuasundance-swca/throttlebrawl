@@ -93,6 +93,13 @@ export const MENU_FLOW_CSS = `
 #ui #menu.quick-setup .menu-build-line { display: block; }
 #ui #menu :is(.small, .big) { min-height: 44px; }
 #ui #menu .title { align-self: center; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+/* The welcome card follows the primary actions in a portrait window, rather than taking half
+   their width. Keep enlarged text at its chosen size and let the screen scroll when needed. */
+@media (orientation: portrait) {
+  #ui #menu.with-news { flex-direction: column; gap: 14px; }
+  #ui #menu.with-news .menu-main { flex: 0 0 auto; width: 100%; max-width: 680px; }
+  #ui #menu.with-news #whats-new { width: min(560px, 100%); }
+}
 @media (orientation: landscape) and (max-height: 440px) {
   #ui #menu .menu-main { gap: 6px; }
   #ui #menu-home { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
