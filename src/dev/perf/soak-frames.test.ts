@@ -1,10 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createSoakFrameCollector,
   SOAK_RETAINED_INTERVAL_CAP,
   SOAK_TARGET_ELIGIBLE_MS,
+  type SoakFrameCollector,
   type SoakFrameSample,
 } from './soak-frames';
+
+function expectProgress(collector: SoakFrameCollector) {
+  const report = collector.report();
+  expect(collector.state).toBe(report.state);
+  expect(collector.eligibleMs).toBe(report.eligibleMs);
+}
 
 function fromIntervals(values: number[]) {
   const collector = createSoakFrameCollector();
@@ -18,6 +25,66 @@ function fromIntervals(values: number[]) {
 }
 
 describe('full-run soak frame measurement', () => {
+  it('exposes canonical progress across eligible, excluded and changed-epoch intervals', () => {
+    const collector = createSoakFrameCollector();
+    expect(collector.state).toBe('collecting');
+    expect(collector.eligibleMs).toBe(0);
+    expectProgress(collector);
+    for (const [timestampMs, epoch, eligible, expectedMs] of [
+      [0, 0, true, 0],
+      [10, 0, true, 10],
+      [20, 0, false, 10],
+      [30, 1, true, 10],
+      [40, 1, true, 20],
+    ] as const) {
+      collector.record({ timestampMs, epoch, eligible });
+      expect(collector.eligibleMs).toBe(expectedMs);
+      expectProgress(collector);
+    }
+  });
+
+  it('reads scalar progress without report, sorting or window mapping', () => {
+    const collector = fromIntervals([10, 20, 30]);
+    const before = collector.report();
+    const originalReport = collector.report.bind(collector);
+    const sort = vi.spyOn(Array.prototype, 'sort');
+    const map = vi.spyOn(Array.prototype, 'map');
+    const report = vi.spyOn(collector, 'report').mockImplementation(() => {
+      throw new Error('Progress must not rebuild a report');
+    });
+    let controlSort: number;
+    let controlMap: number;
+    let getterSort: number;
+    let getterMap: number;
+    let getterReport: number;
+    let observedState: unknown;
+    let observedMs: unknown;
+    try {
+      originalReport();
+      controlSort = sort.mock.calls.length;
+      controlMap = map.mock.calls.length;
+      sort.mockClear();
+      map.mockClear();
+      for (let i = 0; i < 10; i++) {
+        observedState = collector.state;
+        observedMs = collector.eligibleMs;
+      }
+      getterSort = sort.mock.calls.length;
+      getterMap = map.mock.calls.length;
+      getterReport = report.mock.calls.length;
+    } finally {
+      report.mockRestore();
+      sort.mockRestore();
+      map.mockRestore();
+    }
+    expect(controlSort).toBeGreaterThan(0);
+    expect(controlMap).toBeGreaterThan(0);
+    expect([getterSort, getterMap, getterReport]).toEqual([0, 0, 0]);
+    expect(observedState).toBe('collecting');
+    expect(observedMs).toBe(60);
+    expect(collector.report()).toEqual(before);
+  });
+
   it('accepts the smallest positive finite interval without rounding it out of its window', () => {
     const report = fromIntervals([Number.MIN_VALUE]).report();
     expect(report.distribution.medianMs).toBe(Number.MIN_VALUE);
@@ -140,6 +207,7 @@ describe('full-run soak frame measurement', () => {
       eligibleMs: SOAK_TARGET_ELIGIBLE_MS,
       overrunMs: 0,
     });
+    expectProgress(collector);
     expect(report.minutes).toHaveLength(15);
     for (const [i, minute] of report.minutes.entries())
       expect(minute).toEqual({
@@ -171,7 +239,9 @@ describe('full-run soak frame measurement', () => {
   });
 
   it('does not split long intervals or invent skipped-window medians; retains final overrun', () => {
-    const report = fromIntervals([120_001, SOAK_TARGET_ELIGIBLE_MS - 120_001 + 123]).report();
+    const collector = fromIntervals([120_001, SOAK_TARGET_ELIGIBLE_MS - 120_001 + 123]);
+    const report = collector.report();
+    expectProgress(collector);
     expect(report).toMatchObject({
       state: 'target-reached',
       eligibleMs: SOAK_TARGET_ELIGIBLE_MS + 123,
@@ -209,9 +279,11 @@ describe('full-run soak frame measurement', () => {
         collector.record({ timestampMs: 11, epoch: 2, eligible: true, ...patch } as SoakFrameSample),
       ).toThrow(RangeError);
       expect(collector.report()).toEqual(before);
+      expectProgress(collector);
     }
     collector.record({ timestampMs: 20, epoch: 2, eligible: true });
     expect(collector.report().eligibleMs).toBe(10);
+    expectProgress(collector);
   });
 
   it('freezes cancellation with its reason and ignores malformed terminal calls', () => {
@@ -225,17 +297,21 @@ describe('full-run soak frame measurement', () => {
       eligibleMs: 30,
       distribution: { samples: 2 },
     });
+    expectProgress(collector);
     collector.record(null as unknown as SoakFrameSample);
     collector.cancel('replaced');
     expect(collector.report()).toEqual(before);
+    expectProgress(collector);
   });
 
   it('freezes target before validating later samples or accepting cancellation', () => {
     const collector = fromIntervals([SOAK_TARGET_ELIGIBLE_MS]);
     const before = collector.report();
+    expectProgress(collector);
     collector.record(null as unknown as SoakFrameSample);
     collector.cancel('late cancellation');
     expect(collector.report()).toEqual(before);
+    expectProgress(collector);
     expect(Object.keys(before).sort()).toEqual(
       [
         'cancellationReason',
@@ -265,8 +341,10 @@ describe('full-run soak frame measurement', () => {
     // Excluded data still fits: the cap applies only to retained eligible intervals.
     collector.record({ timestampMs: 500_010, epoch: 1, eligible: true });
     const prefix = collector.report();
+    expectProgress(collector);
     collector.record({ timestampMs: SOAK_TARGET_ELIGIBLE_MS + 10, epoch: 1, eligible: true });
     const frozen = collector.report();
+    expectProgress(collector);
     expect(frozen).toEqual({ ...prefix, state: 'incomplete', incompleteReason: 'retention-overflow' });
     expect(frozen).toMatchObject({
       eligibleMs: 500_000,
@@ -278,5 +356,6 @@ describe('full-run soak frame measurement', () => {
     collector.record(null as unknown as SoakFrameSample);
     collector.cancel('late cancellation');
     expect(collector.report()).toEqual(frozen);
+    expectProgress(collector);
   });
 });
