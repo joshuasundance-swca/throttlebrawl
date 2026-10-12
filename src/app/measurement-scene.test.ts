@@ -174,7 +174,7 @@ describe('diagnostic measurement scene contract', () => {
       expect(r.scene.route.lengthM).toBe(r.config.route.length);
       expect(r.config.riders.find((a) => a.role === 'player')!.bike.contentId).toBe(r.scene.bike.actualId);
       expect(r.config.difficulty).toEqual(builder.resolveDifficulty(DEFAULT_SETTINGS.difficulty));
-      expect(r.config.slots[0]!.assists).toEqual(settingsAssists(DEFAULT_SETTINGS));
+      expect(r.config.slots?.[0]?.assists).toEqual(settingsAssists(DEFAULT_SETTINGS));
       expect(r.config.speedMultiplier).toBe(DEFAULT_SETTINGS.speedMultiplier);
       expect(r.config.event.level).toBeUndefined();
       expect(r.config.grudges).toEqual({});
