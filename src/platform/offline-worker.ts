@@ -274,7 +274,8 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
     });
     const timedOut = env.delay(NETWORK_TIMEOUT_MS).then(() => null);
     const first = await Promise.race([net.catch(() => null), timedOut]);
-    if (first) return first;
+    // A host error page is no better than a failed connection when a working copy is installed.
+    if (first && keepable(first)) return first;
     const cached = (await (await cache()).match(key)) ?? (await env.caches.match(key));
     // Nothing cached: the network is the only hope, however slow.
     return cached ?? net;

@@ -147,6 +147,50 @@ test.describe('offline', () => {
     const plainFile = await (await page.request.get(sample)).body();
     expect(fromCache, sample).toBe(createHash('sha256').update(plainFile).digest('hex'));
 
+    // A host error is a failed return too: the installed game must beat an HTTP503 page.
+    const entry = new URL(page.url());
+    const entryRoute = (url: URL) => url.origin === entry.origin && url.pathname === entry.pathname;
+    let errorsAnswered = 0;
+    await context.route(entryRoute, async (route) => {
+      if (!route.request().serviceWorker()) return route.continue();
+      errorsAnswered++;
+      return route.fulfill({ status: 503, contentType: 'text/html', body: '<h1>Host unavailable</h1>' });
+    });
+    const errorReturn = await page.reload();
+    expect(errorReturn?.fromServiceWorker()).toBe(true);
+    expect(errorReturn?.status()).toBe(200);
+    await page.locator('#start-screen').click();
+    await expect(page.locator('#menu-quick-play')).toBeVisible();
+    expect(errorsAnswered).toBeGreaterThan(0);
+    await context.unroute(entryRoute);
+
+    // M5 offline-1: a network request that never answers must not hang cached startup.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let heldRequests = 0;
+    await context.route(entryRoute, async (route) => {
+      if (!route.request().serviceWorker()) return route.continue();
+      heldRequests++;
+      await held;
+      await route.continue();
+    });
+    try {
+      const slowReturn = await page.reload({ waitUntil: 'domcontentloaded' });
+      expect(slowReturn?.fromServiceWorker()).toBe(true);
+      await expect(page.locator('#start-screen')).toBeVisible();
+      const bootMs = await page.evaluate(() => performance.now());
+      console.log(
+        `[print] cached boot with network held: ${bootMs.toFixed(0)} ms; ${heldRequests} held requests`,
+      );
+      expect(heldRequests).toBeGreaterThan(0);
+      expect(bootMs).toBeLessThan(5000);
+      await page.locator('#start-screen').click();
+      await expect(page.locator('#menu-quick-play')).toBeVisible();
+    } finally {
+      release();
+      await context.unroute(entryRoute, undefined);
+    }
+
     await context.setOffline(true);
     // Proof the network really is off for the page and its worker: a file the cache does not hold
     // fails to load (online, the preview server would answer it with a 404).
