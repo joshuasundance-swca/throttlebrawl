@@ -210,6 +210,10 @@ describe('EntityViews exact reset and vehicle presentation edges', () => {
       expect(state.vehicleSets).toBe(next);
       expect([...state.vehicleGeometries.values()]).toContain(replacement);
       expect(mesh!.geometry).toBe(replacement);
+      v.resetTransient();
+      expect(state.vehicleSets).toBe(next);
+      expect([...state.vehicleGeometries.values()]).toContain(replacement);
+      expect(mesh!.geometry).toBe(replacement);
     },
   );
 });

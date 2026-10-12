@@ -62,7 +62,8 @@ function asyncScene(nestedFamily?: string) {
   const riderArrays: unknown[][] = [];
   const retries: (() => void)[] = [];
   const updates: { name: string; args: unknown[] }[] = [];
-  const layers: { name: string; pending: readonly SimEvent[] }[] = [];
+  const layers: { name: string; pending: readonly SimEvent[]; hidden: Set<string> }[] = [];
+  const constructors: { name: string; args: unknown[] }[] = [];
   const nested: { name: string; answer: ReturnType<typeof deferred<unknown>>; value: unknown }[] = [];
   const result = (name: string, value: unknown): Promise<unknown> => {
     if (name !== nestedFamily) return Promise.resolve(value);
@@ -116,8 +117,10 @@ function asyncScene(nestedFamily?: string) {
       tint = new Group();
       ready = true;
       pending: readonly SimEvent[] = [];
+      hidden = new Set<string>();
       name = name;
-      constructor() {
+      constructor(...args: unknown[]) {
+        constructors.push({ name, args });
         installed.push(name);
         this.group.name = name;
         layers.push(this);
@@ -132,7 +135,9 @@ function asyncScene(nestedFamily?: string) {
         return [];
       }
       setFronts() {}
-      hide() {}
+      hide(refs: Iterable<string>) {
+        for (const ref of refs) this.hidden.add(ref);
+      }
       pendingEvents() {
         return [...this.pending];
       }
@@ -276,6 +281,7 @@ function asyncScene(nestedFamily?: string) {
     retries,
     updates,
     layers,
+    constructors,
   };
 }
 
@@ -372,6 +378,36 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('retains warmed modules, veto refs, render tuning and reduce-motion through reset', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    await t.settleCurrent(0);
+    const param = t.constructors.find((c) => c.name === 'effects')!.args[1] as {
+      sceneryDrawM: number;
+      reduceMotion?: boolean;
+    };
+    t.renderer.setParam('render.sceneryDrawM', 321);
+    t.renderer.setReduceMotion(true);
+    expect(param.sceneryDrawM).toBe(321);
+    expect(param.reduceMotion).toBe(true);
+    t.renderer.hideContent(['probe:veto']);
+    expect(
+      t.layers
+        .filter((l) => l.name === 'roadside scenes')
+        .at(-1)!
+        .hidden.has('probe:veto'),
+    ).toBe(true);
+    const boundary = t.calls.length;
+    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
+    expect(param.sceneryDrawM).toBe(321);
+    expect(param.reduceMotion).toBe(true);
+    expect(t.calls.slice(boundary).map((c) => c.name)).not.toContain('race parts');
+    expect(t.calls.slice(boundary).map((c) => c.name)).not.toContain('rider rigs');
+    expect(t.calls.slice(boundary).map((c) => c.name)).not.toContain('film pass');
+    expect(t.calls.slice(boundary).map((c) => c.name)).not.toContain('verge');
+    const text = t.constructors.filter((c) => c.name === 'text surfaces').at(-1)!;
+    expect((text.args[2] as { hidden: Set<string> }).hidden.has('probe:veto')).toBe(true);
+  });
   it('preserves a queued verge event through coherent rebuild, while menu reset clears it', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
