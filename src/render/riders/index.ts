@@ -901,8 +901,12 @@ class Rig {
           break;
         }
         case 'cut-in':
+          // Let an earned fight own the whole rig. Open is the pull-away after the cut,
+          // not another cutting crouch or an exhausted/slowed pose.
+          if (attacking) break;
           if (ph === 'tell') headYaw = -sigSide * 1.1;
-          else lean += 0.3;
+          else if (ph === 'act') lean += 0.3;
+          else lean -= 0.12;
           break;
         case 'timber':
           if (ph === 'tell') {
