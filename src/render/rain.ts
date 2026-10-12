@@ -64,7 +64,7 @@ export class Rain {
   }
 
   /** Turns the rain on in this colour, or off (null). */
-  set(colour: string | null): void {
+  set(colour: string | null, preserve = false): void {
     this.on = colour !== null;
     if (!colour) return;
     // Its own overlay material: the speed lines own the plain white one and animate its opacity.
@@ -72,7 +72,7 @@ export class Rain {
     const material = this.look.material('streak', { overlay: true, color: own }) as MeshBasicMaterial;
     material.opacity = OPACITY;
     this.root.material = material;
-    for (const d of this.drops) this.spawn(d, NEAR_M + (FAR_M - NEAR_M) * this.rand(), true);
+    if (!preserve) for (const d of this.drops) this.spawn(d, NEAR_M + (FAR_M - NEAR_M) * this.rand(), true);
   }
 
   private rand(): number {
@@ -117,6 +117,17 @@ export class Rain {
   }
 
   /** Streaks drawn by the last frame (0 = dry). */
+  resetTransient(): void {
+    this.seed = 0x7a1e;
+    for (const drop of this.drops) {
+      drop.x = 0;
+      drop.y = 0;
+      drop.z = 0;
+    }
+    this.root.count = 0;
+    this.root.visible = false;
+  }
+
   count(): number {
     return this.root.visible ? this.root.count : 0;
   }

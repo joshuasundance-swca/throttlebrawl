@@ -95,6 +95,14 @@ class Particles {
   }
 
   /** Live particles. */
+  clear(): void {
+    this.live = 0;
+    this.life.fill(0);
+    this.maxLife.fill(0);
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+  }
+
   get count(): number {
     return this.live;
   }
@@ -455,6 +463,25 @@ export class FeelEffects {
     const h = 2 * dist * Math.tan(((cam.fov ?? 60) * Math.PI) / 360);
     this.tint.position.set(0, 0, -dist);
     this.tint.scale.set(h * (cam.aspect ?? 1) * 1.1, h * 1.1, 1);
+  }
+
+  resetTransient(): void {
+    this.sparks.clear();
+    this.drops.clear();
+    this.paper.clear();
+    for (const r of this.rings) {
+      r.t = -1;
+      r.mesh.visible = false;
+    }
+    for (const r of [this.gator, this.fisher]) {
+      r.t = -1;
+      r.root.visible = false;
+    }
+    this.now = 0;
+    this.tintLevel = 0;
+    this.tint.visible = false;
+    (this.tint.material as MeshBasicMaterial).opacity = 0;
+    this.eyeKnown = false;
   }
 
   counts(): FeelCounts {

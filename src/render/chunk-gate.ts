@@ -1,4 +1,5 @@
 import { loadChunk } from '../content';
+import { UNOWNED_PRESENTATION, type PresentationScope } from './presentation';
 
 /** How a lazy chunk is loaded: content/'s `loadChunk` (caught, tried once more by a new URL, said once). */
 export type ChunkLoader = <T>(name: string, load: () => Promise<T>) => Promise<T | null>;
@@ -26,18 +27,23 @@ export interface ChunkGate {
   gaveUp(): string[];
 }
 
-export function createChunkGate(load: ChunkLoader = loadChunk): ChunkGate {
+export function createChunkGate(
+  load: ChunkLoader = loadChunk,
+  scope: PresentationScope = UNOWNED_PRESENTATION,
+): ChunkGate {
   const gaveUp = new Set<string>();
-  const asks = new Set<() => void>();
+  const asks = new Map<() => void, () => boolean>();
   return {
     async chunk(name, importer) {
+      const current = scope.capture();
       if (gaveUp.has(name)) return null;
       const m = await load(name, importer);
+      if (!current()) return null;
       if (m === null) gaveUp.add(name);
       return m;
     },
     later(ask) {
-      asks.add(ask);
+      asks.set(ask, scope.capture());
     },
     newRoad() {
       gaveUp.clear();
@@ -47,7 +53,7 @@ export function createChunkGate(load: ChunkLoader = loadChunk): ChunkGate {
       gaveUp.clear();
       const due = [...asks];
       asks.clear();
-      for (const ask of due) ask();
+      for (const [ask, current] of due) if (current()) ask();
     },
     gaveUp: () => [...gaveUp],
   };

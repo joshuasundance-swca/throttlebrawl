@@ -43,6 +43,11 @@ export class Ghosts {
   private readonly dropped = new Set<number>();
   private readonly rejoinUntil = new Map<number, number>();
 
+  clear(): void {
+    this.dropped.clear();
+    this.rejoinUntil.clear();
+  }
+
   /** A step's events, at wall-clock `now`. */
   push(events: readonly SimEvent[], now: number): void {
     for (const ev of events) {

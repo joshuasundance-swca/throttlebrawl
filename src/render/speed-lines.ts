@@ -133,6 +133,19 @@ export class SpeedLines {
     return this.lines[i];
   }
 
+  resetTransient(): void {
+    this.level = 0;
+    this.seed = 0x5eed5;
+    for (const line of this.lines) {
+      line.x = 0;
+      line.y = 0;
+      line.z = 0;
+    }
+    this.root.count = 0;
+    this.root.visible = false;
+    (this.root.material as MeshBasicMaterial).opacity = 0;
+  }
+
   counts(): SpeedLineCounts {
     return { level: this.root.visible ? this.level : 0, lines: this.root.visible ? this.root.count : 0 };
   }

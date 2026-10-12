@@ -29,6 +29,7 @@ import type {
 } from '../sim/api';
 import type { AssetManifest } from '../assets';
 import { loadChunk } from '../content';
+import { UNOWNED_PRESENTATION, type PresentationScope } from './presentation';
 import type { FeelEffects, Point } from './effects';
 import {
   critterHeightM,
@@ -515,7 +516,11 @@ export class EntityViews {
   private eye: { readonly x: number; readonly z: number } | null = null;
   private counts: EntityViewCounts = { riders: 0, vehicles: 0, peds: 0, pickups: 0, pooled: 0 };
 
-  constructor(look: LookStyle, opts: EntityViewOptions = {}) {
+  constructor(
+    look: LookStyle,
+    opts: EntityViewOptions = {},
+    private readonly scope: PresentationScope = UNOWNED_PRESENTATION,
+  ) {
     this.look = look;
     this.proportions = opts.proportions ?? (() => DEFAULT_PROPORTIONS);
     this.effects = opts.effects ?? null;
@@ -553,10 +558,12 @@ export class EntityViews {
   }
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */
-  setTrafficTypes(defs: readonly SimTrafficTypeDef[]): void {
+  setTrafficTypes(defs: readonly SimTrafficTypeDef[], preserve = false): void {
     // A new race: its entities are new, whatever ids they share with the last one's.
-    this.rampsDown.clear();
-    this.topples.clear();
+    if (!preserve) {
+      this.rampsDown.clear();
+      this.topples.clear();
+    }
     this.trafficTypes.clear();
     for (const d of defs) this.trafficTypes.set(d.contentId, d);
     // Playtest 3 (T12.2): the models of the last race's types that this race uses stay; the others
@@ -570,7 +577,8 @@ export class EntityViews {
    * one instanced mesh, shared by the types that use it. A type that is not here keeps its box.
    * `setTrafficTypes` calls it once the race's models have loaded; tests call it directly.
    */
-  setVehicleModels(sets: VehicleSets): void {
+  setVehicleModels(sets: VehicleSets, current: () => boolean = this.scope.capture()): void {
+    if (!current()) return;
     this.vehicleSets = sets;
     for (const set of sets.values())
       for (const v of set.variants) {
@@ -583,6 +591,7 @@ export class EntityViews {
 
   /** Fetches the models of the race's road vehicles (a lazy chunk); a failure leaves their boxes. */
   private requestVehicleModels(defs: readonly SimTrafficTypeDef[]): void {
+    const current = this.scope.capture();
     const assets = this.assets;
     if (!assets) return;
     const ids = defs
@@ -592,10 +601,12 @@ export class EntityViews {
     // Caught and tried once more (content/'s loadChunk; polish batch F's punch item 4): without it the
     // traffic keeps its stand-ins.
     void loadChunk('vehicles', () => import('./vehicles'))
-      .then((m) => (m ? m.loadVehicleSets(assets, ids) : null))
+      .then((m) =>
+        current() && request === this.vehicleRequest && m ? m.loadVehicleSets(assets, ids) : null,
+      )
       .then((sets) => {
-        if (!sets || request !== this.vehicleRequest) return;
-        this.setVehicleModels(new Map([...this.vehicleSets, ...sets]));
+        if (!current() || !sets || request !== this.vehicleRequest) return;
+        this.setVehicleModels(new Map([...this.vehicleSets, ...sets]), current);
       })
       .catch(() => undefined);
   }
@@ -668,6 +679,27 @@ export class EntityViews {
           this.gestures.set(ev.actor, { until: this.now + ticks / 60, kind });
       }
     }
+  }
+
+  resetTransient(): void {
+    this.pending.length = 0;
+    this.wobbles.clear();
+    this.dives.clear();
+    this.gestures.clear();
+    this.kicks.clear();
+    this.flashes.clear();
+    this.getUps.clear();
+    this.fists.clear();
+    this.rampsDown.clear();
+    this.topples.clear();
+    this.frames = 0;
+    this.prevById.clear();
+    this.seen.clear();
+    this.alpha = 1;
+    this.dt = 0;
+    this.now = 0;
+    this.eye = null;
+    this.structures = null;
   }
 
   /**
