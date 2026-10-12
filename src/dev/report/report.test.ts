@@ -11,6 +11,9 @@ import {
   utf8Bytes,
   type ReportData,
 } from './summary';
+import { measurementConsumer, measurementReport } from '../measurement';
+import type { AppHandle } from '../../app';
+import { gatherReport } from './index';
 
 // dev-3's unit acceptance (docs/milestones/M1.md, dev-3): the copied summary stays within 2 KB even
 // with long error lists, and still carries what an agent needs first. The debug file carries the
@@ -278,6 +281,74 @@ describe('dev/report: the copied summary', () => {
 });
 
 describe('dev/report: the debug file', () => {
+  it('gathers the DEV-owned latest outcome without asking APP to store diagnostic data', async () => {
+    const base = data();
+    const app = {
+      build: base.build,
+      rendererStats: () => base.renderer,
+      snapshot: () => null,
+      state: () => 'menu',
+      replayKey: () => base.replayKey,
+      contentHashes: () => base.hashes,
+      getReplayAndSettings: () => ({ settings: base.settings }),
+      replayFile: () => base.replay,
+      frameStats: () => base.frame,
+      stepTimes: () => [],
+      recentEvents: () => base.events,
+      beginMeasurement: () =>
+        Promise.resolve({
+          kind: 'refused',
+          reason: 'owner-busy',
+          sceneRefusal: null,
+          wakeRefusal: null,
+          audioRefusal: null,
+        }),
+    } as unknown as AppHandle;
+    expect(gatherReport(app).measurement).toBeUndefined();
+    await measurementConsumer(app).start();
+    expect(gatherReport(app).measurement).toEqual(measurementReport(app));
+    expect(Object.isFrozen(gatherReport(app).measurement)).toBe(true);
+  });
+  it('exports actual consumer refusal fields and retains the newest error under multibyte header pressure', async () => {
+    const app = {
+      build: data().build,
+      beginMeasurement: () =>
+        Promise.resolve({
+          kind: 'refused',
+          reason: 'wake-refused',
+          sceneRefusal: null,
+          audioRefusal: null,
+          wakeRefusal: { kind: 'refused', reason: 'unsupported' },
+        }),
+    } as unknown as AppHandle;
+    await measurementConsumer(app).start();
+    const measurement = measurementReport(app)!;
+    const positive = data({ measurement, errors: [{ at: 'now', message: 'NEWEST-VISIBLE' }] });
+    expect(buildSummary(positive)).toContain('NEWEST-VISIBLE');
+    const stressed = data({
+      ...positive,
+      device: '💥'.repeat(1000),
+      renderer: { ...positive.renderer, renderer: '💥'.repeat(1000) },
+      build: { ...positive.build, branch: '💥'.repeat(1000) },
+      resume: {
+        savedReplayKey: '💥'.repeat(1000),
+        savedTick: 1,
+        staleReplayKey: '💥'.repeat(1000),
+        fastForward: null,
+      },
+      settings: { tuningPreset: '💥'.repeat(1000), vetoes: [{ contentRef: '💥'.repeat(1000) }] },
+    });
+    const summary = buildSummary(stressed);
+    expect(utf8Bytes(summary)).toBeLessThanOrEqual(2048);
+    expect(summary).toContain('NEWEST-VISIBLE');
+    expect(summary).toContain('measurement refused');
+    const file = buildDebugFile(stressed);
+    const line = file.split('\n').find((value) => value.startsWith('measurement JSON '));
+    expect(JSON.parse(line!.slice('measurement JSON '.length))).toEqual(measurement);
+    expect(parseDebugFile(file).replay).toEqual(replay);
+    expect(buildSummary(data())).toEqual(buildSummary(data({ measurement: undefined })));
+    expect(buildDebugFile(data())).toEqual(buildDebugFile(data({ measurement: undefined })));
+  });
   it('holds the summary, every error and event, and the replay, which reads back unchanged', () => {
     const d = data({
       errors: Array.from({ length: 12 }, (_, i) => ({

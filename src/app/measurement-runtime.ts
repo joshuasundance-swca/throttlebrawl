@@ -74,6 +74,9 @@ const refusal = (
 ): AppMeasurementRefusal =>
   frozen({ kind: 'refused', reason, sceneRefusal: null, wakeRefusal: null, audioRefusal: null, ...fields });
 
+// Native lease state can change while acquisition awaits; observe it afresh.
+const observeWakeState = (lease: WakeLease): WakeLease['state'] => lease.state;
+
 export function createMeasurementRuntime(host: Host) {
   let owner: Owner | null = null;
   let deliveryDepth = 0;
@@ -276,7 +279,7 @@ export function createMeasurementRuntime(host: Host) {
         return;
       }
       o.audio = audio.lease;
-      if (o.wake.state === 'lost') {
+      if (observeWakeState(o.wake) === 'lost') {
         retire(o, refusal('wake-lost-before-start'));
         return;
       }

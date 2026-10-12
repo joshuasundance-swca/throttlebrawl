@@ -7,7 +7,13 @@
 import type { AppHandle } from '../app';
 import { installTestHandle, testFlagSet } from './handle';
 import { createPerfProbe, debugRequested, mountDebugOverlay } from './perf';
-import { installErrorCapture } from './report';
+import { copyReport, installErrorCapture, saveDebugFile } from './report';
+import { mountMeasurementTool, type MeasurementTool } from './measurement-ui';
+
+/** Opens only the diagnostic controls; Start remains an explicit user action. */
+export function openMeasurementTool(app: AppHandle): MeasurementTool {
+  return mountMeasurementTool(app, { copy: () => copyReport(app), save: () => saveDebugFile(app) });
+}
 
 // createStubBot (the skeleton's lane follower) stays exported: lanes' scenario tests import it.
 export { blankActions, botInput, createBot, createStubBot } from './bot';

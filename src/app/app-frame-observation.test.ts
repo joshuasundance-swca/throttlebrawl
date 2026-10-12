@@ -540,6 +540,29 @@ describe('AppHandle actual render wiring', () => {
 
   const begin = () =>
     app.beginMeasurement({ signal: new AbortController().signal, driverForRepeat: () => vi.fn() });
+  it('guards lazy measurement opening by exact menu screen and captured normal generation', async () => {
+    const open = vi.fn();
+    const toolApp = createApp({
+      host: {} as HTMLElement,
+      canvas: { clientWidth: 800, clientHeight: 450 } as HTMLCanvasElement,
+      build: { id: 'tool-unit', channel: 'dev', branch: 'unit' },
+      seed: 1,
+      callbacks: { onCopyReport: async () => {}, onMeasureFrames: open },
+    });
+    await vi.dynamicImportSettled();
+    toolApp.tap();
+    expect(boundary.callbacks!.onMeasureFrames).toBeTypeOf('function');
+    boundary.callbacks!.onMeasureFrames!();
+    const first = open.mock.calls[0]![0] as () => boolean;
+    expect(first()).toBe(true);
+    boundary.ui.screen = 'settings';
+    expect(first()).toBe(false);
+    boundary.ui.screen = 'menu';
+    toolApp.setSeed(3);
+    expect(first()).toBe(false);
+    boundary.callbacks!.onMeasureFrames!();
+    expect((open.mock.calls[1]![0] as () => boolean)()).toBe(true);
+  });
   it('restores the actual menu draw inputs after an ordinary race left interpolation history', async () => {
     app.tap();
     app.startRace();
@@ -860,7 +883,7 @@ describe('AppHandle actual render wiring', () => {
     frame();
     expect(app.state()).toBe('results');
     const normal = app.getReplayAndSettings().replay;
-    expect(normal?.end).toBeDefined();
+    expect(normal).toHaveProperty('end', expect.anything());
     const before = JSON.stringify(app.replayFile());
     app.backToMenu();
     boundary.finishNormalStep = false;

@@ -3,6 +3,7 @@
 // which is the summary, the full report and the replay as one line of JSON. Pure functions over
 // plain data, so the unit tests need no browser; index.ts gathers the data from the app.
 import type { SimEvent } from '../../sim/api';
+import type { MeasurementOutcome } from '../measurement';
 
 /** The copied summary's hard limit, in UTF-8 bytes. */
 export const SUMMARY_MAX_BYTES = 2048;
@@ -80,6 +81,7 @@ export interface ReportData {
   events: readonly SimEvent[];
   /** The saved race and the resume; absent until app/ reports it (app-4). */
   resume?: ResumeReport | null;
+  measurement?: MeasurementOutcome;
 }
 
 const encoder = new TextEncoder();
@@ -277,6 +279,7 @@ function headLines(d: ReportData, full: boolean): string[] {
  * then the older errors (the newest always stays), then a hard cut at the byte limit.
  */
 export function buildSummary(d: ReportData): string {
+  if (d.measurement !== undefined) return measurementSummary(d);
   const head = headLines(d, false);
   const errors = d.errors.slice(-SUMMARY_ERRORS).map((e) => formatError(e, 160));
   const events = d.events.slice(-SUMMARY_EVENTS).map(formatEvent);
@@ -300,6 +303,50 @@ export function buildSummary(d: ReportData): string {
   return utf8Bytes(text) > SUMMARY_MAX_BYTES ? clipBytes(text, SUMMARY_MAX_BYTES) : text;
 }
 
+/** Reserve diagnostic and newest ordinary error bytes before trimming large normal headers. */
+function measurementSummary(d: ReportData): string {
+  const m = d.measurement!;
+  const reason =
+    m.kind === 'refused'
+      ? m.refusal.reason
+      : m.kind === 'ended'
+        ? m.end.reason
+        : m.kind === 'failed-before-start'
+          ? m.message
+          : 'partial';
+  const durations =
+    m.kind === 'running' || m.kind === 'ended'
+      ? ` · eligible ${num(m.collector.eligibleMs)} ms · wall ${num(m.wallMs)} ms`
+      : '';
+  const diagnostic = clipBytes(`measurement ${m.kind}${durations} · ${oneLine(reason)}`, 320);
+  const errors = d.errors.slice(-SUMMARY_ERRORS).map((e) => formatError(e, 160));
+  const events = d.events.slice(-SUMMARY_EVENTS).map(formatEvent);
+  const head = headLines(d, false).join('\n');
+  const compose = () =>
+    [head, diagnostic, `errors ${d.errors.length}`, ...errors, `events ${d.events.length}`, ...events].join(
+      '\n',
+    );
+  let text = compose();
+  while (utf8Bytes(text) > SUMMARY_MAX_BYTES && events.length) {
+    events.shift();
+    text = compose();
+  }
+  while (utf8Bytes(text) > SUMMARY_MAX_BYTES && errors.length > 1) {
+    errors.shift();
+    text = compose();
+  }
+  if (utf8Bytes(text) <= SUMMARY_MAX_BYTES) return text;
+  const newest = d.errors.at(-1);
+  const suffix = [
+    diagnostic,
+    `errors ${d.errors.length}`,
+    ...(newest ? [clipBytes(formatError(newest, 160), 680)] : []),
+  ].join('\n');
+  const allowance = SUMMARY_MAX_BYTES - utf8Bytes(suffix) - 1;
+  // Headers remain useful at ordinary sizes. Oversized inputs cannot push the error out.
+  return `${clipBytes(head, allowance)}\n${suffix}`;
+}
+
 /** The debug file: the summary, then the full report, then the replay as one line of JSON. */
 export function buildDebugFile(d: ReportData): string {
   const view = replayView(d.replay);
@@ -317,6 +364,7 @@ export function buildDebugFile(d: ReportData): string {
     ...d.errors.map((e) => formatError(e, 4000)),
     `events ${d.events.length}`,
     ...d.events.map(formatEvent),
+    ...(d.measurement === undefined ? [] : [`measurement JSON ${JSON.stringify(d.measurement)}`]),
     '',
     REPLAY_MARKER,
     JSON.stringify(d.replay ?? null),
