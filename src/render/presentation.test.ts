@@ -230,7 +230,7 @@ function asyncScene(nestedFamily?: string) {
       ...baked,
       roads: baked.roads.map((road) => ({
         ...road,
-        features: [{ kind: 'landmark', s0: 0, s1: 1, d0: 0, d1: 1 }],
+        features: [{ id: 'probe-landmark', kind: 'landmark', s0: 0, s1: 1, d0: 0, d1: 1 }],
       })),
     }),
   };

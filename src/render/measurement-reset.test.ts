@@ -62,7 +62,12 @@ describe('exact measurement-to-menu transient resets', () => {
       touchdown: { x: 0, y: 0, z: 0, heading: 0, inS: 1, crooked: false },
       road: { edge: 0, h: 0 },
     } as EntitySnapshot;
-    const snap = { entities: [me], timeScale: 1 } as SimSnapshot;
+    const snap: SimSnapshot = {
+      entities: [me],
+      timeScale: 1,
+      tick: 1,
+      race: { over: false, routeLength: 10, finishOrder: [] },
+    };
     air.pushEvents([{ tick: 1, type: 'crash', actor: 0, data: { attempt: 'newspaper' } }]);
     air.update(null, snap, 1, 1);
     expect(air.stats().mark).toBe(true);
