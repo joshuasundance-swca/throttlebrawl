@@ -49,6 +49,23 @@ export type { NowPlaying, RadioBand } from './radio';
 
 type Engine = typeof import('./system');
 
+export type AudioObservedState = AudioContextState | 'none';
+export type AudioSuspendLeaseResult =
+  | { readonly kind: 'acquired'; readonly lease: AudioSuspendLease }
+  | {
+      readonly kind: 'refused';
+      readonly reason: 'aborted' | 'suspend-failed' | 'observation-failed' | 'not-suspended';
+      readonly observedState: AudioObservedState | null;
+    };
+export interface AudioSuspendLease {
+  readonly state: 'held' | 'released';
+  readonly wasRunningIntent: boolean;
+  readonly observedState: 'none' | 'suspended' | 'closed';
+  release(): void;
+}
+const quietState = (state: AudioObservedState): state is AudioSuspendLease['observedState'] =>
+  state === 'none' || state === 'suspended' || state === 'closed';
+
 /** The audio system as the game holds it: the engine's face, plus the stand-in's `prepare()`. */
 export interface AudioFace extends AudioSystem {
   /**
@@ -56,6 +73,7 @@ export interface AudioFace extends AudioSystem {
    * when the start screen is up, outside the tap. A device that refuses is left to the tap.
    */
   prepare(): void;
+  acquireSuspendLease(options: { readonly signal: AbortSignal }): Promise<AudioSuspendLeaseResult>;
 }
 
 /**
@@ -68,11 +86,16 @@ export function createAudio(
 ): AudioFace {
   const createContext = opts.createContext ?? (() => new AudioContext());
   let engine: AudioSystem | null = null;
+  // A published engine can precede its graph: the start tap's context still belongs to the face.
+  let engineContext: { used: boolean } | null = null;
   /** The context the start tap made before the engine was in; the engine is built on it. */
   let tapContext: AudioContext | null = null;
   /** Settings made before the engine loaded, replayed onto it in order. */
   const pending: ((a: AudioSystem) => void)[] = [];
-  let resumed = false;
+  let runningIntent = false;
+  let intentGeneration = 0;
+  let loadGeneration = 0;
+  const intentRetirements = new Set<() => void>();
   // What inspect() reports before the engine loads (the same rules as system.ts).
   // The engine's own defaults (system.ts), for `inspect()` before it loads.
   let volumes: Volumes = { ...DEFAULT_VOLUMES };
@@ -84,28 +107,134 @@ export function createAudio(
   let stations: readonly RadioStation[] = opts.stations ?? [];
   let region: string | null = null;
 
-  let loading: Promise<AudioSystem | null> | null = null;
+  interface LoadAttempt {
+    generation: number;
+    promise: Promise<AudioSystem | null>;
+    invalidate(): void;
+    reconciling: boolean;
+  }
+  let loading: LoadAttempt | null = null;
+  const warn = () => console.warn('audio: native audio operation failed');
+  const observed = (): AudioObservedState => {
+    if (opts.offline) return 'none';
+    const state = engine?.state() ?? 'none';
+    return state !== 'none' ? state : (tapContext?.state ?? 'none');
+  };
+  const suspendNative = (): Promise<void> => {
+    if (engine) {
+      const native = engine.suspendForLease();
+      if (!engineContext?.used && !opts.offline && tapContext?.state === 'running') {
+        return Promise.all([native, tapContext.suspend()]).then(() => undefined);
+      }
+      return native;
+    }
+    if (!opts.offline && tapContext?.state === 'running') return tapContext.suspend();
+    return Promise.resolve();
+  };
+  // Native work cannot be cancelled. Completion must repair the current intent, not its old owner.
+  const reconcile = (): Promise<void> => {
+    const generation = intentGeneration;
+    let native: Promise<void>;
+    try {
+      native = runningIntent
+        ? engine
+          ? engine.resume()
+          : !opts.offline && tapContext
+            ? tapContext.resume()
+            : Promise.resolve()
+        : suspendNative();
+    } catch {
+      warn();
+      return Promise.resolve();
+    }
+    return native.then(
+      () => {
+        if (generation !== intentGeneration) void reconcile();
+      },
+      () => {
+        warn();
+        if (generation !== intentGeneration) void reconcile();
+      },
+    );
+  };
+  const changeIntent = (running: boolean) => {
+    runningIntent = running;
+    intentGeneration++;
+    for (const retire of [...intentRetirements]) retire();
+    if (loading?.reconciling) {
+      const retired = loading;
+      loading = null;
+      retired.invalidate();
+    }
+  };
   const fetchEngine = (): Promise<AudioSystem | null> => {
-    loading ??= load().then(
-      (m) => {
-        // The stand-in listens for the R key (below), so the engine does not.
+    if (engine) return Promise.resolve(engine);
+    if (loading) return loading.promise;
+    let invalidate!: () => void;
+    const invalidated = new Promise<null>((resolve) => {
+      invalidate = () => resolve(null);
+    });
+    const attempt: LoadAttempt = {
+      generation: ++loadGeneration,
+      promise: Promise.resolve(null),
+      invalidate,
+      reconciling: false,
+    };
+    loading = attempt;
+    const work = async (): Promise<AudioSystem | null> => {
+      try {
+        const m = await load();
+        if (loading !== attempt || attempt.generation !== loadGeneration) return null;
+        const context = { used: false };
         const a = m.createAudio({
           ...opts,
           radioKeys: null,
-          createContext: () => (tapContext ??= createContext()),
+          createContext: () => {
+            context.used = true;
+            return (tapContext ??= createContext());
+          },
         });
-        for (const set of pending.splice(0)) set(a);
+        let cursor = 0;
+        const replay = () => {
+          while (cursor < pending.length) pending[cursor++]!(a);
+        };
+        replay();
+        const intent = intentGeneration;
+        if (!runningIntent) {
+          attempt.reconciling = true;
+          const native = a.suspendForLease();
+          // Both handlers remain attached after invalidation, even if native never settles.
+          const stopped = native.then(
+            () => {
+              if (loading !== attempt || intent !== intentGeneration) void reconcile();
+              return true;
+            },
+            () => {
+              warn();
+              return false;
+            },
+          );
+          if (!(await Promise.race([stopped, invalidated]))) return null;
+          if (!quietState(a.state())) throw new Error('candidate is not quiet');
+        }
+        if (loading !== attempt || intent !== intentGeneration || attempt.generation !== loadGeneration)
+          return null;
+        replay();
+        // A configuration callback may reenter ordinary audio work.
+        if (loading !== attempt || intent !== intentGeneration) return null;
         engine = a;
+        engineContext = context;
+        pending.splice(0, cursor);
         return a;
-      },
-      (err: unknown) => {
-        // A dropped connection on the phone: silent for now, fetched again at the next resume().
-        console.warn('audio: the sound engine did not load', err);
-        loading = null;
+      } catch {
+        console.warn('audio: the sound engine did not load');
         return null;
-      },
-    );
-    return loading;
+      } finally {
+        if (loading === attempt) loading = null;
+      }
+    };
+    attempt.promise = work();
+    return attempt.promise;
   };
   void fetchEngine();
 
@@ -177,7 +306,7 @@ export function createAudio(
 
   return {
     prepare() {
-      if (opts.offline || resumed || tapContext) return;
+      if (opts.offline || runningIntent || tapContext) return;
       try {
         tapContext = createContext();
       } catch (err) {
@@ -186,15 +315,25 @@ export function createAudio(
       }
     },
     resume() {
-      if (engine) return engine.resume();
-      resumed = true;
+      changeIntent(true);
+      if (engine) return reconcile();
       let tap: Promise<void> = Promise.resolve();
       if (!opts.offline) {
         // Inside the tap's user activation, before any await: the browser lets it start here.
         tapContext ??= createContext();
         if (tapContext.state !== 'running') tap = tapContext.resume();
       }
-      return Promise.all([tap, fetchEngine()]).then(([, a]) => (a && resumed ? a.resume() : undefined));
+      const generation = intentGeneration;
+      const loaded = fetchEngine();
+      const tapped = tap.then(() => {
+        if (generation !== intentGeneration) void reconcile();
+      }, warn);
+      return Promise.all([tapped, loaded]).then(async ([, a]) => {
+        if (generation !== intentGeneration) return;
+        // An invalidated attempt is followed by its replacement, never its abandoned suspend.
+        if (!a && loading && runningIntent) await loading.promise;
+        if (runningIntent && engine) await reconcile();
+      });
     },
     setVolumes(v, mute) {
       volumes = v;
@@ -219,13 +358,97 @@ export function createAudio(
       set((a) => a.setEngineSounds(byRider));
     },
     suspend() {
-      if (engine) engine.suspend();
-      else {
-        resumed = false;
-        if (tapContext?.state === 'running') void tapContext.suspend();
-      }
+      changeIntent(false);
+      void reconcile();
     },
-    state: () => engine?.state() ?? tapContext?.state ?? 'none',
+    suspendForLease: suspendNative,
+    acquireSuspendLease({ signal }) {
+      const wasRunningIntent = runningIntent;
+      changeIntent(false);
+      const generation = intentGeneration;
+      const restore = () => {
+        if (intentGeneration !== generation) return;
+        changeIntent(wasRunningIntent);
+        void reconcile();
+        if (runningIntent && !engine) {
+          const restored = intentGeneration;
+          void fetchEngine().then(() => {
+            if (restored === intentGeneration && runningIntent && engine) void reconcile();
+          });
+        }
+      };
+      return new Promise<AudioSuspendLeaseResult>((resolve) => {
+        let settled = false;
+        const refuse = (
+          reason: Extract<AudioSuspendLeaseResult, { kind: 'refused' }>['reason'],
+          observedState: AudioObservedState | null = null,
+        ) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener('abort', abort);
+          intentRetirements.delete(abort);
+          restore();
+          resolve(Object.freeze({ kind: 'refused', reason, observedState }));
+        };
+        const abort = () => refuse('aborted');
+        signal.addEventListener('abort', abort, { once: true });
+        intentRetirements.add(abort);
+        if (signal.aborted) {
+          abort();
+          return;
+        }
+        let native: Promise<void>;
+        try {
+          native = suspendNative();
+        } catch {
+          refuse('suspend-failed');
+          return;
+        }
+        void native.then(
+          () => {
+            if (settled || intentGeneration !== generation) {
+              void reconcile();
+              refuse('aborted');
+              return;
+            }
+            let state: AudioObservedState;
+            try {
+              state = observed();
+            } catch {
+              refuse('observation-failed');
+              return;
+            }
+            if (intentGeneration !== generation || signal.aborted) {
+              refuse('aborted');
+              return;
+            }
+            if (!quietState(state)) {
+              refuse('not-suspended', state);
+              return;
+            }
+            settled = true;
+            signal.removeEventListener('abort', abort);
+            intentRetirements.delete(abort);
+            let released = false;
+            const lease: AudioSuspendLease = Object.freeze({
+              get state() {
+                return released ? ('released' as const) : ('held' as const);
+              },
+              wasRunningIntent,
+              observedState: state,
+              release() {
+                if (released) return;
+                released = true;
+                restore();
+              },
+            });
+            resolve(Object.freeze({ kind: 'acquired', lease }));
+          },
+          () => refuse('suspend-failed'),
+        );
+      });
+    },
+    state: observed,
     inspect: () => engine?.inspect() ?? standIn(),
     setStations(list) {
       stations = list;
