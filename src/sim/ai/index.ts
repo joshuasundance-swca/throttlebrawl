@@ -366,6 +366,9 @@ export const aiSystem: SimSystem = {
         config.event.contentId === 'region-sf:sf-boss-pivot' &&
           config.event.kind === 'grudge-match' &&
           config.riders[m.riderIndex]?.contentId === 'region-sf:pivot',
+        config.event.contentId === 'base:keys-boss-mother-rust' &&
+          config.event.kind === 'grudge-match' &&
+          config.riders[m.riderIndex]?.contentId === 'base:mother-rust',
       );
     }
   },

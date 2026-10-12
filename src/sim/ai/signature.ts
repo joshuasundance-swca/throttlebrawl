@@ -49,7 +49,7 @@ export interface SignatureState {
   seenHit: number[];
   /** A move's own number: the bell's held swing flags, the shove or counter already thrown (1). */
   aux: number[];
-  /** A move's committed line (road d): Chad's no-hands line, Old Growth's charge, Pivot's new side. */
+  /** A move's private line (road d): preparation, no-hands, charge or committed swap/ram. */
   lineD: number[];
   /** Each rider's own random stream (mulberry32 state), seeded from the race seed and its id. */
   rng: number[];
@@ -182,6 +182,8 @@ const BAD_CONNECTION: MoveSpec = { tell: 45, act: 60, open: 30, gap: 360, spread
 const TIMBER_ENCOUNTER: MoveSpec = { first: 240, tell: 48, act: 90, open: 90, gap: 360, spread: 180 };
 /** The canonical SF finale: neutral preparation, committed swap/burst, actual battery sag. */
 const PIVOT_ENCOUNTER: MoveSpec = { first: 240, tell: 48, act: 45, open: 120, gap: 540, spread: 360 };
+/** The canonical Drawbridge finale: swing wide, commit across, then a physical recovery. */
+const RUST_ENCOUNTER: MoveSpec = { first: 240, tell: 48, act: 36, open: 90, gap: 480, spread: 180 };
 export const BAD_CONNECTION_JUMP_M = 15;
 /** The reconnect lands only where nothing is within this many metres along, and a lane across. */
 const BAD_CONNECTION_CLEAR_S = 6;
@@ -307,6 +309,7 @@ export function initSignature(
   gapScale = 1,
   timberEncounter = false,
   pivotEncounter = false,
+  rustEncounter = false,
 ): void {
   const sg = signatureState(world);
   if (gapScale !== 1) sg.gapScale = gapScale;
@@ -332,6 +335,10 @@ export function initSignature(
   if (move === 'pivot' && pivotEncounter) {
     sg.timing ??= {};
     sg.timing[id] = PIVOT_ENCOUNTER;
+  }
+  if (move === 'ram' && rustEncounter) {
+    sg.timing ??= {};
+    sg.timing[id] = RUST_ENCOUNTER;
   }
   // A move that answers a hit (Kevin's counter) is ready at once; the others wait out the start.
   const spec = move && move !== 'counter' ? specOf(sg, id, move) : null;
@@ -549,6 +556,8 @@ export function stepSignature(c: SignatureCtx, move: SignatureId): SignatureOut 
       // The committed line: Chad's straight no-hands line; Old Growth's charge down his mark's line.
       if (move === 'selfie') sg.lineD[id] = m.pos.d;
       else if (move === 'timber') sg.lineD[id] = find(c, sg.target[id] ?? -1)?.mover.pos.d ?? m.pos.d;
+      else if (move === 'ram' && spec === RUST_ENCOUNTER)
+        sg.lineD[id] = find(c, sg.target[id] ?? -1)?.mover.pos.d ?? m.pos.d;
       else if (bad) emit(world, 'badConnection', id, { phase: 'drop' });
     } else if (phase === 'act' && bad) {
       // On time, he reconnects up the road. Late (he went down mid-drop, and the controller sat out
@@ -832,10 +841,19 @@ function reconnect(c: SignatureCtx, onTime = true): void {
   emit(world, 'badConnection', m.id, { phase: 'reconnect', jumpM: clear ? jump : 0 });
 }
 
-/** Mother Rust: swings wide, then rams her bike across into her target. */
+/** Recovery uses ordinary control; only the named finale captures a fixed entry-speed ceiling. */
+function ramOpening(c: SignatureCtx, sg: SignatureState, spec: MoveSpec): SignatureOut {
+  if (spec !== RUST_ENCOUNTER) return { speedTarget: c.speedTarget * RAM_OPEN_PACE, noSwing: true };
+  sg.openSpeed ??= {};
+  const cap = (sg.openSpeed[c.m.id] ??= Math.min(c.speedTarget, c.m.speed) * 0.85);
+  return { speedTarget: Math.min(c.speedTarget * 0.85, cap), noSwing: true };
+}
+
+/** Mother Rust: swings wide, then rams across; the named finale commits at the end of its tell. */
 function ram(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null): SignatureOut {
   const id = c.m.id;
-  if (phase === 'open') return { speedTarget: c.speedTarget * RAM_OPEN_PACE, noSwing: true };
+  const spec = specOf(sg, id, 'ram');
+  if (phase === 'open') return ramOpening(c, sg, spec);
   const who = find(c, sg.target[id] ?? -1);
   if (!who) {
     finish(c.world, sg, id, 'ram');
@@ -851,11 +869,11 @@ function ram(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null):
     };
   }
   if (Math.abs(who.dd) < RAM_CONTACT_D) {
-    enter(sg, id, c.world.tick, 'open', SPEC.ram.open);
-    return { noSwing: true };
+    enter(sg, id, c.world.tick, 'open', spec.open);
+    return spec === RUST_ENCOUNTER ? ramOpening(c, sg, spec) : { noSwing: true };
   }
   return {
-    dTarget: clamp(who.mover.pos.d, c.dLo, c.dHi),
+    dTarget: clamp(spec === RUST_ENCOUNTER ? (sg.lineD[id] ?? c.m.pos.d) : who.mover.pos.d, c.dLo, c.dHi),
     lateralMax: 5,
     lateralGain: 3,
     speedTarget: matchSpeed(who),
