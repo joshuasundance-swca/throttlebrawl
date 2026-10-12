@@ -219,7 +219,7 @@ function trafficCapability(config: SimConfig): MeasurementTrafficCapability {
     clampedDensity.master === null || n === null ? null : clampedDensity.master * n;
   const same = product(clampedDensity.same);
   const oncomingTarget = product(clampedDensity.oncoming);
-  const enabled = (inputs.oncomingEaseInS ?? 0) > 0;
+  const enabled = (config.tuning['traffic.oncomingEaseInS'] ?? 0) > 0;
   const startFactor = enabled ? 0.25 : 1;
   const enabledDirections: TrafficDirection[] = [];
   if (same !== null && same > 0) enabledDirections.push('same');
@@ -336,12 +336,36 @@ export function resolveMeasurementScene(
     missing.sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
     return { kind: 'refused', reason, evidence: immutable(evidence) };
   };
+  const visitedPacks = new Set<string>();
+  const checkPack = (id: string): void => {
+    if (visitedPacks.has(id)) return;
+    visitedPacks.add(id);
+    const manifest = reg.packs.find((p) => p.id === id);
+    if (!manifest) {
+      absent('pack', id);
+      return;
+    }
+    for (const dep of Object.keys(manifest.dependencies ?? {})) checkPack(dep);
+  };
   if (seedIssue) return refuse('invalid-seed', 'seed');
   const region = reg.regions[selection.regionId];
   if (!selection.regionId.includes(':') || !region) {
     absent('region', selection.regionId);
     return refuse('region-unavailable', 'region');
   }
+  // The public selector inspects Escape law before returning its complete family list.
+  // Preflight only the manifests those eligible Escape filters can send to copIds.
+  for (const [id, event] of Object.entries(reg.events)) {
+    if (
+      event.kind === 'cop-escape' &&
+      !event.finale &&
+      qualifyIn(packOf(id), event.region) === selection.regionId &&
+      !event.objectives.some((o) => o.required && o.kind === 'ride-branch') &&
+      event.cops?.mode !== 'none'
+    )
+      checkPack(packOf(id));
+  }
+  if (missing.length) return refuse('content-not-ready', 'content-dependencies');
   const choice = quickPlayEvents(reg, selection.regionId).find((c) => c.kind === 'race');
   if (!choice) return refuse('classic-unavailable', 'classic');
   const eventId = choice.eventId;
@@ -395,18 +419,7 @@ export function resolveMeasurementScene(
   }
   evidence.expectedNetworkId = qualifyIn(packOf(routeId), target.network);
   // Preflight the closure without suppressing unexpected selector or builder errors.
-  const visited = new Set<string>();
-  const visit = (id: string): void => {
-    if (visited.has(id)) return;
-    visited.add(id);
-    const manifest = reg.packs.find((p) => p.id === id);
-    if (!manifest) {
-      absent('pack', id);
-      return;
-    }
-    for (const dep of Object.keys(manifest.dependencies ?? {})) visit(dep);
-  };
-  visit(packOf(eventId));
+  checkPack(packOf(eventId));
   const checkRoute = (id: string): void => {
     const route = reg.routes[id];
     if (!route) {

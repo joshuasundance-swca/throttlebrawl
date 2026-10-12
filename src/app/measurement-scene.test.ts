@@ -26,6 +26,7 @@ import {
   type MeasurementFailedCheck,
 } from './measurement-scene';
 import { quickPlayEvent, quickPlayEvents } from './quick-play-events';
+import * as quickPlay from './quick-play-events';
 import { menuBikes } from './race-options';
 import { raceSky } from './regions';
 
@@ -553,6 +554,54 @@ describe('diagnostic measurement scene contract', () => {
       expect(e.missingContent).toContainEqual({ kind: 'region', id: 'absent:region' });
     frozenTree(e);
   });
+  it('reports event mismatch first while retaining independently resolved later region/network mismatches', () => {
+    const actualEventId = `${packOf(eventId)}:probe-other-event`;
+    const actualRouteId = `${packOf(eventId)}:probe-other-route`;
+    const actualNetworkId = `${packOf(eventId)}:probe-other-network`;
+    const otherRegionId = Object.keys(ALL.regions).find((id) => id !== regionId)!;
+    const reg = {
+      ...ALL,
+      events: { ...ALL.events, [actualEventId]: { ...event, region: otherRegionId } },
+      routes: { ...ALL.routes, [actualRouteId]: { ...ALL.routes[routeId]!, network: actualNetworkId } },
+      networks: {
+        ...ALL.networks,
+        [actualNetworkId]: { ...ALL.networks[networkId]!, region: otherRegionId },
+      },
+    };
+    substitute((c) => ({
+      ...c,
+      event: { ...c.event, contentId: actualEventId, kind: 'takedown-hunt', routeId: actualRouteId },
+    }));
+    const e = refused(reg, {}, 'resolved-scene-mismatch', 'resolved-event');
+    expect(e.expectedEventId).toBe(eventId);
+    expect(e.actualEventId).toBe(actualEventId);
+    expect(e.actualEventKind).toBe('takedown-hunt');
+    expect(e.actualEventRegionId).toBe(otherRegionId);
+    expect(e.expectedRouteId).toBe(routeId);
+    expect(e.actualRouteId).toBe(actualRouteId);
+    expect(e.expectedNetworkId).toBe(networkId);
+    expect(e.actualNetworkId).toBe(actualNetworkId);
+    expect(e.actualNetworkRegionId).toBe(otherRegionId);
+  });
+
+  it.each(['order', 'backfill'] as const)('refuses an equal-count built field with wrong %s', (kind) => {
+    const original = ready().scene.field.actualRivalIds;
+    expect(original.length).toBeGreaterThan(1);
+    substitute((c) => {
+      const rivals = c.riders.filter((r) => r.role === 'rival');
+      const others = c.riders.filter((r) => r.role !== 'rival');
+      const altered =
+        kind === 'order'
+          ? [...rivals].reverse()
+          : rivals.map((r, i) => (i === 0 ? { ...r, contentId: 'unrelated:backfill' } : r));
+      return { ...c, riders: [...altered, ...others] };
+    });
+    const e = refused(ALL, {}, 'resolved-scene-mismatch', 'resolved-field');
+    expect(e.field.actualRivalCount).toBe(original.length);
+    expect(e.field.actualRivalIds).not.toEqual(original);
+    expect(e.field.maximumRivals).toBe(original.length);
+  });
+
   it('requires configured authored law, preserving duplicate cop slots', () => {
     const cop = Object.entries(ALL.riders).find(([, r]) => r.role === 'cop' && r.law)!;
     const reg = {
@@ -762,6 +811,23 @@ describe('diagnostic measurement scene contract', () => {
     expect(defaults.effectiveDensity).toEqual({ same: 1, oncomingTarget: 1, oncomingAtStart: 1 });
     expect(defaults.oncomingEase).toEqual({ enabled: false, startFactor: 1, finalFactor: 1 });
   });
+
+  it.each([Infinity, -Infinity, NaN])(
+    'uses the raw sim ease predicate for nonfinite ease %s while disclosing a null numeric input',
+    (ease) => {
+      substitute((c) => ({
+        ...c,
+        tuning: { ...c.tuning, 'traffic.oncomingEaseInS': ease },
+        trafficTypes: [trafficType()],
+      }));
+      const t = ready().scene.traffic;
+      expect(t.inputs.oncomingEaseInS).toBeNull();
+      expect(t.oncomingEase).toEqual({ enabled: ease > 0, startFactor: ease > 0 ? 0.25 : 1, finalFactor: 1 });
+      expect(t.effectiveDensity.oncomingAtStart).toBe(
+        t.effectiveDensity.oncomingTarget! * (ease > 0 ? 0.25 : 1),
+      );
+    },
+  );
 
   it('validates menu/garage/starter precedence and secret ownership without changing the garage', () => {
     const bikes = menuBikes(ALL, []);
@@ -998,6 +1064,132 @@ describe('diagnostic measurement scene contract', () => {
       kind: 'bike',
       id: missingBike,
     });
+  });
+
+  const escapePackId = 'probe-selector-escape';
+  const escapeId = `${escapePackId}:probe-escape`;
+  const escape = {
+    ...event,
+    id: 'probe-escape',
+    region: regionId,
+    kind: 'cop-escape' as const,
+    cops: { ...event.cops, mode: 'every-race' as const, baseCount: 1 },
+  };
+  const escapeManifest = { ...ALL.packs[0]!, id: escapePackId, dependencies: { [packOf(eventId)]: '*' } };
+  const selectorRegistry = (present = true): ContentRegistry => ({
+    ...ALL,
+    events: { [eventId]: event, [escapeId]: escape },
+    packs: present ? [...ALL.packs, escapeManifest] : ALL.packs,
+  });
+
+  it('refuses absent eligible Escape manifests before invoking the strict selector, with total unevaluated evidence', () => {
+    const positive = ready(selectorRegistry());
+    expect(positive.scene.eventId).toBe(eventId);
+    const selector = vi.spyOn(quickPlay, 'quickPlayEvents');
+    const e = refused(selectorRegistry(false), {}, 'content-not-ready', 'content-dependencies');
+    expect(selector).not.toHaveBeenCalled();
+    const initialized = refused(ALL, { seed: NaN }, 'invalid-seed', 'seed');
+    expect(e).toEqual({
+      ...initialized,
+      requested: { ...initialized.requested, seed: selection.seed, seedIssue: null },
+      failedCheck: 'content-dependencies',
+      missingContent: [{ kind: 'pack', id: escapePackId }],
+    });
+    noActual(e);
+    frozenTree(e);
+  });
+
+  it('enumerates absent transitive selector manifests with sorted unique pack pairs and a complete control', () => {
+    const relay = 'probe-selector-relay';
+    const first = 'probe-selector-missing-a';
+    const second = 'probe-selector-missing-b';
+    const reg = {
+      ...selectorRegistry(),
+      packs: [
+        ...ALL.packs,
+        { ...escapeManifest, dependencies: { [relay]: '*', [second]: '*' } },
+        {
+          ...escapeManifest,
+          id: relay,
+          dependencies: { [packOf(eventId)]: '*', [first]: '*', [second]: '*' },
+        },
+      ],
+    };
+    const complete = {
+      ...reg,
+      packs: [
+        ...reg.packs,
+        { ...escapeManifest, id: first, dependencies: {} },
+        { ...escapeManifest, id: second, dependencies: {} },
+      ],
+    };
+    expect(ready(complete).scene.eventId).toBe(eventId);
+    const e = refused(
+      reg,
+      { bike: 'absent:bike', timeOfDay: 'absent-light', routeId: 'absent:route' },
+      'content-not-ready',
+      'content-dependencies',
+    );
+    expect(e.missingContent).toEqual([
+      { kind: 'pack', id: first },
+      { kind: 'pack', id: second },
+    ]);
+    expect(e.expectedEventId).toBeNull();
+    expect(e.expectedRouteId).toBeNull();
+    expect(e.expectedNetworkId).toBeNull();
+    expect(e.intendedBikeId).toBeNull();
+    expect(e.bikeSource).toBeNull();
+    expect(e.field.eligibleCount).toBeNull();
+    expect(e.field.maximumRivals).toBeNull();
+    noActual(e);
+  });
+
+  it('retains seed/region precedence and includes absent authored cops in selector preflight', () => {
+    const incomplete = selectorRegistry(false);
+    refused(incomplete, { seed: Infinity }, 'invalid-seed', 'seed');
+    refused(incomplete, { regionId: 'absent:region' }, 'region-unavailable', 'region');
+    const { cops: _cops, ...absentCops } = escape;
+    const reg = { ...incomplete, events: { [eventId]: event, [escapeId]: absentCops } } as ContentRegistry;
+    const e = refused(reg, {}, 'content-not-ready', 'content-dependencies');
+    expect(e.missingContent).toEqual([{ kind: 'pack', id: escapePackId }]);
+    expect(e.expectedEventId).toBeNull();
+    noActual(e);
+  });
+
+  it.each(['other-region', 'finale', 'required-branch', 'law-none', 'other-family'] as const)(
+    'does not preflight missing manifests on selector-excluded %s events',
+    (exclusion) => {
+      const patch =
+        exclusion === 'other-region'
+          ? { region: Object.keys(ALL.regions).find((id) => id !== regionId)! }
+          : exclusion === 'finale'
+            ? { finale: true }
+            : exclusion === 'required-branch'
+              ? { objectives: [{ kind: 'ride-branch', required: true }] }
+              : exclusion === 'law-none'
+                ? { cops: { ...escape.cops, mode: 'none' } }
+                : { kind: 'classic-race', finale: true };
+      const reg = {
+        ...selectorRegistry(false),
+        events: { [eventId]: event, [escapeId]: { ...escape, ...patch } },
+      } as ContentRegistry;
+      expect(ready(reg).scene.eventId).toBe(eventId);
+    },
+  );
+
+  it('propagates selector programmer errors and invalid complete cyclic registries', () => {
+    vi.spyOn(quickPlay, 'quickPlayEvents').mockImplementation(() => {
+      throw new Error('probe selector programmer error');
+    });
+    expect(() => resolveMeasurementScene(selectorRegistry(), selection)).toThrow(
+      'probe selector programmer error',
+    );
+    vi.restoreAllMocks();
+    const cyclic = {
+      ...selectorRegistry(),
+      packs: [...ALL.packs, { ...escapeManifest, dependencies: { [escapePackId]: '*' } }],
+    };
+    expect(() => resolveMeasurementScene(cyclic, selection)).toThrow();
   });
 
   it.each([NaN, Infinity, -Infinity, -1, 1.5, 4294967296])(
