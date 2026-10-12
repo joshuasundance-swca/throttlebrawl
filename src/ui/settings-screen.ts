@@ -1,3 +1,4 @@
+import { gateUiEvent } from './action-gate';
 // The settings screen's DOM (docs/milestones/M2.md, ui-2), drawn from the table in settings.ts.
 // Tabs keep each page inside a phone-landscape screen without scrolling: Sound (the M1 volumes and
 // mute), Race (everything that feeds SimConfig), Controls (the mirror and the input options) and
@@ -154,7 +155,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
     type: 'button',
     textContent: 'Back',
   });
-  back.addEventListener('click', () => opts.onBack());
+  back.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => opts.onBack()),
+  );
   const bar = node('div', { className: 'settings-bar', role: 'tablist' }, back);
   const tabButtons = new Map<SettingsTab, HTMLButtonElement>();
   const panes = new Map<SettingsTab, HTMLElement>();
@@ -166,7 +170,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
       textContent: label,
     });
     b.setAttribute('role', 'tab');
-    b.addEventListener('click', () => showTab(tab));
+    b.addEventListener(
+      'click',
+      gateUiEvent<Event>(() => showTab(tab)),
+    );
     tabButtons.set(tab, b);
     bar.append(b);
     const pane = node('div', { id: `settings-pane-${tab}`, className: 'settings-pane' });
@@ -189,15 +196,21 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
     });
     input.setAttribute('aria-label', `${label} volume`);
     const out = node('output', { id: `settings-volume-${bus}-value` });
-    input.addEventListener('input', () => {
-      out.textContent = `${input.value}%`;
-      opts.onChange({ kind: 'volume', bus, value: Number(input.value) / 100 });
-    });
+    input.addEventListener(
+      'input',
+      gateUiEvent<Event>(() => {
+        out.textContent = `${input.value}%`;
+        opts.onChange({ kind: 'volume', bus, value: Number(input.value) / 100 });
+      }),
+    );
     sliders.set(bus, { input, out });
     grid.append(node('label', { htmlFor: input.id, textContent: label }), input, out);
   }
   const mute = node('input', { id: 'settings-mute', type: 'checkbox' });
-  mute.addEventListener('change', () => opts.onChange({ kind: 'mute', value: mute.checked }));
+  mute.addEventListener(
+    'change',
+    gateUiEvent<Event>(() => opts.onChange({ kind: 'mute', value: mute.checked })),
+  );
   // The Sound tab's switches (Mute, and the table's sound toggles such as "Voices on") share one
   // row of chips under the sliders, so the tab still fits a 412 px-tall phone screen.
   const soundToggles = node('div', { className: 'toggles' }, node('label', {}, mute, 'Mute'));
@@ -205,7 +218,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
 
   // ---- Controls: the M1 left-handed mirror first ---------------------------------------------
   const mirror = node('input', { id: 'settings-mirror', type: 'checkbox' });
-  mirror.addEventListener('change', () => opts.onChange({ kind: 'mirror', value: mirror.checked }));
+  mirror.addEventListener(
+    'change',
+    gateUiEvent<Event>(() => opts.onChange({ kind: 'mirror', value: mirror.checked })),
+  );
   mirror.setAttribute('aria-label', 'Left-handed');
   pane('controls').append(
     node(
@@ -229,19 +245,25 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
   deviceGroup.setAttribute('aria-label', 'Device');
   for (const d of ['keyboard', 'gamepad'] as const) {
     const b = node('button', { id: `settings-keys-${d}`, type: 'button', textContent: DEVICE_LABEL[d] });
-    b.addEventListener('click', () => {
-      stopWaiting();
-      device = d;
-      drawKeys();
-    });
+    b.addEventListener(
+      'click',
+      gateUiEvent<Event>(() => {
+        stopWaiting();
+        device = d;
+        drawKeys();
+      }),
+    );
     deviceButtons.set(d, b);
     deviceGroup.append(b);
   }
   const reset = node('button', { id: 'settings-keys-reset', className: 'small', type: 'button' });
-  reset.addEventListener('click', () => {
-    stopWaiting();
-    opts.onChange({ kind: 'bindings', device, bindings: {} });
-  });
+  reset.addEventListener(
+    'click',
+    gateUiEvent<Event>(() => {
+      stopWaiting();
+      opts.onChange({ kind: 'bindings', device, bindings: {} });
+    }),
+  );
   const hint = node('div', { id: 'settings-keys-hint', className: 'keys-hint' });
   hint.setAttribute('aria-live', 'polite');
   const list = node('div', { id: 'settings-keys-list', className: 'keys-list' });
@@ -282,7 +304,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
         if (token === undefined) b.classList.add('empty');
         else if (clash.some((c) => c.token === token)) b.classList.add('clash');
         if (token !== undefined && bindingFixed(device, r.action, token)) b.disabled = true;
-        b.addEventListener('click', () => (isWaiting ? stopWaiting() : startWaiting(r.action, i)));
+        b.addEventListener(
+          'click',
+          gateUiEvent<Event>(() => (isWaiting ? stopWaiting() : startWaiting(r.action, i))),
+        );
         slots.append(b);
         // One empty slot at a time: the "+" that adds the next binding.
         if (token === undefined) break;
@@ -323,6 +348,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
     commit(e.code);
   };
 
+  const deliverCaptureKey = gateUiEvent<KeyboardEvent>(onCaptureKey, root);
+  const gatedCaptureKey = (event: KeyboardEvent) => {
+    if (waiting && !root.hidden) deliverCaptureKey(event);
+  };
   /** While a pad slot waits, the first button pressed (or stick moved, for Steer) is its binding. */
   const pollPads = (held: ReadonlySet<string>) => {
     padFrame = 0;
@@ -343,7 +372,7 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
       device === 'keyboard'
         ? `Press a key for ${rowLabel(action)}. Esc cancels, Backspace clears.`
         : `${action === 'steer' ? 'Move a stick' : 'Press a button'} for ${rowLabel(action)}. Tap the slot to cancel.`;
-    window.addEventListener('keydown', onCaptureKey, { capture: true });
+    window.addEventListener('keydown', gatedCaptureKey, { capture: true });
     if (device === 'gamepad') {
       // What is held already is not the answer.
       const held = padHeld(readPads());
@@ -355,7 +384,7 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
   function stopWaiting() {
     if (padFrame) cancelAnimationFrame(padFrame);
     padFrame = 0;
-    window.removeEventListener('keydown', onCaptureKey, { capture: true });
+    window.removeEventListener('keydown', gatedCaptureKey, { capture: true });
     if (!waiting) return;
     waiting = null;
     drawKeys();
@@ -380,7 +409,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
     if (def.kind === 'toggle') {
       const box = node('input', { id: `settings-${id.replace('.', '-')}`, type: 'checkbox' });
       box.setAttribute('aria-label', def.label);
-      box.addEventListener('change', () => opts.onChange({ kind: 'set', id, value: box.checked }));
+      box.addEventListener(
+        'change',
+        gateUiEvent<Event>(() => opts.onChange({ kind: 'set', id, value: box.checked })),
+      );
       if (chip) row.prepend(box);
       else row.append(box);
       rows.set(id, { row, sync: (s) => (box.checked = settingValue(s, id) === true) });
@@ -394,7 +426,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
       const buttons = (def.options ?? []).map((o) => {
         const b = node('button', { type: 'button', textContent: o.label });
         b.dataset['value'] = String(o.value);
-        b.addEventListener('click', () => opts.onChange({ kind: 'set', id, value: o.value }));
+        b.addEventListener(
+          'click',
+          gateUiEvent<Event>(() => opts.onChange({ kind: 'set', id, value: o.value })),
+        );
         group.append(b);
         return { b, value: o.value };
       });

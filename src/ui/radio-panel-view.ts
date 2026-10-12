@@ -1,3 +1,4 @@
+import { gateUiEvent } from './action-gate';
 // The pause menu's radio panel itself (M4 ui-4; radio-panel.ts holds its rules): a lazy chunk off
 // the first-load JavaScript, fetched as the UI starts. The pause screen it sits in only opens mid-race.
 import type { VetoFlag } from '../save';
@@ -48,7 +49,7 @@ function node<K extends keyof HTMLElementTagNameMap>(
 
 function smallButton(id: string, text: string, onClick: () => void): HTMLButtonElement {
   const b = node('button', { id, className: 'small', type: 'button', textContent: text });
-  b.addEventListener('click', onClick);
+  b.addEventListener('click', gateUiEvent<Event>(onClick));
   return b;
 }
 

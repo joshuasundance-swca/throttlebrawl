@@ -1,3 +1,4 @@
+import { gateUiAction } from './action-gate';
 // The route picker (the maintainer, 2026-10-01: "Yes, add as routes"): after the region, the player
 // picks a route. The region's hand-made road is the default; each real road the region carries is
 // listed by its real name. app/ hands the list in (`routeChoices`), ui draws it under the region
@@ -290,13 +291,14 @@ export function createRoutePicker(
     blurb.hidden = !real;
     onDraw(real);
   };
-  const tap = (id: string | null) => {
-    if (id === route) return;
-    route = id;
-    draw();
-    showPicked();
-    onChange(id);
-  };
+  const tap = (id: string | null) =>
+    gateUiAction(root, () => {
+      if (id === route) return;
+      route = id;
+      draw();
+      showPicked();
+      onChange(id);
+    });
   /** A chip tapped half out of the row is brought fully in, so the pick is seen. */
   const showPicked = () => {
     const chip = [...row.children].find(

@@ -6,7 +6,7 @@ import { createPackLibrary } from '../content';
 import { careerDefs } from './career-flow';
 
 const boundary = vi.hoisted(() => ({
-  ui: { paused: false, region: 'base:florida-keys' },
+  ui: { paused: false, region: 'base:florida-keys', screen: 'start' },
   callbacks: null as Parameters<typeof createUi>[1]['callbacks'] | null,
   lifecycle: null as LifecycleCallbacks | null,
   context: null as ((lost: boolean) => void) | null,
@@ -15,9 +15,90 @@ const boundary = vi.hoisted(() => ({
   render: vi.fn(),
   audioFrame: vi.fn(),
   driver: vi.fn(),
+  activeDriver: null as ((actions: import('../input').ActionState) => void) | null,
+  receipt: vi.fn(
+    (
+      _recipe: import('../render').RendererPresentationRecipe,
+      _options: import('../render').RendererPresentationOptions,
+    ) => ({}),
+  ),
+  quality: vi.fn(),
+  audioState: 'none',
+  audioAcquire: vi.fn(),
+  rawPause: false,
+  rawCamera: false,
+  audioLease: vi.fn(),
+  wakeLease: vi.fn(),
+  syncLive: vi.fn(),
+  retune: vi.fn(),
+  suspension: null as Promise<import('../audio').AudioSuspendLeaseResult> | null,
+  finishMeasurementStep: false,
+  finishNormalStep: false,
+  bustMeasurementStep: false,
+  simConfigs: [] as import('../sim/api').SimConfig[],
+  recorderCalls: [] as string[],
+  uiWrite: vi.fn(),
+  wakeLoss: null as Parameters<typeof import('../platform').acquireWakeLease>[0]['onLost'] | null,
   missingRoads: false,
   roadWait: null as Promise<void> | null,
 }));
+
+vi.mock('../sim/api', async (original) => {
+  const module = await original<typeof import('../sim/api')>();
+  return {
+    ...module,
+    createSim: (config: import('../sim/api').SimConfig) => {
+      boundary.simConfigs.push(config);
+      const sim = module.createSim(config);
+      const player = config.riders.findIndex((r) => r.controller.kind === 'player');
+      return new Proxy(sim, {
+        get(target, key) {
+          if (key === 'snapshot')
+            return () => {
+              const snapshot = target.snapshot();
+              if (config.seed !== 2 || !boundary.finishMeasurementStep || target.tick === 0) return snapshot;
+              return {
+                ...snapshot,
+                entities: snapshot.entities.map((e, i) => (i === player ? { ...e, finished: true } : e)),
+              };
+            };
+          if (key === 'events')
+            return () =>
+              config.seed === 2 && boundary.bustMeasurementStep && target.tick > 0
+                ? [{ type: 'bust', tick: target.tick, target: player, data: { fineCash: 3 } }]
+                : target.events();
+          if (key === 'isOver')
+            return () =>
+              (config.seed !== 2 && boundary.finishNormalStep && target.tick > 0) || target.isOver();
+          return key in target
+            ? (Reflect.get(target, key) as (typeof target)[keyof typeof target])
+            : undefined;
+        },
+      });
+    },
+  };
+});
+vi.mock('../replay', async (original) => {
+  const module = await original<typeof import('../replay')>();
+  return {
+    ...module,
+    createInputRecorder: () => {
+      const recorder = module.createInputRecorder();
+      return new Proxy(recorder, {
+        get(target, key) {
+          const value =
+            key in target ? (Reflect.get(target, key) as (typeof target)[keyof typeof target]) : undefined;
+          if (typeof value !== 'function' || ['current', 'file'].includes(String(key))) return value;
+          return (...args: unknown[]) => {
+            boundary.recorderCalls.push(String(key));
+            const result: unknown = Reflect.apply(value, target, args);
+            return result;
+          };
+        },
+      });
+    },
+  };
+});
 
 vi.mock('../content', async (original) => {
   const module = await original<typeof import('../content')>();
@@ -49,13 +130,21 @@ vi.mock('../ui', async (original) => {
         get(target, key) {
           if (key === 'paused') return target.paused;
           if (key === 'region') return target.region;
+          if (key === 'screen') return () => target.screen;
+          if (key === 'show')
+            return (screen: string) => {
+              target.screen = screen;
+            };
+          if (key === 'syncLive') return boundary.syncLive;
           if (key === 'career' || key === 'narrative' || key === 'ticker') return surface();
           if (key === 'pause')
             return () => {
               target.paused = true;
               options.callbacks.onPause!();
             };
-          return noop;
+          return (...args: unknown[]) => {
+            boundary.uiWrite(key, ...args);
+          };
         },
       });
     },
@@ -76,6 +165,8 @@ vi.mock('../render', async (original) => {
                 boundary.context = cb;
               };
             if (key === 'render') return boundary.render;
+            if (key === 'applyPresentation') return boundary.receipt;
+            if (key === 'setPresentationQuality') return boundary.quality;
             if (key === 'stats') return () => ({ pixelRatio: 1 });
             if (key === 'structures') return () => null;
             if (key === 'visibleContent') return () => [];
@@ -109,6 +200,24 @@ vi.mock('../audio', async (original) => ({
       {
         get(_target, key) {
           if (key === 'frame') return boundary.audioFrame;
+          if (key === 'state') return () => boundary.audioState;
+          if (key === 'nextRadio' || key === 'skipTrack') return boundary.retune;
+          if (key === 'acquireSuspendLease')
+            return () => {
+              boundary.audioAcquire();
+              return (
+                boundary.suspension ??
+                Promise.resolve({
+                  kind: 'acquired',
+                  lease: {
+                    state: 'held',
+                    wasRunningIntent: false,
+                    observedState: 'none',
+                    release: boundary.audioLease,
+                  },
+                })
+              );
+            };
           if (key === 'resume') return () => Promise.resolve();
           return () => {};
         },
@@ -123,9 +232,28 @@ vi.mock('../input', async (original) => ({
       {},
       {
         get(_target, key) {
-          if (key === 'sample') return () => ({ steer: 0, throttle: 0, brake: 0, flags: 0 });
-          if (key === 'lastActions') return () => ({});
-          if (key === 'setDriver') return boundary.driver;
+          if (key === 'sample')
+            return () => {
+              boundary.activeDriver?.({
+                steer: 0,
+                throttle: 0,
+                brake: 0,
+                attack: false,
+                attackSide: 0,
+                kick: false,
+                wheelie: false,
+                lookBack: false,
+                skipRunBack: false,
+              });
+              return { steer: 0, throttle: 0, brake: 0, flags: 0 };
+            };
+          if (key === 'lastActions')
+            return () => ({ pause: boundary.rawPause, cycleCamera: boundary.rawCamera });
+          if (key === 'setDriver')
+            return (driver: typeof boundary.activeDriver) => {
+              boundary.activeDriver = driver;
+              boundary.driver(driver);
+            };
           return () => {};
         },
       },
@@ -136,6 +264,10 @@ vi.mock('../platform', async (original) => {
   return {
     ...module,
     keepAwake: () => {},
+    acquireWakeLease: (options: Parameters<typeof module.acquireWakeLease>[0]) => {
+      boundary.wakeLoss = options.onLost;
+      return Promise.resolve({ kind: 'acquired', lease: { state: 'held', release: boundary.wakeLease } });
+    },
     installOffer: () => null,
     runStartTap: () => Promise.resolve(),
     startOffline: () => null,
@@ -173,6 +305,25 @@ describe('AppHandle actual render wiring', () => {
     now = 0;
     seen = [];
     boundary.ui.paused = false;
+    boundary.ui.screen = 'start';
+    boundary.activeDriver = null;
+    boundary.audioState = 'none';
+    boundary.audioAcquire.mockClear();
+    boundary.rawPause = false;
+    boundary.rawCamera = false;
+    boundary.suspension = null;
+    boundary.finishMeasurementStep = false;
+    boundary.finishNormalStep = false;
+    boundary.bustMeasurementStep = false;
+    boundary.simConfigs = [];
+    boundary.recorderCalls = [];
+    boundary.uiWrite.mockClear();
+    boundary.receipt.mockClear();
+    boundary.quality.mockClear();
+    boundary.audioLease.mockClear();
+    boundary.wakeLease.mockClear();
+    boundary.retune.mockClear();
+    boundary.syncLive.mockClear();
     boundary.lost = false;
     boundary.pose = true;
     boundary.missingRoads = false;
@@ -192,6 +343,7 @@ describe('AppHandle actual render wiring', () => {
       canvas: { clientWidth: 800, clientHeight: 450 } as HTMLCanvasElement,
       build: { id: 'unit', channel: 'dev', branch: 'unit' },
       seed: 1,
+      measurementSeedSource: () => 2,
       callbacks: { onCopyReport: async () => {} },
     });
     app.subscribeFrames(
@@ -385,4 +537,388 @@ describe('AppHandle actual render wiring', () => {
       expect(frame().eligible).toBe(true);
     },
   );
+
+  const begin = () =>
+    app.beginMeasurement({ signal: new AbortController().signal, driverForRepeat: () => vi.fn() });
+  it('restores the actual menu draw inputs after an ordinary race left interpolation history', async () => {
+    app.tap();
+    app.startRace();
+    frame(0);
+    frame();
+    frame();
+    expect(boundary.render.mock.calls.at(-1)![0]).not.toBeNull();
+    app.backToMenu();
+    frame(0);
+    const baseline = boundary.render.mock.calls.at(-1)!;
+    expect(baseline[0]).toBeNull();
+    expect(baseline[1]).toBe(app.snapshot());
+    const started = await begin();
+    if (started.kind !== 'started') throw new Error(started.reason);
+    started.session.stop('caller-cancelled');
+    await started.session.ended;
+    const restored = boundary.render.mock.calls.at(-1)!;
+    expect(restored[0]).toBe(baseline[0]);
+    expect(restored[1]).toBe(baseline[1]);
+    expect(restored[3]).toBe(baseline[3]);
+  });
+  it('refuses before menu, starts from a menu before its first RAF, and restores one actual menu draw', async () => {
+    expect(await begin()).toMatchObject({ reason: 'not-menu' });
+    app.tap();
+    const normal = app.snapshot();
+    const initialRecipe = boundary.receipt.mock.calls.at(-1)![0];
+    const result = await begin();
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(result.kind).toBe('started');
+    if (result.kind !== 'started') throw new Error('menu refused');
+    expect(app.state()).toBe('menu');
+    expect(app.snapshot()).toBe(normal);
+    expect(result.session.workload.graphics.frameDivisor).toBe(1);
+    const draws = boundary.render.mock.calls.length;
+    result.session.stop('collector-target');
+    const end = await result.session.ended;
+    expect(end).toMatchObject({
+      kind: 'stopped',
+      reason: 'collector-target',
+      restored: { visible: 'restored' },
+    });
+    expect(boundary.render.mock.calls.length).toBe(draws + 1);
+    expect(boundary.receipt.mock.calls.at(-1)).toEqual([initialRecipe, { reset: 'measurement-to-menu' }]);
+    expect(boundary.audioLease).toHaveBeenCalledTimes(1);
+    expect(boundary.wakeLease).toHaveBeenCalledTimes(1);
+  });
+  it.each(['settings', 'raceOptions', 'career', 'careerResults', 'results'])(
+    'requires exact menu UI screen: %s',
+    async (screen) => {
+      app.tap();
+      boundary.ui.screen = screen;
+      expect(await begin()).toMatchObject({ reason: 'wrong-ui-screen' });
+      expect(boundary.audioLease).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    'visibility',
+    'pagehide',
+    'fullscreen',
+    'rotate',
+    'native-release',
+    'observation-failed',
+  ] as const)('maps loss-first wake evidence: %s', async (reason) => {
+    app.tap();
+    const started = await begin();
+    if (started.kind !== 'started') throw new Error(started.reason);
+    boundary.wakeLoss!({ reason });
+    boundary.lifecycle!.onHidden(
+      reason === 'native-release' || reason === 'observation-failed' ? 'visibility' : reason,
+    );
+    const mapped = {
+      visibility: 'hidden',
+      pagehide: 'pagehide',
+      fullscreen: 'fullscreen',
+      rotate: 'rotate',
+      'native-release': 'wake-lost',
+      'observation-failed': 'wake-observation-failed',
+    };
+    expect(await started.session.ended).toMatchObject({ kind: 'failed', reason: mapped[reason] });
+  });
+  it('frame-subscriber stop returns before any ordinary audio tail or diagnostic quality tail', async () => {
+    app.tap();
+    const started = await begin();
+    if (started.kind !== 'started') throw new Error(started.reason);
+    const stop = vi.fn(() => started.session.stop('collector-target'));
+    app.subscribeFrames(stop, vi.fn());
+    boundary.audioFrame.mockClear();
+    boundary.quality.mockClear();
+    frame();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(boundary.audioFrame).not.toHaveBeenCalled();
+    // Only restoration reinstates the normal tier; the retired measurement governor cannot write.
+    expect(boundary.quality).toHaveBeenCalledTimes(1);
+    expect((await started.session.ended).kind).toBe('stopped');
+  });
+  it('factory failure resolves a started session with no repeat-start and one terminal result', async () => {
+    app.tap();
+    const result = await app.beginMeasurement({
+      signal: new AbortController().signal,
+      driverForRepeat: () => {
+        throw new Error('factory');
+      },
+    });
+    if (result.kind !== 'started') throw new Error(result.reason);
+    expect(await result.session.ended).toMatchObject({ reason: 'driver-factory-failed', repeats: [] });
+  });
+  it('superseding foreign driver is delivered after restoration and wins the slot', async () => {
+    app.tap();
+    const result = await begin();
+    if (result.kind !== 'started') throw new Error(result.reason);
+    const foreign = vi.fn();
+    app.setTickDriver(foreign);
+    expect(await result.session.ended).toMatchObject({ reason: 'superseded' });
+    app.startRace();
+    frame();
+    frame();
+    expect(foreign).toHaveBeenCalled();
+  });
+  it.each(['finished', 'busted'] as const)(
+    'repeats %s privately with fresh factories, same config/seed and parked normal recorder/state',
+    async (outcome) => {
+      app.tap();
+      const normal = {
+        snapshot: app.snapshot(),
+        recent: app.recentEvents(),
+        career: app.career().profile,
+        road: app.roadQueries(),
+        replay: app.getReplayAndSettings().replay,
+        replayFile: app.replayFile(),
+        hashes: app.contentHashes(),
+        key: app.replayKey(),
+      };
+      const serialized = JSON.stringify(normal);
+      const indices: number[] = [];
+      const routes: unknown[] = [];
+      const drivers: unknown[] = [];
+      const result = await app.beginMeasurement({
+        signal: new AbortController().signal,
+        driverForRepeat: ({ index }) => {
+          indices.push(index);
+          routes.push(app.roadQueries());
+          const driver = vi.fn();
+          drivers.push(driver);
+          return driver;
+        },
+      });
+      if (result.kind !== 'started') throw new Error(result.reason);
+      boundary.uiWrite.mockClear();
+      boundary.audioFrame.mockClear();
+      boundary.recorderCalls = [];
+      boundary.finishMeasurementStep = outcome === 'finished';
+      boundary.bustMeasurementStep = outcome === 'busted';
+      const events: string[] = [];
+      result.session.subscribe((e) => events.push(e.kind), vi.fn());
+      frame();
+      frame();
+      frame();
+      expect(indices.slice(0, 3)).toEqual([0, 1, 2]);
+      expect(new Set(drivers).size).toBe(drivers.length);
+      expect(routes.every((r) => r === routes[0])).toBe(true);
+      const configs = boundary.simConfigs.filter((c) => c.seed === 2);
+      expect(configs.length).toBeGreaterThanOrEqual(3);
+      expect(configs.every((c) => c === configs[0])).toBe(true);
+      expect(boundary.recorderCalls).toEqual([]);
+      expect(boundary.audioFrame).not.toHaveBeenCalled();
+      expect(boundary.uiWrite).not.toHaveBeenCalled();
+      expect(app.snapshot()).toBe(normal.snapshot);
+      expect(app.recentEvents()).toBe(normal.recent);
+      expect(app.career().profile).toBe(normal.career);
+      expect(app.getReplayAndSettings().replay).toBe(normal.replay);
+      expect(app.contentHashes()).toBe(normal.hashes);
+      expect(app.replayKey()).toBe(normal.key);
+      expect(JSON.stringify(normal)).toBe(serialized);
+      result.session.stop('collector-target');
+      const end = await result.session.ended;
+      expect(end.repeats[0]?.reason).toBe(outcome);
+      expect(events.slice(0, 5)).toEqual([
+        'repeat-start',
+        'repeat-end',
+        'repeat-start',
+        'repeat-end',
+        'repeat-start',
+      ]);
+      app.startRace();
+      frame();
+      frame();
+      expect(boundary.recorderCalls).toContain('beginRace');
+      expect(app.snapshot()).not.toBe(normal.snapshot);
+    },
+  );
+  it('R delivery cancels a hung audio preparation then retunes and synchronizes once; active R is consumed', async () => {
+    app.tap();
+    boundary.suspension = new Promise(() => {});
+    const pending = begin();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(boundary.audioAcquire).toHaveBeenCalledTimes(1);
+    const press = () =>
+      window.dispatchEvent(
+        Object.assign(new Event('keydown'), { code: 'KeyR', shiftKey: false, repeat: false }),
+      );
+    press();
+    expect(await pending).toMatchObject({ reason: 'superseded-before-start' });
+    expect(boundary.retune).toHaveBeenCalledTimes(1);
+    expect(boundary.syncLive).toHaveBeenCalledTimes(1);
+    boundary.suspension = null;
+    const result = await begin();
+    if (result.kind !== 'started') throw new Error(result.reason);
+    press();
+    await Promise.resolve();
+    expect(boundary.retune).toHaveBeenCalledTimes(1);
+    expect(boundary.syncLive).toHaveBeenCalledTimes(1);
+    expect(result.session.inspect().phase).toBe('running');
+    result.session.stop('caller-cancelled');
+    press();
+    expect(boundary.retune).toHaveBeenCalledTimes(2);
+    expect(boundary.syncLive).toHaveBeenCalledTimes(2);
+  });
+  it('a driver that stops its own session cannot advance the sim or leak an exception through RAF', async () => {
+    app.tap();
+    let session: import('./index').AppMeasurementSession | null = null;
+    const result = await app.beginMeasurement({
+      signal: new AbortController().signal,
+      driverForRepeat: () => () => {
+        session?.stop('caller-cancelled');
+      },
+    });
+    if (result.kind !== 'started') throw new Error(result.reason);
+    session = result.session;
+    frame(0); // Establish the loop's clock; the following explicit interval permits one sim step.
+    expect(() => frame()).not.toThrow();
+    expect((await session.ended).repeats[0]?.finalTick).toBe(0);
+  });
+  it.each(['paused', 'hidden', 'lost-context', 'lockstep', 'aborted'] as const)(
+    'strict entry refuses %s without installing or suspending',
+    async (control) => {
+      app.tap();
+      const normal = app.snapshot();
+      const controller = new AbortController();
+      const reasons = {
+        paused: 'ui-paused',
+        hidden: 'lifecycle-held',
+        'lost-context': 'renderer-context-lost',
+        lockstep: 'lockstep-active',
+        aborted: 'aborted',
+      };
+      if (control === 'paused') boundary.ui.paused = true;
+      if (control === 'hidden') visible.visibilityState = 'hidden';
+      if (control === 'lost-context') boundary.lost = true;
+      if (control === 'lockstep') app.setLockstep(1);
+      if (control === 'aborted') controller.abort();
+      expect(
+        await app.beginMeasurement({ signal: controller.signal, driverForRepeat: () => vi.fn() }),
+      ).toMatchObject({ reason: reasons[control] });
+      expect(app.snapshot()).toBe(normal);
+      expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    },
+  );
+  it('held content preparation aborts promptly; late fulfillment cannot overwrite a following ordinary race', async () => {
+    app.tap();
+    boundary.missingRoads = true;
+    let resolve!: () => void;
+    boundary.roadWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    const controller = new AbortController();
+    const pending = app.beginMeasurement({ signal: controller.signal, driverForRepeat: () => vi.fn() });
+    const normal = app.snapshot();
+    controller.abort();
+    expect(await pending).toMatchObject({ reason: 'aborted' });
+    expect(app.snapshot()).toBe(normal);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    boundary.missingRoads = false;
+    boundary.roadWait = null;
+    app.startRace();
+    const current = app.snapshot(),
+      receipts = boundary.receipt.mock.calls.length;
+    resolve();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(app.snapshot()).toBe(current);
+    expect(boundary.receipt.mock.calls.length).toBe(receipts);
+    expect(app.state()).toBe('race');
+  });
+  it('factory signal cancellation cannot install a driver or publish a repeat', async () => {
+    app.tap();
+    const controller = new AbortController();
+    boundary.driver.mockClear();
+    const result = await app.beginMeasurement({
+      signal: controller.signal,
+      driverForRepeat: () => {
+        controller.abort();
+        return vi.fn();
+      },
+    });
+    if (result.kind !== 'started') throw new Error(result.reason);
+    expect(await result.session.ended).toMatchObject({ reason: 'signal', repeats: [] });
+    expect(boundary.driver).not.toHaveBeenCalled();
+  });
+  it('raw camera is discarded while device pause enters the exact terminal path', async () => {
+    app.tap();
+    const result = await begin();
+    if (result.kind !== 'started') throw new Error(result.reason);
+    frame(0);
+    boundary.rawCamera = true;
+    boundary.syncLive.mockClear();
+    frame();
+    expect(boundary.syncLive).not.toHaveBeenCalled();
+    expect(result.session.inspect().phase).toBe('running');
+    boundary.rawPause = true;
+    frame();
+    expect(await result.session.ended).toMatchObject({ reason: 'manual-pause' });
+    expect(boundary.ui.paused).toBe(false);
+  });
+  it('a completed normal replay, including its end marker, stays byte-identical through repeats and stop', async () => {
+    app.tap();
+    app.startRace();
+    frame(0);
+    boundary.finishNormalStep = true;
+    frame();
+    expect(app.state()).toBe('results');
+    const normal = app.getReplayAndSettings().replay;
+    expect(normal?.end).toBeDefined();
+    const before = JSON.stringify(app.replayFile());
+    app.backToMenu();
+    boundary.finishNormalStep = false;
+    const result = await begin();
+    if (result.kind !== 'started') throw new Error(result.reason);
+    boundary.recorderCalls = [];
+    boundary.finishMeasurementStep = true;
+    frame();
+    frame();
+    result.session.stop('collector-target');
+    await result.session.ended;
+    expect(app.getReplayAndSettings().replay).toBe(normal);
+    expect(JSON.stringify(app.replayFile())).toBe(before);
+    expect(boundary.recorderCalls).toEqual([]);
+    app.startRace();
+    expect(app.getReplayAndSettings().replay).not.toBe(normal);
+  });
+  it('measurement has an independent seed draw and leaves the next normal draw equal to a no-measurement control', async () => {
+    const make = (normalSeed: () => number, measureSeed: () => number) =>
+      createApp({
+        host: {} as HTMLElement,
+        canvas: { clientWidth: 800, clientHeight: 450 } as HTMLCanvasElement,
+        build: { id: 'seed-unit', channel: 'dev', branch: 'unit' },
+        callbacks: { onCopyReport: async () => {} },
+        seedSource: normalSeed,
+        measurementSeedSource: measureSeed,
+      });
+    const makeSource = () => {
+      let n = 90;
+      return vi.fn(() => ++n);
+    };
+    const source = makeSource(),
+      controlSource = makeSource(),
+      independent = vi.fn(() => 2);
+    const measured = make(source, independent);
+    await vi.dynamicImportSettled();
+    measured.tap();
+    const control = make(
+      controlSource,
+      vi.fn(() => 77),
+    );
+    await vi.dynamicImportSettled();
+    control.tap();
+    const count = source.mock.calls.length;
+    const result = await measured.beginMeasurement({
+      signal: new AbortController().signal,
+      driverForRepeat: () => vi.fn(),
+    });
+    if (result.kind !== 'started') throw new Error(result.reason);
+    result.session.stop('caller-cancelled');
+    await result.session.ended;
+    expect(source.mock.calls.length).toBe(count);
+    expect(independent).toHaveBeenCalledTimes(1);
+    measured.startRace();
+    const measuredSeed = boundary.simConfigs.at(-1)!.seed;
+    control.startRace();
+    const controlSeed = boundary.simConfigs.at(-1)!.seed;
+    expect(measuredSeed).toBe(controlSeed);
+    expect(source.mock.calls.length).toBe(count + 1);
+  });
 });
