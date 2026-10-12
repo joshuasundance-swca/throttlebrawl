@@ -860,7 +860,7 @@ describe('AppHandle actual render wiring', () => {
     frame();
     expect(app.state()).toBe('results');
     const normal = app.getReplayAndSettings().replay;
-    expect(normal?.end).toBeDefined();
+    expect(normal).toHaveProperty('end', expect.anything());
     const before = JSON.stringify(app.replayFile());
     app.backToMenu();
     boundary.finishNormalStep = false;

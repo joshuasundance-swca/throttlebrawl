@@ -277,7 +277,7 @@ describe('concrete UI pre-mutation deliveries', () => {
   it('veto closes its local card and persists only after one allowed delivery', () => {
     const menu = createCutMenu(() => root as unknown as HTMLElement),
       cut = vi.fn();
-    menu.offer({ contentRef: 'base:line', kind: 'sign', label: 'Line', tick: 1 }, cut);
+    menu.offer({ contentRef: 'base:line', kind: 'sign', label: 'Line', raceId: 'unit', tick: 1 }, cut);
     phase = 'active';
     get('cut-confirm').dispatchEvent(new Event('click'));
     expect(menu.open).toBe(true);
