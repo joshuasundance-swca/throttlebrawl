@@ -634,7 +634,8 @@ export function createApp(opts: AppOptions): AppHandle {
     };
     if (measurement?.intercepted) measurement.action(action, once, prepareDelivery);
     else {
-      prepareDelivery();
+      // Raw controls do not replace an ordinary navigation or pending race launch.
+      if (action !== 'raw') prepareDelivery();
       once();
     }
   };
