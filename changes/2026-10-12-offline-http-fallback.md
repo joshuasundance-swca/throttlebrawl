@@ -8,4 +8,4 @@ Page loads give the network half a second before opening the installed copy, lea
 
 Developer checks cover error responses with and without cached content, healthy-update priority and cached startup when the network hangs. Startup timing uses the production boot path and the first visible-screen event recorded in the page, with hidden-menu and usable-menu controls. Race restoration after a page reload remains separate work.
 
-Road scenery construction now reuses an exact nearest-sample index instead of repeatedly scanning entire road edges. Road clipping, endpoint handling and equal-distance choices stay the same; checks compare the resulting projections against the original linear lookup and include index construction in the coordinate-work control.
+Road scenery construction now reuses an exact nearest-sample index instead of repeatedly scanning entire road edges. Road clipping, endpoint handling and equal-distance choices stay the same; checks compare the resulting projections against the original linear lookup and include index construction in the coordinate-access control.
