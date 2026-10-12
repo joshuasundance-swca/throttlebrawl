@@ -5,6 +5,7 @@ import type { LifecycleCallbacks } from '../platform';
 import { createPackLibrary } from '../content';
 import { careerDefs } from './career-flow';
 import { regionChoices } from './regions';
+import { DEFAULT_SETTINGS } from '../save';
 
 const boundary = vi.hoisted(() => ({
   ui: { paused: false, region: 'base:florida-keys', screen: 'start' },
@@ -384,6 +385,17 @@ describe('AppHandle actual render wiring', () => {
     await vi.dynamicImportSettled();
     expect(app.state()).toBe('menu');
     expect(boundary.uiWrite.mock.calls.some(([key]) => key === 'setRoutes')).toBe(true);
+  });
+
+  it('audio settings leave the road presentation intact; a changed look still applies', () => {
+    app.tap();
+    boundary.receipt.mockClear();
+    const next = { ...DEFAULT_SETTINGS, mute: !DEFAULT_SETTINGS.mute };
+    boundary.callbacks!.onSettingsChange!(next);
+    expect(boundary.receipt).not.toHaveBeenCalled();
+    boundary.callbacks!.onSettingsChange!({ ...next, look: 'classic' });
+    expect(boundary.receipt).toHaveBeenCalledTimes(1);
+    expect(boundary.receipt.mock.calls[0]![0].look).toBe('classic');
   });
 
   it('navigation does not hide a pending background load from measurement preflight', async () => {

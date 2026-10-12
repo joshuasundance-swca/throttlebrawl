@@ -1321,12 +1321,13 @@ export function createApp(opts: AppOptions): AppHandle {
       },
       onSettingsChange: (next) => {
         const changedKind = next.quickPlayKind !== settings.quickPlayKind;
+        const changedLook = next.look !== settings.look;
         settings = next;
         settingsStore.save(next);
         audio.setVolumes(audioVolumes(next), next.mute);
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
-        applyCompletePresentation();
+        if (changedLook) applyCompletePresentation();
         if (state === 'menu') rememberMenu();
         const q = quality.setSetting(next.qualityTier);
         if (q) {

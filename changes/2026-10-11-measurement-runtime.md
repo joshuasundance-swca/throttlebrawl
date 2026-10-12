@@ -21,6 +21,8 @@ independent key listeners. Delayed normal and UI completions cannot overwrite a 
 Background road loading survives ordinary menu navigation. Pending requests remain visible to
 measurement preflight until they settle; only the still-selected region can update routes, retry
 notices or the backdrop. Selecting a previously loaded region adopts its cached roads.
+Audio and control settings retain the road presentation; changing the visual look still applies
+the complete presentation, and quality settings update the owned renderer token.
 
 Focused checks cover ownership, preparation cancellation, real APP render/restoration wiring,
 repeat isolation, listener ordering, quiet audio evidence, radio ownership and concrete UI actions.
