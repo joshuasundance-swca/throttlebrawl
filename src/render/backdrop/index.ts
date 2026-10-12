@@ -14,6 +14,7 @@ import { loadChunk } from '../../content';
 import type { RoadNetwork } from '../../sim/api';
 import type { BackdropNetworkFile, BackdropRegionFile } from './data';
 import type { BackdropStats, BuiltBackdrop } from './builder';
+import { UNOWNED_PRESENTATION, type PresentationScope } from '../presentation';
 
 export type { BackdropStats } from './builder';
 
@@ -70,7 +71,7 @@ export class Backdrop {
   private ticket = 0;
   private failed: string | null = null;
 
-  constructor() {
+  constructor(private readonly scope: PresentationScope = UNOWNED_PRESENTATION) {
     this.root.name = 'backdrop-root';
   }
 
@@ -88,6 +89,13 @@ export class Backdrop {
     if (this.road) this.rebuild();
   }
 
+  /** A complete receipt can retire work even when its road and seed repeat. */
+  applyPresentation(road: RoadNetwork, seed: number): void {
+    this.road = road;
+    this.seed = seed;
+    this.rebuild();
+  }
+
   private clear(): void {
     if (!this.built) return;
     this.root.remove(this.built.mesh);
@@ -96,6 +104,7 @@ export class Backdrop {
   }
 
   private rebuild(): void {
+    const current = this.scope.capture();
     const road = this.road;
     const seed = this.seed;
     const ticket = ++this.ticket;
@@ -112,7 +121,7 @@ export class Backdrop {
       loadChunk('backdrop region', REGION_FILES[files.region]!),
     ])
       .then(([m, network, region]) => {
-        if (ticket !== this.ticket) return;
+        if (!current() || ticket !== this.ticket) return;
         if (!m || !network || !region) {
           // A backdrop that will not load leaves the old horizon; the race goes on.
           this.failed = 'the backdrop chunks did not load';
@@ -125,6 +134,7 @@ export class Backdrop {
         this.failed = null;
       })
       .catch((err: unknown) => {
+        if (!current() || ticket !== this.ticket) return;
         // A backdrop that will not load leaves the old horizon; the race goes on.
         this.failed = err instanceof Error ? err.message : String(err);
       });

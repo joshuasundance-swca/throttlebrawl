@@ -289,6 +289,16 @@ export class AirPays {
   }
 
   /** What the last frame drew. */
+  resetTransient(): void {
+    this.pendingCrash.length = 0;
+    this.flying = null;
+    this.lastT = -1;
+    this.mark.visible = false;
+    this.paper.visible = false;
+    this.counts = { mark: false, crooked: false, paper: false };
+    this.structures = null;
+  }
+
   stats(): AirPaysCounts {
     return { ...this.counts };
   }

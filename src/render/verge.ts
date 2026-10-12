@@ -930,6 +930,15 @@ export class VergeLayer {
   }
 
   /** Sim events for the edges' bursts (a splash, leaves, a fence going). */
+  resetTransient(): void {
+    this.pending.length = 0;
+  }
+
+  /** Narrow handoff while the owning renderer replaces the coherent road layer. */
+  pendingEvents(): readonly SimEvent[] {
+    return [...this.pending];
+  }
+
   pushEvents(events: readonly SimEvent[]): void {
     for (const ev of events) {
       if (ev.type !== 'wobble') continue;

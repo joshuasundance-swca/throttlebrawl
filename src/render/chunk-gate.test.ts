@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createChunkGate, type ChunkLoader } from './chunk-gate';
+import { deferred } from './presentation.test-util';
 
 // Polish batch O's check, mustFix 1: render/ asked again for a chunk that gave up only at a new road
 // (`setRoad`). A rematch from the result screen's Race button on the same road never calls `setRoad`
@@ -19,6 +20,38 @@ function host(served: Set<string>) {
 }
 
 const part = () => Promise.resolve({ part: true });
+
+describe('presentation-owned chunk flags and retries', () => {
+  it('a retired failure changes no gave-up flag and retires queued callbacks; current failure/retry controls work', async () => {
+    let epoch = 0;
+    const capture = () => {
+      const at = epoch;
+      return () => at === epoch;
+    };
+    const answer = deferred<null>();
+    const gate = createChunkGate(() => answer.promise, { capture });
+    const pending = gate.chunk('held', part);
+    let retries = 0;
+    gate.later(() => {
+      retries++;
+    });
+    epoch++;
+    answer.resolve(null);
+    await pending;
+    expect(gate.gaveUp()).toEqual([]);
+    gate.raceStart();
+    expect(retries).toBe(0);
+    expect(await gate.chunk('current-failed', part)).toBeNull();
+    expect(gate.gaveUp()).toEqual(['current-failed']);
+    const ask = () => {
+      retries++;
+    };
+    gate.later(ask);
+    gate.later(ask);
+    gate.raceStart();
+    expect(retries).toBe(1);
+  });
+});
 
 describe("render/'s gave-up chunks (polish batch O's check, mustFix 1)", () => {
   it('the negative control: a chunk that gave up is not asked for again in the same race, however often', async () => {
