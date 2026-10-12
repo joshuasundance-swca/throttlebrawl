@@ -17,7 +17,8 @@
 //   tries again at the next launch, when the host serves the newer build's worker.
 // - Activate: older builds' caches go; the worker takes the open page at once.
 // - Requests, inside the worker's folder only: the page, changelog.json and the web manifest are
-//   network-first with a NETWORK_TIMEOUT_MS fallback to the cache, so a deploy is played at the next
+//   network-first with a shorter PAGE_NETWORK_TIMEOUT_MS page window and NETWORK_TIMEOUT_MS data
+//   window before falling back to the cache, so a timely deploy is played at the next
 //   launch and a weak signal never hangs one; everything else is cache-first. Only the changelog
 //   (written after the build, so not in its list) is kept from the network: what a newer build's
 //   page fetches online is passed on, never mixed into this build's cache. The page leaves out its
@@ -57,6 +58,8 @@
 export const CACHE_PREFIX = 'offline-';
 /** How long a network-first request waits before the cache answers instead. [default] */
 export const NETWORK_TIMEOUT_MS = 3000;
+/** Page loads reserve the rest of the boot budget for loading and drawing the installed game. [default] */
+export const PAGE_NETWORK_TIMEOUT_MS = 500;
 /** Files under this folder carry a content hash in their name (Vite's and the dataset assets'). */
 const HASHED_DIR = 'assets/';
 /** Files fetched network-first (besides page loads), relative to the worker's folder. */
@@ -272,7 +275,7 @@ export function createOfflineWorker(env: OfflineEnv, config: OfflineConfig): Off
       if (!listed.has(rel) && keepable(res)) await (await cache()).put(key, res.clone());
       return res;
     });
-    const timedOut = env.delay(NETWORK_TIMEOUT_MS).then(() => null);
+    const timedOut = env.delay(rel === PAGE ? PAGE_NETWORK_TIMEOUT_MS : NETWORK_TIMEOUT_MS).then(() => null);
     const first = await Promise.race([net.catch(() => null), timedOut]);
     // A host error page is no better than a failed connection when a working copy is installed.
     if (first && keepable(first)) return first;
