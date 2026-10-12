@@ -125,6 +125,9 @@ import {
 import { motionAmounts, osPrefersReducedMotion } from './motion';
 import { clearLoadRetry, failureOf, offerLoadRetry, routesNoteView, type LoadFailure } from './load-retry';
 import { createLoop } from './loop';
+import { createFrameObservation } from './frame-observation';
+export type { AppDrawnFrame } from './frame-observation';
+import type { AppDrawnFrame } from './frame-observation';
 import { createRaceWakeSync } from './race-wake';
 import { raceOptionsView } from './race-options';
 import {
@@ -287,6 +290,10 @@ export interface AppPresentation {
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
 export interface AppHandle {
   readonly build: AppBuild;
+  subscribeFrames(
+    onFrame: (frame: Readonly<AppDrawnFrame>) => void,
+    onError: (error: unknown) => void,
+  ): () => void;
   state(): AppState;
   snapshot(): SimSnapshot | null;
   /** The last ~300 events, oldest first. */
@@ -822,6 +829,7 @@ export function createApp(opts: AppOptions): AppHandle {
     const next = transition(state, e);
     if (next) {
       state = next;
+      frames.refresh();
       // A launch acquires only after its new snapshot and screen are ready; exits release now.
       if (state !== 'race') syncWake();
       // After the tap's own steps: Restart and Race again pass through the menu on their way back
@@ -841,16 +849,19 @@ export function createApp(opts: AppOptions): AppHandle {
   // timestep and the loop": "a resume always lands behind the pause menu, never straight back into
   // a race").
   const holds = new Set<'hidden' | 'context'>();
+  let loadingRoads = false;
   const raceWake = createRaceWakeSync(keepAwake);
   const syncWake = () => raceWake(state, ui.paused, holds.size > 0);
   const syncRunning = () => {
     syncWake();
     if (holds.size > 0 || ui.paused) {
       loop.pause();
+      frames.refresh();
       audio.suspend();
       return;
     }
     loop.resume();
+    frames.refresh();
     if (state !== 'boot' && state !== 'tapToStart') void audio.resume();
   };
   const hold = (reason: 'hidden' | 'context', on: boolean) => {
@@ -1099,6 +1110,21 @@ export function createApp(opts: AppOptions): AppHandle {
   const stepMs: number[] = [];
   // The race-start countdown: a beat is a second of loop steps; GO stays up for 0.8 s of race.
   const countdown = createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT));
+  const frames = createFrameObservation(() => ({
+    state,
+    race: race !== null,
+    snapshot: curr !== null,
+    tickZero: curr?.tick === 0,
+    uiPaused: ui.paused,
+    loopPaused: loop.paused,
+    hidden: holds.has('hidden'),
+    contextHold: holds.has('context'),
+    loading: loadingRoads,
+    visible: document.visibilityState === 'visible',
+    contextLost: renderer.contextLost,
+    countdown: countdown.holding,
+    lockstep: loop.lockstep,
+  }));
   // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input. It
   // becomes the saved View, so the settings row shows it and a pick there takes effect; it works
   // on the grid too.
@@ -1116,6 +1142,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // The countdown (playtest 4, P4-11): a held step is not a sim step. The sim waits at tick 0 for
     // everyone, nothing is recorded, and what the player pressed is read and dropped.
     const grid = countdown.step();
+    frames.refresh();
     if (grid.beat !== null) audio.countdownBeat(grid.beat);
     if (grid.show !== undefined) ui.setCountdown(grid.show);
     if (grid.hold) {
@@ -1133,6 +1160,7 @@ export function createApp(opts: AppOptions): AppHandle {
     if (stepMs.length > 600) stepMs.shift();
     prev = curr;
     curr = race.snapshot();
+    frames.refresh();
     const events = race.events();
     if (events.length) {
       recent = recent.concat(events).slice(-300);
@@ -1176,7 +1204,7 @@ export function createApp(opts: AppOptions): AppHandle {
       stepping: () => state === 'race',
       step,
       shouldRunFrame: () => frameGate.shouldRun(),
-      render(alpha, dt) {
+      render(alpha, dt, timestampMs, synthetic) {
         const me = curr ? interpolateEntity(state === 'race' ? prev : null, curr, alpha, playerId) : null;
         let pose: CameraPose | null = attractPose;
         if (me && state === 'race') {
@@ -1211,7 +1239,9 @@ export function createApp(opts: AppOptions): AppHandle {
         } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
         // While the shot frames the landmark the HUD and the touch buttons are hidden (the results bring the screen back).
         ui.setFinishShot(finishShotHudOn(state, finishShot));
-        if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
+        frames.draw(timestampMs, synthetic, pose !== null, () => {
+          if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
+        });
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
         audio.frame(state === 'race' ? curr : null, playerId);
         // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
@@ -1272,7 +1302,6 @@ export function createApp(opts: AppOptions): AppHandle {
 
   // The region picker (playtest 1c): a pick fetches that region's road data in the background,
   // and the menu's backdrop shows its road once loaded; Race starts there.
-  let loadingRoads = false;
   /** A build whose files are gone (a 404 or 410): the did-not-load card's Reload, for the newest build. */
   const reloadPage = () => window.location.reload();
   const pickedChoice = (): RegionChoice | undefined => {
@@ -1341,6 +1370,7 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   const loadRegion = async (choice: RegionChoice): Promise<boolean> => {
     loadingRoads = true;
+    frames.refresh();
     ui.setBusy(`Loading ${choice.name}`);
     if (!library.hasRoads(choice.packId)) sayPickedRoads(choice, 'loading');
     try {
@@ -1356,6 +1386,7 @@ export function createApp(opts: AppOptions): AppHandle {
       return false;
     } finally {
       loadingRoads = false;
+      frames.refresh();
       ui.setBusy(null);
     }
   };
@@ -1372,6 +1403,8 @@ export function createApp(opts: AppOptions): AppHandle {
     showRegion();
     curr = newSim(seeds.next()).snapshot();
     prev = null;
+    frames.refresh();
+    frames.invalidate();
   };
   /** Fetches the picked region's road data in the background; says so, with Retry, if it fails. */
   const loadPicked = (choice: RegionChoice) =>
@@ -1424,6 +1457,8 @@ export function createApp(opts: AppOptions): AppHandle {
     showRegion();
     curr = newSim(seeds.next()).snapshot();
     prev = null;
+    frames.refresh();
+    frames.invalidate();
   };
   // The boot region's routes (the Keys: the causeway road, then the real Bahia Honda stretch once
   // its road data is in). The Keys' real roads are not in the first-load bundle (run W-P): they are
@@ -1500,6 +1535,8 @@ export function createApp(opts: AppOptions): AppHandle {
     input.calibrateTilt(); // the phone's angle now is straight ahead
     ui.show('race');
     syncRunning();
+    frames.refresh();
+    frames.invalidate();
     return true;
   }
 
@@ -1527,6 +1564,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // Its roads, and the planners its world is planned from (loadPlanners).
     if (missing.length > 0 || !plannersIn) {
       loadingRoads = true;
+      frames.refresh();
       ui.setBusy(`Loading ${def.regionName}`);
       void Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()])
         .then(
@@ -1548,6 +1586,7 @@ export function createApp(opts: AppOptions): AppHandle {
         )
         .then((ok) => {
           loadingRoads = false;
+          frames.refresh();
           ui.setBusy(null);
           if (ok) startCareerRace(def, node);
         });
@@ -1755,6 +1794,7 @@ export function createApp(opts: AppOptions): AppHandle {
   function quitCareerRace(): void {
     if (!go('back')) return;
     race = null;
+    frames.refresh();
     settleCareerRace(true);
     openCareer();
   }
@@ -1861,6 +1901,7 @@ export function createApp(opts: AppOptions): AppHandle {
 
   const handle: AppHandle = {
     build,
+    subscribeFrames: (onFrame, onError) => frames.subscribe(onFrame, onError),
     state: () => state,
     snapshot: () => curr,
     recentEvents: () => recent,
@@ -1939,6 +1980,7 @@ export function createApp(opts: AppOptions): AppHandle {
     backToMenu() {
       if (!go('back')) return;
       race = null;
+      frames.refresh();
       // A career race left this way is abandoned: it records nothing.
       careerRace = null;
       quickLog = null;
@@ -1997,7 +2039,10 @@ export function createApp(opts: AppOptions): AppHandle {
     stepTimes: () => stepMs,
     setLockstep(steps) {
       // A test seam: the handle reaches pages only behind the test flag (main.ts, dev/).
-      if (testFlagOn()) loop.setLockstep(steps);
+      if (testFlagOn()) {
+        loop.setLockstep(steps);
+        frames.refresh();
+      }
     },
     lockstep: () => loop.lockstep,
     contentHashes: () => hashes,
