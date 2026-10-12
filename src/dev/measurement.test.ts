@@ -347,6 +347,7 @@ describe('DEV measurement consumer', () => {
 
   it('reserves before synchronous cancellation and retires late started results without replacing a newer outcome', async () => {
     const f = fixture();
+    const readyStart = f.raw.beginMeasurement.getMockImplementation()!;
     let resolve: (value: AppMeasurementStart) => void = () => {};
     f.raw.beginMeasurement.mockImplementation(
       () =>
@@ -371,7 +372,7 @@ describe('DEV measurement consumer', () => {
     );
     await c.start();
     const replacement = measurementReport(f.app);
-    resolve({ kind: 'started', session: f.session });
+    resolve(await readyStart(f.raw.beginMeasurement.mock.calls[0]![0]));
     await first;
     expect(f.session.stop).toHaveBeenCalledExactlyOnceWith('caller-cancelled');
     expect(measurementReport(f.app)).toEqual(replacement);
