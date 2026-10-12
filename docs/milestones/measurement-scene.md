@@ -234,9 +234,46 @@ not a claim that the selection can never be supported.
 
 ## Selection, dependencies and defaults
 
-Order: seed, region, strict candidate, standard length, bike, light, route/dependencies,
+Order: seed, region, selector dependencies, strict candidate, standard length, bike, light, route/dependencies,
 field, fresh stream/build, resolved invariant checks, law, traffic, identity/ready metadata.
 Validate selected region presence before calling the candidate selector.
+
+### Selector dependency preflight
+
+`[default]` Source inspection found that quickPlayEvents computes all four families before its
+result can be searched for Race. Its Escape filter invokes copIds and therefore packClosure.
+The current raceField path used by Hunt does not invoke packClosure.
+
+Insert a narrow selector-dependency preflight after seed and selected-region validation, before
+the exact quickPlayEvents(reg, selectedRegion).find(choice => choice.kind === 'race') call.
+Inspect exactly the Escape events that the current selector may send to copIds: kind cop-escape,
+qualified region equals the selected region, no finale, no required ride-branch objective, and
+event.cops?.mode !== 'none' (including absent cops). For each such event, traverse its owning pack
+manifest and transitive dependency manifest references using a local visited set. Record every
+absent manifest as a missingContent pair of kind pack; missing pairs are sorted and unique.
+
+If any required selector manifest is missing, refuse content-not-ready/content-dependencies before
+calling the selector. expectedRegionId/requested/expectedEventKind retain initialized values;
+expectedEventId, expected route/network, intended bike/source, field stage and every actual field
+remain unevaluated null, with field.productLimit nine. Do not guess or independently choose a Race
+candidate to fill those fields. This early refusal takes precedence over classic/bike/light/route
+checks because those stages have not run. The later selected candidate's dependency preflight and
+all other stage ordering remain unchanged. Do not preflight unrelated regions, finales, required
+branch events or Escape events whose authored cops mode is none.
+
+Continue to call the exact public selector for a complete registry. No catch-all, ContentError
+message parsing, selector family filtering, fallback candidate, selector change or fabricated
+empty result. Unexpected selector/programmer failures propagate. Cyclic or otherwise invalid
+loaded registries are not converted to a missing-content refusal by the visited traversal.
+
+Acceptance: selected eligible Escape with absent own manifest or a transitive manifest refuses
+with all initialized/stage-null fields and exact missing pack pairs. Complete-manifest positive
+control reaches the same strict candidate. Missing manifests only on excluded Escape events or
+other regions do not cause this early refusal. A thrown programmer error from an otherwise
+complete selector remains an error. Preserve existing candidate-closure/dependency controls and
+the exact public-selector invocation. This amendment changes no normal Quick Play behavior.
+
+### Candidate selection and scene defaults
 
 Use exactly `quickPlayEvents(reg, selectedRegion).find(choice => choice.kind === 'race')`.
 Check actual candidate kind/qualified region; the selector excludes finales and required
