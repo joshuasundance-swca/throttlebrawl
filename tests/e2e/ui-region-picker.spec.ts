@@ -16,6 +16,17 @@ type TestWindow = Window & {
 
 const REPLAY_MARKER = '===== replay (one line of JSON) =====';
 const bare = (id: string) => id.slice(id.indexOf(':') + 1);
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return;
+  const diagnostic = await page
+    .evaluate(() => ({
+      state: (window as TestWindow).__game?.state() ?? 'no test handle',
+      tick: (window as TestWindow).__game?.snapshot()?.tick ?? null,
+      text: document.body.innerText.slice(0, 1600),
+    }))
+    .catch((error: unknown) => ({ unavailable: String(error) }));
+  console.log(`Region picker failure state: ${JSON.stringify(diagnostic)}`);
+});
 
 /** Every event file in every pack on disk: its bare id and its region's bare id. */
 function eventRegions(): Map<string, string> {
@@ -113,6 +124,7 @@ test('the menu offers the regions, the Keys picked by default, and a pick starts
     await chip.click();
     await expect(chip).toHaveAttribute('aria-checked', 'true');
     await expect(checked).toHaveCount(1);
+    console.log(`starting picked region ${id}`);
     await page.locator('#menu-race').click();
     await expect(page.locator('#hud-position')).toBeVisible();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);

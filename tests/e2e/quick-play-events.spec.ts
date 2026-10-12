@@ -14,6 +14,25 @@ interface Config {
   difficulty: { copFrequency: number };
 }
 const profile = (page: Page) => page.evaluate(() => localStorage.getItem('mbrawl:profile'));
+// Keep reload failures observable without changing any readiness assertion or timeout.
+test.beforeEach(({ page }) => {
+  page.on('pageerror', (error) => console.log(`Quick Play page error: ${error.message}`));
+});
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return;
+  const diagnostic = await page
+    .evaluate(() => ({
+      state: (window as TestWindow).__game?.state() ?? 'no test handle',
+      tick: (window as TestWindow).__game?.snapshot()?.tick ?? null,
+      screens: ['start-screen', 'menu', 'race-options', 'hud', 'pause-screen'].map((id) => ({
+        id,
+        visible: document.getElementById(id)?.checkVisibility() ?? false,
+      })),
+      text: document.body.innerText.slice(0, 1600),
+    }))
+    .catch((error: unknown) => ({ unavailable: String(error) }));
+  console.log(`Quick Play failure state: ${JSON.stringify(diagnostic)}`);
+});
 async function config(page: Page): Promise<Config> {
   return page.evaluate(() => {
     const text = (window as TestWindow).__game!.debugFileText();
@@ -73,7 +92,9 @@ for (const family of ['race', 'hunt', 'escape', 'grudge'])
       expect(c.difficulty.copFrequency).toBeGreaterThan(0);
     }
     expect(await profile(page)).toBe(before);
+    console.log(`Quick Play ${family}: launch/config/HUD/profile checked; reloading`);
     await page.reload();
+    console.log(`Quick Play ${family}: reload returned; opening options`);
     await options(page);
     await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', family);
   });
