@@ -305,6 +305,7 @@ describe('dev/report: the debug file', () => {
         }),
     } as unknown as AppHandle;
     expect(gatherReport(app).measurement).toBeUndefined();
+    expect(gatherReport(app)).not.toHaveProperty('measurement');
     await measurementConsumer(app).start();
     expect(gatherReport(app).measurement).toEqual(measurementReport(app));
     expect(Object.isFrozen(gatherReport(app).measurement)).toBe(true);
@@ -346,8 +347,10 @@ describe('dev/report: the debug file', () => {
     const line = file.split('\n').find((value) => value.startsWith('measurement JSON '));
     expect(JSON.parse(line!.slice('measurement JSON '.length))).toEqual(measurement);
     expect(parseDebugFile(file).replay).toEqual(replay);
-    expect(buildSummary(data())).toEqual(buildSummary(data({ measurement: undefined })));
-    expect(buildDebugFile(data())).toEqual(buildDebugFile(data({ measurement: undefined })));
+    const withoutMeasurement = data({ measurement });
+    delete withoutMeasurement.measurement;
+    expect(buildSummary(data())).toEqual(buildSummary(withoutMeasurement));
+    expect(buildDebugFile(data())).toEqual(buildDebugFile(withoutMeasurement));
   });
   it('holds the summary, every error and event, and the replay, which reads back unchanged', () => {
     const d = data({

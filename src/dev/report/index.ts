@@ -57,6 +57,7 @@ export function gatherReport(app: AppHandle): ReportData {
   const snap = app.snapshot();
   const state = app.state();
   const memory = (performance as Performance & { memory?: MemoryInfo }).memory;
+  const measurement = measurementReport(app);
   return {
     takenAt: new Date().toISOString(),
     build: { ...app.build },
@@ -75,7 +76,7 @@ export function gatherReport(app: AppHandle): ReportData {
     errors: [...pageErrors().list()],
     events: [...app.recentEvents()],
     resume: resumeInfo(app),
-    measurement: measurementReport(app),
+    ...(measurement ? { measurement } : {}),
   };
 }
 

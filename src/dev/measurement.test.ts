@@ -347,10 +347,10 @@ describe('DEV measurement consumer', () => {
 
   it('reserves before synchronous cancellation and retires late started results without replacing a newer outcome', async () => {
     const f = fixture();
-    let resolve: (value: unknown) => void = () => {};
+    let resolve: (value: AppMeasurementStart) => void = () => {};
     f.raw.beginMeasurement.mockImplementation(
       () =>
-        new Promise((done) => {
+        new Promise<AppMeasurementStart>((done) => {
           resolve = done;
         }),
     );
