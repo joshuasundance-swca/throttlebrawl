@@ -42,6 +42,8 @@ export interface SoakFrameReport {
 }
 
 export interface SoakFrameCollector {
+  readonly state: SoakFrameReport['state'];
+  readonly eligibleMs: number;
   record(sample: SoakFrameSample): void;
   cancel(reason: string): void;
   report(): SoakFrameReport;
@@ -89,6 +91,12 @@ export function createSoakFrameCollector(): SoakFrameCollector {
   const intervals: number[] = [];
   const windows = Array.from({ length: SOAK_TARGET_ELIGIBLE_MS / MINUTE_MS }, () => [] as number[]);
   return {
+    get state() {
+      return state;
+    },
+    get eligibleMs() {
+      return eligibleMs;
+    },
     record(sample) {
       if (state !== 'collecting') return;
       if (
