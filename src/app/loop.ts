@@ -37,7 +37,7 @@ export interface LoopHooks {
   /** Whether stepping is wanted right now (the race state), independent of pause. */
   stepping(): boolean;
   /** Draws a frame; alpha interpolates between the last two snapshots. */
-  render(alpha: number, frameDtS: number): void;
+  render(alpha: number, frameDtS: number, timestampMs: number, synthetic: boolean): void;
   /**
    * The frame-rate cap (tuning's frame gate): false skips this animation frame entirely, so the
    * next frame that runs sees the whole elapsed time and the sim keeps real time.
@@ -91,7 +91,8 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
       if (times.length > 600) times.shift();
     }
     let alpha = 1;
-    if (!paused && hooks.stepping() && lockstep !== null) {
+    const synthetic = !paused && hooks.stepping() && lockstep !== null;
+    if (synthetic) {
       acc = 0;
       for (let i = 0; lockstep !== null && i < lockstep && hooks.stepping(); i++) hooks.step();
     } else if (!paused && hooks.stepping()) {
@@ -102,7 +103,7 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
     } else {
       acc = 0;
     }
-    hooks.render(alpha, Math.min(elapsed, MAX_FRAME_S));
+    hooks.render(alpha, Math.min(elapsed, MAX_FRAME_S), now, synthetic);
     requestAnimationFrame(frame);
   };
   return {
