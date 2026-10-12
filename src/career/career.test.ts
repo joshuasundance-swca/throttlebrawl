@@ -529,6 +529,23 @@ describe('learn by riding: prompts as they become relevant, once per career', ()
     const close = snap([ent(0), ent(1, { road: { edge: 0, s: 101, d: 0.5, h: 0, dir: 1, yaw: 0 } })]);
     expect(o.note([], close, 0)).toBeNull();
   });
+  it('teaches an idle fresh tap at the glint for a player-targeted steal cue, once', () => {
+    // Product spec Combat: a timed attack tap, telegraphed by the weapon glint.
+    // Combat's selection requires the thief idle and inside the holder's reach box.
+    const o = createOnboarding([]);
+    const far = snap([ent(0), ent(1, { road: { edge: 0, s: 160, d: 0, h: 0, dir: 1, yaw: 0 } })]);
+    const cue = (target: number) => ev('stealWindow', { actor: 1, target });
+    expect(o.note([cue(1)], far, 0)).toBeNull();
+    expect(o.shown()).not.toContain('steal');
+    const prompt = o.note([cue(0)], far, 0);
+    expect(prompt?.id).toBe('steal');
+    expect(prompt?.text).toMatch(/FINISH.*SWING/);
+    expect(prompt?.text).toMatch(/ALONGSIDE/);
+    expect(prompt?.text).toMatch(/TAP HIT/);
+    expect(prompt?.text).toMatch(/GLINT/);
+    expect(o.note([cue(0)], far, 0)).toBeNull();
+    expect(createOnboarding(['prompt:steal']).note([cue(0)], far, 0)).toBeNull();
+  });
 });
 
 describe('the map tally', () => {
