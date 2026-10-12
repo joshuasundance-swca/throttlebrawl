@@ -398,6 +398,29 @@ describe('AppHandle actual render wiring', () => {
     expect(boundary.receipt.mock.calls[0]![0].look).toBe('classic');
   });
 
+  it('ordinary radio input cannot cancel a foreground race load', async () => {
+    app.tap();
+    boundary.missingRoads = true;
+    let resolve!: () => void;
+    boundary.roadWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    app.startRace();
+    window.dispatchEvent(
+      Object.assign(new Event('keydown'), {
+        code: 'KeyR',
+        shiftKey: false,
+        repeat: false,
+      }),
+    );
+    expect(boundary.retune).toHaveBeenCalledTimes(1);
+    expect(boundary.syncLive).toHaveBeenCalledTimes(1);
+    boundary.missingRoads = false;
+    resolve();
+    await vi.dynamicImportSettled();
+    expect(app.state()).toBe('race');
+  });
+
   it('navigation does not hide a pending background load from measurement preflight', async () => {
     boundary.missingRoads = true;
     let resolve!: () => void;

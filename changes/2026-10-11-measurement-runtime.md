@@ -23,6 +23,8 @@ measurement preflight until they settle; only the still-selected region can upda
 notices or the backdrop. Selecting a previously loaded region adopts its cached roads.
 Audio and control settings retain the road presentation; changing the visual look still applies
 the complete presentation, and quality settings update the owned renderer token.
+Ordinary radio input also preserves a pending race load; during measurement it retains the
+specified cancel-or-consume behavior.
 
 Focused checks cover ownership, preparation cancellation, real APP render/restoration wiring,
 repeat isolation, listener ordering, quiet audio evidence, radio ownership and concrete UI actions.
