@@ -42,7 +42,9 @@ function contexts() {
 }
 
 const quiet = { radioKeys: null, barkEvents: null, radioSeed: 1 } as const;
-const flush = () => new Promise((r) => setTimeout(r, 0));
+const flush = async () => {
+  for (let job = 0; job < 30; job++) await Promise.resolve();
+};
 
 describe('the audio stand-in (audio/index.ts)', () => {
   it('starts the context inside the start tap, before the engine is in, and the engine plays on it', async () => {
@@ -138,6 +140,7 @@ describe('the audio stand-in (audio/index.ts)', () => {
     expect(audio.cutPlayingTrack('seed-1', 0)).toBeNull();
     await expect(audio.say('base:bark-set/x#y')).resolves.toBe(false);
     await chunk.resolve();
+    await flush(); // the private stopped-intent candidate completes before the ordinary resume
     await audio.resume();
     expect(audio.inspect().lastCues).toEqual([]);
   });

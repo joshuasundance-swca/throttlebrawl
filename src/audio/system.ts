@@ -212,6 +212,8 @@ export interface AudioSystem {
   setEngineSounds(byRider: Readonly<Record<string, EngineSoundSpec>>): void;
   /** Stops sound while paused (the context is suspended, not closed). */
   suspend(): void;
+  /** Measurement primitive: await native suspension before observing quiet state. */
+  suspendForLease(): Promise<void>;
   readonly state: () => 'none' | AudioContextState;
   /** What the mixer is doing, for tests and the debug report. */
   inspect(): AudioInspect;
@@ -1205,6 +1207,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     },
     suspend() {
       if (graph && graph.ctx.state === 'running') void graph.ctx.suspend();
+    },
+    async suspendForLease() {
+      if (!opts.offline && graph && graph.ctx.state === 'running') await graph.ctx.suspend();
     },
     state: () => graph?.ctx.state ?? 'none',
     inspect: () => ({
