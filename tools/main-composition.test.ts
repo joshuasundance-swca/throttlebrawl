@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AppCallbacks, AppHandle, AppOptions } from './app';
+import type { AppCallbacks, AppHandle, AppOptions } from '../src/app';
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  vi.doUnmock('./app');
-  vi.doUnmock('./dev');
-  vi.doUnmock('./dev/boot');
+  vi.doUnmock('../src/app');
+  vi.doUnmock('../src/dev');
+  vi.doUnmock('../src/dev/boot');
 });
 
 async function bootWithDeferredDev() {
@@ -27,7 +27,7 @@ async function bootWithDeferredDev() {
   vi.stubGlobal('window', { location: { search: '' } });
   for (const name of ['__BUILD_ID__', '__BUILD_CHANNEL__', '__BUILD_BRANCH__', '__SIM_CODE_HASH__'])
     vi.stubGlobal(name, 'test');
-  vi.doMock('./app', () => ({
+  vi.doMock('../src/app', () => ({
     loadBootContent: () => Promise.resolve(),
     createApp: (options: AppOptions) => {
       callbacks = options.callbacks;
@@ -35,8 +35,8 @@ async function bootWithDeferredDev() {
       return app;
     },
   }));
-  vi.doMock('./dev/boot', () => ({ installErrorCapture: vi.fn(), testFlagSet: () => false }));
-  vi.doMock('./dev', async () => {
+  vi.doMock('../src/dev/boot', () => ({ installErrorCapture: vi.fn(), testFlagSet: () => false }));
+  vi.doMock('../src/dev', async () => {
     await devGate;
     return {
       openMeasurementTool: open,
@@ -45,7 +45,7 @@ async function bootWithDeferredDev() {
       saveDebugFile: () => Promise.resolve(),
     };
   });
-  await import('./main');
+  await vi.importActual('../src/main');
   await booted;
   return { app, open, releaseDev, callbacks: callbacks! };
 }
