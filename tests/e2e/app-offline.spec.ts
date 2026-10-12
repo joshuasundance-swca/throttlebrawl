@@ -10,6 +10,7 @@ import { openMenuMore, openQuickPlay } from './menu-navigation';
 
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
+  __offlineVisible?: Record<string, number>;
   __game?: { snapshot(): { tick: number } | null; setBot(on: boolean): void; state(): string };
 };
 
@@ -85,7 +86,7 @@ test.describe('offline', () => {
       if (m.type() === 'warning' && /preload/i.test(m.text())) preloadWarnings.push(m.text());
     });
     const preloadLinks = () => page.evaluate(() => document.querySelectorAll('link[rel="preload"]').length);
-    await page.addInitScript(() => {
+    const testMode = await page.addInitScript(() => {
       (window as TestWindow).__GAME_TEST__ = true;
     });
     await page.goto('./');
@@ -147,6 +148,41 @@ test.describe('offline', () => {
     const plainFile = await (await page.request.get(sample)).body();
     expect(fromCache, sample).toBe(createHash('sha256').update(plainFile).digest('hex'));
 
+    // Measure the player's boot path, not main.ts's extra test-only DEV/sim prerequisites.
+    await testMode.dispose();
+    const readiness = await page.addInitScript(() => {
+      const w = window as TestWindow;
+      w.__offlineVisible = {};
+      const observed = new Set<Element>();
+      const selectors = ['#start-screen', '#menu-quick-play'];
+      const intersections = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (
+            !entry.isIntersecting ||
+            entry.boundingClientRect.width <= 0 ||
+            entry.boundingClientRect.height <= 0
+          )
+            continue;
+          const key = `#${entry.target.id}`;
+          if (w.__offlineVisible && w.__offlineVisible[key] === undefined)
+            w.__offlineVisible[key] = entry.time;
+        }
+      });
+      const find = () => {
+        for (const selector of selectors) {
+          const target = document.querySelector(selector);
+          if (target && !observed.has(target)) {
+            observed.add(target);
+            intersections.observe(target);
+          }
+        }
+        if (observed.size === selectors.length) mutations.disconnect();
+      };
+      const mutations = new MutationObserver(find);
+      mutations.observe(document, { childList: true, subtree: true });
+      find();
+    });
+
     // A host error is a failed return too: the installed game must beat an HTTP503 page.
     const entry = new URL(page.url());
     const entryRoute = (url: URL) => url.origin === entry.origin && url.pathname === entry.pathname;
@@ -168,29 +204,77 @@ test.describe('offline', () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));
     let heldRequests = 0;
-    await context.route(entryRoute, async (route) => {
+    const completions: Promise<void>[] = [];
+    let cleaning = false;
+    const cleanupHandled: string[] = [];
+    const heldRoute = (route: Route) => {
       if (!route.request().serviceWorker()) return route.continue();
       heldRequests++;
-      await held;
-      await route.continue();
-    });
+      const completion = held
+        .then(() => route.continue())
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          // The worker's timeout may have retired its network request before intentional release.
+          if (!cleaning || !message.includes('Route is already handled!')) throw error;
+          cleanupHandled.push(message);
+        });
+      completions.push(completion);
+      return completion;
+    };
+    await context.route(entryRoute, heldRoute);
+    let bodyError: unknown;
+    let bodyFailed = false;
+    const cleanupProblems: unknown[] = [];
     try {
       const slowReturn = await page.reload({ waitUntil: 'domcontentloaded' });
       expect(slowReturn?.fromServiceWorker()).toBe(true);
       await expect(page.locator('#start-screen')).toBeVisible();
-      const bootMs = await page.evaluate(() => performance.now());
-      console.log(
-        `[print] cached boot with network held: ${bootMs.toFixed(0)} ms; ${heldRequests} held requests`,
+      await page.waitForFunction(
+        () => (window as TestWindow).__offlineVisible?.['#start-screen'] !== undefined,
       );
+      const timing = await page.evaluate(() => ({
+        firstVisible: (window as TestWindow).__offlineVisible?.['#start-screen'],
+        readAt: performance.now(),
+        menuVisible: (window as TestWindow).__offlineVisible?.['#menu-quick-play'],
+        testMode: (window as TestWindow).__GAME_TEST__ === true,
+      }));
+      console.log(
+        `[print] production cached boot with network held: ${JSON.stringify(timing)}; ${heldRequests} held requests`,
+      );
+      expect(timing.testMode).toBe(false);
+      expect(timing.menuVisible, 'hidden menu is not reported visible by the observer').toBeUndefined();
       expect(heldRequests).toBeGreaterThan(0);
-      expect(bootMs).toBeLessThan(5000);
+      expect(timing.firstVisible).toBeLessThan(5000);
       await page.locator('#start-screen').click();
       await expect(page.locator('#menu-quick-play')).toBeVisible();
+      await page.waitForFunction(
+        () => (window as TestWindow).__offlineVisible?.['#menu-quick-play'] !== undefined,
+      );
+    } catch (error) {
+      bodyFailed = true;
+      bodyError = error;
     } finally {
+      cleaning = true;
       release();
-      await context.unroute(entryRoute, undefined);
+      const drained = await Promise.allSettled(completions);
+      try {
+        await context.unroute(entryRoute, heldRoute);
+      } catch (error) {
+        cleanupProblems.push(error);
+      }
+      console.log(`[print] late handled route cleanup: ${JSON.stringify(cleanupHandled)}`);
+      const failures = drained.filter((entry) => entry.status === 'rejected');
+      for (const failure of failures) cleanupProblems.push(failure.reason as unknown);
+      if (cleanupProblems.length) console.error('unexpected held-route cleanup failures', cleanupProblems);
     }
+    if (bodyFailed) throw bodyError;
+    if (cleanupProblems.length) throw new AggregateError(cleanupProblems, 'Held-route cleanup failed');
 
+    // The original offline-race control still needs its deterministic sim hooks.
+    await readiness.dispose();
+    await page.addInitScript(() => {
+      (window as TestWindow).__GAME_TEST__ = true;
+    });
     await context.setOffline(true);
     // Proof the network really is off for the page and its worker: a file the cache does not hold
     // fails to load (online, the preview server would answer it with a 404).
