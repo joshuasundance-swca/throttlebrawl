@@ -2,6 +2,8 @@ import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { InputFlag, type SimInput } from '../../src/sim/types.ts';
+import { rideFirstCareerRace } from './career-start';
+import { fastForwardDone } from './lockstep';
 
 // Settings, Keys (the maintainer, 2026-10-05: "can we customize keyboard settings and stuff? I want
 // to be sure it's a joy to play and use all functions"). The layout check: the Keys tab, both device
@@ -14,6 +16,8 @@ interface Handle {
   inputs(from?: number): SimInput[];
   snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
+  lockstep(steps: number | null): void;
+  fastForward(until: (snap: { tick: number }) => boolean, opts: { perFrame: number; then: number }): void;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 
@@ -131,6 +135,43 @@ test('phone, touch only: no Keys tab (the touch controls never change)', async (
 test.describe('laptop', () => {
   test.use({ isMobile: false, hasTouch: false, viewport: { width: 1280, height: 720 } });
 
+  test('saved controls are named on first launch and in the first career ride prompt', async ({ page }) => {
+    const problems = watchErrors(page);
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'mbrawl:settings',
+        JSON.stringify({
+          format: 'settings',
+          version: 1,
+          build: 'test',
+          savedAt: '2026-10-12T00:00:00Z',
+          data: {
+            keyBindings: { throttle: ['KeyE'], attack: ['KeyF'], kick: ['KeyV'] },
+            volumes: { master: 0 },
+          },
+        }),
+      );
+    });
+    await page.goto('./');
+    await expect(page.locator('#start-controls')).toContainText('E ride');
+    await expect(page.locator('#start-controls')).toContainText('F hit');
+    await expect(page.locator('#start-controls')).toContainText('V kick');
+    await page.evaluate(() => {
+      const g = (window as TestWindow).__game!;
+      g.setBot(false);
+      g.lockstep(1);
+    });
+    await rideFirstCareerRace(page);
+    await page.evaluate(() =>
+      (window as TestWindow).__game!.fastForward((s) => s.tick >= 60, { perFrame: 120, then: 1 }),
+    );
+    expect(await fastForwardDone(page, 'first remapped ride prompt')).toBeGreaterThanOrEqual(60);
+    await expect(page.locator('#career-prompt')).toBeVisible();
+    await expect(page.locator('#career-prompt')).toContainText('[E]');
+    await expect(page.locator('#career-prompt')).not.toContainText('[W]');
+    expect(problems).toEqual([]);
+  });
+
   test('the Keys tab fits, and a remap is flagged, shown in the legend, drives the race, persists and resets', async ({
     page,
   }) => {
@@ -175,6 +216,8 @@ test.describe('laptop', () => {
 
     // A reload keeps it.
     await page.reload();
+    await expect(page.locator('#start-controls')).toContainText('F hit');
+    await expect(page.locator('#start-controls')).not.toContainText('J hit');
     await page.locator('#start-screen').click();
     await openMainMenu(page);
     await page.locator('#menu-settings').click();
@@ -209,6 +252,8 @@ test.describe('laptop', () => {
     await expect(page.locator('#settings-bind-keyboard-attack-0')).toHaveText('J');
     await page.locator('#settings-back').click();
     await expect(page.locator('#pause-keys')).toContainText('J punch');
+    await page.reload();
+    await expect(page.locator('#start-controls')).toContainText('J hit');
     expect(problems).toEqual([]);
   });
 

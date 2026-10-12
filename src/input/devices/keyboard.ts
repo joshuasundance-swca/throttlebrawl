@@ -152,7 +152,10 @@ export interface KeyLegendRow {
 export function keyLegend(map: KeyMap = DEFAULT_KEY_MAP): KeyLegendRow[] {
   return LEGEND_ORDER.filter((a) => map[a].length > 0).map((a) => ({
     keys: map[a].map(keyLabel).join(' / '),
-    action: KEY_ACTION_NAMES[a],
+    action:
+      a === 'kick'
+        ? `kick (hold ${map.attackLeft.map(keyLabel).join(' / ')} or ${map.attackRight.map(keyLabel).join(' / ')}: to that side)`
+        : KEY_ACTION_NAMES[a],
   }));
 }
 
