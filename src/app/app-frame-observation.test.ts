@@ -540,6 +540,27 @@ describe('AppHandle actual render wiring', () => {
 
   const begin = () =>
     app.beginMeasurement({ signal: new AbortController().signal, driverForRepeat: () => vi.fn() });
+  it('restores the actual menu draw inputs after an ordinary race left interpolation history', async () => {
+    app.tap();
+    app.startRace();
+    frame(0);
+    frame();
+    frame();
+    expect(boundary.render.mock.calls.at(-1)![0]).not.toBeNull();
+    app.backToMenu();
+    frame(0);
+    const baseline = boundary.render.mock.calls.at(-1)!;
+    expect(baseline[0]).toBeNull();
+    expect(baseline[1]).toBe(app.snapshot());
+    const started = await begin();
+    if (started.kind !== 'started') throw new Error(started.reason);
+    started.session.stop('caller-cancelled');
+    await started.session.ended;
+    const restored = boundary.render.mock.calls.at(-1)!;
+    expect(restored[0]).toBe(baseline[0]);
+    expect(restored[1]).toBe(baseline[1]);
+    expect(restored[3]).toBe(baseline[3]);
+  });
   it('refuses before menu, starts from a menu before its first RAF, and restores one actual menu draw', async () => {
     expect(await begin()).toMatchObject({ reason: 'not-menu' });
     app.tap();

@@ -11,6 +11,9 @@ leaving the normal race, replay, career, settings and seed sequence parked. Audi
 an owned wake lease is required. Cancellation restores the saved menu presentation and publishes
 one immutable result with commit and end times.
 
+After returning from an ordinary race, restoration uses the menu's current snapshot without the
+race interpolation history, matching the normal menu draw.
+
 UI actions now reach one gate before changing their own local state. Radio shortcuts belong to
 APP, which retunes and saves the live choice in one synchronous delivery; AUDIO no longer installs
 independent key listeners. Delayed normal and UI completions cannot overwrite a newer owner.

@@ -1065,7 +1065,7 @@ export function createApp(opts: AppOptions): AppHandle {
     if (!me) return;
     attractPose ??= camera.snap(me, { aspect: viewAspect() });
     if (!attractPose) return;
-    menuReceipt = { recipe: presentationRecipe, prev, curr, playerId, recent, pose: attractPose };
+    menuReceipt = { recipe: presentationRecipe, prev: null, curr, playerId, recent, pose: attractPose };
   };
   rememberMenu();
 
