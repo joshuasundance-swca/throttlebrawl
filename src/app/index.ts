@@ -611,6 +611,7 @@ export function createApp(opts: AppOptions): AppHandle {
   const { build } = opts;
   let state: AppState = 'boot';
   let normalGeneration = 0;
+  let normalContentGeneration = 0;
   let deliveryDepth = 0;
   let retireNormal = () => {};
   let measurement: ReturnType<typeof createMeasurementRuntime> | null = null;
@@ -638,6 +639,12 @@ export function createApp(opts: AppOptions): AppHandle {
   const captureNormal = () => {
     const generation = normalGeneration;
     return () => generation === normalGeneration && !measurement?.intercepted;
+  };
+  // Background road requests survive menu navigation. Their pending ownership blocks
+  // measurement entry; a measurement preparation still retires their content era.
+  const captureNormalContent = () => {
+    const generation = normalContentGeneration;
+    return () => generation === normalContentGeneration && !measurement?.intercepted;
   };
   // A fresh seed per race unless one is fixed (playtest 1c item 2); the seed goes into SimConfig,
   // so the recording's header carries it and replay and resume reproduce the race.
@@ -1666,7 +1673,6 @@ export function createApp(opts: AppOptions): AppHandle {
   });
   retireNormal = () => {
     pendingLaunch = null;
-    normalLoads.clear();
     if (pendingLoad) {
       pendingLoad = null;
       loadingRoads = false;
@@ -1803,14 +1809,14 @@ export function createApp(opts: AppOptions): AppHandle {
   };
   /** Fetches the picked region's road data in the background; says so, with Retry, if it fails. */
   const loadPicked = (choice: RegionChoice) => {
-    const current = captureNormal();
+    const current = captureNormalContent();
     const loadOwner = {};
     normalLoads.add(loadOwner);
     void library
       .loadRoads(choice.packId)
       .then(
         (reg) => {
-          if (!current()) return;
+          if (!current() || pickedChoice()?.id !== choice.id) return;
           roadsArrived(reg);
           showPicked();
         },
@@ -1841,6 +1847,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // The routes on offer are the new region's, once its road data is in.
     if (choice.eventId !== eventId) ui.setRoutes([], null);
     if (library.hasRoads(choice.packId)) {
+      roadsArrived(library.registry());
       sayPickedRoads();
       showPicked();
     } else {
@@ -1872,7 +1879,7 @@ export function createApp(opts: AppOptions): AppHandle {
   // The Keys' own region (base's), whose route row waits on these roads too.
   const keysChoice = regions.find((r) => r.packId === 'base');
   const loadKeysRoads = () => {
-    const current = captureNormal();
+    const current = captureNormalContent();
     const loadOwner = {};
     normalLoads.add(loadOwner);
     sayPickedRoads(keysChoice, 'loading');
@@ -1880,10 +1887,10 @@ export function createApp(opts: AppOptions): AppHandle {
       .loadRoads('base')
       .then(
         (reg) => {
-          if (current()) roadsArrived(reg);
+          if (current() && pickedChoice()?.packId === 'base') roadsArrived(reg);
         },
         (err: unknown) => {
-          if (!current()) return;
+          if (!current() || pickedChoice()?.packId !== 'base') return;
           // Said on the menu with Retry (Race also fetches them again, with a busy line, if it must).
           console.warn('the Keys real-road data did not load', err);
           const failure = failureOf(err, Date.now());
@@ -2371,6 +2378,7 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     async prepare(signal) {
       normalGeneration++;
+      normalContentGeneration++;
       const region = ui.region ?? regionKeyOf(registry, eventId);
       preparationIntent = { generation: normalGeneration, region, route };
       const selected = {

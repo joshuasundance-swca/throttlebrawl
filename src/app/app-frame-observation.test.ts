@@ -4,6 +4,7 @@ import type { createUi } from '../ui';
 import type { LifecycleCallbacks } from '../platform';
 import { createPackLibrary } from '../content';
 import { careerDefs } from './career-flow';
+import { regionChoices } from './regions';
 
 const boundary = vi.hoisted(() => ({
   ui: { paused: false, region: 'base:florida-keys', screen: 'start' },
@@ -306,6 +307,7 @@ describe('AppHandle actual render wiring', () => {
     seen = [];
     boundary.ui.paused = false;
     boundary.ui.screen = 'start';
+    boundary.ui.region = 'base:florida-keys';
     boundary.activeDriver = null;
     boundary.audioState = 'none';
     boundary.audioAcquire.mockClear();
@@ -359,6 +361,108 @@ describe('AppHandle actual render wiring', () => {
   afterEach(() => {
     queue = [];
     vi.unstubAllGlobals();
+  });
+
+  it('boot road completion still offers routes after tapping into the menu', async () => {
+    boundary.missingRoads = true;
+    let resolve!: () => void;
+    boundary.roadWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    app = createApp({
+      host: {} as HTMLElement,
+      canvas: { clientWidth: 800, clientHeight: 450 } as HTMLCanvasElement,
+      build: { id: 'unit', channel: 'dev', branch: 'unit' },
+      seed: 1,
+      measurementSeedSource: () => 2,
+      callbacks: { onCopyReport: async () => {} },
+    });
+    app.tap();
+    boundary.uiWrite.mockClear();
+    boundary.missingRoads = false;
+    resolve();
+    await vi.dynamicImportSettled();
+    expect(app.state()).toBe('menu');
+    expect(boundary.uiWrite.mock.calls.some(([key]) => key === 'setRoutes')).toBe(true);
+  });
+
+  it('navigation does not hide a pending background load from measurement preflight', async () => {
+    boundary.missingRoads = true;
+    let resolve!: () => void;
+    boundary.roadWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    app = createApp({
+      host: {} as HTMLElement,
+      canvas: { clientWidth: 800, clientHeight: 450 } as HTMLCanvasElement,
+      build: { id: 'unit', channel: 'dev', branch: 'unit' },
+      seed: 1,
+      measurementSeedSource: () => 2,
+      callbacks: { onCopyReport: async () => {} },
+    });
+    app.tap();
+    const pending = begin();
+    boundary.missingRoads = false;
+    resolve();
+    expect(await pending).toMatchObject({ reason: 'normal-load-pending' });
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    await vi.dynamicImportSettled();
+    const ready = await begin();
+    if (ready.kind !== 'started') throw new Error(ready.reason);
+    ready.session.stop('caller-cancelled');
+  });
+
+  it('a superseded region load cannot redraw the selected region or consume its seed', async () => {
+    app.tap();
+    const choices = regionChoices(createPackLibrary({ includeDrafts: true }).registry());
+    const other = choices.find((choice) => choice.id !== boundary.ui.region)!;
+    expect(other).toBeDefined();
+    boundary.ui.region = other.id;
+    boundary.missingRoads = true;
+    let resolve!: () => void;
+    boundary.roadWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    boundary.callbacks!.onRegionChange!(other.id);
+    boundary.ui.region = 'base:florida-keys';
+    boundary.missingRoads = false;
+    boundary.callbacks!.onRegionChange!(boundary.ui.region);
+    const snapshot = app.snapshot();
+    const sims = boundary.simConfigs.length;
+    const receipts = boundary.receipt.mock.calls.length;
+    boundary.uiWrite.mockClear();
+    resolve();
+    await vi.dynamicImportSettled();
+    expect(app.snapshot()).toBe(snapshot);
+    expect(boundary.simConfigs).toHaveLength(sims);
+    expect(boundary.receipt.mock.calls).toHaveLength(receipts);
+    expect(boundary.uiWrite).not.toHaveBeenCalled();
+  });
+
+  it('a boot road load cannot change notices or routes after selecting another region', async () => {
+    boundary.missingRoads = true;
+    let resolve!: () => void;
+    boundary.roadWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    app = createApp({
+      host: {} as HTMLElement,
+      canvas: { clientWidth: 800, clientHeight: 450 } as HTMLCanvasElement,
+      build: { id: 'unit', channel: 'dev', branch: 'unit' },
+      seed: 1,
+      callbacks: { onCopyReport: async () => {} },
+    });
+    app.tap();
+    const other = regionChoices(createPackLibrary({ includeDrafts: true }).registry()).find(
+      (choice) => choice.id !== boundary.ui.region,
+    )!;
+    expect(other).toBeDefined();
+    boundary.ui.region = other.id;
+    boundary.missingRoads = false;
+    boundary.uiWrite.mockClear();
+    resolve();
+    await vi.dynamicImportSettled();
+    expect(boundary.uiWrite).not.toHaveBeenCalled();
   });
 
   it.each(['direct', 'logical post-pass'] as const)(
