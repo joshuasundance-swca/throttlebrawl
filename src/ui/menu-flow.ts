@@ -93,7 +93,7 @@ export const MENU_FLOW_CSS = `
 #ui #menu.quick-setup .menu-build-line { display: block; }
 #ui #menu :is(.small, .big) { min-height: 44px; }
 #ui #menu .title { align-self: center; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
-/* The welcome card follows the primary actions on an upright phone, rather than taking half
+/* The welcome card follows the primary actions in a portrait window, rather than taking half
    their width. Keep enlarged text at its chosen size and let the screen scroll when needed. */
 @media (orientation: portrait) {
   #ui #menu.with-news { flex-direction: column; gap: 14px; }
