@@ -71,6 +71,7 @@ import { COUNTDOWN_CSS, createCountdownView } from './countdown-view';
 import { FINISH_SHOT_CSS, setFinishShotFlag } from './finish-shot-hud';
 import { careerButtonText, MENU_FIRST_CSS, START_HERE_CLASS } from './menu-first';
 import { createMenuFlow, MENU_FLOW_CSS } from './menu-flow';
+import { careerPromptText, startKeyHints } from './control-guidance';
 import { actionScreenParts, ACTION_SCREEN_CSS } from './action-screen';
 import { hudStyle } from './placement';
 import { ROOT_FONT_PCT, textScaleOf } from './text-size';
@@ -783,16 +784,21 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   let paused = false;
 
   // ---- Start screen ------------------------------------------------------------------------
+  const startKeyRows = startKeyHints(settings.keyBindings).map((textContent) => el('div', { textContent }));
+  const drawStartKeys = () =>
+    startKeyHints(settings.keyBindings).forEach((text, i) => {
+      startKeyRows[i]!.textContent = text;
+    });
   const controlsCard = el(
     'div',
     { id: 'start-controls', className: 'card' },
     el('div', {}, el('b', { textContent: 'Keys' })),
     el('div', {}, el('b', { textContent: 'Touch' })),
-    el('div', { textContent: 'W / Up ride · S / Down brake' }),
+    startKeyRows[0]!,
     el('div', { textContent: 'Left thumb: drag up to ride' }),
-    el('div', { textContent: 'A / D steer · J hit · K kick' }),
+    startKeyRows[1]!,
     el('div', { textContent: 'Sideways to steer, lift to coast' }),
-    el('div', { textContent: 'Esc pause' }),
+    startKeyRows[2]!,
     el('div', { textContent: 'HIT to punch, swipe down on it to kick' }),
     el('div', {
       className: 'snatch-help',
@@ -999,6 +1005,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     settingsScreen.sync(settings);
     syncPauseEntries();
     drawKeyLegend();
+    drawStartKeys();
     cb.onSettingsChange?.(next);
   };
   /**
@@ -2170,7 +2177,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         placeCards();
       }),
     showTeaser: (t) => withCareer((c) => c.showTeaser(t)),
-    prompt: (t) => withCareer((c) => c.prompt(t)),
+    prompt: (t) => withCareer((c) => c.prompt(careerPromptText(t, settings.keyBindings))),
     setObjective: (t) => withCareer((c) => c.setObjective(t)),
     message: (t) => withCareer((c) => c.message(t)),
   };

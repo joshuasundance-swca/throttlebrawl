@@ -50,4 +50,11 @@ describe('input: the keyboard legend for the pause screen', () => {
     expect(keyLabel('Slash')).toBe('/');
     expect(keyLabel('Backslash')).toBe('\\');
   });
+
+  it('names active directional keys in the kick advice after remapping', () => {
+    const rows = keyLegend({ ...DEFAULT_KEY_MAP, attackLeft: ['KeyF'], attackRight: ['KeyG', 'Digit2'] });
+    const kick = rows.find((r) => r.keys === 'K')!;
+    expect(kick.action).toContain('hold F or G / 2');
+    expect(kick.action).not.toContain('U or O');
+  });
 });
