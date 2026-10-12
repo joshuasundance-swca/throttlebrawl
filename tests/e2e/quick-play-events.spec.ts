@@ -14,7 +14,7 @@ interface Config {
   difficulty: { copFrequency: number };
 }
 const profile = (page: Page) => page.evaluate(() => localStorage.getItem('mbrawl:profile'));
-// Keep reload failures observable without changing any readiness assertion or timeout.
+// Keep reload failures observable at their actual runtime and screen boundary.
 test.beforeEach(({ page }) => {
   page.on('pageerror', (error) => console.log(`Quick Play page error: ${error.message}`));
 });
@@ -61,6 +61,10 @@ for (const family of ['race', 'hunt', 'escape', 'grudge'])
   test(`${family} reaches the config and HUD, survives reload, and keeps the career untouched`, async ({
     page,
   }) => {
+    // This case boots twice and launches a real race. The default 30-second whole-test
+    // deadline expired during reload navigation on CI after its launch checks passed.
+    // Explicit expectation limits and all gameplay checks keep their existing rules.
+    test.setTimeout(90_000);
     await page.addInitScript((fixture) => {
       (window as TestWindow).__GAME_TEST__ = true;
       if (!localStorage.getItem('mbrawl:profile'))
