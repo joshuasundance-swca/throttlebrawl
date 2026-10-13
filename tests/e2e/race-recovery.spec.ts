@@ -192,8 +192,9 @@ for (const career of [false, true]) {
     await page.reload();
     await expect(page.locator('#resume-card')).toBeVisible();
     await expect(page.locator('#resume-race')).toHaveText('Resume race');
-    // Ordinary keyboard Start cannot dismiss or bypass the recovery choice.
+    // Keyboard input and the ordinary Start handler cannot dismiss the recovery choice.
     await page.keyboard.press('Enter');
+    await page.evaluate(() => (window as GameWindow).__game!.tap());
     // The ordinary pointer Start handler is guarded too; dispatch does not force through an overlay.
     await page.locator('#start-screen').dispatchEvent('click');
     expect(await page.evaluate(() => (window as GameWindow).__game!.state())).toBe('tapToStart');
@@ -305,6 +306,32 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
 }) => {
   test.setTimeout(240_000);
   await page.addInitScript(() => {
+    // Headless Chromium refuses a physical wake request. Supply the observable public API
+    // capability for this ownership/isolation test; this does not certify native phone wake.
+    const w = window as Window & { __measurementWakeRequests?: number; __measurementWakeRefuse?: boolean };
+    w.__measurementWakeRequests = 0;
+    class Sentinel extends EventTarget {
+      released = false;
+      release() {
+        if (!this.released) {
+          this.released = true;
+          this.dispatchEvent(new Event('release'));
+        }
+        return Promise.resolve();
+      }
+    }
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        request: (type: string) => {
+          if (type !== 'screen') throw new Error('Expected screen wake request');
+          w.__measurementWakeRequests = (w.__measurementWakeRequests ?? 0) + 1;
+          if (w.__measurementWakeRefuse)
+            return Promise.reject(new DOMException('Wake refusal fixture', 'NotAllowedError'));
+          return Promise.resolve(new Sentinel());
+        },
+      },
+    });
     if (!localStorage.getItem('mbrawl:settings'))
       localStorage.setItem(
         'mbrawl:settings',
@@ -373,12 +400,24 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
     race: localStorage.getItem('mbrawl:race'),
     profile: localStorage.getItem('mbrawl:profile'),
     settings: localStorage.getItem('mbrawl:settings'),
+    recording: (window as GameWindow)
+      .__game!.debugFileText()
+      .split('\n')
+      .find((_line, i, lines) => lines[i - 1] === '===== replay (one line of JSON) ====='),
   }));
   expect(before.race).toBeNull();
   await openMenuMore(page);
   await page.locator('#menu-measure-frames').click();
+  const wakeRequests = await page.evaluate(
+    () => (window as Window & { __measurementWakeRequests?: number }).__measurementWakeRequests!,
+  );
   await page.locator('#measurement-start').click();
   await expect(page.locator('#measurement-status')).toContainText('Partial/running');
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __measurementWakeRequests?: number }).__measurementWakeRequests!,
+    ),
+  ).toBeGreaterThan(wakeRequests);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
   await expect(page.locator('#measurement-status')).toContainText('Ended:');
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow')));
@@ -386,11 +425,34 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
     race: localStorage.getItem('mbrawl:race'),
     profile: localStorage.getItem('mbrawl:profile'),
     settings: localStorage.getItem('mbrawl:settings'),
+    recording: (window as GameWindow)
+      .__game!.debugFileText()
+      .split('\n')
+      .find((_line, i, lines) => lines[i - 1] === '===== replay (one line of JSON) ====='),
   }));
   expect(after).toEqual(before);
   await expect(page.locator('#resume-card')).toBeHidden();
   await page.locator('#measurement-close').click();
   await expect(page.locator('#menu')).toBeVisible();
+  // A refused native capability must leave the same ordinary recording and storage intact too.
+  await page.evaluate(() => {
+    (window as Window & { __measurementWakeRefuse?: boolean }).__measurementWakeRefuse = true;
+  });
+  await page.locator('#menu-measure-frames').click();
+  await page.locator('#measurement-start').click();
+  await expect(page.locator('#measurement-status')).toContainText('wake-refused');
+  const refused = await page.evaluate(() => ({
+    race: localStorage.getItem('mbrawl:race'),
+    profile: localStorage.getItem('mbrawl:profile'),
+    settings: localStorage.getItem('mbrawl:settings'),
+    recording: (window as GameWindow)
+      .__game!.debugFileText()
+      .split('\n')
+      .find((_line, i, lines) => lines[i - 1] === '===== replay (one line of JSON) ====='),
+  }));
+  expect(refused).toEqual(before);
+  expect(await page.evaluate(() => (window as GameWindow).__game!.state())).toBe('menu');
+  await page.locator('#measurement-close').click();
 });
 
 test('Start over clears the classified attempt and leaves a usable menu', async ({ page }) => {
