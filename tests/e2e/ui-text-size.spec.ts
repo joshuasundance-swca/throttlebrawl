@@ -294,6 +294,7 @@ for (const viewport of [
     baseURL,
   }) => {
     test.setTimeout(120_000);
+    if (!baseURL) throw new Error('Touch layout check requires the configured game URL');
     const captures = [];
     for (const size of ['normal', 'largest']) {
       const context = await browser.newContext({
@@ -363,8 +364,15 @@ for (const viewport of [
       expect(b.font / a.font, `${a.id}: primary word follows the live text factor`).toBeCloseTo(factor, 2);
       if (a.hintFont !== null) {
         expect(b.hintFont).not.toBeNull();
-        if (factor > 1) expect(b.hintFont!, `${a.id}: instructional words grow`).toBeGreaterThan(a.hintFont);
-        else expect(b.hintFont).toBeCloseTo(a.hintFont, 2);
+        if (a.id === 'touch-attack' || factor === 1)
+          expect(b.hintFont! / a.hintFont, `${a.id}: hint follows the live text factor`).toBeCloseTo(
+            factor,
+            2,
+          );
+        else {
+          expect(b.hintFont!, `${a.id}: instructional words grow`).toBeGreaterThan(a.hintFont);
+          expect(b.hintFont!, 'wheelie word retains its smaller fit limit').toBeLessThanOrEqual(10);
+        }
       }
     }
   });
