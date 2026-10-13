@@ -13,7 +13,11 @@ Observed CI browser results, in milliseconds:
 | Three-second window, `f30e06e` | 7845.2 | 7662.2 |
 | 500 ms window and indexed lookup, `06cee55` | 4398.2 | 6843.3 |
 
+Primary browser-job logs: `f30e06e` [train](https://github.com/joshuasundance-swca/throttlebrawl/actions/runs/38317235803/job/115036715511) and [PR-head control](https://github.com/joshuasundance-swca/throttlebrawl/actions/runs/38317235803/job/115041156228); `06cee55` [train](https://github.com/joshuasundance-swca/throttlebrawl/actions/runs/38321601430/job/115050775242) and [PR-head control](https://github.com/joshuasundance-swca/throttlebrawl/actions/runs/38321601430/job/115054242412). The coordinator re-derived these values from the primary logs; the independent source review did not verify historical timings.
+
 The diagnostic dry run at `d09fabc` observed first visible at 5760.9 ms, response start at 503.4 ms, response end at 509.3 ms, DOM interactive at 3964.6 ms and DOM content loaded at 4040.1 ms. It observed one actual held service-worker request, production mode and no cleanup errors. The response returned near the candidate's timeout, but the remaining startup delay has not been attributed to a specific cause. These runs are not controlled main-versus-candidate performance comparisons and do not establish optimization payoff or phone timing.
+
+The diagnostic [train log](https://github.com/joshuasundance-swca/throttlebrawl/actions/runs/38324401723/job/115059673835) supplies those navigation fields. Its [PR-head control](https://github.com/joshuasundance-swca/throttlebrawl/actions/runs/38324401723/job/115063428534) also missed the unchanged bound, with first visible at 7892.3 ms. Both are failed timing acceptance, not successful performance validation.
 
 ## Automated acceptance
 
