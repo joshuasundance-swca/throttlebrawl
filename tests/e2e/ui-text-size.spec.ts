@@ -284,3 +284,88 @@ for (const viewport of [
     });
   });
 }
+
+for (const viewport of [
+  { width: 915, height: 412 },
+  { width: 568, height: 320 },
+]) {
+  test(`live touch labels grow where height permits, without changing circles, at ${viewport.width}x${viewport.height}`, async ({
+    browser,
+    baseURL,
+  }) => {
+    test.setTimeout(120_000);
+    const captures = [];
+    for (const size of ['normal', 'largest']) {
+      const context = await browser.newContext({
+        baseURL,
+        viewport,
+        deviceScaleFactor: 1,
+        isMobile: true,
+        hasTouch: true,
+        serviceWorkers: 'block',
+      });
+      try {
+        const page = await context.newPage();
+        await page.addInitScript(() => {
+          (window as TestWindow).__GAME_TEST__ = true;
+        });
+        await page.goto('./');
+        await page.locator('#start-action').click();
+        if (size === 'largest') await setLargest(page);
+        await openQuickPlay(page);
+        await page.locator('#menu-race').click();
+        await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+        const capture = await page.evaluate(() => {
+          const controls = ['touch-attack', 'touch-brake', 'touch-wheelie'].map((id) => {
+            const button = document.getElementById(id)!;
+            const box = button.getBoundingClientRect();
+            const text = [...button.childNodes].find((node) => node.nodeType === Node.TEXT_NODE)!;
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            const hint = button.querySelector<HTMLElement>('.touch-hint');
+            const rects = [...range.getClientRects(), ...(hint ? [hint.getBoundingClientRect()] : [])];
+            return {
+              id,
+              geometry: [box.x, box.y, box.width, box.height],
+              font: parseFloat(getComputedStyle(button).fontSize),
+              hintFont: hint ? parseFloat(getComputedStyle(hint).fontSize) : null,
+              hint: hint?.textContent ?? null,
+              fits:
+                rects.every(
+                  (r) =>
+                    r.left >= box.left && r.top >= box.top && r.right <= box.right && r.bottom <= box.bottom,
+                ) &&
+                button.scrollWidth <= button.clientWidth + 1 &&
+                button.scrollHeight <= button.clientHeight + 1,
+              visible: button.checkVisibility(),
+            };
+          });
+          return { root: parseFloat(getComputedStyle(document.documentElement).fontSize), controls };
+        });
+        for (const control of capture.controls) {
+          expect(control.visible, `${size}: ${control.id} visible`).toBe(true);
+          expect(control.fits, `${size}: ${control.id} painted words fit`).toBe(true);
+        }
+        expect(capture.controls[0]!.hint).toBe('▼ kick');
+        expect(capture.controls[2]!.hint).toBe(viewport.height > 320 ? 'wheelie' : null);
+        captures.push(capture);
+      } finally {
+        await context.close();
+      }
+    }
+    const [normal, largest] = captures;
+    const factor = viewport.height > 320 ? 1.4 : 1;
+    expect(largest!.root / normal!.root, 'the live race height cap applies').toBeCloseTo(factor, 2);
+    for (let i = 0; i < normal!.controls.length; i++) {
+      const a = normal!.controls[i]!,
+        b = largest!.controls[i]!;
+      expect(b.geometry, 'text size preserves each touch circle').toEqual(a.geometry);
+      expect(b.font / a.font, `${a.id}: primary word follows the live text factor`).toBeCloseTo(factor, 2);
+      if (a.hintFont !== null) {
+        expect(b.hintFont).not.toBeNull();
+        if (factor > 1) expect(b.hintFont!, `${a.id}: instructional words grow`).toBeGreaterThan(a.hintFont);
+        else expect(b.hintFont).toBeCloseTo(a.hintFont, 2);
+      }
+    }
+  });
+}
