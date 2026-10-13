@@ -122,9 +122,23 @@ test('the real recovery choice requests native fullscreen and audio from the use
   test.setTimeout(90_000);
   await ride(page, false);
   await page.addInitScript(() => {
-    const w = window as Window & { __recoveryGestures?: { fullscreen: boolean[]; audio: boolean[] } };
+    const w = window as Window & {
+      __recoveryGestures?: { fullscreen: boolean[]; audio: boolean[] };
+      __recoveryContexts?: AudioContext[];
+    };
     const calls: NonNullable<typeof w.__recoveryGestures> = { fullscreen: [], audio: [] };
     w.__recoveryGestures = calls;
+    const contexts: AudioContext[] = [];
+    w.__recoveryContexts = contexts;
+    // A reused origin may permit autoplay, so prepare() can create an already-running
+    // context. Retain the real context and establish actual suspension before the choice.
+    const NativeAudioContext = window.AudioContext;
+    window.AudioContext = class extends NativeAudioContext {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        contexts.push(this);
+      }
+    };
     let delivering = false;
     const add = Reflect.get<EventTarget, 'addEventListener'>(EventTarget.prototype, 'addEventListener');
     EventTarget.prototype.addEventListener = function (type, listener, options) {
@@ -164,6 +178,16 @@ test('the real recovery choice requests native fullscreen and audio from the use
   });
   await page.reload();
   await expect(page.locator('#resume-card')).toBeVisible();
+  await page.waitForFunction(
+    () => ((window as Window & { __recoveryContexts?: AudioContext[] }).__recoveryContexts?.length ?? 0) > 0,
+  );
+  await page.evaluate(async () => {
+    const contexts = (window as Window & { __recoveryContexts?: AudioContext[] }).__recoveryContexts!;
+    if (contexts.length === 0) throw new Error('Expected the actual prepared audio context');
+    await Promise.all(contexts.map((context) => context.suspend()));
+    if (contexts.some((context) => context.state !== 'suspended'))
+      throw new Error('Native audio must be suspended before the recovery gesture');
+  });
   await page.locator('#resume-race').click();
   await expect(page.locator('#pause-screen')).toBeVisible();
   const calls = await page.evaluate(

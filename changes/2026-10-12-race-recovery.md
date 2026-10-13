@@ -22,3 +22,5 @@ Repeated boss-seed and backdrop-look navigations handle the same offer, includin
 Regional entry and content-retry checks wait for the completed race/recovery outcome before inspecting the HUD or paused screen. Their original selected-region, exact saved-tick and retained-data assertions remain; these waits are bounded hang guards, not loading-speed claims.
 
 The independent recovery scenarios use the repository's existing file-level parallel mode on its existing two CI browser workers. Every case and assertion remains; no worker count, deadline, budget or CI configuration changes.
+
+The native audio-gesture check establishes and observes a real suspended audio context before pressing Resume. An origin already allowed to autoplay can otherwise have running audio and correctly need no native resume call. The check still requires the game's native call during the actual recovery listener, rather than sticky activation or a mocked context state.
