@@ -106,15 +106,40 @@ test('the real recovery choice requests native fullscreen and audio from the use
   await page.addInitScript(() => {
     const w = window as Window & { __recoveryGestures?: { fullscreen: boolean[]; audio: boolean[] } };
     const calls = (w.__recoveryGestures = { fullscreen: [], audio: [] });
+    let delivering = false;
+    const add = Reflect.get<EventTarget, 'addEventListener'>(EventTarget.prototype, 'addEventListener');
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (
+        type === 'click' &&
+        this instanceof HTMLElement &&
+        this.id === 'resume-race' &&
+        typeof listener === 'function'
+      ) {
+        add.call(
+          this,
+          type,
+          function (this: EventTarget, event: Event) {
+            delivering = event.isTrusted;
+            try {
+              listener.call(this, event);
+            } finally {
+              delivering = false;
+            }
+          },
+          options,
+        );
+      } else add.call(this, type, listener, options);
+    };
     const fullscreen = Reflect.get<Element, 'requestFullscreen'>(Element.prototype, 'requestFullscreen');
     Element.prototype.requestFullscreen = function (options) {
-      calls.fullscreen.push(navigator.userActivation.isActive);
+      calls.fullscreen.push(delivering && navigator.userActivation.isActive);
       return fullscreen.call(this, options);
     };
     const resume = Reflect.get<AudioContext, 'resume'>(AudioContext.prototype, 'resume');
     AudioContext.prototype.resume = function () {
-      // Fullscreen may consume transient activation; audio still belongs to this trusted tap.
-      calls.audio.push(navigator.userActivation.hasBeenActive);
+      // Fullscreen can consume transient activation. The listener wrapper closes in finally,
+      // so an awaited continuation cannot pass by observing sticky hasBeenActive.
+      calls.audio.push(delivering);
       return resume.call(this);
     };
   });
@@ -259,6 +284,12 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await page.goto('./');
   await page.locator('#start-screen').click();
   await openQuickPlay(page);
+  await page.locator('#region-region-sf-san-francisco').click();
+  await page.locator('#route-region-sf-osm-sf-twin-peaks-run').click();
+  await expect(page.locator('#route-region-sf-osm-sf-twin-peaks-run')).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
   await page.locator('#menu-options').click();
   await page.locator('#race-option-kind-next').click();
   await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', 'hunt');
@@ -273,6 +304,11 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await fastForwardDone(page, 'nondefault Quick Play');
   await page.keyboard.press('Escape');
   const first = await replayConfig(page);
+  expect(first.event.routeId).toBe('region-sf:osm-sf-twin-peaks-run');
+  expect((await attempt(page)).context).toMatchObject({
+    kind: 'quick',
+    route: 'region-sf:osm-sf-twin-peaks-run',
+  });
   const profile = await page.evaluate(() => localStorage.getItem('mbrawl:profile'));
   await page.reload();
   await page.locator('#resume-race').click();
@@ -293,6 +329,7 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   );
   await fastForwardDone(page, 'retried Quick Play finish');
   await expect(page.locator('#results')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('mbrawl:profile'))).toBe(profile);
   await page.locator('#results-menu').click();
   await page.evaluate(() => (window as GameWindow).__game!.lockstep(null));
   const before = await page.evaluate(() => ({
