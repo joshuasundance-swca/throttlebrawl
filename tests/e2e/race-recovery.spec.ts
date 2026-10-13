@@ -105,7 +105,8 @@ test('the real recovery choice requests native fullscreen and audio from the use
   await ride(page, false);
   await page.addInitScript(() => {
     const w = window as Window & { __recoveryGestures?: { fullscreen: boolean[]; audio: boolean[] } };
-    const calls = (w.__recoveryGestures = { fullscreen: [], audio: [] });
+    const calls: NonNullable<typeof w.__recoveryGestures> = { fullscreen: [], audio: [] };
+    w.__recoveryGestures = calls;
     let delivering = false;
     const add = Reflect.get<EventTarget, 'addEventListener'>(EventTarget.prototype, 'addEventListener');
     EventTarget.prototype.addEventListener = function (type, listener, options) {
