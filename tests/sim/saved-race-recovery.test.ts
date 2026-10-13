@@ -8,6 +8,10 @@ import { RESUME_LOGIC_VERSION, SAVED_RACE_VERSION, type SavedRaceEnvelope } from
 import { createInputRecorder } from '../../src/replay';
 import { DEFAULT_SETTINGS } from '../../src/save';
 import { quantizeInput } from '../../src/sim/api';
+import * as careerFlow from '../../src/app/career-flow';
+import { recoveryCareer } from '../../src/app/recovery-context';
+import { noteCareerProgress, type CareerProgress } from '../../src/app/race-progress';
+import { DEFAULT_PROFILE, PROFILE_VERSION } from '../../src/save';
 import { ISOLATED } from './batch';
 
 const REGIONAL = registryFromGlob(
@@ -69,6 +73,90 @@ function fixture(terminal = false, regional = false) {
 }
 
 describe('saved attempt reconstruction', () => {
+  it('rebuilds the original later-season career logs and onboarding against uninterrupted control', () => {
+    const reg = REGIONAL;
+    const defs = careerFlow.careerDefs(reg);
+    const def = defs[0]!;
+    const node = def.nodes[0]!;
+    const starting = { ...careerFlow.startCareer(defs, structuredClone(DEFAULT_PROFILE)), season: 2 };
+    const setup = careerFlow.careerRaceSetup(reg, defs, starting, def, node);
+    const { sim, playerId } = createHeadlessRace(
+      {
+        seed: 77,
+        eventId: node.event,
+        playerBike: starting.bikes.current!,
+        freePlay: false,
+        tuning: ISOLATED,
+        ...(setup.length ? { length: setup.length.id } : {}),
+        ...(setup.patch ? { eventPatch: setup.patch } : {}),
+        ...(setup.fieldLevel ? { fieldLevel: setup.fieldLevel } : {}),
+      },
+      { registry: reg },
+    );
+    const recorder = createInputRecorder();
+    recorder.beginRace(sim, 'code+content');
+    const original = {
+      kind: 'career' as const,
+      eventId: node.event,
+      careerKey: def.key,
+      nodeId: node.id,
+      regionId: def.regionId,
+      length: setup.length?.id ?? null,
+      profileGuard: JSON.stringify({ format: 'profile', version: PROFILE_VERSION, data: starting }),
+    };
+    const derived = recoveryCareer(careerFlow, reg, defs, original, recorder.file()!.header);
+    expect(derived.starting.season).toBe(2);
+    expect(derived.setup.patch).toEqual(setup.patch);
+    const freshProgress = (): CareerProgress => ({
+      log: careerFlow.createRaceLog({
+        playerId,
+        rules: derived.setup.plan.rules,
+        objectives: derived.setup.plan.objectives,
+        routeId: careerFlow.bare(sim.config.event.routeId ?? ''),
+        roadIds: sim.config.road.edges.map((e) => e.id),
+        secrets: derived.def.secrets,
+      }),
+      onboarding: careerFlow.createOnboarding(derived.starting.oncePerCareer),
+      doneTick: null,
+      headline: '',
+      ask: derived.ask,
+      askLog: null,
+      askMet: false,
+    });
+    const control = freshProgress();
+    for (let tick = 0; tick < 120; tick++) {
+      const input = quantizeInput({ steer: 0, throttle: 0, brake: 0, flags: 0 });
+      recorder.record(tick, [input]);
+      sim.step([input]);
+      noteCareerProgress(careerFlow, control, sim.events(), sim.snapshot(), playerId, tick);
+      if (tick % 60 === 0) recorder.checkpoint(tick, sim.hash());
+    }
+    const attempt: SavedRaceEnvelope = {
+      format: 'saved-race',
+      version: SAVED_RACE_VERSION,
+      logicVersion: RESUME_LOGIC_VERSION,
+      phase: 'riding',
+      recording: recorder.file()!,
+      savedHash: sim.hash(),
+      context: { ...original, contextKey: derived.key },
+    };
+    const historical = freshProgress();
+    const restored = reconstructSavedRace(
+      attempt,
+      roadsForHeader(reg, createStreamCache()),
+      (events, snap, tick) => {
+        noteCareerProgress(careerFlow, historical, events, snap, playerId, tick);
+      },
+    );
+    expect(historical.log?.status()).toEqual(control.log?.status());
+    expect(historical.log?.tally()).toEqual(control.log?.tally());
+    expect(historical.onboarding.shown()).toEqual(control.onboarding.shown());
+    expect(historical.onboarding.shown()).toContain('ride');
+    expect(historical.doneTick).toBe(control.doneTick);
+    expect(historical.askLog?.tally()).toEqual(control.askLog?.tally());
+    expect(historical.askMet).toBe(control.askMet);
+    expect(restored.sim.hash()).toBe(sim.hash());
+  });
   it('folds every original step and preserves non-default config, tuning and continued hashes', () => {
     const f = fixture();
     const folded: number[] = [];
