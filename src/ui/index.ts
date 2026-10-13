@@ -300,7 +300,8 @@ export interface GameUi {
   /**
    * The reload-recovery card. The default is an unfinished race; other kinds describe a pending
    * result or a failure. `resume` reports the displayed primary action, interpreted by app/ for
-   * that offer. Choice is reported once inside the tap, after hiding, for gesture activation.
+   * that offer. Choice is reported once synchronously when the UI action gate delivers the tap,
+   * after hiding. App's gate must preserve the original gesture for platform/audio activation.
    */
   showResumeCard(onChoice: (choice: ResumeCardChoice) => void, kind?: ResumeCardKind, detail?: string): void;
   /** A spinner with a line of text over everything (the resume fast-forward), or null to hide it. */

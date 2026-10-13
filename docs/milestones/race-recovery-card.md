@@ -4,7 +4,7 @@
 
 ## Contract
 
-Keep `showResumeCard(onChoice)` compatible with the existing riding card. Add an optional kind and plain explanation. Choices remain `resume` (the displayed primary action) and `startOver` (the displayed abandon action); APP interprets them according to the offered state. Report the choice synchronously inside its gesture, after hiding the card, and at most once per offer.
+Keep `showResumeCard(onChoice)` compatible with the existing riding card. Add an optional kind and plain explanation. Choices remain `resume` (the displayed primary action) and `startOver` (the displayed abandon action); APP interprets them according to the offered state. Report the choice synchronously when the UI action gate delivers it, after hiding the card, and at most once per offer. APP's gate must deliver within the original gesture to preserve platform/audio activation.
 
 | Kind | Primary action | Abandon action | Meaning |
 |---|---|---|---|
