@@ -43,8 +43,19 @@ async function config(page: Page): Promise<Config> {
     return replay.header.config;
   });
 }
-async function options(page: Page) {
-  await page.locator('#start-screen').click();
+async function options(page: Page, afterReload = false) {
+  if (afterReload) {
+    await page.waitForFunction(() => !!(window as TestWindow).__game);
+    // This case checks persisted menu choices. Recovery now owns reload precedence, so use the
+    // ordinary Start seam and explicitly abandon its offer before reopening those menu choices.
+    await page.evaluate(() => (window as TestWindow).__game!.tap());
+    await page.waitForFunction(
+      () =>
+        document.getElementById('menu')?.checkVisibility() ||
+        document.getElementById('resume-card')?.checkVisibility(),
+    );
+    if (await page.locator('#resume-card').isVisible()) await page.locator('#resume-start-over').click();
+  } else await page.locator('#start-screen').click();
   await openQuickPlay(page);
   await page.locator('#menu-options').click();
   await expect(page.locator('#race-option-kind')).toBeVisible();
@@ -99,7 +110,7 @@ for (const family of ['race', 'hunt', 'escape', 'grudge'])
     console.log(`Quick Play ${family}: launch/config/HUD/profile checked; reloading`);
     await page.reload();
     console.log(`Quick Play ${family}: reload returned; opening options`);
-    await options(page);
+    await options(page, true);
     await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', family);
   });
 

@@ -73,18 +73,27 @@ import {
   type RiderRigCounts,
   saveAutoTier,
 } from '../render';
-import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
+import {
+  configFromHeader,
+  createInputRecorder,
+  createReplayController,
+  decodeReplay,
+  encodeReplay,
+  recordingKey,
+  type Recording,
+} from '../replay';
 import {
   audioVolumes,
   createProfileStore,
   createSettingsStore,
   PROFILE_VERSION,
+  profileKey,
+  sanitiseProfile,
   settingsAssists,
   type FrameRateCap,
   type Profile,
   type RaceWeather,
   type Settings,
-  type StorageLike,
 } from '../save';
 import { cameraTargetOf } from './camera-target';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
@@ -159,6 +168,8 @@ import {
 } from './regions';
 import { boardSpots, spotOn, withIncidentSites, withReceiptBoards } from './receipt-boards';
 import { roadsForHeader } from './resume';
+import { noteCareerProgress } from './race-progress';
+import type { SavedRaceContext, SavedRaceEnvelope, SavedRaceRead, SavedRaceStore } from './saved-race';
 import { createRaceSeeds, cryptoSeed, type SeedSource } from './seed';
 import { reloadLosesNothing, transition, type AppEvent, type AppState } from './states';
 import {
@@ -587,7 +598,7 @@ function percentile(sorted: readonly number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] ?? 0;
 }
 
-function safeStorage(): StorageLike | null {
+function safeStorage(): Storage | null {
   try {
     const s = window.localStorage;
     return s ?? null;
@@ -686,11 +697,12 @@ export function createApp(opts: AppOptions): AppHandle {
   let quickDone: number | null = null;
   let quickRetry: { eventId: string; route: string | null; settings: Settings } | null = null;
   // The career (run W-R): the profile record beside the settings, and every region's career map.
-  const profileStore = createProfileStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
+  let profileStore = createProfileStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
   let profile: Profile = profileStore.load();
   const saveProfile = (next: Profile) => {
+    if (attemptOwner?.terminal && !attemptOwner.settled) return false;
     profile = next;
-    profileStore.save(next);
+    return profileStore.save(next);
   };
   /** A career has started once it owns a bike or has played a race (as src/career/ says). */
   const careerStarted = (p: Profile) => p.bikes.owned.length > 0 || p.history.length > 0;
@@ -737,6 +749,35 @@ export function createApp(opts: AppOptions): AppHandle {
   let pendingTeaser: ReturnType<CareerFlow['teaserView']> = null;
   const layout: TouchLayout = { id: hud.id, mirror: settings.mirror || hud.mirror, elements: hud.elements };
   const recorder = createInputRecorder();
+  const raceStorage = safeStorage();
+  let recovery: typeof import('./race-recovery') | null = null;
+  let recoveryResolved = false;
+  let savedStore: SavedRaceStore | null = null;
+  let savedRead: SavedRaceRead | null = null;
+  let recoveryLocked = false;
+  let initialAttemptRaw: string | null = null;
+  let recoveryBusy = false;
+  let savedTick: number | null = null;
+  let staleReplayKey: string | null = null;
+  let fastForward: { ticks: number; ms: number } | null = null;
+  let saveNoticeShown = false;
+  let recoveredTerminal: Recording | null = null;
+  let attemptOwner: {
+    sim: Sim;
+    token: object;
+    context: SavedRaceContext;
+    canPersist: boolean;
+    terminal?: Extract<SavedRaceEnvelope, { phase: 'pending-result' }>;
+    settled: boolean;
+  } | null = null;
+  // Empty-slot boot stays cheap: no decoding or lazy-module wait before the ordinary Start tap.
+  // A nonempty slot gets precedence over both pointer and keyboard Start until classified.
+  try {
+    initialAttemptRaw = raceStorage?.getItem(recordingKey(APP_ID)) ?? null;
+    recoveryLocked = initialAttemptRaw !== null;
+  } catch {
+    /* Unknown storage leaves the menu usable; the store will keep writes disabled. */
+  }
   const pendingTuning: { id: string; value: number }[] = [];
   // Every module's declarations (app/tuning.ts); the shipped preset (pack.json `defaults.tuning`)
   // under the device's saved one; exported presets carry this build's id.
@@ -829,7 +870,11 @@ export function createApp(opts: AppOptions): AppHandle {
    * Shows the race's region: its road with the road files as set dressing (rails, ramp stripes),
    * its signs and billboards (minus this device's cuts), its time of day and palette.
    */
-  const showRegion = (timeOfDay: string = String(event.timeOfDay), weather: RaceWeather = 'local') => {
+  const showRegion = (
+    timeOfDay: string = String(event.timeOfDay),
+    weather: RaceWeather = 'local',
+    lengthId = settings.raceLength,
+  ) => {
     // Run W-T: a career race shows the region's receipts on its boards, so they key the cache too.
     const receipts = careerRace && C ? JSON.stringify(profile.receipts.at(-1) ?? null) : '';
     if (
@@ -848,9 +893,7 @@ export function createApp(opts: AppOptions): AppHandle {
     shownWeather = weather;
     shownEvent = eventId;
     const regionKey = regionKeyOf(registry, eventId);
-    const roadPack = packOf(
-      networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
-    );
+    const roadPack = packOf(networkKeyOf(registry, routeKeyOf(registry, eventId, lengthId, route)));
     const dressing = Object.fromEntries(
       stream.road.edges.map((e) => [e.id, lookup(registry.roads, qualifyIn(roadPack, e.id))]),
     );
@@ -1237,6 +1280,7 @@ export function createApp(opts: AppOptions): AppHandle {
         onBuyPaint: (id) => C && garageAct(C.buyPaint(defs, profile, id)),
         onPaint: (id) => C && garageAct(C.paintBike(profile, profile.bikes.current, id)),
         onExport: async () => {
+          if (!ordinaryAllowed()) return '';
           const current = captureNormal();
           const m = await careerReady;
           if (!current()) return '';
@@ -1252,6 +1296,7 @@ export function createApp(opts: AppOptions): AppHandle {
           return m.encodeExportCode({ profile: rec, settings: settingsStore.record() });
         },
         onImport: async (code) => {
+          if (!ordinaryAllowed()) return 'Save or abandon the waiting result first.';
           const current = captureNormal();
           const m = await careerReady;
           if (!current()) return '';
@@ -1270,6 +1315,7 @@ export function createApp(opts: AppOptions): AppHandle {
             new Date().toISOString(),
           );
           if (!current()) return '';
+          if (!ordinaryAllowed()) return 'Save or abandon the waiting result first.';
           saveProfile(restored);
           lastTexts = [];
           pendingTeaser = null;
@@ -1305,6 +1351,7 @@ export function createApp(opts: AppOptions): AppHandle {
       onCopyReport: opts.callbacks.onCopyReport,
       ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
       onPause: () => {
+        flushAttempt();
         syncRunning();
         showPauseMap();
       },
@@ -1317,9 +1364,11 @@ export function createApp(opts: AppOptions): AppHandle {
       },
       onResume: unpause,
       onRestart: () => {
+        if (!ordinaryAllowed() || !abandonOrdinaryAttempt()) return;
         // A career race restarts its own map node (the abandoned try pays nothing and records nothing).
         const c = careerRace;
         if (c && state === 'race') {
+          go('back');
           startCareerRace(c.def, c.node);
           syncRunning();
           return;
@@ -1349,7 +1398,7 @@ export function createApp(opts: AppOptions): AppHandle {
         }
         applyShake(next);
         audio.setRadioCut(radioCut(next));
-        if (changedKind && state !== 'race') showPicked();
+        if (changedKind && state !== 'race' && ordinaryAllowed()) showPicked();
       },
     },
   });
@@ -1398,6 +1447,24 @@ export function createApp(opts: AppOptions): AppHandle {
   let outcome = createOutcome();
   const finishRace = () => {
     if (!race || !curr || !go('finished')) return;
+    const owner = attemptOwner;
+    if (owner?.sim === race && !owner.terminal && recovery) {
+      const recording = recorder.file();
+      if (recording?.end) {
+        owner.terminal = {
+          format: 'saved-race',
+          version: recovery.SAVED_RACE_VERSION,
+          logicVersion: recovery.RESUME_LOGIC_VERSION,
+          phase: 'pending-result',
+          recording,
+          context: owner.context,
+          savedHash: race.hash(),
+          result: { build: build.id, at: new Date().toISOString() },
+        };
+        const written = owner.canPersist ? savedStore?.save(owner.terminal) : undefined;
+        if (written?.ok) savedTick = written.tick;
+      }
+    }
     if (careerRace) {
       settleCareerRace(false);
       return;
@@ -1413,6 +1480,14 @@ export function createApp(opts: AppOptions): AppHandle {
         : {}),
     });
     ui.show('results');
+    if (owner) {
+      owner.settled = true;
+      if (owner.canPersist && !forgetOwnedSlot()) {
+        recoveryLocked = true;
+        savedRead = savedStore?.read() ?? null;
+        ui.notice('This result is complete, but its saved attempt could not be removed.');
+      }
+    }
   };
 
   const lookWatch = createLookFallback();
@@ -1544,7 +1619,7 @@ export function createApp(opts: AppOptions): AppHandle {
     ) {
       recorder.finish(tick, race.hash());
       finishRace();
-    }
+    } else if (race.tick % 300 === 0) flushAttempt();
   };
 
   const loop = createLoop(
@@ -1680,6 +1755,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // screen opens, so the player comes back to it and resumes by choice.
     onHidden: (reason) => {
       if (measurement?.owned) measurement.fail(reason === 'visibility' ? 'hidden' : reason);
+      flushAttempt();
       if (state === 'race') ui.pause();
       hold('hidden', true);
     },
@@ -1855,6 +1931,7 @@ export function createApp(opts: AppOptions): AppHandle {
       .finally(() => normalLoads.delete(loadOwner));
   };
   const pickRegion = (id: string) => {
+    if (!ordinaryAllowed()) return;
     const choice = regions.find((r) => r.id === id);
     if (!choice) return;
     clearLoadRetry(ui);
@@ -1874,6 +1951,7 @@ export function createApp(opts: AppOptions): AppHandle {
    * the region's own road. The menu backdrop follows the pick; Race races it.
    */
   const pickRoute = (id: string | null) => {
+    if (!ordinaryAllowed()) return;
     if (id && (event.kind === 'takedown-hunt' || event.kind === 'grudge-match')) return;
     if (id === route) return;
     route = id;
@@ -1933,6 +2011,453 @@ export function createApp(opts: AppOptions): AppHandle {
     },
   );
 
+  const recoveryReady = import('./race-recovery').then(
+    (m) => {
+      recovery = m;
+      recoveryResolved = true;
+      savedStore = m.createSavedRaceStore({ keyPrefix: APP_ID, storage: raceStorage });
+      classifySavedAttempt();
+      return m;
+    },
+    () => {
+      recoveryResolved = true;
+      ui.notice('Race recovery did not load. Playing is available; reload to try recovery again.');
+      if (recoveryLocked) offerRecoveryLoadFailure();
+      return null;
+    },
+  );
+
+  function offerRecoveryLoadFailure(): void {
+    try {
+      initialAttemptRaw = raceStorage?.getItem(recordingKey(APP_ID)) ?? initialAttemptRaw;
+    } catch {
+      /* Retain the last observed text; unknown storage never authorizes removal. */
+    }
+    const expected = initialAttemptRaw;
+    ui.showResumeCard((choice) => {
+      activateRecoveryChoice();
+      if (choice === 'resume') {
+        reloadPage();
+        return;
+      }
+      try {
+        if (!raceStorage) throw new Error('Storage unavailable');
+        if (raceStorage.getItem(recordingKey(APP_ID)) !== expected) throw new Error('Saved race changed');
+        raceStorage.removeItem(recordingKey(APP_ID));
+        if (raceStorage.getItem(recordingKey(APP_ID)) !== null) throw new Error('Removal failed');
+        recoveryLocked = false;
+        ui.show('menu');
+      } catch {
+        ui.notice('The saved race could not be removed. Reload the page to try again.');
+        offerRecoveryLoadFailure();
+      }
+    }, 'retry-load');
+  }
+
+  function ordinaryAllowed(): boolean {
+    if (!attemptOwner && savedRead?.kind === 'blocked' && state !== 'race') classifySavedAttempt();
+    if (recoveryLocked || recoveryBusy) {
+      if (!recoveryBusy) offerSavedAttempt(attemptOwner?.settled ? 'unavailable' : undefined);
+      return false;
+    }
+    if (attemptOwner?.terminal && !attemptOwner.settled) {
+      offerFailedResult();
+      return false;
+    }
+    return true;
+  }
+
+  function classifySavedAttempt(): void {
+    if (!savedStore || attemptOwner || measurement?.owned) return;
+    savedRead = savedStore.read();
+    if (savedRead.kind === 'saved') savedTick = savedRead.envelope.recording.inputs.ticks;
+    if (savedRead.kind === 'refused') staleReplayKey = savedRead.replayKey ?? null;
+    recoveryLocked = savedRead.kind === 'saved' || savedRead.kind === 'refused';
+    if (savedRead.kind === 'blocked')
+      ui.notice('Race storage could not be read. Playing is available, but this race cannot be saved.');
+    if (recoveryLocked) offerSavedAttempt();
+  }
+
+  function activateRecoveryChoice(): void {
+    // Keep native activation in the original click/keyboard delivery, before lazy content awaits.
+    void runStartTap(() => audio.resume());
+    if (state === 'tapToStart') go('tapped');
+    ui.show('menu');
+  }
+
+  function offerSavedAttempt(kind?: 'unavailable' | 'retry-load', detail?: string): void {
+    if (!savedStore) {
+      if (recoveryResolved && recoveryLocked) offerRecoveryLoadFailure();
+      return;
+    }
+    const read = savedRead;
+    if ((!read || read.kind === 'empty' || read.kind === 'blocked') && !recoveryLocked) return;
+    const view = kind ?? (read?.kind === 'saved' ? read.envelope.phase : 'unavailable');
+    ui.showResumeCard(
+      (choice) => {
+        activateRecoveryChoice();
+        if (choice === 'startOver') {
+          const discarded = attemptOwner?.context;
+          const failedAward = attemptOwner?.terminal && !attemptOwner.settled;
+          if (!forgetOwnedSlot()) {
+            recoveryLocked = true;
+            offerSavedAttempt(
+              'unavailable',
+              'The saved race could not be removed. Its data is still on this device.',
+            );
+            return;
+          }
+          if (failedAward) restorePersistedProfile(discarded);
+          attemptOwner = null;
+          recoveryLocked = false;
+          savedRead = { kind: 'empty' };
+          savedTick = null;
+          if (state === 'race' || state === 'results') go('back');
+          race = null;
+          careerRace = null;
+          quickLog = null;
+          quickDone = null;
+          ui.career.setObjective(null);
+          ui.show('menu');
+          frames.refresh();
+        } else if (read?.kind === 'saved') void restoreSavedAttempt(read);
+      },
+      view,
+      detail ?? (read?.kind === 'refused' ? 'Its data is still on this device.' : undefined),
+    );
+  }
+
+  function ownOrdinaryAttempt(): void {
+    const m = recovery;
+    const file = recorder.current();
+    if (!m || !savedStore || !C || !race || !file || recoveryLocked || measurement?.owned) return;
+    let context: SavedRaceContext;
+    if (careerRace) {
+      let guard: string | null = null;
+      try {
+        guard = raceStorage?.getItem(profileKey(APP_ID)) ?? null;
+      } catch {
+        /* Keep unknown data. */
+      }
+      const frozen = guard === null ? null : m.profileFromGuard(guard);
+      if (!guard || !frozen || m.canonicalJson(frozen) !== m.canonicalJson(sanitiseProfile(profile))) {
+        ui.notice('This race cannot be recovered because career progress has not reached device storage.');
+        return;
+      }
+      const original = {
+        kind: 'career' as const,
+        eventId,
+        careerKey: careerRace.def.key,
+        nodeId: careerRace.node.id,
+        regionId: careerRace.def.regionId,
+        length: careerRace.length,
+        profileGuard: guard,
+      };
+      const derived = m.recoveryCareer(C, registry, defs, original, file.header);
+      context = { ...original, contextKey: derived.key };
+    } else {
+      context = {
+        kind: 'quick',
+        eventId,
+        route,
+        settings: structuredClone(quickSettings ?? settings),
+        contextKey: m.canonicalJson(C.eventPlan(registry, eventId)),
+      };
+    }
+    attemptOwner = { sim: race, token: {}, context, canPersist: savedRead?.kind === 'empty', settled: false };
+    saveNoticeShown = false;
+  }
+
+  function flushAttempt(owner = attemptOwner): void {
+    if (
+      !owner ||
+      owner !== attemptOwner ||
+      owner.token !== attemptOwner.token ||
+      owner.sim !== race ||
+      owner.terminal ||
+      state !== 'race' ||
+      measurement?.owned ||
+      !recovery ||
+      !savedStore ||
+      !owner.canPersist
+    )
+      return;
+    const recording = recorder.file();
+    if (!recording || recording.inputs.ticks === 0) return;
+    const written = savedStore.save({
+      format: 'saved-race',
+      version: recovery.SAVED_RACE_VERSION,
+      logicVersion: recovery.RESUME_LOGIC_VERSION,
+      phase: 'riding',
+      recording,
+      context: owner.context,
+      savedHash: owner.sim.hash(),
+    });
+    if (written.ok) savedTick = written.tick;
+    else if (!saveNoticeShown) {
+      saveNoticeShown = true;
+      ui.notice('Race progress could not be saved. Playing can continue; a reload may lose recent progress.');
+    }
+  }
+
+  function abandonOrdinaryAttempt(): boolean {
+    if (!attemptOwner) return true;
+    if (attemptOwner.canPersist && !forgetOwnedSlot()) {
+      recoveryLocked = true;
+      if (state === 'race') ui.pause();
+      ui.notice('The saved race could not be removed. Retry before starting another race.');
+      offerSavedAttempt('unavailable', 'The saved race could not be removed. Try discarding it again.');
+      return false;
+    }
+    attemptOwner = null;
+    savedTick = null;
+    return true;
+  }
+
+  function forgetOwnedSlot(): boolean {
+    if (!savedStore) return false;
+    if (!savedStore.clear()) {
+      const fresh = savedStore.read();
+      if (fresh.kind !== 'blocked') savedRead = fresh;
+      if (fresh.kind !== 'empty') return false;
+    }
+    savedRead = { kind: 'empty' };
+    savedTick = null;
+    return true;
+  }
+
+  function restorePersistedProfile(fallback?: SavedRaceContext): void {
+    profileStore = createProfileStore({ keyPrefix: APP_ID, build: build.id, storage: raceStorage });
+    profile = profileStore.load();
+    // A blocked fresh read must not turn abandonment into a blank in-memory career. The new
+    // store still holds writes disabled, while the last supported starting record stays usable.
+    if (!profileStore.record() && profileStore.notice && fallback?.kind === 'career')
+      profile = recovery?.profileFromGuard(fallback.profileGuard) ?? profile;
+  }
+
+  function offerFailedResult(kind: 'save-failed' | 'unavailable' = 'save-failed', detail?: string): void {
+    const context = attemptOwner?.context;
+    ui.showResumeCard(
+      (choice) => {
+        activateRecoveryChoice();
+        if (choice === 'resume') {
+          settleCareerRace(false);
+        } else if (abandonOrdinaryAttempt()) {
+          restorePersistedProfile(context);
+          careerRace = null;
+          race = null;
+          go('back');
+          ui.show('menu');
+          frames.refresh();
+        } else offerFailedResult(kind, detail);
+      },
+      kind,
+      detail,
+    );
+  }
+
+  async function restoreSavedAttempt(read: Extract<SavedRaceRead, { kind: 'saved' }>): Promise<void> {
+    const m = recovery;
+    if (!m || !savedStore || recoveryBusy || measurement?.owned) return;
+    recoveryBusy = true;
+    ui.setBusy('Recovering your race');
+    const current = captureNormal();
+    const loadOwner = {};
+    pendingLaunch = loadOwner;
+    let failureKind: 'retry-load' | 'unavailable' = 'retry-load';
+    try {
+      const flow = C ?? (await careerReady);
+      if (!flow) throw new Error('Career rules did not load');
+      const attempt = read.envelope;
+      const missing = packClosure(registry, packOf(attempt.context.eventId)).filter(
+        (id) => !library.hasRoads(id),
+      );
+      await Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()]);
+      if (!current()) return;
+      roadsArrived(library.registry());
+      failureKind = 'unavailable';
+      if (attempt.recording.header.replayKey !== appReplayKey(build, raceHashes(attempt.context.eventId).sim))
+        throw new Error('The simulation or event content has changed');
+      const context = attempt.context;
+      const career =
+        context.kind === 'career'
+          ? m.recoveryCareer(flow, registry, defs, context, attempt.recording.header)
+          : null;
+      const contextKey = career?.key ?? m.canonicalJson(flow.eventPlan(registry, context.eventId));
+      if (contextKey !== context.contextKey) throw new Error('The race rules or rewards have changed');
+      if (context.kind === 'career') {
+        let actual: string | null;
+        try {
+          actual = raceStorage?.getItem(profileKey(APP_ID)) ?? null;
+        } catch {
+          failureKind = 'retry-load';
+          throw new Error('Career storage could not be read');
+        }
+        if (actual !== context.profileGuard)
+          throw new Error('Career progress has changed since this race was saved');
+      }
+      const cfg = attempt.recording.header.config!;
+      const originalPlayer = cfg.riders.findIndex((r) => r.controller.kind === 'player');
+      let historicalCareer: typeof careerRace = null;
+      if (career) {
+        historicalCareer = {
+          def: career.def,
+          node: career.node,
+          plan: career.setup.plan,
+          length: context.kind === 'career' ? context.length : null,
+          patch: career.setup.patch,
+          level: career.setup.fieldLevel,
+          log: flow.createRaceLog({
+            playerId: originalPlayer,
+            rules: career.setup.plan.rules,
+            objectives: career.setup.plan.objectives,
+            routeId: flow.bare(cfg.event.routeId ?? ''),
+            roadIds: roadsForHeader(registry, streams)(attempt.recording.header).road.edges.map((e) => e.id),
+            secrets: career.def.secrets,
+          }),
+          onboarding: flow.createOnboarding(career.starting.oncePerCareer),
+          doneTick: null,
+          headline: '',
+          ask: career.ask,
+          askLog: null,
+          askMet: false,
+          gig: career.gig,
+        };
+      }
+      const plan = flow.eventPlan(registry, context.eventId);
+      const historicalQuick =
+        context.kind === 'quick'
+          ? flow.createRaceLog({
+              playerId: originalPlayer,
+              rules: plan.rules,
+              objectives: plan.objectives,
+              routeId: cfg.event.routeId ?? '',
+              roadIds: roadsForHeader(
+                registry,
+                streams,
+              )(attempt.recording.header).road.edges.map((e) => e.id),
+            })
+          : null;
+      const historicalOutcome = createOutcome();
+      let historicalQuickDone: number | null = null;
+      let due = false;
+      const started = performance.now();
+      const restored = m.reconstructSavedRace(
+        attempt,
+        roadsForHeader(registry, streams),
+        (events, snap, tick) => {
+          historicalOutcome.note(events, originalPlayer, tick);
+          if (historicalCareer)
+            noteCareerProgress(flow, historicalCareer, events, snap, originalPlayer, tick);
+          if (historicalQuick) {
+            historicalQuick.note(events, snap);
+            if (historicalQuick.status().endNow && historicalQuickDone === null) historicalQuickDone = tick;
+          }
+          const careerDone = historicalCareer?.doneTick ?? null;
+          due =
+            resultsDue(historicalOutcome, tick, snap.race.over) ||
+            (careerDone !== null && tick >= careerDone + RESULTS_BEAT_TICKS) ||
+            (historicalQuickDone !== null && tick >= historicalQuickDone + RESULTS_BEAT_TICKS);
+        },
+      );
+      if ((attempt.phase === 'pending-result') !== due)
+        throw new Error('The saved race phase does not match its result');
+      if (!current() || !savedStore.adopt(read.raw)) {
+        if (savedStore.read().kind === 'blocked') failureKind = 'retry-load';
+        throw new Error('The saved race changed while loading');
+      }
+      if (!go('race')) throw new Error('The race screen is unavailable');
+      race = restored.sim;
+      playerId = originalPlayer;
+      careerRace = historicalCareer;
+      if (career) {
+        profile = career.starting;
+        careerRegion = career.def.regionId;
+      }
+      quickSettings = context.kind === 'quick' ? structuredClone(context.settings) : null;
+      quickRetry =
+        context.kind === 'quick'
+          ? { eventId: context.eventId, route: context.route, settings: quickSettings! }
+          : null;
+      quickLog = historicalQuick;
+      quickDone = historicalQuickDone;
+      outcome = historicalOutcome;
+      useEvent(context.eventId);
+      route = context.kind === 'quick' ? context.route : null;
+      stream = streams.forEvent(registry, eventId, cfg.event.lengthId, cfg.event.routeId);
+      attemptOwner = {
+        sim: race,
+        token: {},
+        context,
+        canPersist: true,
+        settled: false,
+        ...(attempt.phase === 'pending-result' ? { terminal: attempt } : {}),
+      };
+      if (attempt.phase === 'riding') recorder.resume(restored.recording);
+      recoveredTerminal = attempt.phase === 'pending-result' ? restored.recording : null;
+      savedTick = restored.ticks;
+      fastForward = { ticks: restored.ticks, ms: performance.now() - started };
+      recoveryLocked = false;
+      pendingTuning.length = 0;
+      countdown.begin(false);
+      ui.setCountdown(null);
+      presentationConfig = {
+        trafficTypes: race.config.trafficTypes,
+        riderLooks: riderLooks(race.config),
+        playerPaint: flow.currentPaintHex(defs, {
+          ...profile,
+          bikes: { ...profile.bikes, current: race.config.riders[originalPlayer]?.bike.contentId ?? null },
+        }),
+        sceneSeed: race.config.seed,
+      };
+      audio.setEngineSounds(engineSounds(race.config));
+      showRegion(
+        raceTimeOfDay(
+          registry,
+          eventId,
+          race.config.seed,
+          !careerRace,
+          careerRace?.patch ? withEventPatch(event, careerRace.patch) : undefined,
+          quickSettings?.raceOptions.timeOfDay,
+        ),
+        quickSettings?.raceOptions.weather,
+        cfg.event.lengthId,
+      );
+      finishShot = null;
+      lookWatch.reset();
+      seenPoll.reset();
+      lastLandingRef = null;
+      resetOutOfBounds(outOfBounds);
+      input.onMoves(null);
+      prev = null;
+      curr = race.snapshot();
+      recent = [];
+      const me = curr.entities[playerId];
+      if (me) camera.snap(me, { aspect: viewAspect() });
+      ui.career.setObjective(careerRace?.headline ?? quickLog?.status().headline ?? null);
+      ui.show('race');
+      ui.pause();
+      frames.refresh();
+      frames.invalidate();
+      if (attempt.phase === 'pending-result') finishRace();
+    } catch {
+      staleReplayKey = read.envelope.recording.header.replayKey;
+      recoveryLocked = true;
+      offerSavedAttempt(
+        failureKind,
+        failureKind === 'unavailable'
+          ? 'The saved race cannot be recovered exactly. Its data is still on this device.'
+          : 'The required race content did not load. Try again when it is available.',
+      );
+    } finally {
+      recoveryBusy = false;
+      if (pendingLaunch === loadOwner) pendingLaunch = null;
+      ui.setBusy(null);
+      if (!current() && recoveryLocked)
+        offerSavedAttempt('retry-load', 'Recovery was interrupted. Try again.');
+    }
+  }
+
   /** Starts a race and its recording at the current event and route, at `lengthId`. */
   function launchRace(lengthId: string): boolean {
     stream = streams.forEvent(registry, eventId, lengthId, route);
@@ -1952,11 +2477,13 @@ export function createApp(opts: AppOptions): AppHandle {
         options?.timeOfDay,
       ),
       options?.weather,
+      lengthId,
     );
     pendingTuning.length = 0;
     countdown.begin(countdownOn());
     // The full header (the SimConfig as plain data), so a saved debug file replays on its own, and a
     // menu race's picks beside it (playtest 4, P4-12).
+    recoveredTerminal = null;
     recorder.beginRace(race, replayKey, options ? { ...options } : undefined);
     outcome = createOutcome();
     finishShot = null;
@@ -1985,7 +2512,14 @@ export function createApp(opts: AppOptions): AppHandle {
    */
   function startCareerRace(def: CareerDef, node: CareerNode): void {
     const m = C;
-    if (loadingRoads || !m) return;
+    if (loadingRoads || !m || !ordinaryAllowed()) return;
+    if (!recoveryResolved) {
+      const current = captureNormal();
+      void recoveryReady.then(() => {
+        if (current()) startCareerRace(def, node);
+      });
+      return;
+    }
     quickLog = null;
     quickDone = null;
     quickSettings = null;
@@ -2079,6 +2613,7 @@ export function createApp(opts: AppOptions): AppHandle {
     const extra = m.raceShow(registry, def, plan, profile, race.config.seed);
     careerRace.ask = profile.history.length > 0 ? extra.ask : null;
     careerRace.gig = extra.gig;
+    ownOrdinaryAttempt();
   }
 
   /**
@@ -2110,44 +2645,12 @@ export function createApp(opts: AppOptions): AppHandle {
   /** One step of a career race: its rules, its prompts, the objective line, an early end. */
   function noteCareer(events: readonly SimEvent[], tick: number): void {
     const c = careerRace;
-    if (!c?.log || !curr) return;
-    c.log.note(events, curr);
-    const prompt = c.onboarding.note(events, curr, playerId);
-    if (prompt) ui.career.prompt(prompt.text);
-    const s = c.log.status();
-    if (s.headline !== c.headline) {
-      c.headline = s.headline;
-      ui.career.setObjective(s.headline);
-    }
-    if (s.endNow && c.doneTick === null) c.doneTick = tick;
-    noteAsk(c, events);
-  }
-
-  /**
-   * The producer's one ask in a career race (run W-S): asked once the player is ASK_AT_FRACTION
-   * along the route, then judged from that moment by its own race log; a prompt when it is met.
-   */
-  function noteAsk(c: NonNullable<typeof careerRace>, events: readonly SimEvent[]): void {
-    const m = C;
-    const me = curr?.entities[playerId];
-    if (!m || !c.ask || !curr || !me) return;
-    if (!c.askLog) {
-      const length = curr.race.routeLength;
-      if (curr.race.over || me.finished || length <= 0 || me.progress < m.ASK_AT_FRACTION * length) return;
-      c.askLog = m.createRaceLog({
-        playerId,
-        rules: { kind: 'classic-race' },
-        objectives: [m.askObjective(c.ask)],
-        routeId: '',
-        roadIds: [],
-      });
-      ui.ticker.push(producerAskItem(c.ask));
-    }
-    c.askLog.note(events, curr);
-    if (!c.askMet && c.askLog.status().objectives[0]?.met === true) {
-      c.askMet = true;
-      ui.ticker.push(producerThanksItem(c.ask));
-    }
+    if (!c || !curr || !C) return;
+    const notices = noteCareerProgress(C, c, events, curr, playerId, tick);
+    if (notices.prompt) ui.career.prompt(notices.prompt.text);
+    if (notices.headline !== null) ui.career.setObjective(notices.headline);
+    if (notices.ask) ui.ticker.push(producerAskItem(notices.ask));
+    if (notices.thanks) ui.ticker.push(producerThanksItem(notices.thanks));
   }
 
   /**
@@ -2171,7 +2674,6 @@ export function createApp(opts: AppOptions): AppHandle {
   function settleCareerRace(quit: boolean): void {
     const c = careerRace;
     const m = C;
-    careerRace = null;
     ui.career.setObjective(null);
     if (!c?.log || !m) return;
     const tally = c.log.tally();
@@ -2182,23 +2684,71 @@ export function createApp(opts: AppOptions): AppHandle {
     if (c.gig && !quit) extras.push(m.gigStatus(c.gig, tally));
     const base = c.log.status();
     const status: RaceStatus = { ...base, objectives: [...base.objectives, ...extras] };
-    const settled = m.settleRace(profile, {
-      reg: registry,
-      def: c.def,
-      node: c.node,
-      plan: c.plan,
-      status,
-      tally,
-      quit,
-      build: build.id,
-      at: new Date().toISOString(),
-    });
-    saveProfile({
-      ...settled.profile,
-      oncePerCareer: m.withPromptsSeen(settled.profile.oncePerCareer, c.onboarding.shown()),
-    });
+    const owner = attemptOwner;
+    const terminal = !quit ? owner?.terminal : undefined;
+    const result = terminal?.result ?? { build: build.id, at: new Date().toISOString() };
+    const ridden = race?.config.riders[playerId]?.bike.contentId;
+    const calculate = (starting: Profile) => {
+      const awarded = m.settleRace(starting, {
+        reg: registry,
+        def: c.def,
+        node: c.node,
+        plan: c.plan,
+        status,
+        tally,
+        quit,
+        build: result.build,
+        at: result.at,
+        ...(ridden ? { bike: ridden } : {}),
+      });
+      return {
+        ...awarded,
+        profile: {
+          ...awarded.profile,
+          oncePerCareer: m.withPromptsSeen(awarded.profile.oncePerCareer, c.onboarding.shown()),
+        },
+      };
+    };
+    const guarded = terminal?.context.kind === 'career' && recovery ? terminal.context : null;
+    let persisted: boolean;
+    let settled: ReturnType<typeof calculate>;
+    if (guarded && recovery) {
+      const committed = recovery.commitFrozenProfile({
+        storage: raceStorage,
+        keyPrefix: APP_ID,
+        profileGuard: guarded.profileGuard,
+        result,
+        settle: calculate,
+      });
+      if (committed.kind === 'changed' || committed.kind === 'invalid') {
+        offerFailedResult('unavailable', 'Career progress has changed. This result cannot be applied again.');
+        return;
+      }
+      const starting = recovery.profileFromGuard(guarded.profileGuard);
+      if (!starting) {
+        offerFailedResult('unavailable');
+        return;
+      }
+      settled = committed.settled ?? calculate(starting);
+      if (committed.store) profileStore = committed.store;
+      profile = settled.profile;
+      persisted = committed.kind === 'saved';
+      if (persisted && owner) {
+        owner.settled = true;
+        if (owner.canPersist && !forgetOwnedSlot()) {
+          recoveryLocked = true;
+          savedRead = savedStore?.read() ?? null;
+          ui.notice('The result was saved, but its old attempt could not be removed.');
+        }
+      }
+    } else {
+      settled = calculate(profile);
+      persisted = saveProfile(settled.profile);
+      if (!persisted) ui.notice('This result is kept in memory. Career progress could not be saved.');
+    }
+    if (persisted || !guarded) careerRace = null;
     if (quit) return;
-    pendingTeaser = m.teaserView(defs, settled.report);
+    pendingTeaser = persisted ? m.teaserView(defs, settled.report) : null;
     // Who beat the player home: the rivals ahead in the finish order (all finishers when not home).
     const ahead: string[] = [];
     if (curr) {
@@ -2236,10 +2786,12 @@ export function createApp(opts: AppOptions): AppHandle {
       texts: shown.texts,
     });
     ui.show('careerResults');
+    if (guarded && !persisted) offerFailedResult();
   }
 
   /** The pause menu's Quit in a career race: it counts as a quit (no cash), then the map. */
   function quitCareerRace(): void {
+    if (!ordinaryAllowed() || !abandonOrdinaryAttempt()) return;
     if (!go('back')) return;
     race = null;
     frames.refresh();
@@ -2278,6 +2830,7 @@ export function createApp(opts: AppOptions): AppHandle {
    * not started starts here. The map draws from the region's road data, fetched when it is not in.
    */
   function openCareer(region?: string, tab?: 'map' | 'garage'): void {
+    if (!ordinaryAllowed()) return;
     const current = captureNormal();
     const m = C;
     if (state === 'race' || !m) return;
@@ -2306,6 +2859,7 @@ export function createApp(opts: AppOptions): AppHandle {
    * drawn now and saved with it. It resets the maps, so only the player's tap starts it.
    */
   function startNextSeason(): void {
+    if (!ordinaryAllowed()) return;
     const m = C;
     if (!m || state === 'race') return;
     const next = m.startSeason(defs, profile, seeds.next());
@@ -2327,6 +2881,7 @@ export function createApp(opts: AppOptions): AppHandle {
    * Load brings it back) and a fresh career starts in the Keys. Resolves to the line to show.
    */
   async function startOver(): Promise<string> {
+    if (!ordinaryAllowed()) return 'Save or abandon the waiting result first.';
     const current = captureNormal();
     const m = C ?? (await careerReady);
     if (!current()) return '';
@@ -2344,6 +2899,7 @@ export function createApp(opts: AppOptions): AppHandle {
 
   /** A garage action's result: saved and redrawn, or its reason shown. */
   function garageAct(r: GarageResult): void {
+    if (!ordinaryAllowed()) return;
     if (!r.ok) {
       ui.career.message(r.reason);
       return;
@@ -2380,6 +2936,8 @@ export function createApp(opts: AppOptions): AppHandle {
   };
   measurement = createMeasurementRuntime({
     preflight: () => {
+      if (recoveryBusy || recoveryLocked || (attemptOwner?.terminal && !attemptOwner.settled))
+        return 'normal-launch-pending';
       if (state !== 'menu') return 'not-menu';
       if (ui.screen() !== 'menu') return 'wrong-ui-screen';
       if (ui.paused) return 'ui-paused';
@@ -2521,7 +3079,25 @@ export function createApp(opts: AppOptions): AppHandle {
       return { logical: 'menu', visible: 'restored' };
     },
   });
-  const handle: AppHandle = {
+  const handle: AppHandle & {
+    resumeInfo: () => {
+      savedReplayKey: string | null;
+      savedTick: number | null;
+      staleReplayKey: string | null;
+      fastForward: { ticks: number; ms: number } | null;
+    };
+  } = {
+    resumeInfo: () => ({
+      savedReplayKey:
+        savedTick === null
+          ? null
+          : (recorder.current()?.header.replayKey ??
+            recoveredTerminal?.header.replayKey ??
+            (savedRead?.kind === 'saved' ? savedRead.envelope.recording.header.replayKey : null)),
+      savedTick,
+      staleReplayKey,
+      fastForward,
+    }),
     beginMeasurement: (request) => measurement.begin(request),
     build,
     subscribeFrames: (onFrame, onError) => frames.subscribe(onFrame, onError),
@@ -2546,6 +3122,10 @@ export function createApp(opts: AppOptions): AppHandle {
       raceTimeOfDay(registry, eventId, s, true, undefined, settings.raceOptions.timeOfDay),
     tap() {
       if (state !== 'tapToStart') return;
+      if (recoveryLocked) {
+        offerSavedAttempt();
+        return;
+      }
       void runStartTap(() => audio.resume());
       go('tapped');
       // Menu first (playtest 4, P4-5): the first tap of a new device lands on the menu, where
@@ -2553,13 +3133,14 @@ export function createApp(opts: AppOptions): AppHandle {
       ui.show('menu');
     },
     startRace() {
+      if (!ordinaryAllowed()) return;
       if (transition(state, 'race') === null || loadingRoads) return;
       roadsArrived(library.registry());
-      if (!C) {
+      if (!C || !recoveryResolved) {
         const current = captureNormal();
         const launchOwner = {};
         pendingLaunch = launchOwner;
-        void careerReady.then((m) => {
+        void Promise.all([careerReady, recoveryReady]).then(([m]) => {
           if (pendingLaunch !== launchOwner) return;
           pendingLaunch = null;
           if (m && current()) handle.startRace();
@@ -2614,8 +3195,10 @@ export function createApp(opts: AppOptions): AppHandle {
         roadIds: race.config.road.edges.map((e) => e.id),
       });
       ui.career.setObjective(quickLog.status().headline);
+      ownOrdinaryAttempt();
     },
     backToMenu() {
+      if (!ordinaryAllowed() || !abandonOrdinaryAttempt()) return;
       if (!go('back')) return;
       race = null;
       frames.refresh();
@@ -2634,6 +3217,7 @@ export function createApp(opts: AppOptions): AppHandle {
       status: careerRace?.log?.status() ?? null,
     }),
     rideCareer(region, node) {
+      if (!ordinaryAllowed()) return false;
       const m = C;
       const def = m?.careerOf(defs, region);
       const n = def ? m?.nodeOf(def, node) : null;
@@ -2647,10 +3231,10 @@ export function createApp(opts: AppOptions): AppHandle {
     rendererStats: () => renderer.stats(),
     roadQueries: () => diagnostic?.scene.config.route ?? race?.config.route ?? null,
     getReplayAndSettings: () => ({
-      replay: recorder.current(),
+      replay: recoveredTerminal ?? recorder.current(),
       settings: settingsStore.record() ?? settings,
     }),
-    replayFile: () => recorder.file(),
+    replayFile: () => (recoveredTerminal ? encodeReplay(recoveredTerminal) : recorder.file()),
     checkReplay(file) {
       const rec = decodeReplay(file);
       // The road and route handles come from the recording's own event and route, in any region
