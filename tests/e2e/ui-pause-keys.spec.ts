@@ -2,12 +2,22 @@ import { openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 // Playtest 1 (2026-09-30): "idk how to kick on the laptop", and "don't clutter the in-game HUD with
-// those controls". The keyboard legend (K kicks, J punches, U and O punch to a side) is on the pause
-// screen only: visible there, and no legend text anywhere on the race HUD.
+// those controls". The Controls help and keyboard legend (K kicks, J punches, U and O punch to a
+// side) are on the pause screen only: visible there, and no help or legend text on the race HUD.
 
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: { snapshot(): { tick: number } | null } };
 
-const LEGEND = ['K kick', 'J punch', 'U punch left', 'O punch right', 'Esc pause'];
+const TURN_HELP = 'Turn around: stop or slow right down first.';
+const TOUCH_HELP = 'Touch: straighten up, tap BRAKE, then quickly hold BRAKE and steer all the way.';
+const LEGEND = [
+  'Q U-turn (hold, steer round)',
+  'K kick',
+  'J punch',
+  'U punch left',
+  'O punch right',
+  'Esc pause',
+];
+const PAUSE_ONLY = [TURN_HELP, TOUCH_HELP, ...LEGEND];
 
 async function toRace(page: Page) {
   await page.addInitScript(() => {
@@ -42,18 +52,21 @@ test.describe('laptop', () => {
     // Racing: the HUD is up and carries none of the legend.
     const hud = norm(await raceText(page));
     console.log(`race HUD text: ${JSON.stringify(hud)}`);
-    for (const line of LEGEND) expect(hud, `"${line}" is not on the HUD`).not.toContain(line);
+    for (const line of PAUSE_ONLY) expect(hud, `"${line}" is not on the HUD`).not.toContain(line);
     await expect(page.locator('#pause-keys')).toBeHidden();
 
-    // Paused: the legend is open and readable.
+    // Paused: the Controls help and remap-aware legend are open and readable.
     await page.keyboard.press('Escape');
     await expect(page.locator('#pause-screen')).toBeVisible();
     const legend = page.locator('#pause-keys');
     await expect(legend).toBeVisible();
+    await expect(legend.locator('summary')).toHaveText('Controls');
+    await expect(legend.locator('.pause-help')).toHaveCount(2);
     await expect(legend.locator('.keys-grid')).toBeVisible();
     const text = norm(await legend.innerText());
     console.log(`pause legend: ${JSON.stringify(text)}`);
-    for (const line of LEGEND) expect(text).toContain(line);
+    for (const line of PAUSE_ONLY) expect(text).toContain(line);
+    await expect(legend.locator('.keys-grid')).toContainText('Q U-turn (hold, steer round)');
     // It fits on the screen: the whole card is inside the viewport.
     await legend.scrollIntoViewIfNeeded();
     const box = await legend.boundingBox();
@@ -66,7 +79,7 @@ test.describe('laptop', () => {
     await page.locator('#pause-resume').click();
     await expect(legend).toBeHidden();
     const after = norm(await raceText(page));
-    for (const line of LEGEND) expect(after).not.toContain(line);
+    for (const line of PAUSE_ONLY) expect(after).not.toContain(line);
     expect(problems).toEqual([]);
   });
 });
@@ -74,11 +87,13 @@ test.describe('laptop', () => {
 test('phone: the legend is one folded line on the pause screen, and opens on a tap', async ({ page }) => {
   await toRace(page);
   const hud = norm(await raceText(page));
-  for (const line of LEGEND) expect(hud).not.toContain(line);
+  for (const line of PAUSE_ONLY) expect(hud).not.toContain(line);
 
   await page.locator('#hud-pause').click();
   const legend = page.locator('#pause-keys');
   await expect(legend).toBeVisible();
+  await expect(legend.locator('summary')).toHaveText('Controls');
+  await expect(legend.locator('.pause-help').first()).toBeHidden();
   await expect(legend.locator('.keys-grid')).toBeHidden();
   // The pause screen's buttons stay on the phone's screen with the legend folded.
   const view = page.viewportSize()!;
@@ -95,6 +110,8 @@ test('phone: the legend is one folded line on the pause screen, and opens on a t
   }
   await page.screenshot({ path: 'test-results/pause-keys-phone.png' });
   await legend.locator('summary').click();
+  await expect(legend.locator('.pause-help').first()).toBeVisible();
   await expect(legend.locator('.keys-grid')).toBeVisible();
-  expect(norm(await legend.innerText())).toContain('K kick');
+  const text = norm(await legend.innerText());
+  for (const line of PAUSE_ONLY) expect(text).toContain(line);
 });

@@ -3,15 +3,16 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 // Playtest 1c item 8 (2026-09-30): on a phone, the pause screen's keyboard legend hid the "cut this"
 // veto list ("Recently seen: tap one to cut it"); the M1-1b skeptic saw the list pushed almost
-// entirely below a 915x412 screen once the Keyboard card was opened. Both must be reachable, with
-// the legend OPEN, at phone landscape (915x412, touch) and at a tall narrow 412x915 view.
+// entirely below a 915x412 screen once the Controls card was opened. The U-turn help, legend and veto
+// list must be reachable with the card OPEN at phone landscape (915x412, touch) and at a tall narrow
+// 412x915 view.
 //
 // A touch phone held upright shows platform/'s rotate screen instead of the game, by design, so the
 // 412x915 case runs with a fine pointer (a narrow window), where the legend starts open anyway.
 //
-// "Reachable" here means: the legend's header, its last row, the list's title and its first row
-// are each inside the viewport after scrolling the detail pane, with nothing drawn over their centres, and tapping the
-// first row opens the "cut this" card.
+// "Reachable" here means: the card's header, touch help, last key row, list title and first list row
+// are each inside the viewport after scrolling the detail pane, with nothing drawn over their centres,
+// and tapping the first row opens the "cut this" card.
 
 interface Handle {
   setBot(on: boolean): void;
@@ -71,6 +72,13 @@ async function checkBothReachable(page: Page, shot: string) {
   if (!(await grid.isVisible())) await legend.locator('summary').click();
   await expect(grid).toBeVisible();
   await onScreenAndOnTop(page, legend.locator('summary'), 'legend header');
+  await onScreenAndOnTop(
+    page,
+    legend.getByText('Touch: straighten up, tap BRAKE, then quickly hold BRAKE and steer all the way.', {
+      exact: true,
+    }),
+    'touch U-turn help',
+  );
   await onScreenAndOnTop(page, grid.locator('div').last(), 'legend last row');
   const list = page.locator('#pause-screen #recently-seen');
   await onScreenAndOnTop(page, list.locator('.rs-title'), 'veto list title');
@@ -90,7 +98,7 @@ async function checkBothReachable(page: Page, shot: string) {
 
 test.describe('phone landscape 915x412, touch', () => {
   test.use({ viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true });
-  test('the opened keyboard legend and the cut-this list are both on screen', async ({ page }) => {
+  test('the open Controls help, keyboard legend and cut-this list are on screen', async ({ page }) => {
     test.setTimeout(120_000);
     const problems = await pausedWithSeenItems(page);
     // On a touch screen the legend starts folded; open it, as the skeptic did.
@@ -102,7 +110,7 @@ test.describe('phone landscape 915x412, touch', () => {
 
 test.describe('tall narrow 412x915, fine pointer', () => {
   test.use({ viewport: { width: 412, height: 915 }, isMobile: false, hasTouch: false });
-  test('the open keyboard legend and the cut-this list are both on screen', async ({ page }) => {
+  test('the open Controls help, keyboard legend and cut-this list are on screen', async ({ page }) => {
     test.setTimeout(120_000);
     const problems = await pausedWithSeenItems(page);
     await checkBothReachable(page, 'pause-phone-portrait');

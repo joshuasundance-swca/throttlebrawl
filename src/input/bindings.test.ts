@@ -234,6 +234,7 @@ describe('input: one slot changed, conflicts, labels', () => {
   });
 
   it('labels keys and buttons as players read them', () => {
+    expect(BIND_ROWS.find((row) => row.action === 'uturn')?.label).toBe('U-turn (hold + steer)');
     expect(bindingLabel('keyboard', 'Space')).toBe('Space');
     expect(bindingLabel('keyboard', 'ShiftLeft')).toBe('L Shift');
     expect(bindingLabel('keyboard', 'KeyQ')).toBe('Q');
