@@ -448,6 +448,7 @@ const CSS = `
 #ui .card b { color: #f5c542; }
 #ui .footer { position: absolute; bottom: 6px; left: 0; right: 0; font: 500 0.75rem ui-monospace, monospace; opacity: 0.8; }
 #start-screen { pointer-events: auto; cursor: pointer; }
+#start-action { flex-shrink: 0; }
 #region-picker { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: min(560px, 92vw); }
 #region-picker .region-label { font: 800 0.75rem ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
   text-transform: uppercase; background: #111; color: #f2ead8; padding: 1px 8px; transform: rotate(1deg); }
