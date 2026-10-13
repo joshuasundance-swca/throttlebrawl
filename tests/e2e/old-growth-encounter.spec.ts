@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SignaturePhase } from '../../src/sim/api';
 import { diskCareers, diskEvents, diskRegions, qualifyIn, type DiskCareer } from './packs-on-disk';
+import { enterReloadedMenu } from './menu-navigation';
 
 // Each font-size case owns a separate page and storage fixture.
 test.describe.configure({ mode: 'parallel' });
@@ -239,7 +240,8 @@ for (const textSize of ['normal', 'large', 'largest']) {
     const found = new Set<SignaturePhase>();
     for (let seed = 1; seed <= SEARCH_SEEDS && found.size < phases.length; seed++) {
       await page.goto('./');
-      await page.locator('#start-screen').click();
+      if (seed === 1) await page.locator('#start-screen').click();
+      else await enterReloadedMenu(page);
       await page.locator('#menu-career').click();
       await page.locator(`#career-region-${def.region.slice(def.region.indexOf(':') + 1)}`).click();
       await expect(page.locator('.career-map').first()).toBeVisible();

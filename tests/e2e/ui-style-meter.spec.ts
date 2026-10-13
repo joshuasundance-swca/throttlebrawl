@@ -337,7 +337,8 @@ test('the style pop-ups setting turns the chips off mid-race and is kept after a
 
   // Kept after a reload.
   await page.reload();
-  await page.locator('#start-screen').click();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-display').click();

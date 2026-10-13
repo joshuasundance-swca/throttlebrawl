@@ -79,7 +79,8 @@ test('slow frames soften the picture to the readable floor and drop the Auto tie
   // The next session starts on the tier this device settled on.
   await page.evaluate(() => ((window as TestWindow).__slowFrameMs = 0));
   await page.reload();
-  await page.locator('#start-screen').click();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   expect(await quality(page)).toMatchObject({ setting: 'auto', tier: 'low' });
   expect(problems).toEqual([]);
 });

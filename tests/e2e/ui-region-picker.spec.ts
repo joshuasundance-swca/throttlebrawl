@@ -126,6 +126,8 @@ test('the menu offers the regions, the Keys picked by default, and a pick starts
     await expect(checked).toHaveCount(1);
     console.log(`starting picked region ${id}`);
     await page.locator('#menu-race').click();
+    // A new region loads its road closure before the race and HUD become available.
+    await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
     await expect(page.locator('#hud-position')).toBeVisible();
     await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
     const eventId = await raceEventId(page);

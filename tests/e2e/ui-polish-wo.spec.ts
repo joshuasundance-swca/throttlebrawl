@@ -90,7 +90,8 @@ test('the R key saves the radio choice at once, with no pause or settings in bet
   await expect.poll(() => savedRadio(page), { timeout: 3000 }).toBe('off');
   // Kept across a reload, and the Radio row shows it.
   await page.reload();
-  await page.locator('#start-screen').click();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   await openMainMenu(page);
   await page.locator('#menu-settings').click();
   await page.locator('#settings-tab-sound').click();

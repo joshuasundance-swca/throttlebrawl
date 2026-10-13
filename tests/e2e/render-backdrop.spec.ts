@@ -2,7 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { fastForwardDone, frames } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
-import { openQuickPlay } from './menu-navigation';
+import { enterReloadedMenu, openQuickPlay } from './menu-navigation';
 
 // The backdrop (W-P "fill the world", the maintainer, 2026-10-01b: "distance and skyline: hills,
 // mountains, city skylines, water, bridges on the horizon"). In a real browser at the phone's
@@ -86,7 +86,12 @@ async function rideTo(page: Page, to: number): Promise<void> {
   });
 }
 
-async function race(page: Page, c: (typeof CASES)[number], look: string): Promise<Set<string>> {
+async function race(
+  page: Page,
+  c: (typeof CASES)[number],
+  look: string,
+  afterRace = false,
+): Promise<Set<string>> {
   const fetched = new Set<string>();
   page.on('response', (res) => {
     const file = new URL(res.url()).pathname.split('/').pop() ?? '';
@@ -105,7 +110,8 @@ async function race(page: Page, c: (typeof CASES)[number], look: string): Promis
     localStorage.setItem('mbrawl:settings', JSON.stringify(record));
   }, look);
   await page.goto('./');
-  await page.locator('#start-screen').click();
+  if (afterRace) await enterReloadedMenu(page);
+  else await page.locator('#start-screen').click();
   await openQuickPlay(page);
   await page.locator(c.chip).click();
   if (c.route) {
@@ -136,7 +142,7 @@ for (const c of CASES) {
     });
     page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
     for (const look of LOOKS) {
-      const fetched = await race(page, c, look);
+      const fetched = await race(page, c, look, look !== LOOKS[0]);
       await expect.poll(() => fetched.has(c.network), { timeout: 30_000 }).toBe(true);
       // The backdrop's own chunks arrive, then build in one go: give it a few frames.
       // eslint-disable-next-line no-restricted-syntax -- debt: the backdrop's chunks fetch and build asynchronously with no ready signal yet; wait on one once render exposes it

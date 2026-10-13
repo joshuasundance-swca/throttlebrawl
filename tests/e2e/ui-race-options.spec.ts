@@ -38,8 +38,8 @@ function watchErrors(page: Page): string[] {
   return problems;
 }
 
-async function openOptions(page: Page) {
-  await page.locator('#start-screen').click();
+async function openOptions(page: Page, fromMenu = false) {
+  if (!fromMenu) await page.locator('#start-screen').click();
   await openQuickPlay(page);
   await expect(page.locator('#menu-options')).toBeVisible();
   await page.locator('#menu-options').click();
@@ -295,7 +295,9 @@ test('the picks reach the race and its recording, and are remembered after a rel
 
   // Remembered: a reload shows the same picks.
   await page.reload();
-  await openOptions(page);
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
+  await openOptions(page, true);
   await expect(page.locator('#race-option-cops')).toHaveAttribute('data-value', 'false');
   await expect(page.locator('#race-option-rivals')).toHaveAttribute('data-value', '0');
   await expect(page.locator('#race-option-bike')).toHaveAttribute('data-value', bike);
@@ -365,7 +367,9 @@ test('Same bike fields rivals on the selected slow bike and remembers competitio
   }
   expect(config!.event.paceMps).toBeLessThanOrEqual(player.bike.topSpeedMps);
   await page.reload();
-  await openOptions(page);
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
+  await openOptions(page, true);
   await expect(page.locator('#race-option-field')).toHaveAttribute('data-value', 'matched');
   await expect(page.locator('#race-option-bike')).toHaveAttribute('data-value', slow.id);
   expect(problems).toEqual([]);
