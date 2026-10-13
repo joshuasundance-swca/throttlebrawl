@@ -503,9 +503,10 @@ const CSS = `
 .touch-button { position: absolute; border: 3px solid #fff; border-radius: 50%; background: #0004;
   display: flex; align-items: center; justify-content: center; font: 800 0.875rem ui-monospace, monospace;
   pointer-events: none; box-sizing: border-box; flex-direction: column; line-height: 1.1; }
-.touch-hint { font: 700 10px ui-monospace, monospace; opacity: 0.85; }
-.touch-small { font-size: 16px; }
-.touch-small .touch-hint { font-size: 9px; }
+.touch-hint { font: 700 0.625rem ui-monospace, monospace; opacity: 0.85; white-space: nowrap; }
+.touch-small { font-size: 1rem; }
+/* Keep the seven-letter word inside the smallest circle that offers it (48px, with 6px of border). */
+.touch-small .touch-hint { font-size: clamp(9px, 0.5625rem, 10px); }
 #touch-stick-ring { position: absolute; width: ${STICK_RING_PX * 2}px; height: ${STICK_RING_PX * 2}px;
   margin: -${STICK_RING_PX}px 0 0 -${STICK_RING_PX}px; border: 3px solid #fffc; border-radius: 50%;
   background: #0003; pointer-events: none; box-sizing: border-box; }
