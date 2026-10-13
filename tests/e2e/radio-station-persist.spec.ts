@@ -47,7 +47,6 @@ const saved = (page: Page) =>
   });
 
 async function race(page: Page) {
-  await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await openQuickPlay(page);
   await page.locator('#menu-race').click();
@@ -60,6 +59,7 @@ async function race(page: Page) {
 test('the radio keeps the exact station across a reload, not only "a station"', async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto('./');
+  await page.locator('#start-screen').click();
   await race(page);
   // The default race is the Keys, on its first station (playtest 2, 2026-10-02: a race starts on
   // its region's own station); R once is the second station.
@@ -72,6 +72,8 @@ test('the radio keeps the exact station across a reload, not only "a station"', 
   await expect.poll(() => saved(page), { timeout: 3000 }).toEqual({ radio: 'station', station: second });
 
   await page.reload();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   await race(page);
   expect(await tunedTo(page)).toBe(second);
 

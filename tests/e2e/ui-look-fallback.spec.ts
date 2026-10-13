@@ -123,7 +123,8 @@ test('a new save starts on Ink + 60s film; slow frames offer Classic, in the rac
 
   // Kept across a reload, and the Look row shows it.
   await page.reload();
-  await page.locator('#start-screen').click();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   expect(await look(page)).toBe('classic');
   await openMainMenu(page);
   await page.locator('#menu-settings').click();
@@ -146,7 +147,8 @@ test('"No thanks" is remembered: slow frames never offer again', async ({ page }
 
   // After a reload, a slow race on the ink look stays quiet.
   await page.reload();
-  await page.locator('#start-screen').click();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   await race(page);
   await slowFrames(page, 60);
   // eslint-disable-next-line no-restricted-syntax -- the look fallback's watch judges slow frames over wall time by design
@@ -189,7 +191,8 @@ test('the controls: forced slow frames never offer on Classic, nor with the watc
     localStorage.removeItem('mbrawl:settings');
   });
   await page.reload();
-  await page.locator('#start-screen').click();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-start-over').click();
   expect(await look(page)).toBe('kodak');
   await race(page);
   await slowFrames(page, 60);

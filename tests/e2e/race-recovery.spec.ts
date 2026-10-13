@@ -8,7 +8,7 @@ import type { ReplayFile } from '../../src/replay';
 
 type GameWindow = Window & { __GAME_TEST__?: boolean; __game?: TestHandle };
 
-async function ride(page: Page, career: boolean, pause = true) {
+async function ride(page: Page, career: boolean) {
   await page.goto('./');
   if (career) await rideFirstCareerRace(page);
   else {
@@ -18,13 +18,17 @@ async function ride(page: Page, career: boolean, pause = true) {
     await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
   }
   await page.evaluate(() =>
-    (window as GameWindow).__game!.fastForward((snap) => snap.tick >= 360, { perFrame: 60, then: 0 }),
+    (window as GameWindow).__game!.fastForward(
+      (snap) => {
+        if (snap.tick < 360) return false;
+        document.getElementById('hud-pause')!.click();
+        return true;
+      },
+      { perFrame: 60, then: null },
+    ),
   );
   await fastForwardDone(page, 'recovery saved boundary');
-  if (pause) {
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#pause-screen')).toBeVisible();
-  }
+  await expect(page.locator('#pause-screen')).toBeVisible();
 }
 
 async function attempt(page: Page): Promise<SavedRaceEnvelope> {
@@ -70,10 +74,16 @@ test('missing regional road content offers Retry, retains the attempt and recove
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
   await page.evaluate(() =>
-    (window as GameWindow).__game!.fastForward((s) => s.tick >= 360, { perFrame: 60, then: 0 }),
+    (window as GameWindow).__game!.fastForward(
+      (s) => {
+        if (s.tick < 360) return false;
+        document.getElementById('hud-pause')!.click();
+        return true;
+      },
+      { perFrame: 60, then: null },
+    ),
   );
   await fastForwardDone(page, 'regional recovery fixture');
-  await page.keyboard.press('Escape');
   const raw = await page.evaluate(() => localStorage.getItem('mbrawl:race'));
   expect(roadUrls.size).toBeGreaterThan(0);
   let blocked = true;
@@ -89,7 +99,9 @@ test('missing regional road content offers Retry, retains the attempt and recove
   );
   await page.reload();
   await page.locator('#resume-race').click();
-  await expect(page.locator('#resume-race')).toHaveText('Retry');
+  // The real loader exhausts its 500/1500/4000 ms backoff before returning the failure.
+  // This is a hang guard for the observable choice, not an assertion about elapsed time.
+  await expect(page.locator('#resume-race')).toHaveText('Retry', { timeout: 30_000 });
   expect(failures).toBeGreaterThan(0);
   expect(await page.evaluate(() => localStorage.getItem('mbrawl:race'))).toBe(raw);
   blocked = false;
@@ -198,26 +210,47 @@ test('periodic and pagehide saves continue with hashes verified against a fresh 
   page,
 }) => {
   test.setTimeout(90_000);
-  await ride(page, false, false);
-  const periodic = await attempt(page);
-  expect(periodic.recording.inputs.ticks).toBe(300);
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await openQuickPlay(page);
+  await page.locator('#menu-race').click();
+  await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
+  await page.evaluate(() =>
+    (window as GameWindow).__game!.fastForward(
+      (snap) => {
+        if (snap.tick < 360) return false;
+        const saved = JSON.parse(localStorage.getItem('mbrawl:race')!) as SavedRaceEnvelope;
+        if (saved.recording.inputs.ticks !== 300)
+          throw new Error('Periodic save must precede lifecycle flush');
+        // Dispatch inside the exact sim-step callback: zero lockstep means real time, not a freeze.
+        window.dispatchEvent(new PageTransitionEvent('pagehide'));
+        return true;
+      },
+      { perFrame: 60, then: null },
+    ),
+  );
+  await fastForwardDone(page, 'periodic then pagehide boundary');
   expect(await page.evaluate(() => (window as GameWindow).__game!.snapshot()!.tick)).toBe(360);
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
   await expect(page.locator('#pause-screen')).toBeVisible();
   const hidden = await attempt(page);
   expect(hidden.recording.inputs.ticks).toBe(360);
   await page.reload();
   await page.locator('#resume-race').click();
   await expect(page.locator('#pause-screen')).toBeVisible();
-  await page.evaluate(() => (window as GameWindow).__game!.lockstep(0));
   await page.keyboard.press('Escape');
   await page.keyboard.down('w');
   await page.evaluate(() =>
-    (window as GameWindow).__game!.fastForward((snap) => snap.tick >= 480, { perFrame: 60, then: 0 }),
+    (window as GameWindow).__game!.fastForward(
+      (snap) => {
+        if (snap.tick < 480) return false;
+        document.getElementById('hud-pause')!.click();
+        return true;
+      },
+      { perFrame: 60, then: null },
+    ),
   );
   await fastForwardDone(page, 'continued recovered race');
   await page.keyboard.up('w');
-  await page.keyboard.press('Escape');
   const continued = await attempt(page);
   expect(continued.recording.inputs.ticks).toBe(480);
   expect(continued.recording.header).toEqual(hidden.recording.header);
@@ -315,6 +348,7 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await page.locator('#resume-race').click();
   await expect(page.locator('#pause-screen')).toBeVisible();
   expect(await replayConfig(page)).toEqual(first);
+  await expect(page.locator('#region-region-sf-san-francisco')).toHaveAttribute('aria-checked', 'true');
   await page.evaluate(() => (window as GameWindow).__game!.setBot(true));
   await page.keyboard.press('Escape');
   await page.evaluate(() =>
@@ -333,6 +367,7 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await expect(page.locator('#results')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('mbrawl:profile'))).toBe(profile);
   await page.locator('#results-menu').click();
+  await expect(page.locator('#region-region-sf-san-francisco')).toHaveAttribute('aria-checked', 'true');
   await page.evaluate(() => (window as GameWindow).__game!.lockstep(null));
   const before = await page.evaluate(() => ({
     race: localStorage.getItem('mbrawl:race'),

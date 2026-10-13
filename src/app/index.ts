@@ -2384,7 +2384,10 @@ export function createApp(opts: AppOptions): AppHandle {
       quickDone = historicalQuickDone;
       outcome = historicalOutcome;
       useEvent(context.eventId);
+      // Recovery's event and menu pick must agree after returning from the race too.
+      ui.setRegions(regions, regionKeyOf(registry, context.eventId));
       route = context.kind === 'quick' ? context.route : null;
+      offerRoutes();
       stream = streams.forEvent(registry, eventId, cfg.event.lengthId, cfg.event.routeId);
       attemptOwner = {
         sim: race,
