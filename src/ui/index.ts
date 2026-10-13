@@ -817,7 +817,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     'div',
     { id: 'start-screen', className: 'screen' },
     el('div', { className: 'title', textContent: 'throttlebrawl' }),
-    el('div', { className: 'big', textContent: 'Tap to start' }),
+    el('button', { id: 'start-action', type: 'button', className: 'big', textContent: 'Tap to start' }),
     controlsCard,
   );
   start.addEventListener(
