@@ -265,12 +265,18 @@ export function farStandIn(near: FlatForm): FlatForm {
   return { pos, nrm, col, n: pos.length / 3 };
 }
 
+/** Roadway openings must survive distance simplification: a bounding-box stand-in would seal them. */
+export function keepSceneryOpen(g: BufferGeometry): void {
+  g.userData['keepSceneryOpen'] = true;
+  flatCache.delete(g);
+}
+
 /** The flat near form and the far stand-in of a geometry, made once per geometry. */
 export function formsOf(g: BufferGeometry): { near: FlatForm; far: FlatForm } {
   let f = flatCache.get(g);
   if (!f) {
     const near = flatten(g);
-    f = { near, far: farStandIn(near) };
+    f = { near, far: g.userData['keepSceneryOpen'] === true ? near : farStandIn(near) };
     flatCache.set(g, f);
   }
   return f;
