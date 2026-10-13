@@ -2189,6 +2189,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const STAMP_AVOIDS = 'button, input, select, textarea, label, summary, a, .footer, .setting-label, output';
   const boxOf = (r: DOMRect): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
   const STAMP_TEXT_SCREENS = [
+    // The startup instructions scroll at Largest text on short screens; the stamp yields to their words.
+    '#start-screen:not([hidden]) *',
     // The menu's words too: the title, the blurbs and the what's-new card (wave C's check: at 568x320
     // the stamp sat over the card's first line).
     '#menu:not([hidden]) *',
