@@ -488,6 +488,10 @@ describe('AppHandle actual render wiring', () => {
       callbacks: { onCopyReport: async () => {} },
     });
     app.tap();
+    // This fixture has no storage. Let independent boot classification publish its notice
+    // while the road request is still held; the following zero-write check isolates that request.
+    await vi.dynamicImportSettled();
+    expect(boundary.uiWrite).toHaveBeenCalledWith('notice', expect.stringContaining('Race storage'));
     const other = regionChoices(createPackLibrary({ includeDrafts: true }).registry()).find(
       (choice) => choice.id !== boundary.ui.region,
     )!;

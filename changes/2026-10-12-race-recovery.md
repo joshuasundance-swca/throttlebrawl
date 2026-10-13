@@ -10,3 +10,5 @@ A completed career result whose profile write fails offers a retry or abandonmen
 Coverage includes storage ownership and malformed-input controls, historical objectives and asks, frozen reward retries, reconstruction hashes, and browser reload/recovery paths. Device quota, phone reopening and concurrent-tab settlement remain unverified.
 
 The existing Quick Play settings-reload checks explicitly discard a recovery offer before reopening options. Dedicated recovery checks exercise Resume instead of assuming that reload always opens the menu directly.
+
+The stale boot-road integration check lets independent storage classification finish before observing the held road request. Its fixture has no storage, so it now verifies that boot notice separately and retains the unconditional zero-UI-write assertion after the retired road load completes. The existing non-retired road-load positive remains in place.
