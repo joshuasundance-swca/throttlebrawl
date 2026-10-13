@@ -18,3 +18,5 @@ Recovered regional races also restore the menu's region and road selection, keep
 Radio, look-fallback, render-quality and race-option persistence checks also explicitly discard the active race's reload offer before continuing. Their original setting/recording assertions and negative controls are retained; fresh and menu-only reloads keep ordinary Start. The radio checks still establish saving before any pause or settings interaction.
 
 Repeated boss-seed and backdrop-look navigations handle the same offer, including the case where the previous race completed and cleared it. The measurement-isolation browser case uses an observable wake-API fixture because headless Chromium refuses its physical wake request; it checks a new lease request and byte-identical ordinary recording as well as unchanged storage. Native phone wake remains outside that fixture's claims.
+
+Regional entry and content-retry checks wait for the completed race/recovery outcome before inspecting the HUD or paused screen. Their original selected-region, exact saved-tick and retained-data assertions remain; these waits are bounded hang guards, not loading-speed claims.

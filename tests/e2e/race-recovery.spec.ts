@@ -106,7 +106,9 @@ test('missing regional road content offers Retry, retains the attempt and recove
   expect(await page.evaluate(() => localStorage.getItem('mbrawl:race'))).toBe(raw);
   blocked = false;
   await page.locator('#resume-race').click();
-  await expect(page.locator('#pause-screen')).toBeVisible();
+  // Retry must fetch the uncached regional closure before exposing the paused race.
+  // Guard the completed recovery outcome rather than assuming a five-second load.
+  await expect(page.locator('#pause-screen')).toBeVisible({ timeout: 30_000 });
   expect(await page.evaluate(() => (window as GameWindow).__game!.snapshot()!.tick)).toBe(360);
 });
 
