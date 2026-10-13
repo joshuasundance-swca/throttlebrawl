@@ -2837,6 +2837,7 @@ export function createApp(opts: AppOptions): AppHandle {
   function openCareer(region?: string, tab?: 'map' | 'garage'): void {
     if (!ordinaryAllowed()) return;
     const current = captureNormal();
+    const contentCurrent = captureNormalContent();
     const m = C;
     if (state === 'race' || !m) return;
     if (state === 'results') go('back');
@@ -2850,8 +2851,12 @@ export function createApp(opts: AppOptions): AppHandle {
     if (missing.length > 0)
       void Promise.all(missing.map((id) => library.loadRoads(id))).then(
         () => {
+          // A menu action can retire this screen without retiring its successful road load.
+          // Accept the content first; only the still-current screen may update the presentation.
+          if (!contentCurrent()) return;
+          registry = library.registry();
           if (!current()) return;
-          roadsArrived(library.registry());
+          roadsArrived(registry);
           if (careerRegion === def.regionId && state !== 'race') drawCareer();
         },
         () => undefined, // the list still works; Ride fetches again and says so if it fails
