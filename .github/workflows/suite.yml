@@ -1,13 +1,13 @@
 # The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
 # they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
 # it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (three slices), sim
-# (eight slices) and browser (ten slices, the last also running perf) run in parallel, each
+# (eight slices) and browser (eleven slices, the last also running perf) run in parallel, each
 # running its tiers of `npm run check`. Every slice is planned as its whole job (setup, build and
 # tests; scripts/shard-plan.mjs) at no more than two thirds of its timeout-minutes, which
 # scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
 # for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
-# - full: true runs every tier: the full gate, 22 jobs. full: false is the quick check, 4 jobs:
+# - full: true runs every tier: the full gate, 23 jobs. full: false is the quick check, 4 jobs:
 #   static (plus the build and its size budget, `--tier static,budget`) and the three unit slices.
 # - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
 #   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
@@ -292,6 +292,10 @@ jobs:
   # wall-clock or cost result is claimed. The last slice still runs perf and keeps the dist artifact,
   # keyed by strategy.job-total. Transient-card coverage and loading checks run in separate spec
   # files: before the split that file alone cost 357.3 + 49 = 406.3 s of job.
+  # Eleven since 2026-10-13: complete recovery-case observations weight that file at 430.6 s,
+  # rather than the missing-file mean. With the current 70 specs, ten slices predict 413-420 s;
+  # eleven predict 370-376 s under the same 400 s line. These are planning predictions,
+  # not measured job duration. Tests, worker policy, timeout and last-slice behavior are unchanged.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     if: inputs.full
@@ -300,7 +304,7 @@ jobs:
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     steps:
       - uses: actions/checkout@v7
         with:
