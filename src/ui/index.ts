@@ -534,6 +534,9 @@ ${REDUCE_MOTION_CSS}
 #ui #pause-cards > * { width: 100%; max-width: 100%; max-height: none; box-sizing: border-box; flex-shrink: 0; }
 #pause-keys { padding: 4px 12px; }
 #pause-keys summary { cursor: pointer; font-weight: 800; }
+#pause-keys .pause-help, #pause-keys .keys-label { font: 700 0.8125rem/1.25 ui-monospace, monospace; }
+#pause-keys .pause-help { margin: 4px 0 0; }
+#pause-keys .keys-label { margin-top: 6px; font-weight: 800; }
 #pause-keys .keys-grid { display: grid; grid-template-rows: repeat(4, auto); grid-auto-flow: column; gap: 2px 18px;
   margin-top: 4px; }
 @media (max-width: 560px) {
@@ -1429,9 +1432,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     return b;
   };
   const pauseBuild = el('div', { id: 'pause-build', textContent: `build ${buildId}` });
-  // The keyboard legend (playtest 1, 2026-09-30: "idk how to kick on the laptop"): on the pause
-  // screen only, never on the in-race HUD [decided] ("don't clutter the in-game HUD"). Open where
-  // the pointer is fine (a laptop), folded on a touch screen, where it is one line.
+  // The Controls card carries short U-turn help and the keyboard legend (playtest 1, 2026-09-30:
+  // "idk how to kick on the laptop"): on the pause screen only, never on the in-race HUD [decided]
+  // ("don't clutter the in-game HUD"). Open where the pointer is fine (a laptop), folded on a touch
+  // screen, where it is one line.
   // Drawn from the player's own keys (Settings, Keys; 2026-10-05), and redrawn when they change.
   const keysGrid = el('div', { className: 'keys-grid' });
   let legendFor: Settings['keyBindings'] | null = null;
@@ -1450,7 +1454,16 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const pauseKeys = el(
     'details',
     { id: 'pause-keys', className: 'card', open: !coarse },
-    el('summary', { textContent: 'Keyboard' }),
+    el('summary', { textContent: 'Controls' }),
+    el('p', {
+      className: 'pause-help',
+      textContent: 'Turn around: stop or slow right down first.',
+    }),
+    el('p', {
+      className: 'pause-help pause-help-touch',
+      textContent: 'Touch: straighten up, tap BRAKE, then quickly hold BRAKE and steer all the way.',
+    }),
+    el('div', { className: 'keys-label', textContent: 'Keyboard' }),
     keysGrid,
   );
   const restartButton = entry(

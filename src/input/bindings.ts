@@ -30,7 +30,7 @@ export const BIND_ROWS: readonly BindRow[] = [
   { action: 'steerRight', label: 'Steer right', keyboard: true, gamepad: true },
   { action: 'throttle', label: 'Throttle', keyboard: true, gamepad: true },
   { action: 'brake', label: 'Brake (and drift)', keyboard: true, gamepad: true },
-  { action: 'uturn', label: 'U-turn (hold)', keyboard: true, gamepad: true },
+  { action: 'uturn', label: 'U-turn (hold + steer)', keyboard: true, gamepad: true },
   { action: 'wheelie', label: 'Wheelie (hold)', keyboard: true, gamepad: true },
   { action: 'attack', label: 'Punch', keyboard: true, gamepad: true },
   { action: 'attackLeft', label: 'Left (punch, kick)', keyboard: true, gamepad: true },
