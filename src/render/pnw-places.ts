@@ -26,7 +26,7 @@ import { BufferGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group 
 import { FERRY_DIM, type BakedFeature, type PnwPlacesLayout, type RoadNetwork } from '../road';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
-import { MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
+import { keepSceneryOpen, MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
 import { LAND_TOP_M, scatterHash, type ScenerySpot } from './scenery';
 
 /** The tags this layer draws. */
@@ -959,6 +959,7 @@ export class PnwPlacesLayer {
     const merge: MergeItem[] = [];
     for (const it of items) {
       this.placed[it.kind] = (this.placed[it.kind] ?? 0) + 1;
+      if (it.kind === 'ferry-hull') keepSceneryOpen(it.geometry);
       merge.push({ spot: spotAt(opts.road, it), geometry: it.geometry, material });
     }
     this.hazards = opts.road.edges.reduce(
