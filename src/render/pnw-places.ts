@@ -959,7 +959,7 @@ export class PnwPlacesLayer {
     const merge: MergeItem[] = [];
     for (const it of items) {
       this.placed[it.kind] = (this.placed[it.kind] ?? 0) + 1;
-      if (it.kind === 'ferry-hull') keepSceneryOpen(it.geometry);
+      if (it.kind === 'ferry-hull' || it.kind === 'banner') keepSceneryOpen(it.geometry);
       merge.push({ spot: spotAt(opts.road, it), geometry: it.geometry, material });
     }
     this.hazards = opts.road.edges.reduce(
