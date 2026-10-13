@@ -189,6 +189,8 @@ export const CAREER_CSS = `
 .career-tabs .small[aria-selected='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a; }
 .career-head { text-align: left; }
 .career-head .title { font-size: 1.375rem; display: inline-block; }
+#ui .career-head .title { max-width: calc(100% - 4px); box-sizing: border-box;
+  overflow-wrap: anywhere; transform: none; }
 .career-season-card { background: #0006; border: 2px solid #f5c542; padding: 8px 10px; display: flex; flex-direction: column;
   gap: 6px; align-items: stretch; margin-top: 6px; }
 /* The title banner is tilted and throws a 4 px red underline, which hangs about 8 px below its box on
