@@ -6,6 +6,10 @@ import type { TestHandle } from '../../src/dev/handle';
 import type { SavedRaceEnvelope } from '../../src/app/saved-race';
 import type { ReplayFile } from '../../src/replay';
 
+// Each recovery scenario owns its page, storage and API patches. Use the existing two
+// CI workers rather than serializing all fourteen cases on one worker.
+test.describe.configure({ mode: 'parallel' });
+
 type GameWindow = Window & { __GAME_TEST__?: boolean; __game?: TestHandle };
 
 async function ride(page: Page, career: boolean) {

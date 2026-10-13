@@ -20,3 +20,5 @@ Radio, look-fallback, render-quality and race-option persistence checks also exp
 Repeated boss-seed and backdrop-look navigations handle the same offer, including the case where the previous race completed and cleared it. The measurement-isolation browser case uses an observable wake-API fixture because headless Chromium refuses its physical wake request; it checks a new lease request and byte-identical ordinary recording as well as unchanged storage. Native phone wake remains outside that fixture's claims.
 
 Regional entry and content-retry checks wait for the completed race/recovery outcome before inspecting the HUD or paused screen. Their original selected-region, exact saved-tick and retained-data assertions remain; these waits are bounded hang guards, not loading-speed claims.
+
+The independent recovery scenarios use the repository's existing file-level parallel mode on its existing two CI browser workers. Every case and assertion remains; no worker count, deadline, budget or CI configuration changes.
