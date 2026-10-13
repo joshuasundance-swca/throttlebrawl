@@ -1,5 +1,5 @@
 {
-  "about": "Measured CI seconds per test file, averaged over the runs below; scripts/shard-plan.mjs balances the sim and browser slices with them, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>...",
+  "about": "Measured CI seconds per test file, averaged over the runs below, except race-recovery.spec.ts: 430.6 s is the mean of summed completed-case reporter durations from all 14 passing cases in each cancelled browser job 115403370665 (run 38428243669) and 115408787806 (run 38429802183), source head 6124261f; that recovery file matches main 1ea20ae. No incomplete neighboring files were imported. scripts/shard-plan.mjs balances the sim and browser slices with these estimates, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>...",
   "runs": [38154684605, 38155619685],
   "overhead": {
     "e2e": 53,
@@ -730,6 +730,7 @@
     "tests/e2e/platform-phone.spec.ts": 54.2,
     "tests/e2e/quick-play-events.spec.ts": 129.4,
     "tests/e2e/radio-station-persist.spec.ts": 20.8,
+    "tests/e2e/race-recovery.spec.ts": 430.6,
     "tests/e2e/render-backdrop.spec.ts": 214,
     "tests/e2e/render-context-loss.spec.ts": 24.2,
     "tests/e2e/render-looks.spec.ts": 201.9,

@@ -102,6 +102,33 @@ async function expectButtonsReachable(page: Page, where: string, scope: string) 
   expect(unreachable, `${where}: every button can be reached`).toEqual([]);
 }
 
+/** The stamp must yield to every painted start-screen word, including keyboard instructions. */
+async function startStampFindings(
+  page: Page,
+  forced?: { left: number; right: number; top: number; bottom: number },
+) {
+  return page.evaluate((replacement) => {
+    const stamp = document.getElementById('build-stamp');
+    const box = replacement ?? (stamp?.checkVisibility() ? stamp.getBoundingClientRect() : null);
+    if (!box) return [];
+    const findings: string[] = [];
+    for (const e of document.querySelectorAll<HTMLElement>('#start-screen *')) {
+      if (!e.checkVisibility()) continue;
+      for (const n of e.childNodes) {
+        if (n.nodeType !== Node.TEXT_NODE || !(n.textContent ?? '').trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        for (const r of range.getClientRects()) {
+          if (r.width < 0.5 || r.height < 0.5 || r.bottom <= 0 || r.top >= innerHeight) continue;
+          if (box.left < r.right && r.left < box.right && box.top < r.bottom && r.top < box.bottom)
+            findings.push(`stamp covers ${(n.textContent ?? '').trim()}`);
+        }
+      }
+    }
+    return findings;
+  }, forced ?? null);
+}
+
 /** The start card's actual words stay reachable before its one-tap entry at either saved size. */
 async function checkStartHelp(page: Page, label: string) {
   const help = page.locator('#start-controls');
@@ -115,6 +142,22 @@ async function checkStartHelp(page: Page, label: string) {
   const measured = await findOverflow(page);
   expect(measured.examined, `${label}: start words examined`).toBeGreaterThan(0);
   expect(measured.out, `${label}: start words fit or scroll`).toEqual([]);
+  await expect
+    .poll(() => startStampFindings(page), { message: `${label}: no start word under the stamp` })
+    .toEqual([]);
+  // The same judge must name a known word when a stamp is planted over it, even if the real stamp hides.
+  const knownWord = await help
+    .locator('b')
+    .first()
+    .evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const r = range.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    });
+  expect(await startStampFindings(page, knownWord), `${label}: planted stamp is detected`).toContain(
+    'stamp covers Keys',
+  );
   const lines = await page.locator('#start-controls .snatch-help').all();
   expect(lines.length, `${label}: snatch help rows found`).toBeGreaterThan(0);
   for (const line of lines) {
@@ -129,9 +172,15 @@ async function checkStartHelp(page: Page, label: string) {
     });
     expect(painted.inside, `${label}: snatch help can be scrolled onto the screen`).toBe(true);
     expect(painted.opacity, `${label}: snatch help is painted`).toBeGreaterThan(0.5);
+    await expect
+      .poll(() => startStampFindings(page), { message: `${label}: scrolled help stays clear of the stamp` })
+      .toEqual([]);
   }
   const startTap = page.locator('#start-screen > .big');
   await startTap.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() => startStampFindings(page), { message: `${label}: returning to Start keeps words clear` })
+    .toEqual([]);
   const reachable = await startTap.evaluate((node) => {
     const r = node.getBoundingClientRect();
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -223,10 +272,15 @@ test('phone landscape: the menu, every settings tab and the pause menu fit the l
   await checkScreens(page, 'phone landscape');
 });
 
-test.describe('small phone landscape', () => {
-  test.use({ viewport: { width: 640, height: 360 } });
-  test('the same screens scroll or fit, and every button can be reached', async ({ page }) => {
-    test.setTimeout(180_000);
-    await checkScreens(page, 'small phone');
+for (const viewport of [
+  { width: 640, height: 360 },
+  { width: 568, height: 320 },
+]) {
+  test.describe(`small phone landscape ${viewport.width}x${viewport.height}`, () => {
+    test.use({ viewport });
+    test('the same screens scroll or fit, and every button can be reached', async ({ page }) => {
+      test.setTimeout(180_000);
+      await checkScreens(page, 'small phone');
+    });
   });
-});
+}

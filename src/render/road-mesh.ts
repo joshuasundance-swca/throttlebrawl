@@ -3196,7 +3196,10 @@ export function buildRoadScene(
           mesh.visible = away < (THIN_MESHES.has(mesh.name) ? Math.min(postM, fineM) : fineM);
       }
       let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds, detail.treeShare ?? 1);
-      if (bayMerged) shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), lodM, builds);
+      // The generic far stand-in joins separated walls into a box across the lanes.
+      // Bridge bays already have a short draw range; keep their actual open geometry.
+      if (bayMerged)
+        shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), Infinity, builds);
       for (const b of batches) {
         const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
         b.mesh.visible = visible;

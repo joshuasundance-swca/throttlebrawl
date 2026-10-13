@@ -435,7 +435,7 @@ describe('docs/engineering.md: the train section opens in plain words', () => {
 
   it('counts the suite as suite.yml does', () => {
     const size = suiteSize(suiteYml);
-    expect(size).toMatchObject({ unit: 3, sim: 8, browser: 10, all: 22 });
+    expect(size).toMatchObject({ unit: 3, sim: 8, browser: 11, all: 23 });
     for (const [name, text] of [
       ['the train section', train],
       ['the CI section', section(engineering, 'CI on GitHub Actions')],
@@ -460,7 +460,7 @@ describe('docs/engineering.md: the train section opens in plain words', () => {
 // is pinned to the code that decides it, and to a planted fault the check must find.
 
 /** The number words ci.yml's header uses for the suite's slices. */
-const words: Record<string, number> = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const words: Record<string, number> = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11 };
 
 /** What a comment says about the suite's slices ("sim in seven, browser in eight"), as numbers. */
 function slicesInWords(text: string) {
@@ -640,6 +640,7 @@ describe('AGENTS.md and ci.yml: the numbers and the link the #620 review found s
     const head = ciYml.split('\n').slice(0, 6).join(' ').replace(/#/g, ' ').replace(/\s+/g, ' ');
     expect(slicesInWords(head)).toEqual({ sim: size.sim, browser: size.browser });
     expect(slicesInWords('sim in eight, browser in ten')).toEqual({ sim: 8, browser: 10 });
+    expect(slicesInWords('sim in eight, browser in eleven')).toEqual({ sim: 8, browser: 11 });
     // control
     expect(slicesInWords('sim in six, browser in seven')).toEqual({ sim: 6, browser: 7 });
     expect(slicesInWords('sim in eight, browser in eleven')).not.toEqual({ sim: 8, browser: 10 });
