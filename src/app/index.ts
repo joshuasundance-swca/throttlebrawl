@@ -2483,6 +2483,7 @@ export function createApp(opts: AppOptions): AppHandle {
     countdown.begin(countdownOn());
     // The full header (the SimConfig as plain data), so a saved debug file replays on its own, and a
     // menu race's picks beside it (playtest 4, P4-12).
+    attemptOwner = null;
     recoveredTerminal = null;
     recorder.beginRace(race, replayKey, options ? { ...options } : undefined);
     outcome = createOutcome();
@@ -2684,7 +2685,7 @@ export function createApp(opts: AppOptions): AppHandle {
     if (c.gig && !quit) extras.push(m.gigStatus(c.gig, tally));
     const base = c.log.status();
     const status: RaceStatus = { ...base, objectives: [...base.objectives, ...extras] };
-    const owner = attemptOwner;
+    const owner = attemptOwner?.sim === race ? attemptOwner : null;
     const terminal = !quit ? owner?.terminal : undefined;
     const result = terminal?.result ?? { build: build.id, at: new Date().toISOString() };
     const ridden = race?.config.riders[playerId]?.bike.contentId;
