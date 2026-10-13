@@ -1,12 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { rideFirstCareerRace } from './career-start';
 import { fastForwardDone } from './lockstep';
-import { openQuickPlay } from './menu-navigation';
+import { openMenuMore, openQuickPlay } from './menu-navigation';
 import type { TestHandle } from '../../src/dev/handle';
+import type { SavedRaceEnvelope } from '../../src/app/saved-race';
+import type { ReplayFile } from '../../src/replay';
 
 type GameWindow = Window & { __GAME_TEST__?: boolean; __game?: TestHandle };
 
-async function ride(page: Page, career: boolean) {
+async function ride(page: Page, career: boolean, pause = true) {
   await page.goto('./');
   if (career) await rideFirstCareerRace(page);
   else {
@@ -19,14 +21,114 @@ async function ride(page: Page, career: boolean) {
     (window as GameWindow).__game!.fastForward((snap) => snap.tick >= 360, { perFrame: 60, then: 0 }),
   );
   await fastForwardDone(page, 'recovery saved boundary');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#pause-screen')).toBeVisible();
+  if (pause) {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause-screen')).toBeVisible();
+  }
+}
+
+async function attempt(page: Page): Promise<SavedRaceEnvelope> {
+  return page.evaluate(() => JSON.parse(localStorage.getItem('mbrawl:race')!) as SavedRaceEnvelope);
+}
+
+async function replayConfig(page: Page) {
+  return page.evaluate(() => {
+    const lines = (window as GameWindow).__game!.debugFileText().split('\n');
+    const replay = JSON.parse(
+      lines[lines.indexOf('===== replay (one line of JSON) =====') + 1]!,
+    ) as ReplayFile;
+    const c = replay.header.config!;
+    return {
+      event: c.event,
+      bikes: c.riders.map((r) => r.bike.contentId),
+      difficulty: c.difficulty,
+      tuning: c.tuning,
+      options: replay.header.raceOptions,
+    };
+  });
 }
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     (window as GameWindow).__GAME_TEST__ = true;
   });
+});
+
+test('missing regional road content offers Retry, retains the attempt and recovers when available', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const roadUrls = new Set<string>();
+  page.on('request', (request) => {
+    if (request.resourceType() === 'fetch' && new URL(request.url()).pathname.endsWith('.json'))
+      roadUrls.add(request.url());
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await openQuickPlay(page);
+  await page.locator('#region-region-sf-san-francisco').click();
+  await page.locator('#menu-race').click();
+  await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
+  await page.evaluate(() =>
+    (window as GameWindow).__game!.fastForward((s) => s.tick >= 360, { perFrame: 60, then: 0 }),
+  );
+  await fastForwardDone(page, 'regional recovery fixture');
+  await page.keyboard.press('Escape');
+  const raw = await page.evaluate(() => localStorage.getItem('mbrawl:race'));
+  expect(roadUrls.size).toBeGreaterThan(0);
+  let blocked = true;
+  let failures = 0;
+  await page.route(
+    (url) => roadUrls.has(url.href),
+    async (route) => {
+      if (blocked) {
+        failures++;
+        await route.abort('failed');
+      } else await route.continue();
+    },
+  );
+  await page.reload();
+  await page.locator('#resume-race').click();
+  await expect(page.locator('#resume-race')).toHaveText('Retry');
+  expect(failures).toBeGreaterThan(0);
+  expect(await page.evaluate(() => localStorage.getItem('mbrawl:race'))).toBe(raw);
+  blocked = false;
+  await page.locator('#resume-race').click();
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  expect(await page.evaluate(() => (window as GameWindow).__game!.snapshot()!.tick)).toBe(360);
+});
+
+test('the real recovery choice requests native fullscreen and audio from the user gesture', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await ride(page, false);
+  await page.addInitScript(() => {
+    const w = window as Window & { __recoveryGestures?: { fullscreen: boolean[]; audio: boolean[] } };
+    const calls = (w.__recoveryGestures = { fullscreen: [], audio: [] });
+    const fullscreen = Reflect.get<Element, 'requestFullscreen'>(Element.prototype, 'requestFullscreen');
+    Element.prototype.requestFullscreen = function (options) {
+      calls.fullscreen.push(navigator.userActivation.isActive);
+      return fullscreen.call(this, options);
+    };
+    const resume = Reflect.get<AudioContext, 'resume'>(AudioContext.prototype, 'resume');
+    AudioContext.prototype.resume = function () {
+      // Fullscreen may consume transient activation; audio still belongs to this trusted tap.
+      calls.audio.push(navigator.userActivation.hasBeenActive);
+      return resume.call(this);
+    };
+  });
+  await page.reload();
+  await expect(page.locator('#resume-card')).toBeVisible();
+  await page.locator('#resume-race').click();
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  const calls = await page.evaluate(
+    () =>
+      (window as Window & { __recoveryGestures?: { fullscreen: boolean[]; audio: boolean[] } })
+        .__recoveryGestures!,
+  );
+  expect(calls.fullscreen).toContain(true);
+  expect(calls.audio).toContain(true);
 });
 
 for (const career of [false, true]) {
@@ -54,6 +156,8 @@ for (const career of [false, true]) {
     await expect(page.locator('#resume-race')).toHaveText('Resume race');
     // Ordinary keyboard Start cannot dismiss or bypass the recovery choice.
     await page.keyboard.press('Enter');
+    // The ordinary pointer Start handler is guarded too; dispatch does not force through an overlay.
+    await page.locator('#start-screen').dispatchEvent('click');
     expect(await page.evaluate(() => (window as GameWindow).__game!.state())).toBe('tapToStart');
     await expect(page.locator('#resume-card')).toBeVisible();
     await page.locator('#resume-race').click();
@@ -63,6 +167,157 @@ for (const career of [false, true]) {
     await expect(page.locator('#hud-objective')).toBeVisible();
   });
 }
+
+test('periodic and pagehide saves continue with hashes verified against a fresh replay control', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await ride(page, false, false);
+  const periodic = await attempt(page);
+  expect(periodic.recording.inputs.ticks).toBe(300);
+  expect(await page.evaluate(() => (window as GameWindow).__game!.snapshot()!.tick)).toBe(360);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  const hidden = await attempt(page);
+  expect(hidden.recording.inputs.ticks).toBe(360);
+  await page.reload();
+  await page.locator('#resume-race').click();
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  await page.evaluate(() => (window as GameWindow).__game!.lockstep(0));
+  await page.keyboard.press('Escape');
+  await page.keyboard.down('w');
+  await page.evaluate(() =>
+    (window as GameWindow).__game!.fastForward((snap) => snap.tick >= 480, { perFrame: 60, then: 0 }),
+  );
+  await fastForwardDone(page, 'continued recovered race');
+  await page.keyboard.up('w');
+  await page.keyboard.press('Escape');
+  const continued = await attempt(page);
+  expect(continued.recording.inputs.ticks).toBe(480);
+  expect(continued.recording.header).toEqual(hidden.recording.header);
+  expect(continued.recording.hashes.slice(0, hidden.recording.hashes.length)).toEqual(
+    hidden.recording.hashes,
+  );
+  const controls = await page.evaluate((saved) => {
+    const g = (window as GameWindow).__game!;
+    const lines = g.debugFileText().split('\n');
+    const at = lines.indexOf('===== replay (one line of JSON) =====') + 1;
+    const check = (hash: number) => {
+      lines[at] = JSON.stringify({
+        ...saved.recording,
+        end: { tick: saved.recording.inputs.ticks - 1, hash },
+      });
+      return g.checkDebugFile(lines.join('\n'));
+    };
+    return { matching: check(saved.savedHash), tampered: check((saved.savedHash ^ 1) >>> 0) };
+  }, continued);
+  expect(controls.matching.keyMatches).toBe(true);
+  expect(controls.matching.desync).toBeNull();
+  expect(controls.matching.ticks).toBe(480);
+  expect(controls.tampered.desync).not.toBeNull();
+});
+
+for (const changed of ['route', 'settings', 'hash'] as const) {
+  test(`changed saved ${changed} retains evidence and renders an unavailable choice`, async ({ page }) => {
+    test.setTimeout(90_000);
+    await ride(page, false);
+    const raw = await page.evaluate((field) => {
+      const saved = JSON.parse(localStorage.getItem('mbrawl:race')!) as SavedRaceEnvelope;
+      if (saved.context.kind !== 'quick') throw new Error('Expected Quick Play context');
+      if (field === 'route') saved.context.route = 'base:unavailable-route';
+      else if (field === 'settings') saved.context.settings.difficulty = 'hard';
+      else saved.savedHash = (saved.savedHash ^ 1) >>> 0;
+      const text = JSON.stringify(saved);
+      localStorage.setItem('mbrawl:race', text);
+      return text;
+    }, changed);
+    await page.reload();
+    await page.locator('#resume-race').click();
+    await expect(page.locator('#resume-card')).toContainText('Saved race unavailable');
+    await expect(page.locator('#resume-race')).toBeHidden();
+    expect(await page.evaluate(() => localStorage.getItem('mbrawl:race'))).toBe(raw);
+    await page.locator('#resume-start-over').click();
+    await expect(page.locator('#menu')).toBeVisible();
+  });
+}
+
+test('recovered nondefault Quick Play options survive Retry and measurement cannot flush its old recorder', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('mbrawl:settings'))
+      localStorage.setItem(
+        'mbrawl:settings',
+        JSON.stringify({
+          format: 'settings',
+          version: 1,
+          data: { throttle: 'auto', assists: { steer: 'strong' }, difficulty: 'easy' },
+        }),
+      );
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await openQuickPlay(page);
+  await page.locator('#menu-options').click();
+  await page.locator('#race-option-kind-next').click();
+  await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', 'hunt');
+  await page.locator('#race-option-cops-next').click();
+  await page.locator('#race-option-bike-next').click();
+  await page.locator('#race-option-field-next').click();
+  await page.locator('#race-options-race').click();
+  await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
+  await page.evaluate(() =>
+    (window as GameWindow).__game!.fastForward((s) => s.tick >= 360, { perFrame: 60, then: 0 }),
+  );
+  await fastForwardDone(page, 'nondefault Quick Play');
+  await page.keyboard.press('Escape');
+  const first = await replayConfig(page);
+  const profile = await page.evaluate(() => localStorage.getItem('mbrawl:profile'));
+  await page.reload();
+  await page.locator('#resume-race').click();
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  expect(await replayConfig(page)).toEqual(first);
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 240, then: 120 }),
+  );
+  await fastForwardDone(page, 'recovered Quick Play finish');
+  await expect(page.locator('#results')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('mbrawl:profile'))).toBe(profile);
+  await page.locator('#results-race').click();
+  await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
+  expect(await replayConfig(page)).toEqual(first);
+  await page.evaluate(() =>
+    (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 240, then: 120 }),
+  );
+  await fastForwardDone(page, 'retried Quick Play finish');
+  await expect(page.locator('#results')).toBeVisible();
+  await page.locator('#results-menu').click();
+  await page.evaluate(() => (window as GameWindow).__game!.lockstep(null));
+  const before = await page.evaluate(() => ({
+    race: localStorage.getItem('mbrawl:race'),
+    profile: localStorage.getItem('mbrawl:profile'),
+    settings: localStorage.getItem('mbrawl:settings'),
+  }));
+  expect(before.race).toBeNull();
+  await openMenuMore(page);
+  await page.locator('#menu-measure-frames').click();
+  await page.locator('#measurement-start').click();
+  await expect(page.locator('#measurement-status')).toContainText('Partial/running');
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+  await expect(page.locator('#measurement-status')).toContainText('Ended:');
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow')));
+  const after = await page.evaluate(() => ({
+    race: localStorage.getItem('mbrawl:race'),
+    profile: localStorage.getItem('mbrawl:profile'),
+    settings: localStorage.getItem('mbrawl:settings'),
+  }));
+  expect(after).toEqual(before);
+  await expect(page.locator('#resume-card')).toBeHidden();
+  await page.locator('#measurement-close').click();
+  await expect(page.locator('#menu')).toBeVisible();
+});
 
 test('Start over clears the classified attempt and leaves a usable menu', async ({ page }) => {
   test.setTimeout(90_000);

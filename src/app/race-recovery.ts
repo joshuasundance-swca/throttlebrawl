@@ -5,7 +5,7 @@ import { decodeSavedRecording, type SavedRaceEnvelope } from './saved-race';
 
 export * from './saved-race';
 export { commitFrozenProfile } from './frozen-result';
-export { recoveryCareer } from './recovery-context';
+export { recoveryCareer, quickRecoveryKey } from './recovery-context';
 
 export interface ReconstructedRace {
   sim: Sim;

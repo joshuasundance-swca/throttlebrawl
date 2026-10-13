@@ -16,6 +16,18 @@ export interface RecoveryCareer {
   key: string;
 }
 
+export function quickRecoveryKey(
+  flow: CareerFlow,
+  reg: ContentRegistry,
+  context: Omit<Extract<SavedRaceContext, { kind: 'quick' }>, 'contextKey'>,
+): string {
+  return canonicalJson({
+    plan: flow.eventPlan(reg, context.eventId),
+    route: context.route,
+    settings: context.settings,
+  });
+}
+
 /** Identity of actual career rules and settlement inputs, separate from sim compatibility. */
 export function recoveryCareer(
   flow: CareerFlow,

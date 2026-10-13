@@ -2156,13 +2156,13 @@ export function createApp(opts: AppOptions): AppHandle {
       const derived = m.recoveryCareer(C, registry, defs, original, file.header);
       context = { ...original, contextKey: derived.key };
     } else {
-      context = {
-        kind: 'quick',
+      const original = {
+        kind: 'quick' as const,
         eventId,
         route,
         settings: structuredClone(quickSettings ?? settings),
-        contextKey: m.canonicalJson(C.eventPlan(registry, eventId)),
       };
+      context = { ...original, contextKey: m.quickRecoveryKey(C, registry, original) };
     }
     attemptOwner = { sim: race, token: {}, context, canPersist: savedRead?.kind === 'empty', settled: false };
     saveNoticeShown = false;
@@ -2283,7 +2283,8 @@ export function createApp(opts: AppOptions): AppHandle {
         context.kind === 'career'
           ? m.recoveryCareer(flow, registry, defs, context, attempt.recording.header)
           : null;
-      const contextKey = career?.key ?? m.canonicalJson(flow.eventPlan(registry, context.eventId));
+      const contextKey =
+        context.kind === 'career' ? career!.key : m.quickRecoveryKey(flow, registry, context);
       if (contextKey !== context.contextKey) throw new Error('The race rules or rewards have changed');
       if (context.kind === 'career') {
         let actual: string | null;

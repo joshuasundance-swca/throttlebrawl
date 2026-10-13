@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { loadBasePack } from '../content';
 import { replayHeader } from '../replay';
-import { DEFAULT_PROFILE, PROFILE_VERSION } from '../save';
+import { DEFAULT_PROFILE, DEFAULT_SETTINGS, PROFILE_VERSION } from '../save';
 import * as flow from './career-flow';
 import { createHeadlessRace } from './headless';
-import { recoveryCareer } from './recovery-context';
+import { quickRecoveryKey, recoveryCareer } from './recovery-context';
 
 function fixture() {
   const reg = loadBasePack();
@@ -45,6 +45,24 @@ function fixture() {
 }
 
 describe('career recovery data identity', () => {
+  it('binds Quick Play identity to its route and full settings as well as event rules', () => {
+    const f = fixture();
+    const context = {
+      kind: 'quick' as const,
+      eventId: f.node.event,
+      route: null,
+      settings: structuredClone(DEFAULT_SETTINGS),
+    };
+    const key = quickRecoveryKey(flow, f.reg, context);
+    expect(quickRecoveryKey(flow, f.reg, structuredClone(context))).toBe(key);
+    expect(quickRecoveryKey(flow, f.reg, { ...context, route: 'base:other-route' })).not.toBe(key);
+    expect(
+      quickRecoveryKey(flow, f.reg, {
+        ...context,
+        settings: { ...context.settings, difficulty: 'hard' },
+      }),
+    ).not.toBe(key);
+  });
   it('resolves the original qualified career despite an ambiguous bare region', () => {
     const f = fixture();
     const duplicate = { ...f.def, key: 'other:career', name: 'Other chapter' };
