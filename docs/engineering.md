@@ -412,7 +412,7 @@ The maintainer asked for "dependabot for everything it supports" (2026-09-30), u
 
 **The tree.** base = main's commit when the train departs. Each PR's head commit merges onto it in that order (`git merge-tree --write-tree`, the same merge machinery as `git merge`), and each step is recorded as a merge commit with a fixed identity (GitHub Actions' no-reply address) and date. So every job rebuilds the same commits from (base, heads) and checks that the tree is the one the plan made. No train branches are pushed (branches are never deleted here, so they would pile up). A PR that conflicts with main gets `gate` = failure ("conflicts with main; merge origin/main and push") and a comment. One that conflicts only with an earlier PR of the bundle waits for the next train: once that PR lands, it conflicts with main and is told so.
 
-**The suite.** Exactly what a push to main runs: `suite.yml` with `full: true` (static, unit in 3 slices, sim in 8, browser in 10 with perf in the last), the same file ci.yml calls, so the two cannot drift.
+**The suite.** Exactly what a push to main runs: `suite.yml` with `full: true` (static, unit in 3 slices, sim in 8, browser in 11 with perf in the last), the same file ci.yml calls, so the two cannot drift.
 
 **The landing invariant.** A set of PRs gets `gate` = success only if:
 
