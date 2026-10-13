@@ -42,12 +42,27 @@ async function expectNoOverflow(page: Page, root: string, where: string) {
   expect(found.out, where).toEqual([]);
 }
 
-async function openCareerMap(page: Page) {
+async function openCareerMap(page: Page, largest = false) {
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  if (largest) {
+    const normalPx = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    await page.locator('#menu-settings').click();
+    await page.locator('#settings-tab-access').click();
+    const choice = page.locator('#settings-textSize [data-value="largest"]');
+    await choice.click();
+    await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    const largestPx = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    expect(largestPx / normalPx, 'Largest actually changes the rendered text size').toBeCloseTo(1.4, 2);
+    await page.locator('#settings-back').click();
+  }
   await page.locator('#menu-career').click();
   await expect(page.locator('#career')).toBeVisible();
 }
@@ -163,79 +178,115 @@ for (const size of SIZES) {
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(size.width + 0.5);
     });
 
-    test('the Season 2 card keeps its whole title and lines on the screen, and the garage lines fit', async ({
-      page,
-    }) => {
-      test.setTimeout(120_000);
-      await openCareerMap(page);
-      const ids = await regionIds(page);
-      const done = {
-        tier: 4,
-        won: [] as string[],
-        unlockedRoads: [] as string[],
-        claimedRoads: [] as string[],
-        foundShortcuts: [] as string[],
-        secrets: [] as string[],
-        finaleBeaten: true,
-      };
-      const regions = Object.fromEntries(ids.map((id) => [id, done]));
-      const code = await craftCode(page, await readCode(page), { cash: 50_000, regions });
-      await loadCode(page, code);
-
-      // The card: its title inside its box (a rotated, clipped first line would poke out), whole.
-      const card = page.locator('#career-season-card');
-      await expect(card).toBeVisible();
-      await expect(card.locator('.season-title')).toContainText('Season 2');
-      await card.scrollIntoViewIfNeeded();
-      const m = await page.evaluate(() => {
-        const c = document.querySelector<HTMLElement>('#career-season-card');
-        const t = c?.querySelector<HTMLElement>('.season-title');
-        if (!c || !t) return null;
-        const cr = c.getBoundingClientRect();
-        const tr = t.getBoundingClientRect();
-        const line = parseFloat(getComputedStyle(t).lineHeight);
-        return {
-          inside:
-            tr.top >= cr.top - 0.5 &&
-            tr.bottom <= cr.bottom + 0.5 &&
-            tr.left >= cr.left - 0.5 &&
-            tr.right <= cr.right + 0.5,
-          onScreen: cr.left >= -0.5 && cr.right <= window.innerWidth + 0.5,
-          fits: t.scrollHeight <= t.clientHeight + 1 && t.scrollWidth <= t.clientWidth + 1,
-          tall: tr.height >= line - 0.5,
-          transform: getComputedStyle(t).transform,
-        };
-      });
-      expect(m, 'the card and its title exist').not.toBeNull();
-      expect(m?.inside, 'the title lies inside the card').toBe(true);
-      expect(m?.onScreen, 'the card lies inside the screen').toBe(true);
-      expect(m?.fits, 'the title does not overflow its box').toBe(true);
-      expect(m?.tall, 'the title box holds at least one whole line').toBe(true);
-      expect(m?.transform, 'the title is not rotated').toBe('none');
-      await expect(page.locator('#career-start-season')).toBeVisible();
-      await expectNoOverflow(page, '#career', `season card at ${size.name}`);
-
-      // The garage: every bike row says its step, and a bike not yet owned says its price in races.
-      await page.locator('#career-tab-garage').click();
-      await expect(page.locator('#garage-pay')).toContainText('A race pays about');
-      const rows = await page.evaluate(() =>
-        [...document.querySelectorAll<HTMLElement>('.garage-row[data-bike]')].map((r) => ({
-          state: r.dataset['state'],
-          text: r.innerText,
-        })),
-      );
-      expect(rows.length).toBeGreaterThan(3);
-      for (const r of rows) {
-        expect(r.text, 'each bike row says its step or its novelty').toMatch(
-          /Step \d+ of \d+|Novelty ride|\(secret\)/,
+    for (const textSize of ['normal', 'largest'] as const) {
+      test(`the Season 2 card keeps its whole title and lines on the screen, and the garage lines fit at ${textSize} text`, async ({
+        page,
+      }) => {
+        test.setTimeout(120_000);
+        await openCareerMap(page, textSize === 'largest');
+        const selectedPx = await page.evaluate(() =>
+          parseFloat(getComputedStyle(document.documentElement).fontSize),
         );
-        if (r.state !== 'owned') expect(r.text).toMatch(/afford|have the cash/);
-      }
-      await expectNoOverflow(page, '#career', `garage at ${size.name}`);
-      // New career: its panel and button are on the screen too.
-      await expect(page.locator('#career-newcareer')).toBeVisible();
-      await expectNoOverflow(page, '#career-newcareer', `new career panel at ${size.name}`);
-    });
+        const ids = await regionIds(page);
+        const done = {
+          tier: 4,
+          won: [] as string[],
+          unlockedRoads: [] as string[],
+          claimedRoads: [] as string[],
+          foundShortcuts: [] as string[],
+          secrets: [] as string[],
+          finaleBeaten: true,
+        };
+        const regions = Object.fromEntries(ids.map((id) => [id, done]));
+        const code = await craftCode(page, await readCode(page), { cash: 50_000, regions });
+        await loadCode(page, code);
+        expect(
+          await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)),
+          'the selected text size survives completed-career import',
+        ).toBeCloseTo(selectedPx, 2);
+
+        // The card: its title inside its box (a rotated, clipped first line would poke out), whole.
+        const card = page.locator('#career-season-card');
+        await expect(card).toBeVisible();
+        await expect(card.locator('.season-title')).toContainText('Season 2');
+        await card.scrollIntoViewIfNeeded();
+        const measureTitle = () =>
+          page.evaluate(() => {
+            const c = document.querySelector<HTMLElement>('#career-season-card');
+            const t = c?.querySelector<HTMLElement>('.season-title');
+            if (!c || !t) return null;
+            const cr = c.getBoundingClientRect();
+            const tr = t.getBoundingClientRect();
+            const line = parseFloat(getComputedStyle(t).lineHeight);
+            return {
+              inside:
+                tr.top >= cr.top - 0.5 &&
+                tr.bottom <= cr.bottom + 0.5 &&
+                tr.left >= cr.left - 0.5 &&
+                tr.right <= cr.right + 0.5,
+              onScreen: cr.left >= -0.5 && cr.right <= window.innerWidth + 0.5,
+              fits: t.scrollHeight <= t.clientHeight + 1 && t.scrollWidth <= t.clientWidth + 1,
+              tall: tr.height >= line - 0.5,
+              transform: getComputedStyle(t).transform,
+            };
+          });
+        const m = await measureTitle();
+        expect(m, 'the card and its title exist').not.toBeNull();
+        expect(m?.inside, 'the title lies inside the card').toBe(true);
+        expect(m?.onScreen, 'the card lies inside the screen').toBe(true);
+        expect(m?.fits, 'the title does not overflow its box').toBe(true);
+        expect(m?.tall, 'the title box holds at least one whole line').toBe(true);
+        expect(m?.transform, 'the title is not rotated').toBe('none');
+        await expect(page.locator('#career-start-season')).toBeVisible();
+        await page.locator('#career-start-season').scrollIntoViewIfNeeded();
+        const startReachable = await page.locator('#career-start-season').evaluate((node) => {
+          const r = node.getBoundingClientRect();
+          const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return (
+            r.left >= -0.5 &&
+            r.right <= innerWidth + 0.5 &&
+            r.top >= -0.5 &&
+            r.bottom <= innerHeight + 0.5 &&
+            !!top &&
+            (top === node || node.contains(top))
+          );
+        });
+        expect(startReachable, 'Start season can be scrolled fully into view and hit').toBe(true);
+        await expectNoOverflow(page, '#career', `season card at ${size.name}`);
+        if (textSize === 'largest' && size.width === 568) {
+          const clipped = await page.addStyleTag({
+            content:
+              '#career-season-card .season-title { height: 1px !important; overflow: hidden !important; }',
+          });
+          const negative = await measureTitle();
+          expect(negative?.fits, 'the same title check detects planted clipping').toBe(false);
+          expect(negative?.tall, 'the planted box cannot hold one whole line').toBe(false);
+          await clipped.evaluate((node) => (node as HTMLElement).remove());
+          expect((await measureTitle())?.fits, 'the unclipped title is restored').toBe(true);
+        }
+
+        // The garage: every bike row says its step, and a bike not yet owned says its price in races.
+        await page.locator('#career-tab-garage').click();
+        await expect(page.locator('#garage-pay')).toContainText('A race pays about');
+        const rows = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('.garage-row[data-bike]')].map((r) => ({
+            state: r.dataset['state'],
+            text: r.innerText,
+          })),
+        );
+        expect(rows.length).toBeGreaterThan(3);
+        for (const r of rows) {
+          expect(r.text, 'each bike row says its step or its novelty').toMatch(
+            /Step \d+ of \d+|Novelty ride|\(secret\)/,
+          );
+          if (r.state !== 'owned') expect(r.text).toMatch(/afford|have the cash/);
+        }
+        await expectNoOverflow(page, '#career', `garage at ${size.name}`);
+        // New career: its panel and button are on the screen too.
+        await expect(page.locator('#career-newcareer')).toBeVisible();
+        await expectNoOverflow(page, '#career-newcareer', `new career panel at ${size.name}`);
+      });
+    }
   });
 }
 
