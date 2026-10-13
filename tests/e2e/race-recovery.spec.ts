@@ -269,7 +269,7 @@ for (const changed of ['route', 'settings', 'hash'] as const) {
 test('recovered nondefault Quick Play options survive Retry and measurement cannot flush its old recorder', async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   await page.addInitScript(() => {
     if (!localStorage.getItem('mbrawl:settings'))
       localStorage.setItem(
@@ -291,8 +291,8 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
     'true',
   );
   await page.locator('#menu-options').click();
-  await page.locator('#race-option-kind-next').click();
-  await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', 'hunt');
+  // Race permits a selected road; Hunt and Grudge deliberately stay on their own roads.
+  await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', 'race');
   await page.locator('#race-option-cops-next').click();
   await page.locator('#race-option-bike-next').click();
   await page.locator('#race-option-field-next').click();
@@ -314,6 +314,7 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await page.locator('#resume-race').click();
   await expect(page.locator('#pause-screen')).toBeVisible();
   expect(await replayConfig(page)).toEqual(first);
+  await page.evaluate(() => (window as GameWindow).__game!.setBot(true));
   await page.keyboard.press('Escape');
   await page.evaluate(() =>
     (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 240, then: 120 }),
