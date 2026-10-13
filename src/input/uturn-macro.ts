@@ -2,16 +2,22 @@
 // to be sure it's a joy to play and use all functions"). The U-turn's own gesture is a double tap of
 // the brake, the second press held with the bars at full lock (sim/riders/uturn.ts, playtest 4 P4-9
 // [decided]). That stays the gesture, and it still works from any brake binding. This is a key or
-// pad button that makes the same gesture for the player: held, it taps the brake, lets go, then holds
-// the brake, so the player only holds it and steers the way round. It writes the brake and the bars
+// pad button that makes the same gesture for the player: held, it first brakes straight long enough
+// to retire a previous tap, releases, then taps, releases and holds the brake. The preparation stops
+// a prior brake press from consuming its first edge (docs/milestones/uturn-shortcut-handoff.md).
+// The player only holds it and steers the way round. It writes the brake and the bars
 // into the action state like any other device, so the sim and a replay see the same SimInput the
 // two taps make; nothing new reaches the sim. [default]
 import type { ActionState } from './actions';
 
-/** The first tap lasts until this much of the hold has passed (3 ticks at 60 Hz). */
-const TAP_END_S = 0.04;
-/** The gap after the tap lasts until this much has passed (3 more ticks); then the brake holds. */
-const GAP_END_S = 0.09;
+/** Longer than the sim's short-tap window: retire a first tap without starting a turn. */
+const RESET_END_S = 0.4;
+/** Releasing also retires an armed second press before the shortcut makes its own gesture. */
+const RESET_GAP_END_S = RESET_END_S + 0.05;
+/** The new first tap lasts about three ticks at 60 Hz. */
+const TAP_END_S = RESET_GAP_END_S + 0.04;
+/** About three more ticks of release, then the shortcut holds the brake with the player's steer. */
+const GAP_END_S = TAP_END_S + 0.05;
 
 /** One device's U-turn button: call `apply` once per sample with whether the button is held. */
 export class UturnMacro {
@@ -25,7 +31,13 @@ export class UturnMacro {
       return;
     }
     this.t = this.t < 0 ? 0 : this.t + dt;
-    if (this.t < TAP_END_S) {
+    if (this.t < RESET_END_S) {
+      a.brake = 1;
+      a.steer = 0;
+    } else if (this.t < RESET_GAP_END_S) {
+      a.brake = 0;
+      a.steer = 0;
+    } else if (this.t < TAP_END_S) {
       // The tap: brake on, bars straight (the sim reads a tap only with the bars under half lock).
       a.brake = 1;
       a.steer = 0;
