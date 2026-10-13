@@ -2086,10 +2086,53 @@ for (const [where, width, height, finePointer] of [
       });
       await page.goto('./');
       await expect(page.locator('#start-screen')).toBeVisible();
-      // The start screen has no control to avoid: the stamp shows there (it names the build).
+      // The stamp names the build wherever there is room. On the shortest screen its two corners
+      // can both cover startup instructions; hiding is allowed only when those words block both.
       await settleStamp(page);
       const start = await stampCover(page);
-      expect(start.shown, `${where}: the stamp shows on the start screen`).toBe(true);
+      if (width !== 568 || height !== 320) {
+        expect(start.shown, `${where}: the stamp shows on the start screen`).toBe(true);
+      } else if (!start.shown) {
+        const blockedCorners = await page.evaluate(() => {
+          const stamp = document.getElementById('build-stamp')!;
+          const oldClass = stamp.className;
+          const oldStyle = stamp.getAttribute('style');
+          stamp.classList.remove('yield', 'at-right');
+          stamp.style.display = 'block';
+          const left = stamp.getBoundingClientRect();
+          stamp.classList.add('at-right');
+          const right = stamp.getBoundingClientRect();
+          const lines: DOMRect[] = [];
+          for (const e of document.querySelectorAll<HTMLElement>('#start-screen *')) {
+            if (!e.checkVisibility()) continue;
+            for (const n of e.childNodes) {
+              if (n.nodeType !== Node.TEXT_NODE || !(n.textContent ?? '').trim()) continue;
+              const range = document.createRange();
+              range.selectNodeContents(n);
+              lines.push(...range.getClientRects());
+            }
+          }
+          stamp.className = oldClass;
+          if (oldStyle === null) stamp.removeAttribute('style');
+          else stamp.setAttribute('style', oldStyle);
+          return [left, right].map((box) =>
+            lines.some(
+              (r) =>
+                r.width > 0.5 &&
+                r.height > 0.5 &&
+                box.left < r.right &&
+                r.left < box.right &&
+                box.top < r.bottom &&
+                r.top < box.bottom,
+            ),
+          );
+        });
+        expect(blockedCorners, `${where}: both stamp corners would cover actual startup words`).toEqual([
+          true,
+          true,
+        ]);
+      }
+      expect(start.under, `${where}: startup controls stay clear`).toEqual([]);
 
       await page.locator('#start-screen').click();
       await expect(page.locator('#menu-quick-play')).toBeVisible();

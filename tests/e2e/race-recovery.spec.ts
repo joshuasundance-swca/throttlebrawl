@@ -413,7 +413,7 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await page.evaluate(() => (window as GameWindow).__game!.setBot(true));
   await page.keyboard.press('Escape');
   await page.evaluate(() =>
-    (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 240, then: 120 }),
+    (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 1200, then: 120 }),
   );
   await fastForwardDone(page, 'recovered Quick Play finish');
   await expect(page.locator('#results')).toBeVisible();
@@ -422,7 +422,7 @@ test('recovered nondefault Quick Play options survive Retry and measurement cann
   await page.waitForFunction(() => (window as GameWindow).__game?.state() === 'race');
   expect(await replayConfig(page)).toEqual(first);
   await page.evaluate(() =>
-    (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 240, then: 120 }),
+    (window as GameWindow).__game!.fastForward((s) => s.race.over, { perFrame: 1200, then: 120 }),
   );
   await fastForwardDone(page, 'retried Quick Play finish');
   await expect(page.locator('#results')).toBeVisible();
@@ -529,7 +529,7 @@ test('a failed career award stays frozen, survives reload and pays once when rec
   });
   await page.keyboard.press('Escape');
   await page.evaluate(() =>
-    (window as GameWindow).__game!.fastForward((snap) => snap.race.over, { perFrame: 240, then: 120 }),
+    (window as GameWindow).__game!.fastForward((snap) => snap.race.over, { perFrame: 1200, then: 120 }),
   );
   await fastForwardDone(page, 'waiting career award');
   await expect(page.locator('#resume-card')).toBeVisible();
