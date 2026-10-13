@@ -20,6 +20,8 @@ import {
   type PadLike,
   type TouchZones,
 } from '../../src/input';
+import { SIM_DT } from '../../src/sim/api';
+import { UTURN_TAP_MAX_S } from '../../src/sim/riders/uturn';
 import { riderHarness, testConfig } from '../../src/sim/riders/testing';
 
 /** One device's actions on tick `t`. */
@@ -170,5 +172,37 @@ describe('the U-turn button on the keyboard and the pad (2026-10-05)', () => {
   it('d-pad down held with the stick turns it round; a remapped button does too', () => {
     expect(ride(uturnPad(DEFAULT_PAD_MAP.buttons.uturn[0] ?? -1)).dir).toBe(-1);
     expect(ride(uturnPad(4, padMapFromBindings({ uturn: ['button4'] }))).dir).toBe(-1);
+  });
+});
+
+describe('the U-turn shortcut after braking', () => {
+  it.each([
+    { name: 'idle brake', brakeTicks: 0, releaseTicks: 0 },
+    {
+      name: 'long braking released between samples',
+      brakeTicks: Math.ceil(UTURN_TAP_MAX_S / SIM_DT) + 2,
+      releaseTicks: 0,
+    },
+    { name: 'a recent short brake tap', brakeTicks: 2, releaseTicks: 1 },
+  ])('the Q shortcut turns after $name', ({ brakeTicks, releaseTicks }) => {
+    const h = riderHarness(testConfig(), { s: 400, d: 0, speed: 0 });
+    const keyboard = new KeyboardState();
+    const sample = () => {
+      const actions = emptyActions();
+      keyboard.sample(actions, SIM_DT);
+      h.step(toSimInput(actions));
+    };
+    if (brakeTicks > 0) keyboard.down('KeyS');
+    for (let t = 0; t < brakeTicks; t++) sample();
+    keyboard.up('KeyS');
+    for (let t = 0; t < releaseTicks; t++) sample();
+    keyboard.down('KeyD');
+    keyboard.down('KeyQ');
+    for (let t = 0; t < 3 * 60; t++) {
+      sample();
+      if (h.rider.pos.dir === -1 && Math.abs(h.rider.yaw) <= 0.2) break;
+    }
+    expect(h.rider.pos.dir).toBe(-1);
+    expect(Math.abs(h.rider.yaw)).toBeLessThanOrEqual(0.2);
   });
 });
