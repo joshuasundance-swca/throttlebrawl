@@ -99,13 +99,13 @@ async function settleStamp(page: Page) {
 
 // ---- Menu first ---------------------------------------------------------------------------------
 
-for (const [where, width, height] of [
-  ['568x320', 568, 320],
-  ['640x360', 640, 360],
-  ['740x360', 740, 360],
-  ['915x412', 915, 412],
+for (const [where, width, height, startVia] of [
+  ['568x320', 568, 320, 'pointer'],
+  ['640x360', 640, 360, 'Enter'],
+  ['740x360', 740, 360, 'Space'],
+  ['915x412', 915, 412, 'pointer'],
 ] as const) {
-  test.describe(`menu first at ${where}`, () => {
+  test.describe(`menu first at ${where} (${startVia})`, () => {
     test.use({ viewport: { width, height } });
 
     test('a new player lands on the menu with Start career as the first tap, and the stamp covers no word', async ({
@@ -117,7 +117,14 @@ for (const [where, width, height] of [
       });
       await installWordsMeasure(page);
       await page.goto('./');
-      await page.locator('#start-screen').click();
+      const start = page.getByRole('button', { name: 'Tap to start', exact: true });
+      await expect(start).toBeVisible();
+      if (startVia === 'pointer') await start.click();
+      else {
+        await page.keyboard.press('Tab');
+        await expect(start).toBeFocused();
+        await page.keyboard.press(startVia);
+      }
       await expect(page.locator('#menu')).toBeVisible();
       // No race: the first tap goes to the menu, and the career has not started.
       expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('menu');

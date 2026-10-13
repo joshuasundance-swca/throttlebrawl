@@ -222,8 +222,12 @@ for (const career of [false, true]) {
     await page.reload();
     await expect(page.locator('#resume-card')).toBeVisible();
     await expect(page.locator('#resume-race')).toHaveText('Resume race');
-    // Keyboard input and the ordinary Start handler cannot dismiss the recovery choice.
+    // The real ordinary Start button cannot dismiss the recovery choice by either native key.
+    await page.locator('#start-action').focus();
+    await expect(page.locator('#start-action')).toBeFocused();
     await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    // The shared ordinary Start handler is guarded even when invoked directly.
     await page.evaluate(() => (window as GameWindow).__game!.tap());
     // The ordinary pointer Start handler is guarded too; dispatch does not force through an overlay.
     await page.locator('#start-screen').dispatchEvent('click');
