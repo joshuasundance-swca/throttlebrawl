@@ -68,6 +68,16 @@ describe('the Seven Mile bridge drawing at scenery LOD distances', () => {
               drawn.reduce((n, mesh) => n + cuts(mesh.geometry, box), 0),
               `${kind} at ${spot.s}`,
             ).toBe(0);
+            // Clearing the road by hiding the distant bay is not a repair: its
+            // underside must still be present in the same active draw ranges.
+            const below = new Box3(
+              new Vector3(p.x - 0.3, p.y - 2, p.z - 0.3),
+              new Vector3(p.x + 0.3, p.y - 0.2, p.z + 0.3),
+            );
+            expect(
+              drawn.reduce((n, mesh) => n + cuts(mesh.geometry, below), 0),
+              `${kind} underside at ${spot.s}`,
+            ).toBeGreaterThan(0);
           }
           // The same measure finds the offending centre wall in the generic far
           // model; the real near model leaves this space clear.
