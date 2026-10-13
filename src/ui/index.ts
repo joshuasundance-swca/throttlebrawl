@@ -72,6 +72,8 @@ import { FINISH_SHOT_CSS, setFinishShotFlag } from './finish-shot-hud';
 import { careerButtonText, MENU_FIRST_CSS, START_HERE_CLASS } from './menu-first';
 import { createMenuFlow, MENU_FLOW_CSS } from './menu-flow';
 import { careerPromptText, startKeyHints } from './control-guidance';
+import { createResumeChoiceController, type ResumeCardChoice, type ResumeCardKind } from './resume-card';
+export type { ResumeCardChoice, ResumeCardKind } from './resume-card';
 import { actionScreenParts, ACTION_SCREEN_CSS } from './action-screen';
 import { hudStyle } from './placement';
 import { ROOT_FONT_PCT, textScaleOf } from './text-size';
@@ -296,10 +298,12 @@ export interface GameUi {
     opts?: { waitMs?: number; action?: 'retry' | 'reload' },
   ): void;
   /**
-   * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
-   * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
+   * The reload-recovery card. The default is an unfinished race; other kinds describe a pending
+   * result or a failure. `resume` reports the displayed primary action, interpreted by app/ for
+   * that offer. Choice is reported once synchronously when the UI action gate delivers the tap,
+   * after hiding. App's gate must preserve the original gesture for platform/audio activation.
    */
-  showResumeCard(onChoice: (choice: 'resume' | 'startOver') => void): void;
+  showResumeCard(onChoice: (choice: ResumeCardChoice) => void, kind?: ResumeCardKind, detail?: string): void;
   /** A spinner with a line of text over everything (the resume fast-forward), or null to hide it. */
   setBusy(text: string | null): void;
   readonly settings: Readonly<Settings>;
@@ -1727,24 +1731,19 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
 
   // ---- The resume card and the busy spinner --------------------------------------------------
-  let resumeChoice: ((choice: 'resume' | 'startOver') => void) | null = null;
-  const choose = (choice: 'resume' | 'startOver') => {
-    const report = resumeChoice;
-    resumeChoice = null;
+  const resumeChoices = createResumeChoiceController(() => {
     resumeCard.hidden = true;
-    report?.(choice);
-  };
+  });
+  const resumeTitle = el('div', { className: 'title' });
+  const resumeExplanation = el('div', { className: 'card' });
+  const resumePrimary = button('resume-race', 'big', '', () => resumeChoices.choose('resume'));
+  const resumeAbandon = button('resume-start-over', 'small', '', () => resumeChoices.choose('startOver'));
   const resumeCard = el(
     'div',
     { id: 'resume-card', className: 'screen', hidden: true },
-    el('div', { className: 'title', textContent: 'Race in progress' }),
-    el('div', { className: 'card', textContent: 'You left mid-race. Pick up where you were?' }),
-    el(
-      'div',
-      { className: 'row' },
-      button('resume-race', 'big', 'Resume race', () => choose('resume')),
-      button('resume-start-over', 'small', 'Start over', () => choose('startOver')),
-    ),
+    resumeTitle,
+    resumeExplanation,
+    el('div', { className: 'row' }, resumePrimary, resumeAbandon),
   );
   const busyText = el('div', { id: 'busy-text' });
   const busy = el('div', { id: 'busy', className: 'screen', hidden: true }, busyText);
@@ -2570,8 +2569,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     notice: showNotice,
     setCountdown: (text) => countdownView.set(text),
     setFinishShot: (on) => setFinishShotFlag(root, on && current === 'race'),
-    showResumeCard(onChoice) {
-      resumeChoice = onChoice;
+    showResumeCard(onChoice, kind, detail) {
+      const view = resumeChoices.offer(onChoice, kind, detail);
+      resumeTitle.textContent = view.title;
+      resumeExplanation.textContent = view.explanation;
+      resumePrimary.textContent = view.primary ?? '';
+      resumePrimary.hidden = view.primary === null;
+      resumeAbandon.textContent = view.abandon;
       resumeCard.hidden = false;
     },
     setBusy(text) {
