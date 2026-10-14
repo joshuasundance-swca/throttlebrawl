@@ -205,6 +205,34 @@ describe('committed network traffic paths', () => {
       const f = fixture();
       const c = simConfig(f);
       c.trafficTypes = [{ ...c.trafficTypes[0]!, lengthM }];
+      const clearBodies = (w: ReturnType<typeof createWorld>) => {
+        const st = trafficState(w);
+        const boxes = st.id.map((id) => {
+          const m = w.movers[id]!;
+          const p = c.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
+          const f = c.road.frameAt(m.pos.edge, m.pos.s);
+          const cy = Math.cos(m.yaw);
+          const sn = Math.sin(m.yaw);
+          return { ...p, tx: cy * f.tx - sn * f.tz, tz: cy * f.tz + sn * f.tx };
+        });
+        for (let a = 0; a < boxes.length; a++)
+          for (let b = a + 1; b < boxes.length; b++) {
+            const x = boxes[a]!;
+            const y = boxes[b]!;
+            const overlap = [
+              [x.tx, x.tz],
+              [-x.tz, x.tx],
+              [y.tx, y.tz],
+              [-y.tz, y.tx],
+            ].every(([ax, az]) => {
+              const radius = (p: typeof x) =>
+                (lengthM / 2) * Math.abs(p.tx * ax! + p.tz * az!) +
+                (c.trafficTypes[0]!.widthM / 2) * Math.abs(-p.tz * ax! + p.tx * az!);
+              return Math.abs((x.x - y.x) * ax! + (x.z - y.z) * az!) < radius(x) + radius(y) - 0.02;
+            });
+            expect(overlap, `physical bodies ${a}/${b} at tick ${w.tick}`).toBe(false);
+          }
+      };
       const run = () => {
         const w = createWorld(c);
         trafficSystem.init(w, c);
@@ -227,13 +255,18 @@ describe('committed network traffic paths', () => {
           return f.road.toWorld(p.edge, p.s, p.d, 0);
         });
         expect(Math.hypot(starts[0]!.x - starts[1]!.x, starts[0]!.z - starts[1]!.z)).toBeGreaterThan(lengthM);
-        for (let t = 0; t < 300; t++) stepWorld(w, c, [trafficSystem], []);
+        clearBodies(w);
+        for (let t = 0; t < 300; t++) {
+          stepWorld(w, c, [trafficSystem], []);
+          clearBodies(w);
+        }
         expect(entrants.every((k) => w.movers[st.id[k]!]!.pos.edge !== d)).toBe(true);
         expect(w.movers[st.id[lead]!]!.pos.s).toBeCloseTo(6);
         st.v0[lead] = 15;
         let joined = false;
         for (let t = 0; t < 1800 && !joined; t++) {
           stepWorld(w, c, [trafficSystem], []);
+          clearBodies(w);
           const cars = st.id.map((id) => w.movers[id]!);
           for (let a = 0; a < cars.length; a++)
             for (let b = a + 1; b < cars.length; b++) {
