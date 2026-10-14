@@ -1,8 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
-// M5 riding-readability: join real pack words, decoded voice delivery and Largest-text layout.
+// M5 riding-readability: join real pack words, prepared voice playback and Largest-text layout.
 // The ticker seam replaces/holds presentation only; it never rewrites simulation state.
+// Cold clips may intentionally be dropped after STALE_S. Require their real transfer, then show
+// the same line again through the normal cache before checking its start and subtitle geometry.
+// audio-voices.spec.ts retains cold first-use and acoustic controls; this is not a latency test.
 interface VoiceLine {
   ref: string;
   text: string;
@@ -166,7 +169,7 @@ const clipped = (reading: StripEvidence): boolean =>
   reading.tagBoxes.length === 0 ||
   [...reading.textBoxes, ...reading.tagBoxes].some((box) => !inside(box, reading.box));
 
-test('every live voiced bark starts with its complete Largest subtitle clear of the road and HUD', async ({
+test('every prepared voiced bark starts with its complete Largest subtitle clear of the road and HUD', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -230,6 +233,13 @@ test('every live voiced bark starts with its complete Largest subtitle clear of 
     const response = await responsePromise;
     expect(response.ok(), `${line.ref}: actual clip response`).toBe(true);
     expect(await response.finished(), `${line.ref}: clip transfer completed`).toBeNull();
+    await page.evaluate((line) => {
+      const w = window as DeliveryWindow;
+      if (w.__subtitleVoices) delete w.__subtitleVoices[line.ref];
+      w.__uiTicker?.([
+        { cls: 'bark', tag: line.speaker, text: line.text, contentRef: line.ref, dwellMs: 600_000 },
+      ]);
+    }, line);
     await page.waitForFunction((ref) => !!(window as DeliveryWindow).__subtitleVoices?.[ref], line.ref);
     const voice = await page.evaluate((ref) => (window as DeliveryWindow).__subtitleVoices?.[ref], line.ref);
     expect(voice?.durationS, `${line.ref}: decoded source started`).toBeGreaterThan(0);
@@ -303,6 +313,6 @@ test('every live voiced bark starts with its complete Largest subtitle clear of 
   expect(evidence.length).toBe(VOICES.length);
   expect(problems).toEqual([]);
   console.log(
-    `[examined] ${evidence.length} real voiced lines: decoded start, exact Largest subtitle, clipping and HUD geometry`,
+    `[examined] ${evidence.length} transferred voiced lines: prepared source start, exact Largest subtitle, clipping and HUD geometry`,
   );
 });
