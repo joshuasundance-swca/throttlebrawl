@@ -54,12 +54,18 @@ describe('vehicle sensing across short connectors', () => {
     f.network.junctions.forEach((j) => {
       j.connectors = [];
     });
-    f.roads[1]!.samples.data['z'] = [...f.roads[0]!.samples.data['z']!];
+    f.roads[1]!.samples = {
+      ...f.roads[1]!.samples,
+      data: { ...f.roads[1]!.samples.data, z: [...f.roads[0]!.samples.data['z']!] },
+    };
     const road = createRoadNetwork(f);
     const me = mover(0, 50, 1.7, 1, 'rider');
     const car = mover(1, 55, 1.7, 1, 'vehicle');
     expect(seeVehicle(road, me, car, 20)?.ahead).toBeCloseTo(5);
-    f.roads[1]!.samples.data['y'] = f.roads[1]!.samples.data['y']!.map(() => 8);
+    f.roads[1]!.samples = {
+      ...f.roads[1]!.samples,
+      data: { ...f.roads[1]!.samples.data, y: f.roads[1]!.samples.data['y']!.map(() => 8) },
+    };
     expect(seeVehicle(createRoadNetwork(f), me, car, 20)).toBeNull();
   });
   it('sees a downstream car beyond multiple connectors and transforms its lateral position', () => {
