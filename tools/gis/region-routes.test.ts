@@ -132,7 +132,7 @@ describe('the region packs carry the real roads under ODbL', () => {
         const source = (existsSync(sourcePath) ? JSON.parse(readFileSync(sourcePath, 'utf8')) : {}) as {
           branches?: { label: string; trafficIngress?: { widthM: number } }[];
         };
-        const trafficWidths = new Map(
+        const trafficWidths = new Map<string, number>(
           (source.branches ?? []).flatMap((b) =>
             b.trafficIngress ? [[`${id}-${b.label}-traffic-in`, b.trafficIngress.widthM] as const] : [],
           ),
