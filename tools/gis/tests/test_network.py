@@ -26,8 +26,10 @@ from tbgis.network import (
     connector_shape,
     correction,
     curve_piece,
+    road_json,
     solve_shape,
     stretch_config,
+    traffic_ingress_piece,
 )
 from tbgis.osm import Way
 from tbgis.stretch import F64, RealPath, build_profile, real_path
@@ -423,6 +425,7 @@ def test_the_committed_traffic_ingress_joins_forward_lane_centres_without_moving
     assert rid in net["roads"] and rid in route["allowedRoads"]
     assert rid in route["branches"][0]["roads"] and route["branches"][0]["traffic"] == "road"
     ends = (("from", -1, branch.trafficIngress.offsetM), ("to", 0, branch.leave.toOffsetM))
+    frames: list[tuple[float, float, float, float]] = []
     for end, index, offset in ends:
         parent = json.loads((region / "roads" / f"{row[end]['road']}.json").read_text(encoding="utf-8"))
         cols = parent["samples"]["data"]
@@ -433,3 +436,25 @@ def test_the_committed_traffic_ingress_joins_forward_lane_centres_without_moving
         assert actual["x"][k] == pytest.approx(cols["x"][index] + offset * math.cos(h), abs=0.03)
         assert actual["z"][k] == pytest.approx(cols["z"][index] + offset * math.sin(h), abs=0.03)
         assert actual["y"][k] == pytest.approx(cols["y"][index], abs=1e-4)
+        frames.append(
+            (
+                cols["x"][index] + offset * math.cos(h),
+                cols["y"][index],
+                cols["z"][index] + offset * math.sin(h),
+                h,
+            )
+        )
+    # Offline reconstruction proves the configured solver parameters reproduce every planar sample,
+    # not only endpoints and radius. The main-line overlap height is checked separately by geometry QA.
+    piece = traffic_ingress_piece(
+        rid,
+        frames[0],
+        frames[1],
+        branch.trafficIngress,
+        source.sampleSpacingM,
+        road["speedLimitMps"],
+        [],
+    )
+    rebuilt = road_json(source, piece, {}, "")["samples"]["data"]
+    for column in ("x", "z", "kappa"):
+        assert rebuilt[column] == pytest.approx(road["samples"]["data"][column], abs=1e-5)
