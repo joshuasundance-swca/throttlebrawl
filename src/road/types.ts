@@ -171,6 +171,8 @@ export interface BakedConnector {
   from: BakedConnectorEnd;
   to: BakedConnectorEnd;
   splitZone?: BakedSplitZone | undefined;
+  /** A dedicated vehicle movement; road-to-connector rider defaults remain unchanged. */
+  trafficOnly?: boolean | undefined;
 }
 
 export interface BakedJunction {
@@ -199,6 +201,10 @@ export function readConnector(v: unknown): BakedConnector | null {
   const to = readEnd(v['to']);
   if (typeof v['id'] !== 'string' || typeof v['road'] !== 'string' || !from || !to) return null;
   const out: BakedConnector = { id: v['id'], road: v['road'], from, to };
+  if (v['trafficOnly'] !== undefined) {
+    if (typeof v['trafficOnly'] !== 'boolean') return null;
+    out.trafficOnly = v['trafficOnly'];
+  }
   const z = v['splitZone'];
   if (z !== undefined) {
     if (!isRecord(z)) return null;
@@ -255,6 +261,8 @@ export interface BakedRouteBranch {
    * is left to the bold).
    */
   aiTake?: number | undefined;
+  /** Explicit ambient access to these exact authored roads; absent keeps selected-chain traffic. */
+  traffic?: 'road' | 'none' | undefined;
 }
 
 /** Everything the road module needs to build one network. */

@@ -78,6 +78,13 @@ import { slopeAt, startFlight } from '../riders/air';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
 import {
+  claimVehicle,
+  driveReferenceVehicle,
+  referenceVehicleAt,
+  referenceVehiclePose,
+  releaseVehicle,
+} from '../traffic/vehicle-control';
+import {
   MOVING_DECKS_KEY,
   type PropKind,
   type PropSnapshot,
@@ -218,6 +225,7 @@ export interface SetPiece {
   /** Entity ids of the vehicles it placed, and their traffic type indices. */
   vehicles: number[];
   vehicleTypes: number[];
+  vehicleGenerations: number[];
   /**
    * Per vehicle, where it is held across the road (corridor cd): pulled off onto the verge, just
    * outside the drivable width, so riders, rivals and traffic all get by. A stopped vehicle in a
@@ -685,6 +693,7 @@ function newPiece(
     startTick: -1,
     vehicles: [],
     vehicleTypes: [],
+    vehicleGenerations: [],
     vehicleCd: [],
     dropped: 0,
     nextDropU: 0,
@@ -876,6 +885,7 @@ function placeOn(
   if (id >= 0) {
     p.vehicles.push(id);
     p.vehicleTypes.push(type);
+    p.vehicleGenerations.push(claimVehicle(world, slot, pieceOwner(p)).generation);
     const half = (t?.widthM ?? 2.4) / 2;
     p.vehicleCd.push(moving ? 0 : p.side * (bandEdge(config, c, p, p.u + dir * along) + half + 0.3));
     pinVehicles(world, p);
@@ -885,14 +895,12 @@ function placeOn(
 
 /** Holds the piece's parked vehicles on the shoulder (traffic would ease them back into the lane). */
 function pinVehicles(world: World, p: SetPiece): void {
-  const tr = trafficState(world);
   for (let k = 0; k < p.vehicles.length; k++) {
     const cd = p.vehicleCd[k] ?? 0;
     const slot = cd === 0 ? -1 : stillOurs(world, p, k);
     const mover = world.movers[p.vehicles[k] ?? -1];
     if (slot < 0 || !mover) continue;
-    tr.cd[slot] = cd;
-    fromCorridor(tr.corridor, tr.u[slot] ?? 0, cd, tr.dir[slot] ?? 1, mover.pos);
+    driveReferenceVehicle(world, slot, { cd });
   }
 }
 
@@ -1129,16 +1137,10 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
  */
 function drive(world: World, p: SetPiece, k: number, u: number, cd: number, v: number, yaw: number): boolean {
   const slot = stillOurs(world, p, k);
-  const tr = trafficState(world);
   const mover = world.movers[p.vehicles[k] ?? -1];
   if (slot < 0 || !mover) return false;
   const speed = Math.max(0, v);
-  tr.u[slot] = u;
-  tr.cd[slot] = cd;
-  tr.v0[slot] = speed;
-  mover.speed = speed;
-  fromCorridor(tr.corridor, u, cd, tr.dir[slot] ?? 1, mover.pos);
-  mover.yaw = yaw;
+  driveReferenceVehicle(world, slot, { u, cd, speed, yaw });
   return true;
 }
 
@@ -1179,6 +1181,9 @@ function end(world: World, config: SimConfig, st: SetPieceState, index: number):
       trafficState(world).v0[slot] = config.trafficTypes[p.vehicleTypes[0] ?? -1]?.cruiseMps ?? 4;
     p.drive = -1;
   }
+  p.vehicles.forEach((id, k) =>
+    releaseVehicle(world, { id, generation: p.vehicleGenerations[k] ?? -1 }, pieceOwner(p)),
+  );
   emit(world, 'modifierEnd', -1, { id: m.contentId, kind: m.kind, piece: p.piece });
 }
 
@@ -1214,11 +1219,17 @@ function ridersOn(world: World, config: SimConfig, c: Corridor): RiderAt[] {
 }
 
 /** Whether a vehicle slot still holds what the piece placed there. */
+function pieceOwner(p: SetPiece): string {
+  return `set-piece:${p.mod}:${p.eff}:${p.u}`;
+}
+
 function stillOurs(world: World, p: SetPiece, k: number): number {
   const tr = trafficState(world);
   const id = p.vehicles[k] ?? -1;
   const slot = tr.id.indexOf(id);
-  return slot >= 0 && tr.type[slot] === p.vehicleTypes[k] ? slot : -1;
+  return slot >= 0 && tr.type[slot] === p.vehicleTypes[k] && tr.generation[slot] === p.vehicleGenerations[k]
+    ? slot
+    : -1;
 }
 
 /**
@@ -1273,8 +1284,12 @@ function keepVehicle(
     }
   }
   p.spawns++;
+  p.vehicles.forEach((id, k) =>
+    releaseVehicle(world, { id, generation: p.vehicleGenerations[k] ?? -1 }, pieceOwner(p)),
+  );
   p.vehicles = [];
   p.vehicleTypes = [];
+  p.vehicleGenerations = [];
   p.vehicleCd = [];
   p.drive = -1;
   placeMover(world, config, c, p, along);
@@ -1422,12 +1437,10 @@ function publishDecks(world: World, config: SimConfig, st: SetPieceState): void 
     const run = e ? num(e, 'rampLengthM', MOVING.rampRunM) : MOVING.rampRunM;
     const lip = e ? num(e, 'lipHeightM', run * MOVING.rampSlope) : run * MOVING.rampSlope;
     // Rear, middle and front of its box along its travel, as corridor u and as road positions.
-    const dir = tr.dir[slot] ?? 1;
-    const rearU = (tr.u[slot] ?? 0) - (dir * t.lengthM) / 2;
-    const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
     const edges = new Set<number>();
     for (const along of [0, t.lengthM / 2, t.lengthM]) {
-      fromCorridor(tr.corridor, rearU + dir * along, tr.cd[slot] ?? 0, dir, pos);
+      const pos = referenceVehiclePose(world, slot, along - t.lengthM / 2);
+      if (!pos) continue;
       if (edges.has(pos.edge)) continue;
       edges.add(pos.edge);
       live.push(
@@ -2025,11 +2038,13 @@ function stepProps(
         for (let k = 0; k < tr.id.length; k++) {
           const t = config.trafficTypes[tr.type[k] ?? -1];
           if (!t || (t.cruiseMps <= 0 && t.category === 'oddity')) continue;
-          const du = Math.abs((tr.u[k] ?? 0) - q.u);
-          const dd = Math.abs((tr.cd[k] ?? 0) - q.cd);
+          const at = referenceVehicleAt(world, k);
+          if (!at) continue;
+          const du = Math.abs(at.u - q.u);
+          const dd = Math.abs(at.cd - q.cd);
           if (du > hu + t.lengthM / 2 || dd > hd + t.widthM / 2) continue;
           const speed = world.movers[tr.id[k] ?? -1]?.speed ?? 0;
-          knock(q, (tr.dir[k] ?? 1) * speed, q.cd >= (tr.cd[k] ?? 0) ? 1 : -1, speed);
+          knock(q, at.dir * speed, q.cd >= at.cd ? 1 : -1, speed);
           break;
         }
       }

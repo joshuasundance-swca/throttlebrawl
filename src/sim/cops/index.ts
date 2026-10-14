@@ -172,7 +172,7 @@ import {
   lineClear,
   offRoadAmongFixed,
   pathClear,
-  see,
+  seeVehicle,
   type Obstacle,
 } from '../ai/sense';
 import { jumpRunUp } from '../ai/branches';
@@ -957,7 +957,7 @@ function trafficSeen(world: World, config: SimConfig, cop: Mover): Obstacle[] {
   const out: Obstacle[] = [];
   for (const other of world.movers) {
     if (other.kind !== 'vehicle' || other.mode !== 'Road') continue;
-    const s = see(config.road, cop, other, TRAFFIC_SEE_M);
+    const s = seeVehicle(config.road, cop, other, TRAFFIC_SEE_M);
     if (!s) continue;
     const info = vehicleInfo(world, config, other.id);
     out.push({ s, size: { halfLength: (info?.lengthM ?? 4.6) / 2, halfWidth: (info?.widthM ?? 1.9) / 2 } });

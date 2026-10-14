@@ -19,6 +19,8 @@ export interface Corridor {
   /** u at the start of each link. */
   off: number[];
   len: number[];
+  /** Edge d at view cd=0 for committed connector shifts; absent on the legacy reference path. */
+  dOff?: number[];
   length: number;
   /** The route's travel direction in corridor terms (+1 or -1). */
   routeDir: number;
@@ -61,7 +63,7 @@ export function pickLink(
   return ok[0] ?? null;
 }
 
-export function buildCorridor(config: SimConfig): Corridor {
+export function buildCorridor(config: SimConfig, trafficRestrictions = true): Corridor {
   const road = config.road;
   const route = config.route;
   const onRoute = (edge: number) => route.allows(edge);
@@ -71,7 +73,13 @@ export function buildCorridor(config: SimConfig): Corridor {
   const fwd: { edge: number; o: number }[] = [];
   let cur = { edge: start, o: 1 };
   for (;;) {
-    const link = pickLink(road, road.nextEdges(cur.edge, cur.o === 1 ? 'to' : 'from'), onRoute);
+    const link = pickLink(
+      road,
+      road
+        .nextEdges(cur.edge, cur.o === 1 ? 'to' : 'from')
+        .filter((l) => !trafficRestrictions || !route.trafficExcludedRoads.includes(l.edge)),
+      onRoute,
+    );
     if (!link || visited.has(link.edge)) break;
     visited.add(link.edge);
     cur = { edge: link.edge, o: link.entersAt === 'from' ? 1 : -1 };
@@ -81,7 +89,13 @@ export function buildCorridor(config: SimConfig): Corridor {
   const back: { edge: number; o: number }[] = [];
   cur = { edge: start, o: 1 };
   for (;;) {
-    const link = pickLink(road, road.nextEdges(cur.edge, cur.o === 1 ? 'from' : 'to'), onRoute);
+    const link = pickLink(
+      road,
+      road
+        .nextEdges(cur.edge, cur.o === 1 ? 'from' : 'to')
+        .filter((l) => !trafficRestrictions || !route.trafficExcludedRoads.includes(l.edge)),
+      onRoute,
+    );
     if (!link || visited.has(link.edge)) break;
     visited.add(link.edge);
     cur = { edge: link.edge, o: link.entersAt === 'to' ? 1 : -1 };
@@ -121,13 +135,29 @@ export function linkOf(c: Corridor, edge: number): number {
 }
 
 /** Corridor coordinates of a road position, or null off the corridor. */
-export function toCorridor(c: Corridor, pos: RoadPos): { u: number; cd: number; dir: number } | null {
-  const i = linkOf(c, pos.edge);
+export function toCorridor(
+  c: Corridor,
+  pos: RoadPos,
+  nearU?: number,
+): { u: number; cd: number; dir: number } | null {
+  let i = linkOf(c, pos.edge);
   if (i < 0) return null;
+  if (nearU !== undefined && c.edges.lastIndexOf(pos.edge) !== i) {
+    let distance = Infinity;
+    c.edges.forEach((edge, j) => {
+      if (edge !== pos.edge) return;
+      const u = (c.off[j] ?? 0) + (c.o[j] === 1 ? pos.s : (c.len[j] ?? 0) - pos.s);
+      const gap = Math.abs(u - nearU);
+      if (gap < distance) {
+        distance = gap;
+        i = j;
+      }
+    });
+  }
   const o = c.o[i] ?? 1;
   const off = c.off[i] ?? 0;
   const len = c.len[i] ?? 0;
-  return { u: off + (o === 1 ? pos.s : len - pos.s), cd: pos.d * o, dir: pos.dir * o };
+  return { u: off + (o === 1 ? pos.s : len - pos.s), cd: (pos.d - (c.dOff?.[i] ?? 0)) * o, dir: pos.dir * o };
 }
 
 /**
@@ -142,13 +172,42 @@ export function riderOnCorridor(
   c: Corridor,
   pos: RoadPos,
   heightM: number,
+  nearU?: number,
 ): { u: number; cd: number; dir: number; over: boolean } | null {
-  const own = toCorridor(c, pos);
+  const own = toCorridor(c, pos, nearU);
   if (own) return { ...own, over: false };
+  let bounds = roadBounds.get(road);
+  if (!bounds) {
+    bounds = road.edges.map((e) => {
+      let x0 = Infinity;
+      let x1 = -Infinity;
+      let z0 = Infinity;
+      let z1 = -Infinity;
+      for (let i = 0; i < e.count; i++) {
+        x0 = Math.min(x0, e.x[i] ?? 0);
+        x1 = Math.max(x1, e.x[i] ?? 0);
+        z0 = Math.min(z0, e.z[i] ?? 0);
+        z1 = Math.max(z1, e.z[i] ?? 0);
+      }
+      const reach = Math.max(Math.abs(e.dMin), Math.abs(e.dMax)) + e.spacing;
+      return { x0: x0 - reach, x1: x1 + reach, z0: z0 - reach, z1: z1 + reach };
+    });
+    roadBounds.set(road, bounds);
+  }
+  const point = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  if (
+    !c.edges.some((edge) => {
+      const b = bounds[edge];
+      return b && point.x >= b.x0 && point.x <= b.x1 && point.z >= b.z0 && point.z <= b.z1;
+    })
+  )
+    return null;
   const under = road.surfaceUnder(pos, heightM, (edge) => linkOf(c, edge) >= 0);
-  const p = under ? toCorridor(c, under) : null;
+  const p = under ? toCorridor(c, under, nearU) : null;
   return p ? { ...p, over: true } : null;
 }
+
+const roadBounds = new WeakMap<RoadNetwork, { x0: number; x1: number; z0: number; z1: number }[]>();
 
 /** The chain index containing u (clamped to the corridor). */
 export function linkAt(c: Corridor, u: number): number {
@@ -168,7 +227,7 @@ export function fromCorridor(c: Corridor, u: number, cd: number, dir: number, po
   s = s < 0 ? 0 : s > len ? len : s;
   pos.edge = c.edges[i] ?? 0;
   pos.s = s;
-  pos.d = cd * o;
+  pos.d = cd * o + (c.dOff?.[i] ?? 0);
   pos.dir = dir * o === -1 ? -1 : 1;
 }
 
@@ -201,7 +260,7 @@ export function buildLaneMap(road: RoadNetwork, c: Corridor): LaneMap {
       let plus = 0;
       let minus = 0;
       for (const l of sec.lanes) {
-        if (l.kind !== 'drive') continue;
+        if (l.kind !== 'drive' && !(c.dOff !== undefined && l.kind === 'shortcut')) continue;
         if (l.direction * o === 1) plus++;
         else minus++;
       }
@@ -310,7 +369,19 @@ export function lanesAt(road: RoadNetwork, c: Corridor, u: number, dir: number):
   const s = o === 1 ? u - off : off + len - u;
   return road
     .lanesAt(c.edges[i] ?? 0, s)
-    .filter((l) => l.kind === 'drive' && l.direction * o === dir)
-    .map((l) => ({ cd: l.dCenterM * o, width: l.widthM }))
-    .sort((a, b) => Math.abs(a.cd) - Math.abs(b.cd) || a.cd - b.cd);
+    .filter(
+      (l) =>
+        (l.kind === 'drive' || (c.dOff !== undefined && l.kind === 'shortcut')) && l.direction * o === dir,
+    )
+    .map((l) => ({ cd: (l.dCenterM - (c.dOff?.[i] ?? 0)) * o, width: l.widthM }))
+    .sort(
+      (a, b) =>
+        Math.abs(a.cd + (c.dOff?.[i] ?? 0) * o) - Math.abs(b.cd + (c.dOff?.[i] ?? 0) * o) || a.cd - b.cd,
+    );
+}
+
+/** Which physical side of the road a coordinate occupies, accounting for connector offsets. */
+export function roadSide(c: Corridor, u: number, cd: number): number {
+  const i = linkAt(c, u);
+  return cd + (c.dOff?.[i] ?? 0) * (c.o[i] ?? 1) < 0 ? -1 : 1;
 }

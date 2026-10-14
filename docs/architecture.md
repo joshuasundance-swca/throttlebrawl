@@ -230,6 +230,30 @@ Arrows point from a module to what it depends on. `render --> sim` means "render
 - **Splits and merges** (for example, the ramp shortcut leaving and rejoining the main road) are junctions too. At a split, a rider's lateral position `d` in a marked **split zone** decides which connector it takes. No button press is needed.
 - **Features** are ranges along an edge: `{edgeId, s0, s1, d0, d1, type, params}`. Types include `ramp` (a lip in the elevation profile), `gap` (no surface, so fall or jump), `hazard`, `roadsideZone` (pedestrian or animal spawns, landmark set dressing), `copSpawn`, `raceMarker` (later, for world race markers), and `billboard`, plus (playtest 1b quick wins) `boostPad` (a short speed boost) and `rampTruck` (a parked car-carrier whose rear deck is a jump ramp, covering only its own width; see [content-packs](./content-packs.md#road-file-regionsregionroadsidjson)), and (playtest 3) `landmark` (a real structure beside or over the road, placed and drawn from the shared structures plan whose solids the sim meets ([Physical world](#physical-world)); see [Jumps, ramps and airtime](#jumps-ramps-and-airtime)). They are data, seeded, and easy to add. `[default]` (run W-U, the pitch deck's #12: the ferry deck's parked pickups and coffee cart, the clear-cut's stumps, the festival's chainsaw bears) A `hazard` with `params.solid` is a wall box for a riding rider (`src/sim/riders/features.ts`): head on it stops him, a crash at or above `riders.crashImpactMps` and a wobble below; from the side it holds him beside it and he scrapes along, like a barrier; flying into it below its `params.heightM` is a crash. Events carry its `params.object` and id. It stands off the lanes (the road lint refuses one over a lane), because traffic, the rival AI and the tumble do not see it; render draws it by its `object`.
 
+### Traffic through road choices
+
+`[default]` Ambient traffic is one physical population. Routes without explicit branch traffic
+permission retain their selected road chain. An opted-in branch adds only its authored roads,
+through `RoadNetwork.laneTransitions`: direction-valid source, connector and destination lanes.
+Rider split links stay independent; a `trafficOnly` row does not change the rider's default turn.
+
+Each car commits a short legal itinerary, with absolute path offsets and trimmed rear geometry.
+Choices use seed, entity, generation and movement occurrence, independently of population rolls.
+Directed visited edges bound finite journeys and avoid cycles without enumerating complete routes.
+Cars share receiving-lane space and crossing reservations; existing occupants clear before waiting
+entrants. Waiting priority and commitments are plain hashed state; geometry and query caches are
+derived only. Race progress controls placing, never physical following or contact separation.
+
+One race-wide population allowance covers all opted-in roads and split racers. Physical spawn
+clearance, lane drops, hairpin yielding, regional mixes and convoys still apply. A generation-based
+handle protects scripted ownership; supported and owned vehicles cannot be recycled. Authored
+main-path props use explicit reference placement/control adapters. Smashable placement keeps its
+own reference geometry; contacts and visibility qualify physical location, including separate
+heights. Rival/cop vehicle lookahead crosses multiple connectors and sees overlapping approaches.
+Persistent circulation, signals and destinations remain later gameplay features.
+Network population rules load with the existing late simulation chunk. An opted-in menu grid is
+unpopulated; tick zero fills it before movement, identically with cold or warm rule loading.
+
 ### Coordinates
 
 - `[default]` A road position is `{edge, s, d, h}`. `s` is metres along the edge centerline from its start (0..L). `d` is the metres across, **positive to the right** when facing increasing `s`. `h` is always metres above the road surface at that `(s, d)` (0 when grounded); see [Jumps, ramps and airtime](#jumps-ramps-and-airtime) for how an airborne mover keeps its absolute height separately. `[default]` Sign conventions are defined once, in `road/`, and [content-packs.md](./content-packs.md#units-and-axes) links here: signed curvature `kappa` is positive when the road turns right (toward positive `d`), and `bank` is positive when the surface tilts down toward positive `d`.

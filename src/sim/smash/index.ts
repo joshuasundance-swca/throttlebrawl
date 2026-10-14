@@ -235,7 +235,7 @@ function orientationAt(c: Corridor, u: number): number {
 export function placeSmashables(world: World, config: SimConfig): SmashState {
   const st: SmashState = {
     rng: createRng(streamSeed(config.seed, 'smash')),
-    corridor: buildCorridor(config),
+    corridor: buildCorridor(config, false),
     props: [],
     struckBy: world.movers.map(() => -1),
     struckTick: world.movers.map(() => -1),
@@ -388,8 +388,8 @@ export function stepSmashables(world: World, config: SimConfig): void {
     if (m.kind !== 'rider') continue;
     const riding = m.mode === 'Road' || m.mode === 'Airborne';
     if (!riding && m.mode !== 'Tumble') continue;
-    const at = toCorridor(c, m.pos);
-    if (!at) continue;
+    const own = toCorridor(c, m.pos);
+    const foot = own ? null : config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, 0);
     const box = riderHitbox(config, m.riderIndex);
     let down = !riding;
     for (const q of st.props) {
@@ -399,6 +399,25 @@ export function stepSmashables(world: World, config: SimConfig): void {
       // Above its top, the rider (or a tumbling body) clears it.
       if (m.h >= (def.heightM ?? SMASHABLE_HEIGHT_M[def.kind])) continue;
       const spec = KIND_SPEC[def.kind];
+      let at = own;
+      if (!at && foot) {
+        const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+        fromCorridor(c, q.u, q.cd, 1, pos);
+        const frame = config.road.frameAt(pos.edge, pos.s);
+        const dx = foot.x - q.x;
+        const dz = foot.z - q.z;
+        // A different road ID can share the prop's physical space; a different deck cannot.
+        if (Math.abs(foot.y - q.y) > 0.2) continue;
+        const i = c.edges.indexOf(pos.edge);
+        const o = c.o[i] ?? 1;
+        const riderFrame = config.road.frameAt(m.pos.edge, m.pos.s);
+        at = {
+          u: q.u + o * (dx * frame.tx + dz * frame.tz),
+          cd: q.cd + o * (-dx * frame.tz + dz * frame.tx),
+          dir: m.pos.dir * o * (riderFrame.tx * frame.tx + riderFrame.tz * frame.tz) >= 0 ? 1 : -1,
+        };
+      }
+      if (!at) continue;
       if (
         Math.abs(at.u - q.u) > spec.halfAlong + box.lengthM / 2 ||
         Math.abs(at.cd - q.cd) > spec.halfAcross + box.widthM / 2
@@ -439,18 +458,23 @@ export function stepSmashables(world: World, config: SimConfig): void {
 export function smashSnapshots(world: World, config: SimConfig): SmashableSnapshot[] {
   const st = smashState(world);
   if (!st || st.props.length === 0) return [];
-  const c = st.corridor;
   const defs = config.smashables ?? [];
   const riders = world.movers.filter((m) => m.kind === 'rider');
   const players = riders.filter((m) => config.riders[m.riderIndex]?.controller.kind === 'player');
-  const near: number[] = [];
-  for (const m of players.length > 0 ? players : riders) {
-    const at = toCorridor(c, m.pos);
-    if (at) near.push(at.u);
-  }
+  const near = (players.length > 0 ? players : riders).map((m) =>
+    config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h),
+  );
   const out: SmashableSnapshot[] = [];
   for (const q of st.props) {
-    if (near.length > 0 && !near.some((u) => Math.abs(u - q.u) <= SMASH.viewM)) continue;
+    if (
+      near.length > 0 &&
+      !near.some(
+        (p) =>
+          (p.x - q.x) * (p.x - q.x) + (p.z - q.z) * (p.z - q.z) + (p.y - q.y) * (p.y - q.y) <=
+          SMASH.viewM * SMASH.viewM,
+      )
+    )
+      continue;
     const def = defs[q.def];
     if (!def) continue;
     out.push({

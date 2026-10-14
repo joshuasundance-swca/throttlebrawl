@@ -119,15 +119,23 @@ describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
     expect(planner.hash).not.toBe(base.hash);
   });
 
-  it('changes the hash when a system’s step changes: the lazy step chunk is part of the hash', async () => {
+  it.each([
+    [/\/src\/sim\/ai\/step\.ts$/, '__stepTweak'],
+    [/\/src\/sim\/traffic\/network\.ts$/, '__networkTweak'],
+  ] as const)('changes the hash when lazy rule %s changes', async (file, marker) => {
     const base = await buildOnce();
-    const step = await buildOnce([tweak(/\/src\/sim\/ai\/step\.ts$/, '__stepTweak')]);
+    const step = await buildOnce([tweak(file, marker)]);
     console.log(`[examined] simCodeHash base ${base.hash}, step change ${step.hash}`);
     const lazy = step.chunks.find((c) => c.name === SIM_STEPS_CHUNK_NAME);
-    expect(lazy?.code.includes('__stepTweak')).toBe(true);
+    expect(lazy?.code.includes(marker)).toBe(true);
+    for (const name of ['network', 'network-population', 'path-view', 'merge', 'junctions'])
+      expect(
+        lazy?.moduleIds.some((id) => id.replace(/\\/g, '/').endsWith(`/traffic/${name}.ts`)),
+        name,
+      ).toBe(true);
     // Not in the sim chunk, and the sim chunk loads it only on demand (no static import of it).
     const sim = step.chunks.find((c) => c.name === SIM_CHUNK_NAME);
-    expect(sim?.code.includes('__stepTweak')).toBe(false);
+    expect(sim?.code.includes(marker)).toBe(false);
     expect(sim?.imports.includes(lazy?.fileName ?? '')).toBe(false);
     expect(sim?.dynamicImports.includes(lazy?.fileName ?? '')).toBe(true);
     expect(sim?.moduleIds.some((id) => SIM_STEPS_TEST.test(id))).toBe(false);

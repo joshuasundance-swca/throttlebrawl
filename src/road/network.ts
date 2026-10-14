@@ -7,6 +7,7 @@
 //   bank positive when the surface tilts down toward positive d.
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
 import { atan, cos, sin, type GroundSurface, type LaneInfo, type RoadSurface } from '../core';
+import { buildLaneTransitions, type LaneTransition } from './lane-transitions';
 import {
   bridgeTapers,
   taperLead,
@@ -164,6 +165,8 @@ export interface RoadNetwork {
   kappaAt(edge: number, s: number): number;
   /** Every edge a mover can enter through one end: the default way on first, then split links. */
   nextEdges(edge: number, end: 'from' | 'to'): readonly EdgeLink[];
+  /** Directed lane rows for vehicles; rider split/default links remain independent. */
+  laneTransitions(edge: number, end: 'from' | 'to'): readonly LaneTransition[];
   /**
    * Carries an s that ran past an edge end into the next edge. Mutates pos. At a split, a mover
    * whose d is inside a connector's split zone takes that connector; any other takes the default
@@ -398,6 +401,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     b: LinkingEdge,
     bEnd: 'from' | 'to',
     extra: Partial<EdgeLink>,
+    trafficOnly = false,
   ) => {
     const sigma = aEnd === bEnd ? -1 : 1;
     const fa = endFrame(a, aEnd);
@@ -405,13 +409,15 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     // Lateral offset of b's end point in a's frame (right normal of (tx, tz) is (−tz, tx)), and back.
     const dAB = -(fb.x - fa.x) * fa.tz + (fb.z - fa.z) * fa.tx;
     const dBA = -(fa.x - fb.x) * fb.tz + (fa.z - fb.z) * fb.tx;
-    addLink(a, aEnd, { edge: b.index, entersAt: bEnd, dShift: -sigma * dAB, ...extra });
-    addLink(b, bEnd, {
-      edge: a.index,
-      entersAt: aEnd,
-      dShift: -sigma * dBA,
-      ...(extra.connector ? { connector: extra.connector } : {}),
-    });
+    if (!trafficOnly || a.isConnector)
+      addLink(a, aEnd, { edge: b.index, entersAt: bEnd, dShift: -sigma * dAB, ...extra });
+    if (!trafficOnly || b.isConnector)
+      addLink(b, bEnd, {
+        edge: a.index,
+        entersAt: aEnd,
+        dShift: -sigma * dBA,
+        ...(extra.connector ? { connector: extra.connector } : {}),
+      });
   };
   for (const j of bundle.network.junctions) {
     for (const raw of j.connectors) {
@@ -422,11 +428,18 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
       const b = edges[edgeIndex(row.to.road)];
       if (!c || !a || !b) continue;
       c.isConnector = true;
-      join(a, row.from.end, c, 'from', {
-        connector: row.id,
-        ...(row.splitZone ? { splitZone: { ...row.splitZone } } : {}),
-      });
-      join(c, 'to', b, row.to.end, { connector: row.id });
+      join(
+        a,
+        row.from.end,
+        c,
+        'from',
+        {
+          connector: row.id,
+          ...(row.splitZone ? { splitZone: { ...row.splitZone } } : {}),
+        },
+        row.trafficOnly,
+      );
+      join(c, 'to', b, row.to.end, { connector: row.id }, row.trafficOnly);
     }
   }
 
@@ -451,6 +464,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     e.prev = first(e.prevLinks);
   }
 
+  const laneTransitions = buildLaneTransitions(bundle, edges);
   const edgeAt = (edge: number): Edge => {
     const e = edges[edge];
     if (!e) throw new Error(`no edge ${edge}`);
@@ -991,6 +1005,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     lanesAt,
     kappaAt,
     nextEdges,
+    laneTransitions,
     advance,
     splitZones: () => zones,
     project,

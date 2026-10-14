@@ -8,4 +8,5 @@ export { pedsStep } from './peds/step';
 export { raceStep } from './race/step';
 export { ridersStep } from './riders/step';
 export { trafficStep } from './traffic/step';
+export { populateNetwork } from './traffic/network-population';
 export { tumbleStep } from './tumble/step';

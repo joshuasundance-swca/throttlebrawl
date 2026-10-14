@@ -23,9 +23,17 @@ import {
   fromCorridor,
   linkOf,
   riderOnCorridor,
+  roadSide,
 } from './corridor';
 import { roadsideClass } from '../roadside';
 import { idmAccel } from './idm';
+import { buildTrafficGraph, commitPath, type TrafficPath } from './network';
+import { pathView } from './path-view';
+import { mergeStops, prepareTurn } from './merge';
+import { junctionStops } from './junctions';
+import { networkTrafficEnabled, protectedVehicle } from './vehicle-control';
+import { populateNetwork } from './network-population';
+import { toCorridor } from './corridor';
 import {
   type KerbBody,
   threatens,
@@ -89,7 +97,7 @@ function kerbGround(
   const len = c.len[i] ?? 0;
   const s = clamp(o === 1 ? u - off : off + len - u, 0, len);
   const v = config.road.vergeAt(c.edges[i] ?? 0, s, out * o < 0 ? 'left' : 'right');
-  return { edgeCd: v.dInner * o, vergeW: v.widthM };
+  return { edgeCd: (v.dInner - (c.dOff?.[i] ?? 0)) * o, vergeW: v.widthM };
 }
 
 /** Traffic edges aside for a drifting rider within this far of it along the road, m (`traffic.driftRoomM`). */
@@ -160,6 +168,7 @@ function park(
  * direction is not over its slider's target, else retire it; park whatever is not recycled.
  */
 function leaveRoad(world: World, config: SimConfig, st: TrafficState, k: number): void {
+  if (protectedVehicle(world, st, k)) return;
   const anchors = anchorUs(world, config, st);
   const dir = (st.dir[k] ?? 1) === 1 ? 1 : -1;
   if (anchors.length > 0 && st.retired[k] === 0) {
@@ -225,10 +234,11 @@ function parkedAhead(
  * coming up on a parked oddity in its lane changes out of it (no roll, any category) when the
  * next lane has room, and a random change never moves into a lane with one just ahead.
  */
-function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: number): void {
+function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: number, only = -1): void {
   const chance = TRAFFIC.laneChangePerS * dt;
   const parked = parkedSlots(config, st);
   for (let k = 0; k < st.id.length; k++) {
+    if (only >= 0 && k !== only) continue;
     st.laneCooldownS[k] = Math.max(0, (st.laneCooldownS[k] ?? 0) - dt);
     const t = typeOf(config, st, k);
     // A lane that ends ahead (W-R): merge inward, one lane at a time, as soon as the next lane has
@@ -300,9 +310,11 @@ function updateKerbYield(
   st: TrafficState,
   riders: readonly RiderView[],
   dt: number,
+  only = -1,
 ): void {
   const n = st.id.length;
   for (let k = 0; k < n; k++) {
+    if (only >= 0 && k !== only) continue;
     const left = st.toppleS[k] ?? 0;
     if (left > 0) st.toppleS[k] = left - dt > 1e-6 ? left - dt : 0;
   }
@@ -310,6 +322,7 @@ function updateKerbYield(
   const deepOn = (world.params['traffic.kerbDeep'] ?? 0) >= 0.5;
   if (look <= 0 || riders.length === 0) return;
   for (let k = 0; k < n; k++) {
+    if (only >= 0 && k !== only) continue;
     const t = typeOf(config, st, k);
     if (!isKerb(t) || roadsideClass(t) === 'solid' || (st.toppleS[k] ?? 0) > 0) continue;
     const dir = st.dir[k] ?? 1;
@@ -334,7 +347,7 @@ function updateKerbYield(
       else if (holdsReturn(body, r, TRAFFIC.riderWidthM)) waiting = true;
     }
     if (threats.length > 0) {
-      const out = kerb.cd < 0 ? -1 : 1;
+      const out = roadSide(st.corridor, u, kerb.cd);
       const ground = kerbGround(config, st, u, out);
       const spots: DodgeSpots = {
         verge: takesVerge(t, ground.vergeW) ? ground.edgeCd + out * vergeOffsetFor(t.widthM) : null,
@@ -362,15 +375,18 @@ function move(
   st: TrafficState,
   riders: readonly RiderView[],
   dt: number,
+  only = -1,
+  stopU = Infinity,
 ): void {
   const n = st.id.length;
   const c = st.corridor;
   const speeds = st.id.map((id) => world.movers[id]?.speed ?? 0);
   const parked = parkedSlots(config, st);
-  updateKerbYield(world, config, st, riders, dt);
+  updateKerbYield(world, config, st, riders, dt, only);
   const accel: number[] = [];
   const dodge: boolean[] = [];
   for (let k = 0; k < n; k++) {
+    if (only >= 0 && k !== only) continue;
     const t = typeOf(config, st, k);
     const dir = st.dir[k] ?? 1;
     const u = st.u[k] ?? 0;
@@ -383,6 +399,7 @@ function move(
         vLead = v;
       }
     };
+    if (k === only && stopU < Infinity) consider(dir * (stopU - u) - t.lengthM / 2, 0);
     for (let j = 0; j < n; j++) {
       if (j === k || st.dir[j] !== dir) continue;
       const tj = typeOf(config, st, j);
@@ -426,11 +443,12 @@ function move(
     }
     // A dodging kerb rider (T4.1) slows down while it does.
     const dodging = isKerb(t) && st.clockS < (st.yieldUntilS[k] ?? 0);
-    dodge.push(dodging);
-    accel.push(idmAccel(speeds[k] ?? 0, (st.v0[k] ?? 0) * (dodging ? KERB_YIELD.speedScale : 1), gap, vLead));
+    dodge[k] = dodging;
+    accel[k] = idmAccel(speeds[k] ?? 0, (st.v0[k] ?? 0) * (dodging ? KERB_YIELD.speedScale : 1), gap, vLead);
   }
   const nextV: number[] = [];
   for (let k = 0; k < n; k++) {
+    if (only >= 0 && k !== only) continue;
     // A toppled kerb rider (T4.1) lies still.
     let v = (st.toppleS[k] ?? 0) > 0 ? 0 : Math.max(0, (speeds[k] ?? 0) + (accel[k] ?? 0) * dt);
     if (dodge[k]) {
@@ -439,8 +457,15 @@ function move(
       const slow = (st.v0[k] ?? 0) * KERB_YIELD.speedScale;
       v = Math.min(v, Math.max(slow, (speeds[k] ?? 0) - KERB_YIELD.brakeMps2 * dt));
     }
-    nextV.push(v);
-    st.u[k] = (st.u[k] ?? 0) + (st.dir[k] ?? 1) * v * dt;
+    const oldU = st.u[k] ?? 0;
+    nextV[k] = v;
+    st.u[k] = oldU + (st.dir[k] ?? 1) * v * dt;
+    const direction = st.dir[k] ?? 1;
+    const line = stopU - (direction * typeOf(config, st, k).lengthM) / 2;
+    if (k === only && stopU < Infinity && direction * ((st.u[k] ?? 0) - line) > 0) {
+      st.u[k] = direction === 1 ? Math.max(oldU, line) : Math.min(oldU, line);
+      nextV[k] = 0;
+    }
   }
   // No two vehicles ever overlap in a lane: walk each lane front to back. Kerb riders (W-P) form a
   // file of their own at the kerb, beside their lane's cars (car-following keeps those apart).
@@ -456,6 +481,7 @@ function move(
   for (let i = 1; i < order.length; i++) {
     const f = order[i - 1] ?? 0;
     const b = order[i] ?? 0;
+    if (only >= 0 && b !== only) continue;
     if (st.dir[f] !== st.dir[b] || lane[f] !== lane[b]) continue;
     const tf = typeOf(config, st, f);
     const tb = typeOf(config, st, b);
@@ -472,6 +498,7 @@ function move(
     }
   }
   for (let k = 0; k < n; k++) {
+    if (only >= 0 && k !== only) continue;
     const dir = st.dir[k] ?? 1;
     let u = st.u[k] ?? 0;
     if (u < c.lo || u > c.hi) {
@@ -528,14 +555,14 @@ function move(
     }
     if (parked.length > 0) {
       if (isParked(tk)) {
-        target = parkedCd(laneCd);
+        target = parkedCd(laneCd, roadSide(c, u, laneCd));
       } else {
         // Edge inward round a parked oddity (one lane this way) or a kerb rider (W-P, any lane
         // count: a lane change may be blocked), then back once past it.
         const j = parkedAhead(config, st, k, st.rank[k] ?? 0, parked, target);
         const tj = config.trafficTypes[st.type[j] ?? -1];
         if (j >= 0 && tj && (lanes.length < 2 || isKerb(tj) || isKerb(tk))) {
-          const out = laneCd < 0 ? -1 : 1;
+          const out = roadSide(c, u, laneCd);
           target = (st.cd[j] ?? 0) - out * ((tj.widthM + tk.widthM) / 2 + TRAFFIC.swerveClearM);
           rate = TRAFFIC.swerveMps;
         }
@@ -548,7 +575,7 @@ function move(
     if (!isParked(tk)) {
       const r = sideRiderAhead(st, k, riders, tk, target, laneCd, ownLane?.width ?? 2 * TRAFFIC.riderWidthM);
       if (r) {
-        const out = laneCd < 0 ? -1 : 1;
+        const out = roadSide(c, u, laneCd);
         const round = r.cd - out * ((tk.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM);
         target = out > 0 ? Math.min(target, round) : Math.max(target, round);
         rate = TRAFFIC.swerveMps;
@@ -556,7 +583,7 @@ function move(
       // A rider down in its path (W-Q): round them on the inside, when the oncoming side is clear.
       const down = downRiderAhead(st, k, riders, tk, target);
       if (down && oncomingClear(st, k, down)) {
-        const out = laneCd < 0 ? -1 : 1;
+        const out = roadSide(c, u, laneCd);
         const round = down.cd - out * ((tk.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM);
         target = out > 0 ? Math.min(target, round) : Math.max(target, round);
         rate = TRAFFIC.swerveMps;
@@ -570,10 +597,10 @@ function move(
       !kerb &&
       riders.some((r) => r.drifting && Math.abs(r.u - u) < DRIFT_ROOM_LOOK_M)
     ) {
-      const out = laneCd < 0 ? -1 : 1;
-      const limit = Math.abs(kerbGround(config, st, u, out).edgeCd) - tk.widthM / 2 - 0.1;
-      const want = Math.min(Math.abs(laneCd) + roomM, limit);
-      if (want > Math.abs(target)) target = out * want;
+      const out = roadSide(c, u, laneCd);
+      const edgeCd = kerbGround(config, st, u, out).edgeCd - out * (tk.widthM / 2 + 0.1);
+      const want = out > 0 ? Math.min(laneCd + roomM, edgeCd) : Math.max(laneCd - roomM, edgeCd);
+      if (out * want > out * target) target = want;
       rate = TRAFFIC.swerveMps;
     }
     const cd = st.cd[k] ?? 0;
@@ -610,7 +637,7 @@ function sideRiderAhead(
 ): RiderView | null {
   const dir = st.dir[k] ?? 1;
   const u = st.u[k] ?? 0;
-  const out = laneCd < 0 ? -1 : 1;
+  const out = roadSide(st.corridor, u, laneCd);
   let best: RiderView | null = null;
   let bestAhead = Infinity;
   for (const r of riders) {
@@ -705,6 +732,8 @@ function putRider(world: World, config: SimConfig, st: TrafficState, r: RiderVie
   const o = st.corridor.o[i] ?? 1;
   let lo = (edge?.dMin ?? -5) + 0.5;
   let hi = (edge?.dMax ?? 5) - 0.5;
+  lo -= st.corridor.dOff?.[i] ?? 0;
+  hi -= st.corridor.dOff?.[i] ?? 0;
   if (o === -1) [lo, hi] = [-hi, -lo];
   const cd = clamp(r.cd, lo, hi);
   const pinned = cd !== r.cd;
@@ -750,7 +779,7 @@ function putRiderOver(config: SimConfig, st: TrafficState, m: Mover, r: RiderVie
 function toppleKerbRider(world: World, config: SimConfig, st: TrafficState, k: number, overD: number): void {
   const t = typeOf(config, st, k);
   const cd = st.cd[k] ?? 0;
-  const out = cd < 0 ? -1 : 1;
+  const out = roadSide(st.corridor, st.u[k] ?? 0, cd);
   const ground = kerbGround(config, st, st.u[k] ?? 0, out);
   const reach = ground.edgeCd + out * ground.vergeW - out * (t.widthM / 2 + KERB_YIELD.toppleInsetM);
   const target = cd + out * (overD + KERB_YIELD.topplePushM);
@@ -843,14 +872,21 @@ function rigidOffset(
  * that car (the launch starts 1 m up, under its roof) until it is back on the road or clear of it.
  * The near miss stays a riding rider's (`touchable`).
  */
-function contacts(world: World, config: SimConfig, st: TrafficState, riders: RiderView[], dt: number): void {
+function contacts(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: RiderView[],
+  dt: number,
+  only = -1,
+): void {
   const T = TRAFFIC;
   const closingMin = world.params['traffic.nearMissClosingMps'] ?? T.nearMissClosingMps;
   const decks = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
   const kerbSoft = (world.params['traffic.kerbSoft'] ?? 0) > 0;
   const supports = supportsOn(world);
   for (const r of riders) {
-    st.unstableS[r.id] = Math.max(0, (st.unstableS[r.id] ?? 0) - dt);
+    if (only < 0) st.unstableS[r.id] = Math.max(0, (st.unstableS[r.id] ?? 0) - dt);
     st.lastRel[r.id] ??= st.id.map(() => 0);
     const rel = st.lastRel[r.id] ?? [];
     const m = world.movers[r.id];
@@ -875,6 +911,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         ? r.dir * (mo.vr * sin(m.yaw) + carried.across) + r.dir * m.pos.dir * shoveDMps(world, r.id)
         : r.dir * m.speed * sin(m.yaw) + r.dir * m.pos.dir * shoveDMps(world, r.id);
     for (let k = 0; k < st.id.length; k++) {
+      if (only >= 0 && k !== only) continue;
       const vid = st.id[k] ?? -1;
       const t = typeOf(config, st, k);
       let du = (st.u[k] ?? 0) - r.u;
@@ -1228,12 +1265,32 @@ function shoveDMps(world: World, id: number): number {
  * riders' to meet), in corridor terms; false off the traffic road or above it.
  */
 function nearVehicle(
+  world: World,
   config: SimConfig,
   st: TrafficState,
   m: Mover,
   decks: readonly { vehicle: number }[],
 ): boolean {
   if (m.h > TRAFFIC.maxContactH) return false;
+  if (networkTrafficEnabled(config)) {
+    const box = riderHitbox(config, m.riderIndex);
+    const foot = config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
+    for (let k = 0; k < st.id.length; k++) {
+      const vehicle = world.movers[st.id[k] ?? -1];
+      if (!vehicle || isDeckVehicle(decks, vehicle.id)) continue;
+      const t = typeOf(config, st, k);
+      const base = config.road.toWorld(vehicle.pos.edge, vehicle.pos.s, vehicle.pos.d, vehicle.h);
+      if (Math.abs(foot.y - base.y) > TRAFFIC.maxContactH) continue;
+      const p = rigidOffset(config, vehicle, m, 1);
+      if (
+        p &&
+        Math.abs(p.du) < (t.lengthM + box.lengthM) / 2 + TRAFFIC.ghostClearM &&
+        Math.abs(p.dcd) < (t.widthM + box.widthM) / 2 + TRAFFIC.ghostClearM
+      )
+        return true;
+    }
+    return false;
+  }
   const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
   if (!p) return false;
   const T = TRAFFIC;
@@ -1264,7 +1321,8 @@ function stepGhosts(world: World, config: SimConfig, st: TrafficState): void {
     st.ghostCapT[m.id] = cap;
     // Down again (a rival knocked it off): a ghost no more.
     const down = m.mode === 'Tumble' || m.mode === 'OnFoot';
-    const over = down || cap <= 0 || (left <= 0 && !(m.mode === 'Road' && nearVehicle(config, st, m, decks)));
+    const over =
+      down || cap <= 0 || (left <= 0 && !(m.mode === 'Road' && nearVehicle(world, config, st, m, decks)));
     if (over) {
       st.ghostT[m.id] = 0;
       st.ghostCapT[m.id] = 0;
@@ -1283,7 +1341,12 @@ export function trafficStep(world: World, config: SimConfig): void {
   if (st.types.length === 0 && st.id.length === 0) return;
   const dt = world.timeScale / 60;
   st.clockS += dt;
+  if (world.tick === 0 && networkTrafficEnabled(config)) populateNetwork(world, config, st, true);
   if (world.tick % TRAFFIC.populateEveryTicks === 0) populate(world, config, st);
+  if (networkTrafficEnabled(config)) {
+    networkMotion(world, config, st, dt);
+    return;
+  }
   laneChanges(world, config, st, dt);
   move(world, config, st, riderViews(world, config, st), dt);
   for (let k = 0; k < st.id.length; k++) {
@@ -1293,4 +1356,93 @@ export function trafficStep(world: World, config: SimConfig): void {
   }
   stepGhosts(world, config, st);
   contacts(world, config, st, riderViews(world, config, st, Infinity), dt);
+}
+
+const referencePaths = new WeakMap<TrafficState, TrafficPath[]>();
+
+/** Every subject reads the same phase-start movers; no slot-order movement advantage. */
+function networkMotion(world: World, config: SimConfig, st: TrafficState, dt: number): void {
+  const graph = buildTrafficGraph(config);
+  let references = referencePaths.get(st);
+  if (!references) {
+    references = [];
+    referencePaths.set(st, references);
+  }
+  const views: TrafficState[] = [];
+  for (let k = 0; k < st.id.length; k++) {
+    const path = st.paths[k];
+    references[k] ??= { c: st.corridor, lane: [], exitLane: [], occurrence: 0, terminal: true };
+    const m = world.movers[st.id[k] ?? -1];
+    if (path && m) commitPath(config.road, graph, m.pos, config.seed, m.id, st.generation[k] ?? 0, 220, path);
+    const view = pathView(world, config, st, path ?? references[k]!, k);
+    if (!path || path.currentEdge === m?.pos.edge) view.rank[k] = st.rank[k] ?? view.rank[k] ?? 0;
+    if (path && m) path.currentEdge = m.pos.edge;
+    views[k] = view;
+  }
+  const stops = mergeStops(world, config, st);
+  const junction = junctionStops(world, config, st);
+  const results: {
+    pos: Mover['pos'];
+    speed: number;
+    yaw: number;
+    h: number;
+    mode: Mover['mode'];
+    u: number;
+    cd: number;
+    rank: number;
+  }[] = [];
+  for (let k = 0; k < st.id.length; k++) {
+    const view = views[k];
+    const m = world.movers[st.id[k] ?? -1];
+    if (!view || !m) continue;
+    // Keep committed lane preparation after ordinary avoidance. A turn is held if its lane
+    // cannot be reached, rather than following the rider's incidental split-zone selection.
+    laneChanges(world, config, view, dt, k);
+    const stop = Math.min(stops[k] ?? Infinity, junction[k] ?? Infinity, prepareTurn(config, st, view, k));
+    const before = { pos: { ...m.pos }, speed: m.speed, yaw: m.yaw, h: m.h, mode: m.mode };
+    move(world, config, view, riderViews(world, config, view, TRAFFIC.maxContactH, view.u[k]), dt, k, stop);
+    results[k] = {
+      pos: { ...m.pos },
+      speed: m.speed,
+      yaw: m.yaw,
+      h: m.h,
+      mode: m.mode,
+      u: view.u[k] ?? 0,
+      cd: view.cd[k] ?? 0,
+      rank: view.rank[k] ?? 0,
+    };
+    Object.assign(m, before);
+  }
+  for (let k = 0; k < st.id.length; k++) {
+    const result = results[k];
+    const m = world.movers[st.id[k] ?? -1];
+    if (!result || !m) continue;
+    m.pos = result.pos;
+    m.speed = result.speed;
+    m.yaw = result.yaw;
+    m.h = result.h;
+    m.mode = result.mode;
+    st.u[k] = result.u;
+    st.cd[k] = result.cd;
+    st.rank[k] = result.rank;
+  }
+  for (let k = 0; k < st.id.length; k++) {
+    const path = st.paths[k];
+    if (!path?.terminal || (st.u[k] ?? 0) < path.c.hi || protectedVehicle(world, st, k)) continue;
+    const view = pathView(world, config, st, references[k]!);
+    park(world, config, view, anchorUs(world, config, view), k);
+  }
+  stepGhosts(world, config, st);
+  for (const m of world.movers)
+    if (m.kind === 'rider') st.unstableS[m.id] = Math.max(0, (st.unstableS[m.id] ?? 0) - dt);
+  for (let k = 0; k < st.id.length; k++) {
+    const view = pathView(world, config, st, st.paths[k] ?? references[k]!, k);
+    contacts(world, config, view, riderViews(world, config, view, Infinity, view.u[k]), dt, k);
+    const m = world.movers[st.id[k] ?? -1];
+    const p = m ? toCorridor(view.corridor, m.pos, st.u[k]) : null;
+    if (p) {
+      st.u[k] = p.u;
+      st.cd[k] = p.cd;
+    }
+  }
 }

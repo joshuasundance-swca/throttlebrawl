@@ -32,7 +32,7 @@ export const ROAD_LAZY_CHUNK_NAME = 'road-structures';
  * dependencies too, so the steps' group first would take the whole sim.
  */
 export const SIM_STEPS_TEST =
-  /[\\/]src[\\/]sim[\\/](?:steps|[\w-]+[\\/]step|modifiers[\\/]law-props|race[\\/]shortcuts|tumble[\\/](?:rig|contacts|runback))\.ts$/;
+  /[\\/]src[\\/]sim[\\/](?:steps|[\w-]+[\\/]step|traffic[\\/](?:network|network-population|path-view|merge|junctions)|modifiers[\\/]law-props|race[\\/]shortcuts|tumble[\\/](?:rig|contacts|runback))\.ts$/;
 export const SIM_STEPS_CHUNK_NAME = 'sim-steps';
 // Manual splitting keeps Rolldown's namespace helper in a separate generated chunk. Its code
 // must be part of the rules hash too, even though it has no application modules.

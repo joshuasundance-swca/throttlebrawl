@@ -1,6 +1,7 @@
 // road: the road network model and its queries (docs/architecture.md, "Road network"). DOM-free
 // and deterministic, like the sim. The road lane (road-1, road-2) owns this folder after app-1.
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
+export type { LaneTransition } from './lane-transitions';
 export type {
   AdvanceResult,
   CurvedRates,
