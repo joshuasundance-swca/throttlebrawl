@@ -27,7 +27,8 @@
     "osm-pnw-pdx-morrison-bridge",
     "osm-pnw-pdx-grand",
     "osm-pnw-portland-morrison-in",
-    "osm-pnw-portland-morrison-out"
+    "osm-pnw-portland-morrison-out",
+    "osm-pnw-portland-morrison-traffic-in"
   ],
   "junctions": [
     {
@@ -193,6 +194,21 @@
             "d0": -10.5,
             "d1": -6.0
           }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-traffic-in",
+          "road": "osm-pnw-portland-morrison-traffic-in",
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-alder",
+            "end": "from",
+            "lane": "R1"
+          },
+          "trafficOnly": true
         }
       ],
       "control": "none"

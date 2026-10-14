@@ -3,12 +3,15 @@ closed, junction choices as branches with split zones, and routes drawn from the
 
 from __future__ import annotations
 
+import json
 import math
 from itertools import pairwise
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from tbgis.config import BakeConfig
 from tbgis.fetch import FetchMeta
@@ -340,3 +343,93 @@ def test_a_connector_follows_the_main_road_while_a_lane_lies_over_it_and_ends_on
     far = dist > reach + width / 2 + 6.0
     assert far.any()
     assert np.all(piece.y[far] < main_y[far] - 1.0)
+
+
+def traffic_config(**over: Any) -> NetworkConfig:
+    data = config().model_dump(exclude_none=True)
+    data["branches"][0].update(
+        traffic="road",
+        trafficIngress={"offsetM": 3, "lane": "R1", "widthM": 4, "turnsM": [15, 15], "minRadiusM": 20},
+    )
+    data["branches"][0].update(over)
+    return NetworkConfig.model_validate(data)
+
+
+def test_optional_traffic_permissions_preserve_old_configs_and_refuse_invalid_values() -> None:
+    assert config().branches[0].traffic is None
+    assert config().branches[0].trafficIngress is None
+    assert traffic_config().branches[0].traffic == "road"
+    assert traffic_config(traffic="none", trafficIngress=None).branches[0].traffic == "none"
+    with pytest.raises(ValidationError):
+        traffic_config(traffic="all")
+    with pytest.raises(ValidationError, match="trafficIngress needs traffic road"):
+        traffic_config(traffic="none")
+    with pytest.raises(ValidationError, match="turnsM must be positive"):
+        traffic_config(trafficIngress={"offsetM": 3, "lane": "R1", "turnsM": [0, 15]})
+
+
+@pytest.mark.parametrize("lane,offset", [("L1", -3), ("R1", 8)])
+def test_a_traffic_ingress_refuses_opposing_lanes_and_off_centre_starts(lane: str, offset: float) -> None:
+    cfg = traffic_config(trafficIngress={"offsetM": offset, "lane": lane, "minRadiusM": 20})
+    with pytest.raises(ValueError, match="must be a forward drive lane centred"):
+        bake_network(cfg, OSM, WAYS, flat, "2026-10-02")
+
+
+def test_traffic_ingress_is_additive_legal_and_does_not_change_rider_defaults(baked: NetworkBake) -> None:
+    cfg = traffic_config()
+    traffic = bake_network(cfg, OSM, WAYS, flat, "2026-10-02")
+    by_id = {r["id"]: r for r in traffic.roads}
+    rid = "osm-test-net-b-road-traffic-in"
+    ingress = by_id[rid]
+    assert ingress["laneSections"][0]["lanes"] == [
+        {"id": "R1", "dCenterM": 0, "widthM": 4, "direction": 1, "kind": "drive"}
+    ]
+    original = next(
+        j
+        for j in baked.network["junctions"]
+        if any(c["road"] == "osm-test-net-b-road-in" for c in j["connectors"])
+    )
+    junction = next(j for j in traffic.network["junctions"] if j["id"] == original["id"])
+    assert junction["connectors"][:-1] == original["connectors"]
+    row = junction["connectors"][-1]
+    assert row["road"] == rid and "splitZone" not in row and row["trafficOnly"] is True
+    assert row["from"] == {"road": "osm-test-a1", "end": "to", "lane": "R1"}
+    assert row["to"] == {"road": "osm-test-b", "end": "from", "lane": "R1"}
+    for road in baked.roads:
+        assert by_id[road["id"]] == road
+    full, short = traffic.routes
+    assert full["branches"][0]["traffic"] == "road"
+    assert rid in full["branches"][0]["roads"] and rid in full["allowedRoads"]
+    assert rid not in short["allowedRoads"]
+    assert traffic.report["routes"] == baked.report["routes"]
+    assert lint_network(traffic.network, traffic.roads, traffic.routes) == []
+
+
+def test_the_committed_traffic_ingress_joins_forward_lane_centres_without_moving_rider_rows() -> None:
+    repo = Path(__file__).resolve().parents[3]
+    region = repo / "packs/region-pnw/regions/pacific-northwest"
+    source = NetworkConfig.load(repo / "tools/gis/networks/osm-pnw-portland.json")
+    branch = source.branches[0]
+    assert branch.traffic == "road" and branch.trafficIngress is not None
+    rid = f"{source.id}-{branch.tag}-traffic-in"
+    road = json.loads((region / "roads" / f"{rid}.json").read_text(encoding="utf-8"))
+    net = json.loads((region / "networks" / f"{source.id}.json").read_text(encoding="utf-8"))
+    route = json.loads((region / "routes/osm-bridge-city-run.json").read_text(encoding="utf-8"))
+    row = next(c for j in net["junctions"] for c in j["connectors"] if c["road"] == rid)
+    assert row["from"]["lane"] == branch.trafficIngress.lane == "R1"
+    assert row["to"]["lane"] == branch.leave.toLane == "R1"
+    assert "splitZone" not in row
+    assert row["trafficOnly"] is True
+    assert rid in net["roads"] and rid in route["allowedRoads"]
+    assert rid in route["branches"][0]["roads"] and route["branches"][0]["traffic"] == "road"
+    ends = (("from", -1, branch.trafficIngress.offsetM), ("to", 0, branch.leave.toOffsetM))
+    for end, index, offset in ends:
+        parent = json.loads((region / "roads" / f"{row[end]['road']}.json").read_text(encoding="utf-8"))
+        cols = parent["samples"]["data"]
+        a, b = (-2, -1) if index == -1 else (0, 1)
+        h = math.atan2(cols["x"][b] - cols["x"][a], -(cols["z"][b] - cols["z"][a]))
+        actual = road["samples"]["data"]
+        k = 0 if end == "from" else -1
+        assert actual["x"][k] == pytest.approx(cols["x"][index] + offset * math.cos(h), abs=0.03)
+        assert actual["z"][k] == pytest.approx(cols["z"][index] + offset * math.sin(h), abs=0.03)
+        assert actual["y"][k] == pytest.approx(cols["y"][index], abs=1e-4)

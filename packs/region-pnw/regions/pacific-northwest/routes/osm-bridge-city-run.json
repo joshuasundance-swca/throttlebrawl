@@ -37,7 +37,8 @@
     "osm-pnw-pdx-morrison-bridge",
     "osm-pnw-pdx-grand",
     "osm-pnw-portland-morrison-in",
-    "osm-pnw-portland-morrison-out"
+    "osm-pnw-portland-morrison-out",
+    "osm-pnw-portland-morrison-traffic-in"
   ],
   "checkpoints": [
     {
@@ -76,8 +77,10 @@
         "osm-pnw-pdx-alder",
         "osm-pnw-pdx-morrison-bridge",
         "osm-pnw-pdx-grand",
-        "osm-pnw-portland-morrison-out"
-      ]
+        "osm-pnw-portland-morrison-out",
+        "osm-pnw-portland-morrison-traffic-in"
+      ],
+      "traffic": "road"
     }
   ],
   "closed": false,
