@@ -20,6 +20,8 @@ fine-detail distance culling while keeping junction camera views inside the exis
 Historical downtown comparison still holds the original road cohort; current-city tests hold
 building clearance, land support and scenery on streets, with no duplicate row on traffic-only
 turns. The new turn retains its actual parent roads' source records and attribution bytes.
+At overlaps, the turn yields to existing drive lanes and neighbouring shoulders yield to the
+turn at the same height, so the junction stays covered without competing asphalt surfaces.
 
 This changes simulation/replay identity. An in-progress recording from another build follows the
 existing stale-race recovery; career and settings formats are unchanged. Rewards and rival pace
