@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { careerPicks, qualifyIn } from './packs-on-disk';
+import { careerPicks, diskEvents, qualifyIn } from './packs-on-disk';
+import type { Profile } from '../../src/save';
 import { rideFirstCareerRace } from './career-start';
 import { fastForwardDone } from './lockstep';
 
@@ -19,14 +20,19 @@ interface Handle {
   snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
+  lockstep(steps: number | null): void;
   fastForward(
-    until: (snap: { tick: number }) => boolean,
+    until: (snap: { tick: number; race: { over: boolean } }) => boolean,
     opts?: { perFrame?: number; then?: number | null },
   ): void;
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
   __game?: Handle;
+  __app?: {
+    career(): { profile: Profile };
+    getReplayAndSettings(): { replay: { header: { eventId: string } } | null };
+  };
 };
 
 // What the screens should show is read from the packs on disk, never copied from them (docs/
@@ -110,6 +116,10 @@ test('menu first, then Start career into the first event, the career map, the ga
   await shot(page, 'menu-first');
   await page.locator('#menu-career').click();
   await expect(page.locator('#career')).toBeVisible();
+  await expect(page.locator('.career-detail')).toBeVisible();
+  await expect(page.locator('.career-detail')).toHaveAttribute('data-node', OPENING.id);
+  await expect(page.locator('#career-ride')).toBeEnabled();
+  expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('menu');
   await page.locator(`#career-node-${OPENING.id}`).click();
   await page.locator('#career-ride').click();
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
@@ -207,44 +217,108 @@ test('menu first, then Start career into the first event, the career map, the ga
   expect(problems).toEqual([]);
 });
 
-test('the first event ridden to its results: won, paid, and its roads claimed on the map', async ({
-  page,
-}) => {
-  test.setTimeout(420_000);
-  const problems = watchErrors(page);
-  await page.goto('./');
-  await page.evaluate(() => (window as TestWindow).__game?.setSeed(3));
-  await rideFirstCareerRace(page);
-  // The whole race fast-forwards to its end (the handle's fastForward over the loop's lockstep,
-  // 1200 ticks a drawn frame): the race is the same tick for tick at any lockstep, so the results
-  // below are the ones a real-time ride gives. The guard is a hang guard, not a deadline.
-  await page.evaluate(() => {
-    const g = (window as TestWindow).__game;
-    g?.setBot(true);
-    g?.fastForward(() => false, { perFrame: 1200 });
+for (const continuation of ['map', 'next'] as const) {
+  test(`the first event settles once and continues through ${continuation}`, async ({ page }) => {
+    test.setTimeout(420_000);
+    const problems = watchErrors(page);
+    await page.goto('./');
+    await page.evaluate(() => (window as TestWindow).__game?.setSeed(3));
+    await rideFirstCareerRace(page);
+    // The whole race fast-forwards to its end (the handle's fastForward over the loop's lockstep,
+    // 1200 ticks a drawn frame): the race is the same tick for tick at any lockstep, so the results
+    // below are the ones a real-time ride gives. The guard is a hang guard, not a deadline.
+    await page.evaluate(() => {
+      const g = (window as TestWindow).__game;
+      g?.setBot(true);
+      g?.fastForward((snap) => snap.race.over, { perFrame: 1200, then: 1 });
+    });
+    await fastForwardDone(page, 'the first career race, to its end');
+    // Career settlement can precede the whole field's sim end. Cancel acceleration explicitly
+    // before starting another event; leaving it active would race through the Next transition.
+    await page.evaluate(() => (window as TestWindow).__game?.lockstep(1));
+    await expect(page.locator('#career-results')).toBeVisible({ timeout: 60_000 });
+    // First place is WON; a finish below first clears the opening race (it asks only to finish).
+    await expect(page.locator('#career-results-title')).toHaveText(
+      /^(WON|\d+(ST|ND|RD|TH) OF \d+\. CLEARED\.)$/,
+    );
+    await expect(page.locator('#career-results-cash')).toContainText('place');
+    // A negative line (repairs, the fine) puts the minus before the dollar sign (wave A live check).
+    await expect(page.locator('#career-results-cash')).not.toContainText('$-');
+    await expect(page.locator('#career-results')).toContainText('claimed on the map');
+    // The Keys rag's front page: a headline built from the race (run W-S).
+    await expect(page.locator('#career-paper')).toHaveClass(/paper-rag/);
+    await expect(page.locator('#career-paper .paper-headline')).not.toBeEmpty();
+    console.log(`paper: ${await page.locator('#career-paper .paper-headline').textContent()}`);
+    await expectNoOverflow(page, '#career-results', 'results, phone landscape');
+    await shot(page, `results-${continuation}`);
+    const nextLine = page.locator('#career-results .career-news').filter({ hasText: /^Next: / });
+    await expect(nextLine).toHaveCount(1);
+    const nextName = (await nextLine.innerText()).replace(/^Next: /, '');
+    // After the tutorial, the first open regular event in the first tier precedes its boss.
+    const expectedNode = FIRST.nodes.find(
+      (node) =>
+        node.id !== OPENING.id &&
+        node.tier === FIRST.tiers[0]!.id &&
+        node.id !== FIRST.tiers[0]!.boss &&
+        (node.requires ?? []).every((required) => required === OPENING.id),
+    );
+    expect(expectedNode, 'the chapter supplies a regular event after the tutorial').toBeDefined();
+    const expectedEvent = diskEvents().find(
+      (event) => event.key === qualifyIn(FIRST.pack, expectedNode!.event),
+    );
+    expect(expectedEvent).toBeDefined();
+    expect(nextName).toBe(expectedEvent!.name);
+    const settled = await page.evaluate(() => {
+      const profile = (window as TestWindow).__app!.career().profile;
+      return { cash: profile.cash, history: profile.history, bike: profile.bikes.current };
+    });
+    expect(settled.history).toHaveLength(1);
+    await page.locator(`#career-results-${continuation}`).click();
+    if (continuation === 'next') {
+      await page.waitForFunction((eventId) => {
+        const app = (window as TestWindow).__app;
+        return app?.getReplayAndSettings().replay?.header.eventId === eventId;
+      }, expectedEvent!.key);
+      await expect(page.locator('#hud-objective')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#pause-screen')).toBeVisible();
+      await page.locator('#pause-quit').click();
+    }
+    await expect(page.locator('#career')).toBeVisible();
+    const suggested = await page.locator('.career-node.suggested').getAttribute('data-node');
+    expect(suggested).toBe(expectedNode!.id);
+    await expect(page.locator('.career-detail')).toBeVisible();
+    await expect(page.locator('.career-detail')).toHaveAttribute('data-node', suggested!);
+    await expect(page.locator('.career-detail h2')).toHaveText(nextName);
+    await expect(page.locator('#career-ride')).toBeEnabled();
+    await expect(page.locator(`#career-node-${OPENING.id}`)).toHaveAttribute('data-state', 'won');
+    await expect(page.locator(`#career-node-${WAITING.id}`)).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('.career-head .career-tally')).toContainText(/won 1\/\d+/);
+    expect(await page.locator('.career-map polyline.road.claimed').count()).toBeGreaterThan(0);
+    await shot(page, `map-after-win-${continuation}`);
+    // A manual choice, including Close, survives Garage and ordinary redraws.
+    await page.locator(`#career-node-${OPENING.id}`).click();
+    await page.locator('#career-tab-garage').click();
+    await expect(page.locator('.career-garage')).toContainText(startingBikeName);
+    await expect(page.locator('#career-cash')).toHaveText(money(settled.cash));
+    await page.locator('#career-tab-map').click();
+    await expect(page.locator('.career-detail')).toHaveAttribute('data-node', OPENING.id);
+    await page.locator('#career-detail-close').click();
+    await page.locator('#career-back').click();
+    await expect(page.locator('#menu')).toBeVisible();
+    await page.locator('#menu-career').click();
+    await expect(page.locator('#career')).toBeVisible();
+    await expect(page.locator('.career-detail')).toBeHidden();
+    expect(
+      await page.evaluate((openingId) => {
+        const profile = (window as TestWindow).__app!.career().profile;
+        return {
+          cash: profile.cash,
+          history: profile.history.filter((result) => result.node === openingId),
+          bike: profile.bikes.current,
+        };
+      }, OPENING.id),
+    ).toEqual(settled);
+    expect(problems).toEqual([]);
   });
-  await fastForwardDone(page, 'the first career race, to its end');
-  await expect(page.locator('#career-results')).toBeVisible({ timeout: 60_000 });
-  // First place is WON; a finish below first clears the opening race (it asks only to finish).
-  await expect(page.locator('#career-results-title')).toHaveText(
-    /^(WON|\d+(ST|ND|RD|TH) OF \d+\. CLEARED\.)$/,
-  );
-  await expect(page.locator('#career-results-cash')).toContainText('place');
-  // A negative line (repairs, the fine) puts the minus before the dollar sign (wave A live check).
-  await expect(page.locator('#career-results-cash')).not.toContainText('$-');
-  await expect(page.locator('#career-results')).toContainText('claimed on the map');
-  // The Keys rag's front page: a headline built from the race (run W-S).
-  await expect(page.locator('#career-paper')).toHaveClass(/paper-rag/);
-  await expect(page.locator('#career-paper .paper-headline')).not.toBeEmpty();
-  console.log(`paper: ${await page.locator('#career-paper .paper-headline').textContent()}`);
-  await expectNoOverflow(page, '#career-results', 'results, phone landscape');
-  await shot(page, 'results');
-  await page.locator('#career-results-map').click();
-  await expect(page.locator('#career')).toBeVisible();
-  await expect(page.locator(`#career-node-${OPENING.id}`)).toHaveAttribute('data-state', 'won');
-  await expect(page.locator(`#career-node-${WAITING.id}`)).toHaveAttribute('data-state', 'open');
-  await expect(page.locator('.career-head .career-tally')).toContainText(/won 1\/\d+/);
-  expect(await page.locator('.career-map polyline.road.claimed').count()).toBeGreaterThan(0);
-  await shot(page, 'map-after-win');
-  expect(problems).toEqual([]);
-});
+}

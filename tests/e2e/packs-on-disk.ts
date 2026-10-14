@@ -122,7 +122,7 @@ export interface DiskCareer {
   startingCash: number;
   startingBike: string;
   tutorialEvent: string;
-  tiers: { id: string; name?: string }[];
+  tiers: { id: string; name?: string; boss?: string }[];
   nodes: { id: string; event: string; tier: string; at: { road: string }; requires?: string[] }[];
   shop: { bike: string; priceCash: number; unlockTier: string }[];
   paints: { id: string; name: string; priceCash: number; unlockTier: string }[];

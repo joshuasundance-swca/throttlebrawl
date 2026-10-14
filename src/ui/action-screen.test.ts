@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCareerScreens, type CareerCallbacks } from './career-screen';
 import { actionScreenParts, ACTION_SCREEN_CSS } from './action-screen';
+import type { CareerView, NodeCard } from '../career';
 
 class ElementDouble extends EventTarget {
   id = '';
@@ -8,6 +9,9 @@ class ElementDouble extends EventTarget {
   textContent = '';
   hidden = false;
   style = {};
+  dataset: Record<string, string> = {};
+  classList = { add: () => undefined };
+  scrollIntoView() {}
   children: ElementDouble[] = [];
   append(...kids: ElementDouble[]) {
     this.children.push(...kids);
@@ -17,10 +21,129 @@ class ElementDouble extends EventTarget {
   }
   setAttribute() {}
 }
-const all = (root: ElementDouble): ElementDouble[] => [root, ...root.children.flatMap(all)];
+const all = (root: ElementDouble): ElementDouble[] => [
+  root,
+  ...root.children.filter((n) => n instanceof ElementDouble).flatMap(all),
+];
 afterEach(() => vi.unstubAllGlobals());
 
 describe('results action frames', () => {
+  it('focuses the suggestion on first map and after results, preserving manual choices and Close on redraw', () => {
+    vi.stubGlobal('document', { createElement: () => new ElementDouble() });
+    const ride = vi.fn();
+    const noop = () => undefined;
+    const screens = createCareerScreens(
+      {
+        onRegion: noop,
+        onRide: ride,
+        onBack: noop,
+        onBuyBike: noop,
+        onRideBike: noop,
+        onBuyPaint: noop,
+        onPaint: noop,
+        onExport: () => Promise.resolve(''),
+        onImport: () => Promise.resolve(''),
+        onStartSeason: noop,
+        onNewCareer: () => Promise.resolve(''),
+        onRetry: noop,
+        onNext: noop,
+        onMap: noop,
+        onNextRegion: noop,
+      },
+      (id, cls, text, action) => {
+        const button = Object.assign(new ElementDouble(), { id, className: cls, textContent: text });
+        button.addEventListener('click', action);
+        return button as unknown as HTMLButtonElement;
+      },
+    );
+    const card = (id: string, state: NodeCard['state'] = 'open'): NodeCard => ({
+      id,
+      name: id,
+      kindLabel: 'Race',
+      objective: 'Finish.',
+      bonuses: [],
+      route: '',
+      km: 1,
+      timeOfDay: 'Noon',
+      prize: 100,
+      state,
+      reason: '',
+      boss: false,
+      tierBoss: false,
+      best: null,
+      where: '',
+      rivals: [],
+    });
+    const view: CareerView = {
+      season: { n: 1, label: 'Season 1' },
+      seasonCard: null,
+      cash: 0,
+      bike: { key: 'fixture:bike', name: 'Bike', paint: null },
+      regions: [],
+      region: {
+        id: 'fixture',
+        name: 'Region',
+        careerName: 'Circuit',
+        tierName: 'Tier',
+        tally: { won: 0, nodes: 2, claimed: 0, secretsFound: 0, secrets: 0, shortcutsFound: 0, shortcuts: 0 },
+        finaleBeaten: false,
+      },
+      tiers: [{ name: 'Tier', open: true, wins: 0, requiredWins: 1, nodes: [card('first'), card('next')] }],
+      suggested: 'first',
+      map: [],
+    };
+    const garage = { cash: 0, bikes: [], paints: [], paint: null };
+    const root = screens.map as unknown as ElementDouble;
+    const get = (id: string) => all(root).find((node) => node.id === id)!;
+    const detail = () => all(root).find((node) => node.className === 'career-detail')!;
+    screens.showMap(view, garage);
+    expect(detail().hidden).toBe(false);
+    expect(detail().dataset['node']).toBe('first');
+    expect(ride).not.toHaveBeenCalled();
+    get('career-node-next').dispatchEvent(new Event('click'));
+    screens.showMap(view, garage, 'garage');
+    screens.showMap(view, garage, 'map');
+    expect(detail().dataset['node']).toBe('next');
+    get('career-detail-close').dispatchEvent(new Event('click'));
+    screens.showMap(view, garage);
+    expect(detail().hidden).toBe(true);
+    get('career-node-first').dispatchEvent(new Event('click'));
+    screens.showResults({
+      title: 'CLEARED',
+      eventName: 'first',
+      objectives: [],
+      lines: [],
+      fine: 0,
+      cashAfter: 100,
+      news: [],
+      nextName: 'next',
+    });
+    const advanced = {
+      ...view,
+      suggested: 'next',
+      tiers: [{ ...view.tiers[0]!, nodes: [card('first', 'won'), card('next')] }],
+    };
+    screens.showMap(advanced, garage);
+    expect(detail().hidden).toBe(false);
+    expect(detail().dataset['node']).toBe('next');
+    get('career-ride').dispatchEvent(new Event('click'));
+    expect(ride).toHaveBeenCalledExactlyOnceWith('next');
+    get('career-node-first').dispatchEvent(new Event('click'));
+    screens.showMap(advanced, garage);
+    expect(detail().dataset['node']).toBe('first');
+    screens.showResults({
+      title: 'CLEARED',
+      eventName: 'next',
+      objectives: [],
+      lines: [],
+      fine: 0,
+      cashAfter: 200,
+      news: [],
+      nextName: null,
+    });
+    screens.showMap({ ...advanced, suggested: null }, garage);
+    expect(detail().hidden).toBe(true);
+  });
   it('places a quick outcome and its actions outside the details', () => {
     vi.stubGlobal('document', { createElement: () => new ElementDouble() });
     const heading = new ElementDouble();
