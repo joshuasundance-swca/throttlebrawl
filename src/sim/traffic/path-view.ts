@@ -4,7 +4,7 @@ import type { RoadPos } from '../../road';
 import type { SimConfig } from '../types';
 import type { World } from '../world';
 import { buildLaneMap, fromCorridor, lanesAt, riderOnCorridor, toCorridor } from './corridor';
-import { placeVehicle, TRAFFIC, trafficState, type TrafficState } from './index';
+import { isKerb, placeVehicle, TRAFFIC, trafficState, type TrafficState } from './index';
 import { buildTrafficGraph, commitPath, type TrafficPath } from './network';
 
 const views = new WeakMap<TrafficPath, { shape: string; state: TrafficState }>();
@@ -90,7 +90,7 @@ export function placeRoadVehicle(
   slot = -1,
 ): number {
   const st = trafficState(world);
-  const graph = buildTrafficGraph(config);
+  const graph = buildTrafficGraph(config, isKerb(config.trafficTypes[spec.type]));
   if (
     !graph.allowed.includes(spec.pos.edge) ||
     !graph.viable[spec.pos.edge]?.[spec.pos.dir === 1 ? 'plus' : 'minus']

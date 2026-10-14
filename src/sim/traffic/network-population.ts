@@ -9,6 +9,7 @@ import {
   hairpinSpawnBlocked,
   IDM,
   isParked,
+  isKerb,
   pickType,
   riderViews,
   spawnCd,
@@ -179,9 +180,11 @@ export function populateNetwork(world: World, config: SimConfig, st: TrafficStat
         distanceAt(windows, pos.edge, pos.s) > TRAFFIC.windowM
       )
         return -1;
+      const movementGraph = isKerb(t) ? buildTrafficGraph(config, true) : graph;
+      if (!movementGraph.viable[pos.edge]?.[pos.dir === 1 ? 'plus' : 'minus']) return -1;
       const path = commitPath(
         config.road,
-        graph,
+        movementGraph,
         pos,
         config.seed,
         slot < 0 ? world.movers.length : st.id[slot]!,

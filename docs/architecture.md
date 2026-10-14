@@ -243,6 +243,10 @@ Directed visited edges bound finite journeys and avoid cycles without enumeratin
 Cars share receiving-lane space and crossing reservations; existing occupants clear before waiting
 entrants. Waiting priority and commitments are plain hashed state; geometry and query caches are
 derived only. Race progress controls placing, never physical following or contact separation.
+Kerb traffic uses a cached graph of outer-lane-to-outer-lane movements and spawns only where
+those movements have a finite exit. It prepares a junction at the kerb, rather than being held
+until it reaches a car's lane center. Parked oddities occupy real conflict space but never reserve
+a future junction or receiving lane along an unused itinerary.
 
 One race-wide population allowance covers all opted-in roads and split racers. Physical spawn
 clearance, lane drops, hairpin yielding, regional mixes and convoys still apply. A generation-based

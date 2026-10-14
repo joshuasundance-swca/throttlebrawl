@@ -26,9 +26,11 @@ export interface TrafficPath {
 }
 
 const graphs = new WeakMap<SimConfig['route'], TrafficGraph>();
+const kerbGraphs = new WeakMap<SimConfig['route'], TrafficGraph>();
 
-export function buildTrafficGraph(config: Pick<SimConfig, 'road' | 'route'>): TrafficGraph {
-  const cached = graphs.get(config.route);
+export function buildTrafficGraph(config: Pick<SimConfig, 'road' | 'route'>, kerbOnly = false): TrafficGraph {
+  const cache = kerbOnly ? kerbGraphs : graphs;
+  const cached = cache.get(config.route);
   if (cached) return cached;
   const reference = buildCorridor(config as SimConfig);
   const extra = new Set(config.route.trafficRoads);
@@ -42,9 +44,26 @@ export function buildTrafficGraph(config: Pick<SimConfig, 'road' | 'route'>): Tr
   for (const e of excluded) allowed.delete(e);
   const road = config.road;
   const permitted = (e: number) => allowed.has(e) && !road.featuresOf(e, 'gap').length;
+  const outerLane = (edge: number, end: 'from' | 'to', dir: number) =>
+    road
+      .lanesAt(edge, end === 'from' ? 0 : (road.edges[edge]?.length ?? 0))
+      .filter((l) => l.direction === dir && (l.kind === 'drive' || l.kind === 'shortcut'))
+      .reduce(
+        (best, lane) => (!best || Math.abs(lane.dCenterM) > Math.abs(best.dCenterM) ? lane : best),
+        undefined as ReturnType<typeof road.lanesAt>[number] | undefined,
+      )?.id;
+  const legal = (source: number, end: 'from' | 'to', row: LaneTransition) =>
+    permitted(row.edge) &&
+    (!kerbOnly ||
+      (row.fromLane === outerLane(source, end, end === 'to' ? 1 : -1) &&
+        row.toLane === outerLane(row.edge, row.entersAt, row.entersAt === 'from' ? 1 : -1)));
   const rows = road.edges.map((e) => ({
-    plus: permitted(e.index) ? road.laneTransitions(e.index, 'to').filter((r) => permitted(r.edge)) : [],
-    minus: permitted(e.index) ? road.laneTransitions(e.index, 'from').filter((r) => permitted(r.edge)) : [],
+    plus: permitted(e.index)
+      ? road.laneTransitions(e.index, 'to').filter((r) => legal(e.index, 'to', r))
+      : [],
+    minus: permitted(e.index)
+      ? road.laneTransitions(e.index, 'from').filter((r) => legal(e.index, 'from', r))
+      : [],
   }));
   const viable = road.edges.map((e) => {
     const i = reference.edges.indexOf(e.index);
@@ -135,7 +154,7 @@ export function buildTrafficGraph(config: Pick<SimConfig, 'road' | 'route'>): Tr
     viable,
     windowLinks,
   };
-  graphs.set(config.route, graph);
+  cache.set(config.route, graph);
   return graph;
 }
 

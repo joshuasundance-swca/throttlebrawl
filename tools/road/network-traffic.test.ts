@@ -8,6 +8,7 @@ import { toCorridor } from '../../src/sim/traffic/corridor';
 import { buildTrafficGraph } from '../../src/sim/traffic/network';
 import { placeRoadVehicle } from '../../src/sim/traffic/path-view';
 import { createSimWithWorld } from '../../src/sim/create';
+import { junctionStops } from '../../src/sim/traffic/junctions';
 
 const ALL = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const EVENT = 'region-pnw:pnw-t1-bridge-city';
@@ -56,6 +57,75 @@ function touches(
 }
 
 describe('Bridge City network traffic integration', () => {
+  it('lets a kerb cyclist clear the main-road junction instead of demanding the lane center', () => {
+    const c = config();
+    const w = createWorld(c);
+    trafficSystem.init(w, c);
+    const cyclist = c.trafficTypes.findIndex((t) => t.behaviour?.kerb && t.cruiseMps > 0);
+    expect(cyclist).toBeGreaterThanOrEqual(0);
+    // Its kerb policy cannot use a turn from Broadway's inner lane into Morrison.
+    const ingress = c.road.edgeIndex(INGRESS);
+    expect(buildTrafficGraph(c).viable[ingress]?.plus).toBe(true);
+    expect(buildTrafficGraph(c, true).viable[ingress]?.plus).toBe(false);
+    expect(() =>
+      placeRoadVehicle(w, c, { type: cyclist, pos: { edge: ingress, s: 20, d: 0, dir: 1 } }),
+    ).toThrow('no legal finite exit');
+    const k = placeRoadVehicle(w, c, {
+      type: cyclist,
+      pos: {
+        edge: c.road.edgeIndex('osm-pnw-pdx-se-hawthorne'),
+        s: 40,
+        d: -6,
+        dir: -1,
+      },
+    });
+    const st = trafficState(w);
+    for (let t = 0; t < 1600; t++) stepWorld(w, c, [trafficSystem], []);
+    expect(w.movers[st.id[k]!]!.pos.edge).toBe(c.road.edgeIndex('osm-pnw-pdx-hawthorne-bridge'));
+  });
+  it('does not reserve a future junction for a parked roadside vehicle', () => {
+    const c = config();
+    const w = createWorld(c);
+    trafficSystem.init(w, c);
+    const st = trafficState(w);
+    const edge = c.road.edgeIndex('osm-pnw-pdx-se-hawthorne');
+    const parked = c.trafficTypes.findIndex((t) => t.category === 'oddity' && t.cruiseMps === 0);
+    expect(parked).toBeGreaterThanOrEqual(0);
+    const k = placeRoadVehicle(w, c, { type: parked, pos: { edge, s: 4.2, d: -6, dir: -1 } });
+    junctionStops(w, c, st);
+    expect(st.junctionReservation[k]).toBe('');
+    // A stopped ordinary car still intends to move through the junction.
+    const car = c.trafficTypes.findIndex(
+      (t) => t.category === 'car' && !t.behaviour?.kerb && t.cruiseMps > 0,
+    );
+    placeRoadVehicle(w, c, { type: car, pos: { edge, s: 40, d: -6, dir: -1 }, speed: 0 }, k);
+    junctionStops(w, c, st);
+    expect(st.junctionReservation[k]).not.toBe('');
+    placeRoadVehicle(
+      w,
+      c,
+      {
+        type: parked,
+        pos: {
+          edge: c.road.edgeIndex('osm-pnw-portland-morrison-join'),
+          s: 30,
+          d: -6,
+          dir: -1,
+        },
+      },
+      k,
+    );
+    const waiting = placeRoadVehicle(w, c, {
+      type: car,
+      pos: {
+        edge: c.road.edgeIndex('osm-pnw-portland-morrison-out'),
+        s: 80,
+        d: 0,
+        dir: 1,
+      },
+    });
+    expect(junctionStops(w, c, st)[waiting]).toBeLessThan(Infinity);
+  });
   it('keeps regional convoy recycling inside the shared population allowance', () => {
     const c = config(18);
     c.tuning = { ...c.tuning, 'traffic.density': 5 };

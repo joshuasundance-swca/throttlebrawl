@@ -12,6 +12,7 @@ import { pathView } from './path-view';
 import { fromCorridor, toCorridor } from './corridor';
 import { leaveSupport, standOn } from '../riders/supports';
 import { testConfig } from '../riders/testing';
+import { mergeStops } from './merge';
 
 function fixture(enabled = true) {
   const f = fixtureBranchNetwork();
@@ -61,6 +62,23 @@ function simConfig(f = fixture(), density = 0): SimConfig {
 }
 
 describe('committed network traffic paths', () => {
+  it('does not let a parked approach reserve the receiving lane, but keeps its physical body', () => {
+    const c = simConfig();
+    c.trafficTypes = [...c.trafficTypes, { ...c.trafficTypes[0]!, category: 'oddity', cruiseMps: 0 }];
+    const w = createWorld(c);
+    trafficSystem.init(w, c);
+    const st = trafficState(w);
+    const edge = c.road.edgeIndex('c-merge');
+    const parked = placeRoadVehicle(w, c, { type: 1, pos: { edge, s: 20, d: 1.7, dir: 1 } });
+    mergeStops(w, c, st);
+    expect(st.reservation[parked]).toBe('');
+    placeRoadVehicle(w, c, { type: 0, pos: { edge, s: 20, d: 1.7, dir: 1 }, speed: 0 }, parked);
+    mergeStops(w, c, st);
+    expect(st.reservation[parked]).not.toBe('');
+    placeRoadVehicle(w, c, { type: 1, pos: { edge: c.road.edgeIndex('d'), s: 6, d: 1.7, dir: 1 } }, parked);
+    const waiting = placeRoadVehicle(w, c, { type: 0, pos: { edge, s: 20, d: 1.7, dir: 1 } });
+    expect(mergeStops(w, c, st)[waiting]).toBeLessThan(Infinity);
+  });
   it('keeps convoy top-ups and recycling under the shared directional allowance', () => {
     const c = simConfig(fixture(), 10);
     c.riders = testConfig().riders;
@@ -72,6 +90,15 @@ describe('committed network traffic paths', () => {
     const st = trafficState(w);
     for (let t = 0; t < 1800; t++) {
       stepWorld(w, c, [trafficSystem], []);
+      for (const [k, id] of st.id.entries()) {
+        const path = st.paths[k];
+        const pos = w.movers[id]!.pos;
+        if (path)
+          expect(
+            path.c.edges.some((edge, i) => edge === pos.edge && path.c.o[i] === pos.dir),
+            `vehicle ${id} at tick ${w.tick}: ${JSON.stringify({ pos, path })}`,
+          ).toBe(true);
+      }
       for (const dir of [1, -1])
         expect(st.id.filter((_id, k) => st.dir[k] === dir && st.retired[k] === 0).length).toBeLessThanOrEqual(
           capPerDirection(w),

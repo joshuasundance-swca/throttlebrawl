@@ -1373,7 +1373,17 @@ function networkMotion(world: World, config: SimConfig, st: TrafficState, dt: nu
     const path = st.paths[k];
     references[k] ??= { c: st.corridor, lane: [], exitLane: [], occurrence: 0, terminal: true };
     const m = world.movers[st.id[k] ?? -1];
-    if (path && m) commitPath(config.road, graph, m.pos, config.seed, m.id, st.generation[k] ?? 0, 220, path);
+    if (path && m)
+      commitPath(
+        config.road,
+        isKerb(typeOf(config, st, k)) ? buildTrafficGraph(config, true) : graph,
+        m.pos,
+        config.seed,
+        m.id,
+        st.generation[k] ?? 0,
+        220,
+        path,
+      );
     const view = pathView(world, config, st, path ?? references[k]!, k);
     if (!path || path.currentEdge === m?.pos.edge) view.rank[k] = st.rank[k] ?? view.rank[k] ?? 0;
     if (path && m) path.currentEdge = m.pos.edge;

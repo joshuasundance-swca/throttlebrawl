@@ -4,7 +4,7 @@ import type { RoadPos } from '../../road';
 import type { SimConfig } from '../types';
 import type { World } from '../world';
 import { toCorridor } from './corridor';
-import { typeOf, type TrafficState } from './index';
+import { isParked, typeOf, type TrafficState } from './index';
 import { buildTrafficGraph, type TrafficGraph } from './network';
 
 interface Range {
@@ -107,6 +107,16 @@ export function junctionStops(world: World, config: SimConfig, st: TrafficState)
       let entry = Infinity;
       let exit = -Infinity;
       for (const range of region.ranges) {
+        // Parked oddities have no future passage. Count their real body if it obstructs a
+        // conflict surface, but never reserve the next road on their unused itinerary.
+        if (
+          isParked(t) &&
+          (!m ||
+            range.edge !== m.pos.edge ||
+            m.pos.s + t.lengthM / 2 < range.s0 ||
+            m.pos.s - t.lengthM / 2 > range.s1)
+        )
+          continue;
         const i = c.edges.indexOf(range.edge);
         if (i < 0) continue;
         const expected = config.road

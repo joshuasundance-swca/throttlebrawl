@@ -5,6 +5,9 @@ audience: player
 Bridge City's Morrison choice now carries ordinary forward traffic. Cars choose a legal bridge
 path and join the shared road again, with room for the whole vehicle and priority for waiting turns.
 The rider's original shortcut entrance remains available.
+Cyclists keep legal outer-lane connections and clear junctions from the kerb; parked roadside
+vehicles do not reserve future turns. The dev bot can filter a stopped queue inside a wide lane
+when there is clear space, using its existing low-speed limit.
 
 For devs: traffic on road choices uses one physical population and committed lane movements.
 Permission is authored independently of shortcut/alternate labels; omission keeps the old selected
@@ -26,3 +29,7 @@ turn at the same height, so the junction stays covered without competing asphalt
 This changes simulation/replay identity. An in-progress recording from another build follows the
 existing stale-race recovery; career and settings formats are unchanged. Rewards and rival pace
 are unchanged. Desktop checks do not establish phone feel or the shortcut's resulting advantage.
+
+Acceptance keeps the dense-race standstill limit. Its oncoming-approach check now places a real
+oncoming car explicitly instead of requiring that two historical ambient seeds happen to produce
+that meeting; the meeting duration and minimum riding speed remain checked.

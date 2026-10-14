@@ -1,7 +1,7 @@
 import type { SimConfig } from '../types';
 import type { World } from '../world';
 import { lanesAt, toCorridor } from './corridor';
-import { laneClear, typeOf, type TrafficState } from './index';
+import { isKerb, isParked, kerbAhead, laneClear, typeOf, type TrafficState } from './index';
 import { buildTrafficGraph, type TrafficGraph } from './network';
 
 const incomingCache = new WeakMap<TrafficGraph, Map<string, Set<string>>>();
@@ -31,6 +31,11 @@ export function mergeStops(world: World, config: SimConfig, st: TrafficState): n
   for (let k = 0; k < st.id.length; k++) {
     const path = st.paths[k];
     const mover = world.movers[st.id[k] ?? -1];
+    if (isParked(typeOf(config, st, k))) {
+      st.waitTick[k] = -1;
+      st.reservation[k] = '';
+      continue;
+    }
     if (!path || !mover || st.owner[k]) continue;
     const c = path.c;
     const p = toCorridor(c, mover.pos);
@@ -118,6 +123,11 @@ export function prepareTurn(config: SimConfig, st: TrafficState, view: TrafficSt
   if (!lane) return at - 0.3;
   const cd = (lane.dCenterM - (path.c.dOff?.[i] ?? 0)) * (path.c.o[i] ?? 1);
   const rank = lanesAt(config.road, path.c, u, 1).findIndex((l) => Math.abs(l.cd - cd) < 0.01);
+  const type = typeOf(config, st, k);
+  if (isKerb(type)) {
+    const kerb = kerbAhead(config, view, u, 1, type.widthM / 2);
+    return kerb?.rank === rank ? Infinity : at - 0.3;
+  }
   if (rank >= 0 && laneClear(config, view, u, 1, rank, typeOf(config, st, k), 3, k)) view.rank[k] = rank;
   return Math.abs((view.cd[k] ?? 0) - cd) > Math.max(0.2, (lane.widthM - typeOf(config, st, k).widthM) / 2)
     ? at - 0.3
