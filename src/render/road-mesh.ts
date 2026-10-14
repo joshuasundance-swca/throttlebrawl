@@ -50,7 +50,15 @@ import {
   planBays,
 } from './bridge-bays';
 import { barrierLookAt } from './barrier-looks';
-import { ChunkedStrips, keptSamples, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
+import {
+  ChunkedStrips,
+  coalesceSparseChunks,
+  keptSamples,
+  mergeBoxes,
+  openBox,
+  type BoxPart,
+  type Point3,
+} from './geometry';
 import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
@@ -2233,7 +2241,7 @@ export function buildRoadScene(
         seed,
         edge: e.index,
         length: e.length,
-        density,
+        density: e.isTrafficOnly ? 0 : density,
         tropical,
         outer: outerOf,
         theme,
@@ -2694,6 +2702,7 @@ export function buildRoadScene(
   // so the land between them is drawn too: the whole cross-section where both rows have the same
   // kind of land, else the strip to the narrower reach and a curtain down from its edge.
   const joinLand = strip('land');
+  const drawnLandJoins = new Set<string>();
   for (const { edge, side, end, cap } of joinCaps) {
     let best: readonly [number, number] = [0, 0];
     const mine = landEnds[edge.index]?.[side];
@@ -2701,8 +2710,14 @@ export function buildRoadScene(
       const theirs = landEnds[l.edge]?.[(end === l.entersAt ? -side : side) as -1 | 1];
       const their = theirs?.[l.entersAt];
       if (their && (their[1] > best[1] || (their[1] === best[1] && their[0] > best[0]))) best = their;
-      // Each join once, from the edge with the lower index.
-      if (!mine || !theirs || !their || l.edge <= edge.index) continue;
+      // Traffic-only movements have no reciprocal rider link. Close each physical join once,
+      // regardless of which endpoint exposes it.
+      const joinKey =
+        edge.index < l.edge
+          ? `${edge.index}:${end}:${side}|${l.edge}:${l.entersAt}`
+          : `${l.edge}:${l.entersAt}:${end === l.entersAt ? -side : side}|${edge.index}:${end}`;
+      if (!mine || !theirs || !their || drawnLandJoins.has(joinKey)) continue;
+      drawnLandJoins.add(joinKey);
       const pa = mine.profile(end);
       const pb = theirs.profile(l.entersAt);
       if (pa.length === 0 || pb.length === 0 || Math.abs(pa[0]!.y - pb[0]!.y) > JOIN_LAND_DY_M) continue;
@@ -2908,7 +2923,10 @@ export function buildRoadScene(
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
   for (const [layer, a] of Object.entries(acc) as [Layer, ChunkedStrips][]) {
     const kind = kindOf(layer);
-    for (const [key, part] of a.chunks) {
+    // Small solid fragments cost a full draw each. Keep fine-detail chunks unchanged because
+    // their visibility uses the original cell; solid surfaces use their actual geometry bounds.
+    const chunks = FINE_MESHES.has(`road-${layer}`) ? a.chunks : coalesceSparseChunks(a.chunks, 64);
+    for (const [key, part] of chunks) {
       if (part.isEmpty) continue;
       triangles += part.triangleCount;
       const color = LAYER_COLOR[layer];

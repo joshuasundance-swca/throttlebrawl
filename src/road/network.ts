@@ -103,6 +103,8 @@ export interface Edge {
   prevLinks: readonly EdgeLink[];
   /** Whether this edge is a junction's connector road. */
   isConnector: boolean;
+  /** A connector used exclusively by traffic; surrounding streets own its roadside scenery. */
+  isTrafficOnly?: boolean;
 }
 
 /** A mover's road position. Plain mutable data, so sim state can hold it directly. */
@@ -428,6 +430,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
       const b = edges[edgeIndex(row.to.road)];
       if (!c || !a || !b) continue;
       c.isConnector = true;
+      c.isTrafficOnly = (c.isTrafficOnly ?? true) && row.trafficOnly === true;
       join(
         a,
         row.from.end,

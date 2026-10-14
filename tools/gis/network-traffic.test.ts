@@ -24,6 +24,12 @@ const id = `${config.id}-${branch.label}-traffic-in`;
 const edge = network.edges[network.edgeIndex(id)]!;
 const streetcar = read<{ lengthM: number; widthM: number }>('packs/region-pnw/traffic/pdx-streetcar.json');
 
+it('traffic-only junction movements do not add a second street of downtown lots', () => {
+  const lots = planPdxDowntown(network, 1).lots;
+  expect(lots.filter((lot) => lot.edge === edge.index)).toEqual([]);
+  expect(lots.some((lot) => lot.edge === network.edgeIndex('osm-pnw-pdx-alder'))).toBe(true);
+});
+
 /** Separating-axis test: detects edge crossings even when neither rectangle contains a corner. */
 function overlaps(a: StructureFoot, b: StructureFoot): boolean {
   return [

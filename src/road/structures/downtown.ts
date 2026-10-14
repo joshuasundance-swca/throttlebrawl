@@ -392,7 +392,7 @@ export function planSfDowntown(road: RoadNetwork, seed: number): SfDowntownLots 
   const hqEdge = lastPlazaEdge(road);
   for (const e of road.edges) {
     const tags = e.tags as readonly SideTag[];
-    if (!tags.some((t) => DOWNTOWN_TAGS.includes(t.tag))) continue;
+    if (e.isTrafficOnly || !tags.some((t) => DOWNTOWN_TAGS.includes(t.tag))) continue;
     const features = e.features.filter((f) => KEEP_CLEAR.has(f.kind));
     const h = (k: number, side: number, salt: number) =>
       scatterHash(seed, 4111 + e.index * 977, k, side * 37 + salt);
@@ -870,7 +870,7 @@ export function planPdxDowntown(road: RoadNetwork, seed: number, landOverride?: 
     });
   for (const e of road.edges) {
     const tags = e.tags as readonly SideTag[];
-    if (!tags.some((t) => t.tag === 'pdx-blocks')) continue;
+    if (e.isTrafficOnly || !tags.some((t) => t.tag === 'pdx-blocks')) continue;
     const all: readonly BakedFeature[] = e.features;
     // A landmark that says `params.sightM` also keeps that much of its own side clear of buildings before
     // its start (the side a rider comes from), so a roof sign shows whole from down the road, not over a

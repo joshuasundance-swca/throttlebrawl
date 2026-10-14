@@ -3,7 +3,7 @@
 // tolerance of the strip that is drawn, a bend, a crest and a change of colour keep their samples, and a
 // straight even stretch is one quad. The negative control: a tolerance of 0 on a bend leaves nothing out.
 import { describe, expect, it } from 'vitest';
-import { ChunkedStrips, keptSamples, type Point3 } from './geometry';
+import { ChunkedStrips, coalesceSparseChunks, keptSamples, type Point3 } from './geometry';
 
 const p = (x: number, y: number, z: number): Point3 => ({ x, y, z });
 
@@ -84,6 +84,42 @@ describe('keptSamples', () => {
 });
 
 describe('ChunkedStrips with simplify', () => {
+  it('batches a sparse adjacent chunk without losing triangles or pulling in a distant chunk', () => {
+    const chunks = new ChunkedStrips((x, z) => `${Math.floor(x / 10)},${Math.floor(z / 10)}`);
+    for (const [x, n] of [
+      [1, 5],
+      [11, 1],
+      [41, 1],
+    ] as const) {
+      for (let i = 0; i < n; i++) chunks.tri(p(x, i, 1), p(x + 1, i, 1), p(x, i, 2));
+    }
+    const batches = coalesceSparseChunks(chunks.chunks, 2);
+    expect([...batches.keys()]).toEqual(['0,0', '4,0']);
+    expect([...batches.values()].reduce((sum, part) => sum + part.triangleCount, 0)).toBe(7);
+    const combined = batches.get('0,0')!.build();
+    expect(combined.index!.count).toBe(18);
+    const positions = combined.getAttribute('position');
+    expect(Array.from({ length: positions.count }, (_, i) => positions.getX(i))).toContain(12);
+    expect(chunks.triangleCount).toBe(7);
+    const trianglesOf = (parts: typeof batches) =>
+      [...parts.values()]
+        .flatMap((part) => {
+          const g = part.build();
+          const positions = g.getAttribute('position');
+          const index = g.index!;
+          const triangles = Array.from({ length: index.count / 3 }, (_, t) =>
+            Array.from({ length: 3 }, (_, v) => {
+              const i = index.getX(t * 3 + v);
+              return [positions.getX(i), positions.getY(i), positions.getZ(i)];
+            }),
+          ).map((triangle) => JSON.stringify(triangle));
+          g.dispose();
+          return triangles;
+        })
+        .sort();
+    expect(trianglesOf(batches)).toEqual(trianglesOf(chunks.chunks));
+    combined.dispose();
+  });
   it('draws the same strip in fewer triangles, and the same as before without it', () => {
     const rows = stripAlong((u) => p(0, 0, u), 50);
     const plain = new ChunkedStrips(() => 'a');
