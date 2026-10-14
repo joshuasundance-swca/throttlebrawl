@@ -445,6 +445,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
   let show: CareerShowView | null = null;
   let tab: 'map' | 'garage' = 'map';
   let openCard: string | null = null;
+  let suggestOnMap = true;
   const setTab = (t: 'map' | 'garage') => {
     tab = t;
     mapBox.hidden = t !== 'map';
@@ -784,10 +785,14 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
       showBox.replaceChildren(...(gig ? [gig] : []), ...(texts ? [toDom(texts)] : []));
       drawGarage(g, g.bikes[0]?.speed.endsWith('mph') ? 'mph' : 'km/h');
       setTab(t ?? tab);
-      // Keep an open card open (a purchase, a region's roads arriving), else none.
-      showCard(openCard && cardOf(openCard) ? openCard : null);
+      // Orient the first visit; ordinary redraws preserve a manual selection or Close.
+      const focus = suggestOnMap ? (view?.suggested ?? null) : openCard;
+      suggestOnMap = false;
+      showCard(focus && cardOf(focus) ? focus : null);
     },
     showResults(r) {
+      // The next map visit should explain the updated progress, not reopen the finished race.
+      suggestOnMap = true;
       const items: HTMLElement[] = r.objectives.map((o) =>
         el(
           'li',
