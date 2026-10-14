@@ -1,6 +1,6 @@
 // The module map from docs/architecture.md ("Module map"), as the enforced import allow-list.
-// This file is a contract: change it only in a small contract PR that also updates the graph in
-// docs/architecture.md.
+// Keep this enforced import allow-list and docs/architecture.md's graph consistent. An internal
+// interface and its callers may ship together; separate acceptance is for independent risk/consumers.
 import path from 'node:path';
 
 /** Each src/ module and the modules it may import. `main` is src/main.ts, the composition root. */

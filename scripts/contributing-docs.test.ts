@@ -659,6 +659,10 @@ describe('links', () => {
     expect(brokenLinks(readme, 'README.md')).toEqual([]);
     expect(brokenLinks(contributing, 'CONTRIBUTING.md')).toEqual([]);
     expect(brokenLinks(section(engineering, 'The bundle train'), 'docs/engineering.md')).toEqual([]);
+    expect(brokenLinks(section(engineering, 'Parallel agent lanes'), 'docs/engineering.md')).toEqual([]);
+    expect(brokenLinks(section(read('docs/architecture.md'), 'Module map'), 'docs/architecture.md')).toEqual(
+      [],
+    );
   });
 
   it('control: a missing file and a missing anchor are found, a web link is not checked', () => {
