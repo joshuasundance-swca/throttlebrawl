@@ -50,7 +50,15 @@ import {
   planBays,
 } from './bridge-bays';
 import { barrierLookAt } from './barrier-looks';
-import { ChunkedStrips, keptSamples, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
+import {
+  ChunkedStrips,
+  coalesceSparseChunks,
+  keptSamples,
+  mergeBoxes,
+  openBox,
+  type BoxPart,
+  type Point3,
+} from './geometry';
 import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
@@ -1062,6 +1070,7 @@ export function buildRoadScene(
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   const locator = new EdgeLocator(road);
+  const trafficTurns = road.edges.some((e) => e.isTrafficOnly);
   // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
   const islands = islandBoxes(road);
   const gores = goreLines(road);
@@ -1120,11 +1129,17 @@ export function buildRoadScene(
     for (const h of locator.at(p.x, p.z, e.index)) {
       const o = road.edges[h.edge];
       if (!o || hasShortcut(o)) continue;
+      if (e.isTrafficOnly && o.isTrafficOnly && o.index > e.index) continue;
+      if (e.isTrafficOnly && Math.abs(road.surfaceHeight(o.index, h.s, h.d) - p.y) > LAND_OVER_ROAD_M)
+        continue;
       const [lo, hi] = outerSpan(o);
       if (!(h.d > lo && h.d < hi)) continue;
       const l = laneSpans(road.lanesAt(o.index, h.s));
       const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
       if (h.d >= llo && h.d <= lhi) return true;
+      // A traffic turn owns the asphalt over a parent's shoulder. The parent's shoulder already
+      // yields to those lanes; clipping both here would leave a hole at the junction's outside.
+      if (e.isTrafficOnly) continue;
       if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
     }
     return false;
@@ -1261,6 +1276,7 @@ export function buildRoadScene(
     const outerL = e.dMin - VERGE_M;
     const outerR = e.dMax + VERGE_M;
     const shortcutEdge = hasShortcut(e);
+    const clippedEdge = shortcutEdge || e.isTrafficOnly === true;
     const gore = gores.get(e.index);
     // A secret fork leaves a shortcut road, and both are shortcut surfaces: it draws just over the
     // road it leaves, in the same colour, so the two never flicker where they overlap (run W-U).
@@ -1291,7 +1307,7 @@ export function buildRoadScene(
     const clips: Clip[] = sd.map((s) => {
       const c = plainClip(s);
       const span: [number, number] = [c.lo, c.hi];
-      if (!shortcutEdge) return c;
+      if (!clippedEdge) return c;
       if (underMain(e, s, outerL)) {
         c.vergeL = false;
         let free = span[0];
@@ -1340,7 +1356,7 @@ export function buildRoadScene(
     // nothing over its last sample step: a wedge-shaped hole through to the ground below (playtest 4,
     // P4-4). Where the next row in is not clipped at all, the end row is not either. At the end that
     // leaves a main road the next row in is clipped too, so that clip stays.
-    if (shortcutEdge && sd.length > 1) {
+    if (clippedEdge && sd.length > 1) {
       const unclipped = (c: Clip | undefined, s: number): boolean => {
         const p = plainClip(s);
         return !!c && c.lo === p.lo && c.hi === p.hi && c.vergeL && c.vergeR && !c.goreL && !c.goreR;
@@ -1364,16 +1380,40 @@ export function buildRoadScene(
       lift: number,
     ): [number, number] | null => {
       const [near, far] = side < 0 ? [span[1], span[0]] : [span[0], span[1]];
-      const reach = locator.clearReach(
-        e.index,
-        s,
-        near,
-        far,
-        lift,
-        GROUND_YIELD_MARGIN_M,
-        GROUND_OVER_ROAD_M,
-      );
+      let reach = locator.clearReach(e.index, s, near, far, lift, GROUND_YIELD_MARGIN_M, GROUND_OVER_ROAD_M);
       if (reach === null) return null;
+      if (trafficTurns && !e.isTrafficOnly) {
+        const turnAt = (d: number) => {
+          const p = w(e.index, s, d, 0);
+          return locator.at(p.x, p.z, e.index).some((h) => {
+            const turn = road.edges[h.edge];
+            if (
+              !turn?.isTrafficOnly ||
+              Math.abs(road.surfaceHeight(h.edge, h.s, h.d) - p.y) > LAND_OVER_ROAD_M
+            )
+              return false;
+            const drive = laneSpans(road.lanesAt(h.edge, h.s)).drive;
+            return !!drive && h.d > drive[0] && h.d < drive[1];
+          });
+        };
+        if (turnAt(near)) return null;
+        const n = Math.max(1, Math.ceil(Math.abs(reach - near) / 0.1));
+        let clear = near;
+        for (let k = 1; k <= n; k++) {
+          let into = near + ((reach - near) * k) / n;
+          if (!turnAt(into)) {
+            clear = into;
+            continue;
+          }
+          for (let j = 0; j < 7; j++) {
+            const mid = (clear + into) / 2;
+            if (turnAt(mid)) into = mid;
+            else clear = mid;
+          }
+          reach = clear;
+          break;
+        }
+      }
       return side < 0 ? [reach, near] : [near, reach];
     };
     const zonesHere = zones.filter((z) => z.edge === e.index);
@@ -1388,7 +1428,7 @@ export function buildRoadScene(
     // land beside a shoulder keeps every sample, so on the outside of a bend the shoulder's straight outer
     // edge stood up to ROAD_SIMPLIFY.tolM inside the land's: a crack with the sky under it (I-5 by Lake
     // Samish, 136 m over the water). There the shoulder reaches SHOULDER_LAP_M over the land instead.
-    const simplifyRoad = !shortcutEdge && gore === undefined;
+    const simplifyRoad = !clippedEdge && gore === undefined;
     const shoulderLap = simplifyRoad ? SHOULDER_LAP_M : 0;
     const surfaces: {
       kind: MaterialKind;
@@ -1398,7 +1438,11 @@ export function buildRoadScene(
       /** A ground band beside the lanes: the side it lies on, so it yields to a lower road's lanes (yieldReach). */
       side?: -1 | 1;
     }[] = [
-      { kind: brickEdge ? 'brick' : 'road', span: (l) => l.drive, lift: 0 },
+      {
+        kind: brickEdge ? 'brick' : 'road',
+        span: (l, c) => (l.drive ? (e.isTrafficOnly ? [c.lo, c.hi] : l.drive) : null),
+        lift: 0,
+      },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
       {
         kind: 'shoulder',
@@ -2233,7 +2277,7 @@ export function buildRoadScene(
         seed,
         edge: e.index,
         length: e.length,
-        density,
+        density: e.isTrafficOnly ? 0 : density,
         tropical,
         outer: outerOf,
         theme,
@@ -2694,6 +2738,7 @@ export function buildRoadScene(
   // so the land between them is drawn too: the whole cross-section where both rows have the same
   // kind of land, else the strip to the narrower reach and a curtain down from its edge.
   const joinLand = strip('land');
+  const drawnLandJoins = new Set<string>();
   for (const { edge, side, end, cap } of joinCaps) {
     let best: readonly [number, number] = [0, 0];
     const mine = landEnds[edge.index]?.[side];
@@ -2701,8 +2746,14 @@ export function buildRoadScene(
       const theirs = landEnds[l.edge]?.[(end === l.entersAt ? -side : side) as -1 | 1];
       const their = theirs?.[l.entersAt];
       if (their && (their[1] > best[1] || (their[1] === best[1] && their[0] > best[0]))) best = their;
-      // Each join once, from the edge with the lower index.
-      if (!mine || !theirs || !their || l.edge <= edge.index) continue;
+      // Traffic-only movements have no reciprocal rider link. Close each physical join once,
+      // regardless of which endpoint exposes it.
+      const joinKey =
+        edge.index < l.edge
+          ? `${edge.index}:${end}:${side}|${l.edge}:${l.entersAt}`
+          : `${l.edge}:${l.entersAt}:${end === l.entersAt ? -side : side}|${edge.index}:${end}`;
+      if (!mine || !theirs || !their || drawnLandJoins.has(joinKey)) continue;
+      drawnLandJoins.add(joinKey);
       const pa = mine.profile(end);
       const pb = theirs.profile(l.entersAt);
       if (pa.length === 0 || pb.length === 0 || Math.abs(pa[0]!.y - pb[0]!.y) > JOIN_LAND_DY_M) continue;
@@ -2908,7 +2959,10 @@ export function buildRoadScene(
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
   for (const [layer, a] of Object.entries(acc) as [Layer, ChunkedStrips][]) {
     const kind = kindOf(layer);
-    for (const [key, part] of a.chunks) {
+    // Small solid fragments cost a full draw each. Keep fine-detail chunks unchanged because
+    // their visibility uses the original cell; solid surfaces use their actual geometry bounds.
+    const chunks = FINE_MESHES.has(`road-${layer}`) ? a.chunks : coalesceSparseChunks(a.chunks, 64);
+    for (const [key, part] of chunks) {
       if (part.isEmpty) continue;
       triangles += part.triangleCount;
       const color = LAYER_COLOR[layer];

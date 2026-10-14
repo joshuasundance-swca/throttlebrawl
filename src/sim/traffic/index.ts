@@ -95,6 +95,7 @@ import {
   lanesAt,
   linkAt,
   riderOnCorridor,
+  roadSide,
   toCorridor,
   type Corridor,
   type LaneMap,
@@ -102,6 +103,7 @@ import {
 import { IDM } from './idm';
 import { KERB_YIELD_TUNING } from './kerb-yield';
 import { lateSteps } from '../late';
+import { networkTrafficEnabled, protectedVehicle } from './vehicle-control';
 
 export { buildCorridor, buildLaneMap, pickLink, toCorridor, trafficMayEnter } from './corridor';
 export type { Corridor, LaneMap } from './corridor';
@@ -411,7 +413,7 @@ export function kerbCd(
   const lanes = lanesAt(road, c, u, dir);
   const outer = lanes[lanes.length - 1];
   if (!outer) return null;
-  const out = outer.cd < 0 ? -1 : 1;
+  const out = roadSide(c, u, outer.cd);
   const shoulder = shoulderAt(road, c, u, dir, out);
   if (shoulder && shoulder.width >= 2 * halfW + TRAFFIC.kerbShoulderSpareM) {
     const room = Math.max(0, shoulder.width / 2 - halfW);
@@ -460,8 +462,8 @@ function shoulderAt(
   let best: { cd: number; width: number } | null = null;
   for (const l of road.lanesAt(c.edges[i] ?? 0, s)) {
     if (l.kind !== 'shoulder' || l.direction * o !== dir) continue;
-    const cd = l.dCenterM * o;
-    if (cd * out <= 0) continue;
+    const cd = (l.dCenterM - (c.dOff?.[i] ?? 0)) * o;
+    if (roadSide(c, u, cd) !== out) continue;
     if (!best || Math.abs(cd) > Math.abs(best.cd)) best = { cd, width: l.widthM };
   }
   return best;
@@ -553,13 +555,22 @@ export function isParked(t: SimTrafficTypeDef | undefined): boolean {
 }
 
 /** Where a parked oddity stands across the road: its lane's centre, nudged toward the shoulder. */
-export function parkedCd(laneCd: number): number {
-  return laneCd + (laneCd < 0 ? -1 : 1) * TRAFFIC.parkOutM;
+export function parkedCd(laneCd: number, side = laneCd < 0 ? -1 : 1): number {
+  return laneCd + side * TRAFFIC.parkOutM;
 }
 
 /** Traffic's plain state. Per-vehicle arrays are indexed by vehicle slot; per-rider by entity id. */
 export interface TrafficState {
   corridor: Corridor;
+  /** Per-vehicle committed coordinate views; null retains authored reference-path placement. */
+  paths: (import('./network').TrafficPath | null)[];
+  generation: number[];
+  /** Explicit script ownership. Ambient recycling never borrows an owned generation. */
+  owner: string[];
+  waitTick: number[];
+  reservation: string[];
+  junctionWait: number[];
+  junctionReservation: string[];
   /** Where the corridor's lane count each way changes (W-R multi-lane roads). */
   laneMap: LaneMap;
   /** Indices into config.trafficTypes of the road vehicles traffic spawns. */
@@ -628,6 +639,13 @@ export interface TrafficState {
 export function trafficState(world: World): TrafficState {
   return systemState<TrafficState>(world, 'traffic', () => ({
     corridor: { edges: [], o: [], off: [], len: [], length: 0, routeDir: 1, lo: 0, hi: 0 },
+    paths: [],
+    generation: [],
+    owner: [],
+    waitTick: [],
+    reservation: [],
+    junctionWait: [],
+    junctionReservation: [],
     laneMap: { u0: [], plus: [], minus: [] },
     types: [],
     reactionM: 0,
@@ -770,7 +788,7 @@ export function oncomingEase(world: World, clockS: number): number {
 }
 
 /** A direction's density: the master `traffic.density` slider times that direction's own slider. */
-function densityFor(world: World, st: TrafficState, dir: number): number {
+export function densityFor(world: World, st: TrafficState, dir: number): number {
   const all = clamp(world.params['traffic.density'] ?? 1, 0, 10);
   if (dir === st.corridor.routeDir) return all * clamp(world.params['traffic.densitySame'] ?? 1, 0, 10);
   return all * clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
@@ -846,7 +864,7 @@ export function laneEndAhead(
  * The type a roll `r01` in [0, 1) picks for a vehicle heading `dir` in traffic area `area` (W-R:
  * the area's own mix; null, or an area whose weights all come to 0 that way, is the region's mix).
  */
-function pickType(
+export function pickType(
   world: World,
   config: SimConfig,
   st: TrafficState,
@@ -933,7 +951,7 @@ export function spawnCd(
     const kerb = kerbCd(config.road, c, u, dir, t.widthM / 2);
     if (kerb) return kerb.cd;
   }
-  return isParked(t) ? parkedCd(laneCd) : laneCd;
+  return isParked(t) ? parkedCd(laneCd, roadSide(c, u, laneCd)) : laneCd;
 }
 
 /** The fairness rule, as one predicate: a spawn at u is allowed only beyond reaction range. */
@@ -948,20 +966,33 @@ export function spawnAllowed(anchors: readonly number[], u: number, reactionM: n
 export function placeVehicle(
   world: World,
   config: SimConfig,
-  spec: { type: number; u: number; dir: 1 | -1; rank?: number; v0?: number; speed?: number },
+  spec: {
+    type: number;
+    u: number;
+    dir: 1 | -1;
+    rank?: number;
+    v0?: number;
+    speed?: number;
+    path?: import('./network').TrafficPath;
+    trafficDirection?: 1 | -1;
+  },
   k = -1,
 ): number {
   const st = trafficState(world);
   const t = config.trafficTypes[spec.type];
   if (!t) throw new Error(`traffic: no traffic type ${spec.type}`);
-  const lanes = lanesAt(config.road, st.corridor, spec.u, spec.dir);
+  if (k >= 0 && protectedVehicle(world, st, k))
+    throw new Error('traffic: cannot reuse an owned or supported vehicle');
+  const c = spec.path?.c ?? st.corridor;
+  const placement = spec.path ? { ...st, corridor: c, laneMap: buildLaneMap(config.road, c) } : st;
+  const lanes = lanesAt(config.road, c, spec.u, spec.dir);
   let rank = Math.min(spec.rank ?? 0, Math.max(0, lanes.length - 1));
   const laneCd = lanes[rank]?.cd ?? 0;
-  let cd = isParked(t) ? parkedCd(laneCd) : laneCd;
+  let cd = isParked(t) ? parkedCd(laneCd, roadSide(c, spec.u, laneCd)) : laneCd;
   if (isKerb(t)) {
     // A kerb rider keeps the outermost lane's rank and rides at its kerb (W-P), or at the narrower
     // kerb beyond where that lane ends soon (W-R).
-    const kerb = kerbAhead(config, st, spec.u, spec.dir, t.widthM / 2);
+    const kerb = kerbAhead(config, placement, spec.u, spec.dir, t.widthM / 2);
     if (kerb) {
       rank = kerb.rank;
       cd = kerb.cd;
@@ -977,10 +1008,17 @@ export function placeVehicle(
     for (const rel of st.lastRel) if (rel) rel[slot] = 0;
   }
   const v0 = spec.v0 ?? t.cruiseMps;
+  st.paths[slot] = spec.path ?? null;
+  st.generation[slot] = (st.generation[slot] ?? 0) + 1;
+  st.owner[slot] = '';
+  st.waitTick[slot] = -1;
+  st.reservation[slot] = '';
+  st.junctionWait[slot] = -1;
+  st.junctionReservation[slot] = '';
   st.type[slot] = spec.type;
   st.u[slot] = spec.u;
   st.cd[slot] = cd;
-  st.dir[slot] = spec.dir;
+  st.dir[slot] = spec.trafficDirection ?? spec.dir;
   st.rank[slot] = rank;
   st.v0[slot] = v0;
   st.spawnTick[slot] = world.tick;
@@ -1000,7 +1038,7 @@ export function placeVehicle(
     mover.speed = spec.speed ?? v0;
     mover.h = 0;
     mover.yaw = 0;
-    fromCorridor(st.corridor, spec.u, cd, spec.dir, mover.pos);
+    fromCorridor(c, spec.u, cd, spec.dir, mover.pos);
   }
   // Forget any contact with the slot's previous self.
   for (let r = 0; r < st.contactWith.length; r++) {
@@ -1016,20 +1054,21 @@ export const DRIFT_BEND_KAPPA = 1 / 75;
 const BEND_STEP_M = 5;
 /** A rider slips at least this much (rad) to count as drifting for the traffic's room. */
 const DRIFT_SLIP_MIN = 0.05;
-const bendMasks = new WeakMap<TrafficState, Uint8Array>();
+const bendMasks = new WeakMap<TrafficState, { length: number; base: number; mask: Uint8Array }>();
 
 /** Per BEND_STEP_M of the corridor: 1 where the road bends at DRIFT_BEND_KAPPA or tighter. */
 function bendMask(config: SimConfig, st: TrafficState): Uint8Array {
-  let mask = bendMasks.get(st);
-  if (mask) return mask;
   const c = st.corridor;
-  mask = new Uint8Array(Math.ceil(c.length / BEND_STEP_M) + 1);
+  const base = Math.floor((c.off[0] ?? 0) / BEND_STEP_M);
+  const cached = bendMasks.get(st);
+  if (cached?.length === c.length && cached.base === base) return cached.mask;
+  const mask = new Uint8Array(Math.ceil(c.length / BEND_STEP_M) - base + 1);
   const at: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
   for (let i = 0; i < mask.length; i++) {
-    fromCorridor(c, i * BEND_STEP_M, 0, 1, at);
+    fromCorridor(c, (i + base) * BEND_STEP_M, 0, 1, at);
     mask[i] = Math.abs(config.road.kappaAt(at.edge, at.s)) >= DRIFT_BEND_KAPPA ? 1 : 0;
   }
-  bendMasks.set(st, mask);
+  bendMasks.set(st, { length: c.length, base, mask });
   return mask;
 }
 
@@ -1038,8 +1077,9 @@ function nearTightBend(world: World, config: SimConfig, st: TrafficState, u: num
   const clear = world.params['traffic.driftBendClearM'] ?? 0;
   if (!(clear > 0)) return false;
   const mask = bendMask(config, st);
-  const lo = Math.max(0, Math.floor((u - clear) / BEND_STEP_M));
-  const hi = Math.min(mask.length - 1, Math.ceil((u + clear) / BEND_STEP_M));
+  const base = Math.floor((st.corridor.off[0] ?? 0) / BEND_STEP_M);
+  const lo = Math.max(0, Math.floor((u - clear) / BEND_STEP_M) - base);
+  const hi = Math.min(mask.length - 1, Math.ceil((u + clear) / BEND_STEP_M) - base);
   for (let i = lo; i <= hi; i++) if (mask[i] === 1) return true;
   return false;
 }
@@ -1072,8 +1112,8 @@ export function hairpinMouth(
   const mask = bendMask(config, st);
   const bendAt = (a: number): boolean | null => {
     const x = u + dir * a;
-    if (x < 0 || x > c.length) return null;
-    return mask[Math.round(x / BEND_STEP_M)] === 1;
+    if (x < (c.off[0] ?? 0) || x > c.length) return null;
+    return mask[Math.round(x / BEND_STEP_M) - Math.floor((c.off[0] ?? 0) / BEND_STEP_M)] === 1;
   };
   let mouth = -1;
   for (let a = 0; a <= TRAFFIC.lookaheadM; a += BEND_STEP_M) {
@@ -1101,7 +1141,7 @@ export function hairpinMouth(
  * distance of it. Every rider counts here, standing still or not (one may set off at any moment, and
  * a spawn that cannot wait is never a vehicle stuck at a wait line).
  */
-function hairpinSpawnBlocked(
+export function hairpinSpawnBlocked(
   world: World,
   config: SimConfig,
   st: TrafficState,
@@ -1257,10 +1297,15 @@ function atCorridorEnd(st: TrafficState, k: number): boolean {
 
 /** Recycles vehicles that left the window, retires extras, and tops each direction up. */
 export function populate(world: World, config: SimConfig, st: TrafficState): void {
+  if (networkTrafficEnabled(config)) {
+    lateSteps().populateNetwork(world, config, st);
+    return;
+  }
   const anchors = anchorUs(world, config, st);
   if (anchors.length === 0 || st.types.length === 0) return;
   const limit = TRAFFIC.windowM + TRAFFIC.despawnMarginM;
-  const gone = (k: number) => nearestAnchor(anchors, st.u[k] ?? 0) > limit || atCorridorEnd(st, k);
+  const gone = (k: number) =>
+    !protectedVehicle(world, st, k) && (nearestAnchor(anchors, st.u[k] ?? 0) > limit || atCorridorEnd(st, k));
   for (const dir of [1, -1] as const) {
     const target = targetCount(world, st, anchors, dir);
     let active = 0;
@@ -1331,11 +1376,12 @@ export function riderViews(
   config: SimConfig,
   st: TrafficState,
   reach: number = TRAFFIC.maxContactH,
+  nearU?: number,
 ): RiderView[] {
   const out: RiderView[] = [];
   for (const m of world.movers) {
     if (m.kind !== 'rider' || m.h > reach) continue;
-    const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
+    const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH, nearU);
     if (!p) continue;
     const box = riderHitbox(config, m.riderIndex);
     out.push({
@@ -1414,7 +1460,9 @@ export const trafficSystem: SimSystem = {
     }
     // The first fill: every direction up to its target, from the front of the windows back.
     const cap = capPerDirection(world);
-    for (let pass = 0; pass < cap; pass++) populate(world, config, st);
+    // The menu constructs an unstepped grid before the late chunk loads. Opted-in races fill
+    // at tick zero, consistently whether that chunk is cold or already loaded.
+    if (!networkTrafficEnabled(config)) for (let pass = 0; pass < cap; pass++) populate(world, config, st);
   },
   // The step is in ./step.ts, a lazy chunk the race waits for (src/sim/late.ts).
   step: (world, config) => lateSteps().trafficStep(world, config),

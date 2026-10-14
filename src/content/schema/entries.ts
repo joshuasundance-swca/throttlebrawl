@@ -462,6 +462,7 @@ export const routeSchema = entry('route', {
         // Playtest 3 (round 3: "rivals and cops stay on the highway"): the share of rivals that
         // take it; absent, the AI's own rule decides.
         aiTake: unit01.optional(),
+        traffic: z.enum(['road', 'none']).optional(),
       }),
     )
     .optional(),

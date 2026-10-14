@@ -16,6 +16,7 @@ import {
   pathClear as pathClearAt,
   vehicleSize,
   see,
+  seeVehicle,
   PED_SIZE,
   furnitureSeen,
   weaponReach,
@@ -500,7 +501,10 @@ function driveRider(
       const s = see(road, m, other, 60);
       if (s) riders.push(s);
     } else if (other.kind === 'vehicle' || other.kind === 'ped') {
-      const s = see(road, m, other, SEE_TRAFFIC_M);
+      const s =
+        other.kind === 'vehicle'
+          ? seeVehicle(road, m, other, SEE_TRAFFIC_M)
+          : see(road, m, other, SEE_TRAFFIC_M);
       if (s) obstacles.push({ s, size: other.kind === 'vehicle' ? vSize : PED_SIZE });
     }
   }

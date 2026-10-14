@@ -20,8 +20,8 @@ Three things make the lines meet:
    and a connector road on each side is solved (a smooth turn, a straight and a smooth turn, as the
    hand-made compiler's branches in src/road/compile.ts) to leave the main road's end at an offset
    with its heading and land on the branch road's end with its heading. The leaving row carries the
-   split zone; the connectors carry one shortcut lane, so traffic never takes them (the format's
-   rule: traffic only takes drive-lane connectors).
+   split zone; these rider connectors carry one shortcut lane. An opted-in branch may additionally
+   carry a separate forward drive ingress without a split zone, leaving the rider choice intact.
 
 Every route runs along one line; it allows the connector pieces between its roads and every branch
 that leaves and rejoins inside its span, and names those branches.
@@ -339,6 +339,22 @@ class Join(Staging):
         return self
 
 
+class TrafficIngress(Strict):
+    """An additional forward drive connector; the rider leave and its split zone stay unchanged."""
+
+    offsetM: float  # noqa: N815
+    lane: str
+    widthM: float = Field(4.0, ge=2.5, le=5.0)  # noqa: N815
+    turnsM: tuple[float, float] = (40.0, 40.0)  # noqa: N815
+    minRadiusM: float = Field(42.5, gt=0)  # noqa: N815
+
+    @model_validator(mode="after")
+    def _turns(self) -> TrafficIngress:
+        if any(length <= 0 for length in self.turnsM):
+            raise ValueError("trafficIngress turnsM must be positive")
+        return self
+
+
 class Branch(Strict):
     """A junction choice: ``line`` leaves line ``of`` at ``leave`` and rejoins it at ``join``."""
 
@@ -362,6 +378,17 @@ class Branch(Strict):
     # shortcut rule, src/road/validate.ts): the bake picks turn lengths that keep to it, and refuses
     # a leave or join with no room for them. None: the first turn lengths that fit the lane.
     minRadiusM: float | None = Field(None, gt=0)  # noqa: N815
+    traffic: Literal["road", "none"] | None = None
+    trafficIngress: TrafficIngress | None = None  # noqa: N815
+
+    @model_validator(mode="after")
+    def _traffic(self) -> Branch:
+        if self.trafficIngress is not None:
+            if self.traffic != "road":
+                raise ValueError("trafficIngress needs traffic road")
+            if self.leave.synthetic:
+                raise ValueError("trafficIngress needs an ordinary branch leave")
+        return self
 
     @property
     def tag(self) -> str:
@@ -1179,6 +1206,35 @@ def curve_piece(
     )
 
 
+def traffic_ingress_piece(
+    pid: str,
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+    spec: TrafficIngress,
+    spacing: float,
+    speed: float,
+    land: list[str],
+    main: BakedLine | None = None,
+    half: float = 0.0,
+) -> Piece:
+    """The same solved curve as a rider connector, carrying one ordinary forward drive lane."""
+    sh = connector_shape(_xzh(a), _xzh(b), spec.turnsM, spec.widthM, spec.minRadiusM, pid)
+    pc = curve_piece(pid, "traffic turn-off", a, b, sh, spec.widthM, spacing, speed, land, None, main, half)
+    pc.lane_section = lane_section(CrossSection(laneWidthM=spec.widthM, oneWay=True))
+    return pc
+
+
+def require_forward_centre(pc: Piece, lane: str, offset: float) -> None:
+    matching = [ln for ln in pc.lane_section["lanes"] if ln["id"] == lane]
+    if not matching or not any(
+        ln["kind"] == "drive" and ln["direction"] == 1 and abs(ln["dCenterM"] - offset) < 1e-4
+        for ln in matching
+    ):
+        raise ValueError(
+            f"traffic ingress: {pc.id} {lane} must be a forward drive lane centred at {offset:g}"
+        )
+
+
 def discrete_kappa(x: F64, z: F64, spacing: float, ends: tuple[float, float]) -> F64:
     """Curvature from the sampled positions: the turn between consecutive chords over the spacing
     (what the road lints measure), so stored curvature and positions agree by construction."""
@@ -1630,14 +1686,44 @@ def bake_network(
                 "to": {"road": after.id, "end": "from", "lane": b.join.lane},
             }
         )
+        traffic_in = None
+        if b.trafficIngress is not None:
+            spec = b.trafficIngress
+            require_forward_centre(before, spec.lane, spec.offsetM)
+            require_forward_centre(first, b.leave.toLane, b.leave.toOffsetM)
+            traffic_pt = offset_point(main, centre[f"{b.tag}-leave"] - b.leave.pieceM / 2, spec.offsetM)
+            traffic_in = traffic_ingress_piece(
+                f"{cfg.id}-{b.tag}-traffic-in",
+                traffic_pt,
+                land_pt,
+                spec,
+                spacing,
+                speed_in,
+                land_in,
+                main,
+                surface_reach(before.lane_section, spec.offsetM >= 0),
+            )
+            traffic_in.frm = traffic_in.to = js["id"]
+            js["connectors"].append(
+                {
+                    "id": f"cx-{traffic_in.id}",
+                    "road": traffic_in.id,
+                    "trafficOnly": True,
+                    "from": {"road": before.id, "end": "to", "lane": spec.lane},
+                    "to": {"road": first.id, "end": "from", "lane": b.leave.toLane},
+                }
+            )
         stages = [pc for pc in (stage_in, stage_out) if pc is not None]
         order += [kin, *stages, kout] if stages else [kin, kout]
+        if traffic_in is not None:
+            order.append(traffic_in)
         branch_roads[b.id] = [
             kin.id,
             *([stage_in.id] if stage_in else []),
             *(pc.id for pc, _ in bseq),
             *([stage_out.id] if stage_out else []),
             kout.id,
+            *([traffic_in.id] if traffic_in else []),
         ]
         main_len = centre[f"{b.tag}-join"] - centre[f"{b.tag}-leave"]
         branch_len = (
@@ -1827,10 +1913,12 @@ def route_length(route: Json, by_id: dict[str, Json]) -> float:
     total -= by_id[path[-1]]["lengthM"] - route["finish"]["s"]
     # The connector pieces between main-path roads count too.
     allowed = set(route["allowedRoads"])
+    branch_ids = {rid for branch in route.get("branches", []) for rid in branch["roads"]}
     for r in by_id.values():
         if (
             r["id"] in allowed
             and r["id"] not in path
+            and r["id"] not in branch_ids
             and r["from"] == r["to"]
             and r["laneSections"][0]["lanes"][0]["kind"] != "shortcut"
         ):
@@ -1869,6 +1957,8 @@ def route_json(
                 named["sign"] = b.sign
             if b.aiTake is not None:
                 named["aiTake"] = b.aiTake
+            if b.traffic is not None:
+                named["traffic"] = b.traffic
             branches.append({**named, "roads": branch_roads[b.id]})
     finish_len = by_id[rt.finishRoad]["lengthM"]
     finish_s = finish_len + rt.finishS if rt.finishS < 0 else rt.finishS

@@ -82,6 +82,9 @@ export interface RouteProgress extends RouteQueries {
   readonly shortcuts: readonly RouteShortcut[];
   /** Branches off the main path (W-Q), in route order of their split; named ones not reached last. */
   readonly branches: readonly RouteBranch[];
+  /** Exact authored branch permissions, never the derived reachable branch aggregate. */
+  readonly trafficRoads: readonly number[];
+  readonly trafficExcludedRoads: readonly number[];
   /** Distance from the start along the route (0 at the start line), or -Infinity off the route. */
   progressAt(edge: number, s: number): number;
   /** Whether the edge is in the route's allowed set. */
@@ -230,6 +233,12 @@ export function createRouteProgress(net: RoadNetwork, route: BakedRoute): RouteP
     mainEdges,
     shortcuts,
     branches,
+    trafficRoads: (route.branches ?? [])
+      .filter((b) => b.traffic === 'road')
+      .flatMap((b) => b.roads.map((id) => net.edgeIndex(id))),
+    trafficExcludedRoads: (route.branches ?? [])
+      .filter((b) => b.traffic === 'none')
+      .flatMap((b) => b.roads.map((id) => net.edgeIndex(id))),
     progressAt,
     allows: (edge) => allowed.has(edge),
     orientation: (edge) => rows.get(edge)?.o ?? 0,

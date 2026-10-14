@@ -33,7 +33,8 @@ import { buildSimConfig, createStreamCache } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import { createSim } from '../../src/sim/api';
+import { createSimWithWorld } from '../../src/sim/create';
+import { placeRoadVehicle } from '../../src/sim/traffic/path-view';
 import { ISOLATED } from './batch';
 
 const REG = registryFromGlob(
@@ -50,7 +51,7 @@ const APPROACH_M = 150;
 /** The bot's traffic look-ahead and its line's half width plus a car's, m (dev/bot clearAt). */
 const LOOK_M = 45;
 const LINE_HALF_M = 2.5;
-/** Ticks of meeting the two races need between them, so the meeting rule is seen to apply. */
+/** Ticks of the controlled real-simulation meeting, so the oncoming rule is seen to apply. */
 const MEETING_TICKS = 20;
 /** The longest a rider of the field may stand still on the bike (under 1 m/s, riding), ticks: 3 s. */
 const STILL_MAX_TICKS = 180;
@@ -73,8 +74,8 @@ interface Ride {
   ticks: number;
 }
 
-function ride(seed: number): Ride {
-  const tuning = { ...ISOLATED, 'traffic.density': DENSITY };
+function ride(seed: number, controlledMeeting = false): Ride {
+  const tuning = { ...ISOLATED, 'traffic.density': controlledMeeting ? 0 : DENSITY };
   const config = buildSimConfig(
     REG,
     STREAMS.forEvent(REG, BRIDGE_CITY.eventId, undefined, BRIDGE_CITY.route),
@@ -84,7 +85,7 @@ function ride(seed: number): Ride {
       tuning,
     },
   );
-  const sim = createSim(config);
+  const { sim, world } = createSimWithWorld(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const zones = config.route.shortcuts;
   const bot = createBot();
@@ -92,13 +93,42 @@ function ride(seed: number): Ride {
   const out: Ride = { meeting: 0, meetingMinMps: Infinity, still: 0, stillAt: '', ticks: 0 };
   const runs = new Map<number, { n: number; at: string }>();
   let started = false;
+  let meetingEdge = -1;
   while (!sim.isOver() && sim.tick < MAX_TICKS) {
+    const player = snap.entities[playerId];
+    if (controlledMeeting && player && meetingEdge < 0) {
+      const zone = zones.find(
+        (z) =>
+          z.edge === player.road.edge &&
+          player.road.s >= z.s0 - APPROACH_M &&
+          player.road.s < z.s0 &&
+          z.d1 < 0,
+      );
+      if (zone) {
+        const lane = config.road
+          .lanesAt(zone.edge, player.road.s)
+          .filter((l) => l.kind === 'drive' && l.direction === -player.road.dir)
+          .sort((a, b) => Math.abs(a.dCenterM - zone.d1) - Math.abs(b.dCenterM - zone.d1))[0]!;
+        const type = config.trafficTypes.findIndex(
+          (t) => t.category === 'car' && !t.behaviour?.kerb && t.cruiseMps > 0,
+        );
+        placeRoadVehicle(world, config, {
+          type,
+          pos: { edge: zone.edge, s: player.road.s + 35, d: lane.dCenterM, dir: -1 },
+          speed: 5,
+          v0: 5,
+        });
+        meetingEdge = zone.edge;
+        snap = sim.snapshot();
+      }
+    }
     const actions = emptyActions();
     bot.drive(snap, playerId, config.route, actions);
     sim.step([toSimInput(actions)]);
     snap = sim.snapshot();
     const me = snap.entities[playerId];
     if (!me || me.finished) break;
+    if (controlledMeeting && meetingEdge >= 0 && me.road.edge !== meetingEdge) break;
     started ||= me.speed > 2;
     // The standstill: a rider of the field on the bike, under 1 m/s, once the race is under way.
     for (const m of snap.entities) {
@@ -154,10 +184,17 @@ describe('nobody stands still on Bridge City in dense traffic (polish H, punch i
           `(${r.stillAt || 'none'}); ${r.meeting} ticks of a car coming the other way in the cut's line, ` +
           `the bot's slowest ${r.meeting > 0 ? r.meetingMinMps.toFixed(1) : '-'} m/s through them`,
       );
-    expect(rides.reduce((n, r) => n + r.meeting, 0)).toBeGreaterThanOrEqual(MEETING_TICKS);
+    // Routing changes ambient encounters; the controlled meeting below makes the oncoming
+    // rule observable without depending on two lucky population seeds.
     for (const r of rides) {
       expect(r.still, `seed ${r.seed}: ${r.stillAt}`).toBeLessThanOrEqual(STILL_MAX_TICKS);
       if (r.meeting > 0) expect(r.meetingMinMps, `seed ${r.seed}`).toBeGreaterThanOrEqual(STOP_MPS);
     }
   }, 240_000);
+  it('rides through an actual oncoming meeting on the Broadway cut approach', () => {
+    const r = ride(1, true);
+    expect(r.meeting).toBeGreaterThanOrEqual(MEETING_TICKS);
+    expect(r.meetingMinMps).toBeGreaterThanOrEqual(STOP_MPS);
+    expect(r.still, r.stillAt).toBeLessThanOrEqual(STILL_MAX_TICKS);
+  }, 120_000);
 });

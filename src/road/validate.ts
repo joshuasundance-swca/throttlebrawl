@@ -6,6 +6,7 @@
 // road-2 adds junctions with connector roads (continuity per connector row, split zones, the
 // traffic rule for shortcut lanes) and the jump lint (ramps and gaps on straight enough road).
 import { MAX_HEIGHT_M } from '../core';
+import { trafficAccessIssues } from './traffic-access';
 import { lanesPerDirection, MAX_LANES_PER_DIRECTION, resolveVerge } from './cross-section';
 import {
   GAP_RESPAWNS,
@@ -1142,6 +1143,8 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
         branchOfRoad.set(r, b.id);
       });
     });
+    for (const finding of trafficAccessIssues({ network: net, roads: input.roads }, route))
+      add(finding.pointer, finding.message);
   }
   return out;
 }

@@ -172,7 +172,14 @@ export interface BranchSource {
    * The branch as the routes name it (W-R; interview, 2026-10-02: "junction choices in races"):
    * every route that allows it lists it in `branches` with these, and its roads.
    */
-  named?: { id: string; kind?: RouteBranchKind; marked?: boolean; sign?: string; aiTake?: number };
+  named?: {
+    id: string;
+    kind?: RouteBranchKind;
+    marked?: boolean;
+    sign?: string;
+    aiTake?: number;
+    traffic?: 'road' | 'none';
+  };
 }
 
 const FINE_STEP = 0.5; // metres between fine heading samples

@@ -185,6 +185,14 @@ export class StripAccumulator {
     return this.indices.length === 0;
   }
 
+  /** Copies independent triangles, without joining the two strips. */
+  append(other: StripAccumulator): void {
+    this.breakStrip();
+    const base = this.positions.length / 3;
+    for (const v of other.positions) this.positions.push(v);
+    for (const i of other.indices) this.indices.push(base + i);
+  }
+
   build(): BufferGeometry {
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(this.positions, 3));
@@ -193,6 +201,39 @@ export class StripAccumulator {
     g.computeBoundingSphere();
     return g;
   }
+}
+
+/**
+ * Batch sparse square-grid chunks into a dense face-adjacent chunk of the same layer.
+ * No chains: destinations are chosen from the original dense chunks, so geometry stays within
+ * one neighbouring cell and at most four sparse cells join a destination. Inputs stay intact.
+ * Only for surfaces without per-chunk distance hiding; their actual geometry bounds still cull.
+ */
+export function coalesceSparseChunks(
+  chunks: ReadonlyMap<string, StripAccumulator>,
+  maxTriangles: number,
+): ReadonlyMap<string, StripAccumulator> {
+  const out = new Map(chunks);
+  const dense = new Map([...chunks].filter(([, part]) => part.triangleCount > maxTriangles));
+  const copied = new Set<string>();
+  for (const [key, part] of chunks) {
+    if (part.isEmpty || part.triangleCount > maxTriangles) continue;
+    const [x, z] = key.split(',').map(Number);
+    const to = [`${x! - 1},${z}`, `${x! + 1},${z}`, `${x},${z! - 1}`, `${x},${z! + 1}`].find((other) =>
+      dense.has(other),
+    );
+    if (!to) continue;
+    const original = dense.get(to)!;
+    if (!copied.has(to)) {
+      const copy = new StripAccumulator();
+      copy.append(original);
+      out.set(to, copy);
+      copied.add(to);
+    }
+    out.get(to)!.append(part);
+    out.delete(key);
+  }
+  return out;
 }
 
 /**

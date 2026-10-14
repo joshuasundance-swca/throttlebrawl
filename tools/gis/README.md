@@ -286,6 +286,15 @@ Peaks stretch from one cached extract to byte-identical files.
   dresses both (`["bridge", "water-open"]` over the sea).
 - **`aiTake`** on a branch (0 to 1) goes into the route's branch entry: the share of rivals who
   take it. The Seven Mile's old road says 0 (round 3: "rivals and cops on the highway only").
+- **`traffic`** on a branch (`"road"` or `"none"`, optional) is copied to its route entry. Omission
+  preserves the existing traffic policy. An ordinary branch may additionally declare
+  `trafficIngress: {offsetM, lane, widthM?, turnsM?, minRadiusM?}`. This adds a dedicated forward
+  drive connector named `<network>-<label>-traffic-in`, sharing the rider leave's branch endpoint
+  (`toLane` and `toOffsetM`). Its source and destination must be forward drive lane centers. The
+  connector row has `trafficOnly: true` and no split zone; it is appended so the rider rows stay
+  unchanged, and the runtime excludes that row from rider defaults. The traffic road is included
+  in `allowedRoads` and the branch's flat `roads` list, but never contributes to the main route's
+  length. Width defaults to 4 m, eased turns to `[40, 40]` m and minimum radius to 42.5 m.
 - **The bake's own lint** (`src/tbgis/lint.py`) now also runs these rules, so a bad bake fails
   before it is written:
   - the jump lint: from a ramp, gap or ramp truck to its expected landing, `|kappa|` stays at or
@@ -326,7 +335,7 @@ a zone at negative d; `tests/test_capabilities.py` bakes one.
 
 `networks/osm-pnw-portland.json` (`uv run tbgis network networks/osm-pnw-portland.json`) is the first
 bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB Overpass answer for
-`45.500,-122.690,45.532,-122.640`, every public street class) into 15 roads and the route
+`45.500,-122.690,45.532,-122.640`, every public street class) into 16 roads and the route
 `osm-bridge-city-run` (4.61 km). What it decided, each from a measurement:
 
 - **The line** is `respectOneway: false` (a race closes the streets): East Burnside's one-way
@@ -349,6 +358,14 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   Its join is moved 20 m east of the real junction (`shiftM: 20`): joined straight, the sweep in `tests/sim/geometry-land.test.ts`
   found one open land edge at Grand Avenue's end (3.9 m drop, 35 m left of the road), and a 20 m shift
   closes it. A larger shift breaks the lint's 250 m rule for a junction's road ends.
+- **Ordinary forward traffic** has a separate ingress from Broadway R1 (d 2) to Alder R1 (d 2).
+  The rider's existing L2 turn-off, split zone and rejoin are unchanged. The branch explicitly says
+  `traffic: "road"`; its traffic-only drive connector is 5 m wide, 153.6726 m long and bends no
+  tighter than 43.55 m. The committed connector was synthesized offline with the same shape solver
+  from the baked roads' endpoint frames, following Broadway's height while overlapping its surface.
+  The source config reproduces that dedicated connector during a normal network bake; no new OSM
+  or elevation data was fetched. `network-traffic.test.ts` checks the whole lane's edges and the
+  committed 20 m streetcar's body corners on asphalt and against three seeded downtown plans.
 - **Dressing:** two boost-pad slots on the main road (Burnside and the Hawthorne deck), a cop lot, the
   junction sign, and a pedestrian zone beside Pioneer Courthouse Square on Broadway's left.
   T10.5 adds the downtown's people and signs: sidewalk `roadsideZone`s that name their `kinds`

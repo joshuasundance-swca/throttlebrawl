@@ -818,6 +818,11 @@ export async function checkRoute(route: Route): Promise<void> {
       `draw calls max ${r.draws.total.draws} at ${r.draws.at}: ${describeParts(r.draws.parts, 'draws')} | by camera: ${cams}`,
   );
   const cinematic = r.peakByCamera.get(CINEMATIC_CAMERA);
+  for (const [name, peak] of r.peakByCamera)
+    if (name.startsWith('takedown-'))
+      print(
+        `[examined] ${route.id}: ${name} peak ${peak.total.draws} at ${peak.at}: ${describeParts(peak.parts, 'draws')}`,
+      );
   if (cinematic)
     print(
       `[examined] ${route.id}: the historical takedown safety envelope's busiest view, ${cinematic.total.draws} still draw calls (${STILL_DRAWS_MAX - cinematic.total.draws} under ${STILL_DRAWS_MAX}), ` +

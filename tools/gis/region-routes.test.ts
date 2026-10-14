@@ -128,6 +128,15 @@ describe('the region packs carry the real roads under ODbL', () => {
         expect((network as BakedNetwork & { region?: string }).region).toBe(p.region);
         expect(routes).toHaveLength(1);
         expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
+        const sourcePath = `tools/gis/networks/${id}.json`;
+        const source = (existsSync(sourcePath) ? JSON.parse(readFileSync(sourcePath, 'utf8')) : {}) as {
+          branches?: { label: string; trafficIngress?: { widthM: number } }[];
+        };
+        const trafficWidths = new Map<string, number>(
+          (source.branches ?? []).flatMap((b) =>
+            b.trafficIngress ? [[`${id}-${b.label}-traffic-in`, b.trafficIngress.widthM] as const] : [],
+          ),
+        );
         // The hand-made roads' lanes (4 m since playtest 1), so weaving feels the same: one to three
         // each way (the network bakes' highways have two; the Golden Gate's deck has three), and a
         // junction's turn-off and rejoin carry one shortcut lane instead, so traffic never takes them.
@@ -136,7 +145,7 @@ describe('the region packs carry the real roads under ODbL', () => {
         for (const r of roads) {
           const lanes = r.laneSections[0]?.lanes ?? [];
           const drive = lanes.filter((l) => l.kind === 'drive');
-          for (const l of drive) expect(l.widthM, r.id).toBe(4);
+          for (const l of drive) expect(l.widthM, r.id).toBe(trafficWidths.get(r.id) ?? 4);
           const each = drive.filter((l) => l.direction === 1).length;
           if (drive.length === 0)
             expect(

@@ -633,9 +633,20 @@ export function createBot(): BotController {
         if (!leadStopped) filtering = false;
         else if (stillTicks >= STUCK_TICKS || backing.has(lead.o.id)) filtering = true;
         const shoulder = filtering
-          ? lanes
-              .filter((l) => l.kind === 'shoulder' && l.direction === dir)
-              .find((l) => shoulderClear(snap, me, l.dCenterM))
+          ? [
+              ...lanes
+                .filter((l) => l.kind === 'shoulder' && l.direction === dir)
+                .map((l) => ({ dCenterM: l.dCenterM })),
+              // A wide single lane can have passing room without a separately named shoulder.
+              // Keep the bike inside its lane and apply the same vehicle clearance and speed cap.
+              ...own
+                .flatMap((l) =>
+                  [l.dCenterM - l.widthM / 2 + 0.6, l.dCenterM + l.widthM / 2 - 0.6].map((dCenterM) => ({
+                    dCenterM,
+                  })),
+                )
+                .sort((a, b) => Math.abs(a.dCenterM - d) - Math.abs(b.dCenterM - d)),
+            ].find((l) => shoulderClear(snap, me, l.dCenterM))
           : undefined;
         if (free) {
           if (!dodging) stats.trafficDodges++;

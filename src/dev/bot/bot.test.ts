@@ -86,6 +86,34 @@ function blank(): ActionState {
 const ME = 0;
 
 describe('dev/bot: the BotController', () => {
+  it.each([1, -1] as const)(
+    'filters a stopped queue within a wide lane (%s), with narrow and occupied controls',
+    (dir) => {
+      const run = (widthM: number, blocked = false) => {
+        const bot = createBot();
+        const r = route([{ id: 'wide', dCenterM: 0, widthM, direction: dir, kind: 'shortcut' }]);
+        const me = mover(ME, { d: 0, speed: 0 });
+        me.road.dir = dir;
+        const lead = mover(5, { kind: 'vehicle', s: 100 + dir * 8, d: 0, speed: 0 });
+        lead.road.dir = dir;
+        const sides = blocked
+          ? [-2.4, 2.4].map((d, i) => mover(6 + i, { kind: 'vehicle', s: 100 + dir * 10, d, speed: 0 }))
+          : [];
+        let a = blank();
+        for (let t = 1; t <= STUCK_TICKS + 1; t++) {
+          a = blank();
+          bot.drive(snapshot(t, [me, lead, ...sides]), ME, r, a);
+        }
+        return a;
+      };
+      expect(Math.abs(run(6).steer)).toBeGreaterThan(0.3);
+      expect(run(6).throttle).toBe(1);
+      for (const a of [run(3), run(6, true)]) {
+        expect(a.throttle).toBe(0);
+        expect(Math.abs(a.steer)).toBeLessThan(0.05);
+      }
+    },
+  );
   it('rides full throttle in its lane on an empty road', () => {
     const bot = createBot();
     const a = blank();

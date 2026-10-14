@@ -43,6 +43,85 @@ export function see(road: RoadNetwork, me: Mover, other: Mover, range: number): 
   };
 }
 
+/** Vehicle-only lookahead through multiple short connectors, with every orientation/offset.
+ * The projected mover is a read view for avoidance; the physical mover is never modified.
+ */
+export function seeVehicle(road: RoadNetwork, me: Mover, other: Mover, range: number): Seen | null {
+  const a = me.pos;
+  if (a.edge !== other.pos.edge) {
+    const fromEdge = road.edges[a.edge];
+    const toEdge = road.edges[other.pos.edge];
+    const mePoint = road.toWorld(a.edge, a.s, a.d, 0);
+    const otherPoint = road.toWorld(other.pos.edge, other.pos.s, other.pos.d, 0);
+    const padding =
+      Math.abs(fromEdge?.dMin ?? 0) +
+      Math.abs(fromEdge?.dMax ?? 0) +
+      Math.abs(toEdge?.dMin ?? 0) +
+      Math.abs(toEdge?.dMax ?? 0) +
+      Math.abs(a.d) +
+      Math.abs(other.pos.d);
+    const reach = range + padding;
+    const dx = otherPoint.x - mePoint.x;
+    const dz = otherPoint.z - mePoint.z;
+    // A conservative physical bound avoids a network walk and surface projection for distant
+    // vehicles. It includes the full lane spans, so a lateral connector offset is not clipped.
+    if (dx * dx + dz * dz > reach * reach) return null;
+    const physical = road.surfaceUnder(other.pos, 0.2, (edge) => edge === a.edge);
+    if (physical) {
+      const ahead = (physical.s - a.s) * a.dir;
+      if (Math.abs(ahead) <= range) {
+        const from = road.frameAt(other.pos.edge, other.pos.s);
+        const to = road.frameAt(a.edge, physical.s);
+        const aligned = from.tx * to.tx + from.tz * to.tz;
+        return {
+          mover: { ...other, pos: { ...physical, dir: other.pos.dir * aligned >= 0 ? 1 : -1 } },
+          ahead,
+          dd: physical.d - a.d,
+          vAlong: other.speed * other.pos.dir * aligned * a.dir,
+        };
+      }
+    }
+  }
+  const frontier = [{ edge: a.edge, sOffset: 0, sSign: 1, dOffset: 0 }];
+  const visited = new Set<number>();
+  for (let head = 0; head < frontier.length && head < 64; head++) {
+    const row = frontier[head];
+    if (!row || visited.has(row.edge)) continue;
+    visited.add(row.edge);
+    const s = row.sOffset + row.sSign * other.pos.s;
+    if (row.edge === other.pos.edge) {
+      const ahead = (s - a.s) * a.dir;
+      if (Math.abs(ahead) > range) continue;
+      const d = row.dOffset + row.sSign * other.pos.d;
+      return {
+        mover: { ...other, pos: { edge: a.edge, s, d, dir: other.pos.dir * row.sSign === 1 ? 1 : -1 } },
+        ahead,
+        dd: d - a.d,
+        vAlong: other.speed * other.pos.dir * row.sSign * a.dir,
+      };
+    }
+    const edge = road.edges[row.edge];
+    if (!edge) continue;
+    const localS = (a.s - row.sOffset) * row.sSign;
+    for (const next of road.neighbours(row.edge, localS, range)) {
+      if (visited.has(next.edge)) continue;
+      const offset = row.sOffset + row.sSign * next.sOffset;
+      const sign = row.sSign * next.sSign;
+      const len = road.edges[next.edge]?.length ?? 0;
+      const lo = Math.min(offset, offset + sign * len);
+      const hi = Math.max(offset, offset + sign * len);
+      if (lo - a.s > range || a.s - hi > range) continue;
+      frontier.push({
+        edge: next.edge,
+        sOffset: offset,
+        sSign: sign,
+        dOffset: row.dOffset + row.sSign * next.dOffset,
+      });
+    }
+  }
+  return null;
+}
+
 /** Half extents of the largest traffic body, for crude avoidance (M1: movers don't carry a type). */
 export interface ObstacleSize {
   halfLength: number;

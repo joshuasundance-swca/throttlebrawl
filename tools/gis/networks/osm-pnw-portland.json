@@ -487,7 +487,15 @@
         "shiftM": 80,
         "turnsM": [40, 40]
       },
-      "label": "morrison"
+      "label": "morrison",
+      "traffic": "road",
+      "trafficIngress": {
+        "offsetM": 2,
+        "lane": "R1",
+        "widthM": 5,
+        "turnsM": [40, 40],
+        "minRadiusM": 42.5
+      }
     }
   ],
   "routes": [

@@ -13,7 +13,16 @@ import { input, STRAIGHT, testConfig } from '../riders/testing';
 import type { SimConfig, SimEvent, SimSmashableDef } from '../types';
 import { buildCorridor } from '../traffic';
 import { worldHash, type SimSystem, type World } from '../world';
-import { KIND_SPEC, SMASH, SMASH_DENSITY, smashState, withSmashables, type SmashState } from './index';
+import {
+  KIND_SPEC,
+  SMASH,
+  SMASH_DENSITY,
+  smashSnapshots,
+  smashState,
+  stepSmashables,
+  withSmashables,
+  type SmashState,
+} from './index';
 
 /** The fixture's lanes end at d ±4.9 (3.4 m drive lanes and 1.5 m shoulders each side). */
 const LANE_EDGE = 4.9;
@@ -127,6 +136,45 @@ describe('smashables: placement beside the road', () => {
 });
 
 describe('smashables: riding through one', () => {
+  it('contacts a nearby prop from another road, excludes an overpass and culls by physical distance', () => {
+    for (const height of [0, 8]) {
+      const c = smashConfig();
+      const bundle = fixtureNetwork(STRAIGHT);
+      const source = bundle.roads[0]!;
+      const extra = {
+        ...source,
+        id: 'branch',
+        from: 'bx',
+        to: 'by',
+        samples: {
+          ...source.samples,
+          data: { ...source.samples.data, y: source.samples.data['y']!.map((y) => y + height) },
+        },
+      };
+      const road = createRoadNetwork({
+        network: {
+          ...bundle.network,
+          roads: [...bundle.network.roads, 'branch'],
+          junctions: [
+            ...bundle.network.junctions,
+            ...bundle.network.junctions
+              .slice(0, 2)
+              .map((j, i) => ({ ...j, id: i === 0 ? 'bx' : 'by', connectors: [] })),
+          ],
+        },
+        roads: [...bundle.roads, extra],
+      });
+      c.road = road;
+      const { world, st } = placed(c);
+      const q = st!.props[0]!;
+      world.movers[0]!.pos = { edge: road.edgeIndex('branch'), s: q.u, d: q.cd, dir: 1 };
+      stepSmashables(world, c);
+      expect(q.smashedTick >= 0).toBe(height === 0);
+      expect(
+        smashSnapshots(world, c).every((p) => (p.x - q.x) ** 2 + (p.z - q.z) ** 2 <= SMASH.viewM ** 2),
+      ).toBe(true);
+    }
+  });
   it('smashes it with a wobble and a little speed lost, never a crash, and the snapshot shows the wreck', () => {
     const config = smashConfig();
     const { sim, world } = createSimWithWorld(config);
