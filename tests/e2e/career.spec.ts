@@ -20,8 +20,9 @@ interface Handle {
   snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
+  lockstep(steps: number | null): void;
   fastForward(
-    until: (snap: { tick: number }) => boolean,
+    until: (snap: { tick: number; race: { over: boolean } }) => boolean,
     opts?: { perFrame?: number; then?: number | null },
   ): void;
 }
@@ -229,9 +230,12 @@ for (const continuation of ['map', 'next'] as const) {
     await page.evaluate(() => {
       const g = (window as TestWindow).__game;
       g?.setBot(true);
-      g?.fastForward(() => false, { perFrame: 1200 });
+      g?.fastForward((snap) => snap.race.over, { perFrame: 1200, then: 1 });
     });
     await fastForwardDone(page, 'the first career race, to its end');
+    // Career settlement can precede the whole field's sim end. Cancel acceleration explicitly
+    // before starting another event; leaving it active would race through the Next transition.
+    await page.evaluate(() => (window as TestWindow).__game?.lockstep(1));
     await expect(page.locator('#career-results')).toBeVisible({ timeout: 60_000 });
     // First place is WON; a finish below first clears the opening race (it asks only to finish).
     await expect(page.locator('#career-results-title')).toHaveText(
