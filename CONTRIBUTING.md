@@ -22,6 +22,18 @@ are in [AGENTS.md](AGENTS.md).
 - Anything you add that you did not make yourself (art, sound, a model, a font) goes in
   [THIRD_PARTY_ASSETS.md](THIRD_PARTY_ASSETS.md) with its licence. Prefer CC0 or CC-BY.
 
+## Choose the delivery
+
+A PR should deliver one coherent playable improvement, including its UI, rules, internal interfaces,
+tests and short explanation. Related fixes found while building it can stay together. Split when
+work is independently useful or needs independent risk/compatibility acceptance; folder boundaries
+and checklist length are not reasons by themselves. Dependencies and CI retain their separate PRs.
+
+One owner can work across modules while respecting import boundaries. Parallel workers contribute
+branches for that owner to integrate; a worker branch does not automatically become a PR. A routine
+fix needs a short acceptance list in the PR description, not another milestone document. A complex
+design or persistent format still deserves a written plan. See [agent rules](AGENTS.md).
+
 ## Make a change
 
 1. Fork the repo (or, with write access, branch from `main`; agents use `lane/<lane-id>/<topic>`).

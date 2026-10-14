@@ -1,9 +1,9 @@
 export const meta = {
   name: 'lane-run',
   description:
-    'Build independent branches, then hand explicit results to the coordinator for integration and one live check',
+    'Build independent contributions to a playable improvement; the coordinator integrates and publishes',
   whenToUse:
-    'For useful independent work only: pass args { lanes: [{ key, brief, ownedPaths, needs?, model?, effort? }], builderModel, builderEffort?, reportDirectory, maxBuilders? }. reportDirectory is an absolute ignored directory in the launch checkout. The coordinator owns CI, landing and the live check.',
+    'For useful independent work only; shared-file sequences need no workflow. Pass args { lanes: [{ key, brief, ownedPaths, needs?, model?, effort? }], builderModel, builderEffort?, reportDirectory, maxBuilders?, publication? }. publication defaults to integrated (one feature PR); select separate only for independently useful deliveries. Workers return branches without publication. The coordinator owns CI, landing and one final live check.',
   phases: [{ title: 'Build', detail: 'independent worktrees; ready branches and evidence' }],
 };
 
@@ -17,6 +17,9 @@ const builderModel = args && args.builderModel;
 if (typeof builderModel !== 'string' || !builderModel.trim())
   throw new Error('args.builderModel must explicitly name the execution model');
 const builderEffort = args.builderEffort ?? 'medium';
+const publication = args.publication ?? 'integrated';
+if (!['integrated', 'separate'].includes(publication))
+  throw new Error('args.publication must be integrated or separate');
 const hasControl = (p) => [...p].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127);
 const absolutePath = (p) =>
   typeof p === 'string' &&
@@ -67,8 +70,8 @@ for (const l of lanes) {
     throw new Error('lane ' + l.key + ': effort must be low, medium or high');
 }
 // A lane may name one lane it `needs` (that lane's unmerged work). It starts when the parent lane has
-// finished, builds on the parent's ready branch, then hands back without waiting for its merge
-// (AGENTS.md, "A lane that needs another lane's unmerged work").
+// finished, builds on the parent's ready branch, then hands back without waiting for publication.
+// A build dependency does not imply another PR.
 for (const l of lanes) {
   if (l.needs === undefined) continue;
   if (typeof l.needs !== 'string' || !seen.has(l.needs) || l.needs === l.key)
@@ -149,7 +152,10 @@ function lanePrompt(l, parent) {
       l.needs +
       "'s ready branch " +
       parent.branch +
-      ': build on that branch with git switch --no-track -c <your branch> <parent branch>. Build and test, then return your ready branch and report. Do not open a dependent PR or wait for the merge in this worker. The coordinator opens it against main only after the parent is MERGED, after merging origin/main into your branch and rerunning affected checks.'
+      ': build on that branch with git switch --no-track -c <your branch> <parent branch>. Build and test, then return your ready branch and report. Do not open a dependent PR or wait for the merge in this worker. ' +
+      (publication === 'integrated'
+        ? 'The coordinator reconciles the exact prerequisite and combines contributions into one feature PR; no prerequisite publication is required.'
+        : 'Separate publication was selected: the coordinator opens the dependent PR against main only after the parent is MERGED, after merging origin/main into your branch and rerunning affected checks.')
     : '';
   return (
     'Follow AGENTS.md (already loaded); your task: ' +
@@ -157,9 +163,9 @@ function lanePrompt(l, parent) {
     onParent +
     "; you are not alone in the codebase: do not revert another lane's edits. Own only " +
     l.ownedPaths.join(', ') +
-    '. No browser or dev server. Write your full report to ' +
+    '. Do not push or open a PR. No browser or dev server unless the coordinator explicitly transfers the one browser slot. Write a concise handoff to ' +
     reportPath(l.key) +
-    " in the launch checkout before returning; if that boundary refuses the write, report not ready. Include owned files, check results, diagnostic paths and running process IDs/stop commands in that report. Return the exact worktree, branch, head/base, readiness, PRs if any, report path, checks, diagnostics, missingWork and processes. Follow your harness's push boundary; a dependent ready branch is a handoff, not a reason to wait for CI."
+    ' in the launch checkout before returning; if that boundary refuses the write, report not ready. Include owned files, check results, diagnostic paths and running process IDs/stop commands. Return the exact worktree, branch, head/base, readiness, PRs if any, report path, checks, diagnostics, missingWork and processes. The coordinator chooses publication boundaries, writes the feature note and verifies the combined tree.'
   );
 }
 
@@ -223,6 +229,7 @@ if (missing.length) log('lanes without ready branches and evidence: ' + missing.
 // Returning from this workflow means only that the build phase ended. It is never integration acceptance.
 return {
   lanes: built,
+  publication,
   integrationRequired: true,
   liveCheckRequired: true,
   evidenceVerificationRequired: true,
