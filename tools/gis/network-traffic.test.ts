@@ -24,6 +24,14 @@ const id = `${config.id}-${branch.label}-traffic-in`;
 const edge = network.edges[network.edgeIndex(id)]!;
 const streetcar = read<{ lengthM: number; widthM: number }>('packs/region-pnw/traffic/pdx-streetcar.json');
 
+it("retains the source roads' provenance bytes when deriving a traffic movement", () => {
+  const movement = read<{ provenance: { sources: unknown[] } }>(`${REGION}/roads/${id}.json`);
+  for (const parent of ['osm-pnw-pdx-broadway', 'osm-pnw-pdx-alder']) {
+    const original = read<{ provenance: { sources: unknown[] } }>(`${REGION}/roads/${parent}.json`);
+    expect(movement.provenance.sources, parent).toEqual(original.provenance.sources);
+  }
+});
+
 it('traffic-only junction movements do not add a second street of downtown lots', () => {
   const lots = planPdxDowntown(network, 1).lots;
   expect(lots.filter((lot) => lot.edge === edge.index)).toEqual([]);

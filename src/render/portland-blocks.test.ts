@@ -587,6 +587,11 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
     const bare: string[] = [];
     let sides = 0;
     for (const e of road.edges) {
+      // A traffic-only turn crosses the surrounding streets' land without its own building row.
+      if (e.isTrafficOnly) {
+        expect(plan.items.filter((i) => i.edge === e.index)).toEqual([]);
+        continue;
+      }
       if (!dressing[e.id]?.tags?.some((t) => t.tag === 'pdx-blocks')) continue;
       for (const side of [-1, 1] as const) {
         // The longest stretch of this side where the strip is the full wide one.

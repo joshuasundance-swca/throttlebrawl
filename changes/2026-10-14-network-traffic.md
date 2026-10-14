@@ -17,6 +17,9 @@ streets supply their scenery instead of generating another row of buildings. The
 check still requires four-metre ordinary lanes; dedicated traffic turns use their authored width.
 Sparse solid road fragments batch with one adjacent dense chunk, preserving all triangles and
 fine-detail distance culling while keeping junction camera views inside the existing budgets.
+Historical downtown comparison still holds the original road cohort; current-city tests hold
+building clearance, land support and scenery on streets, with no duplicate row on traffic-only
+turns. The new turn retains its actual parent roads' source records and attribution bytes.
 
 This changes simulation/replay identity. An in-progress recording from another build follows the
 existing stale-race recovery; career and settings formats are unchanged. Rewards and rival pace

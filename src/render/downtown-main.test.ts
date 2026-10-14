@@ -12,7 +12,13 @@
 // plan sizes lots from the fixed table now (road/structures.ts STRUCTURE_MODELS), and the same rule, read
 // with the round sizes, decides the other way there. Any other difference fails.
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import {
+  createRoadNetwork,
+  readConnector,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../road';
 import { DowntownLayer, LOT_LAND_TOP_M, type DowntownItem } from './downtown';
 import fixture from './downtown-main.fixture.json';
 import { createFlatLook } from './look';
@@ -34,11 +40,30 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   const [path, network] = Object.entries(networkFiles).find(([, n]) => n.id === id) ?? [];
   if (!network || !path) throw new Error(`no network ${id}`);
   const pack = /packs\/([^/]+)\//.exec(path)?.[1] ?? '';
+  // This fixture holds the historical port on its original streets. A newly authored traffic
+  // movement changes nearby keep-clear space intentionally; current-scene land/road clearance
+  // and its absence of duplicate street lots are held by portland-blocks and network-traffic.
+  const added = new Set(
+    network.junctions.flatMap((j) =>
+      j.connectors.flatMap((raw) => {
+        const row = readConnector(raw);
+        return row?.trafficOnly ? [row.road] : [];
+      }),
+    ),
+  );
+  const historical = {
+    ...network,
+    roads: network.roads.filter((id) => !added.has(id)),
+    junctions: network.junctions.map((j) => ({
+      ...j,
+      connectors: j.connectors.filter((raw) => !readConnector(raw)?.trafficOnly),
+    })),
+  };
   const roads = Object.entries(roadFiles)
-    .filter(([p, r]) => p.includes(`/packs/${pack}/`) && network.roads.includes(r.id))
+    .filter(([p, r]) => p.includes(`/packs/${pack}/`) && historical.roads.includes(r.id))
     .map(([, r]) => r);
   const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
-  return { road: createRoadNetwork({ network, roads }), dressing };
+  return { road: createRoadNetwork({ network: historical, roads }), dressing };
 }
 
 /** How far a drawn box's face may sit from main's, m: the fixture's centimetre rounding and float noise. */
