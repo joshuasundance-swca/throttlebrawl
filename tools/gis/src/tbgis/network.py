@@ -2089,7 +2089,13 @@ def route_json(
                 named["aiTake"] = b.aiTake
             if b.traffic is not None:
                 named["traffic"] = b.traffic
-            branches.append({**named, "roads": branch_roads[b.id]})
+            members = branch_roads[b.id]
+            if b.traffic == "road" and b.trafficIngress is not None:
+                # Ambient traffic uses the dedicated entry. Keep the ordinary entry in
+                # allowedRoads and its rider lane rows, split zone and defaults untouched.
+                rider_ingress = f"{cfg.id}-{b.tag}-in"
+                members = [rid for rid in members if rid != rider_ingress]
+            branches.append({**named, "roads": members})
     finish_len = by_id[rt.finishRoad]["lengthM"]
     finish_s = finish_len + rt.finishS if rt.finishS < 0 else rt.finishS
     main = [pc.id for pc, lab in span if lab is None]

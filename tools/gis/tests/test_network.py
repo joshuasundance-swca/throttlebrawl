@@ -423,6 +423,55 @@ def test_traffic_ingress_is_additive_legal_and_does_not_change_rider_defaults(ba
     assert lint_network(traffic.network, traffic.roads, traffic.routes) == []
 
 
+def test_explicit_traffic_ingress_replaces_only_the_direction_valid_rider_ambient_entry(
+    baked: NetworkBake,
+) -> None:
+    traffic = bake_network(traffic_config(), OSM, WAYS, flat, "2026-10-02")
+    by_id = {r["id"]: r for r in traffic.roads}
+    rider = next(c for j in traffic.network["junctions"] for c in j["connectors"] if "splitZone" in c)
+    dedicated = next(c for j in traffic.network["junctions"] for c in j["connectors"] if c.get("trafficOnly"))
+    # Unlike an opposing-lane rider entry, this ordinary shortcut remains a legal forward
+    # lane-row candidate. Ambient selection must exclude it without removing rider access.
+    for endpoint in (rider["from"], rider["to"]):
+        lanes = by_id[endpoint["road"]]["laneSections"][0]["lanes"]
+        lane = next(ln for ln in lanes if ln["id"] == endpoint["lane"])
+        assert lane["direction"] == 1 and lane["kind"] == "drive"
+    assert by_id[rider["road"]]["laneSections"][0]["lanes"][0]["direction"] == 1
+
+    full, short = traffic.routes
+    branch, original = full["branches"][0], baked.routes[0]["branches"][0]
+    assert rider["road"] not in branch["roads"]
+    assert dedicated["road"] in branch["roads"]
+    assert set(branch["roads"]) == (set(original["roads"]) - {rider["road"]}) | {dedicated["road"]}
+    assert set(full["allowedRoads"]) == set(baked.routes[0]["allowedRoads"]) | {dedicated["road"]}
+    assert rider["road"] in full["allowedRoads"]
+    assert {k: v for k, v in branch.items() if k not in {"roads", "traffic"}} == {
+        k: v for k, v in original.items() if k != "roads"
+    }
+    assert {k: v for k, v in full.items() if k not in {"branches", "allowedRoads"}} == {
+        k: v for k, v in baked.routes[0].items() if k not in {"branches", "allowedRoads"}
+    }
+    assert short == baked.routes[1]
+    assert traffic.report["routes"] == baked.report["routes"]
+    assert lint_network(traffic.network, traffic.roads, traffic.routes) == []
+
+
+@pytest.mark.parametrize("permission", [None, "none", "road"])
+def test_without_explicit_ingress_the_full_branch_membership_is_preserved(
+    permission: str | None, baked: NetworkBake
+) -> None:
+    cfg = traffic_config(traffic=permission, trafficIngress=None)
+    actual = bake_network(cfg, OSM, WAYS, flat, "2026-10-02")
+    expected_routes = [dict(route) for route in baked.routes]
+    if permission is not None:
+        original = baked.routes[0]["branches"][0]
+        expected_routes[0]["branches"] = [{**original, "traffic": permission}]
+    assert actual.routes == expected_routes
+    assert actual.network == baked.network
+    assert actual.roads == baked.roads
+    assert actual.report == baked.report
+
+
 def test_the_committed_traffic_ingress_joins_forward_lane_centres_without_moving_rider_rows() -> None:
     repo = Path(__file__).resolve().parents[3]
     region = repo / "packs/region-pnw/regions/pacific-northwest"
