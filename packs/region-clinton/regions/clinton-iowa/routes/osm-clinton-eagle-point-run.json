@@ -1,0 +1,67 @@
+{
+  "type": "route",
+  "id": "osm-clinton-eagle-point-run",
+  "name": "Eagle Point: Serpentine Drive",
+  "network": "osm-clinton-eagle-point",
+  "start": {
+    "road": "osm-clinton-eagle-entry",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-clinton-eagle-central-loop",
+    "s": 501.8331
+  },
+  "mainPath": ["osm-clinton-eagle-entry", "osm-clinton-eagle-south-loop", "osm-clinton-eagle-central-loop"],
+  "allowedRoads": [
+    "osm-clinton-eagle-entry",
+    "osm-clinton-eagle-south-loop",
+    "osm-clinton-eagle-central-loop"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-clinton-eagle-south-loop",
+      "s": 517.8365
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 5,
+    "perRow": 1,
+    "rowGapM": 8.0
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A compact technical one-pass route: entry, South Loop, Central Loop. Actual OSM/USGS data. Single-file start; narrow arcade cross-sections are disclosed in network notes. No North Loop, pedestrian path or lap.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-15",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-clinton-eagle-point.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+          "retrievedAt": "2026-10-15T21:21:57Z",
+          "sha256": "60dd79a1d5ed17064f8acab989132d8bfd3d4fcb30b4ee809456b1ee202466a1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 190 points in 1 request(s) (lon, lat WGS84, sha256 2611afdd90dca649), bilinear (line park)",
+          "retrievedAt": "2026-10-15T22:01:12Z",
+          "sha256": "79f3f59ef84410e80a36c347248db9a0d0c344a7e7d66b7266a5511517a8f0ec"
+        }
+      ]
+    }
+  }
+}
