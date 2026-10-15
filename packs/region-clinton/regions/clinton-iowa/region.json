@@ -62,6 +62,16 @@
     }
   ],
   "weather": null,
+  "smashables": [
+    {
+      "id": "rural-delivery",
+      "kind": "mailbox",
+      "text": "RURAL DELIVERY",
+      "weight": 1,
+      "tags": ["rural"],
+      "status": "live"
+    }
+  ],
   "meta": {
     "status": "live",
     "notes": "Minimal Clinton identity for the first real-road prototype: open rural land and deciduous copses through the reusable rural scenery tag. No claim that the art reconstructs surveyed fields, property boundaries or individual buildings. Existing base traffic and regular riders; no career chapter yet.",
