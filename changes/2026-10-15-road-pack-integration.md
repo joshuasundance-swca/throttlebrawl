@@ -18,3 +18,8 @@ Explicit rider body names accept both a short model name and a full rider asset 
 model retry and presentation retirement behavior. The light-eligibility fixture opts its probe
 into road events explicitly, so a region can intentionally ship without random road events.
 Board-copy checks read every region without fixing the region inventory size.
+
+Both courses include horizon data. Clinton uses original generic rolling hills and clouds;
+Longview uses the existing regional mountain and cloud backdrop with distant ground for its
+network. Every-network backdrop validation remains, and scene-cost checks now sweep routes in
+new packs as well as the existing dedicated pack groups.
