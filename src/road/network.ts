@@ -8,6 +8,7 @@
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
 import { atan, cos, sin, type GroundSurface, type LaneInfo, type RoadSurface } from '../core';
 import { buildLaneTransitions, type LaneTransition } from './lane-transitions';
+import { grassMedianSpan } from './median';
 import {
   bridgeTapers,
   taperLead,
@@ -196,8 +197,8 @@ export interface RoadNetwork {
    */
   vergeAt(edge: number, s: number, side: VergeSide): TaperedVerge;
   /**
-   * The ground under (s, d): the road's surface on its lanes (a shoulder lane is `shoulder`), the
-   * verge band's surface on a verge, or null past a verge's outer edge.
+   * The ground under (s, d): the road's surface on its lanes (a shoulder lane is `shoulder`),
+   * grass inside an authored grass median, the verge band's surface on a verge, or null past it.
    */
   groundAt(edge: number, s: number, d: number): GroundSurface | null;
   /** The barrier on one side at s (left is negative d), or null. */
@@ -570,9 +571,11 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
         return lane.kind === 'shoulder' ? 'shoulder' : e.surface;
       }
     }
+    const median = grassMedianSpan(section.lanes, section.median);
+    if (median && d >= median[0] && d <= median[1]) return 'grass';
     const v = tapered(edge, resolveVerge(e, section, d < 0 ? 'left' : 'right', s), s);
     const inside = d < 0 ? d >= v.dOuter && d <= v.dInner : d <= v.dOuter && d >= v.dInner;
-    // Between lanes (a median's gap) the road's own surface stands in.
+    // Other gaps, including painted and barrier medians, retain the road's own surface.
     if (d < 0 ? d > v.dInner : d < v.dInner) return e.surface;
     return inside && v.widthM > 0 ? v.surface : null;
   };
