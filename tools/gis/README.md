@@ -295,6 +295,16 @@ Peaks stretch from one cached extract to byte-identical files.
   unchanged, and the runtime excludes that row from rider defaults. The traffic road is included
   in `allowedRoads` and the branch's flat `roads` list, but never contributes to the main route's
   length. Width defaults to 4 m, eased turns to `[40, 40]` m and minimum radius to 42.5 m.
+  `trafficReverse: {leave, join}` adds both reverse movements for ordinary branch endpoints.
+  Each movement uses the same curve settings plus explicit `branchOffsetM` and `branchLane`;
+  `offsetM` and `lane` name the main-road lane. Both ends must be reverse drive lane centers.
+  Curves stay oriented with the race and carry a negative-direction drive lane. This is road
+  geometry orientation, not a one-way restriction on the branch. The generated roads end in
+  `-traffic-reverse-leave` and `-traffic-reverse-join`, with traffic-only connector rows that
+  do not add rider defaults. Added traffic asphalt follows the existing rider connector's
+  height where the junction ribbons overlap, preserving the rider's original surface.
+  Runtime traffic reserves physically overlapping turns together, including connector-to-connector
+  overlap, until the full vehicle body has cleared. Height-separated surfaces stay independent.
 - **The bake's own lint** (`src/tbgis/lint.py`) now also runs these rules, so a bad bake fails
   before it is written:
   - the jump lint: from a ramp, gap or ramp truck to its expected landing, `|kappa|` stays at or

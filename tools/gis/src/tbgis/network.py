@@ -355,6 +355,18 @@ class TrafficIngress(Strict):
         return self
 
 
+class ReverseTrafficMovement(TrafficIngress):
+    """A race-oriented curve traversed backwards between explicit reverse drive lanes."""
+
+    branchOffsetM: float  # noqa: N815
+    branchLane: str  # noqa: N815
+
+
+class ReverseTraffic(Strict):
+    leave: ReverseTrafficMovement
+    join: ReverseTrafficMovement
+
+
 class Branch(Strict):
     """A junction choice: ``line`` leaves line ``of`` at ``leave`` and rejoins it at ``join``."""
 
@@ -380,6 +392,7 @@ class Branch(Strict):
     minRadiusM: float | None = Field(None, gt=0)  # noqa: N815
     traffic: Literal["road", "none"] | None = None
     trafficIngress: TrafficIngress | None = None  # noqa: N815
+    trafficReverse: ReverseTraffic | None = None  # noqa: N815
 
     @model_validator(mode="after")
     def _traffic(self) -> Branch:
@@ -388,6 +401,11 @@ class Branch(Strict):
                 raise ValueError("trafficIngress needs traffic road")
             if self.leave.synthetic:
                 raise ValueError("trafficIngress needs an ordinary branch leave")
+        if self.trafficReverse is not None:
+            if self.traffic != "road":
+                raise ValueError("trafficReverse needs traffic road")
+            if self.leave.synthetic or self.join.synthetic:
+                raise ValueError("trafficReverse needs ordinary branch endpoints")
         return self
 
     @property
@@ -1216,23 +1234,60 @@ def traffic_ingress_piece(
     land: list[str],
     main: BakedLine | None = None,
     half: float = 0.0,
+    direction: Literal[1, -1] = 1,
+    leaves_main: bool = True,
 ) -> Piece:
-    """The same solved curve as a rider connector, carrying one ordinary forward drive lane."""
+    """A solved traffic curve, oriented with the race; its drive lane chooses actual travel."""
     sh = connector_shape(_xzh(a), _xzh(b), spec.turnsM, spec.widthM, spec.minRadiusM, pid)
-    pc = curve_piece(pid, "traffic turn-off", a, b, sh, spec.widthM, spacing, speed, land, None, main, half)
+    pc = curve_piece(
+        pid, "traffic turn-off", a, b, sh, spec.widthM, spacing, speed, land, None, main, half, leaves_main
+    )
     pc.lane_section = lane_section(CrossSection(laneWidthM=spec.widthM, oneWay=True))
+    if direction == -1:
+        pc.lane_section["lanes"][0].update(id="L1", direction=-1)
     return pc
 
 
 def require_forward_centre(pc: Piece, lane: str, offset: float) -> None:
+    require_drive_centre(pc, lane, offset, 1)
+
+
+def require_drive_centre(pc: Piece, lane: str, offset: float, direction: int) -> None:
     matching = [ln for ln in pc.lane_section["lanes"] if ln["id"] == lane]
     if not matching or not any(
-        ln["kind"] == "drive" and ln["direction"] == 1 and abs(ln["dCenterM"] - offset) < 1e-4
+        ln["kind"] == "drive" and ln["direction"] == direction and abs(ln["dCenterM"] - offset) < 1e-4
         for ln in matching
     ):
-        raise ValueError(
-            f"traffic ingress: {pc.id} {lane} must be a forward drive lane centred at {offset:g}"
-        )
+        name = "forward" if direction == 1 else "reverse"
+        raise ValueError(f"traffic ingress: {pc.id} {lane} must be a {name} drive lane centred at {offset:g}")
+
+
+def align_traffic_height(pc: Piece, peers: list[Piece]) -> None:
+    """A new turn shares the elevation of existing overlapping junction asphalt.
+
+    Keep existing rider surfaces and the new turn's endpoint heights. Blend only the added
+    geometry, beyond the full ribbons' overlap, so two independently eased curves do not stack.
+    """
+    half = max(ln["widthM"] / 2 + abs(ln["dCenterM"]) for ln in pc.lane_section["lanes"])
+    for i in range(1, len(pc.x) - 1):
+        best: tuple[float, float, float] | None = None
+        for peer in peers:
+            reach = half + max(ln["widthM"] / 2 + abs(ln["dCenterM"]) for ln in peer.lane_section["lanes"])
+            for j in range(len(peer.x) - 1):
+                dx, dz = peer.x[j + 1] - peer.x[j], peer.z[j + 1] - peer.z[j]
+                norm = dx * dx + dz * dz
+                if norm <= 0:
+                    continue
+                t = float(np.clip(((pc.x[i] - peer.x[j]) * dx + (pc.z[i] - peer.z[j]) * dz) / norm, 0, 1))
+                dist = math.hypot(pc.x[i] - peer.x[j] - t * dx, pc.z[i] - peer.z[j] - t * dz)
+                if dist > reach + MAIN_BLEND_M or (best is not None and dist >= best[0]):
+                    continue
+                y = float(peer.y[j] + t * (peer.y[j + 1] - peer.y[j]))
+                best = dist, y, reach
+        if best is not None:
+            dist, y, reach = best
+            blend = 1 - float(smoothstep(np.array((dist - reach) / MAIN_BLEND_M)))
+            pc.y[i] += blend * (y - pc.y[i])
 
 
 def discrete_kappa(x: F64, z: F64, spacing: float, ends: tuple[float, float]) -> F64:
@@ -1704,6 +1759,7 @@ def bake_network(
                 surface_reach(before.lane_section, spec.offsetM >= 0),
             )
             traffic_in.frm = traffic_in.to = js["id"]
+            align_traffic_height(traffic_in, [kin])
             js["connectors"].append(
                 {
                     "id": f"cx-{traffic_in.id}",
@@ -1713,10 +1769,73 @@ def bake_network(
                     "to": {"road": first.id, "end": "from", "lane": b.leave.toLane},
                 }
             )
+        reverse_traffic: list[Piece] = []
+        if b.trafficReverse is not None:
+            for end_name, spec, parent, branch_end, junction, parent_s, branch_s, turn_tags, speed in (
+                (
+                    "leave",
+                    b.trafficReverse.leave,
+                    before,
+                    first,
+                    js,
+                    centre[f"{b.tag}-leave"] - b.leave.pieceM / 2,
+                    s_first,
+                    land_in,
+                    speed_in,
+                ),
+                (
+                    "join",
+                    b.trafficReverse.join,
+                    after,
+                    last,
+                    jm,
+                    centre[f"{b.tag}-join"] + b.join.pieceM / 2,
+                    s_last,
+                    land_out,
+                    speed_out,
+                ),
+            ):
+                require_drive_centre(parent, spec.lane, spec.offsetM, -1)
+                require_drive_centre(branch_end, spec.branchLane, spec.branchOffsetM, -1)
+                p = offset_point(main, parent_s, spec.offsetM)
+                q = offset_point(line, branch_s, spec.branchOffsetM)
+                leaves = end_name == "leave"
+                turn = traffic_ingress_piece(
+                    f"{cfg.id}-{b.tag}-traffic-reverse-{end_name}",
+                    p if leaves else q,
+                    q if leaves else p,
+                    spec,
+                    spacing,
+                    speed,
+                    turn_tags,
+                    main,
+                    surface_reach(parent.lane_section, spec.offsetM >= 0),
+                    -1,
+                    leaves,
+                )
+                turn.frm = turn.to = junction["id"]
+                align_traffic_height(turn, [kin] if leaves else [kout])
+                parent_end = {"road": parent.id, "end": "to" if leaves else "from", "lane": spec.lane}
+                branch_end_row = {
+                    "road": branch_end.id,
+                    "end": "from" if leaves else "to",
+                    "lane": spec.branchLane,
+                }
+                junction["connectors"].append(
+                    {
+                        "id": f"cx-{turn.id}",
+                        "road": turn.id,
+                        "trafficOnly": True,
+                        "from": parent_end if leaves else branch_end_row,
+                        "to": branch_end_row if leaves else parent_end,
+                    }
+                )
+                reverse_traffic.append(turn)
         stages = [pc for pc in (stage_in, stage_out) if pc is not None]
         order += [kin, *stages, kout] if stages else [kin, kout]
         if traffic_in is not None:
             order.append(traffic_in)
+        order += reverse_traffic
         branch_roads[b.id] = [
             kin.id,
             *([stage_in.id] if stage_in else []),
@@ -1724,6 +1843,7 @@ def bake_network(
             *([stage_out.id] if stage_out else []),
             kout.id,
             *([traffic_in.id] if traffic_in else []),
+            *(pc.id for pc in reverse_traffic),
         ]
         main_len = centre[f"{b.tag}-join"] - centre[f"{b.tag}-leave"]
         branch_len = (

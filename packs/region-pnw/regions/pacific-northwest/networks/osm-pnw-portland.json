@@ -28,7 +28,9 @@
     "osm-pnw-pdx-grand",
     "osm-pnw-portland-morrison-in",
     "osm-pnw-portland-morrison-out",
-    "osm-pnw-portland-morrison-traffic-in"
+    "osm-pnw-portland-morrison-traffic-in",
+    "osm-pnw-portland-morrison-traffic-reverse-leave",
+    "osm-pnw-portland-morrison-traffic-reverse-join"
   ],
   "junctions": [
     {
@@ -209,6 +211,21 @@
             "lane": "R1"
           },
           "trafficOnly": true
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-traffic-reverse-leave",
+          "road": "osm-pnw-portland-morrison-traffic-reverse-leave",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-alder",
+            "end": "from",
+            "lane": "L1"
+          }
         }
       ],
       "control": "none"
@@ -338,6 +355,21 @@
             "end": "from",
             "lane": "R1"
           }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-traffic-reverse-join",
+          "road": "osm-pnw-portland-morrison-traffic-reverse-join",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-pnw-pdx-grand",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-se-hawthorne",
+            "end": "from",
+            "lane": "L1"
+          }
         }
       ],
       "control": "none"
@@ -406,7 +438,7 @@
       {
         "name": "OpenStreetMap",
         "spdx": "ODbL-1.0",
-        "attribution": "© OpenStreetMap contributors",
+        "attribution": "ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
         "retrievedAt": "2026-10-05T13:16:11Z",

@@ -130,12 +130,33 @@ describe('the region packs carry the real roads under ODbL', () => {
         expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
         const sourcePath = `tools/gis/networks/${id}.json`;
         const source = (existsSync(sourcePath) ? JSON.parse(readFileSync(sourcePath, 'utf8')) : {}) as {
-          branches?: { label: string; trafficIngress?: { widthM: number } }[];
+          branches?: {
+            label: string;
+            trafficIngress?: { widthM: number };
+            trafficReverse?: Record<'leave' | 'join', { widthM: number }>;
+          }[];
         };
-        const trafficWidths = new Map<string, number>(
-          (source.branches ?? []).flatMap((b) =>
-            b.trafficIngress ? [[`${id}-${b.label}-traffic-in`, b.trafficIngress.widthM] as const] : [],
-          ),
+        const trafficMovements = new Map<string, { widthM: number; direction: 1 | -1 }>(
+          (source.branches ?? []).flatMap((b) => [
+            ...(b.trafficIngress
+              ? [
+                  [
+                    `${id}-${b.label}-traffic-in`,
+                    { widthM: b.trafficIngress.widthM, direction: 1 as const },
+                  ] as const,
+                ]
+              : []),
+            ...(['leave', 'join'] as const).flatMap((end) =>
+              b.trafficReverse
+                ? [
+                    [
+                      `${id}-${b.label}-traffic-reverse-${end}`,
+                      { widthM: b.trafficReverse[end].widthM, direction: -1 as const },
+                    ] as const,
+                  ]
+                : [],
+            ),
+          ]),
         );
         // The hand-made roads' lanes (4 m since playtest 1), so weaving feels the same: one to three
         // each way (the network bakes' highways have two; the Golden Gate's deck has three), and a
@@ -145,14 +166,18 @@ describe('the region packs carry the real roads under ODbL', () => {
         for (const r of roads) {
           const lanes = r.laneSections[0]?.lanes ?? [];
           const drive = lanes.filter((l) => l.kind === 'drive');
-          for (const l of drive) expect(l.widthM, r.id).toBe(trafficWidths.get(r.id) ?? 4);
+          for (const l of drive) expect(l.widthM, r.id).toBe(trafficMovements.get(r.id)?.widthM ?? 4);
           const each = drive.filter((l) => l.direction === 1).length;
           if (drive.length === 0)
             expect(
               lanes.map((l) => l.kind),
               r.id,
             ).toEqual(['shortcut']);
-          else if (lanes.length === 1) expect(drive.length === 1 && each === 1, r.id).toBe(true);
+          else if (lanes.length === 1)
+            expect(
+              drive.length === 1 && drive[0]?.direction === (trafficMovements.get(r.id)?.direction ?? 1),
+              r.id,
+            ).toBe(true);
           else expect(drive.length === 2 * each && each >= 1 && each <= 3, r.id).toBe(true);
         }
       }

@@ -495,6 +495,26 @@
         "widthM": 5,
         "turnsM": [40, 40],
         "minRadiusM": 42.5
+      },
+      "trafficReverse": {
+        "leave": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -2,
+          "branchLane": "L1",
+          "widthM": 5,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        },
+        "join": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -2,
+          "branchLane": "L1",
+          "widthM": 5,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        }
       }
     }
   ],

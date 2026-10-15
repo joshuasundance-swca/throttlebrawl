@@ -1,0 +1,152 @@
+{
+  "type": "road",
+  "id": "osm-pnw-portland-morrison-traffic-reverse-leave",
+  "name": "traffic turn-off",
+  "realName": "traffic turn-off",
+  "network": "osm-pnw-portland",
+  "from": "osm-pnw-portland-j4",
+  "to": "osm-pnw-portland-j4",
+  "lengthM": 148.0212,
+  "sampleSpacingM": 2.000286486486486,
+  "speedLimitMps": 8.9,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L1",
+          "dCenterM": 0,
+          "widthM": 5.0,
+          "direction": -1,
+          "kind": "drive"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 148.0212,
+      "side": "both",
+      "tag": "pdx-blocks"
+    },
+    {
+      "s0": 0,
+      "s1": 148.0212,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -416.5539, -417.27, -417.9849, -418.6959, -419.3986, -420.0878, -420.757, -421.3991, -422.0067,
+        -422.5719, -423.087, -423.5442, -423.9363, -424.2564, -424.4985, -424.6574, -424.729, -424.7104,
+        -424.5998, -424.3971, -424.1031, -423.7202, -423.2518, -422.7026, -422.0781, -421.3846, -420.629,
+        -419.8186, -418.9608, -418.0633, -417.1335, -416.1785, -415.2049, -414.2186, -413.2248, -412.2273,
+        -411.2288, -410.2301, -409.2315, -408.2329, -407.2334, -406.2311, -405.2229, -404.2052, -403.1734,
+        -402.1227, -401.0483, -399.9453, -398.8089, -397.6351, -396.42, -395.1606, -393.8545, -392.5003,
+        -391.0972, -389.6453, -388.1455, -386.5994, -385.0093, -383.3779, -381.7083, -380.0041, -378.2688,
+        -376.5061, -374.7197, -372.913, -371.0894, -369.2521, -367.4038, -365.5472, -363.6845, -361.8178,
+        -359.9486, -358.0783, -356.2076
+      ],
+      "y": [
+        13.7812, 13.8135, 13.8454, 13.8772, 13.909, 13.9409, 13.9735, 14.0069, 14.0414, 14.0772, 14.1146,
+        14.1537, 14.1944, 14.2368, 14.2809, 14.3289, 14.3822, 14.4316, 14.4822, 14.5317, 14.5721, 14.5945,
+        14.5935, 14.5645, 14.4954, 14.3978, 14.2749, 14.1329, 13.983, 13.8412, 13.7291, 13.671, 13.6537,
+        13.6468, 13.6398, 13.6327, 13.6256, 13.6184, 13.6113, 13.6041, 13.5969, 13.5897, 13.5826, 13.5756,
+        13.5686, 13.5616, 13.5548, 13.548, 13.5414, 13.5348, 13.5284, 13.5221, 13.5159, 13.5098, 13.5038,
+        13.4979, 13.4922, 13.4866, 13.4812, 13.4759, 13.4709, 13.466, 13.4615, 13.4573, 13.4534, 13.4498,
+        13.4466, 13.4437, 13.4412, 13.4391, 13.4373, 13.4359, 13.435, 13.4344, 13.4342
+      ],
+      "z": [
+        -139.4967, -137.6289, -135.7607, -133.8909, -132.0181, -130.1402, -128.2552, -126.3607, -124.4549,
+        -122.5361, -120.6033, -118.656, -116.6946, -114.7201, -112.7346, -110.7408, -108.7419, -106.7418,
+        -104.7447, -102.7548, -100.7764, -98.8132, -96.8686, -94.9453, -93.045, -91.1689, -89.3168, -87.4881,
+        -85.681, -83.8934, -82.1223, -80.3647, -78.6173, -76.877, -75.141, -73.4071, -71.6738, -69.9405,
+        -68.2073, -66.4741, -64.7413, -63.0102, -61.2825, -59.5604, -57.8468, -56.1446, -54.4573, -52.7886,
+        -51.1424, -49.5227, -47.9338, -46.3798, -44.8648, -43.3927, -41.9671, -40.5913, -39.2678, -37.9987,
+        -36.7853, -35.6279, -34.5263, -33.4791, -32.4842, -31.5386, -30.6387, -29.7801, -28.9581, -28.1672,
+        -27.4023, -26.6578, -25.9285, -25.2097, -24.4972, -23.7878, -23.0793
+      ],
+      "kappa": [
+        -0.0, -0.00031012, -0.0010526, -0.0021877, -0.0036333, -0.0053127, -0.0071543, -0.0090921, -0.011065,
+        -0.013018, -0.0149, -0.016666, -0.018277, -0.019698, -0.0209, -0.02186, -0.022558, -0.022982,
+        -0.023124, -0.02298, -0.022555, -0.021855, -0.020894, -0.01969, -0.018267, -0.016655, -0.014888,
+        -0.013006, -0.011053, -0.0090799, -0.0071426, -0.0053017, -0.0036236, -0.0021797, -0.0010468,
+        -0.00030707, -2.2533e-5, 3.5522e-15, -1.7392e-5, -0.00023701, -0.00080799, -0.0016824, -0.0027969,
+        -0.0040922, -0.005513, -0.0070084, -0.0085312, -0.010039, -0.011492, -0.012856, -0.0141, -0.015198,
+        -0.016127, -0.016869, -0.017409, -0.017738, -0.017848, -0.017739, -0.017412, -0.016873, -0.016132,
+        -0.015204, -0.014107, -0.012864, -0.0115, -0.010048, -0.0085406, -0.0070177, -0.0055221, -0.0041006,
+        -0.0028044, -0.0016886, -0.00081246, -0.00023937, -0.0
+      ],
+      "grade": [
+        0.016149, 0.016056, 0.01592, 0.015882, 0.015918, 0.016121, 0.016496, 0.016982, 0.017593, 0.018306,
+        0.019105, 0.019941, 0.020775, 0.021611, 0.023035, 0.02532, 0.025654, 0.025002, 0.025034, 0.022475,
+        0.015684, 0.0053465, -0.0074822, -0.024505, -0.041681, -0.055126, -0.066205, -0.072966, -0.072912,
+        -0.063466, -0.042552, -0.018842, -0.0060492, -0.0034761, -0.0035224, -0.0035609, -0.0035726,
+        -0.0035728, -0.003585, -0.0035974, -0.0035847, -0.0035596, -0.0035329, -0.003516, -0.0034972,
+        -0.0034508, -0.0033907, -0.0033421, -0.0033034, -0.0032449, -0.0031786, -0.0031171, -0.0030689,
+        -0.0030348, -0.0029787, -0.0029053, -0.0028303, -0.0027518, -0.0026687, -0.0025796, -0.0024709,
+        -0.0023278, -0.0021803, -0.0020377, -0.0018751, -0.0017001, -0.0015249, -0.0013509, -0.0011552,
+        -0.00096119, -0.00079498, -0.00058572, -0.00037824, -0.00019935, -9.9717e-5
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-05",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-portland.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
+        "retrievedAt": "2026-10-05T13:16:11Z",
+        "sha256": "585360f0126dec18e8e4780c4bf6e822c1d0f93999b9198fda52976becb143a5"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 490 points in 1 request(s) (lon, lat WGS84, sha256 a34e500ccf3e93a4), bilinear (line pdx)",
+        "retrievedAt": "2026-10-05T13:16:12Z",
+        "sha256": "a7dba5dd8ee7e7838a3f46dad3418ec83941862a0e3bd5bcd2d157cf8284c829"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 207 points in 1 request(s) (lon, lat WGS84, sha256 6655e03817a1ff0d), bilinear (line morrison)",
+        "retrievedAt": "2026-10-05T13:16:13Z",
+        "sha256": "e843d7a8e2f65278bc9e410ff059fb4980be66a15078b545c47fad592a1cfc18"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Portland street and bridge paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 11.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn); additional reverse traffic movement synthesized offline from committed lane endpoint frames; original rider roads unchanged"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A dedicated reverse traffic movement on the Morrison route choice."
+  }
+}

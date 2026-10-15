@@ -468,6 +468,17 @@ export function createBot(): BotController {
     drive(snap, playerId, route, a) {
       const me = snap.entities[playerId];
       if (!me) return;
+      if (route.projectPosition) {
+        const project = route.projectPosition.bind(route);
+        snap = {
+          ...snap,
+          entities: snap.entities.map((other) => {
+            if (other.kind !== 'vehicle' || other.road.edge === me.road.edge) return other;
+            const pos = project(me.road, other.road, PASS_CLEAR_M);
+            return pos ? { ...other, road: { ...other.road, ...pos } } : other;
+          }),
+        };
+      }
       backing.clear();
       for (const o of snap.entities) {
         if (o.kind !== 'vehicle') continue;

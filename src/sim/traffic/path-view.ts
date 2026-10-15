@@ -2,12 +2,55 @@
 // never simulation state: building a view cannot change a future decision or state hash.
 import type { RoadPos } from '../../road';
 import type { SimConfig } from '../types';
-import type { World } from '../world';
+import type { Mover, World } from '../world';
 import { buildLaneMap, fromCorridor, lanesAt, riderOnCorridor, toCorridor } from './corridor';
 import { isKerb, placeVehicle, TRAFFIC, trafficState, type TrafficState } from './index';
 import { buildTrafficGraph, commitPath, type TrafficPath } from './network';
 
 const views = new WeakMap<TrafficPath, { shape: string; state: TrafficState }>();
+const physicalRanks = new WeakMap<Mover, RoadPos & { road: SimConfig['road']; rank: number }>();
+
+function rankAt(config: SimConfig, at: RoadPos): number {
+  let nearest = Infinity;
+  let center = Infinity;
+  const lanes = config.road.lanesAt(at.edge, at.s);
+  for (const lane of lanes)
+    if (lane.direction === at.dir && (lane.kind === 'drive' || lane.kind === 'shortcut')) {
+      const gap = Math.abs(lane.dCenterM - at.d);
+      if (gap < nearest) {
+        nearest = gap;
+        center = Math.abs(lane.dCenterM);
+      }
+    }
+  if (nearest === Infinity) return -2;
+  let rank = 0;
+  for (const lane of lanes)
+    if (
+      lane.direction === at.dir &&
+      (lane.kind === 'drive' || lane.kind === 'shortcut') &&
+      Math.abs(lane.dCenterM) < center
+    )
+      rank++;
+  return rank;
+}
+
+function physicalRank(config: SimConfig, m: Mover): number {
+  const p = m.pos;
+  const cached = physicalRanks.get(m);
+  // Position rather than tick: movement and contacts can change a body within the same tick.
+  if (
+    cached &&
+    cached.road === config.road &&
+    cached.edge === p.edge &&
+    cached.s === p.s &&
+    cached.d === p.d &&
+    cached.dir === p.dir
+  )
+    return cached.rank;
+  const rank = rankAt(config, p);
+  physicalRanks.set(m, { ...p, road: config.road, rank });
+  return rank;
+}
 
 export function pathView(
   world: World,
@@ -42,10 +85,8 @@ export function pathView(
   const nearU = subject >= 0 ? st.u[subject] : undefined;
   for (let j = 0; j < st.id.length; j++) {
     const m = world.movers[st.id[j] ?? -1];
-    const p = m
-      ? (toCorridor(path.c, m.pos, nearU) ??
-        riderOnCorridor(config.road, path.c, m.pos, TRAFFIC.maxContactH, nearU))
-      : null;
+    const own = m ? toCorridor(path.c, m.pos, nearU) : null;
+    const p = own ?? (m ? riderOnCorridor(config.road, path.c, m.pos, TRAFFIC.maxContactH, nearU) : null);
     v.u[j] = p?.u ?? Infinity;
     v.cd[j] = p?.cd ?? Infinity;
     v.dir[j] = p?.dir ?? 0;
@@ -53,28 +94,11 @@ export function pathView(
     if (p && m) {
       // Lane rank is physical (nearest the road center), independent of a path's lateral shift.
       // Avoid allocating and sorting a corridor lane array for every pair in every view.
-      const at = { ...m.pos };
-      if (!path.c.edges.includes(at.edge)) fromCorridor(path.c, p.u, p.cd, p.dir, at);
-      let nearest = Infinity;
-      let center = Infinity;
-      const lanes = config.road.lanesAt(at.edge, at.s);
-      for (const lane of lanes)
-        if (lane.direction === at.dir && (lane.kind === 'drive' || lane.kind === 'shortcut')) {
-          const gap = Math.abs(lane.dCenterM - at.d);
-          if (gap < nearest) {
-            nearest = gap;
-            center = Math.abs(lane.dCenterM);
-          }
-        }
-      if (nearest < Infinity) {
-        best = 0;
-        for (const lane of lanes)
-          if (
-            lane.direction === at.dir &&
-            (lane.kind === 'drive' || lane.kind === 'shortcut') &&
-            Math.abs(lane.dCenterM) < center
-          )
-            best++;
+      if (own) best = physicalRank(config, m);
+      else {
+        const at = { ...m.pos };
+        fromCorridor(path.c, p.u, p.cd, p.dir, at);
+        best = rankAt(config, at);
       }
     }
     v.rank[j] = best;

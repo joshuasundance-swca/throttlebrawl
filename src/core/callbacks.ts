@@ -76,6 +76,14 @@ export interface LaneInfo {
   kind: 'drive' | 'shoulder' | 'shortcut';
 }
 
+/** Position accepted by road-query capabilities, independent of sim snapshots. */
+export interface RoadQueryPosition {
+  edge: number;
+  s: number;
+  d: number;
+  dir: 1 | -1;
+}
+
 /** The road queries a route follower (the bot) needs, in road coordinates. */
 export interface RouteQueries {
   /** Lanes of the section containing s on an edge (edges are numbered as the sim numbers them). */
@@ -86,6 +94,12 @@ export interface RouteQueries {
   distanceToFinish(edge: number, s: number): number;
   /** An edge's length in metres, or NaN when there is no such edge. */
   edgeLength(edge: number): number;
+  /** Physical/local road projection for traffic avoidance; null across separate roads or heights. */
+  projectPosition?(
+    viewer: RoadQueryPosition,
+    other: RoadQueryPosition,
+    range: number,
+  ): RoadQueryPosition | null;
 }
 export type RoadQueriesFn = () => RouteQueries | null;
 
