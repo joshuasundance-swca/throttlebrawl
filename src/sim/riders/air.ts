@@ -205,14 +205,14 @@ export function startFlight(st: AirState, m: Mover, input: SimInput | undefined,
 }
 
 /**
- * A hood launch's backflips (sim/riders/wheelie.ts), on a flight `startFlight` has just begun:
- * `turns` full turns, coasting at `rate` rad/s until half a turn short of the last.
+ * Launch backflips on a flight `startFlight` has just begun: `turns` full turns, coasting at
+ * `rate` rad/s until half a turn short of the last. Ramp spins pass hood=false for normal rewards.
  */
-export function startSpin(st: AirState, m: Mover, turns: number, rate: number): void {
+export function startSpin(st: AirState, m: Mover, turns: number, rate: number, hood = true): void {
   st.spin[m.id] = turns;
   st.spinRate[m.id] = rate;
   st.pitchRate[m.id] = rate;
-  st.hood[m.id] = 1;
+  if (hood) st.hood[m.id] = 1;
 }
 
 /** No spin and no hood flight (written only when set, so a race without one hashes as before). */

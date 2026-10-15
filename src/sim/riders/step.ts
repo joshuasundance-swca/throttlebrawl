@@ -1880,7 +1880,15 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // The flight starts at the slope the bike rode off (last tick's ground pitch, a wheelie's
     // angle included); the wheelie and the drift end.
     startFlight(st, m, input, st.pitch[m.id] ?? slopeAt(config, m));
-    wheelieTakeoff(world, st, m);
+    const rampAirS =
+      !crest && vy0 > 0
+        ? timeToGround(
+            m.h - deck,
+            (st.vy[m.id] ?? 0) - road.frameAt(pos.edge, pos.s).grade * pos.dir * along,
+            gravity,
+          )
+        : 0;
+    wheelieTakeoff(world, st, m, rampAirS);
     driftTakeoff(world, st, m);
     const data = crest ? { speed: m.speed, vyMps: vy0, crest: 1 } : { speed: m.speed, vyMps: vy0 };
     emit(world, 'jump', m.id, overGap ? { ...data, gap: true } : data);
