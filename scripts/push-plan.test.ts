@@ -1,8 +1,8 @@
 // What the pre-push hook tests (scripts/push-plan.mjs, docs/engineering.md "Pre-commit hooks and
 // leak scan"): nothing for a docs-only push, the whole unit tier when a dependency or config file
 // changed, and otherwise only the unit test files the push names: the test files it changed and the
-// tests named after the source files it changed, plus bounded authored contact controls for their
-// shared inputs. CI runs every test on the PR.
+// tests named after the source files it changed, plus bounded contact and road-content contracts
+// for their shared inputs. CI runs every test on the PR.
 import { describe, expect, it } from 'vitest';
 import { planPush } from './push-plan.mjs';
 
@@ -11,6 +11,13 @@ const tree = (...files: string[]) => {
   const set = new Set(files);
   return (f: string) => set.has(f);
 };
+
+const roadContracts = [
+  'tools/road/board-slots-on-land.test.ts',
+  'tools/road/lane-drops-live.test.ts',
+  'src/render/backdrop/backdrop.test.ts',
+  'src/render/scenes/scenes.test.ts',
+].sort();
 
 describe('planPush', () => {
   it('runs no tests for a push of docs, notes and Markdown only', () => {
@@ -119,5 +126,80 @@ describe('planPush', () => {
       expect(planPush([source], exists).tests, source).toEqual([]);
     }
     expect(planPush(['src/sim/riders/step.ts'], tree()).tests).toEqual([]);
+  });
+
+  it.each([
+    'packs/future-pack/regions/future-ridge/roads/serpentine.json',
+    'packs/future-pack/regions/future-ridge/networks/serpentine.json',
+    'packs/future-pack/regions/future-ridge/routes/serpentine.json',
+    'packs/future-pack/regions/future-ridge/region.json',
+  ])('selects existing road-content contracts for %s without a pack inventory', (source) => {
+    const plan = planPush([source], tree(...roadContracts));
+    expect(plan.mode).toBe('files');
+    expect(plan.tests).toEqual(roadContracts);
+  });
+
+  it.each([
+    [
+      'packs/future-pack/assets/backdrop/future-ridge/networks/serpentine.json',
+      'src/render/backdrop/backdrop.test.ts',
+    ],
+    ['packs/future-pack/assets/scenes/future-ridge/overlook.json', 'src/render/scenes/scenes.test.ts'],
+  ])('selects the matching asset contract for %s', (source, test) => {
+    expect(planPush([source], tree(...roadContracts)).tests).toEqual([test]);
+  });
+
+  it('combines road contracts with existing contact and named controls in sorted deduplicated order', () => {
+    const contact = [
+      'tools/road/pnw-c1.test.ts',
+      'tools/road/sf-downtown.test.ts',
+      'tools/road/truck-shortcuts.test.ts',
+    ];
+    const named = 'src/ui/menu.test.ts';
+    const expected = [...roadContracts, ...contact, named].sort();
+    const plan = planPush(
+      [
+        'packs/region-pnw/regions/pacific-northwest/roads/new-road.json',
+        'packs/future-pack/regions/future-ridge/region.json',
+        'packs/future-pack/assets/backdrop/future-ridge/networks/new-road.json',
+        'src/ui/menu.ts',
+        roadContracts[0]!,
+      ],
+      tree(...expected),
+    );
+    expect(plan.mode).toBe('files');
+    expect(plan.tests).toEqual(expected);
+  });
+
+  it('normalizes Windows road paths and omits every missing contract file', () => {
+    const available = 'tools/road/board-slots-on-land.test.ts';
+    const source = 'packs\\future-pack\\regions\\future-ridge\\routes\\serpentine.json';
+    expect(planPush([source], tree(available)).tests).toEqual([available]);
+    expect(planPush([source], tree()).tests).toEqual([]);
+    expect(planPush(['packs/future-pack/assets/scenes/future-ridge/overlook.json'], tree()).tests).toEqual(
+      [],
+    );
+    expect(
+      planPush(['packs/future-pack/assets/backdrop/future-ridge/networks/serpentine.json'], tree()).tests,
+    ).toEqual([]);
+  });
+
+  it('does not add road contracts to unrelated sources, other pack content, or test-only paths', () => {
+    for (const source of [
+      'src/ui/menu.ts',
+      'src/audio/index.ts',
+      'packs/future-pack/pack.json',
+      'packs/future-pack/riders/switchback.json',
+      'packs/future-pack/events/ridge-race.json',
+      'packs/future-pack/regions/future-ridge/traffic.json',
+      'packs/future-pack/assets/backdrop/future-ridge/poster.png',
+      'packs/future-pack/assets/scenes/future-ridge/readme.md',
+      'tests/sim/road-course.test.ts',
+    ]) {
+      expect(planPush([source], tree(...roadContracts)).tests, source).toEqual([]);
+    }
+    for (const test of roadContracts) {
+      expect(planPush([test], tree(...roadContracts)).tests, test).toEqual([test]);
+    }
   });
 });

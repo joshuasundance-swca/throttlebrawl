@@ -12,6 +12,8 @@
 //     to CI. [default]
 //   - the three authored truck-cut controls for their shared physics or track inputs. These are
 //     a bounded backstop for contact/terrain composition, not import-graph selection.
+//   - four existing road-content contracts for any pack's road/network/route or region JSON;
+//     backdrop and scenes asset JSON select their matching contract only. Missing tests are omitted.
 
 /** Changing any of these runs the whole unit tier. */
 const FULL = [
@@ -37,6 +39,19 @@ const CONTACT_TESTS = [
   'tools/road/sf-downtown.test.ts',
   'tools/road/truck-shortcuts.test.ts',
 ];
+const ROAD_CONTENT = /^packs\/[^/]+\/regions\/[^/]+\/(?:(?:roads|networks|routes)\/.+\.json|region\.json)$/;
+const BACKDROP_TEST = 'src/render/backdrop/backdrop.test.ts';
+const SCENES_TEST = 'src/render/scenes/scenes.test.ts';
+const ROAD_CONTENT_TESTS = [
+  'tools/road/board-slots-on-land.test.ts',
+  'tools/road/lane-drops-live.test.ts',
+  BACKDROP_TEST,
+  SCENES_TEST,
+];
+const ROAD_ASSET_TESTS = [
+  { input: /^packs\/[^/]+\/assets\/backdrop\/.+\.json$/, test: BACKDROP_TEST },
+  { input: /^packs\/[^/]+\/assets\/scenes\/.+\.json$/, test: SCENES_TEST },
+];
 
 /**
  * @param {string[]} changed repo-relative paths the push changes (deleted files included or not)
@@ -59,6 +74,12 @@ export function planPush(changed, exists) {
       if (exists(f)) tests.add(f);
       continue;
     }
+    if (ROAD_CONTENT.test(f)) {
+      for (const t of ROAD_CONTENT_TESTS) if (exists(t)) tests.add(t);
+    }
+    for (const { input, test } of ROAD_ASSET_TESTS) {
+      if (input.test(f) && exists(test)) tests.add(test);
+    }
     if (!f.endsWith('.d.ts') && CONTACT_INPUT.some((re) => re.test(f))) {
       for (const t of CONTACT_TESTS) if (exists(t)) tests.add(t);
     }
@@ -73,6 +94,6 @@ export function planPush(changed, exists) {
   return {
     mode: 'files',
     tests: [...tests].sort(),
-    reason: `${files.length} file(s); named unit tests and bounded authored contact controls`,
+    reason: `${files.length} file(s); named unit tests and bounded contact/road-content contracts`,
   };
 }
