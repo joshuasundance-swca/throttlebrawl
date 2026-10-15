@@ -29,6 +29,8 @@ its verge so it meets the surrounding land without a crack.
 The historical downtown renderer comparison now retains the original inputs for the graded rider
 connectors, alongside its original expected scene. Current-scene land, building and vehicle
 clearance checks continue to use the shipped road geometry; historical exceptions are not expanded.
+The supporting-asphalt offset applies only to road surfaces and paint. Terrain construction and
+the simulation's terrain query retain the same world heights and land reach.
 
 This changes simulation and replay identity. Career and settings formats, rewards and rival pace
 are unchanged. Desktop checks do not establish phone feel or the branch's resulting time advantage.

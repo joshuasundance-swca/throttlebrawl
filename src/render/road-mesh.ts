@@ -1072,8 +1072,7 @@ export function buildRoadScene(
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
   const locator = new EdgeLocator(road);
-  const w = (edge: number, s: number, d: number, h: number): Point3 =>
-    road.toWorld(edge, s, d, h + (road.edges[edge]?.isTrafficOnly ? TRAFFIC_SURFACE_LIFT_M : 0));
+  const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
   const islands = islandBoxes(road);
   const gores = goreLines(road);
@@ -1406,6 +1405,7 @@ export function buildRoadScene(
     // Samish, 136 m over the water). There the shoulder reaches SHOULDER_LAP_M over the land instead.
     const simplifyRoad = !clippedEdge && !e.isTrafficOnly && gore === undefined;
     const shoulderLap = simplifyRoad ? SHOULDER_LAP_M : 0;
+    const surfaceLift = e.isTrafficOnly ? TRAFFIC_SURFACE_LIFT_M : 0;
     const surfaces: {
       kind: MaterialKind;
       span: (l: LaneSpans, c: Clip) => [number, number] | null;
@@ -1417,7 +1417,7 @@ export function buildRoadScene(
       {
         kind: brickEdge ? 'brick' : 'road',
         span: (l) => (l.drive ? (e.isTrafficOnly ? [outerL, outerR] : l.drive) : null),
-        lift: 0,
+        lift: surfaceLift,
       },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
       {
@@ -1435,13 +1435,13 @@ export function buildRoadScene(
       {
         kind: 'marking',
         span: (l) => (l.drive ? [l.drive[0] + 0.1, l.drive[0] + 0.25] : null),
-        lift: 0.03,
+        lift: 0.03 + surfaceLift,
         skip: (s, span) => inZone(s, span[0]),
       },
       {
         kind: 'marking',
         span: (l) => (l.drive ? [l.drive[1] - 0.25, l.drive[1] - 0.1] : null),
-        lift: 0.03,
+        lift: 0.03 + surfaceLift,
         skip: (s, span) => inZone(s, span[1]),
       },
     ];
