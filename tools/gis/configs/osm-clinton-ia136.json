@@ -47,7 +47,7 @@
           "s1": 1210,
           "d0": -14,
           "d1": -8,
-          "pool": "billboards"
+          "item": "delivery-window"
         }
       ]
     },
@@ -79,7 +79,7 @@
           "s1": 560,
           "d0": 8,
           "d1": 14,
-          "pool": "billboards"
+          "item": "grain-forecast"
         }
       ]
     }
