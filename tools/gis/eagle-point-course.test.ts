@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createHeadlessRace } from '../../src/app';
+import { createHeadlessRace, routeChoices } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { hitboxOf } from '../../src/core';
 import {
@@ -25,6 +25,25 @@ function course() {
 }
 
 describe('Eagle Point: one pass through the South and Central loops', () => {
+  it('is offered in the Clinton route picker, while a network in another region is excluded', () => {
+    const registry = registryFromGlob(
+      import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }),
+    );
+    const event = 'region-clinton:clinton-ia136-race';
+    const network = 'region-clinton:osm-clinton-eagle-point';
+    const route = 'region-clinton:osm-clinton-eagle-point-run';
+    expect(routeChoices(registry, event).some((choice) => choice.id === route)).toBe(true);
+    expect(registry.regions['region-clinton:clinton-iowa']!.networks).toContain('osm-clinton-eagle-point');
+    const otherRegion = {
+      ...registry,
+      networks: {
+        ...registry.networks,
+        [network]: { ...registry.networks[network]!, region: 'another-region' },
+      },
+    };
+    expect(routeChoices(otherRegion, event).some((choice) => choice.id === route)).toBe(false);
+  });
+
   it('supports a two-way entry followed by centered forward-only loop lanes, with no repeated-edge lap', () => {
     const { network, roads, route } = course();
     expect(lintRoadNetwork({ network, roads, routes: [route] })).toEqual([]);
