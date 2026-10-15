@@ -1,6 +1,6 @@
 # Cached startup: remaining M5 acceptance
 
-`[default]` M5 offline-1 still requires a browser test showing that the installed game boots from its cache in under five seconds when navigation network requests hang. This target remains unmet; the [HTTP fallback repair](./offline-http-fallback.md) establishes response correctness and functional return only.
+`[default]` M5 offline-1 requires a browser test showing that the installed game boots from its cache in under five seconds when navigation network requests hang. The [HTTP fallback repair](./offline-http-fallback.md) establishes response correctness and functional return only. Use the implementation PR's current gate and coordinated served-build result to establish timing acceptance; the historical outcomes below are not its current status.
 
 ## Preserved candidate and evidence
 
@@ -47,7 +47,7 @@ with the nested profile; shorter profiles installed and booted normally. Failed 
 not passing timing samples.
 
 These are local observations on different feature heads, not a controlled per-optimization
-benchmark or phone evidence. CI acceptance and the coordinated served-build check remain pending.
+benchmark or phone evidence. CI and the served-build check were pending when these probes were recorded.
 The exact end-to-end timing assertion is restored in `app-offline.spec.ts`.
 
 A separate local Lake Samish first-launch/restart probe reproduced a long first countdown beat:
