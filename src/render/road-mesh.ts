@@ -1088,6 +1088,20 @@ export function buildRoadScene(
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
+  // Median widths depend only on lane sections, not resolved roadside verges. Reuse them within
+  // this scene build instead of allocating a full cross-section for every surface row and dash.
+  const medianSections = road.edges.map((edge) =>
+    edge.sections.map((section) => ({
+      s0: section.s0,
+      span: grassMedianSpan(section.lanes, section.median),
+    })),
+  );
+  const grassAt = (edge: Edge, s: number): [number, number] | null => {
+    const sections = medianSections[edge.index] ?? [];
+    let span = sections[0]?.span ?? null;
+    for (const section of sections) if (section.s0 <= s) span = section.span;
+    return span;
+  };
   const locator = new EdgeLocator(road);
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
@@ -1423,13 +1437,14 @@ export function buildRoadScene(
     const simplifyRoad = !clippedEdge && !e.isTrafficOnly && gore === undefined;
     const shoulderLap = simplifyRoad ? SHOULDER_LAP_M : 0;
     const surfaceLift = e.isTrafficOnly ? TRAFFIC_SURFACE_LIFT_M : 0;
-    const medianAt = (s: number) =>
-      grassMedianSpan(road.lanesAt(e.index, s), road.crossSectionAt(e.index, s).median);
-    const surfaces: {
+    const hasGrassMedian = medianSections[e.index]?.some((section) => section.span !== null) ?? false;
+    const medianAt = (s: number) => grassAt(e, s);
+    const plannedSurfaces: {
       kind: Layer;
       span: (l: LaneSpans, c: Clip, s: number) => [number, number] | null;
       lift: number;
       solid?: boolean;
+      medianOnly?: boolean;
       skip?: (s: number, span: [number, number]) => boolean;
       /** A ground band beside the lanes: the side it lies on, so it yields to a lower road's lanes (yieldReach). */
       side?: -1 | 1;
@@ -1452,8 +1467,9 @@ export function buildRoadScene(
         },
         lift: surfaceLift,
         solid: true,
+        medianOnly: true,
       },
-      { kind: 'median', span: (_l, _c, s) => medianAt(s), lift: surfaceLift, solid: true },
+      { kind: 'median', span: (_l, _c, s) => medianAt(s), lift: surfaceLift, solid: true, medianOnly: true },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift, solid: true },
       {
         kind: 'shoulder',
@@ -1476,6 +1492,7 @@ export function buildRoadScene(
           return m ? [m[0] - 0.25, m[0] - 0.1] : null;
         },
         lift: 0.03 + surfaceLift,
+        medianOnly: true,
       },
       {
         kind: 'markingCenter',
@@ -1484,6 +1501,7 @@ export function buildRoadScene(
           return m ? [m[1] + 0.1, m[1] + 0.25] : null;
         },
         lift: 0.03 + surfaceLift,
+        medianOnly: true,
       },
       {
         kind: 'marking',
@@ -1498,6 +1516,7 @@ export function buildRoadScene(
         skip: (s, span) => inZone(s, span[1]),
       },
     ];
+    const surfaces = hasGrassMedian ? plannedSurfaces : plannedSurfaces.filter((surf) => !surf.medianOnly);
     const rowOf = (surf: (typeof surfaces)[number], i: number): [Point3, Point3] | null => {
       const s = sd[i] ?? 0;
       const c = clips[i];
@@ -2772,10 +2791,10 @@ export function buildRoadScene(
       ['to', edge.nextLinks],
     ] as const) {
       const s = end === 'from' ? 0 : edge.length;
-      const lanes = road.lanesAt(edge.index, s);
-      const median = grassMedianSpan(lanes, road.crossSectionAt(edge.index, s).median);
-      const drive = laneSpans(lanes).drive;
-      if (!median || !drive || edge.isTrafficOnly) continue;
+      const median = grassAt(edge, s);
+      if (!median || edge.isTrafficOnly) continue;
+      const drive = laneSpans(road.lanesAt(edge.index, s)).drive;
+      if (!drive) continue;
       for (const link of links) {
         const other = road.edges[link.edge];
         if (!other || other.isTrafficOnly || link.splitZone || edge.surface !== other.surface) continue;
@@ -2786,10 +2805,10 @@ export function buildRoadScene(
         if (medianJoins.has(key)) continue;
         medianJoins.add(key);
         const os = link.entersAt === 'from' ? 0 : other.length;
-        const otherLanes = road.lanesAt(other.index, os);
-        const om = grassMedianSpan(otherLanes, road.crossSectionAt(other.index, os).median);
-        const od = laneSpans(otherLanes).drive;
-        if (!om || !od) continue;
+        const om = grassAt(other, os);
+        if (!om) continue;
+        const od = laneSpans(road.lanesAt(other.index, os)).drive;
+        if (!od) continue;
         const bands: [number, number][] = [[drive[0], median[0]], median, [median[1], drive[1]]];
         const otherBands: [number, number][] = [[od[0], om[0]], om, [om[1], od[1]]];
         for (const [i, band] of bands.entries()) {
