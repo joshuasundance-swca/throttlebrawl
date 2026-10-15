@@ -1,6 +1,6 @@
 # Cached startup: remaining M5 acceptance
 
-`[default]` M5 offline-1 still requires a browser test showing that the installed game boots from its cache in under five seconds when navigation network requests hang. This target remains unmet; the [HTTP fallback repair](./offline-http-fallback.md) establishes response correctness and functional return only.
+`[default]` M5 offline-1 requires a browser test showing that the installed game boots from its cache in under five seconds when navigation network requests hang. The [HTTP fallback repair](./offline-http-fallback.md) establishes response correctness and functional return only. Use the implementation PR's current gate and coordinated served-build result to establish timing acceptance; the historical outcomes below are not its current status.
 
 ## Preserved candidate and evidence
 
@@ -27,3 +27,37 @@ The diagnostic [train log](https://github.com/joshuasundance-swca/throttlebrawl/
 - Diagnose the remaining delay before adding further production optimizations. Run normal gates and a coordinated served-build check; name the device, renderer and scene. Desktop software-rendered browser evidence is not phone verification.
 
 Completing the HTTP repair does not close this task or M5 offline-1. The five-second target is not relaxed or relabelled as phone-only acceptance.
+
+## Current attempt, 2026-10-14
+
+The resumed change applies the shorter page window and exact nearest-sample index to the current
+renderer, preserving subsequent traffic and terrain repairs. A local production probe on an
+i9-12950HX with Chromium SwiftShader at 915 by 412 observed a baseline first-visible start screen
+at 4042.5 ms, with navigation response start at 3009.5 ms. Its CPU profile also identified repeated
+whole-edge nearest-sample scans during scene construction. This establishes separate network-wait
+and rendering work; it does not attribute every initialization cost.
+
+The first resumed candidate observation was 1419 ms, with navigation response start at 513.9 ms.
+It proved an actual held service-worker request, production mode, hidden-menu exclusion, visible
+start screen, usable menu and no page or console errors. The browser and preview closed afterward.
+Two subsequent successful fresh-profile observations were 1398.8 and 1386.5 ms. Deeply nested local
+browser profiles failed before timing: Chromium reported an internal CacheStorage-open error and
+the worker became redundant. A same-build long/short-profile control reproduced the failure only
+with the nested profile; shorter profiles installed and booted normally. Failed installations are
+not passing timing samples.
+
+These are local observations on different feature heads, not a controlled per-optimization
+benchmark or phone evidence. CI and the served-build check were pending when these probes were recorded.
+The exact end-to-end timing assertion is restored in `app-offline.spec.ts`.
+
+A separate local Lake Samish first-launch/restart probe reproduced a long first countdown beat:
+3274.2 and 3304.4 ms from the DOM's "3" transition to "2", with one "3" transition per launch.
+Profiles identified repeated indexed road queries as substantial work. Adding subtree bounds
+preserved every nearest-sample result in a 2723-query study on the actual Samish roads and reduced
+node visits from 454761 to 57554. A curved-edge work counter failed before this repair while the
+original straight-road counter passed, and both now pass alongside the ordered linear reference.
+
+The follow-up Samish observations were 2550 and 2656.3 ms for the first beat, with remaining long
+tasks. These runs use the same desktop, renderer, viewport and route on different feature heads;
+they do not establish a controlled whole-game speedup or fix the countdown report. Four numeric
+bounds per indexed node add retained state; full CI budgets and performance checks remain required.

@@ -4,6 +4,7 @@ import {
   createOfflineWorker,
   GZIP_MARK,
   NETWORK_TIMEOUT_MS,
+  PAGE_NETWORK_TIMEOUT_MS,
   type FileCheck,
   type OfflineCache,
   type OfflineCaches,
@@ -318,7 +319,7 @@ describe('the offline worker', () => {
     expect(await text(off.respond(get('changelog.json')))).toBe(`body of ${SCOPE}changelog.json`);
   });
 
-  it(`opens the cached page after ${NETWORK_TIMEOUT_MS} ms on a network that does not answer`, async () => {
+  it(`opens the cached page after ${PAGE_NETWORK_TIMEOUT_MS} ms on a network that does not answer`, async () => {
     const mem = memoryCaches();
     await (await setup(BUILD, `${CACHE_PREFIX}b1`, network(), mem)).worker.install();
     const slow = network({ hang: () => true });
@@ -328,7 +329,7 @@ describe('the offline worker', () => {
     void page?.then(() => (settled = true));
     await flush();
     expect(settled, 'still waiting on the network before the timeout').toBe(false);
-    expect(timer.timers.map((t) => t.ms)).toEqual([NETWORK_TIMEOUT_MS]);
+    expect(timer.timers.map((t) => t.ms)).toEqual([PAGE_NETWORK_TIMEOUT_MS]);
     timer.fireAll();
     expect(await text(page)).toBe(PAGE_BODY);
   });
@@ -350,6 +351,31 @@ describe('the offline worker', () => {
     await text(worker.respond(get('assets/late-CCC.json')));
     expect(net.asked).toEqual([`${SCOPE}assets/late-CCC.json`, `${SCOPE}assets/late-CCC.json`]);
     expect(mem.stores.get(`${CACHE_PREFIX}b1`)?.size).toBe(BUILD.length);
+  });
+
+  it('reserves startup time with a short page window while retaining data windows and uncached responses', async () => {
+    for (const [path, mode, wait] of [
+      ['', 'navigate', 500],
+      ['index.html', 'cors', 500],
+      ['manifest.webmanifest', 'cors', NETWORK_TIMEOUT_MS],
+      ['changelog.json', 'cors', NETWORK_TIMEOUT_MS],
+    ] as const) {
+      const slow = network({ hang: () => true });
+      const { worker, timer } = await setup(BUILD, `${CACHE_PREFIX}b1`, slow);
+      const response = worker.respond(get(path, mode));
+      let settled = false;
+      void response?.then(() => (settled = true));
+      await flush();
+      expect(
+        timer.timers.map((t) => t.ms),
+        path,
+      ).toEqual([wait]);
+      timer.fireAll();
+      await flush();
+      expect(settled, 'no cached copy: keep waiting for the real network').toBe(false);
+      slow.release();
+      expect(await text(response)).toBe(bodyOf(new URL(path, SCOPE).href));
+    }
   });
 
   it('leaves other sites, other folders and anything but a GET to the browser', async () => {

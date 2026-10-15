@@ -23,25 +23,74 @@ interface Box {
 /** How far outside an edge's centre line a point may lie and still be looked up, m. */
 const REACH_M = 40;
 
-/** Nearest point on one edge's centre line: s, d and how far past an end the point lies. */
-function projectOnto(
-  road: RoadNetwork,
-  e: Edge,
-  x: number,
-  z: number,
-): { s: number; d: number; past: number } {
+interface Vertex {
+  i: number;
+  x: number;
+  z: number;
+}
+
+interface VertexNode extends Vertex, Box {
+  splitX: boolean;
+  left: VertexNode | undefined;
+  right: VertexNode | undefined;
+}
+
+/** Exact nearest-vertex lookup on the immutable road scene, built once per queried edge. */
+function indexEdge(e: Edge): VertexNode | undefined {
+  const build = (vertices: Vertex[]): VertexNode | undefined => {
+    if (!vertices.length) return undefined;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const v of vertices) {
+      minX = Math.min(minX, v.x);
+      maxX = Math.max(maxX, v.x);
+      minZ = Math.min(minZ, v.z);
+      maxZ = Math.max(maxZ, v.z);
+    }
+    const splitX = maxX - minX >= maxZ - minZ;
+    vertices.sort((a, b) => (splitX ? a.x - b.x : a.z - b.z) || a.i - b.i);
+    const mid = Math.floor(vertices.length / 2);
+    return {
+      ...vertices[mid]!,
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+      splitX,
+      left: build(vertices.slice(0, mid)),
+      right: build(vertices.slice(mid + 1)),
+    };
+  };
+  return build(Array.from({ length: e.count }, (_, i) => ({ i, x: e.x[i] ?? 0, z: e.z[i] ?? 0 })));
+}
+
+function nearestVertex(root: VertexNode | undefined, x: number, z: number): number {
   let best = 0;
   let bestD2 = Infinity;
-  for (let i = 0; i < e.count; i++) {
-    const dx = x - (e.x[i] ?? 0);
-    const dz = z - (e.z[i] ?? 0);
+  const visit = (node: VertexNode | undefined): void => {
+    if (!node) return;
+    // Split planes alone visit long arcs for points far from their centre line. Reject an
+    // entire subtree when even its nearest box corner is farther than the best real sample.
+    const boxDx = Math.max(node.minX - x, 0, x - node.maxX);
+    const boxDz = Math.max(node.minZ - z, 0, z - node.maxZ);
+    if (boxDx * boxDx + boxDz * boxDz > bestD2) return;
+    const dx = x - node.x;
+    const dz = z - node.z;
     const d2 = dx * dx + dz * dz;
-    if (d2 < bestD2) {
+    // The old ascending scan kept the first vertex on equal distances, including folded roads.
+    if (d2 < bestD2 || (d2 === bestD2 && node.i < best)) {
       bestD2 = d2;
-      best = i;
+      best = node.i;
     }
-  }
-  return projectFrom(road, e, x, z, best);
+    const delta = node.splitX ? dx : dz;
+    visit(delta <= 0 ? node.left : node.right);
+    // Equality must search the other half too: it may contain an earlier vertex at the same distance.
+    if (delta * delta <= bestD2) visit(delta <= 0 ? node.right : node.left);
+  };
+  visit(root);
+  return best;
 }
 
 /** The same, starting from the centre line's vertex `best` (the nearest one). */
@@ -93,6 +142,7 @@ export function laneExtentAt(road: RoadNetwork, edge: number, s: number): readon
 /** Looks up which edges lie under a world point. Built once per road scene. */
 export class EdgeLocator {
   private readonly boxes: Box[];
+  private readonly nearest = new Map<number, VertexNode | undefined>();
   /** The centre line's vertices by cell (built on the first `onLanes`): edge * VERTEX_STRIDE + vertex. */
   private vertexCells: Map<number, number[]> | undefined;
   /** How far from a vertex a point can lie and still be inside the lanes beside it, m. */
@@ -129,7 +179,8 @@ export class EdgeLocator {
       ) {
         continue;
       }
-      const p = projectOnto(this.road, e, x, z);
+      if (!this.nearest.has(e.index)) this.nearest.set(e.index, indexEdge(e));
+      const p = projectFrom(this.road, e, x, z, nearestVertex(this.nearest.get(e.index), x, z));
       if (p.past > pastM || Math.abs(p.d) > REACH_M) continue;
       out.push({ edge: e.index, s: p.s, d: p.d });
     }
