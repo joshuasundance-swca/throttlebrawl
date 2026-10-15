@@ -26,6 +26,9 @@ the opted-in rider connectors; it still protects all other fields and endpoint h
 The road-height validator now compares banked surfaces at the same world point; a tilted-plane
 control and a raised-connector control retain its original height limit. Added asphalt also spans
 its verge so it meets the surrounding land without a crack.
+The historical downtown renderer comparison now retains the original inputs for the graded rider
+connectors, alongside its original expected scene. Current-scene land, building and vehicle
+clearance checks continue to use the shipped road geometry; historical exceptions are not expanded.
 
 This changes simulation and replay identity. Career and settings formats, rewards and rival pace
 are unchanged. Desktop checks do not establish phone feel or the branch's resulting time advantage.
