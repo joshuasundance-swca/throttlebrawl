@@ -7,8 +7,8 @@
 // - `wheelieStep`, each grounded tick after the throttle and brake are read: the steering scale
 //   (× maxYaw) and the pitch the front is up (added to the ground pitch, so the snapshot's `pitch`
 //   is the bike's real pitch and a take-off starts the flight from it);
-// - `wheelieTakeoff`, the tick a grounded rider leaves the ground: the wheelie ends (its angle is
-//   already in the flight's starting pitch);
+// - `wheelieTakeoff`, the tick a grounded rider leaves the ground: the wheelie ends; an upward
+//   ramp launch spins backflips when its actual airtime can fit them, without a hood bonus;
 // - `hoodLaunchContact`, traffic's first contact with a vehicle, before it is classed as a crash or
 //   a wobble: true means the wheelie launched the rider and traffic leaves the contact alone;
 // - `hazardLaunch`, a grounded rider meeting a solid road hazard head on (a parked pickup: the
@@ -383,9 +383,16 @@ export function wheelieStep(
   return { steerScale: WHEELIE_STEER_SCALE, pitchAdd: theta };
 }
 
-/** A grounded rider leaves the ground this tick: the wheelie, if any, ends (cleanly). */
-export function wheelieTakeoff(world: World, st: RiderState, m: Mover): void {
-  if ((st.wheelie[m.id] ?? 0) > 0) endWheelie(world, st, m, true);
+/** A takeoff ends the wheelie; an upward ramp lip can carry its lift into backflips. */
+export function wheelieTakeoff(world: World, st: RiderState, m: Mover, rampAirS = 0): void {
+  const theta = st.wheelie[m.id] ?? 0;
+  if (theta <= 0) return;
+  endWheelie(world, st, m, true);
+  if (theta < HOOD_MIN_THETA || rampAirS <= 0) return;
+  const flips = clamp(Math.floor((rampAirS * HOOD_FLIP_RATE) / TAU), 1, HOOD_MAX_FLIPS);
+  const rate = (TAU * flips) / (HOOD_SPIN_SHARE * rampAirS);
+  // Keep the ramp's real trajectory. A short hop cannot borrow height to fit a flip.
+  if (rate <= FLIP_MAX_RATE) startSpin(st, m, flips, rate, false);
 }
 
 /** A rider's first contact with a traffic vehicle, as traffic classes it. */
