@@ -53,7 +53,19 @@
       "tag": "town"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "38th-walkers",
+      "s0": 500.0,
+      "s1": 620.0,
+      "d0": 6.0,
+      "d1": 9.0,
+      "params": {
+        "spawns": "pedestrians"
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

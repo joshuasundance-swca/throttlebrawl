@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, createStreamCache, regionChoices, routeChoices } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
+import { GroundTris } from '../../src/render/land-probe.test-util';
+import { createFlatLook } from '../../src/render/look';
+import { buildRoadScene, type RoadDressing } from '../../src/render/road-mesh';
 import {
   createRoadNetwork,
   createRouteProgress,
@@ -139,5 +142,53 @@ describe('Port Shift is a playable first Longview race', () => {
     expect(roads.flatMap((r) => r.features ?? []).some((f) => f.kind === 'gap' || f.kind === 'ramp')).toBe(
       false,
     );
+  });
+
+  it('gives the town stretches pedestrian space on drawn land clear of the travel lanes', () => {
+    const data = bundle();
+    const zones = data.roads.flatMap((r) =>
+      (r.features ?? [])
+        .filter((f) => f.kind === 'roadsideZone' && f.params?.['spawns'] === 'pedestrians')
+        .map((zone) => ({ road: r, zone })),
+    );
+    expect(zones.length, 'a town race must have places for its regional pedestrians').toBeGreaterThan(0);
+    const road = createRoadNetwork(data);
+    const dressing = Object.fromEntries(data.roads.map((r) => [r.id, r])) as RoadDressing;
+    const scene = buildRoadScene(road, createFlatLook(), dressing, { seed: 1 });
+    try {
+      // Town pavement is a shoulder mesh; ground past it is a land mesh. Neither query accepts
+      // the travel road, sea, buildings or a bridge deck as support for these town walkers.
+      const ground = new GroundTris(scene.group, /^road-(land|shoulder)/);
+      let probes = 0;
+      const surfaces = new Set<string>();
+      for (const { road: r, zone } of zones) {
+        const index = road.edgeIndex(r.id);
+        const side = zone.d0 + zone.d1 < 0 ? 'left' : 'right';
+        expect(
+          r.tags?.some((t) => t.tag === 'town' && t.s0 <= zone.s0 && t.s1 >= zone.s1),
+          r.id,
+        ).toBe(true);
+        for (const s of [zone.s0, (zone.s0 + zone.s1) / 2, zone.s1]) {
+          const verge = road.vergeAt(index, s, side);
+          expect(verge.surface, `${r.id}: town pavement`).toBe('kerb');
+          expect(Math.min(Math.abs(zone.d0), Math.abs(zone.d1))).toBeGreaterThan(Math.abs(verge.dInner));
+          expect(Math.max(Math.abs(zone.d0), Math.abs(zone.d1))).toBeLessThan(Math.abs(verge.dOuter));
+          for (const d of [zone.d0, (zone.d0 + zone.d1) / 2, zone.d1]) {
+            const p = road.toWorld(index, s, d, 0);
+            const hit = ground.heightAt(p.x, p.z, p.y + 1);
+            expect(hit, `${r.id}: drawn land at ${s}, ${d}`).not.toBeNull();
+            expect(Math.abs((hit?.y ?? Infinity) - p.y)).toBeLessThan(0.3);
+            expect(hit?.up ?? 0, `${r.id}: people stand on ground, not a wall`).toBeGreaterThan(0.9);
+            if (hit) surfaces.add(hit.name);
+            probes++;
+          }
+        }
+      }
+      console.log(
+        `[examined] ${zones.length} town pedestrian zones, ${probes} ground probes: ${[...surfaces].join(', ')}`,
+      );
+    } finally {
+      scene.dispose();
+    }
   });
 });

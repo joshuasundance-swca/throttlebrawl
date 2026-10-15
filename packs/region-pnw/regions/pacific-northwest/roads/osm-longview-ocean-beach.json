@@ -76,6 +76,17 @@
       "d0": 13.0,
       "d1": 22.0,
       "pool": "billboards"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "ocean-beach-walkers",
+      "s0": 1200.0,
+      "s1": 1320.0,
+      "d0": 10.0,
+      "d1": 13.0,
+      "params": {
+        "spawns": "pedestrians"
+      }
     }
   ],
   "barriers": [],

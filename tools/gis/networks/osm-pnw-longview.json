@@ -88,6 +88,15 @@
               "d0": 13,
               "d1": 22,
               "pool": "billboards"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "ocean-beach-walkers",
+              "s0": 1200,
+              "s1": 1320,
+              "d0": 10,
+              "d1": 13,
+              "params": { "spawns": "pedestrians" }
             }
           ]
         },
@@ -95,7 +104,17 @@
           "id": "osm-longview-38th",
           "name": "38th Avenue",
           "tags": ["town"],
-          "features": []
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "38th-walkers",
+              "s0": 500,
+              "s1": 620,
+              "d0": 6,
+              "d1": 9,
+              "params": { "spawns": "pedestrians" }
+            }
+          ]
         }
       ]
     }
