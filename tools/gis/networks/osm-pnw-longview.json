@@ -1,0 +1,115 @@
+{
+  "id": "osm-pnw-longview",
+  "name": "Longview: Port Shift (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": { "originLatDeg": 46.15, "originLonDeg": -123.0 },
+  "osmQuery": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+  "osmExtract": ".cache/osm/pnw-longview.json",
+  "outRoot": "packs/region-pnw/regions/pacific-northwest",
+  "sampleSpacingM": 4,
+  "waysLabel": "Longview public-road",
+  "networkNotes": "One traversal from Industrial Way west along Mount Solo Road, east on Ocean Beach Highway and south on 38th Avenue, finishing before the Industrial Way junction. OSM reference fetched 2026-10-15. This is a simplified arcade course, not a survey of present turn restrictions or lane widths: drive lanes are widened to 4 m, unsurveyed medians omitted, and ordinary side streets are scenery rather than playable connections. No port-internal roads, lake trails, civic ground or repeated laps. Reuses PNW industrial, forest and town dressing rather than reproducing individual properties.",
+  "lines": [
+    {
+      "id": "port-shift",
+      "pathFrom": { "lat": 46.1328926, "lon": -122.9795183 },
+      "via": [
+        { "lat": 46.1593305, "lon": -123.0222182 },
+        { "lat": 46.163885, "lon": -123.0002684 }
+      ],
+      "pathTo": { "lat": 46.1423862, "lon": -122.9950336 },
+      "start": { "lat": 46.1367955, "lon": -122.9858964 },
+      "end": { "lat": 46.1443295, "lon": -122.9924819 },
+      "routeTags": { "name": "^(Industrial Way|Mount Solo Road|Ocean Beach Highway|38th Avenue)$" },
+      "respectOneway": true,
+      "splitOnNameChange": true,
+      "splitAt": [{ "lat": 46.1621716, "lon": -123.0260951 }],
+      "smoothing": { "headingSigmaM": 18 },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 15,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": { "laneWidthM": 4, "lanesPerDirection": 1 },
+      "roadLanes": {
+        "osm-longview-ocean-beach": { "laneWidthM": 4, "lanesPerDirection": 2 }
+      },
+      "roads": [
+        {
+          "id": "osm-longview-industrial",
+          "name": "Industrial Way",
+          "tags": ["warehouses", "logging"],
+          "features": [
+            { "kind": "copSpawn", "id": "port-shift-patrol-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
+            {
+              "kind": "billboard",
+              "id": "industrial-board",
+              "s0": 230,
+              "s1": 250,
+              "d0": -16,
+              "d1": -7,
+              "pool": "billboards"
+            }
+          ]
+        },
+        {
+          "id": "osm-longview-mount-solo",
+          "name": "Mount Solo Road",
+          "tags": ["forest", "logging"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "mount-solo-sign",
+              "s0": 110,
+              "s1": 120,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            }
+          ]
+        },
+        {
+          "id": "osm-longview-solo-connector",
+          "name": "Mount Solo North",
+          "tags": ["town"],
+          "features": []
+        },
+        {
+          "id": "osm-longview-ocean-beach",
+          "name": "Ocean Beach Highway",
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "ocean-beach-board",
+              "s0": 650,
+              "s1": 670,
+              "d0": 13,
+              "d1": 22,
+              "pool": "billboards"
+            }
+          ]
+        },
+        {
+          "id": "osm-longview-38th",
+          "name": "38th Avenue",
+          "tags": ["town"],
+          "features": []
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-longview-port-shift",
+      "name": "Longview: Port Shift",
+      "line": "port-shift",
+      "startRoad": "osm-longview-industrial",
+      "finishRoad": "osm-longview-38th",
+      "startS": 40,
+      "finishS": -40,
+      "notes": "A point-to-point Race through Longview's industrial roads and local connectors. The start and finish are deliberately separated: one pass, no lap counting. Real OSM alignment, smoothed corners and simplified arcade cross-sections; source captures and changes are recorded in provenance."
+    }
+  ]
+}

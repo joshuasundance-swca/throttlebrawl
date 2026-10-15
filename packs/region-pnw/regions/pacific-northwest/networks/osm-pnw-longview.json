@@ -1,0 +1,160 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-longview",
+  "name": "Longview: Port Shift (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 46.15,
+    "originLonDeg": -123.0,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-longview-industrial",
+    "osm-longview-mount-solo",
+    "osm-longview-solo-connector",
+    "osm-longview-ocean-beach",
+    "osm-longview-38th"
+  ],
+  "junctions": [
+    {
+      "id": "osm-pnw-longview-j0",
+      "x": 1089.8159,
+      "y": 3.9095,
+      "z": 1467.6379,
+      "ends": [
+        {
+          "road": "osm-longview-industrial",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-j1",
+      "x": -276.5526,
+      "y": 4.4979,
+      "z": 318.5256,
+      "ends": [
+        {
+          "road": "osm-longview-industrial",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-mount-solo",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-j2",
+      "x": -2007.8794,
+      "y": 6.9929,
+      "z": -1356.8434,
+      "ends": [
+        {
+          "road": "osm-longview-mount-solo",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-solo-connector",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-j3",
+      "x": -1176.3101,
+      "y": 2.4762,
+      "z": -2369.3563,
+      "ends": [
+        {
+          "road": "osm-longview-solo-connector",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-ocean-beach",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-j4",
+      "x": 1290.3892,
+      "y": 3.0251,
+      "z": -616.1693,
+      "ends": [
+        {
+          "road": "osm-longview-ocean-beach",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-38th",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-j5",
+      "x": 588.5151,
+      "y": 2.1446,
+      "z": 630.43,
+      "ends": [
+        {
+          "road": "osm-longview-38th",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 1073 points in 2 request(s) (lon, lat WGS84, sha256 317d73f59dc0dbc7), bilinear (line port-shift)",
+        "retrievedAt": "2026-10-15T21:24:50Z",
+        "sha256": "2ddb221bdaee4ca466a4b1127f508c42cb6af276a2c05edfb9fda6b610e601fb"
+      }
+    ],
+    "modified": true,
+    "modifications": "1 real Longview public-road paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.0 m, spread back along each line), resampled at 4 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "One traversal from Industrial Way west along Mount Solo Road, east on Ocean Beach Highway and south on 38th Avenue, finishing before the Industrial Way junction. OSM reference fetched 2026-10-15. This is a simplified arcade course, not a survey of present turn restrictions or lane widths: drive lanes are widened to 4 m, unsurveyed medians omitted, and ordinary side streets are scenery rather than playable connections. No port-internal roads, lake trails, civic ground or repeated laps. Reuses PNW industrial, forest and town dressing rather than reproducing individual properties."
+  }
+}
