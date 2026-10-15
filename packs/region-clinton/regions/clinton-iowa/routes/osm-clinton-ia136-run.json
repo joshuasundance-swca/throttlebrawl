@@ -1,0 +1,71 @@
+{
+  "type": "route",
+  "id": "osm-clinton-ia136-run",
+  "name": "IA 136: Rural Rush",
+  "network": "osm-clinton-ia136",
+  "start": {
+    "road": "osm-clinton-ia136-east-bends",
+    "s": 50.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-clinton-ia136-west-bends",
+    "s": 1673.8842
+  },
+  "mainPath": [
+    "osm-clinton-ia136-east-bends",
+    "osm-clinton-ia136-middle-bends",
+    "osm-clinton-ia136-west-bends"
+  ],
+  "allowedRoads": [
+    "osm-clinton-ia136-east-bends",
+    "osm-clinton-ia136-middle-bends",
+    "osm-clinton-ia136-west-bends"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-clinton-ia136-middle-bends",
+      "s": 729.9512
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "First bounded Clinton course: one pass northwest along IA 136's rural bends. No invented shortcut or repeated-edge lap. Road widths and soft grass verges are gameplay adaptations, not a survey.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-15",
+      "tool": {
+        "name": "tools/gis/src/tbgis/cli.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/configs/osm-clinton-ia136.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+          "retrievedAt": "2026-10-15T21:21:57Z",
+          "sha256": "60dd79a1d5ed17064f8acab989132d8bfd3d4fcb30b4ee809456b1ee202466a1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear",
+          "retrievedAt": "2026-10-15T21:26:10Z",
+          "sha256": "00c56964f5592388b4b8de9aba834736864214624c8c13c0c312047379ca327e"
+        }
+      ]
+    }
+  }
+}

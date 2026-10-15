@@ -1,0 +1,30 @@
+{
+  "type": "rider",
+  "id": "officer-rook",
+  "name": "Officer Rook",
+  "role": "cop",
+  "roster": "local",
+  "region": "clinton-iowa",
+  "tags": ["local-law"],
+  "blurb": "Every mile logged. Every excuse filed.",
+  "bike": "base:rustbucket-400",
+  "startingWeapon": "base:baton",
+  "stats": { "massKg": 90, "healthMax": 100, "skill": 0.6 },
+  "personality": { "style": "cop" },
+  "law": {
+    "agency": "county-route-patrol",
+    "bustRadiusM": 14,
+    "bustDwellS": 1.5,
+    "fineCash": 400,
+    "pursuitSpeedScale": 1.05
+  },
+  "look": {
+    "description": "A fictional motorcycle patrol officer. Reuses the base game's generic officer and police motorcycle art, with no real agency insignia.",
+    "bikeModel": "cop-moto"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Minimal fictional local law for the Clinton course, using existing cop behaviour and base art. Not a portrayal of a real officer or agency.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-15" }
+  }
+}

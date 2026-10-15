@@ -1,0 +1,70 @@
+{
+  "type": "region",
+  "id": "clinton-iowa",
+  "name": "Clinton, Iowa",
+  "blurb": "Broad bends outside town. The delivery window is closing.",
+  "signStyle": "town",
+  "networks": ["osm-clinton-ia136"],
+  "timeOfDayOptions": [
+    { "id": "noon", "lighting": "clinton-clear-noon" },
+    {
+      "id": "dusk",
+      "lighting": "clinton-dusk",
+      "palette": { "sky": "#b6a7b5", "fog": "#b9b0b7", "sunlight": "#d5b999", "skylight": "#c3c8d2" }
+    }
+  ],
+  "palette": {
+    "sky": "#adc8d5",
+    "fog": "#bdcbd1",
+    "water": "#667c86",
+    "road": "#48494a",
+    "shoulder": "#938b72",
+    "land": "#798455",
+    "foliage": "#667341",
+    "foliageDark": "#455839",
+    "trunk": "#65503d",
+    "sunlight": "#dfd7b6",
+    "skylight": "#d9e1df",
+    "accent": "#d8b348"
+  },
+  "traffic": {
+    "mix": [
+      { "kind": "base:pickup", "weight": 4, "hazard": "normal" },
+      { "kind": "base:sedan-rental", "weight": 4, "hazard": "normal" }
+    ],
+    "pedestrians": [],
+    "animals": []
+  },
+  "signs": [
+    {
+      "id": "highway-136",
+      "text": "IOWA 136. Next appointment: the next bend.",
+      "status": "live",
+      "tags": ["site"]
+    },
+    {
+      "id": "bends-ahead",
+      "text": "CURVES AHEAD. Freight stays on schedule. Allegedly.",
+      "status": "live",
+      "tags": ["site"]
+    }
+  ],
+  "billboards": [
+    {
+      "id": "delivery-window",
+      "text": "DELIVERY WINDOW CLOSED. The window was ten minutes ago.",
+      "status": "live"
+    },
+    {
+      "id": "grain-forecast",
+      "text": "GRAIN OUTLOOK: GRAIN. Full report available Monday.",
+      "status": "live"
+    }
+  ],
+  "weather": null,
+  "meta": {
+    "status": "live",
+    "notes": "Minimal Clinton identity for the first real-road prototype: open rural land and deciduous copses through the reusable rural scenery tag. No claim that the art reconstructs surveyed fields, property boundaries or individual buildings. Existing base traffic and regular riders; no career chapter yet.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-15" }
+  }
+}
