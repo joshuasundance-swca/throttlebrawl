@@ -121,6 +121,8 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['strip-mall', band(5, 'kerb', 'soft')],
   ['town', band(4, 'kerb', 'soft')],
   ['landmark', band(5, 'grass', 'soft')],
+  // Open temperate country: a forgiving grass shoulder, no forest brush or invisible wall.
+  ['rural', band(5, 'grass', 'soft')],
   ['palms', band(4, 'sand', 'soft')],
   ['mangrove', band(3, 'grass', 'water')],
   ['swamp', band(3, 'grass', 'water')],

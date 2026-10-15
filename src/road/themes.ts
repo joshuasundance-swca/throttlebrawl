@@ -18,6 +18,8 @@ export type SideTheme =
   | 'industrial'
   | 'sawmill'
   | 'forest'
+  // Open temperate grass with sparse generic deciduous copses.
+  | 'rural'
   // run W-R, San Francisco's downtown (render/downtown.ts draws what stands there)
   | 'crossing'
   | 'plaza'
@@ -69,6 +71,7 @@ export const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   gardens: 'urban',
   sawmill: 'sawmill',
   forest: 'forest',
+  rural: 'rural',
   // Run W-R (interview, 2026-10-02: "SF first = downtown towers"): a cross street's mouth, a plaza
   // and the towers' sidewalk. Nothing of the scatter's stands there (no houses, no poles); the
   // downtown layer (downtown.ts) draws the towers, the cross streets and the plaza furniture.
@@ -154,6 +157,7 @@ export const THEME_ORDER: readonly LandTheme[] = [
   // rest, tagged `town` and `palms`) is a street with a kerb, not a beach road. No road that has
   // `commercial` and `mangrove` on one side exists; the road/cross-section.ts verge order agrees.
   'commercial',
+  'rural',
   'palms',
   'mangrove',
   'beach',
