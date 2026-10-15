@@ -182,8 +182,10 @@ export class EdgeLocator {
     margin: number,
     overM: number,
     withinM = Number.POSITIVE_INFINITY,
+    filter: (edge: number) => boolean = () => true,
   ): boolean {
     return this.lanesUnder(x, z, except, margin, margin + 0.25, (edge, s, d) => {
+      if (!filter(edge)) return false;
       const drop = y - this.road.toWorld(edge, s, d, 0).y;
       return drop > overM && drop < withinM;
     });
@@ -203,10 +205,11 @@ export class EdgeLocator {
     lift: number,
     margin: number,
     overM: number,
+    filter: (edge: number) => boolean = () => true,
   ): number | null {
     const over = (d: number): boolean => {
       const p = this.road.toWorld(edge, s, d, lift);
-      return this.overLowerLanes(p.x, p.y, p.z, edge, margin, overM);
+      return this.overLowerLanes(p.x, p.y, p.z, edge, margin, overM, Infinity, filter);
     };
     if (over(dNear)) return null;
     const n = Math.max(1, Math.ceil(Math.abs(dFar - dNear) / LOWER_PROBE_M));

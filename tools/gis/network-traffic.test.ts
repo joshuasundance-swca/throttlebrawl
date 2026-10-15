@@ -114,55 +114,59 @@ describe('the dedicated Morrison forward traffic ingress', () => {
     expect(Math.max(...edge.kappa.map(Math.abs)) * branch.trafficIngress.minRadiusM).toBeLessThan(1.01);
   });
 
-  it('supports the whole lane and the committed streetcar body on asphalt without downtown intrusion', () => {
-    const plans = [3, 7, 19].map((seed) => planPdxDowntown(network, seed));
-    // Positive controls: the footprint query finds buildings, and the surface query rejects open space.
-    for (const p of plans) {
-      expect(p.lots.length).toBeGreaterThan(0);
-      const f = p.lots[0]!.solid.foot;
-      expect(footContains(f, f.x, f.z)).toBe(true);
-    }
-    expect(asphaltAt(1e6, 0, 1e6)).toBe(false);
-    const box = { x: 0, z: 0, ux: 1, uz: 0, hu: 10, hv: 1 };
-    expect(overlaps(box, { ...box, ux: 0, uz: 1 })).toBe(true);
-    expect(overlaps(box, { ...box, x: 30 })).toBe(false);
-    let examined = 0;
-    for (let s = 0; s <= edge.length; s += 1) {
-      const f = network.frameAt(edge.index, s);
-      const body: StructureFoot = {
-        x: f.x,
-        z: f.z,
-        ux: f.tx,
-        uz: f.tz,
-        hu: streetcar.lengthM / 2,
-        hv: streetcar.widthM / 2,
-      };
-      for (const plan of plans)
-        expect(
-          plan.lots.some((l) => overlaps(body, l.solid.foot)),
-          `streetcar/building at s=${s}`,
-        ).toBe(false);
-      const points: { x: number; y: number; z: number }[] = [];
-      for (const d of [-branch.trafficIngress.widthM / 2, 0, branch.trafficIngress.widthM / 2])
-        points.push(network.toWorld(edge.index, s, d, 0));
-      // A rigid body tangent to the path, all four corners and both side midpoints.
-      for (const along of [-streetcar.lengthM / 2, 0, streetcar.lengthM / 2])
-        for (const across of [-streetcar.widthM / 2, streetcar.widthM / 2])
-          points.push({
-            x: f.x + along * f.tx - across * f.tz,
-            y: f.y + along * f.grade,
-            z: f.z + along * f.tz + across * f.tx,
-          });
-      for (const p of points) {
-        expect(asphaltAt(p.x, p.y, p.z), `asphalt at ingress s=${s}`).toBe(true);
+  it.each([id, `${config.id}-morrison-traffic-reverse-leave`, `${config.id}-morrison-traffic-reverse-join`])(
+    'supports the whole lane and streetcar body without downtown intrusion: %s',
+    (movement) => {
+      const edge = network.edges[network.edgeIndex(movement)]!;
+      const plans = [3, 7, 19].map((seed) => planPdxDowntown(network, seed));
+      // Positive controls: the footprint query finds buildings, and the surface query rejects open space.
+      for (const p of plans) {
+        expect(p.lots.length).toBeGreaterThan(0);
+        const f = p.lots[0]!.solid.foot;
+        expect(footContains(f, f.x, f.z)).toBe(true);
+      }
+      expect(asphaltAt(1e6, 0, 1e6)).toBe(false);
+      const box = { x: 0, z: 0, ux: 1, uz: 0, hu: 10, hv: 1 };
+      expect(overlaps(box, { ...box, ux: 0, uz: 1 })).toBe(true);
+      expect(overlaps(box, { ...box, x: 30 })).toBe(false);
+      let examined = 0;
+      for (let s = 0; s <= edge.length; s += 1) {
+        const f = network.frameAt(edge.index, s);
+        const body: StructureFoot = {
+          x: f.x,
+          z: f.z,
+          ux: f.tx,
+          uz: f.tz,
+          hu: streetcar.lengthM / 2,
+          hv: streetcar.widthM / 2,
+        };
         for (const plan of plans)
           expect(
-            plan.lots.some((l) => footContains(l.solid.foot, p.x, p.z)),
-            `building at s=${s}`,
+            plan.lots.some((l) => overlaps(body, l.solid.foot)),
+            `streetcar/building at s=${s}`,
           ).toBe(false);
-        examined++;
+        const points: { x: number; y: number; z: number }[] = [];
+        for (const d of [-branch.trafficIngress.widthM / 2, 0, branch.trafficIngress.widthM / 2])
+          points.push(network.toWorld(edge.index, s, d, 0));
+        // A rigid body tangent to the path, all four corners and both side midpoints.
+        for (const along of [-streetcar.lengthM / 2, 0, streetcar.lengthM / 2])
+          for (const across of [-streetcar.widthM / 2, streetcar.widthM / 2])
+            points.push({
+              x: f.x + along * f.tx - across * f.tz,
+              y: f.y + along * f.grade,
+              z: f.z + along * f.tz + across * f.tx,
+            });
+        for (const p of points) {
+          expect(asphaltAt(p.x, p.y, p.z), `asphalt at ingress s=${s}`).toBe(true);
+          for (const plan of plans)
+            expect(
+              plan.lots.some((l) => footContains(l.solid.foot, p.x, p.z)),
+              `building at s=${s}`,
+            ).toBe(false);
+          examined++;
+        }
       }
-    }
-    console.log(`[examined] ${examined} lane/vehicle footprint points; ${plans.length} downtown seeds`);
-  });
+      console.log(`[examined] ${examined} lane/vehicle footprint points; ${plans.length} downtown seeds`);
+    },
+  );
 });

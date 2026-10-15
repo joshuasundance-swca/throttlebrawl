@@ -38,7 +38,9 @@
     "osm-pnw-pdx-grand",
     "osm-pnw-portland-morrison-in",
     "osm-pnw-portland-morrison-out",
-    "osm-pnw-portland-morrison-traffic-in"
+    "osm-pnw-portland-morrison-traffic-in",
+    "osm-pnw-portland-morrison-traffic-reverse-leave",
+    "osm-pnw-portland-morrison-traffic-reverse-join"
   ],
   "checkpoints": [
     {
@@ -78,7 +80,9 @@
         "osm-pnw-pdx-morrison-bridge",
         "osm-pnw-pdx-grand",
         "osm-pnw-portland-morrison-out",
-        "osm-pnw-portland-morrison-traffic-in"
+        "osm-pnw-portland-morrison-traffic-in",
+        "osm-pnw-portland-morrison-traffic-reverse-leave",
+        "osm-pnw-portland-morrison-traffic-reverse-join"
       ],
       "traffic": "road"
     }
@@ -105,7 +109,7 @@
         {
           "name": "OpenStreetMap",
           "spdx": "ODbL-1.0",
-          "attribution": "© OpenStreetMap contributors",
+          "attribution": "ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© OpenStreetMap contributors",
           "url": "https://www.openstreetmap.org/copyright",
           "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
           "retrievedAt": "2026-10-05T13:16:11Z",

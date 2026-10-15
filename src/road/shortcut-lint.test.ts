@@ -115,6 +115,27 @@ describe('the shortcut lint: the connector stays at the road it leaves', () => {
   it('allows a small gap: the shortcut surface is drawn 5 cm over the road, by design', () => {
     expect(shortcutIssues(lowered(0.05))).toEqual([]);
   });
+
+  it('compares the banked surfaces at the same world point, and still catches a raised connector', () => {
+    const b = bake() as Mutable<ReturnType<typeof bake>>;
+    for (const r of b.roads) {
+      const data = r.samples.data;
+      const x = data['x']!;
+      const z = data['z']!;
+      data['y'] = x.map((v) => 1 + 0.1 * v);
+      data['bankRad'] = x.map((_, i) => {
+        const a = Math.max(0, i - 1),
+          c = Math.min(x.length - 1, i + 1);
+        const dx = x[c]! - x[a]!,
+          dz = z[c]! - z[a]!;
+        return (0.1 * dz) / Math.hypot(dx, dz);
+      });
+    }
+    expect(shortcutIssues(b)).toEqual([]);
+    const c = b.roads.find((r) => r.id === 'c-in')!;
+    c.samples.data['y'] = c.samples.data['y']!.map((y) => y + 0.5);
+    expect(shortcutIssues(b).some((issue) => /c-in lies inside/.test(issue.message))).toBe(true);
+  });
 });
 
 describe('the shortcut lint: where the zone starts', () => {

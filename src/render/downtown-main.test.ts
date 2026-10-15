@@ -21,6 +21,7 @@ import {
 } from '../road';
 import { DowntownLayer, LOT_LAND_TOP_M, type DowntownItem } from './downtown';
 import fixture from './downtown-main.fixture.json';
+import originalRoads from './downtown-roads.fixture.json';
 import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import type { RoadDressing } from './road-mesh';
@@ -35,6 +36,9 @@ const roadFiles = import.meta.glob<BakedRoad>('../../packs/*/regions/*/roads/*.j
   eager: true,
   import: 'default',
 });
+// This is a historical renderer-port comparison. Traffic junction grading changed these source
+// elevations afterward; retain their original inputs as well as the expected rendered boxes.
+const retainedRoads = new Map((originalRoads.roads as unknown as BakedRoad[]).map((road) => [road.id, road]));
 
 function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   const [path, network] = Object.entries(networkFiles).find(([, n]) => n.id === id) ?? [];
@@ -61,7 +65,7 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   };
   const roads = Object.entries(roadFiles)
     .filter(([p, r]) => p.includes(`/packs/${pack}/`) && historical.roads.includes(r.id))
-    .map(([, r]) => r);
+    .map(([, r]) => retainedRoads.get(r.id) ?? r);
   const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
   return { road: createRoadNetwork({ network: historical, roads }), dressing };
 }

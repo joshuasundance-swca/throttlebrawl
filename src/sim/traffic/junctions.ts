@@ -1,4 +1,4 @@
-// Local junction arbitration for opted-in connector surfaces that overlap the reference road.
+// Local junction arbitration for overlapping road and opted-in connector surfaces.
 // Derived geometry is cached; waiting and scheduled ownership are ordinary hashed sim state.
 import type { RoadPos } from '../../road';
 import type { SimConfig } from '../types';
@@ -26,8 +26,17 @@ function conflictRegions(config: SimConfig): Region[] {
   if (cached) return cached;
   const road = config.road;
   const result: Region[] = [];
-  for (const edge of config.route.trafficRoads) {
-    if (!graph.allowed.includes(edge) || !road.edges[edge]?.isConnector) continue;
+  const connectors = config.route.trafficRoads.filter(
+    (edge) => graph.allowed.includes(edge) && road.edges[edge]?.isConnector,
+  );
+  for (const edge of connectors) {
+    const junction = road.edges[edge]!.fromJunction;
+    const others = [
+      ...new Set([
+        ...graph.reference.edges,
+        ...connectors.filter((other) => other !== edge && road.edges[other]?.fromJunction === junction),
+      ]),
+    ].filter((other) => other !== edge);
     const rangeByEdge = new Map<number, Range>();
     let start = Infinity;
     let end = -Infinity;
@@ -35,7 +44,7 @@ function conflictRegions(config: SimConfig): Region[] {
     for (let s = 0; s <= (road.edges[edge]?.length ?? 0); s += 2) {
       for (const lane of lanes)
         for (const d of [lane.dCenterM - lane.widthM / 2, lane.dCenterM, lane.dCenterM + lane.widthM / 2]) {
-          for (const other of graph.reference.edges) {
+          for (const other of others) {
             const p = road.surfaceUnder({ edge, s, d, dir: 1 }, 0.2, (candidate) => candidate === other);
             if (!p) continue;
             start = Math.min(start, s);
@@ -64,8 +73,53 @@ function conflictRegions(config: SimConfig): Region[] {
       ],
     });
   }
-  regions.set(graph, result);
-  return result;
+  // Opposing turns can overlap beyond their contact with the main road. Those connected
+  // surfaces form one reservation, so a long body cannot clear one lock while entering another.
+  // Union only measured overlaps: a shared junction ID alone is no physical conflict.
+  const owner = new Map(result.map((region, i) => [region.ranges[0]!.edge, i]));
+  const parent = result.map((_region, i) => i);
+  const root = (i: number): number => {
+    while (parent[i] !== i) i = parent[i]!;
+    return i;
+  };
+  for (let i = 0; i < result.length; i++)
+    for (const range of result[i]!.ranges) {
+      const j = owner.get(range.edge);
+      if (j === undefined) continue;
+      const a = root(i),
+        b = root(j);
+      parent[Math.max(a, b)] = Math.min(a, b);
+    }
+  const groups = new Map<number, Region[]>();
+  result.forEach((region, i) => {
+    const key = root(i);
+    const group = groups.get(key) ?? [];
+    group.push(region);
+    groups.set(key, group);
+  });
+  const merged: Region[] = [];
+  for (const parts of groups.values()) {
+    const ranges = new Map<number, Range>();
+    for (const part of parts)
+      for (const range of part.ranges) {
+        const previous = ranges.get(range.edge);
+        ranges.set(
+          range.edge,
+          previous
+            ? {
+                edge: range.edge,
+                s0: Math.min(previous.s0, range.s0),
+                s1: Math.max(previous.s1, range.s1),
+                d0: Math.min(previous.d0, range.d0),
+                d1: Math.max(previous.d1, range.d1),
+              }
+            : { ...range },
+        );
+      }
+    merged.push({ key: parts[0]!.key, ranges: [...ranges.values()] });
+  }
+  regions.set(graph, merged);
+  return merged;
 }
 
 /** Do not materialize a car inside an arbitration region, even when its center is clear. */

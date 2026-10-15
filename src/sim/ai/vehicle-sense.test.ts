@@ -15,6 +15,19 @@ const mover = (edge: number, s: number, d: number, dir: 1 | -1, kind: 'rider' | 
 });
 
 describe('vehicle sensing across short connectors', () => {
+  it('does not turn back through the fork to see a car on the other departing arm', () => {
+    const f = fixtureBranchNetwork();
+    const sibling = f.roads.find((r) => r.id === 'c-split')!;
+    sibling.samples = {
+      ...sibling.samples,
+      data: { ...sibling.samples.data, x: sibling.samples.data['x']!.map((x) => x - 30) },
+    };
+    const road = createRoadNetwork(f);
+    const me = mover(road.edgeIndex('c-in'), 20, 0, 1, 'rider');
+    const car = mover(road.edgeIndex('c-split'), 20, 1.7, 1, 'vehicle');
+    expect(seeVehicle(road, me, car, 100)).toBeNull();
+    expect(seeVehicle(road, me, mover(road.edgeIndex('a'), 190, 1.7, 1, 'vehicle'), 100)).not.toBeNull();
+  });
   it('transforms a reversed edge’s distance, lane and travel direction', () => {
     const f = fixtureNetwork([
       { id: 'a', lengthM: 100, kappa: 0 },

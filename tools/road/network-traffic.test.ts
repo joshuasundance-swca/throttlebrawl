@@ -118,9 +118,9 @@ describe('Bridge City network traffic integration', () => {
     const waiting = placeRoadVehicle(w, c, {
       type: car,
       pos: {
-        edge: c.road.edgeIndex('osm-pnw-portland-morrison-out'),
-        s: 80,
-        d: 0,
+        edge: c.road.edgeIndex('osm-pnw-pdx-grand'),
+        s: c.road.edges[c.road.edgeIndex('osm-pnw-pdx-grand')]!.length - 40,
+        d: 2,
         dir: 1,
       },
     });
@@ -179,20 +179,27 @@ describe('Bridge City network traffic integration', () => {
       expect(run()).toEqual(run());
     },
   );
-  it('preserves every original road rider link while exposing legal forward traffic access', () => {
+  it('preserves every original road rider link while exposing legal traffic access', () => {
     const f = config();
     const pack = 'region-pnw:';
     const network = ALL.networks[`${pack}${f.road.id}`]!;
+    const added = new Set(
+      network.junctions
+        .flatMap((j) => j.connectors)
+        .map(readConnector)
+        .filter((c) => c?.trafficOnly)
+        .map((c) => c!.road),
+    );
     const original: BakedNetworkBundle = {
       network: {
         ...network,
-        roads: network.roads.filter((id) => id !== INGRESS),
+        roads: network.roads.filter((id) => !added.has(id)),
         junctions: network.junctions.map((j) => ({
           ...j,
-          connectors: j.connectors.filter((r) => readConnector(r)?.road !== INGRESS),
+          connectors: j.connectors.filter((r) => !added.has(readConnector(r)?.road ?? '')),
         })),
       },
-      roads: network.roads.filter((id) => id !== INGRESS).map((id) => ALL.roads[`${pack}${id}`]!),
+      roads: network.roads.filter((id) => !added.has(id)).map((id) => ALL.roads[`${pack}${id}`]!),
     };
     const old = createRoadNetwork(original);
     for (const e of old.edges)
@@ -201,8 +208,7 @@ describe('Bridge City network traffic integration', () => {
     const graph = buildTrafficGraph(f);
     expect(graph.allowed).toContain(f.road.edgeIndex(INGRESS));
     expect(graph.allowed).not.toContain(f.road.edgeIndex('osm-pnw-portland-morrison-in'));
-    for (const edge of f.route.trafficRoads)
-      if (graph.allowed.includes(edge)) expect(graph.viable[edge]?.minus).toBe(false);
+    expect(graph.viable[f.road.edgeIndex(INGRESS)]?.minus).toBe(false);
   });
 
   it('drives a committed vehicle continuously through Morrison and onto the shared receiving road', () => {

@@ -18,6 +18,7 @@
 import { ROUTE_BRANCH_ALTERNATE_M, type RoadSurface, type RouteBranchKind, type RouteQueries } from '../core';
 import type { EdgeLink, RoadNetwork } from './network';
 import type { BakedRoute } from './types';
+import { projectRoadPosition } from './project-position';
 
 /** A branch off the route's main path, as the race and the career see it. */
 export interface RouteBranch {
@@ -247,6 +248,7 @@ export function createRouteProgress(net: RoadNetwork, route: BakedRoute): RouteP
     lanesAt: (edge, s) => net.lanesAt(edge, s),
     edgeLength: (edge) => net.edges[edge]?.length ?? NaN,
     kappaAt: (edge, s) => net.kappaAt(edge, s),
+    projectPosition: (viewer, other, range) => projectRoadPosition(net, viewer, other, range)?.pos ?? null,
   };
 }
 

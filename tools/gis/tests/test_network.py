@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, cast
@@ -21,6 +22,7 @@ from tbgis.network import (
     NetworkBake,
     NetworkConfig,
     Shape,
+    align_traffic_height,
     bake_line,
     bake_network,
     connector_shape,
@@ -398,7 +400,21 @@ def test_traffic_ingress_is_additive_legal_and_does_not_change_rider_defaults(ba
     assert row["from"] == {"road": "osm-test-a1", "end": "to", "lane": "R1"}
     assert row["to"] == {"road": "osm-test-b", "end": "from", "lane": "R1"}
     for road in baked.roads:
-        assert by_id[road["id"]] == road
+        actual = by_id[road["id"]]
+        if road["id"] in {"osm-test-net-b-road-in", "osm-test-net-b-road-out"}:
+            # Traffic needs one shared sloping surface. Preserve every other field, the planar
+            # path and both endpoint heights; the old byte-for-byte elevation guarantee is replaced.
+            data = road["samples"]["data"]
+            for end in (0, -1):
+                assert actual["samples"]["data"]["y"][end] == data["y"][end]
+            actual = {
+                **actual,
+                "samples": {
+                    **actual["samples"],
+                    "data": {**actual["samples"]["data"], **{k: data[k] for k in ("y", "grade", "bankRad")}},
+                },
+            }
+        assert actual == road
     full, short = traffic.routes
     assert full["branches"][0]["traffic"] == "road"
     assert rid in full["branches"][0]["roads"] and rid in full["allowedRoads"]
@@ -458,3 +474,128 @@ def test_the_committed_traffic_ingress_joins_forward_lane_centres_without_moving
     rebuilt = road_json(source, piece, {}, "")["samples"]["data"]
     for column in ("x", "z", "kappa"):
         assert rebuilt[column] == pytest.approx(road["samples"]["data"][column], abs=1e-5)
+
+
+def reverse_config(**over: Any) -> NetworkConfig:
+    movement = {
+        "offsetM": -3,
+        "lane": "L1",
+        "branchOffsetM": -2,
+        "branchLane": "L1",
+        "widthM": 4,
+        "turnsM": [15, 15],
+        "minRadiusM": 20,
+    }
+    return traffic_config(trafficReverse={"leave": movement, "join": movement}, **over)
+
+
+def test_shared_junction_height_preserves_paths_and_endpoints_and_leaves_the_main_surface() -> None:
+    class FlatMain:
+        def project(self, x: float, z: float) -> tuple[float, float]:
+            return -z, abs(x)
+
+        def at(self, s: float) -> tuple[float, float, float, float]:
+            return 0, 3.5, -s, 0
+
+    pc = curve_piece("new", "new", (0, 3, 0, 0), (0, 3, -100, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, [])
+    original_x, original_z = pc.x.copy(), pc.z.copy()
+    far = replace(pc, x=pc.x + 1000, y=pc.y.copy())
+    main = cast(BakedLine, FlatMain())
+    align_traffic_height(far, main, 10, 3)
+    assert np.allclose(far.y, 3)
+    align_traffic_height(pc, main, 10, 3)
+    assert pc.y[len(pc.y) // 2] == pytest.approx(3.5)
+    assert pc.y[0] == pc.y[-1] == 3
+    assert np.array_equal(pc.x, original_x) and np.array_equal(pc.z, original_z)
+
+
+def test_traffic_ribbon_matches_a_sloping_main_surface_across_its_width() -> None:
+    class SlopingMain:
+        def project(self, x: float, z: float) -> tuple[float, float]:
+            return -z, abs(x)
+
+        def at(self, s: float) -> tuple[float, float, float, float]:
+            return 0, s / 10, -s, 0
+
+    h = math.pi / 4
+    pc = curve_piece(
+        "turn", "turn", (0, 0, 0, h), (70.71, 7.071, -70.71, h), Shape(h, 0, 0, 10, 80, 10), 5, 2, 20, []
+    )
+    align_traffic_height(pc, cast(BakedLine, SlopingMain()), 200, 7.071)
+    assert pc.bank is not None
+    assert pc.bank[0] == pc.bank[-1] == 0
+    for i in range(1, len(pc.x) - 1):
+        for d in (-2.5, 0, 2.5):
+            z = pc.z[i] + d * math.sin(h)
+            assert pc.y[i] - d * pc.bank[i] == pytest.approx(-z / 10, abs=1e-5)
+
+
+def test_reverse_traffic_adds_both_legal_movements_and_keeps_existing_geometry() -> None:
+    before = bake_network(traffic_config(), OSM, WAYS, flat, "2026-10-02")
+    after = bake_network(reverse_config(), OSM, WAYS, flat, "2026-10-02")
+    by_id = {r["id"]: r for r in after.roads}
+    for road in before.roads:
+        assert by_id[road["id"]] == road
+    for end in ("leave", "join"):
+        rid = f"osm-test-net-b-road-traffic-reverse-{end}"
+        road = by_id[rid]
+        assert road["laneSections"][0]["lanes"] == [
+            {"id": "L1", "direction": -1, "dCenterM": 0, "widthM": 4, "kind": "drive"}
+        ]
+        row = next(c for j in after.network["junctions"] for c in j["connectors"] if c["road"] == rid)
+        assert row["trafficOnly"] is True and "splitZone" not in row
+        assert row["from"]["lane"] == row["to"]["lane"] == "L1"
+        assert rid in after.routes[0]["branches"][0]["roads"]
+        assert rid not in after.routes[1]["allowedRoads"]
+    assert lint_network(after.network, after.roads, after.routes) == []
+
+
+def test_reverse_traffic_refuses_an_opposing_or_off_centre_lane() -> None:
+    data = reverse_config().model_dump(exclude_none=True)
+    data["branches"][0]["trafficReverse"]["join"]["lane"] = "R1"
+    with pytest.raises(ValueError, match="reverse drive lane centred"):
+        bake_network(NetworkConfig.model_validate(data), OSM, WAYS, flat, "2026-10-02")
+
+
+@pytest.mark.parametrize("end", ["leave", "join"])
+def test_committed_reverse_movements_match_authored_lanes_and_reproduce_the_curve(end: str) -> None:
+    repo = Path(__file__).resolve().parents[3]
+    region = repo / "packs/region-pnw/regions/pacific-northwest"
+    source = NetworkConfig.load(repo / "tools/gis/networks/osm-pnw-portland.json")
+    reverse = source.branches[0].trafficReverse
+    assert reverse is not None
+    spec = reverse.leave if end == "leave" else reverse.join
+    rid = f"{source.id}-morrison-traffic-reverse-{end}"
+    road = json.loads((region / "roads" / f"{rid}.json").read_text(encoding="utf-8"))
+    net = json.loads((region / "networks/osm-pnw-portland.json").read_text(encoding="utf-8"))
+    row = next(c for j in net["junctions"] for c in j["connectors"] if c["road"] == rid)
+    frames = []
+    offsets = (spec.offsetM, spec.branchOffsetM) if end == "leave" else (spec.branchOffsetM, spec.offsetM)
+    for side, offset in zip(("from", "to"), offsets, strict=True):
+        parent = json.loads((region / "roads" / f"{row[side]['road']}.json").read_text(encoding="utf-8"))
+        lane = next(ln for ln in parent["laneSections"][0]["lanes"] if ln["id"] == row[side]["lane"])
+        assert lane["direction"] == -1 and lane["kind"] == "drive" and lane["dCenterM"] == offset
+        c = parent["samples"]["data"]
+        i, a, b = (-1, -2, -1) if side == "from" else (0, 0, 1)
+        h = math.atan2(c["x"][b] - c["x"][a], -(c["z"][b] - c["z"][a]))
+        p = (c["x"][i] + offset * math.cos(h), c["y"][i], c["z"][i] + offset * math.sin(h), h)
+        k = 0 if side == "from" else -1
+        for column, value in zip(("x", "y", "z"), p[:3], strict=True):
+            assert road["samples"]["data"][column][k] == pytest.approx(value, abs=0.03)
+        assert road["provenance"]["sources"] == parent["provenance"]["sources"]
+        frames.append(p)
+    piece = traffic_ingress_piece(
+        rid,
+        frames[0],
+        frames[1],
+        spec,
+        source.sampleSpacingM,
+        road["speedLimitMps"],
+        [],
+        direction=-1,
+        leaves_main=end == "leave",
+    )
+    rebuilt = road_json(source, piece, {}, "")
+    assert road["laneSections"] == rebuilt["laneSections"]
+    for column in ("x", "z", "kappa"):
+        assert rebuilt["samples"]["data"][column] == pytest.approx(road["samples"]["data"][column], abs=1e-5)
