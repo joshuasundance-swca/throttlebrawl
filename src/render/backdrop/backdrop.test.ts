@@ -122,9 +122,9 @@ describe('the first Longview and Clinton horizons', () => {
       expect(stats.triangles).toBeGreaterThan(1000);
       expect(stats.triangles).toBeLessThan(20000);
       expect(build(id, 8).soup.pos).not.toEqual(soup.pos);
-      const floors = [...region.pieces, ...(network.pieces ?? [])].filter(
-        (p) => p.kind === 'floor' && (!p.networks || p.networks.includes(id)),
-      );
+      const floors = [...region.pieces, ...(network.pieces ?? [])]
+        .filter((p) => p.kind === 'floor')
+        .filter((p) => !p.networks || p.networks.includes(id));
       const baked = NETWORKS.find((n) => n.id === id)!;
       const heights = Object.values(roadFiles)
         .filter((r) => baked.roads.includes(r.id))
