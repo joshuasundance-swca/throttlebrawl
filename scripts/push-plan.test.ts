@@ -144,7 +144,7 @@ describe('planPush', () => {
       'packs/future-pack/assets/backdrop/future-ridge/networks/serpentine.json',
       'src/render/backdrop/backdrop.test.ts',
     ],
-    ['packs/future-pack/assets/scenes/future-ridge/overlook.json', 'src/render/scenes/scenes.test.ts'],
+    ['packs/future-pack/assets/scenes/future-ridge.json', 'src/render/scenes/scenes.test.ts'],
   ])('selects the matching asset contract for %s', (source, test) => {
     expect(planPush([source], tree(...roadContracts)).tests).toEqual([test]);
   });
@@ -176,9 +176,7 @@ describe('planPush', () => {
     const source = 'packs\\future-pack\\regions\\future-ridge\\routes\\serpentine.json';
     expect(planPush([source], tree(available)).tests).toEqual([available]);
     expect(planPush([source], tree()).tests).toEqual([]);
-    expect(planPush(['packs/future-pack/assets/scenes/future-ridge/overlook.json'], tree()).tests).toEqual(
-      [],
-    );
+    expect(planPush(['packs/future-pack/assets/scenes/future-ridge.json'], tree()).tests).toEqual([]);
     expect(
       planPush(['packs/future-pack/assets/backdrop/future-ridge/networks/serpentine.json'], tree()).tests,
     ).toEqual([]);
