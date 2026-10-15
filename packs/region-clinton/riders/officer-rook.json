@@ -19,6 +19,7 @@
     "pursuitSpeedScale": 1.05
   },
   "look": {
+    "riderModel": "sgt-pruitt",
     "description": "A fictional motorcycle patrol officer. Reuses the base game's generic officer and police motorcycle art, with no real agency insignia.",
     "bikeModel": "cop-moto"
   },

@@ -35,6 +35,8 @@ TAGS = {
     # The region packs' own tags (the Pacific Northwest and San Francisco), which the renderer reads
     # as land themes (src/render/scenery.ts) or as atmosphere (fog, cable-line).
     "forest",
+    "rural",
+    "logging",
     "sawmill",
     "row-houses",
     "painted-houses",
