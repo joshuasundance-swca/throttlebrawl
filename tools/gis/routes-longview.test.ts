@@ -1,5 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
+/// <reference types="vite/client" />
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { buildSimConfig, createStreamCache, regionChoices, routeChoices } from '../../src/app';
+import { registryFromGlob } from '../../src/content';
 import {
   createRoadNetwork,
   createRouteProgress,
@@ -10,7 +13,10 @@ import {
 } from '../../src/road';
 
 const REGION = 'packs/region-pnw/regions/pacific-northwest';
-const EVENT = 'packs/region-pnw/events/pnw-t1-port-shift.json';
+const ROUTE = 'region-pnw:osm-longview-port-shift';
+const REG = registryFromGlob(
+  import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
+);
 const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
 const route = () => read<BakedRoute>(`${REGION}/routes/osm-longview-port-shift.json`);
 const bundle = () => {
@@ -19,21 +25,26 @@ const bundle = () => {
 };
 
 describe('Port Shift is a playable first Longview race', () => {
-  it('offers an existing-kind race in the PNW on a real-road route', () => {
-    expect(existsSync(EVENT), 'the new Longview race must be authored').toBe(true);
-    const event = JSON.parse(readFileSync(EVENT, 'utf8')) as {
-      kind: string;
-      region: string;
-      lengths: { route: string; laps: number }[];
-      field: { riders: string[] };
-    };
-    expect(event.kind).toBe('classic-race');
-    expect(event.region).toBe('pacific-northwest');
-    expect(event.field.riders.length, 'combat needs a rival field').toBeGreaterThan(1);
-    for (const length of event.lengths) {
-      expect(length.laps, 'the current progress engine supports one traversal').toBe(1);
-      expect(existsSync(`${REGION}/routes/${length.route}.json`)).toBe(true);
-    }
+  it('offers the course through the existing PNW Quick Play race and uses that race configuration', () => {
+    const choice = regionChoices(REG).find((c) => c.id === 'region-pnw:pacific-northwest');
+    if (!choice) throw new Error('the Pacific Northwest must be available in Quick Play');
+    const event = REG.events[choice.eventId];
+    expect(event?.kind).toBe('classic-race');
+    const option = routeChoices(REG, choice.eventId).find((c) => c.id === ROUTE);
+    expect(option, 'the public route picker offers Longview').toBeDefined();
+    const streams = createStreamCache();
+    const setup = { seed: 1, eventId: choice.eventId };
+    const original = buildSimConfig(REG, streams.forEvent(REG, choice.eventId), setup);
+    const selected = buildSimConfig(REG, streams.forEvent(REG, choice.eventId, undefined, ROUTE), {
+      ...setup,
+      route: ROUTE,
+    });
+    expect(selected.event.routeId).toBe(ROUTE);
+    expect(selected.route.routeId).toBe(route().id);
+    expect(option?.lengthM).toBeCloseTo(selected.route.length, 0);
+    expect(selected.riders).toEqual(original.riders);
+    expect(selected.event).toEqual({ ...original.event, routeId: ROUTE });
+    expect(selected.event.kind).toBe('classic-race');
   });
 
   it('reaches a separate finish once, with ordered checkpoints and no repeated road visits', () => {
