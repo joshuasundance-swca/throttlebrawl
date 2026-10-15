@@ -49,3 +49,15 @@ not passing timing samples.
 These are local observations on different feature heads, not a controlled per-optimization
 benchmark or phone evidence. CI acceptance and the coordinated served-build check remain pending.
 The exact end-to-end timing assertion is restored in `app-offline.spec.ts`.
+
+A separate local Lake Samish first-launch/restart probe reproduced a long first countdown beat:
+3274.2 and 3304.4 ms from the DOM's "3" transition to "2", with one "3" transition per launch.
+Profiles identified repeated indexed road queries as substantial work. Adding subtree bounds
+preserved every nearest-sample result in a 2723-query study on the actual Samish roads and reduced
+node visits from 454761 to 57554. A curved-edge work counter failed before this repair while the
+original straight-road counter passed, and both now pass alongside the ordered linear reference.
+
+The follow-up Samish observations were 2550 and 2656.3 ms for the first beat, with remaining long
+tasks. These runs use the same desktop, renderer, viewport and route on different feature heads;
+they do not establish a controlled whole-game speedup or fix the countdown report. Four numeric
+bounds per indexed node add retained state; full CI budgets and performance checks remain required.

@@ -32,6 +32,42 @@ function linearHits(road: RoadNetwork, x: number, z: number, except: number, pas
 }
 
 describe('road overlap nearest-vertex lookup', () => {
+  it('bounds search work on a long curved edge, including queries far from its centre line', () => {
+    const road = createRoadNetwork(fixtureNetwork([{ id: 'arc', lengthM: 8192, kappa: 1 / 1000 }]));
+    const loc = new EdgeLocator(road);
+    loc.at(1200, -500, -1);
+    // Count actual indexed coordinate reads, not elapsed time or the three final projections.
+    // Typed-array reads alone miss work after coordinates have been copied into the index.
+    type Node = { x: number; z: number; left?: Node; right?: Node };
+    const roots = Reflect.get(loc, 'nearest') as Map<number, Node>;
+    let reads = 0;
+    const count = (node: Node | undefined): void => {
+      if (!node) return;
+      for (const key of ['x', 'z'] as const) {
+        const value = node[key];
+        Object.defineProperty(node, key, {
+          get: () => {
+            reads++;
+            return value;
+          },
+        });
+      }
+      count(node.left);
+      count(node.right);
+    };
+    for (const root of roots.values()) count(root);
+    for (const [x, z] of [
+      [1200, -500],
+      [1400, -700],
+      [900, -400],
+    ]) {
+      const before = reads;
+      expect(loc.at(x!, z!, -1)).toEqual(linearHits(road, x!, z!, -1));
+      expect(reads - before).toBeLessThan(road.edges[0]!.count / 8);
+    }
+    expect(reads).toBeGreaterThan(0);
+  });
+
   it('reuses its index rather than scanning every vertex for each scenery query', () => {
     const road = createRoadNetwork(fixtureNetwork([{ id: 'long', lengthM: 8192, kappa: 0 }]));
     const edge = road.edges[0]!;

@@ -29,7 +29,7 @@ interface Vertex {
   z: number;
 }
 
-interface VertexNode extends Vertex {
+interface VertexNode extends Vertex, Box {
   splitX: boolean;
   left: VertexNode | undefined;
   right: VertexNode | undefined;
@@ -54,6 +54,10 @@ function indexEdge(e: Edge): VertexNode | undefined {
     const mid = Math.floor(vertices.length / 2);
     return {
       ...vertices[mid]!,
+      minX,
+      maxX,
+      minZ,
+      maxZ,
       splitX,
       left: build(vertices.slice(0, mid)),
       right: build(vertices.slice(mid + 1)),
@@ -67,6 +71,11 @@ function nearestVertex(root: VertexNode | undefined, x: number, z: number): numb
   let bestD2 = Infinity;
   const visit = (node: VertexNode | undefined): void => {
     if (!node) return;
+    // Split planes alone visit long arcs for points far from their centre line. Reject an
+    // entire subtree when even its nearest box corner is farther than the best real sample.
+    const boxDx = Math.max(node.minX - x, 0, x - node.maxX);
+    const boxDz = Math.max(node.minZ - z, 0, z - node.maxZ);
+    if (boxDx * boxDx + boxDz * boxDz > bestD2) return;
     const dx = x - node.x;
     const dz = z - node.z;
     const d2 = dx * dx + dz * dz;
