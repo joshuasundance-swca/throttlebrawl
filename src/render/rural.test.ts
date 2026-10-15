@@ -7,6 +7,7 @@ import {
   fixtureNetwork,
   planStreetFurniture,
   planStructures,
+  type BakedTag,
 } from '../road';
 import { deciduousGeometry } from './deciduous';
 import { createFlatLook } from './look';
@@ -14,7 +15,7 @@ import { buildRoadScene } from './road-mesh';
 import { isTropical, themeAt } from './scenery';
 
 const LENGTH = 1200;
-const rural = [{ s0: 0, s1: LENGTH, side: 'both', tag: 'rural' }];
+const rural: readonly BakedTag[] = [{ s0: 0, s1: LENGTH, side: 'both', tag: 'rural' }];
 
 function ruralRoad(tags = rural) {
   const bundle = fixtureNetwork([{ id: 'r', lengthM: LENGTH, kappa: 0.0004, grade: 0.015 }]);
@@ -28,14 +29,14 @@ function scene(tags = rural, seed = 7) {
 
 describe('opt-in temperate rural roadside', () => {
   it('selects rural ground with a soft grass band, preserves water priority and the omitted-tag default', () => {
-    const tags = [...rural, { s0: 200, s1: 300, side: 'left', tag: 'water-open' }];
+    const tags: readonly BakedTag[] = [...rural, { s0: 200, s1: 300, side: 'left', tag: 'water-open' }];
     expect(themeAt(tags, 'right', 250)).toBe('rural');
     expect(themeAt(tags, 'left', 250)).toBe('water');
     expect(deriveVerge({ tags }, 'right', 250)).toMatchObject({ surface: 'grass', edge: 'soft' });
     expect(isTropical([rural])).toBe(false);
     expect(themeAt(undefined, 'right', 250)).toBe('palms');
     expect(isTropical([undefined])).toBe(true);
-    const overFallback = [...rural, { s0: 0, s1: LENGTH, side: 'both', tag: 'palms' }];
+    const overFallback: readonly BakedTag[] = [...rural, { s0: 0, s1: LENGTH, side: 'both', tag: 'palms' }];
     expect(themeAt(overFallback, 'right', 250)).toBe('rural');
     expect(deriveVerge({ tags: overFallback }, 'right', 250)).toMatchObject({
       surface: 'grass',
@@ -97,7 +98,7 @@ describe('opt-in temperate rural roadside', () => {
   });
 
   it('keeps a copse inside its rural span and off a water-tagged side', () => {
-    const tags = [
+    const tags: readonly BakedTag[] = [
       { s0: 100, s1: 950, side: 'both', tag: 'rural' },
       { s0: 0, s1: LENGTH, side: 'left', tag: 'water-open' },
     ];
