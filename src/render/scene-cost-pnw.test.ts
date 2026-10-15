@@ -10,12 +10,13 @@ import {
   print,
   ROUTES,
   routesOf,
+  SCENE_COST_SHARDS,
   stillSceneOf,
   sweep,
 } from './scene-cost.test-util';
 
 describe('the still scene along every Pacific Northwest route, at its peak view', () => {
-  for (const route of routesOf('region-pnw')) {
+  for (const route of SCENE_COST_SHARDS.pnw.flatMap(routesOf)) {
     it(
       `${route.id}: inside its share of the draw-call and triangle budget`,
       () => checkRoute(route),

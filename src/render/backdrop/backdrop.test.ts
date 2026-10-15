@@ -99,7 +99,7 @@ describe('the backdrop data', () => {
       ...Object.entries(backdropRegions).map(([k, v]) => [k, backdropProblems(v, 'region')] as const),
       ...Object.entries(backdropNetworks).map(([k, v]) => [k, backdropProblems(v, 'network')] as const),
     ];
-    expect(files.length).toBe(3 + NETWORKS.length);
+    expect(files.length).toBe(Object.keys(backdropRegions).length + NETWORKS.length);
     for (const [k, problems] of files) expect(problems, k).toEqual([]);
     expect(
       backdropProblems(
@@ -108,6 +108,55 @@ describe('the backdrop data', () => {
       ),
     ).toEqual(expect.arrayContaining(['floorColour must be #rrggbb', 'pieces[0]: unknown kind moon']));
   });
+});
+
+describe('the first Longview and Clinton horizons', () => {
+  it.each(['osm-pnw-longview', 'osm-clinton-ia136'])(
+    '%s: draws a land horizon below the roads, with distant hills and seeded clouds',
+    (id) => {
+      const { region, network } = filesFor(id);
+      const points = roadPoints(id);
+      const { soup, stats } = build(id);
+      for (const kind of ['floor', 'ridge', 'clouds'] as const)
+        expect(stats.kinds[kind] ?? 0, `${id}: ${kind}`).toBeGreaterThan(0);
+      expect(stats.triangles).toBeGreaterThan(1000);
+      expect(stats.triangles).toBeLessThan(20000);
+      expect(build(id, 8).soup.pos).not.toEqual(soup.pos);
+      const floors = [...region.pieces, ...(network.pieces ?? [])].filter(
+        (p) => p.kind === 'floor' && (!p.networks || p.networks.includes(id)),
+      );
+      const baked = NETWORKS.find((n) => n.id === id)!;
+      const heights = Object.values(roadFiles)
+        .filter((r) => baked.roads.includes(r.id))
+        .flatMap((r) => r.samples.data['y'] ?? []);
+      expect(heights.length).toBeGreaterThan(0);
+      const lowestRoad = Math.min(...heights);
+      expect(floors.length).toBeGreaterThan(0);
+      // These generic inland horizons claim no water body or surveyed local landmark.
+      for (const floor of floors) {
+        expect(floor.surface).toBe('land');
+        expect(floor.y ?? 0).toBeLessThanOrEqual(0);
+        expect(floor.y ?? 0).toBeLessThan(lowestRoad);
+      }
+      // Keep every standing vertex well outside the course, including the ridges' spreading feet.
+      let standing = 0;
+      for (let v = 0; v < soup.pos.length / 3; v++) {
+        if (soup.info[v * 4 + 1]! > 0 || soup.info[v * 4 + 3]! > 0) continue;
+        standing++;
+        const x = soup.pos[v * 3]!;
+        const z = soup.pos[v * 3 + 2]!;
+        expect(
+          points.some(([px, pz]) => Math.hypot(px - x, pz - z) < 150),
+          id,
+        ).toBe(false);
+      }
+      expect(standing).toBeGreaterThan(1000);
+      print(
+        `${id}: ${stats.triangles} triangles; ${standing} standing vertices clear of roads; ` +
+          `land floor below the lowest road at ${lowestRoad.toFixed(2)} m`,
+      );
+    },
+  );
 });
 
 describe('the map frame', () => {
