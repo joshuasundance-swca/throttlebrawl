@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuickPlay } from './menu-navigation';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { menuRegions } from './packs-on-disk';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // The regions in the real game (playtest 1c item 6, 2026-09-30: "Pnw and sf first then others";
@@ -62,29 +63,9 @@ const REGIONS = [
 
 // The cases above preserve specific rendered/replay regressions. The picker inventory itself
 // comes from live region files, so a new region need not change an exact list of labels here.
-const REGION_NAMES = readdirSync('packs')
-  .flatMap((pack) => {
-    const root = `packs/${pack}/regions`;
-    if (!existsSync(root)) return [];
-    return readdirSync(root).flatMap((folder) => {
-      const region = JSON.parse(readFileSync(`${root}/${folder}/region.json`, 'utf8')) as {
-        id: string;
-        name: string;
-        chapter?: number;
-        meta?: { status?: string };
-      };
-      if (region.meta?.status === 'draft' || region.meta?.status === 'cut') return [];
-      return [
-        {
-          key: `${pack}:${region.id}`,
-          name: region.name,
-          chapter: region.chapter ?? Number.MAX_SAFE_INTEGER,
-        },
-      ];
-    });
-  })
-  .sort((a, b) => a.chapter - b.chapter || (a.key < b.key ? -1 : 1))
-  .map((region) => region.name);
+const REGION_NAMES = menuRegions().map(
+  ({ region }) => region.name ?? region.key.slice(region.key.indexOf(':') + 1),
+);
 
 test('the picker offers the live regions from content, the Keys picked', async ({ page }) => {
   await page.addInitScript(() => {
