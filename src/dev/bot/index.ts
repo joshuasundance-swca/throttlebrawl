@@ -582,7 +582,9 @@ export function createBot(): BotController {
           if (rel) {
             if (rel.ds < 6 && !committed) {
               // Match speed so the rival stays alongside.
-              const vWant = rival.speed + 0.9 * rel.ds;
+              // A rival behind can make this correction negative. Keep riding toward the fight;
+              // traffic following below still overrides this minimum when the road is blocked.
+              const vWant = Math.max(FILTER_MPS, rival.speed + 0.9 * rel.ds);
               throttle = me.speed < vWant - 0.2 ? 1 : me.speed < vWant + 0.8 ? 0.4 : 0;
               brake = me.speed > vWant + 2 ? 0.6 : 0;
             }

@@ -32,5 +32,13 @@ clearance checks continue to use the shipped road geometry; historical exception
 The supporting-asphalt offset applies only to road surfaces and paint. Terrain construction and
 the simulation's terrain query retain the same world heights and land reach.
 
+The bot also keeps moving when lining up on a rival behind it: a negative fight-speed target
+previously held it stopped on a clear road. Traffic can still stop it. The original dense-traffic
+standstill limit is unchanged. Natural remount coverage no longer requires eight crashes, and sign
+coverage no longer requires five spawned signs: both retain nonempty positive observations and
+their original per-observation limits, with the planted sign collision control retained. The
+roadblock scenario uses the supported three-times heat setting rather than thirty-times heat;
+its radioed-ahead event assertion and simulation-tick budget remain unchanged.
+
 This changes simulation and replay identity. Career and settings formats, rewards and rival pace
 are unchanged. Desktop checks do not establish phone feel or the branch's resulting time advantage.

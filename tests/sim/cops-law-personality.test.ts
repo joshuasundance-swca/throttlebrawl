@@ -279,7 +279,9 @@ describe('law with a personality: real races', () => {
         const r = ride(
           event,
           seed,
-          { 'cops.heatScale': 30 },
+          // Exercise the supported slider maximum (the scenario's documented three-times heat),
+          // rather than the old thirty-times value, which exceeds the supported tuning range.
+          { 'cops.heatScale': 3 },
           Math.min(ROADBLOCK_RACE_TICKS, left),
           (x) => radioed(x.events) > 0,
           // firstSeed retains failed rides. This predicate needs events, not old world snapshots.

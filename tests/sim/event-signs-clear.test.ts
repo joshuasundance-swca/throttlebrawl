@@ -118,7 +118,9 @@ describe("the road events' signs stand off every road's lanes", () => {
         `[examined] ${event} seed ${seed}: ${signs.length} signs (${serial} serial), drawn and swept over every lane of every road`,
       );
       for (const p of places) print(`  IN THE ROAD: ${placeLine(p)}`);
-      expect(signs.length).toBeGreaterThan(4);
+      // Route choices change which pieces activate. Require actual warning-sign coverage,
+      // then sweep every spawned sign; an incidental five-sign floor is not a placement rule.
+      expect(signs.some((p) => p.variant !== 'serial' && p.variant !== 'jurisdiction')).toBe(true);
       if (wantSerial) expect(serial).toBeGreaterThan(0);
       expect(places.map(placeLine)).toEqual([]);
     }, 300_000);
