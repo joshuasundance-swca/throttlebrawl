@@ -23,6 +23,9 @@ traffic into the rider's lane. The repair preserves existing asphalt ownership, 
 turns beneath it, and keeps sensing walks moving away from the viewer. The original Keys bot route
 test is retained. The GIS preservation test now permits only elevation, grade and bank changes on
 the opted-in rider connectors; it still protects all other fields and endpoint heights.
+The road-height validator now compares banked surfaces at the same world point; a tilted-plane
+control and a raised-connector control retain its original height limit. Added asphalt also spans
+its verge so it meets the surrounding land without a crack.
 
 This changes simulation and replay identity. Career and settings formats, rewards and rival pace
 are unchanged. Desktop checks do not establish phone feel or the branch's resulting time advantage.

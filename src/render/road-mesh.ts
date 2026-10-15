@@ -1416,7 +1416,7 @@ export function buildRoadScene(
     }[] = [
       {
         kind: brickEdge ? 'brick' : 'road',
-        span: (l, c) => (l.drive ? (e.isTrafficOnly ? [c.lo, c.hi] : l.drive) : null),
+        span: (l) => (l.drive ? (e.isTrafficOnly ? [outerL, outerR] : l.drive) : null),
         lift: 0,
       },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
