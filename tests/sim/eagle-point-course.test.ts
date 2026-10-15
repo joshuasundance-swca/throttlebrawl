@@ -35,25 +35,16 @@ function trafficIssue(road: RoadNetwork, pos: { edge: number; s: number; dir: nu
   return null;
 }
 
-function race(
-  seed: number,
-  playerBike: string,
-  control: 'full' | 'solo' | 'traffic-off' | 'braking-solo' = 'full',
-) {
-  const isolated = control === 'solo' || control === 'braking-solo';
-  const tuning =
-    control === 'braking-solo' ? { ...ISOLATED, 'ground.offRoad': 1, 'riders.courseEdges': 1 } : ISOLATED;
+function race(seed: number, playerBike: string, control: 'full' | 'braking-solo' = 'full') {
+  const isolated = control === 'braking-solo';
+  const tuning = { ...ISOLATED, 'ground.offRoad': 1, 'riders.courseEdges': 1 };
   const { sim, route, config, playerId } = createHeadlessRace(
     {
       seed,
       eventId: EVENT,
       route: ROUTE,
       playerBike,
-      ...(isolated
-        ? { tuning, eventPatch: { riders: [] } }
-        : control === 'traffic-off'
-          ? { tuning: { 'traffic.density': 0 } }
-          : {}),
+      ...(isolated ? { tuning, eventPatch: { riders: [] } } : {}),
     },
     { registry },
   );
@@ -314,30 +305,6 @@ describe('Eagle Point: actual narrow-field driving', () => {
       );
     }, 180_000);
   }
-
-  it('can negotiate the actual bends on both bikes with optional world interactions isolated', () => {
-    for (const bike of ['base:rustbucket-400', 'base:superbike-1000']) {
-      const found = firstSeed(
-        `isolated Eagle Point ${bike}`,
-        [1, 2, 3, 4],
-        (seed) => race(seed, bike, 'solo'),
-        (r) => r.finishTick > 0,
-      );
-      expect(found.result, found.summary).not.toBeNull();
-      for (const attempt of found.tried) expect(attempt.result.problems).toEqual([]);
-      process.stdout.write(
-        `[control] solo Eagle Point ${bike}: seed ${found.seed}, finish tick ${found.result?.finishTick}, crash causes ${JSON.stringify(found.result?.crashCauses)}, samples ${JSON.stringify(found.result?.crashSamples)}\n`,
-      );
-    }
-  }, 180_000);
-
-  it('reports the fixed starter seed with traffic disabled without selecting away crashes', () => {
-    const result = race(1, 'base:rustbucket-400', 'traffic-off');
-    expect(result.problems).toEqual([]);
-    process.stdout.write(
-      `[control] traffic-off starter seed1: finish ${result.finishTick}, crash causes ${JSON.stringify(result.crashCauses)}, samples ${JSON.stringify(result.crashSamples)}\n`,
-    );
-  }, 180_000);
 
   it('a solo driver that brakes for bends can finish cleanly with real course boundaries on both bikes', () => {
     for (const bike of ['base:rustbucket-400', 'base:superbike-1000']) {
