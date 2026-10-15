@@ -17,7 +17,9 @@ import {
   garageBikes,
   globalTier,
   nodeState,
+  nodeLength,
   progressOf,
+  qualify,
   regionLockReason,
   regionOpen,
   settleRace,
@@ -44,10 +46,21 @@ function regionRoutes(def: CareerDef): string[] {
 }
 
 describe('the career maps', () => {
-  it("one per region, in chapter order (the regions are the packs', in the menu's order)", () => {
-    const regions = regionChoices(REG).map((c) => c.id);
+  it('registers every authored career once, in the chapter order of participating menu regions', () => {
+    const authored = Object.entries(REG.careers).map(([key, c]) => ({
+      key,
+      region: qualify(packOf(key), c.region),
+    }));
+    const participating = new Set(authored.map((c) => c.region));
+    const regions = regionChoices(REG)
+      .filter((c) => participating.has(c.id))
+      .map((c) => c.id);
     console.log(`[print] careers examined: ${DEFS.map((d) => d.regionKey).join(', ')}`);
     expect(regions.length).toBeGreaterThan(1);
+    expect(new Set(authored.map((c) => c.region)).size, 'one authored career per participating region').toBe(
+      authored.length,
+    );
+    expect(DEFS.map((d) => d.key).sort()).toEqual(authored.map((c) => c.key).sort());
     expect(DEFS.map((d) => d.regionKey)).toEqual(regions);
   });
 
@@ -55,14 +68,37 @@ describe('the career maps', () => {
     describe(def.regionName, () => {
       const plans = def.nodes.map((n) => eventPlan(REG, n.event));
 
-      it('events across the four event types and every route of the region', () => {
+      it('events across the four event types and the primary routes authored for career events', () => {
         expect(new Set(plans.map((p) => p.kind))).toEqual(new Set(KINDS));
         const used = new Set(
-          def.nodes.map((n, i) => plans[i]?.lengths.find((l) => l.id === n.length)?.route),
+          def.nodes.map((n, i) => {
+            const plan = plans[i]!;
+            if (n.length !== null)
+              expect(
+                plan.lengths.some((l) => l.id === n.length),
+                n.id,
+              ).toBe(true);
+            const length = nodeLength(plan, n);
+            expect(length, `${n.id}: selected length`).not.toBeNull();
+            expect(REG.routes[length?.route ?? ''], `${n.id}: selected route`).toBeDefined();
+            expect(regionRoutes(def), `${n.id}: route belongs to the career region`).toContain(length?.route);
+            return length?.route;
+          }),
         );
-        const routes = regionRoutes(def);
-        expect(routes.length).toBeGreaterThanOrEqual(3);
-        // Every route of the region has an event (wave C emptied playtest 3's waiting list).
+        // Career events opt in with a tier. Their first length is the authored primary route;
+        // a Quick Play route or an optional selectable length needs no additional career node.
+        // Expected coverage comes from the event files, independently of the map's nodes above.
+        const routes = [
+          ...new Set(
+            Object.entries(REG.events)
+              .filter(([key, e]) => e.tier !== undefined && qualify(packOf(key), e.region) === def.regionKey)
+              .map(([key, e]) => {
+                expect(e.lengths.length, `${key}: a primary length`).toBeGreaterThan(0);
+                return qualify(packOf(key), e.lengths[0]!.route);
+              }),
+          ),
+        ];
+        expect(routes.length).toBeGreaterThan(0);
         for (const r of routes) expect(used, `${r} has no event`).toContain(r);
         console.log(
           `${def.regionId}: ${def.nodes.length} events, kinds ${[...new Set(plans.map((p) => p.kind))].join(', ')}, ` +
@@ -102,11 +138,12 @@ describe('the career maps', () => {
         expect(REG.riders[rival], 'a rival').toBeDefined();
         for (const n of def.nodes) {
           const plan = eventPlan(REG, n.event);
-          const length = plan.lengths[0];
+          const length = nodeLength(plan, n);
           if (!length) throw new Error(n.event);
           const config = buildSimConfig(REG, streamForRoute(REG, length.route), {
             seed: 1,
             eventId: n.event,
+            length: length.id,
             playerBike: bike,
             grudges: { [rival]: { 'base:player': 6 }, ...grudges },
           });
@@ -114,6 +151,7 @@ describe('the career maps', () => {
           expect(player?.bike.contentId).toBe(bike);
           expect(config.grudges).toEqual({ [rival]: { 'base:player': 6 } });
           expect(config.event.tier).toBe(plan.tier);
+          expect(config.event.routeId, n.id).toBe(length.route);
           expect(config.riders.filter((r) => r.role === 'rival').map((r) => r.contentId)).toEqual(plan.field);
           if (plan.rules.rival) expect(plan.field).toContain(plan.rules.rival);
         }
