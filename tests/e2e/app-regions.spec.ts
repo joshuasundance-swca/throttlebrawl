@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openQuickPlay } from './menu-navigation';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // The regions in the real game (playtest 1c item 6, 2026-09-30: "Pnw and sf first then others";
@@ -51,11 +51,42 @@ const REGIONS = [
     locals: ['region-sf:pivot', 'region-sf:gripman-gus', 'region-sf:officer-meter'],
     roadFile: /\/sf-[a-z-]+-[\w-]+\.json$/,
   },
+  {
+    chip: '#region-region-clinton-clinton-iowa',
+    name: 'Clinton, Iowa',
+    event: 'region-clinton:clinton-ia136-race',
+    locals: ['region-clinton:officer-rook'],
+    roadFile: /\/osm-clinton-ia136-[\w-]+\.json$/,
+  },
 ];
 
-test('the picker offers the Keys, the Pacific Northwest and San Francisco, the Keys picked', async ({
-  page,
-}) => {
+// The cases above preserve specific rendered/replay regressions. The picker inventory itself
+// comes from live region files, so a new region need not change an exact list of labels here.
+const REGION_NAMES = readdirSync('packs')
+  .flatMap((pack) => {
+    const root = `packs/${pack}/regions`;
+    if (!existsSync(root)) return [];
+    return readdirSync(root).flatMap((folder) => {
+      const region = JSON.parse(readFileSync(`${root}/${folder}/region.json`, 'utf8')) as {
+        id: string;
+        name: string;
+        chapter?: number;
+        meta?: { status?: string };
+      };
+      if (region.meta?.status === 'draft' || region.meta?.status === 'cut') return [];
+      return [
+        {
+          key: `${pack}:${region.id}`,
+          name: region.name,
+          chapter: region.chapter ?? Number.MAX_SAFE_INTEGER,
+        },
+      ];
+    });
+  })
+  .sort((a, b) => a.chapter - b.chapter || (a.key < b.key ? -1 : 1))
+  .map((region) => region.name);
+
+test('the picker offers the live regions from content, the Keys picked', async ({ page }) => {
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
   });
@@ -64,7 +95,7 @@ test('the picker offers the Keys, the Pacific Northwest and San Francisco, the K
   await openQuickPlay(page);
   await expect(page.locator('#region-picker')).toBeVisible();
   const chips = page.locator('#region-picker .region');
-  await expect(chips).toHaveText(['The Keys', 'The Pacific Northwest', 'San Francisco']);
+  await expect(chips).toHaveText(REGION_NAMES);
   await expect(page.locator('#region-base-florida-keys')).toHaveAttribute('aria-checked', 'true');
 });
 
@@ -111,7 +142,13 @@ for (const region of REGIONS) {
     // W-Q: a free-play race draws its four rivals from the region's whole cast (its locals plus the
     // travelling four), so the local law always rides and every rival is from that cast.
     const pack = region.event.split(':')[0] ?? '';
-    const law = region.locals.filter((id) => /lindqvist|meter|pruitt/.test(id));
+    const law = region.locals.filter((id) => {
+      const [owner, rider] = id.split(':');
+      return (
+        (JSON.parse(readFileSync(`packs/${owner}/riders/${rider}.json`, 'utf8')) as { role: string }).role ===
+        'cop'
+      );
+    });
     expect(riders).toEqual(expect.arrayContaining(law));
     const travelling = /^base:(deacon-vane|dial-up|chad-speedwell|kevin-from-accounting|player)$/;
     for (const id of riders) expect(id.startsWith(`${pack}:`) || travelling.test(id), id).toBe(true);

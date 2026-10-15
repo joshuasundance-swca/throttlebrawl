@@ -501,13 +501,9 @@ describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', 
         `${seams.probes} shoulder-to-land seam points, ${seams.open.length} open\n`,
     );
     built.dispose();
-    // High country has drops to look under; the Keys' land shelves straight into the sea, flat, so
-    // there it walks for nothing to close (the probes and joins below still count it).
-    const flat = baked(id).roads.every((r) => {
-      const y = r.samples.data['y'] ?? [];
-      return Math.max(...y) - Math.min(...y) < 10;
-    });
-    if (!flat) expect(drops).toBeGreaterThan(0);
+    // Total elevation change does not imply a cliff beside the road: a gradual rural rise can
+    // have no abrupt drops. Inspect every drop the geometry walk finds, and keep the floating-
+    // plate negative control below to prove the walk detects open raised edges.
     expect(probes).toBeGreaterThan(1000);
     // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
     expect(joins).toBeGreaterThan(0);
