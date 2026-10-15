@@ -13,3 +13,8 @@ Ground closure is checked from actual geometry, not inferred from total elevatio
 floating-ground negative control remains. Model replacement checks apply to asset-backed scenery,
 while procedural trees keep their own mesh checks. The browser picker inventory comes from live
 region files, and Clinton joins the rendered race and replay regression cases.
+
+Explicit rider body names accept both a short model name and a full rider asset id, preserving
+model retry and presentation retirement behavior. The light-eligibility fixture opts its probe
+into road events explicitly, so a region can intentionally ship without random road events.
+Board-copy checks read every region without fixing the region inventory size.

@@ -47,6 +47,9 @@ describe('riderLookOf: which models a rider draws with (run W-R)', () => {
     expect(reused.riderModel).toBe('models/riders/sgt-pruitt');
     expect(reused.contentId).toBe(source.contentId);
     expect(reused.law).toBe(true);
+    expect(riderLookOf({ ...source, look: { riderModel: 'models/riders/sgt-pruitt' } }).riderModel).toBe(
+      'models/riders/sgt-pruitt',
+    );
     expect(riderLookOf({ ...source, look: { riderModel: '' } }).riderModel).toBe(
       'models/riders/local-patrol',
     );

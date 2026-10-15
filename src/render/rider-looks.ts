@@ -70,7 +70,7 @@ export function riderLookOf(src: RiderLookSource): RiderLook {
     : [];
   return {
     contentId: src.contentId,
-    riderModel: `models/riders/${rider}`,
+    riderModel: rider.startsWith('models/riders/') ? rider : `models/riders/${rider}`,
     bikeModel: `models/bikes/${bike}`,
     paint: palette.length ? palette : null,
     law: src.role === 'cop',
