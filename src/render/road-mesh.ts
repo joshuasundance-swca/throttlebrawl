@@ -110,6 +110,9 @@ const LAND_TAPER_M = 8;
 const LAND_LIFT_M = -0.06;
 /** Boost pads sit above the lane markings (0.03) and the ramp stripes (0.04). */
 const BOOST_LIFT_M = 0.045;
+/** Traffic movements fill junction asphalt beneath its existing lanes and shoulders (-0.02 m).
+ * Eight centimetres leaves more than the 3 cm flicker gap plus mesh simplification tolerance. */
+const TRAFFIC_SURFACE_LIFT_M = -0.08;
 
 export interface BarrierSpan {
   s0: number;
@@ -1068,9 +1071,9 @@ export function buildRoadScene(
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
-  const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   const locator = new EdgeLocator(road);
-  const trafficTurns = road.edges.some((e) => e.isTrafficOnly);
+  const w = (edge: number, s: number, d: number, h: number): Point3 =>
+    road.toWorld(edge, s, d, h + (road.edges[edge]?.isTrafficOnly ? TRAFFIC_SURFACE_LIFT_M : 0));
   // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
   const islands = islandBoxes(road);
   const gores = goreLines(road);
@@ -1107,6 +1110,7 @@ export function buildRoadScene(
         -0.02,
         GROUND_YIELD_MARGIN_M,
         GROUND_OVER_ROAD_M,
+        (edge) => !road.edges[edge]?.isTrafficOnly,
       ) ?? near;
     reachKept.set(key, r);
     return r;
@@ -1128,18 +1132,13 @@ export function buildRoadScene(
     const p = w(e.index, s, d, 0);
     for (const h of locator.at(p.x, p.z, e.index)) {
       const o = road.edges[h.edge];
-      if (!o || hasShortcut(o)) continue;
-      if (e.isTrafficOnly && o.isTrafficOnly && o.index > e.index) continue;
-      if (e.isTrafficOnly && Math.abs(road.surfaceHeight(o.index, h.s, h.d) - p.y) > LAND_OVER_ROAD_M)
-        continue;
+      if (!o || hasShortcut(o) || o.isTrafficOnly) continue;
       const [lo, hi] = outerSpan(o);
       if (!(h.d > lo && h.d < hi)) continue;
       const l = laneSpans(road.lanesAt(o.index, h.s));
       const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
       if (h.d >= llo && h.d <= lhi) return true;
-      // A traffic turn owns the asphalt over a parent's shoulder. The parent's shoulder already
-      // yields to those lanes; clipping both here would leave a hole at the junction's outside.
-      if (e.isTrafficOnly) continue;
+      // Only the shoulder span actually drawn here can cover the shortcut.
       if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
     }
     return false;
@@ -1276,7 +1275,7 @@ export function buildRoadScene(
     const outerL = e.dMin - VERGE_M;
     const outerR = e.dMax + VERGE_M;
     const shortcutEdge = hasShortcut(e);
-    const clippedEdge = shortcutEdge || e.isTrafficOnly === true;
+    const clippedEdge = shortcutEdge;
     const gore = gores.get(e.index);
     // A secret fork leaves a shortcut road, and both are shortcut surfaces: it draws just over the
     // road it leaves, in the same colour, so the two never flicker where they overlap (run W-U).
@@ -1380,40 +1379,17 @@ export function buildRoadScene(
       lift: number,
     ): [number, number] | null => {
       const [near, far] = side < 0 ? [span[1], span[0]] : [span[0], span[1]];
-      let reach = locator.clearReach(e.index, s, near, far, lift, GROUND_YIELD_MARGIN_M, GROUND_OVER_ROAD_M);
+      const reach = locator.clearReach(
+        e.index,
+        s,
+        near,
+        far,
+        lift,
+        GROUND_YIELD_MARGIN_M,
+        GROUND_OVER_ROAD_M,
+        (edge) => !road.edges[edge]?.isTrafficOnly,
+      );
       if (reach === null) return null;
-      if (trafficTurns && !e.isTrafficOnly) {
-        const turnAt = (d: number) => {
-          const p = w(e.index, s, d, 0);
-          return locator.at(p.x, p.z, e.index).some((h) => {
-            const turn = road.edges[h.edge];
-            if (
-              !turn?.isTrafficOnly ||
-              Math.abs(road.surfaceHeight(h.edge, h.s, h.d) - p.y) > LAND_OVER_ROAD_M
-            )
-              return false;
-            const drive = laneSpans(road.lanesAt(h.edge, h.s)).drive;
-            return !!drive && h.d > drive[0] && h.d < drive[1];
-          });
-        };
-        if (turnAt(near)) return null;
-        const n = Math.max(1, Math.ceil(Math.abs(reach - near) / 0.1));
-        let clear = near;
-        for (let k = 1; k <= n; k++) {
-          let into = near + ((reach - near) * k) / n;
-          if (!turnAt(into)) {
-            clear = into;
-            continue;
-          }
-          for (let j = 0; j < 7; j++) {
-            const mid = (clear + into) / 2;
-            if (turnAt(mid)) into = mid;
-            else clear = mid;
-          }
-          reach = clear;
-          break;
-        }
-      }
       return side < 0 ? [reach, near] : [near, reach];
     };
     const zonesHere = zones.filter((z) => z.edge === e.index);
@@ -1428,7 +1404,7 @@ export function buildRoadScene(
     // land beside a shoulder keeps every sample, so on the outside of a bend the shoulder's straight outer
     // edge stood up to ROAD_SIMPLIFY.tolM inside the land's: a crack with the sky under it (I-5 by Lake
     // Samish, 136 m over the water). There the shoulder reaches SHOULDER_LAP_M over the land instead.
-    const simplifyRoad = !clippedEdge && gore === undefined;
+    const simplifyRoad = !clippedEdge && !e.isTrafficOnly && gore === undefined;
     const shoulderLap = simplifyRoad ? SHOULDER_LAP_M : 0;
     const surfaces: {
       kind: MaterialKind;
@@ -1446,13 +1422,13 @@ export function buildRoadScene(
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
       {
         kind: 'shoulder',
-        span: (l, c) => (c.vergeL ? [outerL - shoulderLap, lanesSpan(l)[0]] : null),
+        span: (l, c) => (c.vergeL && !e.isTrafficOnly ? [outerL - shoulderLap, lanesSpan(l)[0]] : null),
         lift: -0.02,
         side: -1,
       },
       {
         kind: 'shoulder',
-        span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR + shoulderLap] : null),
+        span: (l, c) => (c.vergeR && !e.isTrafficOnly ? [lanesSpan(l)[1], outerR + shoulderLap] : null),
         lift: -0.02,
         side: 1,
       },

@@ -4,7 +4,8 @@ audience: player
 ---
 Morrison carries oncoming traffic as well as forward traffic. Both ends have legal reverse
 turns, and overlapping turns share clearance until the full vehicle has passed. Existing rider
-entrances remain available. Traffic asphalt follows the existing shortcut surface where they overlap.
+entrances remain available. Rider and traffic connectors share a graded junction surface, including
+bank across their widths; their paths and links remain intact, while their elevations change.
 
 For devs: reverse traffic movements are authored in the GIS source and validated against lane
 direction and position. The bot shares rivals' and cops' road projection across short connectors.
@@ -16,6 +17,12 @@ obstruction control now starts its waiting car on the approach outside the expan
 The original forward-only assertion now protects the forward connector while reverse branch access
 has its own checks. Regional width checks retain ordinary four-metre lanes and read dedicated turn
 widths and directions from the source configuration.
+
+CI exposed surface overlaps and a sensing walk that could turn back at a fork and fold sibling-road
+traffic into the rider's lane. The repair preserves existing asphalt ownership, fills the added
+turns beneath it, and keeps sensing walks moving away from the viewer. The original Keys bot route
+test is retained. The GIS preservation test now permits only elevation, grade and bank changes on
+the opted-in rider connectors; it still protects all other fields and endpoint heights.
 
 This changes simulation and replay identity. Career and settings formats, rewards and rival pace
 are unchanged. Desktop checks do not establish phone feel or the branch's resulting time advantage.

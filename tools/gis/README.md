@@ -301,8 +301,10 @@ Peaks stretch from one cached extract to byte-identical files.
   Curves stay oriented with the race and carry a negative-direction drive lane. This is road
   geometry orientation, not a one-way restriction on the branch. The generated roads end in
   `-traffic-reverse-leave` and `-traffic-reverse-join`, with traffic-only connector rows that
-  do not add rider defaults. Added traffic asphalt follows the existing rider connector's
-  height where the junction ribbons overlap, preserving the rider's original surface.
+  do not add rider defaults. Rider and traffic connectors share a world-space junction height
+  field, with bank fitted across their full widths and a 40 m grade transition beyond the main
+  asphalt. Paths, lane endpoints and split zones stay intact; connector elevations may change.
+  Traffic asphalt fills beneath the existing surface without adding another set of shoulders.
   Runtime traffic reserves physically overlapping turns together, including connector-to-connector
   overlap, until the full vehicle body has cleared. Height-separated surfaces stay independent.
 - **The bake's own lint** (`src/tbgis/lint.py`) now also runs these rules, so a bad bake fails
@@ -369,7 +371,8 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   found one open land edge at Grand Avenue's end (3.9 m drop, 35 m left of the road), and a 20 m shift
   closes it. A larger shift breaks the lint's 250 m rule for a junction's road ends.
 - **Ordinary forward traffic** has a separate ingress from Broadway R1 (d 2) to Alder R1 (d 2).
-  The rider's existing L2 turn-off, split zone and rejoin are unchanged. The branch explicitly says
+  The rider's existing L2 turn-off path, split zone and rejoin links remain available. Their vertical
+  profiles share the traffic junction surface. The branch explicitly says
   `traffic: "road"`; its traffic-only drive connector is 5 m wide, 153.6726 m long and bends no
   tighter than 43.55 m. The committed connector was synthesized offline with the same shape solver
   from the baked roads' endpoint frames, following Broadway's height while overlapping its surface.

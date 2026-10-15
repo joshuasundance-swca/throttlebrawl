@@ -30,7 +30,7 @@ export function projectRoadPosition(
     const aligned = from.tx * to.tx + from.tz * to.tz;
     return { pos: { ...physical, dir: b.dir * aligned >= 0 ? 1 : -1 }, alignment: aligned };
   }
-  const frontier = [{ edge: a.edge, sOffset: 0, sSign: 1, dOffset: 0 }];
+  const frontier = [{ edge: a.edge, sOffset: 0, sSign: 1, dOffset: 0, walk: 0 }];
   const visited = new Set<number>();
   for (let head = 0; head < frontier.length && head < 64; head++) {
     const row = frontier[head];
@@ -54,12 +54,18 @@ export function projectRoadPosition(
       const len = road.edges[next.edge]?.length ?? 0;
       const lo = Math.min(offset, offset + sign * len),
         hi = Math.max(offset, offset + sign * len);
+      const rowLo = Math.min(row.sOffset, row.sOffset + row.sSign * edge.length);
+      const rowHi = Math.max(row.sOffset, row.sOffset + row.sSign * edge.length);
+      // Keep walking away from the viewer. Returning through an arrival end would fold the
+      // other arm of a fork onto this one, although the two cars cannot meet there.
+      if ((row.walk > 0 && lo < rowHi - 1e-6) || (row.walk < 0 && hi > rowLo + 1e-6)) continue;
       if (lo - a.s > range || a.s - hi > range) continue;
       frontier.push({
         edge: next.edge,
         sOffset: offset,
         sSign: sign,
         dOffset: row.dOffset + row.sSign * next.dOffset,
+        walk: row.walk || (lo >= rowHi - 1e-6 ? 1 : -1),
       });
     }
   }

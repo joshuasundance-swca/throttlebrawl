@@ -400,7 +400,21 @@ def test_traffic_ingress_is_additive_legal_and_does_not_change_rider_defaults(ba
     assert row["from"] == {"road": "osm-test-a1", "end": "to", "lane": "R1"}
     assert row["to"] == {"road": "osm-test-b", "end": "from", "lane": "R1"}
     for road in baked.roads:
-        assert by_id[road["id"]] == road
+        actual = by_id[road["id"]]
+        if road["id"] in {"osm-test-net-b-road-in", "osm-test-net-b-road-out"}:
+            # Traffic needs one shared sloping surface. Preserve every other field, the planar
+            # path and both endpoint heights; the old byte-for-byte elevation guarantee is replaced.
+            data = road["samples"]["data"]
+            for end in (0, -1):
+                assert actual["samples"]["data"]["y"][end] == data["y"][end]
+            actual = {
+                **actual,
+                "samples": {
+                    **actual["samples"],
+                    "data": {**actual["samples"]["data"], **{k: data[k] for k in ("y", "grade", "bankRad")}},
+                },
+            }
+        assert actual == road
     full, short = traffic.routes
     assert full["branches"][0]["traffic"] == "road"
     assert rid in full["branches"][0]["roads"] and rid in full["allowedRoads"]
@@ -475,17 +489,45 @@ def reverse_config(**over: Any) -> NetworkConfig:
     return traffic_config(trafficReverse={"leave": movement, "join": movement}, **over)
 
 
-def test_added_traffic_asphalt_matches_an_overlapping_surface_without_moving_its_peer() -> None:
+def test_shared_junction_height_preserves_paths_and_endpoints_and_leaves_the_main_surface() -> None:
+    class FlatMain:
+        def project(self, x: float, z: float) -> tuple[float, float]:
+            return -z, abs(x)
+
+        def at(self, s: float) -> tuple[float, float, float, float]:
+            return 0, 3.5, -s, 0
+
     pc = curve_piece("new", "new", (0, 3, 0, 0), (0, 3, -100, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, [])
-    peer = replace(pc, x=pc.x + 1, y=pc.y + 0.5 * np.sin(np.linspace(0, math.pi, len(pc.y))))
-    peer_y = peer.y.copy()
+    original_x, original_z = pc.x.copy(), pc.z.copy()
     far = replace(pc, x=pc.x + 1000, y=pc.y.copy())
-    align_traffic_height(far, [peer])
+    main = cast(BakedLine, FlatMain())
+    align_traffic_height(far, main, 10, 3)
     assert np.allclose(far.y, 3)
-    align_traffic_height(pc, [peer])
+    align_traffic_height(pc, main, 10, 3)
     assert pc.y[len(pc.y) // 2] == pytest.approx(3.5)
     assert pc.y[0] == pc.y[-1] == 3
-    assert np.array_equal(peer.y, peer_y)
+    assert np.array_equal(pc.x, original_x) and np.array_equal(pc.z, original_z)
+
+
+def test_traffic_ribbon_matches_a_sloping_main_surface_across_its_width() -> None:
+    class SlopingMain:
+        def project(self, x: float, z: float) -> tuple[float, float]:
+            return -z, abs(x)
+
+        def at(self, s: float) -> tuple[float, float, float, float]:
+            return 0, s / 10, -s, 0
+
+    h = math.pi / 4
+    pc = curve_piece(
+        "turn", "turn", (0, 0, 0, h), (70.71, 7.071, -70.71, h), Shape(h, 0, 0, 10, 80, 10), 5, 2, 20, []
+    )
+    align_traffic_height(pc, cast(BakedLine, SlopingMain()), 200, 7.071)
+    assert pc.bank is not None
+    assert pc.bank[0] == pc.bank[-1] == 0
+    for i in range(1, len(pc.x) - 1):
+        for d in (-2.5, 0, 2.5):
+            z = pc.z[i] + d * math.sin(h)
+            assert pc.y[i] - d * pc.bank[i] == pytest.approx(-z / 10, abs=1e-5)
 
 
 def test_reverse_traffic_adds_both_legal_movements_and_keeps_existing_geometry() -> None:

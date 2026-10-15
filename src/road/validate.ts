@@ -736,9 +736,11 @@ function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number;
   const cx = c.samples.data['x'];
   const cy = c.samples.data['y'];
   const cz = c.samples.data['z'];
+  const cb = c.samples.data['bankRad'];
   const mx = m.samples.data['x'];
   const my = m.samples.data['y'];
   const mz = m.samples.data['z'];
+  const mb = m.samples.data['bankRad'];
   if (!cx || !cy || !cz || !mx || !my || !mz || mx.length < 2 || cx.length < 2) return null;
   const half = laneExtent(c, 0, c.lengthM);
   const offsets = [0, half.hi - 0.3, half.lo + 0.3];
@@ -783,10 +785,12 @@ function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number;
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (!best || dist < best.dist) {
           const len = Math.sqrt(len2);
+          const d = (-(px - ax) * sz + (pz - az) * sx) / len;
+          const bank = (mb?.[k] ?? 0) + f * ((mb?.[k + 1] ?? 0) - (mb?.[k] ?? 0));
           best = {
             dist,
-            y: (my[k] as number) + f * ((my[k + 1] as number) - (my[k] as number)),
-            d: (-(px - ax) * sz + (pz - az) * sx) / len,
+            y: (my[k] as number) + f * ((my[k + 1] as number) - (my[k] as number)) - d * bank,
+            d,
             s: (k + f) * m.sampleSpacingM,
           };
         }
@@ -794,7 +798,7 @@ function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number;
       if (!best) continue;
       const { lo, hi } = laneExtent(m, best.s, best.s);
       if (best.d <= lo - ROAD_LINT.mainVergeM + 0.3 || best.d >= hi + ROAD_LINT.mainVergeM - 0.3) continue;
-      const gap = (cy[i] as number) - best.y;
+      const gap = (cy[i] as number) - off * (cb?.[i] ?? 0) - best.y;
       if (!worst || Math.abs(gap) > Math.abs(worst.gap))
         worst = { gap, s: i * c.sampleSpacingM, sMain: best.s };
     }

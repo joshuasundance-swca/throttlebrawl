@@ -904,6 +904,7 @@ class Piece:
     s_b: float = 0.0
     # Its tags over part of one side only (`sideRuns`): they say nothing of a connector beside it.
     run_tags: frozenset[str] = frozenset()
+    bank: F64 | None = None
 
 
 def lane_section(cs: CrossSection) -> Json:
@@ -1262,32 +1263,33 @@ def require_drive_centre(pc: Piece, lane: str, offset: float, direction: int) ->
         raise ValueError(f"traffic ingress: {pc.id} {lane} must be a {name} drive lane centred at {offset:g}")
 
 
-def align_traffic_height(pc: Piece, peers: list[Piece]) -> None:
-    """A new turn shares the elevation of existing overlapping junction asphalt.
+def align_traffic_height(
+    pc: Piece,
+    main: BakedLine,
+    main_half: float,
+    branch_height: float,
+) -> None:
+    """All turns of a traffic-enabled junction share a world-space height field.
 
-    Keep existing rider surfaces and the new turn's endpoint heights. Blend only the added
-    geometry, beyond the full ribbons' overlap, so two independently eased curves do not stack.
+    Keep paths and endpoint heights. Fit each ribbon's bank to the shared surface instead of
+    independently easing each centreline, which stacks overlapping opposing turns.
     """
     half = max(ln["widthM"] / 2 + abs(ln["dCenterM"]) for ln in pc.lane_section["lanes"])
+    pc.bank = np.zeros(len(pc.x), dtype=np.float64)
+    headings = np.unwrap(np.arctan2(np.gradient(pc.x), -np.gradient(pc.z)))
+
+    def height(x: float, z: float) -> float:
+        s, dist = main.project(x, z)
+        # A broad grade transition lets a planar cross-section represent the surface on every turn.
+        blend = float(smoothstep(np.array((dist - main_half) / 40.0)))
+        return main.at(s)[1] * (1 - blend) + branch_height * blend
+
     for i in range(1, len(pc.x) - 1):
-        best: tuple[float, float, float] | None = None
-        for peer in peers:
-            reach = half + max(ln["widthM"] / 2 + abs(ln["dCenterM"]) for ln in peer.lane_section["lanes"])
-            for j in range(len(peer.x) - 1):
-                dx, dz = peer.x[j + 1] - peer.x[j], peer.z[j + 1] - peer.z[j]
-                norm = dx * dx + dz * dz
-                if norm <= 0:
-                    continue
-                t = float(np.clip(((pc.x[i] - peer.x[j]) * dx + (pc.z[i] - peer.z[j]) * dz) / norm, 0, 1))
-                dist = math.hypot(pc.x[i] - peer.x[j] - t * dx, pc.z[i] - peer.z[j] - t * dz)
-                if dist > reach + MAIN_BLEND_M or (best is not None and dist >= best[0]):
-                    continue
-                y = float(peer.y[j] + t * (peer.y[j + 1] - peer.y[j]))
-                best = dist, y, reach
-        if best is not None:
-            dist, y, reach = best
-            blend = 1 - float(smoothstep(np.array((dist - reach) / MAIN_BLEND_M)))
-            pc.y[i] += blend * (y - pc.y[i])
+        nx, nz = math.cos(headings[i]), math.sin(headings[i])
+        left = height(float(pc.x[i] - half * nx), float(pc.z[i] - half * nz))
+        right = height(float(pc.x[i] + half * nx), float(pc.z[i] + half * nz))
+        pc.y[i] = height(float(pc.x[i]), float(pc.z[i]))
+        pc.bank[i] = (left - right) / (2 * half)
 
 
 def discrete_kappa(x: F64, z: F64, spacing: float, ends: tuple[float, float]) -> F64:
@@ -1316,7 +1318,7 @@ def road_json(cfg: NetworkConfig, pc: Piece, prov: Json, notes: str) -> Json:
         "z": [r4(v) for v in pc.z],
         "kappa": [r5(v) for v in kappa],
         "grade": [r5(v) for v in grade],
-        "bankRad": [0.0] * (n + 1),
+        "bankRad": [r5(v) for v in pc.bank] if pc.bank is not None else [0.0] * (n + 1),
     }
     length = r4(length)
     clip = [{**t, "s1": min(t["s1"], length)} for t in pc.tags]
@@ -1742,6 +1744,9 @@ def bake_network(
             }
         )
         traffic_in = None
+        if b.trafficIngress is not None or b.trafficReverse is not None:
+            align_traffic_height(kin, main, surface_reach(before.lane_section, True), float(kin.y[-1]))
+            align_traffic_height(kout, main, surface_reach(after.lane_section, True), float(kout.y[0]))
         if b.trafficIngress is not None:
             spec = b.trafficIngress
             require_forward_centre(before, spec.lane, spec.offsetM)
@@ -1759,7 +1764,7 @@ def bake_network(
                 surface_reach(before.lane_section, spec.offsetM >= 0),
             )
             traffic_in.frm = traffic_in.to = js["id"]
-            align_traffic_height(traffic_in, [kin])
+            align_traffic_height(traffic_in, main, surface_reach(before.lane_section, True), float(kin.y[-1]))
             js["connectors"].append(
                 {
                     "id": f"cx-{traffic_in.id}",
@@ -1814,7 +1819,12 @@ def bake_network(
                     leaves,
                 )
                 turn.frm = turn.to = junction["id"]
-                align_traffic_height(turn, [kin] if leaves else [kout])
+                align_traffic_height(
+                    turn,
+                    main,
+                    surface_reach(parent.lane_section, spec.offsetM >= 0),
+                    float(kin.y[-1] if leaves else kout.y[0]),
+                )
                 parent_end = {"road": parent.id, "end": "to" if leaves else "from", "lane": spec.lane}
                 branch_end_row = {
                     "road": branch_end.id,
