@@ -27,3 +27,25 @@ The diagnostic [train log](https://github.com/joshuasundance-swca/throttlebrawl/
 - Diagnose the remaining delay before adding further production optimizations. Run normal gates and a coordinated served-build check; name the device, renderer and scene. Desktop software-rendered browser evidence is not phone verification.
 
 Completing the HTTP repair does not close this task or M5 offline-1. The five-second target is not relaxed or relabelled as phone-only acceptance.
+
+## Current attempt, 2026-10-14
+
+The resumed change applies the shorter page window and exact nearest-sample index to the current
+renderer, preserving subsequent traffic and terrain repairs. A local production probe on an
+i9-12950HX with Chromium SwiftShader at 915 by 412 observed a baseline first-visible start screen
+at 4042.5 ms, with navigation response start at 3009.5 ms. Its CPU profile also identified repeated
+whole-edge nearest-sample scans during scene construction. This establishes separate network-wait
+and rendering work; it does not attribute every initialization cost.
+
+The first resumed candidate observation was 1419 ms, with navigation response start at 513.9 ms.
+It proved an actual held service-worker request, production mode, hidden-menu exclusion, visible
+start screen, usable menu and no page or console errors. The browser and preview closed afterward.
+Two subsequent successful fresh-profile observations were 1398.8 and 1386.5 ms. Deeply nested local
+browser profiles failed before timing: Chromium reported an internal CacheStorage-open error and
+the worker became redundant. A same-build long/short-profile control reproduced the failure only
+with the nested profile; shorter profiles installed and booted normally. Failed installations are
+not passing timing samples.
+
+These are local observations on different feature heads, not a controlled per-optimization
+benchmark or phone evidence. CI acceptance and the coordinated served-build check remain pending.
+The exact end-to-end timing assertion is restored in `app-offline.spec.ts`.
