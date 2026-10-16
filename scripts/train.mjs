@@ -541,6 +541,21 @@ export function assemble(run, base, heads) {
   return { commit, tree: ok(['rev-parse', `${commit}^{tree}`]), merged, conflicts };
 }
 
+/**
+ * Whether the one ridden head has exactly the assembled train's full Git tree. Any uncertainty
+ * keeps the branch control: malformed IDs, zero or several heads, and a failed lookup are false.
+ * @param {(args: string[]) => { status: number | null, stdout: string, stderr: string }} run git
+ * @param {string} tree
+ * @param {string[]} heads
+ */
+export function singleTreeMatches(run, tree, heads) {
+  if (!SHA.test(tree) || heads.length !== 1 || !SHA.test(heads[0] ?? '')) return false;
+  const r = run(['rev-parse', '--verify', `${heads[0]}^{tree}`]);
+  if (r.status !== 0) return false;
+  const headTree = r.stdout.trim();
+  return SHA.test(headTree) && headTree === tree;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Timeouts
 //
@@ -625,6 +640,7 @@ export function canReach(files, job) {
  * @param {object} o
  * @param {string} o.result the suite's result ('success', 'failure', 'cancelled', ...), as suiteResult judges it
  * @param {string} [o.control] a lone PR's own-branch suite result, when it ran
+ * @param {boolean} [o.sameTree] the lone PR head and assembled train have the same full Git tree
  * @param {string[]} [o.timedOut] the suite's jobs that ran past their time limit
  * @param {string[]} [o.failed] the suite's jobs that failed (a timeout beside one is a plain failure)
  * @param {{ number: number, headSha: string, cap: number }[]} o.bundle the PRs that rode, in order
@@ -639,6 +655,7 @@ export function canReach(files, job) {
 export function decide({
   result,
   control = 'skipped',
+  sameTree = false,
   timedOut = [],
   failed = [],
   bundle,
@@ -802,9 +819,20 @@ export function decide({
       };
     }
   }
-  const kind = control === 'success' ? 'composition' : control === 'failure' ? 'own' : 'unknown';
+  const kind = sameTree
+    ? 'same-tree'
+    : control === 'success'
+      ? 'composition'
+      : control === 'failure'
+        ? 'own'
+        : 'unknown';
   const red = late ? 'timed out' : 'fails';
-  const where = kind === 'composition' ? `passes on its branch, ${red} on main` : `${red} alone on main`;
+  const where =
+    kind === 'same-tree'
+      ? `exact PR tree ${red} once on main`
+      : kind === 'composition'
+        ? `passes on its branch, ${red} on main`
+        : `${red} alone on main`;
   statuses.push({
     number: p.number,
     sha: p.headSha,
@@ -816,7 +844,10 @@ export function decide({
     blame: { number: p.number, sha: p.headSha, kind },
     verdict: 'culprit',
     dispatch: true,
-    why: `#${p.number} ${late ? 'timed out' : 'failed'} alone on main ${b7} (${kind})`,
+    why:
+      kind === 'same-tree'
+        ? `#${p.number}'s exact PR tree failed once on main ${b7}; composition excluded, persistence unproven`
+        : `#${p.number} ${late ? 'timed out' : 'failed'} alone on main ${b7} (${kind})`,
   };
 }
 
@@ -1012,7 +1043,7 @@ export const COMMENT_TAG = '<!-- bundle-train -->';
 /**
  * The comment on a PR that failed alone, or timed out alone (`timedOut` names the suite jobs that
  * ran past their time limit; `reached`, those of them its diff can reach and main's own run passed).
- * @param {{ kind: 'own' | 'composition' | 'unknown', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, timedOut?: string[], reached?: string[] }} o
+ * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, timedOut?: string[], reached?: string[] }} o
  */
 export function blameComment({
   kind,
@@ -1029,9 +1060,11 @@ export function blameComment({
   const late = timedOut.length > 0;
   const red = late ? 'timed out' : 'fails';
   const head =
-    kind === 'composition'
-      ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
-      : `**Bundle train ${run}: this PR ${red} alone on main.**`;
+    kind === 'same-tree'
+      ? `**Bundle train ${run}: this PR's exact source tree failed once in the train.**`
+      : kind === 'composition'
+        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
+        : `**Bundle train ${run}: this PR ${red} alone on main.**`;
   const lines = [
     COMMENT_TAG,
     head,
@@ -1047,13 +1080,15 @@ export function blameComment({
       `- It timed out riding alone, main's own run of ${reached.join(', ')} on \`${base.slice(0, 7)}\` passed, and this PR changes files that job runs.`,
     );
   lines.push(
-    kind === 'own'
-      ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
-      : kind === 'composition'
-        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) passes the full suite.`
-        : late
-          ? '- Its own branch was not tested (a timeout does not start that suite).'
-          : '- Its own branch was not tested (that suite did not finish).',
+    kind === 'same-tree'
+      ? '- The assembled train and this PR head have the same full Git tree. The full suite failed once on that exact source tree; the branch control did not repeat it, so persistence versus transience is unproven and a source-tree composition failure is excluded.'
+      : kind === 'own'
+        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
+        : kind === 'composition'
+          ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) passes the full suite.`
+          : late
+            ? '- Its own branch was not tested (a timeout does not start that suite).'
+            : '- Its own branch was not tested (that suite did not finish).',
     `- Main's own CI on \`${base.slice(0, 7)}\`: ${mainCi === 'success' ? 'green' : mainCi === 'pending' ? 'still running' : 'no finished run'}.`,
   );
   if (lacks.length) lines.push(`- Main has PRs your branch does not: ${prList(lacks, 400)}.`);
@@ -1549,6 +1584,7 @@ export async function cmdPlan(cfg = loadConfig()) {
     conflicts: '[]',
     notes: '[]',
     single: '',
+    single_same_tree: 'false',
     wait_main: '',
   };
   const say = (/** @type {string} */ s) => {
@@ -1634,6 +1670,7 @@ export async function cmdPlan(cfg = loadConfig()) {
     bundle.map((p) => p.headSha),
   );
   const rode = bundle.filter((p) => asm.merged.includes(p.headSha));
+  const heads = rode.map((p) => p.headSha);
   const conflicts = asm.conflicts.map((c) => {
     const p = /** @type {{ number: number, headSha: string, cap: number }} */ (
       bundle.find((b) => b.headSha === c.head)
@@ -1651,12 +1688,13 @@ export async function cmdPlan(cfg = loadConfig()) {
     depart: rode.length ? 'true' : 'false',
     post: !dry && (rode.length || conflicts.length || notes.length) ? 'true' : 'false',
     base,
-    heads: rode.map((p) => p.headSha).join(' '),
+    heads: heads.join(' '),
     tree: asm.tree,
     commit: asm.commit,
     bundle: JSON.stringify(rode),
     conflicts: JSON.stringify(conflicts),
     single: rode.length === 1 ? /** @type {{ headSha: string }} */ (rode[0]).headSha : '',
+    single_same_tree: singleTreeMatches(gitRun, asm.tree, heads) ? 'true' : 'false',
   });
   say(
     rode.length
@@ -1751,6 +1789,7 @@ export async function cmdReport(cfg = loadConfig()) {
   const run = runNumber();
   const reported = env.TRAIN_RESULT ?? '';
   const control = env.TRAIN_CONTROL || 'skipped';
+  const sameTree = env.TRAIN_SINGLE_SAME_TREE === 'true';
   const say = (/** @type {string} */ s) => {
     console.log(`report: ${s}`);
     summary(s);
@@ -1828,6 +1867,7 @@ export async function cmdReport(cfg = loadConfig()) {
   const d = decide({
     result,
     control,
+    sameTree,
     timedOut,
     failed: failedJobs,
     bundle,

@@ -429,10 +429,20 @@ Then success goes on each head commit, linked to the train's run and naming the 
 
 The report then waits up to 10 minutes for the passed PRs to merge. One that has not merged by then gets its success taken back (pending again), so it can never land later on a main it was not tested on. If posting the successes fails part-way, those already posted are taken back too. The report also says whether main's new tree is exactly the tested tree.
 
-**Red.** A red bundle of n PRs drops each of them to cap ceil(n/2). The next train takes the smallest cap first, oldest first, so the older half rides alone on the then-current main and lands if green; the rest ride next, on top of what landed. A PR alone (cap 1) that fails on main gets `gate` = failure, with the failing test names (read from the job logs), the run link and a PR comment. A second suite (`control`) then runs on the PR's own branch, after the first:
+**Red.** A red bundle of n PRs drops each of them to cap ceil(n/2). The next train takes the smallest cap first, oldest first, so the older half rides alone on the then-current main and lands if green; the rest ride next, on top of what landed. A PR alone (cap 1) that fails on main gets `gate` = failure, with the failing test names (read from the job logs), the run link and a PR comment. When the assembled train and PR head have different full Git trees, a second suite (`control`) then runs on the PR's own branch, after the first:
 
 - if that passes, the comment calls it a composition failure with what landed on main since the branch, and lists those PRs;
 - if it fails too, the failure is the PR's own.
+
+When those two full Git trees are exactly equal, the first suite already ran the PR's exact source
+content and composition is excluded. The train does not repeat all 23 jobs: `gate` remains failure,
+and its status and comment say the exact PR tree failed once and that persistence versus transience
+is unproven. A suspected flake still gets a new run from a new push. This deliberately removes the
+automatic second full sample and its alternate build stamp: train and control use different
+`BUILD_ID` and `BUILD_BRANCH` values, so equal source trees do not promise identical emitted bytes.
+It cannot make a red run green, record a tested-tree artifact, partially accept it or deploy it;
+different trees keep the branch control above, and main-red and timeout rules below still take
+precedence. `[default]`
 
 A PR is never blamed while main itself is red: the report reads main's own ci run on that commit, waiting up to 15 minutes if it is still running.
 

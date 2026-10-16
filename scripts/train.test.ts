@@ -63,6 +63,7 @@ import {
   redSuiteJobs,
   route,
   selectBundle,
+  singleTreeMatches,
   stateOf,
   suiteResult,
   waitingNotes,
@@ -1052,6 +1053,17 @@ describe('assembly, on a real git repo', () => {
     ok('checkout', '-q', 'main');
   });
 
+  it('recognises only one valid head whose full tree is exactly the assembled tree', () => {
+    const one = assemble(git, base, [heads.p1!]);
+    expect(singleTreeMatches(git, one.tree, [heads.p1!])).toBe(true);
+    expect(singleTreeMatches(git, one.tree, [heads.p2!])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, [heads.p1!, heads.p2!])).toBe(false);
+    expect(singleTreeMatches(git, '', [heads.p1!])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, ['not-a-commit'])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, [sha('f')])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, [])).toBe(false);
+  });
+
   it('drops a head that conflicts with an earlier one, and tells it apart from one that conflicts with main', () => {
     const r = assemble(git, base, [heads.p3!, heads.p4!, heads.p1!]);
     expect(r.merged).toEqual([heads.p3, heads.p1]);
@@ -1151,6 +1163,29 @@ describe('the landing invariant (decide)', () => {
     expect(comp.statuses[0]).toMatchObject({ state: 'failure' });
     expect(comp.statuses[0]!.description).toContain('passes on its branch, fails on main');
     expect(decide({ ...at, control: 'cancelled' }).blame?.kind).toBe('unknown');
+  });
+
+  it('an identical lone tree stays red after one run, excludes composition, and proves no persistence', () => {
+    const one = [bundle[0]!];
+    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'success' as const };
+    const d = decide({ ...at, sameTree: true, control: 'skipped' });
+    expect(d.blame).toEqual({ number: 11, sha: sha('a'), kind: 'same-tree' });
+    expect(d.statuses).toHaveLength(1);
+    expect(d.statuses[0]?.state).toBe('failure');
+    expect(d.statuses[0]?.description).toContain('exact PR tree fails once');
+    expect(d.why).toContain('exact PR tree failed once');
+    expect(d.why).toContain('persistence unproven');
+
+    // Main-red and pure-timeout decisions happen first; identity never makes either blameable.
+    expect(decide({ ...at, sameTree: true, mainCi: 'failure' }).verdict).toBe('main-red');
+    expect(
+      decide({
+        ...at,
+        sameTree: true,
+        timedOut: ['suite / browser (5/7)'],
+        failed: [],
+      }).verdict,
+    ).toBe('timed-out');
   });
 
   it('never blames a PR while main itself is red, and the train waits for main', () => {
@@ -1898,6 +1933,47 @@ describe('the commands, against a fake GitHub', () => {
     expect(skipped.lines).toContainEqual(expect.stringMatching(/^report: \*\*timed-out-unblamed\*\*/));
   });
 
+  it('report: explicit identical-tree evidence produces the one-run diagnosis without a control result', async () => {
+    const one = lone(1);
+    reportEnv(one);
+    vi.stubEnv('TRAIN_RESULT', 'failure');
+    vi.stubEnv('TRAIN_CONTROL', 'skipped');
+    vi.stubEnv('TRAIN_SINGLE_SAME_TREE', 'true');
+    const { lines } = capture();
+    fakeGitHub([
+      MAIN,
+      open(one),
+      [
+        OWN_JOBS[0],
+        () => ({
+          total_count: 1,
+          jobs: [
+            {
+              id: 112110821845,
+              name: 'suite / sim (3/6)',
+              status: 'completed',
+              conclusion: 'failure',
+              started_at: '2026-10-06T04:39:52Z',
+              completed_at: '2026-10-06T04:50:02Z',
+            },
+          ],
+        }),
+      ],
+      [LOG[0], () => 'FAIL tests/sim/x.test.ts > exact tree\n'],
+      mainRun('success'),
+      [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+    ]);
+    await cmdReport(CFG);
+    expect(lines).toContainEqual(
+      expect.stringMatching(/^report: \*\*culprit\*\*: .*exact PR tree failed once/),
+    );
+    expect(lines).toContainEqual(expect.stringContaining('exact source tree failed once'));
+    expect(lines).toContainEqual(expect.stringContaining('persistence versus transience is unproven'));
+    expect(lines.some((l) => l.includes('It is a composition failure'))).toBe(false);
+    expect(lines.some((l) => l.includes('merge origin/main'))).toBe(false);
+    expect(lines.some((l) => l.includes('fails the full suite too'))).toBe(false);
+  });
+
   // A FAIL row's text comes from a PR's own log, and the report job holds write tokens: a line it
   // prints that starts with "::" would be read as a workflow command (the fail-fast review, 5).
   it('report: no line it prints from a PR log can start a workflow command', async () => {
@@ -2057,6 +2133,22 @@ describe('what a red train says', () => {
         mainCi: 'pending',
       }),
     ).toContain('fails the full suite too');
+    const same = blameComment({
+      kind: 'same-tree',
+      sha: sha('a'),
+      base: sha('b'),
+      run: 9,
+      url: 'u',
+      failing: [],
+      lacks: [],
+      mainCi: 'success',
+    });
+    expect(same).toContain('exact source tree failed once');
+    expect(same).toContain('composition failure is excluded');
+    expect(same).toContain('persistence versus transience is unproven');
+    expect(same).toContain('If it looks like a flake, push again');
+    expect(same).not.toContain('fails the full suite too');
+    expect(same).not.toContain('passes the full suite');
     expect(conflictComment({ sha: sha('a'), base: sha('b'), run: 9, url: 'u' })).toContain(
       'merge origin/main',
     );
@@ -2364,7 +2456,7 @@ describe('the workflows', () => {
       expect(ride, line).toContain(`\n      ${line}\n`);
     const control = t.get('control') ?? '';
     expect(control).toMatch(
-      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.suite\.result == 'failure'\n/m,
+      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
     );
     expect(control).toContain('\n      full: true\n');
     expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
@@ -2389,6 +2481,9 @@ describe('the workflows', () => {
     );
     expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
     expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
+    expect(report).toContain(
+      '\n          TRAIN_SINGLE_SAME_TREE: ${{ needs.plan.outputs.single_same_tree }}\n',
+    );
     expect(report).toContain('\n          TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}\n');
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
   });
