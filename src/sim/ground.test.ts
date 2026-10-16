@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_SURFACES } from '../core';
-import { createRoadNetwork, createRouteProgress, fixtureBranchNetwork } from '../road';
+import { beyondAt, createRoadNetwork, createRouteProgress, fixtureBranchNetwork } from '../road';
 import { createSimWithWorld, SIM_TUNING } from './create';
 import {
   GROUND_TUNING,
@@ -95,7 +95,7 @@ describe('ride limits', () => {
 });
 
 describe('the ground under the wheels', () => {
-  it('is the road surface on the lanes, the band past them, nothing past the band or in the air', () => {
+  it('keeps the verge surface on connected land, but gives nothing beyond actual ground or in the air', () => {
     const { road } = branchConfig('dirt');
     const a = road.edgeIndex('a');
     const cut = road.edgeIndex('cut');
@@ -103,8 +103,29 @@ describe('the ground under the wheels', () => {
     expect(groundUnder(road, a, 50, 0, 0)).toBe('asphalt');
     expect(groundUnder(road, cut, 50, 0, 0)).toBe('dirt');
     expect(groundUnder(road, a, 50, right.dInner + 1, 0)).toBe('sand');
-    expect(groundUnder(road, a, 50, right.dOuter + 1, 0)).toBeNull();
+    // This original probe is on the existing palm land strip, not empty space past the course.
+    expect(groundUnder(road, a, 50, right.dOuter + 1, 0)).toBe('sand');
+    expect(surfaceFeel({}, groundUnder(road, a, 50, right.dOuter + 1, 0))).toEqual(SURFACE_FEEL.sand);
+    expect(beyondAt(road, a, 50, 'right', 100).past).not.toBe('ground');
+    expect(groundUnder(road, a, 50, right.dOuter + 100, 0)).toBeNull();
     expect(groundUnder(road, a, 50, 0, 0.5)).toBeNull();
+    expect(groundUnder(road, a, 50, right.dOuter + 1, 0.5)).toBeNull();
+  });
+
+  it('does not extend the mathematical road surface over a water edge', () => {
+    const bundle = fixtureBranchNetwork();
+    const road = createRoadNetwork({
+      ...bundle,
+      roads: bundle.roads.map((r) => ({
+        ...r,
+        tags: [{ s0: 0, s1: r.lengthM, side: 'both' as const, tag: 'water-open' }],
+      })),
+    });
+    const edge = road.edgeIndex('a');
+    const right = road.vergeAt(edge, 50, 'right');
+    expect(right.edge).toBe('water');
+    expect(Number.isFinite(road.surfaceHeight(edge, 50, right.dOuter + 1))).toBe(true);
+    expect(groundUnder(road, edge, 50, right.dOuter + 1, 0)).toBeNull();
   });
 });
 
