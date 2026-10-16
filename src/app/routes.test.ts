@@ -24,6 +24,26 @@ const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof buildSimConfi
   JSON.parse(JSON.stringify(rest)) as { event: { routeId?: string } } & Record<string, unknown>;
 
 describe('app: real-road routes', () => {
+  it('registers the civic triangle and offers it as a separate playable Longview choice', () => {
+    const eventId = 'region-pnw:pnw-t1-bridge-city';
+    const route = 'region-pnw:osm-longview-civic-triangle';
+    const authored = ALL.routes[route]!;
+    expect(authored).toBeDefined();
+    expect(ALL.regions['region-pnw:pacific-northwest']?.networks).toContain(authored.network);
+    expect(realRoutes(ALL, eventId)).toContain(route);
+    expect(realRoutes(ALL, KEYS)).not.toContain(route);
+    const choices = routeChoices(ALL, eventId);
+    expect(choices.some((c) => c.id === 'region-pnw:osm-longview-port-shift')).toBe(true);
+    expect(choices.find((c) => c.id === route)?.lengthM).toBeGreaterThan(1500);
+    const raced = buildSimConfig(ALL, streamForEvent(ALL, eventId, undefined, route), {
+      seed: 1,
+      eventId,
+      route,
+    });
+    expect(raced.event.routeId).toBe(route);
+    expect(raced.route.branches.some((b) => b.declared)).toBe(true);
+  });
+
   it("lists the region's real roads only: not the event's own lengths, hand-made spares or other regions", () => {
     const keys = realRoutes(BASE, KEYS);
     expect(keys).toEqual(expect.arrayContaining([BAHIA, KEY_WEST]));

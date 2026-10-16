@@ -12,3 +12,10 @@ The streets use OpenStreetMap alignment and new USGS terrain samples. Corner eas
 lane widths, generous soft margins and the bridge guardrails are game adaptations.
 The roadside town scenery is generic, rather than a claim about mapped properties.
 Port Shift stays available as a separate course.
+
+Traffic occupying a receiving lane keeps priority. A car holding a junction can then
+clear it before an upstream merge claim, preventing a queue from locking the exit
+while waiting for that same junction. Whole-body receiving-space checks still apply.
+The regression follows one actual vehicle generation across the complete detour in
+each direction. Its three-minute simulation watchdog allows dense queues to clear;
+the old arbitration still fails at that same bound.

@@ -278,7 +278,10 @@ describe('the civic triangle is rideable rather than decorative', () => {
         riderState(world).yAbs[me.id] = road.surfaceHeight(anchor, me.pos.s, me.pos.d);
         const histories = new Map<string, number[]>();
         const completed = new Map<number, { identity: string; edges: string[] }>();
-        for (let tick = 0; tick < 60 * 90 && completed.size < expected.length; tick++) {
+        // Dense two-way traffic needs time to queue through both turns. The former 90-second
+        // watchdog expired before valid traversal; untreated arbitration also deadlocks at
+        // this three-minute bound. Require the same generation's complete path, not a tick.
+        for (let tick = 0; tick < 60 * 180 && completed.size < expected.length; tick++) {
           const input = blankActions();
           input.brake = 1;
           sim.step([botInput(input)]);
