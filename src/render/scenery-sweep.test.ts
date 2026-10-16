@@ -5,7 +5,17 @@
 // rays straight down onto each spot of the scene actually built for that seed: land scenery must
 // stand on drawn land (its anchor, and a ring round a shack or a mangrove clump), and no spot of any
 // kind may sit on the bare sea except a boat.
-import { Mesh, Raycaster, Vector3, type Object3D } from 'three';
+import {
+  Box3,
+  DoubleSide,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
+  Raycaster,
+  Vector3,
+  type Object3D,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { createFlatLook } from './look';
@@ -45,8 +55,8 @@ const LAND = new Set(['palm', 'mangrove', 'shack', 'pole']);
 const RING = 0.6;
 
 /**
- * The ground meshes by road chunk (road-mesh.ts merges static geometry per ROAD_CHUNK_M square), so
- * a ray only tests the chunks round its spot; the sea plane, in no chunk, goes with every ray.
+ * The ground meshes by actual world bounds: coalescing can move a fragment into an adjacent named
+ * chunk while its triangles extend past that cell. The loose sea plane goes with every ray.
  */
 function groundByChunk(group: Object3D, keep: RegExp): (x: number, z: number) => Object3D[] {
   const byKey = new Map<string, Object3D[]>();
@@ -56,15 +66,19 @@ function groundByChunk(group: Object3D, keep: RegExp): (x: number, z: number) =>
     if (!(o instanceof Mesh) || !keep.test(o.name)) return;
     const key = /^road-chunk-(.+)$/.exec(o.parent?.name ?? '')?.[1];
     if (key === undefined) loose.push(o);
-    else byKey.set(key, [...(byKey.get(key) ?? []), o]);
+    else {
+      const box = new Box3().setFromObject(o);
+      for (let x = Math.floor(box.min.x / ROAD_CHUNK_M); x <= Math.floor(box.max.x / ROAD_CHUNK_M); x++)
+        for (let z = Math.floor(box.min.z / ROAD_CHUNK_M); z <= Math.floor(box.max.z / ROAD_CHUNK_M); z++) {
+          const at = `${x},${z}`;
+          byKey.set(at, [...(byKey.get(at) ?? []), o]);
+        }
+    }
   });
   return (x, z) => {
     const cx = Math.floor(x / ROAD_CHUNK_M);
     const cz = Math.floor(z / ROAD_CHUNK_M);
-    const out = [...loose];
-    for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++) out.push(...(byKey.get(`${cx + i},${cz + j}`) ?? []));
-    return out;
+    return [...loose, ...(byKey.get(`${cx},${cz}`) ?? [])];
   };
 }
 
@@ -85,6 +99,32 @@ function footprint(s: ScenerySpot): { x: number; z: number }[] {
   }
   return pts;
 }
+
+it('finds coalesced ground by its actual bounds and still detects water and missing land', () => {
+  const group = new Group();
+  const chunk = new Group();
+  chunk.name = 'road-chunk-0,0';
+  group.add(chunk);
+  const x = ROAD_CHUNK_M * 2 + 8;
+  const material = new MeshBasicMaterial({ side: DoubleSide });
+  const plane = (size: number, y: number, name: string) => {
+    const mesh = new Mesh(new PlaneGeometry(size, size).rotateX(-Math.PI / 2), material);
+    mesh.position.set(x, y, 8);
+    mesh.name = name;
+    return mesh;
+  };
+  const land = plane(12, 5, 'road-land');
+  const water = plane(20, 0, 'road-water');
+  chunk.add(land);
+  group.add(water);
+  const ground = groundByChunk(group, /^road-(land|water)/);
+  expect(firstHit(ground(x + 8, 8), x + 8, 8, 30)).toBe('road-water');
+  expect(firstHit(ground(x + 20, 8), x + 20, 8, 30)).toBeNull();
+  expect(firstHit(ground(x, 8), x, 8, 30)).toBe('road-land');
+  land.geometry.dispose();
+  water.geometry.dispose();
+  material.dispose();
+});
 
 /** The raced tracks get every seed; the staged OSM bake (not raced yet) gets the named ones. */
 const SWEEPS: readonly [string, readonly number[]][] = [
