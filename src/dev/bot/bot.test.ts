@@ -391,6 +391,60 @@ describe('bot: road-2 ramp shortcut behind a split zone', () => {
   const zone = { edge: 0, s0: 260, s1: 300, d0: 2.4, d1: 4.9, toEdge: 6, gainM: 54 };
   const zoned = (): RouteQueries => ({ ...route(), shortcuts: [zone] }) as RouteQueries;
 
+  it('filters a stopped queue inside an own-side split, but follows moving queues and waits without safe room', () => {
+    // A split begins near a wide drive lane's shoulder. Its normal approach line still sees
+    // the stopped lane traffic; the shoulder offers room without giving up the branch choice.
+    const lanes: LaneInfo[] = LANES.map((l) => ({
+      ...l,
+      dCenterM: Math.sign(l.dCenterM) * (l.kind === 'shoulder' ? 4.75 : 2),
+      widthM: l.kind === 'shoulder' ? 1.5 : 4,
+    }));
+    const split = { ...zone, d0: 3.5, d1: 8 };
+    const line = 4.4;
+    const me = mover(ME, { s: 245, d: line, speed: 0 });
+    const lead = mover(5, { kind: 'vehicle', s: 255, d: 2, speed: 0 });
+    const ride = (ahead = lead, others: EntitySnapshot[] = [], choice = split, at = me) => {
+      const bot = createBot();
+      const r = { ...route(lanes), shortcuts: [choice] } as RouteQueries;
+      let first = blank();
+      let last = first;
+      for (let t = 1; t <= STUCK_TICKS + 1; t++) {
+        last = blank();
+        bot.drive(snapshot(t, [at, ahead, ...others]), ME, r, last);
+        if (t === 1) first = last;
+      }
+      return { first, last, bot, r };
+    };
+    const stopped = ride();
+    expect(stopped.first.throttle).toBe(0);
+    expect(stopped.first.steer).toBeCloseTo(0);
+    expect(stopped.last.throttle).toBe(1);
+    expect(stopped.last.steer).toBeGreaterThan(0); // farther into the same split's shoulder
+    const brisk = blank();
+    stopped.bot.drive(snapshot(STUCK_TICKS + 2, [{ ...me, speed: 12 }, lead]), ME, stopped.r, brisk);
+    expect(brisk.throttle).toBe(0);
+    expect(brisk.brake).toBeGreaterThan(0);
+    const crawling = ride({ ...lead, speed: 1 });
+    expect(crawling.last.steer).toBeCloseTo(0); // keep following the moving queue's line
+    const shoulderCar = mover(6, { kind: 'vehicle', s: 260, d: 4.75, speed: 0 });
+    const blocked = ride(lead, [shoulderCar]);
+    expect(blocked.last.throttle).toBe(0);
+    expect(blocked.last.steer).toBeCloseTo(0);
+    // The shoulder is clear but outside a narrower choice: do not filter out of that choice.
+    const narrow = ride(lead, [], { ...split, d1: 4.5 }, { ...me, road: { ...me.road, d: 4 } });
+    expect(narrow.last.throttle).toBe(0);
+    expect(narrow.last.steer).toBeCloseTo(0);
+    // A choice across the center line cannot use this own-side filtering exception.
+    const cross = ride(
+      { ...lead, road: { ...lead.road, d: -2 } },
+      [],
+      { ...split, d0: -3.5, d1: -8 },
+      { ...me, road: { ...me.road, d: -line } },
+    );
+    expect(cross.last.throttle).toBe(0);
+    expect(cross.last.steer).toBeCloseTo(0);
+  });
+
   it('steers into the split zone on the approach, and not before', () => {
     const early = blank();
     const bot = createBot();
