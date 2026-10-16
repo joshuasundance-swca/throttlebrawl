@@ -36,6 +36,7 @@ import {
   terrainProfilePlan,
   terrainEndProfile,
   landJoinTriangles,
+  DRAWN_VERGE_M,
   terrainAt,
   type Edge,
   type RoadNetwork,
@@ -101,7 +102,7 @@ import {
 /** Surface higher than this above sea level (world y = 0) counts as a bridge deck. */
 export const ELEVATED_M = 2.5;
 /** Metres of shoulder beyond the outermost lane, drawn as verge. */
-const VERGE_M = 0.6;
+const VERGE_M = DRAWN_VERGE_M;
 /**
  * A rail band or wall stands this far past the outermost lane edge, m: the line the sim stops riders
  * and tumbling bodies at is the lane edge itself (sim/tumble wallBand, the riders' ride limits), so

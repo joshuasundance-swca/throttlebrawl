@@ -28,11 +28,12 @@
 // (sim/riders/drift.ts) and road gaps and jumpable walls (sim/riders/gap.ts) plug in through hooks
 // below, each neutral while its move is off, so their lanes never edit this file.
 import { atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
-import { courseEdgeTopAt, edgeTopAt, sRateFactor, type Structure } from '../../road';
+import { courseEdgeTopAt, edgeTopAt, roadBandHeight, sRateFactor, type Structure } from '../../road';
 import type { RideLimits } from '../ground';
 import type { TumbleState } from '../tumble';
 import type { MovesSnapshot, SimConfig, SimRiderDef, TouchdownSnapshot } from '../types';
 import { AIR_TUNING, holdingPaper, slopeAt, startFlight, touchdown, type AirState } from './air';
+import { moveOnTerrain, terrainGroundAt } from './terrain';
 import { RIDER_BODY_HEIGHT_M } from './contact';
 import { COURSE_TUNING, courseEdgesOn, groundEdgeOpen, roadPastLine } from './course';
 import { driftMoves, DRIFT_TUNING, newDriftState, type DriftState } from './drift';
@@ -796,6 +797,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
       : 0;
   let t = 0;
   let onTop = 0;
+  let onTerrain = false;
   const dt = FORECAST_STEP_S;
   const tops = supportsOn(world);
   const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
@@ -810,10 +812,22 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
     const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
-    const prev = { edge: at.edge, s: at.s, d: at.d, gap: y - road.surfaceHeight(at.edge, at.s, at.d) };
-    at.s += at.dir * along * dt;
-    at.d += at.dir * v * sin(yaw) * dt;
-    yaw -= align * yaw * dt;
+    const previousTerrain = terrainGroundAt(road, at, y + KERB_M);
+    const prev = {
+      edge: at.edge,
+      s: at.s,
+      d: at.d,
+      gap: y - road.surfaceHeight(at.edge, at.s, at.d),
+      groundGap: y - (previousTerrain?.y ?? road.surfaceHeight(at.edge, at.s, at.d)),
+      y,
+    };
+    if (road.terrain && roadBandHeight(road, at.edge, at.s, at.d) === null)
+      yaw = moveOnTerrain(road, at, yaw, v * dt, 0);
+    else {
+      at.s += at.dir * along * dt;
+      at.d += at.dir * v * sin(yaw) * dt;
+      yaw -= align * yaw * dt;
+    }
     y += vy * dt - 0.5 * gravity * dt * dt;
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
@@ -827,7 +841,8 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
       at.d = step.hand.d;
       at.dir = step.hand.dir;
     }
-    const pastEdge = mark !== null && step.result === 'past';
+    const naturalFloor = terrainGroundAt(road, at, Math.max(prev.y, y) + KERB_M);
+    const pastEdge = !naturalFloor && mark !== null && step.result === 'past';
     // Out past the edge over water or a drop (or ground, with the course's edges on), and it falls: out of
     // bounds, not a landing.
     if (pastEdge && mark && overFalls(mark, y, groundOut)) return null;
@@ -851,18 +866,26 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     }
     // Out past the edge its road's plane does not go on: only a road under it, or the ground's
     // edge (put back at the limit above), ends the flight there.
-    if (gap <= 0 && !pastEdge) {
+    const groundGap = naturalFloor ? y - naturalFloor.y : gap;
+    if (groundGap <= 0 && !pastEdge) {
       // Back to where the flight crossed the ground, between the two steps.
-      const k = prev.gap > 0 ? prev.gap / (prev.gap - gap) : 1;
+      const k = prev.groundGap > 0 ? prev.groundGap / (prev.groundGap - groundGap) : 1;
       if (prev.edge === at.edge) {
         at.s = prev.s + (at.s - prev.s) * k;
         at.d = prev.d + (at.d - prev.d) * k;
       }
       t += dt * k;
+      onTerrain = naturalFloor !== null;
       break;
     }
   }
-  const p = road.toWorld(at.edge, at.s, at.d, onTop);
+  const landedTerrain = onTerrain ? terrainGroundAt(road, at) : null;
+  const p = road.toWorld(
+    at.edge,
+    at.s,
+    at.d,
+    landedTerrain ? landedTerrain.y - road.surfaceHeight(at.edge, at.s, at.d) : onTop,
+  );
   const f = road.frameAt(at.edge, at.s);
   const tx = f.tx * at.dir;
   const tz = f.tz * at.dir;
@@ -909,6 +932,8 @@ export function floorOf(world: World, config: SimConfig, m: Mover): number | nul
   if (mark) {
     // Out past the edge: a structure's top under it (a roof past the sidewalk) first.
     if (on) return surface + on.top;
+    const ground = terrainGroundAt(road, pos, y);
+    if (ground) return ground.y;
     const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
     const to = roadUnder(config, pos, y, limits);
     if (to) return road.surfaceHeight(to.edge, to.s, to.d);

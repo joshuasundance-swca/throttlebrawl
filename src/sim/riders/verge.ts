@@ -158,7 +158,7 @@ export const behindFence = (pastM: number): boolean => pastM > BEHIND_FENCE_M;
  */
 export function wheelGround(config: SimConfig, m: Mover): GroundSurface | null {
   const pos = m.pos;
-  const g = groundUnder(config.road, pos.edge, pos.s, pos.d, 0);
+  const g = groundUnder(config.road, pos.edge, pos.s, pos.d, config.road.terrain ? m.h : 0);
   if (g !== null) return g;
   const v = config.road.vergeAt(pos.edge, pos.s, pos.d < 0 ? 'left' : 'right');
   return v.widthM > 0 ? v.surface : null;

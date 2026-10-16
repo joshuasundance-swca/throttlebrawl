@@ -252,6 +252,7 @@ export function leaveCourse(
   // Level with him (no more than a kerb down): a structure's top he rides on, another road he is handed onto.
   // Lower than that he went off an edge onto nothing drawn: out, as off any edge.
   if (spot.kind === 'top' && spot.y >= feet - KERB_M) return false;
+  if (spot.kind === 'terrain' && spot.y >= feet - KERB_M) return false;
   if (spot.kind === 'road' && spot.y >= feet - KERB_M) {
     handOnto(config.road, m, spot);
     return false;

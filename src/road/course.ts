@@ -15,7 +15,10 @@
 import { sRateFactor, type Edge, type RoadNetwork } from './network';
 import { structuresAt, topAt, type StructurePlan } from './structures';
 import { LAND_STRIP_M, landEdgeOf, sectionGroundOf } from './drawn-ground';
+import { DRAWN_VERGE_M } from './furniture';
 import { themeAt } from './themes';
+import { terrainAt, type TerrainSample } from './terrain';
+import type { GroundSurface } from '../core';
 
 /**
  * A surface this little over a rider still counts as under him, m [default]: a rider resting on a top or the road
@@ -35,6 +38,8 @@ export type CourseSpot =
     }
   /** A structure's top: its id in the plan and the top's world height there. */
   | { readonly kind: 'top'; readonly id: number; readonly y: number }
+  /** Authored natural ground, independent of the road's reference height and grass bands. */
+  | (TerrainSample & { readonly kind: 'terrain'; readonly surface: GroundSurface })
   /** Beyond the course. */
   | { readonly kind: 'out' };
 
@@ -47,6 +52,7 @@ const OUT: CourseSpot = { kind: 'out' };
  * needs a separate terrain model. Lake banks have their own plateau/shore geometry, not this strip.
  */
 export function roadsideGroundHeight(road: RoadNetwork, edge: number, s: number, d: number): number | null {
+  if (road.terrain) return null; // Authored faces replace the legacy decorative land strip.
   const e = road.edges[edge];
   if (!e) return null;
   const side = d < 0 ? -1 : 1;
@@ -71,7 +77,12 @@ export function roadsideGroundHeight(road: RoadNetwork, edge: number, s: number,
 }
 
 /** The surface's height at (s, d) when it lies on the edge's lanes or verge band, else null. */
-function bandHeight(road: RoadNetwork, edge: number, s: number, d: number): number | null {
+export function roadBandHeight(road: RoadNetwork, edge: number, s: number, d: number): number | null {
+  if (road.terrain) {
+    const e = road.edges[edge];
+    const verge = e?.isTrafficOnly ? 0 : DRAWN_VERGE_M;
+    return e && d >= e.dMin - verge && d <= e.dMax + verge ? road.surfaceHeight(edge, s, d) : null;
+  }
   const left = road.vergeAt(edge, s, 'left').dOuter;
   const right = road.vergeAt(edge, s, 'right').dOuter;
   return d >= left && d <= right ? road.surfaceHeight(edge, s, d) : roadsideGroundHeight(road, edge, s, d);
@@ -181,7 +192,7 @@ function roadsUnder(
       bestD2 = Infinity;
       if (p.along > 1e-3 || p.along < -1e-3) return; // past an end of it
       if (edge === own.edge && p.s - own.s < 1 && own.s - p.s < 1) return; // the rider's own spot
-      const y = bandHeight(road, edge, p.s, p.d);
+      const y = roadBandHeight(road, edge, p.s, p.d);
       if (y !== null) out.push({ edge, s: p.s, d: p.d, y });
     };
     for (let k = 0; k < samples.length; k++) {
@@ -218,7 +229,7 @@ export function courseAt(
   const s = pos.s < 0 ? 0 : pos.s > e.length ? e.length : pos.s;
   let best: CourseSpot = OUT;
   let bestY = -Infinity;
-  const own = bandHeight(road, pos.edge, s, pos.d);
+  const own = roadBandHeight(road, pos.edge, s, pos.d);
   if (own !== null && own <= limit) {
     best = { kind: 'road', edge: pos.edge, s: pos.s, d: pos.d, y: own };
     bestY = own;
@@ -237,6 +248,9 @@ export function courseAt(
       bestY = top;
     }
   }
+  const ground = terrainAt(road.terrain, w.x, w.z, limit);
+  if (ground && ground.surface !== 'water' && ground.y > bestY)
+    best = { ...ground, surface: ground.surface, kind: 'terrain' };
   return best;
 }
 

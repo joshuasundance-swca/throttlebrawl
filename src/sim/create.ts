@@ -147,7 +147,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       throttle: riders.throttle[m.id] ?? 0,
       rpm: riders.rpm[m.id] ?? 0,
       gear: riders.gear[m.id] ?? 0,
-      grounded: m.h <= 0,
+      grounded: m.kind === 'rider' && road.terrain ? m.mode === 'Road' : m.h <= 0,
       health: riders.health[m.id] ?? 0,
       healthMax: def?.healthMax ?? 0,
       ...combatView(world, m.id),

@@ -306,7 +306,10 @@ export function overStep(
     if (!atBand) return { result: 'barrier', mark: null, holdD: limit };
     const top = edgeTop(at.edge, at.s, vside);
     const deckY = road.surfaceHeight(at.edge, at.s, v.dOuter);
-    if (top === null || !(y - deckY > top)) return { result: 'barrier', mark: null, holdD: limit };
+    // An authored field may lie below this road's reference plane. A soft edge has no wall at
+    // that plane; its actual ground decides the landing, including below the road.
+    if (top === null || (!(road.terrain && top === 0) && !(y - deckY > top)))
+      return { result: 'barrier', mark: null, holdD: limit };
     // The old rules (the course's edges off): what the road's tags say lies past, once, at the crossing.
     const past = pastAt(road, at.edge, at.s, vside);
     const floorY = past === 'ground' ? deckY : waterLevelOf(road);

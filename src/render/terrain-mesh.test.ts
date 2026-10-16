@@ -96,7 +96,7 @@ describe('shared authored terrain geometry', () => {
     const terrain: BakedTerrain = {
       patches: [
         patch,
-        { ...patch, surface: 'water' },
+        { ...patch, surface: 'water', vertices: patch.vertices.map(([x, , z]) => [x, 3.1, z]) },
         { ...patch, vertices: patch.vertices.map(([x, y, z]) => [x + 10000, y, z]) },
       ],
     };
