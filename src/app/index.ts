@@ -23,7 +23,7 @@ import type {
 import { createAudio, radioKeyAction, type AudioSuspendLeaseResult, type EngineSoundSpec } from '../audio';
 import type { WakeLease, WakeLeaseResult } from '../platform';
 import type { QualitySetting, RendererPresentationRecipe, RendererPresentationToken } from '../render';
-import { resolveMeasurementScene, type MeasurementSceneResult } from './measurement-scene';
+import type { MeasurementSceneResult } from './measurement-scene';
 import { createMeasurementRuntime } from './measurement-runtime';
 import {
   createFollowCamera,
@@ -43,6 +43,7 @@ import {
   contentHashes,
   createPackLibrary,
   loadBaseRoads,
+  loadChunk,
   lookup,
   packClosure,
   packOf,
@@ -1144,6 +1145,7 @@ export function createApp(opts: AppOptions): AppHandle {
     const next = transition(state, e);
     if (next) {
       state = next;
+      if (state !== 'race') preparingGrid = null;
       frames.refresh();
       // A launch acquires only after its new snapshot and screen are ready; exits release now.
       if (state !== 'race') syncWake();
@@ -1494,6 +1496,9 @@ export function createApp(opts: AppOptions): AppHandle {
   const stepMs: number[] = [];
   // The race-start countdown: a beat is a second of loop steps; GO stays up for 0.8 s of race.
   const countdown = createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT));
+  // The ordinary countdown waits for its own grid's first completed CPU draw. Key the hold to
+  // the sim so a draw interrupted by a restart cannot release the replacement race.
+  let preparingGrid: Sim | null = null;
   const frames = createFrameObservation(() => ({
     state,
     measurementLive: measurement?.running === true,
@@ -1507,7 +1512,8 @@ export function createApp(opts: AppOptions): AppHandle {
     loading: loadingRoads,
     visible: document.visibilityState === 'visible',
     contextLost: renderer.contextLost,
-    countdown: diagnostic?.countdown.holding ?? countdown.holding,
+    countdown:
+      diagnostic?.countdown.holding ?? ((preparingGrid === race && race !== null) || countdown.holding),
     lockstep: loop.lockstep,
   }));
   // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input. It
@@ -1558,6 +1564,11 @@ export function createApp(opts: AppOptions): AppHandle {
     }
     if (measurement?.owned) return;
     if (!race) return;
+    if (preparingGrid === race) {
+      input.sample(SIM_DT);
+      cycleViewOnPress();
+      return;
+    }
     for (const change of pendingTuning.splice(0)) {
       race.applyParam(change.id, change.value);
       recorder.recordParam(race.tick, change.id, change.value);
@@ -1673,6 +1684,8 @@ export function createApp(opts: AppOptions): AppHandle {
         if (measurement?.owned) return;
         const normalAtDraw = normalGeneration;
         const me = curr ? interpolateEntity(state === 'race' ? prev : null, curr, alpha, playerId) : null;
+        const gridAtDraw =
+          state === 'race' && preparingGrid === race && me && !renderer.contextLost ? race : null;
         let pose: CameraPose | null = attractPose;
         if (me && state === 'race') {
           // The low chase cam reads the road (look-ahead), the rider's mode and auto-target (framing
@@ -1710,6 +1723,20 @@ export function createApp(opts: AppOptions): AppHandle {
           if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         });
         if (normalAtDraw !== normalGeneration || measurement?.owned) return;
+        if (
+          gridAtDraw !== null &&
+          gridAtDraw === race &&
+          gridAtDraw === preparingGrid &&
+          pose !== null &&
+          !renderer.contextLost &&
+          !ui.paused &&
+          !loop.paused &&
+          holds.size === 0 &&
+          document.visibilityState === 'visible'
+        ) {
+          preparingGrid = null;
+          frames.refresh();
+        }
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
         audio.frame(state === 'race' ? curr : null, playerId);
         // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
@@ -2485,6 +2512,7 @@ export function createApp(opts: AppOptions): AppHandle {
     );
     pendingTuning.length = 0;
     countdown.begin(countdownOn());
+    preparingGrid = countdown.holding ? race : null;
     // The full header (the SimConfig as plain data), so a saved debug file replays on its own, and a
     // menu race's picks beside it (playtest 4, P4-12).
     attemptOwner = null;
@@ -2981,10 +3009,15 @@ export function createApp(opts: AppOptions): AppHandle {
       const missing = classic
         ? packClosure(registry, packOf(classic.eventId)).filter((id) => !library.hasRoads(id))
         : [];
-      await Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()]);
+      const [sceneCode] = await Promise.all([
+        loadChunk('measurement scene', () => import('./measurement-scene')),
+        ...missing.map((id) => library.loadRoads(id)),
+        loadPlanners(),
+      ]);
       // Only immutable content caches were filled. Selection and normal registry stay parked.
       if (signal.aborted) throw new Error('Measurement preparation retired');
-      return resolveMeasurementScene(library.registry(), selected);
+      if (!sceneCode) throw new Error('Measurement scene code unavailable');
+      return sceneCode.resolveMeasurementScene(library.registry(), selected);
     },
     acquireWake: acquireWakeLease,
     acquireAudio: (options) => audio.acquireSuspendLease(options),
