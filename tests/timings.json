@@ -1,5 +1,5 @@
 {
-  "about": "Measured CI seconds per test file, averaged over the runs below, except race-recovery.spec.ts: 430.6 s is the mean of summed completed-case reporter durations from all 14 passing cases in each cancelled browser job 115403370665 (run 38428243669) and 115408787806 (run 38429802183), source head 6124261f; that recovery file matches main 1ea20ae. No incomplete neighboring files were imported. scripts/shard-plan.mjs balances the sim and browser slices with these estimates, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>... Cached-startup relocation (2026-10-15): perf reserves 104.9 + 34.0 = 138.9 s, using the complete passing-case reporter duration in accepted train 38676443719, browser job 116231080970. This is a planning reservation, not a measured new perf total; the app-offline e2e estimate remains unchanged conservatively until a full refresh. UI-layout split (2026-10-16): provisional relocated-case planning reservations, not measured new-file durations: ui-career-layout.spec.ts 321.2 s (7 cases); ui-style-popups.spec.ts 214.7 s (22 cases). Derived from every completed passing ui-style-popups case reporter duration in cancelled browser job 116976216515 (3/11, train 1102, run 38901960988), source head 4c762d05. Its reporter lists 42 passing slice cases; the cancelled job/run is not acceptance. Each displayed duration is bounded upward by half its final printed unit (1.0m and 1.7m each add up to 3 s), summed by the exact relocated cases, then rounded upward to 0.1 s. No incomplete neighboring files were imported. Refresh both reservations from accepted post-split measurements.",
+  "about": "Measured CI seconds per test file, averaged over the runs below, except race-recovery.spec.ts: 430.6 s is the mean of summed completed-case reporter durations from all 14 passing cases in each cancelled browser job 115403370665 (run 38428243669) and 115408787806 (run 38429802183), source head 6124261f; that recovery file matches main 1ea20ae. No incomplete neighboring files were imported. scripts/shard-plan.mjs balances the sim and browser slices with these estimates, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>... Cached-startup relocation (2026-10-15): perf reserves 104.9 + 34.0 = 138.9 s, using the complete passing-case reporter duration in accepted train 38676443719, browser job 116231080970. This is a planning reservation, not a measured new perf total; the app-offline e2e estimate remains unchanged conservatively until a full refresh. UI-layout split (2026-10-16): provisional relocated-case planning reservations, not measured new-file durations: ui-career-layout.spec.ts 321.2 s (7 cases); ui-style-popups.spec.ts 214.7 s (22 cases). Derived from every completed passing ui-style-popups case reporter duration in cancelled browser job 116976216515 (3/11, train 1102, run 38901960988), source head 4c762d05. Its reporter lists 42 passing slice cases; the cancelled job/run is not acceptance. Each displayed duration is bounded upward by half its final printed unit (1.0m and 1.7m each add up to 3 s), summed by the exact relocated cases, then rounded upward to 0.1 s. No incomplete neighboring files were imported. UI-layout measured refresh (2026-10-16) supersedes only the two provisional split-spec reservations above: ui-career-layout.spec.ts 212.5 s and ui-style-popups.spec.ts 327.4 s are the arithmetic means of their complete passing-case upper reservations in accepted train runs 38908548042 (jobs 116998324070 and 116998324091: 222.3 s and 327.5 s) and 38910737610 (jobs 117005719263 and 117005719287: 202.7 s and 327.3 s), rounded upward to 0.1 s. Each run covers all 7 career-layout and 22 style-popups cases; its reservation sums reporter durations with half-final-unit rounding allowances before rounding upward to 0.1 s. These are summed-case planning weights, not whole-job durations or speed guarantees. Every other timing and attribution is unchanged.",
   "runs": [38154684605, 38155619685],
   "overhead": {
     "e2e": 53,
@@ -740,7 +740,7 @@
     "tests/e2e/road-events.spec.ts": 288,
     "tests/e2e/traffic-regions.spec.ts": 73.4,
     "tests/e2e/tuning-panel.spec.ts": 100.1,
-    "tests/e2e/ui-career-layout.spec.ts": 321.2,
+    "tests/e2e/ui-career-layout.spec.ts": 212.5,
     "tests/e2e/ui-hud-layout.spec.ts": 80.6,
     "tests/e2e/ui-keys-remap.spec.ts": 115.4,
     "tests/e2e/ui-look-fallback.spec.ts": 167.7,
@@ -758,7 +758,7 @@
     "tests/e2e/ui-settings-sync.spec.ts": 45.1,
     "tests/e2e/ui-settings.spec.ts": 515.1,
     "tests/e2e/ui-style-meter.spec.ts": 43,
-    "tests/e2e/ui-style-popups.spec.ts": 214.7,
+    "tests/e2e/ui-style-popups.spec.ts": 327.4,
     "tests/e2e/ui-text-size.spec.ts": 87,
     "tests/e2e/ui-ticker.spec.ts": 73,
     "tests/e2e/ui-transient-cards.spec.ts": 267,

@@ -182,7 +182,8 @@ function makespan(items, workers) {
 
 /**
  * Splits `files` into `n` slices, each a list of files, so that the slowest slice is as quick as
- * the greedy plan can make it. Deterministic: the same inputs give the same slices on every runner.
+ * the greedy plan can make it, optionally refined by bounded relocations and swaps. Deterministic:
+ * the same inputs give the same slices on every runner.
  *
  * @param {object} o
  * @param {string[]} o.files every test file of the tier, as the runner lists them
@@ -196,6 +197,7 @@ function makespan(items, workers) {
  * @param {number} [o.perFile] seconds each file costs beyond its measured time (setup and import)
  * @param {number} [o.overhead] seconds every slice's job spends outside its runner (setup, build)
  * @param {string[]} [o.spread] files whose tests spread over all the runner's workers (parallel mode)
+ * @param {boolean} [o.refine] improve the greedy partition with at most as many moves as input files
  * @returns {{ files: string[], predicted: number }[]} predicted: the slice's job seconds
  */
 export function planSlices({
@@ -210,6 +212,7 @@ export function planSlices({
   perFile = 0,
   overhead = 0,
   spread = [],
+  refine = false,
 }) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`planSlices: n must be a whole number >= 1, got ${n}`);
   const all = [...new Set(files)].sort();
@@ -274,6 +277,70 @@ export function planSlices({
     donor.items.splice(donor.items.indexOf(quickest), 1);
     s.items.push(quickest);
   }
+  if (refine) {
+    // Path-order scheduling can trap the cost-first greedy assignment: moving or swapping a file
+    // changes when the next worker frees up. Evaluate candidates with the exact same predictor,
+    // including parallel specs and the last slice's perf. Compare slowest jobs first, then the
+    // next slowest, so tied bottlenecks can improve without ever worsening the maximum.
+    const score = (times) => [...times].sort((a, b) => b - a);
+    const less = (a, b) => {
+      const i = a.findIndex((v, j) => v !== b[j]);
+      return i >= 0 && a[i] < b[i];
+    };
+    const byPath = (list) => [...list].sort((a, b) => a.files[0].localeCompare(b.files[0]));
+    for (const s of slices) s.items = byPath(s.items);
+    let times = slices.map((s) => Math.round(predict(s) + overhead));
+    // At most as many accepted moves as unique input files, independent of elapsed time.
+    // Stop sooner at a local optimum; this is a heuristic, not an optimality or speed guarantee.
+    for (let pass = 0; pass < all.length; pass++) {
+      let best = null;
+      let bestScore = score(times);
+      const examine = (i, j, a, b) => {
+        const next = [...times];
+        next[i] = Math.round(predict({ ...slices[i], items: a }) + overhead);
+        next[j] = Math.round(predict({ ...slices[j], items: b }) + overhead);
+        const nextScore = score(next);
+        if (less(nextScore, bestScore)) {
+          bestScore = nextScore;
+          best = { i, j, a, b, times: next };
+        }
+      };
+      for (let i = start; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = slices[i].items;
+          const b = slices[j].items;
+          for (const f of a.filter((it) => !it.pinned)) {
+            if (a.length > 1)
+              examine(
+                i,
+                j,
+                a.filter((it) => it !== f),
+                [...b, f],
+              );
+            for (const g of b.filter((it) => !it.pinned))
+              examine(
+                i,
+                j,
+                a.map((it) => (it === f ? g : it)),
+                b.map((it) => (it === g ? f : it)),
+              );
+          }
+          if (b.length > 1)
+            for (const g of b.filter((it) => !it.pinned))
+              examine(
+                i,
+                j,
+                [...a, g],
+                b.filter((it) => it !== g),
+              );
+        }
+      }
+      if (!best) break;
+      slices[best.i].items = byPath(best.a);
+      slices[best.j].items = byPath(best.b);
+      times = best.times;
+    }
+  }
   return slices.map((s) => ({
     files: s.items.flatMap((it) => it.files).sort(),
     predicted: Math.round(predict(s) + overhead),
@@ -315,6 +382,7 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     together: tier === 'sim' ? batchUsers(files, read) : [],
     first: tier === 'sim' ? presetUsers(files, read) : [],
     spread: tier === 'e2e' ? spreadUsers(files, read) : [],
+    refine: tier === 'e2e',
     lastExtra: tier === 'e2e' ? (timings.perf ?? 0) : 0,
     perFile: 'perFile' in spec ? spec.perFile : 0,
     // The table's own setup seconds (scripts/timings.mjs measures them with the file times), else TIERS'.
