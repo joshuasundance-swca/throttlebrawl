@@ -10,6 +10,8 @@ export {
   landIntervalPlan,
   landWidthChangeOverRoad,
   terrainProfilePlan,
+  terrainEndProfile,
+  landJoinTriangles,
   keptSamples,
 } from './land-topology';
 export type {
@@ -17,6 +19,7 @@ export type {
   TerrainFan,
   TerrainProfilePlan,
   TerrainProfileRow,
+  LandJoinProfile,
   Point3Like,
 } from './land-topology';
 export { BRUSH_STEP_M, brushClumpAt, hedged } from './brush';

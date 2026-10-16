@@ -81,6 +81,60 @@ export function landWidthChangeOverRoad(
 
 export type TerrainProfileRow<P extends Point3Like = Point3Like> = readonly [P, P, P, P] | null;
 
+/** An endpoint keeps all four skirt points, including a collapsed zero-width flat. */
+export function terrainEndProfile<P extends Point3Like>(
+  verge: P,
+  row: NonNullable<TerrainProfileRow<P>>,
+): readonly P[] {
+  return [verge, ...row];
+}
+
+export interface LandJoinProfile<P extends Point3Like> {
+  level: number;
+  points: readonly P[];
+}
+
+/** Exact strip diagonal/winding shared by rendered and physical endpoint ground. */
+export function landJoinTriangles<P extends Point3Like>(
+  first: LandJoinProfile<P>,
+  second: LandJoinProfile<P>,
+  side: -1 | 1,
+  common: readonly [P, P],
+  footY: number,
+): readonly (readonly [P, P, P])[] {
+  const a = first.points,
+    b = second.points;
+  if (!a.length || !b.length || Math.abs(a[0]!.y - b[0]!.y) > 0.5) return [];
+  const same = first.level === second.level && a.length === b.length;
+  const p = same ? a : [a[0]!, common[0]],
+    q = same ? b : [b[0]!, common[1]];
+  const out: [P, P, P][] = [];
+  const tri = (u: P, v: P, w: P) => {
+    const x = (v.y - u.y) * (w.z - u.z) - (v.z - u.z) * (w.y - u.y);
+    const y = (v.z - u.z) * (w.x - u.x) - (v.x - u.x) * (w.z - u.z);
+    const z = (v.x - u.x) * (w.y - u.y) - (v.y - u.y) * (w.x - u.x);
+    if (x !== 0 || y !== 0 || z !== 0) out.push([u, v, w]);
+  };
+  const quad = (a0: P, b0: P, a1: P, b1: P) => {
+    tri(a0, b0, a1);
+    tri(b0, b1, a1);
+  };
+  for (let k = 0; k + 1 < p.length; k++) {
+    const lo = side > 0 ? k : k + 1,
+      hi = side > 0 ? k + 1 : k;
+    quad(p[lo]!, p[hi]!, q[lo]!, q[hi]!);
+  }
+  if (!same) {
+    const a = p[p.length - 1]!,
+      b = q[q.length - 1]!;
+    const af = { ...a, y: footY },
+      bf = { ...b, y: footY };
+    quad(af, a, bf, b);
+    quad(a, af, b, bf);
+  }
+  return out;
+}
+
 export interface TerrainFan {
   from: number;
   to: number;

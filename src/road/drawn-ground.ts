@@ -30,6 +30,9 @@ import {
   landIntervalPlan,
   landWidthChangeOverRoad,
   terrainProfilePlan,
+  terrainEndProfile,
+  landJoinTriangles,
+  type LandJoinProfile,
   type LandIntervalPlan,
 } from './land-topology';
 import { themeAt, type LandTheme, type SideTheme } from './themes';
@@ -752,6 +755,110 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
   const cellM = 16;
   const cell = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
   const rowsOf = landOf(road).rows;
+  type End = 'from' | 'to';
+  interface Endpoint extends LandJoinProfile<GroundPoint> {
+    reach: number;
+    top: (reach: number) => GroundPoint;
+  }
+  interface Join {
+    edge: number;
+    side: -1 | 1;
+    end: End;
+    other: number;
+    otherSide: -1 | 1;
+    otherEnd: End;
+    triangles?: readonly GroundTriangle[];
+  }
+  const endpoints = new Map<string, Endpoint>();
+  const endpoint = (edge: number, side: -1 | 1, end: End): Endpoint => {
+    const key = `${edge}:${side}:${end}`;
+    const known = endpoints.get(key);
+    if (known) return known;
+    const ed = road.edges[edge]!;
+    const rows = rowsOf(edge)!;
+    const i = end === 'from' ? 0 : rows.n - 1;
+    const s = end === 'from' ? 0 : ed.length;
+    const outer = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
+    const reach = rows.reachAt(side, i);
+    const skirt = rows.skirtAt(side, i);
+    const shore = banks.shoreAt(edge, side, s);
+    const bank = banks.at(edge, side, i);
+    const point = (across: number, y?: number): GroundPoint => {
+      const p = road.toWorld(edge, s, side * (outer + across), LAND_TOP_M);
+      return { x: p.x, y: y ?? p.y, z: p.z, s };
+    };
+    const top = (r: number) => point(r, r > LAKE_BANK_M && shore !== null ? shore : undefined);
+    const level = reach <= 0 ? 0 : rows.meetsAt(side, i) ? 1 : skirt ? 3 : 2;
+    let points: readonly GroundPoint[] = [];
+    if (level > 0) {
+      if (skirt && !bank) {
+        const foot = reach + skirt.run;
+        points = terrainEndProfile(top(0), [
+          top(reach),
+          point(foot, SKIRT_GROUND_Y),
+          point(foot + skirt.flat, SKIRT_GROUND_Y),
+          point(foot + skirt.flat + SHELF_RUN_M, SHELF_FOOT_Y),
+        ]);
+      } else {
+        const profile = [top(0)];
+        if (bank) profile.push(top(LAKE_BANK_M), point(LAKE_BANK_M + SEAWALL_SHELF_M, shore!));
+        profile.push(top(reach));
+        if (level === 2) profile.push(point(reach + (rows.shelfAt(side, i) ?? SHELF_RUN_M), SHELF_FOOT_Y));
+        points = profile;
+      }
+    }
+    const made = { level, points, reach, top };
+    endpoints.set(key, made);
+    return made;
+  };
+  // Index physical joins once in the renderer's stable edge/side/end order. Each edge
+  // references the same memoized plan; querying its neighbour first cannot steal it.
+  const joinsByEdge = new Map<number, Join[]>();
+  const seenJoins = new Set<string>();
+  for (const ed of road.edges)
+    for (const side of [-1, 1] as const) {
+      for (const [end, links] of [
+        ['from', ed.prevLinks],
+        ['to', ed.nextLinks],
+      ] as const)
+        for (const link of links) {
+          const otherSide = (end === link.entersAt ? -side : side) as -1 | 1;
+          const key =
+            ed.index < link.edge
+              ? `${ed.index}:${end}:${side}|${link.edge}:${link.entersAt}`
+              : `${link.edge}:${link.entersAt}:${otherSide}|${ed.index}:${end}`;
+          if (seenJoins.has(key)) continue;
+          seenJoins.add(key);
+          const join: Join = {
+            edge: ed.index,
+            side,
+            end,
+            other: link.edge,
+            otherSide,
+            otherEnd: link.entersAt,
+          };
+          for (const edge of new Set([ed.index, link.edge])) {
+            const list = joinsByEdge.get(edge);
+            if (list) list.push(join);
+            else joinsByEdge.set(edge, [join]);
+          }
+        }
+    }
+  const joined = (join: Join): readonly GroundTriangle[] => {
+    if (join.triangles) return join.triangles;
+    const a = endpoint(join.edge, join.side, join.end),
+      b = endpoint(join.other, join.otherSide, join.otherEnd);
+    const r = Math.min(a.reach, b.reach),
+      common = [a.top(r), b.top(r)] as const;
+    join.triangles = landJoinTriangles(
+      join.end === 'to' ? a : b,
+      join.end === 'to' ? b : a,
+      join.side,
+      join.end === 'to' ? common : [common[1], common[0]],
+      SHELF_FOOT_Y,
+    );
+    return join.triangles;
+  };
   const make = (edge: number) => {
     const grid = new Map<string, GroundTriangle[]>();
     const ed = road.edges[edge];
@@ -902,6 +1009,21 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
         breakBefore,
         side < 0,
       );
+    }
+    for (const join of joinsByEdge.get(edge) ?? []) {
+      const end = join.edge === edge ? join.end : join.otherEnd;
+      const s = end === 'from' ? 0 : ed.length;
+      for (const triangle of joined(join)) {
+        // The renderer stores world vertices in Float32 buffers. Round after planning,
+        // and accept only faces a downward ray actually sees from above.
+        const [a, b, c] = triangle.map((p) => ({
+          x: Math.fround(p.x),
+          y: Math.fround(p.y),
+          z: Math.fround(p.z),
+          s,
+        })) as [GroundPoint, GroundPoint, GroundPoint];
+        if ((b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z) > 0) tri(a, b, c);
+      }
     }
     return grid;
   };

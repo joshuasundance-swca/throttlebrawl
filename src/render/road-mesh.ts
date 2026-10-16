@@ -34,6 +34,8 @@ import {
   landWidthChangeOverRoad,
   SEEDED_SET_PIECE_KINDS,
   terrainProfilePlan,
+  terrainEndProfile,
+  landJoinTriangles,
   type Edge,
   type RoadNetwork,
 } from '../road';
@@ -911,8 +913,6 @@ const FAR_ROOTS: readonly (readonly [number, number])[] = [
 ];
 /** Where a land end cap's curtain stops: under the sea, with the shelves' foot. */
 const LAND_CAP_FOOT_Y = -0.4;
-/** Two roads' land at a join is bridged only where it stands within this height of each other, m. */
-const JOIN_LAND_DY_M = 0.5;
 /** Air above an allowed traffic body before the upper road's retaining face begins, m. */
 const LAND_CAP_CLEARANCE_MARGIN_M = 0.25;
 /** Coarse ground may batch a 256-quad fragment into an adjacent cell; its geometry bounds still cull it. */
@@ -1272,7 +1272,7 @@ export function buildRoadScene(
     -1 | 1,
     Record<'from' | 'to', readonly [number, number]> & {
       top: (end: 'from' | 'to', r: number) => Point3;
-      profile: (end: 'from' | 'to') => Point3[];
+      profile: (end: 'from' | 'to') => readonly Point3[];
     }
   >[] = [];
   /** End caps where an edge joins another road, drawn once every edge's land is known. */
@@ -2444,7 +2444,12 @@ export function buildRoadScene(
         flush();
       };
       /** Row i's land in cross-section, from the verge outward: the strip, then its skirt or shelf. */
-      const profileOf = (i: number): Point3[] => profileRows(i).map(([, p]) => p);
+      const profileOf = (i: number): readonly Point3[] => {
+        const row = skirtRows[i];
+        return row && !banked(i)
+          ? terrainEndProfile(top(ss[i] ?? 0, 0), row)
+          : profileRows(i).map(([, p]) => p);
+      };
       /** Row i's cross-section with each point's distance past the verge (a bank's wall stands inside the reach). */
       const profileRows = (i: number): (readonly [number, Point3])[] => {
         const li = level(i);
@@ -3072,24 +3077,18 @@ export function buildRoadScene(
       drawnLandJoins.add(joinKey);
       const pa = mine.profile(end);
       const pb = theirs.profile(l.entersAt);
-      if (pa.length === 0 || pb.length === 0 || Math.abs(pa[0]!.y - pb[0]!.y) > JOIN_LAND_DY_M) continue;
-      const same = mine[end][0] === their[0] && pa.length === pb.length;
       const r = Math.min(mine[end][1], their[1]);
-      const a = same ? pa : [pa[0]!, mine.top(end, r)];
-      const b = same ? pb : [pb[0]!, theirs.top(l.entersAt, r)];
-      // In this edge's frame: the row with the lower s first, each quad's lower d first (faces up).
-      const [first, second] = end === 'to' ? [a, b] : [b, a];
-      for (let k = 0; k + 1 < first.length; k++) {
-        const [lo, hi] = side > 0 ? [k, k + 1] : [k + 1, k];
-        joinLand.quad(first[lo]!, first[hi]!, second[lo]!, second[hi]!);
-      }
-      if (same) continue;
-      const ta = first[first.length - 1]!;
-      const tb = second[second.length - 1]!;
-      const fa = { ...ta, y: LAND_CAP_FOOT_Y };
-      const fb = { ...tb, y: LAND_CAP_FOOT_Y };
-      joinLand.quad(fa, ta, fb, tb);
-      joinLand.quad(ta, fa, tb, fb);
+      const a = { level: mine[end][0], points: pa };
+      const b = { level: their[0], points: pb };
+      const common = [mine.top(end, r), theirs.top(l.entersAt, r)] as const;
+      for (const [p, q, t] of landJoinTriangles(
+        end === 'to' ? a : b,
+        end === 'to' ? b : a,
+        side,
+        end === 'to' ? common : [common[1], common[0]],
+        LAND_CAP_FOOT_Y,
+      ))
+        joinLand.tri(p, q, t);
     }
     cap(best[0], best[1]);
   }
