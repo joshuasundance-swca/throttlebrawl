@@ -442,6 +442,8 @@ export const PATROL = {
   branchEndM: 200,
 };
 const PATROL_AVOID = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
+/** Keep a parked patrol this far before a split zone's start, m. */
+const PATROL_SPLIT_LEAD_M = 60;
 
 /** Cop phases, stored as numbers so the state stays plain data. */
 export const COP_PARKED = 0;
@@ -1436,7 +1438,7 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos |
       return null;
   }
   for (const z of route.shortcuts) {
-    if (z.edge === pos.edge && pos.s >= z.s0 - 60 && pos.s <= z.s1 + 20) return null;
+    if (z.edge === pos.edge && pos.s >= z.s0 - PATROL_SPLIT_LEAD_M && pos.s <= z.s1 + 20) return null;
   }
   // Not beside a shortcut: a player who takes it would ride past him out of sight.
   const at = route.progressAt(pos.edge, pos.s);
@@ -1448,6 +1450,38 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos |
   const spot = { ...pos, d: lane.dCenterM >= 0 ? hi : lo };
   // Never parked in a travel lane: traffic queues behind a stopped rider (the M1 seed 37 jam).
   return clearOfLanes(config, spot) ? spot : null;
+}
+
+/** A first patrol before a long choice is met on either way, even when the fork precedes 8% of the route. */
+function sharedPatrolPrefix(config: SimConfig, firstAt: number): { at: number; pos: RoadPos } | null {
+  const { road, route } = config;
+  let before = Infinity;
+  for (const branch of route.branches) {
+    const choice = branch.choice;
+    if (!choice) continue;
+    const forkAt = route.progressAt(choice.edge, choice.s0);
+    if (forkAt < 0 || forkAt >= firstAt) continue;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const edge of branch.edges) {
+      const a = route.progressAt(edge, 0);
+      const b = route.progressAt(edge, road.edges[edge]?.length ?? 0);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      lo = Math.min(lo, a, b);
+      hi = Math.max(hi, a, b);
+    }
+    if (hi - lo > PATROL.longBranchM && firstAt >= lo && firstAt <= hi)
+      before = Math.min(before, forkAt - PATROL_SPLIT_LEAD_M);
+  }
+  if (!Number.isFinite(before)) return null;
+  for (let i = 0; i < PATROL.patrolTries; i++) {
+    const at = before - i * PATROL.stepM;
+    if (at < 0) break;
+    const pos = routePosAt(config, at);
+    const spot = pos && patrolSpot(config, pos, true);
+    if (spot) return { at, pos: spot };
+  }
+  return null;
 }
 
 /**
@@ -1492,6 +1526,12 @@ export function patrolSpots(world: World, config: SimConfig, count: number): { a
       }
     }
   }
+  // Long alternatives can bypass a timed main-road patrol for most of the race. Prefer a safe
+  // shared-prefix spot for the first cop; moving him earlier leaves subsequent spacing intact.
+  // No parking there: keep the ordinary safe placement, never force him into a travel lane.
+  const first = out[0];
+  const prefix = first && sharedPatrolPrefix(config, first.at);
+  if (prefix) out[0] = prefix;
   return out;
 }
 
