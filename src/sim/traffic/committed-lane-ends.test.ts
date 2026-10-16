@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, fixtureNetwork, highwayLanes, type BakedNetworkBundle } from '../../road';
-import { buildLaneMap, laneEndOnMap, type Corridor } from './corridor';
+import { buildLaneMap, laneEndOnMap, lanesAt, type Corridor } from './corridor';
 
 /** Only the outer source lanes connect to this committed single-lane movement. */
 function fixture() {
@@ -69,6 +69,27 @@ function corridor(bundle: BakedNetworkBundle, reversed = false, committed = true
 }
 
 describe('committed lane ends follow public directed lane transitions', () => {
+  it.each([
+    { reversed: false, dir: 1 },
+    { reversed: false, dir: -1 },
+    { reversed: true, dir: 1 },
+    { reversed: true, dir: -1 },
+  ])(
+    'ranks lanes from the physical road centre despite a shifted view ($reversed,$dir)',
+    ({ reversed, dir }) => {
+      const bundle = fixture();
+      const road = createRoadNetwork(bundle);
+      const path = corridor(bundle, reversed);
+      path.dOff = path.edges.map(() => 20);
+      const o = path.o[0]!;
+      const physicalDirection = dir * o;
+      expect(lanesAt(road, path, 80, dir).map((lane) => lane.cd * o + 20)).toEqual([
+        2 * physicalDirection,
+        6 * physicalDirection,
+      ]);
+    },
+  );
+
   it.each([false, true])(
     'follows the selected outer lane through rank changes in both directions (reversed corridor %s)',
     (reversed) => {

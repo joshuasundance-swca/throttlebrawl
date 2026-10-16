@@ -8,6 +8,7 @@
 // edge direction `c·o`, and a corridor lateral offset `cd` to an edge offset `cd·o`, so a vehicle
 // crosses any junction without special cases and never loses or doubles distance.
 import type { EdgeLink, RoadNetwork, RoadPos } from '../../road';
+import { lateSteps } from '../late';
 import type { SimConfig } from '../types';
 
 /** Plain data (kept in sim state, so it hashes and serializes). */
@@ -245,7 +246,7 @@ export interface LaneMap {
 }
 
 export function buildLaneMap(road: RoadNetwork, c: Corridor): LaneMap {
-  if (c.dOff !== undefined) return committedLaneMap(road, c);
+  if (c.dOff !== undefined) return lateSteps().committedLaneMap(road, c);
   const segs: { u0: number; plus: number; minus: number }[] = [];
   c.edges.forEach((edge, i) => {
     const e = road.edges[edge];
@@ -279,70 +280,6 @@ export function buildLaneMap(road: RoadNetwork, c: Corridor): LaneMap {
     out.minus.push(s.minus);
   }
   return out;
-}
-
-/** Keep every committed boundary: equal counts do not prove that the same lanes continue. */
-function committedLaneMap(road: RoadNetwork, c: Corridor): LaneMap {
-  const segs: { u0: number; edge: number; link: number; o: number; plus: string[]; minus: string[] }[] = [];
-  c.edges.forEach((edge, link) => {
-    const e = road.edges[edge];
-    if (!e) return;
-    const o = c.o[link] ?? 1;
-    const off = c.off[link] ?? 0;
-    const len = c.len[link] ?? 0;
-    e.sections.forEach((section, j) => {
-      const s0 = j === 0 ? 0 : Math.max(0, Math.min(len, section.s0));
-      const s1 = Math.max(0, Math.min(len, e.sections[j + 1]?.s0 ?? len));
-      if (s1 <= s0) return;
-      const lanes = section.lanes
-        .filter((lane) => lane.kind === 'drive' || lane.kind === 'shortcut')
-        .slice()
-        .sort((a, b) => Math.abs(a.dCenterM) - Math.abs(b.dCenterM) || (a.dCenterM - b.dCenterM) * o);
-      segs.push({
-        u0: o === 1 ? off + s0 : off + len - s1,
-        edge,
-        link,
-        o,
-        plus: lanes.filter((lane) => lane.direction * o === 1).map((lane) => lane.id),
-        minus: lanes.filter((lane) => lane.direction * o === -1).map((lane) => lane.id),
-      });
-    });
-  });
-  segs.sort((a, b) => a.u0 - b.u0);
-  const next = { plus: [] as number[][], minus: [] as number[][] };
-  for (const dir of [1, -1]) {
-    const key = dir === 1 ? 'plus' : 'minus';
-    for (const [i, source] of segs.entries()) {
-      const target = segs[i + dir];
-      const rows =
-        target && source.link !== target.link
-          ? road.laneTransitions(source.edge, source.o * dir === 1 ? 'to' : 'from')
-          : [];
-      next[key].push(
-        source[key].map((id) => {
-          if (!target) return -1;
-          if (source.link === target.link) return target[key].indexOf(id);
-          // Unmarked pass-through rows can suggest a nearest lane for merging. Only an explicit
-          // connector can replace the lane's identity without first completing that lane change.
-          const row = rows.find(
-            (movement) =>
-              movement.edge === target.edge &&
-              movement.entersAt === (target.o * dir === 1 ? 'from' : 'to') &&
-              movement.fromLane === id &&
-              (movement.connector || movement.toLane === id) &&
-              target[key].includes(movement.toLane),
-          );
-          return row ? target[key].indexOf(row.toLane) : -1;
-        }),
-      );
-    }
-  }
-  return {
-    u0: segs.map((s) => s.u0),
-    plus: segs.map((s) => s.plus.length),
-    minus: segs.map((s) => s.minus.length),
-    next,
-  };
 }
 
 /**
@@ -450,11 +387,8 @@ export function lanesAt(road: RoadNetwork, c: Corridor, u: number, dir: number):
       (l) =>
         (l.kind === 'drive' || (c.dOff !== undefined && l.kind === 'shortcut')) && l.direction * o === dir,
     )
-    .map((l) => ({ cd: (l.dCenterM - (c.dOff?.[i] ?? 0)) * o, width: l.widthM }))
-    .sort(
-      (a, b) =>
-        Math.abs(a.cd + (c.dOff?.[i] ?? 0) * o) - Math.abs(b.cd + (c.dOff?.[i] ?? 0) * o) || a.cd - b.cd,
-    );
+    .sort((a, b) => Math.abs(a.dCenterM) - Math.abs(b.dCenterM) || (a.dCenterM - b.dCenterM) * o)
+    .map((l) => ({ cd: (l.dCenterM - (c.dOff?.[i] ?? 0)) * o, width: l.widthM }));
 }
 
 /** Which physical side of the road a coordinate occupies, accounting for connector offsets. */
