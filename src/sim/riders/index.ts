@@ -831,7 +831,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
     y += vy * dt - 0.5 * gravity * dt * dt;
     vy -= gravity * dt;
     if (road.advance(at) === 'deadEnd') break;
-    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M, edgeTop, groundOut);
+    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M, edgeTop, groundOut, prev);
     mark = step.mark;
     if (step.setD !== undefined) at.d = step.setD;
     if (step.hand) {

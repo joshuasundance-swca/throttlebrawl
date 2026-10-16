@@ -5,6 +5,7 @@ import { quantizeInput } from '../api';
 import { BIKE_HALF_WIDTH_M, riderState, touchdownOf } from './index';
 import { testConfig } from './testing';
 import { moveOnTerrain } from './terrain';
+import { tumbleRecord } from '../tumble';
 
 const edges = [{ id: 'a', lengthM: 300, kappa: 0, grade: 0.01 }];
 const input = quantizeInput({ throttle: 0.5, brake: 0, steer: 0, flags: 0 });
@@ -85,27 +86,60 @@ function terrainConfig(slope = 0.05, curvature = 0, outerX = 80, waterY?: number
 }
 
 describe('riding authored physical terrain', () => {
-  it('rides the field beyond a real rail without being pulled back to the road', () => {
-    const config = terrainConfig(0.05, 0, 80, undefined, true);
+  it('keeps the crashed mover at its actual body position on land below the reference road', () => {
+    const config = terrainConfig(-0.05);
     const { sim, world } = createSimWithWorld(config);
     const me = world.movers.find((m) => m.kind === 'rider')!;
     me.pos.s = 100;
     me.pos.d = 12;
-    me.speed = 10;
+    me.mode = 'Airborne';
     const p = config.road.toWorld(0, 100, 12, 0);
-    me.h = height(p.x, p.z, 0.05) - p.y;
+    me.h = height(p.x, p.z, -0.05) + 0.03 - p.y;
     riderState(world).yAbs[me.id] = p.y + me.h;
-    for (let tick = 0; tick < 30; tick++) {
-      sim.step([input]);
-      expect(me.pos.d).toBeCloseTo(12, 4);
-      expect(me.mode).toBe('Road');
-      expect(
-        sim.events().filter((e) => e.actor === me.id && ['crash', 'wobble', 'jump'].includes(e.type)),
-      ).toEqual([]);
-    }
+    riderState(world).vy[me.id] = -30;
+    sim.step([input]);
+    expect(me.mode).toBe('Tumble');
+    // The crash creates its bodies; the following simulation step advances their mover reference.
+    sim.step([input]);
+    const current = sim.snapshot().entities.find((e) => e.id === me.id)!;
+    expect(current.mode).toBe('Tumble');
+    const body = tumbleRecord(world, me.id)!.rider;
+    expect(current.x).toBeCloseTo(body.x, 3);
+    expect(current.y).toBeCloseTo(body.y, 5);
+    expect(current.z).toBeCloseTo(body.z, 3);
+    expect(current.road.d).toBeGreaterThan(10);
   });
 
-  it.each([false, true])('meets a real rail on the side it approached from (outside %s)', (outside) => {
+  it.each([false, true])(
+    'travels over the field beyond a real rail without being pulled back (air %s)',
+    (air) => {
+      const config = terrainConfig(0.05, 0, 80, undefined, true);
+      const { sim, world } = createSimWithWorld(config);
+      const me = world.movers.find((m) => m.kind === 'rider')!;
+      me.pos.s = 100;
+      me.pos.d = 12;
+      me.speed = 10;
+      const p = config.road.toWorld(0, 100, 12, 0);
+      me.h = height(p.x, p.z, 0.05) - p.y + (air ? 0.3 : 0);
+      if (air) me.mode = 'Airborne';
+      riderState(world).yAbs[me.id] = p.y + me.h;
+      for (let tick = 0; tick < 30; tick++) {
+        sim.step([input]);
+        expect(me.pos.d).toBeCloseTo(12, 4);
+        expect(['Road', 'Airborne']).toContain(me.mode);
+        expect(
+          sim.events().filter((e) => e.actor === me.id && ['crash', 'wobble', 'jump'].includes(e.type)),
+        ).toEqual([]);
+      }
+    },
+  );
+
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])('meets a real rail on the side it approached from (outside %s, air %s)', (outside, air) => {
     const config = terrainConfig(0.05, 0, 80, undefined, true);
     const { sim, world } = createSimWithWorld(config);
     const me = world.movers.find((m) => m.kind === 'rider')!;
@@ -115,7 +149,8 @@ describe('riding authored physical terrain', () => {
     me.yaw = outside ? -0.5 : 0.5;
     me.speed = 10;
     const p = config.road.toWorld(0, 100, me.pos.d, 0);
-    me.h = outside ? height(p.x, p.z, 0.05) - p.y : 0;
+    me.h = (outside ? height(p.x, p.z, 0.05) - p.y : 0) + (air ? 0.3 : 0);
+    if (air) me.mode = 'Airborne';
     riderState(world).yAbs[me.id] = p.y + me.h;
     let contact = false;
     for (let tick = 0; tick < 15; tick++) {

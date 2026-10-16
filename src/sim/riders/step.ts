@@ -2111,8 +2111,12 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     BIKE_HALF_WIDTH_M,
     edgeTopOf(world, config),
     course,
+    airFrom,
   );
-  if (over === 'barrier') barrierContact(world, config, st, m, dt);
+  if (over === 'barrier') {
+    if (road.terrain) m.h = y - road.surfaceHeight(pos.edge, pos.s, pos.d);
+    barrierContact(world, config, st, m, dt, airFrom);
+  }
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);

@@ -292,6 +292,7 @@ export function overStep(
   edgeTop: (edge: number, s: number, side: 'left' | 'right') => number | null = (e, s, side) =>
     edgeTopAt(config.road, e, s, side),
   groundOut = false,
+  from?: { readonly edge: number; readonly s: number; readonly d: number },
 ): OverStep {
   const road = config.road;
   const lim = limits(at.edge, at.s, at.d);
@@ -306,9 +307,14 @@ export function overStep(
     if (!atBand) return { result: 'barrier', mark: null, holdD: limit };
     const top = edgeTop(at.edge, at.s, vside);
     const deckY = road.surfaceHeight(at.edge, at.s, v.dOuter);
+    const outsideFrom =
+      road.terrain &&
+      from?.edge === at.edge &&
+      side * (from.d - road.vergeAt(from.edge, from.s, vside).dOuter) > halfWidthM &&
+      side * (at.d - v.dOuter) > halfWidthM;
     // An authored field may lie below this road's reference plane. A soft edge has no wall at
     // that plane; its actual ground decides the landing, including below the road.
-    if (top === null || (!(road.terrain && top === 0) && !(y - deckY > top)))
+    if (top === null || (!outsideFrom && !(road.terrain && top === 0) && !(y - deckY > top)))
       return { result: 'barrier', mark: null, holdD: limit };
     // The old rules (the course's edges off): what the road's tags say lies past, once, at the crossing.
     const past = pastAt(road, at.edge, at.s, vside);
@@ -370,9 +376,10 @@ export function overBarrier(
   edgeTop: (edge: number, s: number, side: 'left' | 'right') => number | null = (e, s, side) =>
     edgeTopAt(config.road, e, s, side),
   groundOut = false,
+  from?: { readonly edge: number; readonly s: number; readonly d: number },
 ): 'barrier' | 'deck' | 'past' {
   const pos = m.pos;
-  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM, edgeTop, groundOut);
+  const step = overStep(config, pos, y, overMarkOf(st, m.id), limits, halfWidthM, edgeTop, groundOut, from);
   if (step.mark) (st.over ??= {})[m.id] = step.mark;
   else clearOver(st, m.id);
   if (step.setD !== undefined) pos.d = step.setD;
