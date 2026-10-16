@@ -47,7 +47,9 @@ function courseConfig(
   const bundle = fixtureNetwork(STRAIGHT);
   const roads = bundle.roads.map((r) => ({
     ...r,
-    ...(opts.tags ? { tags: [...opts.tags] } : {}),
+    // These are unsupported-edge controls, not scenery runoff: suppress the fixture's default
+    // palm land strip. A soft band with connected drawn ground is now covered by Eagle's tests.
+    tags: opts.tags ? [...opts.tags] : [{ s0: 0, s1: 3000, side: 'both' as const, tag: 'not-land' }],
     laneSections: opts.verge
       ? r.laneSections.map((sec) => ({ ...sec, verges: { left: opts.verge, right: opts.verge } }))
       : r.laneSections,
@@ -128,7 +130,7 @@ describe('the course on the ground: an edge with nothing drawn holds nothing', (
   const soft = band(8, 'sand', 'soft');
   const start = { s: 100, d: LANE_EDGE + 8 - 1.2, speed: 25, yaw: 0.45 };
 
-  it('past a soft edge the rider is out: the quick reset with the penalty, and the respawn at the crossing', () => {
+  it('past a soft edge with no drawn ground the rider is out: the penalty and respawn at the crossing', () => {
     const r = run(courseConfig({ verge: soft }), start, 400, (evs) => evs.some((e) => e.type === 'respawn'));
     const crash = ofType(r.events, 'crash');
     const splash = ofType(r.events, 'splash');
@@ -226,7 +228,7 @@ describe('the course in the air: cleared above what is drawn, out past it', () =
       `[examined] 3 m over a soft edge: furthest d ${r.maxD.toFixed(2)}, crash ${JSON.stringify(crash?.data)}`,
     );
     expect(r.maxD).toBeGreaterThan(LANE_EDGE + 8 + 2);
-    expect(crash?.data).toMatchObject({ cause: 'over', past: 'ground', overboard: true });
+    expect(crash?.data).toMatchObject({ cause: 'over', past: 'drop', overboard: true });
     expect(ofType(r.events, 'land')).toEqual([]);
     const old = fly(soft, 3, OLD_RULES);
     console.log(
@@ -242,7 +244,7 @@ describe('the course in the air: cleared above what is drawn, out past it', () =
     expect(ofType(low.events, 'crash').filter((e) => e.data['cause'] === 'over')).toEqual([]);
     const high = fly(brush, 3);
     expect(high.maxD).toBeGreaterThan(LANE_EDGE + 6 + 2);
-    expect(ofType(high.events, 'crash')[0]?.data).toMatchObject({ cause: 'over', past: 'ground' });
+    expect(ofType(high.events, 'crash')[0]?.data).toMatchObject({ cause: 'over', past: 'drop' });
   });
 
   it('he wakes where he left the road, however far along he went off it (a run on the roofs gains nothing)', () => {
@@ -281,7 +283,7 @@ describe('the course in the air: cleared above what is drawn, out past it', () =
     console.log(
       `[examined] left the road at s ${crossedAt.toFixed(2)}, came down 40 m on: ${JSON.stringify(crash?.data)}`,
     );
-    expect(crash?.data).toMatchObject({ cause: 'over', past: 'ground' });
+    expect(crash?.data).toMatchObject({ cause: 'over', past: 'drop' });
     expect(Number(crash?.data['crossS'])).toBeCloseTo(crossedAt, 9);
     expect(me.mode).toBe('Road');
     expect(me.pos.s).toBeCloseTo(crossedAt, 9);

@@ -1,8 +1,8 @@
 {
   "type": "region",
   "id": "clinton-iowa",
-  "name": "Clinton, Iowa",
-  "blurb": "Broad bends outside town. The delivery window is closing.",
+  "name": "Iowa",
+  "blurb": "River-town highways and tight park loops. The delivery window is closing.",
   "signStyle": "town",
   "networks": ["osm-clinton-ia136", "osm-clinton-eagle-point"],
   "timeOfDayOptions": [
