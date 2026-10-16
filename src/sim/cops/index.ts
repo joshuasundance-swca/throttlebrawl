@@ -1454,6 +1454,9 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos |
 
 /** A first patrol before a long choice is met on either way, even when the fork precedes 8% of the route. */
 function sharedPatrolPrefix(config: SimConfig, firstAt: number): { at: number; pos: RoadPos } | null {
+  // Escape events already guarantee a pursuer just behind the grid. Preserve their authored
+  // pressure and ordinary patrol cadence instead of adding another cop before an early fork.
+  if (config.event.kind === 'cop-escape') return null;
   const { road, route } = config;
   let before = Infinity;
   for (const branch of route.branches) {

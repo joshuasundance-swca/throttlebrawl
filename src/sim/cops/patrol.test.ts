@@ -233,6 +233,15 @@ describe('playtest 2: the patrol', () => {
     expect(ordinary[0]!.at).toBeGreaterThan(after);
     expect(patrolSpots(createWorld(cfg), cfg, 2)).toEqual(ordinary);
   });
+  it('keeps escape patrol timing because its opening pursuit already meets the rider before a fork', () => {
+    const fixture = forkConfig();
+    const escape: SimConfig = { ...fixture, event: { ...fixture.event, kind: 'cop-escape' } };
+    const timed = { ...escape, route: { ...escape.route, branches: [] } };
+    const ordinary = patrolSpots(createWorld(timed), timed, 2);
+    const choice = escape.route.branches.find((b) => b.id === 'long-way')!.choice!;
+    expect(ordinary[0]!.at).toBeGreaterThan(escape.route.progressAt(choice.edge, choice.s0));
+    expect(patrolSpots(createWorld(escape), escape, 2)).toEqual(ordinary);
+  });
   it('uses an earlier safe shoulder when the timed window has no parking, without parking in narrow lanes', () => {
     const cfg = config(patrol({ baseCount: 0 }));
     const oneWay = [{ id: 'R1', dCenterM: 0, widthM: 3, direction: 1 as const, kind: 'drive' as const }];
