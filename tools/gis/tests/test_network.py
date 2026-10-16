@@ -976,9 +976,50 @@ def test_traffic_chain_collar_can_join_a_host_surface_over_an_authored_profile_s
     assert departing.y[1] == pytest.approx(a.y + a.grade * step)
     assert departing.y[station > 30] == pytest.approx(baseline.y[station > 30])
 
-    too_short = base_spec.model_copy(update={"surfaceJoinM": float(station[-2])})
+
+def test_traffic_chain_surface_join_refuses_a_span_that_consumes_the_collar_profile() -> None:
+    cfg = chain_config()
+    base_spec = cfg.trafficChains[0].to
+    a = TrafficFrame(20, 3, 0, 0, 0.01, 0)
+    b = TrafficFrame(0, 7, -100, 0, 0.02, 0)
+    host = curve_piece(
+        "host", "host", (0, 6.6, -80, 0), (0, 8.6, -180, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, []
+    )
+    control = traffic_chain_collar(
+        "control", a, b, base_spec.model_copy(update={"surfaceJoinM": 30.0}), 2, 20, [], host, False
+    )
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(control.x), np.diff(control.z)))))
+
+    consuming = base_spec.model_copy(update={"surfaceJoinM": float(station[-2])})
     with pytest.raises(ValueError, match="leaves no untouched collar profile"):
-        traffic_chain_collar("short", a, b, too_short, 2, 20, [], host, False)
+        traffic_chain_collar("consuming", a, b, consuming, 2, 20, [], host, False)
+
+
+def test_traffic_chain_surface_join_refuses_a_host_without_endpoint_connected_overlap() -> None:
+    cfg = chain_config()
+    spec = cfg.trafficChains[0].to.model_copy(update={"surfaceJoinM": 30.0})
+    a = TrafficFrame(20, 3, 0, 0, 0.01, 0)
+    b = TrafficFrame(0, 7, -100, 0, 0.02, 0)
+    connected = curve_piece(
+        "host", "host", (0, 6.6, -80, 0), (0, 8.6, -180, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, []
+    )
+    traffic_chain_collar("control", a, b, spec, 2, 20, [], connected, False)
+
+    disconnected = replace(connected, id="disconnected", x=connected.x + 1000)
+    with pytest.raises(ValueError, match="collar does not overlap its connected host"):
+        traffic_chain_collar("disconnected", a, b, spec, 2, 20, [], disconnected, False)
+
+
+def test_traffic_chain_surface_join_refuses_a_missing_emitted_host_piece() -> None:
+    cfg = chain_config()
+    base_spec = cfg.trafficChains[0].to
+    a = TrafficFrame(20, 3, 0, 0, 0.01, 0)
+    b = TrafficFrame(0, 7, -100, 0, 0.02, 0)
+    traffic_chain_collar("control", a, b, base_spec, 2, 20, [])
+
+    joined = base_spec.model_copy(update={"surfaceJoinM": 30.0})
+    with pytest.raises(ValueError, match="surfaceJoinM needs its emitted host piece"):
+        traffic_chain_collar("missing-host", a, b, joined, 2, 20, [])
 
 
 def test_shared_junction_height_preserves_paths_and_endpoints_and_leaves_the_main_surface() -> None:
