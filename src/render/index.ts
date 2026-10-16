@@ -32,13 +32,14 @@
 import { Fog, Frustum, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, backdropFilesFor, loadNetworkWater, type BackdropStats } from './backdrop';
-import type {
-  EntitySnapshot,
-  RendererStats,
-  RoadNetwork,
-  SimEvent,
-  SimSnapshot,
-  SimTrafficTypeDef,
+import {
+  trafficHeightM,
+  type EntitySnapshot,
+  type RendererStats,
+  type RoadNetwork,
+  type SimEvent,
+  type SimSnapshot,
+  type SimTrafficTypeDef,
 } from '../sim/api';
 import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
@@ -430,6 +431,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
+  /** Tallest body in the active traffic catalog; absent until a catalog is supplied. */
+  let trafficClearanceM: number | undefined;
+  const clearanceOf = (defs: readonly SimTrafficTypeDef[]) =>
+    defs.length ? Math.max(...defs.map(trafficHeightM)) : undefined;
   /** The roofs over the current road (roofs.ts): the drizzle stops under them. */
   let roofs: readonly RoofSpan[] = [];
   let sceneSeed = 1;
@@ -964,6 +969,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       seed: sceneSeed,
       models,
       palette,
+      ...(trafficClearanceM === undefined ? {} : { trafficClearanceM }),
       ...(water && water.road === roadArgs.road ? { waterAt: water.at } : {}),
     });
     scene.add(roadScene.group);
@@ -1189,6 +1195,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       look.select(recipe.look);
       applyQuality(recipe.quality.tier, recipe.quality.scale);
       trafficIds = trafficTypes.map((d) => d.contentId);
+      trafficClearanceM = clearanceOf(trafficTypes);
       views.setTrafficTypes(trafficTypes, true);
       if (rigs) {
         rigs.setPlayerPaint(playerPaint);
@@ -1209,8 +1216,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       installRoad(road, env, dressing, catalog);
     },
     setTrafficTypes(defs) {
+      const nextClearance = clearanceOf(defs);
+      const rebuild = nextClearance !== trafficClearanceM;
+      trafficClearanceM = nextClearance;
       views.setTrafficTypes(defs);
       trafficIds = defs.map((d) => d.contentId);
+      if (rebuild) buildRoad();
       requestModels();
     },
     pushEvents(events) {

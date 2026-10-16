@@ -20,6 +20,7 @@ import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type SceneryModels } from './models';
 import { buildRoadScene, networkTags, type RoadDressing, type RoadScene } from './road-mesh';
+import { trafficClearanceOf } from './scene-cost.test-util';
 import { PNW_KIT, scatterRoadside, type RoadsideItem } from './roadside';
 import { LAKE_BANK_M, LAKE_LAND_M, LAKE_SHORE_OVER_M, LAND_TOP_M } from './scenery';
 
@@ -76,6 +77,7 @@ function build(seed: number, withWater: boolean, kit: SceneryModels): Built {
     seed,
     models: kit,
     roadsideDensity: 1,
+    trafficClearanceM: trafficClearanceOf(network.id),
     ...(withWater ? { waterAt } : {}),
   });
   const items = scatterRoadside({

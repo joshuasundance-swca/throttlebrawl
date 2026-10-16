@@ -72,7 +72,7 @@ describe('Samish northbound access has upright traffic height clearance at its r
       },
     });
     expect(cols.count).toBeGreaterThan(0);
-    const { group } = buildRoadScene(road, createFlatLook(), dressing);
+    const { group } = buildRoadScene(road, createFlatLook(), dressing, { trafficClearanceM: highM });
     const hits = new Map<string, RoadHit>();
     hitsIn(cols, group, floorOf, null, hits);
     const places = placesOf(hits.values());

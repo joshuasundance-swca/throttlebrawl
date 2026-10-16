@@ -809,6 +809,12 @@ export interface RoadSceneOptions {
    * of the road; with none, the lake's land is the plateau it was.
    */
   waterAt?: ((x: number, z: number) => number | null) | undefined;
+  /**
+   * Tallest traffic body allowed in this presentation, m. A cap over a lower road keeps this much
+   * open above that road; absent leaves the old fully open crossing because the renderer cannot
+   * infer a safe vehicle envelope from road geometry alone.
+   */
+  trafficClearanceM?: number | undefined;
 }
 
 /** A road with this many drive lanes (both ways) or more is a highway: the 4-6 lane kind. [default] */
@@ -901,6 +907,8 @@ const LAND_CAP_FOOT_Y = -0.4;
 const JOIN_LAND_DY_M = 0.5;
 /** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
 const LAND_CAP_NARROW_M = 2;
+/** Air above an allowed traffic body before the upper road's retaining face begins, m. */
+const LAND_CAP_CLEARANCE_MARGIN_M = 0.25;
 /** Coarse ground may batch a 256-quad fragment into an adjacent cell; its geometry bounds still cull it. */
 const LAND_SPARSE_CHUNK_TRIANGLES = 512;
 /**
@@ -1839,24 +1847,17 @@ export function buildRoadScene(
      * Whether land at p would stand over another road's lanes (LAND_ROAD_MARGIN_M wider, and as far past its ends)
      * by more than LAND_OVER_ROAD_M.
      */
-    const overLowerLanes = (p: Point3): boolean => {
+    const lowerLaneTop = (p: Point3): number | null => {
+      let top = -Infinity;
       for (const h of locator.at(p.x, p.z, e.index, LAND_ROAD_MARGIN_M)) {
         const o = road.edges[h.edge];
         if (!o || h.d <= o.dMin - LAND_ROAD_MARGIN_M || h.d >= o.dMax + LAND_ROAD_MARGIN_M) continue;
-        if (p.y - w(o.index, h.s, h.d, 0).y > LAND_OVER_ROAD_M) return true;
+        const y = w(o.index, h.s, h.d, 0).y;
+        if (p.y - y > LAND_OVER_ROAD_M) top = Math.max(top, y);
       }
-      return false;
+      return Number.isFinite(top) ? top : null;
     };
-    /** Whether the line from a to b passes over another road's lanes lower than it (looked for every LAND_ROAD_PROBE_M). */
-    const lineOverLowerLanes = (a: Point3, b: Point3): boolean => {
-      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / LAND_ROAD_PROBE_M));
-      for (let k = 0; k <= n; k++) {
-        const t = k / n;
-        const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
-        if (overLowerLanes(p)) return true;
-      }
-      return false;
-    };
+    const overLowerLanes = (p: Point3): boolean => lowerLaneTop(p) !== null;
     /**
      * Whether a landmark of this side stands beyond the usual strip but within the wide one (playtest 4, run B's
      * check: Old Town's city floor, `WIDE_LAND_M`, would have drowned the cruise ship's berth in ground): the
@@ -2070,6 +2071,8 @@ export function buildRoadScene(
           rows: ss.map((s, i) => [s, reach[i] ?? 0, !!meets[i]] as const),
         });
       const ground = strip('land');
+      /** Longitudinal boundaries exposed when a sharp width change keeps only both rows' common reach. */
+      const commonCaps: (readonly [Point3, Point3])[] = [];
       /** A row is a lake side's with a bank: its land ends at the plateau, a wall and the flat shore. */
       const banked = (i: number) => !Number.isNaN(shore[i] ?? Number.NaN);
       /**
@@ -2130,6 +2133,7 @@ export function buildRoadScene(
           const b1 = w(e.index, s, side * (outer + common), LAND_TOP_M);
           if (side < 0) ground.quad(b0, a0, b1, a1);
           else ground.quad(a0, b0, a1, b1);
+          commonCaps.push([b0, b1]);
         }
         const pair = [
           w(e.index, s, side * outer, LAND_TOP_M),
@@ -2256,24 +2260,65 @@ export function buildRoadScene(
       };
       const caps = strip('land');
       /**
-       * A curtain from each point down under the sea, both faces (it is seen from either side). It leaves out a
-       * stretch whose top runs over another road's lanes below it: a cap across a road's half, where its land
-       * stops for a lower road crossing it, stood 0.7 m into that road's ride column (Switchback Street's end over
-       * the stair alley, the ride-column check of 2026-10-06).
+       * A curtain from each point down under the sea, both faces (it is seen from either side). Over a lower road,
+       * it stops above the active traffic catalog's tallest body plus an air gap. With no catalog it leaves that
+       * stretch open, preserving the safe behavior for direct and legacy callers: a full cap across a road's half
+       * once stood 0.7 m into Switchback Street's ride column (the ride-column check of 2026-10-06).
        */
       const curtain = (pts: readonly Point3[]) => {
-        const open = pts.map((p, i) => i > 0 && lineOverLowerLanes(pts[i - 1]!, p));
-        for (const flip of [false, true]) {
-          caps.breakStrip();
-          for (const [i, p] of pts.entries()) {
-            if (open[i]) caps.breakStrip();
-            const foot = { ...p, y: LAND_CAP_FOOT_Y };
-            if (flip) caps.pair(foot, p);
-            else caps.pair(p, foot);
+        const face = (a: Point3, b: Point3, ay: number, by: number) => {
+          const af = { ...a, y: ay };
+          const bf = { ...b, y: by };
+          caps.quad(a, b, af, bf);
+          caps.quad(b, a, bf, af);
+        };
+        const lerp = (a: Point3, b: Point3, t: number): Point3 => ({
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          z: a.z + (b.z - a.z) * t,
+        });
+        for (let i = 1; i < pts.length; i++) {
+          const a = pts[i - 1]!;
+          const b = pts[i]!;
+          const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / LAND_ROAD_PROBE_M));
+          const top = Array.from({ length: n + 1 }, (_, k) => lerp(a, b, k / n));
+          const lower = Array.from({ length: n }, (_, k) => {
+            const values = [
+              lowerLaneTop(top[k]!),
+              lowerLaneTop(lerp(top[k]!, top[k + 1]!, 0.5)),
+              lowerLaneTop(top[k + 1]!),
+            ].filter((v): v is number => v !== null);
+            return values.length ? Math.max(...values) : null;
+          });
+          if (!lower.some((v) => v !== null)) {
+            face(a, b, LAND_CAP_FOOT_Y, LAND_CAP_FOOT_Y);
+            continue;
           }
-          caps.breakStrip();
+          const clearance = opts.trafficClearanceM;
+          if (!(clearance !== undefined && Number.isFinite(clearance) && clearance > 0)) continue;
+          let clearStart = -1;
+          const flushClear = (end: number) => {
+            if (clearStart < 0) return;
+            face(top[clearStart]!, top[end]!, LAND_CAP_FOOT_Y, LAND_CAP_FOOT_Y);
+            clearStart = -1;
+          };
+          for (let k = 0; k < n; k++) {
+            const floor = lower[k] ?? null;
+            if (floor === null) {
+              if (clearStart < 0) clearStart = k;
+              continue;
+            }
+            flushClear(k);
+            const before = k > 0 ? lower[k - 1] : null;
+            const after = k + 1 < n ? lower[k + 1] : null;
+            const ay = Math.max(floor, before ?? -Infinity) + clearance + LAND_CAP_CLEARANCE_MARGIN_M;
+            const by = Math.max(floor, after ?? -Infinity) + clearance + LAND_CAP_CLEARANCE_MARGIN_M;
+            if (ay < top[k]!.y && by < top[k + 1]!.y) face(top[k]!, top[k + 1]!, ay, by);
+          }
+          flushClear(n);
         }
       };
+      for (const edge of commonCaps) curtain(edge);
       /** Row i's land in cross-section, from the verge outward: the strip, then its skirt or shelf. */
       const profileOf = (i: number): Point3[] => profileRows(i).map(([, p]) => p);
       /** Row i's cross-section with each point's distance past the verge (a bank's wall stands inside the reach). */

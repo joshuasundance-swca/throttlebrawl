@@ -10,7 +10,7 @@ import type { ChunkLoader } from './chunk-gate';
 import { EntityViews } from './views';
 import { riderLookOf } from './rider-looks';
 import * as roadApi from '../road';
-import type { SimEvent, SimSnapshot } from '../sim/api';
+import type { SimEvent, SimSnapshot, SimTrafficTypeDef } from '../sim/api';
 
 vi.mock('three', async (original) => {
   const { NativeRendererFake } = await import('./presentation.test-util');
@@ -31,6 +31,15 @@ const recipe = (): RendererPresentationRecipe => ({
   sceneSeed: 9,
   look: 'classic',
   quality: { tier: 'high', scale: 1 },
+});
+const trafficDef = (contentId: string, heightM: number): SimTrafficTypeDef => ({
+  contentId,
+  category: 'truck',
+  lengthM: 7,
+  widthM: 2.5,
+  cruiseMps: 20,
+  hazard: 'big',
+  heightM,
 });
 
 const families = [
@@ -461,7 +470,7 @@ describe('atomic renderer presentation', () => {
   });
   it('owns both recipe arrays and installs every recipe field with one synchronous road build', async () => {
     const t = asyncScene();
-    const traffic = [...t.pick.trafficTypes];
+    const traffic = [trafficDef('test:short', 2.5), trafficDef('test:tall', 4)];
     const riders = [...t.pick.riderLooks];
     const seen = vi.spyOn(EntityViews.prototype, 'setTrafficTypes');
     const build = vi.mocked(roadModule.buildRoadScene);
@@ -472,6 +481,7 @@ describe('atomic renderer presentation', () => {
     );
     expect(build).toHaveBeenCalledOnce();
     expect(build.mock.calls[0]![0]).toBe(t.pick.road);
+    expect(build.mock.calls[0]![3]).toMatchObject({ trafficClearanceM: 4 });
     expect(seen.mock.calls[0]![0]).not.toBe(traffic);
     expect(t.renderer.scenery().seed).toBe(t.pick.sceneSeed);
     expect(t.renderer.look).toBe(t.pick.look);
@@ -480,6 +490,26 @@ describe('atomic renderer presentation', () => {
     const pending = t.calls.filter((c) => c.name === 'rider rigs').at(-1)!;
     await t.resolve(pending);
     expect(t.riderArrays).toEqual([[]]);
+  });
+  it('rebuilds cap clearance only when a legacy traffic catalog changes its tallest body', () => {
+    const t = asyncScene();
+    const build = vi.mocked(roadModule.buildRoadScene);
+    t.renderer.applyPresentation(
+      { ...t.pick, trafficTypes: [trafficDef('test:tall', 4)] },
+      { reset: 'preserve' },
+    );
+    build.mockClear();
+
+    t.renderer.setTrafficTypes([trafficDef('test:also-tall', 4), trafficDef('test:short', 2.5)]);
+    expect(build).not.toHaveBeenCalled();
+    t.renderer.setTrafficTypes([trafficDef('test:short', 2.5)]);
+    expect(build).toHaveBeenCalledOnce();
+    expect(build.mock.calls[0]![3]).toMatchObject({ trafficClearanceM: 2.5 });
+
+    build.mockClear();
+    t.renderer.setTrafficTypes([]);
+    expect(build).toHaveBeenCalledOnce();
+    expect(build.mock.calls[0]![3]).not.toHaveProperty('trafficClearanceM');
   });
   it('retires prior tokens and accepts quality only for the current receipt', () => {
     vi.stubGlobal('window', { devicePixelRatio: 1 });

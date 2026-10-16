@@ -11,6 +11,7 @@ import {
 } from 'three';
 import { expect } from 'vitest';
 import budget from '../../tests/perf/budget.json';
+import { trafficHeightM, type TrafficCategory } from '../sim/api';
 import {
   createRoadNetwork,
   loadPnwPlacesLayout,
@@ -75,8 +76,23 @@ const routeFiles = import.meta.glob<Route>('../../packs/*/regions/*/routes/*.jso
   eager: true,
   import: 'default',
 });
-const regionFiles = import.meta.glob<{ id: string; signs?: { id: string; text: string; status?: string }[] }>(
-  '../../packs/*/regions/*/region.json',
+interface RegionFile {
+  id: string;
+  networks: string[];
+  signs?: { id: string; text: string; status?: string }[];
+  traffic: {
+    mix: { kind: string }[];
+    pedestrians?: { kind: string }[];
+    animals?: { kind: string }[];
+    areas?: { mix: { kind: string }[] }[];
+  };
+}
+const regionFiles = import.meta.glob<RegionFile>('../../packs/*/regions/*/region.json', {
+  eager: true,
+  import: 'default',
+});
+const trafficFiles = import.meta.glob<{ id: string; category: TrafficCategory; heightM?: number }>(
+  '../../packs/*/traffic/*.json',
   { eager: true, import: 'default' },
 );
 // What the renderer loads beside the road (render/index.ts): the backdrop files and the region's scenes.
@@ -128,6 +144,34 @@ export function track(id: string): { road: RoadNetwork; dressing: RoadDressing; 
     .map(([, r]) => r);
   const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
   return { road: createRoadNetwork({ network, roads }), dressing, pack };
+}
+
+/** The active region catalog's tallest traffic body, as production presentation supplies it. */
+export function trafficClearanceOf(networkId: string): number | undefined {
+  const [networkPath] = Object.entries(networkFiles).find(([, n]) => n.id === networkId) ?? [];
+  if (!networkPath) return undefined;
+  const pack = /packs\/([^/]+)\//.exec(networkPath)?.[1] ?? '';
+  const region = Object.entries(regionFiles).find(
+    ([path, value]) => path.includes(`/packs/${pack}/`) && value.networks.includes(networkId),
+  )?.[1];
+  if (!region) return undefined;
+  const kinds = new Set([
+    ...region.traffic.mix.map((entry) => entry.kind),
+    ...(region.traffic.pedestrians ?? []).map((entry) => entry.kind),
+    ...(region.traffic.animals ?? []).map((entry) => entry.kind),
+    ...(region.traffic.areas ?? []).flatMap((area) => area.mix.map((entry) => entry.kind)),
+  ]);
+  const heights = [...kinds].map((kind) => {
+    const split = kind.split(':');
+    const kindPack = split.length > 1 ? split[0]! : pack;
+    const id = split.length > 1 ? split[1]! : kind;
+    const entry = Object.entries(trafficFiles).find(
+      ([path, value]) => path.includes(`/packs/${kindPack}/`) && value.id === id,
+    )?.[1];
+    if (!entry) throw new Error(`no traffic type ${kind} for network ${networkId}`);
+    return trafficHeightM(entry);
+  });
+  return heights.length ? Math.max(...heights) : undefined;
 }
 
 async function modelsFor(road: RoadNetwork, dressing: RoadDressing): Promise<SceneryModels> {
@@ -493,10 +537,12 @@ export async function stillSceneOf(
   );
   const floors = bdWater ? waterFloors(bdWater[1]) : [];
   const waterAt = floors.length > 0 ? waterAtOf(floors) : null;
+  const trafficClearanceM = trafficClearanceOf(networkId);
   const rs = buildRoadScene(road, look, dressing, {
     seed,
     models,
     roadsideDensity: 1,
+    ...(trafficClearanceM === undefined ? {} : { trafficClearanceM }),
     ...(waterAt ? { waterAt } : {}),
   });
   const { tropical, tags } = networkTags(road, dressing);
