@@ -212,8 +212,24 @@ export function junctionStops(world: World, config: SimConfig, st: TrafficState)
         (st.junctionWait[a.k] ?? 0) - (st.junctionWait[b.k] ?? 0) ||
         (st.id[a.k] ?? 0) - (st.id[b.k] ?? 0),
     );
-    const winner = list[0];
-    if (!winner) continue;
+    // A held claim cannot stop the same-lane car physically ahead of its owner: that car
+    // must enter first before the owner can reach the junction. Compare real positions on
+    // the owner's committed path, including connected approach edges, never race progress.
+    const winner = list.find((req) => {
+      if (req.occupied) return true;
+      const c = st.paths[req.k]?.c ?? st.corridor;
+      const m = world.movers[st.id[req.k] ?? -1];
+      const own = m ? toCorridor(c, m.pos) : null;
+      if (!own) return false;
+      const t = typeOf(config, st, req.k);
+      return !list.some((other) => {
+        if (other === req) return false;
+        const front = world.movers[st.id[other.k] ?? -1];
+        const p = front ? toCorridor(c, front.pos, own.u) : null;
+        if (!p || p.dir !== own.dir || own.dir * (p.u - own.u) <= 0) return false;
+        return Math.abs(p.cd - own.cd) < (t.widthM + typeOf(config, st, other.k).widthM) / 2;
+      });
+    });
     for (const req of list) {
       const p = world.movers[st.id[req.k] ?? -1];
       const c = st.paths[req.k]?.c ?? st.corridor;

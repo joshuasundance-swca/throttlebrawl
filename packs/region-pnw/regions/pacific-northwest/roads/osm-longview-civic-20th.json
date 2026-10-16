@@ -1,0 +1,167 @@
+{
+  "type": "road",
+  "id": "osm-longview-civic-20th",
+  "name": "20th Avenue",
+  "realName": "20th Avenue",
+  "network": "osm-pnw-longview-civic",
+  "from": "osm-pnw-longview-civic-j7",
+  "to": "osm-pnw-longview-civic-j2",
+  "lengthM": 54.2166,
+  "sampleSpacingM": 2.0080222222222224,
+  "speedLimitMps": 11.2,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -4.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 4.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ],
+      "verges": {
+        "left": {
+          "widthM": 6.0,
+          "surface": "grass",
+          "edge": "soft"
+        },
+        "right": {
+          "widthM": 6.0,
+          "surface": "grass",
+          "edge": "soft"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 54.2166,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [
+    {
+      "kind": "boostPad",
+      "id": "civic-grid-exit-pad",
+      "s0": 35.0,
+      "s1": 41.0,
+      "d0": 0.5,
+      "d1": 3.5,
+      "params": {
+        "boostMps": 8.0,
+        "holdS": 1.5
+      }
+    }
+  ],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        4315.1914, 4313.4686, 4311.8014, 4310.1945, 4308.6496, 4307.169, 4305.7541, 4304.4056, 4303.1235,
+        4301.9083, 4300.7576, 4299.6686, 4298.6387, 4297.6649, 4296.7438, 4295.872, 4295.0468, 4294.2633,
+        4293.5177, 4292.8063, 4292.1257, 4291.4726, 4290.8437, 4290.2365, 4289.6481, 4289.0758, 4288.5173,
+        4287.9706
+      ],
+      "y": [
+        5.4051, 5.4055, 5.4052, 5.4043, 5.4027, 5.4006, 5.398, 5.3949, 5.3914, 5.3876, 5.3834, 5.3791, 5.3745,
+        5.3698, 5.365, 5.3602, 5.3553, 5.3506, 5.3458, 5.3412, 5.3366, 5.3321, 5.3278, 5.3235, 5.3193, 5.3152,
+        5.3111, 5.3071
+      ],
+      "z": [
+        1301.5704, 1302.6018, 1303.7207, 1304.9247, 1306.2073, 1307.5635, 1308.9881, 1310.4758, 1312.0211,
+        1313.6197, 1315.2652, 1316.9523, 1318.676, 1320.4321, 1322.2164, 1324.0254, 1325.8561, 1327.705,
+        1329.5695, 1331.4474, 1333.3367, 1335.2356, 1337.1427, 1339.0568, 1340.9768, 1342.9017, 1344.8306,
+        1346.7629
+      ],
+      "kappa": [
+        -0.025619, -0.025718, -0.02588, -0.024817, -0.024245, -0.023541, -0.022715, -0.021791, -0.021224,
+        -0.019784, -0.018445, -0.017258, -0.016051, -0.01484, -0.013652, -0.012765, -0.011288, -0.010159,
+        -0.009118, -0.0081348, -0.0072141, -0.0063587, -0.0056427, -0.0048852, -0.0041609, -0.0035744,
+        -0.0030495, -0.0025852
+      ],
+      "grade": [
+        0.0001928, 2.5688e-5, -0.00030461, -0.00061812, -0.00090835, -0.0011763, -0.0014196, -0.0016366,
+        -0.0018278, -0.0019911, -0.0021239, -0.0022287, -0.0023074, -0.0023613, -0.0023924, -0.0024029,
+        -0.0023952, -0.0023725, -0.0023385, -0.0022963, -0.0022491, -0.0022, -0.0021515, -0.0021063,
+        -0.0020672, -0.0020359, -0.0020135, -0.0020046
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview-civic.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 266 points in 1 request(s) (lon, lat WGS84, sha256 67e3de46e29be519), bilinear (line washington)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "d36d9e6199589b79acc99b4df734ee8efa471dae121296dddf1c0f3ae9a96d7d"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 41 points in 1 request(s) (lon, lat WGS84, sha256 0429de49dcbca842), bilinear (line hudson)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "6ddbdf45bfa7e550fca3b7a2e14d7b319b72e23de38b0173b2f4d85862a49d5b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Longview Washington Way, Hudson Street, 20th Avenue and 30th Avenue paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 18.3 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-longview-civic.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

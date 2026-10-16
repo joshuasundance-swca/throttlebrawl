@@ -1,0 +1,360 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-longview-civic",
+  "name": "Longview civic triangle (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 46.15,
+    "originLonDeg": -123.0,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-longview-civic-approach",
+    "osm-pnw-longview-civic-hudson-leave",
+    "osm-longview-civic-diagonal",
+    "osm-pnw-longview-civic-hudson-join",
+    "osm-longview-civic-west-washington",
+    "osm-longview-civic-washington-bridge",
+    "osm-longview-civic-washington-west-bank",
+    "osm-longview-civic-30th",
+    "osm-longview-civic-hudson",
+    "osm-longview-civic-20th",
+    "osm-pnw-longview-civic-hudson-in",
+    "osm-pnw-longview-civic-hudson-out",
+    "osm-pnw-longview-civic-hudson-traffic-in",
+    "osm-pnw-longview-civic-hudson-traffic-reverse-leave",
+    "osm-pnw-longview-civic-hudson-traffic-reverse-join"
+  ],
+  "junctions": [
+    {
+      "id": "osm-pnw-longview-civic-j0",
+      "x": 4613.3969,
+      "y": 6.3186,
+      "z": 1281.4858,
+      "ends": [
+        {
+          "road": "osm-longview-civic-approach",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j1",
+      "x": 4502.1648,
+      "y": 5.832,
+      "z": 1344.8371,
+      "ends": [
+        {
+          "road": "osm-longview-civic-approach",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-civic-diagonal",
+          "end": "from"
+        },
+        {
+          "road": "osm-longview-civic-hudson",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-leave-l1",
+          "road": "osm-pnw-longview-civic-hudson-leave",
+          "from": {
+            "road": "osm-longview-civic-approach",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-civic-diagonal",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-leave-r1",
+          "road": "osm-pnw-longview-civic-hudson-leave",
+          "from": {
+            "road": "osm-longview-civic-approach",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-civic-diagonal",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-in",
+          "road": "osm-pnw-longview-civic-hudson-in",
+          "from": {
+            "road": "osm-longview-civic-approach",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-civic-hudson",
+            "end": "from",
+            "lane": "R1"
+          },
+          "splitZone": {
+            "s0": 48.008,
+            "s1": 88.008,
+            "d0": 3.5,
+            "d1": 8.0
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-traffic-in",
+          "road": "osm-pnw-longview-civic-hudson-traffic-in",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-longview-civic-approach",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-civic-hudson",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-traffic-reverse-leave",
+          "road": "osm-pnw-longview-civic-hudson-traffic-reverse-leave",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-longview-civic-approach",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-civic-hudson",
+            "end": "from",
+            "lane": "L1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j2",
+      "x": 4274.1623,
+      "y": 5.2141,
+      "z": 1473.9354,
+      "ends": [
+        {
+          "road": "osm-longview-civic-diagonal",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-civic-west-washington",
+          "end": "from"
+        },
+        {
+          "road": "osm-longview-civic-20th",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-join-l1",
+          "road": "osm-pnw-longview-civic-hudson-join",
+          "from": {
+            "road": "osm-longview-civic-diagonal",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-civic-west-washington",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-join-r1",
+          "road": "osm-pnw-longview-civic-hudson-join",
+          "from": {
+            "road": "osm-longview-civic-diagonal",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-civic-west-washington",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-out",
+          "road": "osm-pnw-longview-civic-hudson-out",
+          "from": {
+            "road": "osm-longview-civic-20th",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-civic-west-washington",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-civic-hudson-traffic-reverse-join",
+          "road": "osm-pnw-longview-civic-hudson-traffic-reverse-join",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-longview-civic-20th",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-civic-west-washington",
+            "end": "from",
+            "lane": "L1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j3",
+      "x": 3738.9803,
+      "y": 6.373,
+      "z": 1776.9596,
+      "ends": [
+        {
+          "road": "osm-longview-civic-west-washington",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-civic-washington-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j4",
+      "x": 3697.1213,
+      "y": 6.1047,
+      "z": 1798.2953,
+      "ends": [
+        {
+          "road": "osm-longview-civic-washington-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-civic-washington-west-bank",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j5",
+      "x": 2910.1236,
+      "y": 2.9251,
+      "z": 1908.7045,
+      "ends": [
+        {
+          "road": "osm-longview-civic-washington-west-bank",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-civic-30th",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j6",
+      "x": 2906.2654,
+      "y": 3.641,
+      "z": 1116.5171,
+      "ends": [
+        {
+          "road": "osm-longview-civic-30th",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-civic-j7",
+      "x": 4315.1914,
+      "y": 5.4051,
+      "z": 1301.5704,
+      "ends": [
+        {
+          "road": "osm-longview-civic-hudson",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-civic-20th",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview-civic.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 266 points in 1 request(s) (lon, lat WGS84, sha256 67e3de46e29be519), bilinear (line washington)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "d36d9e6199589b79acc99b4df734ee8efa471dae121296dddf1c0f3ae9a96d7d"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 41 points in 1 request(s) (lon, lat WGS84, sha256 0429de49dcbca842), bilinear (line hudson)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "6ddbdf45bfa7e550fca3b7a2e14d7b319b72e23de38b0173b2f4d85862a49d5b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Longview Washington Way, Hudson Street, 20th Avenue and 30th Avenue paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 18.3 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A separate civic-street course: southwest on Washington Way, choose its diagonal or the longer Hudson Street and 20th Avenue grid detour, rejoin Washington, cross its mapped bridge and turn north on 30th Avenue. Only the two-way portion of Washington is selected; eastern one-way streets are outside this course. OSM reference fetched 2026-10-15. Road widths, shoulder margins, corner easing, junction movements and bridge protection are arcade adaptations, not surveyed lanes, turn restrictions or current access advice. Town dressing is generic regional scenery, not mapped properties or landmarks. No lake trail, repeated lap, claimed shortcut advantage or Port Shift replacement."
+  }
+}

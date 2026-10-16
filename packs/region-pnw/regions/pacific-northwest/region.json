@@ -11,7 +11,8 @@
     "osm-pnw-gorge",
     "osm-pnw-samish",
     "osm-pnw-portland",
-    "osm-pnw-longview"
+    "osm-pnw-longview",
+    "osm-pnw-longview-civic"
   ],
   "timeOfDayOptions": [
     {

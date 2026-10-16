@@ -1,0 +1,143 @@
+{
+  "type": "road",
+  "id": "osm-pnw-longview-civic-hudson-traffic-in",
+  "name": "traffic turn-off",
+  "realName": "traffic turn-off",
+  "network": "osm-pnw-longview-civic",
+  "from": "osm-pnw-longview-civic-j1",
+  "to": "osm-pnw-longview-civic-j1",
+  "lengthM": 133.9352,
+  "sampleSpacingM": 1.9990328358208957,
+  "speedLimitMps": 11.2,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "R1",
+          "dCenterM": 0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 133.9352,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        4535.964, 4534.2279, 4532.491, 4530.7511, 4529.0052, 4527.2498, 4525.4808, 4523.6944, 4521.8871,
+        4520.0564, 4518.2004, 4516.3184, 4514.411, 4512.4797, 4510.5273, 4508.5573, 4506.5737, 4504.5808,
+        4502.583, 4500.5842, 4498.5878, 4496.5963, 4494.6116, 4492.6345, 4490.6649, 4488.7022, 4486.7452,
+        4484.7924, 4482.8422, 4480.8934, 4478.945, 4476.9966, 4475.0481, 4473.0997, 4471.1513, 4469.2029,
+        4467.2545, 4465.3061, 4463.3577, 4461.4093, 4459.4611, 4457.5133, 4455.566, 4453.6194, 4451.6739,
+        4449.7297, 4447.7871, 4445.8463, 4443.9077, 4441.9714, 4440.0377, 4438.1067, 4436.1786, 4434.2534,
+        4432.3312, 4430.4119, 4428.4956, 4426.5819, 4424.6708, 4422.762, 4420.8552, 4418.9502, 4417.0465,
+        4415.1438, 4413.2419, 4411.3404, 4409.4392, 4407.538
+      ],
+      "y": [
+        5.8662, 5.8593, 5.8532, 5.8476, 5.8427, 5.8385, 5.8351, 5.8323, 5.8302, 5.8288, 5.8279, 5.8276,
+        5.8276, 5.8281, 5.8287, 5.8295, 5.8303, 5.8301, 5.8278, 5.8231, 5.8154, 5.8047, 5.7909, 5.7738,
+        5.7537, 5.7306, 5.7051, 5.6773, 5.6478, 5.6169, 5.585, 5.5525, 5.5198, 5.4872, 5.455, 5.4236, 5.3932,
+        5.3642, 5.3368, 5.3113, 5.288, 5.267, 5.2486, 5.233, 5.2204, 5.2109, 5.2047, 5.2019, 5.2018, 5.2018,
+        5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018,
+        5.2018, 5.2018, 5.2018, 5.2018, 5.2018, 5.2018
+      ],
+      "z": [
+        1323.3626, 1324.3537, 1325.3433, 1326.3276, 1327.3014, 1328.2577, 1329.1888, 1330.0859, 1330.9403,
+        1331.743, 1332.4853, 1333.1591, 1333.7569, 1334.2726, 1334.7013, 1335.0397, 1335.2864, 1335.4415,
+        1335.5071, 1335.4872, 1335.3872, 1335.214, 1334.9755, 1334.6805, 1334.3385, 1333.959, 1333.5511,
+        1333.1236, 1332.6842, 1332.2389, 1331.7919, 1331.3447, 1330.8975, 1330.4504, 1330.0032, 1329.556,
+        1329.1088, 1328.6616, 1328.2144, 1327.767, 1327.3189, 1326.8694, 1326.4176, 1325.9624, 1325.5028,
+        1325.0376, 1324.5659, 1324.0866, 1323.5988, 1323.1017, 1322.5948, 1322.0776, 1321.5498, 1321.0113,
+        1320.4623, 1319.9031, 1319.3341, 1318.756, 1318.1695, 1317.5756, 1316.9752, 1316.3694, 1315.7593,
+        1315.146, 1314.5304, 1313.9134, 1313.2957, 1312.6779
+      ],
+      "kappa": [
+        0.0, 0.00044161, 0.0014829, 0.003044, 0.0049872, 0.007186, 0.0095245, 0.011898, 0.014213, 0.016387,
+        0.018349, 0.020037, 0.021402, 0.022405, 0.02302, 0.023228, 0.023025, 0.022417, 0.021419, 0.020058,
+        0.018375, 0.016417, 0.014245, 0.011931, 0.0095578, 0.007218, 0.0050166, 0.0030689, 0.0015015,
+        0.00045196, 3.4903e-5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 4.1554e-6, 5.3808e-5, 0.00017877, 0.00036537,
+        0.00059726, 0.00085935, 0.0011379, 0.0014205, 0.001696, 0.0019545, 0.0021876, 0.0023881, 0.00255,
+        0.0026688, 0.0027413, 0.0027655, 0.0027406, 0.0026675, 0.002548, 0.0023855, 0.0021845, 0.001951,
+        0.0016922, 0.0014165, 0.0011339, 0.00085553, 0.00059376, 0.00036241, 0.00017655, 5.2576e-5, 0.0
+      ],
+      "grade": [
+        -0.0034031, -0.0032512, -0.0029381, -0.0026077, -0.0022647, -0.0019142, -0.0015627, -0.0012174,
+        -0.00088628, -0.00057787, -0.00030062, -6.2366e-5, 0.00013033, 0.00027284, 0.000363, 0.00039987,
+        0.00014795, -0.0006255, -0.0017677, -0.003103, -0.0045781, -0.0061435, -0.0077425, -0.0093065,
+        -0.010793, -0.012146, -0.013334, -0.014331, -0.01512, -0.015707, -0.016095, -0.016306, -0.016341,
+        -0.016211, -0.015914, -0.015461, -0.014856, -0.014105, -0.01322, -0.012207, -0.011081, -0.0098403,
+        -0.0085013, -0.0070679, -0.0055443, -0.0039358, -0.0022453, -0.00072306, -3.2967e-5, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ],
+      "bankRad": [
+        0.0, -1.5991e-6, -7.1068e-6, -1.8111e-5, -3.3884e-5, -5.1876e-5, -6.8373e-5, -7.9263e-5, -8.0803e-5,
+        -7.0349e-5, -4.6932e-5, -1.1625e-5, 3.2355e-5, 7.9823e-5, 0.00020787, 0.00055915, 0.0012092,
+        0.0022366, 0.003715, 0.0053572, 0.0068987, 0.0083156, 0.0096073, 0.01075, 0.011769, 0.012661,
+        0.013443, 0.014112, 0.014678, 0.015122, 0.015449, 0.015623, 0.015668, 0.015558, 0.015317, 0.01493,
+        0.01441, 0.013762, 0.012978, 0.01207, 0.01103, 0.0098681, 0.008581, 0.0071785, 0.0056606, 0.0040341,
+        0.0023027, 0.00075589, 4.1734e-5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview-civic.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 266 points in 1 request(s) (lon, lat WGS84, sha256 67e3de46e29be519), bilinear (line washington)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "d36d9e6199589b79acc99b4df734ee8efa471dae121296dddf1c0f3ae9a96d7d"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 41 points in 1 request(s) (lon, lat WGS84, sha256 0429de49dcbca842), bilinear (line hudson)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "6ddbdf45bfa7e550fca3b7a2e14d7b319b72e23de38b0173b2f4d85862a49d5b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Longview Washington Way, Hudson Street, 20th Avenue and 30th Avenue paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 18.3 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-longview-civic.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
