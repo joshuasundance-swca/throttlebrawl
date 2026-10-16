@@ -10,7 +10,7 @@
   "osmExtract": ".cache/osm/pnw-samish.json",
   "outRoot": "packs/region-pnw/regions/pacific-northwest",
   "waysLabel": "Interstate 5 and Lake Samish",
-  "networkNotes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): Interstate 5 southbound over the Chuckanut Mountains, four lanes and a grass median, and Lake Samish's north and east shore roads, which leave it at exit 246 and rejoin it at the Nulle Road on-ramp (exit 242). Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure).",
+  "networkNotes": "Interstate 5 southbound by Lake Samish, with the original rider shore choice and dedicated northbound access via Nulle Road and the Samish Way bridge. Source paths use OpenStreetMap and USGS bare-earth elevation; bridge decks, lanes, junction pieces and endpoint collars are synthesized for gameplay. Southbound ramp tails retain their forward lane; the shore core is shared by both directions.",
   "lines": [
     {
       "id": "i5",
@@ -49,7 +49,11 @@
         "medianM": 4,
         "medianKind": "grass"
       },
-      "bridgeBarrier": { "kind": "wall", "heightM": 0.81, "look": "concrete" },
+      "bridgeBarrier": {
+        "kind": "wall",
+        "heightM": 0.81,
+        "look": "concrete"
+      },
       "roads": [
         {
           "id": "osm-i5-samish-summit",
@@ -59,20 +63,20 @@
             {
               "kind": "copSpawn",
               "id": "cop-lot",
-              "s0": 4,
-              "s1": 20,
-              "d0": 10,
+              "s0": 4.0,
+              "s1": 20.0,
+              "d0": 10.0,
               "d1": 13.5
             },
             {
               "kind": "boostPad",
               "id": "pad-summit-early",
-              "s0": 200,
-              "s1": 206,
+              "s0": 200.0,
+              "s1": 206.0,
               "d0": 2.5,
               "d1": 5.5,
               "params": {
-                "boostMps": 8,
+                "boostMps": 8.0,
                 "holdS": 1.5,
                 "slot": "samish-pad-summit"
               }
@@ -80,17 +84,24 @@
             {
               "kind": "billboard",
               "id": "bb-samish-summit",
-              "s0": 300,
-              "s1": 340,
-              "d0": -27,
-              "d1": -19,
+              "s0": 300.0,
+              "s1": 340.0,
+              "d0": -27.0,
+              "d1": -19.0,
               "pool": "billboards"
-            },
+            }
+          ]
+        },
+        {
+          "id": "osm-i5-exit246-south",
+          "name": "Exit 246 Southbound Run",
+          "tags": ["forest", "interstate"],
+          "features": [
             {
               "kind": "boostPad",
               "id": "pad-summit-late",
-              "s0": 420,
-              "s1": 426,
+              "s0": 18,
+              "s1": 24,
               "d0": 2.5,
               "d1": 5.5,
               "params": {
@@ -102,10 +113,10 @@
             {
               "kind": "roadsideZone",
               "id": "samish-summit-pullout",
-              "s0": 520,
-              "s1": 600,
-              "d0": 16,
-              "d1": 22,
+              "s0": 57.98520000000002,
+              "s1": 137.98520000000002,
+              "d0": 16.0,
+              "d1": 22.0,
               "params": {
                 "spawns": "pedestrians"
               }
@@ -113,22 +124,26 @@
             {
               "kind": "billboard",
               "id": "sign-exit-246",
-              "s0": 640,
-              "s1": 650,
+              "s0": 177.98520000000002,
+              "s1": 187.98520000000002,
               "d0": 15.5,
               "d1": 20.5,
               "item": "i5-exit-246",
-              "params": { "style": "guide" }
+              "params": {
+                "style": "guide"
+              }
             },
             {
               "kind": "billboard",
               "id": "sign-lake-samish-keep-right",
-              "s0": 760,
-              "s1": 770,
+              "s0": 297.9852,
+              "s1": 307.9852,
               "d0": 15.5,
               "d1": 20.5,
               "item": "lake-samish-keep-right",
-              "params": { "style": "guide" }
+              "params": {
+                "style": "guide"
+              }
             }
           ]
         },
@@ -141,22 +156,24 @@
             {
               "kind": "billboard",
               "id": "sign-lake-samish-grade",
-              "s0": 400,
-              "s1": 410,
+              "s0": 400.0,
+              "s1": 410.0,
               "d0": 15.5,
               "d1": 20.5,
               "item": "i5-seattle-canada",
-              "params": { "style": "guide" }
+              "params": {
+                "style": "guide"
+              }
             },
             {
               "kind": "boostPad",
               "id": "pad-i5-early",
-              "s0": 1500,
-              "s1": 1506,
+              "s0": 1500.0,
+              "s1": 1506.0,
               "d0": 2.5,
               "d1": 5.5,
               "params": {
-                "boostMps": 8,
+                "boostMps": 8.0,
                 "holdS": 1.5,
                 "slot": "samish-pad-i5"
               }
@@ -164,21 +181,21 @@
             {
               "kind": "billboard",
               "id": "bb-lake-samish-grade",
-              "s0": 2200,
-              "s1": 2240,
-              "d0": -27,
-              "d1": -19,
+              "s0": 2200.0,
+              "s1": 2240.0,
+              "d0": -27.0,
+              "d1": -19.0,
               "pool": "billboards"
             },
             {
               "kind": "boostPad",
               "id": "pad-i5-late",
-              "s0": 3300,
-              "s1": 3306,
+              "s0": 3300.0000000000005,
+              "s1": 3306.0000000000005,
               "d0": 2.5,
               "d1": 5.5,
               "params": {
-                "boostMps": 8,
+                "boostMps": 8.0,
                 "holdS": 1.5,
                 "slot": "samish-pad-i5"
               }
@@ -186,14 +203,22 @@
             {
               "kind": "billboard",
               "id": "sign-nulle-road",
-              "s0": 4600,
-              "s1": 4610,
+              "s0": 4600.0,
+              "s1": 4610.0,
               "d0": 15.5,
               "d1": 20.5,
               "item": "i5-exit-242",
-              "params": { "style": "guide" }
+              "params": {
+                "style": "guide"
+              }
             }
           ]
+        },
+        {
+          "id": "osm-i5-exit242-north",
+          "name": "Nulle Road North Approach",
+          "tags": ["forest", "interstate"],
+          "deckTags": ["interstate"]
         },
         {
           "id": "osm-i5-nulle-run",
@@ -204,8 +229,8 @@
             {
               "kind": "billboard",
               "id": "bb-nulle-run",
-              "s0": 200,
-              "s1": 240,
+              "s0": 90,
+              "s1": 130,
               "d0": -27,
               "d1": -19,
               "pool": "billboards"
@@ -213,12 +238,14 @@
             {
               "kind": "billboard",
               "id": "sign-weigh-station",
-              "s0": 330,
-              "s1": 340,
+              "s0": 50.996399999999994,
+              "s1": 60.996399999999994,
               "d0": 15.5,
               "d1": 20.5,
               "item": "i5-weigh-station",
-              "params": { "style": "guide" }
+              "params": {
+                "style": "guide"
+              }
             }
           ]
         }
@@ -267,15 +294,20 @@
         {
           "id": "osm-samish-north-shore",
           "name": "North Shore Drive",
+          "tags": ["forest"]
+        },
+        {
+          "id": "osm-samish-north-core",
+          "name": "North Shore Core",
           "tags": ["forest"],
           "features": [
             {
               "kind": "billboard",
               "id": "sign-north-shore",
-              "s0": 300,
-              "s1": 310,
+              "s0": 56.9957,
+              "s1": 66.9957,
               "d0": 6.5,
-              "d1": 9,
+              "d1": 9.0,
               "pool": "signs"
             }
           ]
@@ -284,16 +316,12 @@
           "id": "osm-samish-east-shore",
           "name": "East Shore Drive",
           "tags": ["forest", "thin-haze"],
-          "sideRuns": [
-            { "tag": "lake", "side": "right", "s0": 890, "s1": 1595 },
-            { "tag": "lake", "side": "right", "s0": 2590, "s1": 2940 }
-          ],
           "features": [
             {
               "kind": "roadsideZone",
               "id": "lake-samish-swim-dock",
-              "s0": 1400,
-              "s1": 1480,
+              "s0": 1400.0,
+              "s1": 1480.0,
               "d0": 5.6,
               "d1": 12.6,
               "params": {
@@ -303,13 +331,134 @@
             {
               "kind": "billboard",
               "id": "bb-east-shore",
-              "s0": 3200,
-              "s1": 3240,
-              "d0": -16,
-              "d1": -7,
+              "s0": 3199.9999999999995,
+              "s1": 3239.9999999999995,
+              "d0": -16.0,
+              "d1": -7.0,
               "pool": "billboards"
             }
+          ],
+          "sideRuns": [
+            {
+              "tag": "lake",
+              "side": "right",
+              "s0": 890.0,
+              "s1": 1595.0
+            },
+            {
+              "tag": "lake",
+              "side": "right",
+              "s0": 2589.9999999999995,
+              "s1": 2939.9999999999995
+            }
           ]
+        },
+        {
+          "id": "osm-samish-exit242-sb-on",
+          "name": "Exit 242 Southbound Access",
+          "tags": ["forest", "thin-haze"]
+        }
+      ],
+      "roadLanes": {
+        "osm-samish-north-shore": {
+          "laneWidthM": 4.0,
+          "oneWay": true,
+          "oneWayOffsetM": 2.0
+        },
+        "osm-samish-exit242-sb-on": {
+          "laneWidthM": 4.0,
+          "oneWay": true,
+          "oneWayOffsetM": 2.0
+        }
+      }
+    },
+    {
+      "id": "exit242-nb-off-core",
+      "pathFrom": {
+        "lat": 48.644893,
+        "lon": -122.3642038
+      },
+      "pathTo": {
+        "lat": 48.6490378,
+        "lon": -122.367522
+      },
+      "start": {
+        "lat": 48.644893,
+        "lon": -122.3642038
+      },
+      "end": {
+        "lat": 48.64846153402264,
+        "lon": -122.36592226421295
+      },
+      "wayFilter": [
+        {
+          "@id": "^(426311723|173554533|577365170|5255896)$"
+        }
+      ],
+      "respectOneway": true,
+      "smoothing": {
+        "headingSigmaM": 15
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 40,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "oneWay": true
+      },
+      "roads": [
+        {
+          "id": "osm-samish-exit242-nb-off",
+          "name": "Exit 242 Northbound Access",
+          "tags": ["forest"]
+        }
+      ]
+    },
+    {
+      "id": "core-exit246-nb-on",
+      "pathFrom": {
+        "lat": 48.685316,
+        "lon": -122.396923
+      },
+      "pathTo": {
+        "lat": 48.6899369,
+        "lon": -122.40564
+      },
+      "start": {
+        "lat": 48.685316,
+        "lon": -122.396923
+      },
+      "end": {
+        "lat": 48.6899369,
+        "lon": -122.40564
+      },
+      "wayFilter": [
+        {
+          "@id": "^(1315838960|68830774|5257101|32232036|1315838958|1315838959|5250737)$"
+        }
+      ],
+      "respectOneway": true,
+      "smoothing": {
+        "headingSigmaM": 15
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 40,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "oneWay": true
+      },
+      "roads": [
+        {
+          "id": "osm-samish-exit246-nb-on",
+          "name": "Exit 246 Northbound Access",
+          "tags": ["forest"]
         }
       ]
     }
@@ -355,7 +504,15 @@
         "turnsM": [20, 20],
         "shiftM": -100
       },
-      "label": "lake-samish"
+      "label": "lake-samish",
+      "traffic": "road",
+      "trafficIngress": {
+        "offsetM": 8.0,
+        "lane": "R2",
+        "widthM": 4.0,
+        "turnsM": [40.0, 40.0],
+        "minRadiusM": 42.5
+      }
     }
   ],
   "routes": [
@@ -365,6 +522,74 @@
       "line": "i5",
       "startRoad": "osm-i5-samish-summit",
       "finishRoad": "osm-i5-nulle-run"
+    }
+  ],
+  "trafficChains": [
+    {
+      "id": "exit242-nb-off-core",
+      "line": "exit242-nb-off-core",
+      "branch": "osm-samish-north-shore",
+      "from": {
+        "line": "i5",
+        "at": {
+          "lat": 48.644893,
+          "lon": -122.3642038
+        },
+        "pieceM": 100.0,
+        "shiftM": 40.0,
+        "offsetM": -8.0,
+        "lane": "L2",
+        "widthM": 4.0,
+        "turnsM": [20.0, 20.0],
+        "minRadiusM": 42.5
+      },
+      "to": {
+        "line": "samish",
+        "at": {
+          "lat": 48.648045,
+          "lon": -122.367125
+        },
+        "pieceM": 120.0,
+        "shiftM": -60.0,
+        "offsetM": -2.0,
+        "lane": "L1",
+        "widthM": 4.0,
+        "turnsM": [40.0, 40.0],
+        "minRadiusM": 42.5
+      }
+    },
+    {
+      "id": "core-exit246-nb-on",
+      "line": "core-exit246-nb-on",
+      "branch": "osm-samish-north-shore",
+      "from": {
+        "line": "samish",
+        "at": {
+          "lat": 48.685316,
+          "lon": -122.396923
+        },
+        "pieceM": 120.0,
+        "shiftM": 0.0,
+        "offsetM": -2.0,
+        "lane": "L1",
+        "widthM": 4.0,
+        "turnsM": [20.0, 20.0],
+        "minRadiusM": 42.5
+      },
+      "to": {
+        "line": "i5",
+        "at": {
+          "lat": 48.6899369,
+          "lon": -122.40564
+        },
+        "pieceM": 100.0,
+        "shiftM": -40.0,
+        "offsetM": -8.0,
+        "lane": "L2",
+        "widthM": 4.0,
+        "turnsM": [20.0, 20.0],
+        "minRadiusM": 42.5
+      }
     }
   ]
 }

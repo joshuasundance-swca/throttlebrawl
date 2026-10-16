@@ -73,6 +73,74 @@
         "tunnels_m": 0.0,
         "max_deviation_m": 21.4
       }
+    },
+    "exit242-nb-off-core": {
+      "lengthM": 496.3,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 496.3,
+        "game_length_m": 496.3,
+        "corners": 1,
+        "tightest_radius_m": 19.9,
+        "share_tighter_than_m": {
+          "50": 0.0825,
+          "100": 0.1127,
+          "200": 0.1348
+        },
+        "turn_deg_per_km": 234.4,
+        "elev_min_m": 91.0,
+        "elev_max_m": 98.0,
+        "climb_m": 4.1,
+        "descent_m": 6.9,
+        "max_grade_pct": 4.9,
+        "p95_grade_pct": 4.8,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 1,
+        "junctions_per_km": 2.01,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 11.2
+      }
+    },
+    "core-exit246-nb-on": {
+      "lengthM": 1004.7,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 1004.7,
+        "game_length_m": 1004.7,
+        "corners": 2,
+        "tightest_radius_m": 23.1,
+        "share_tighter_than_m": {
+          "50": 0.0348,
+          "100": 0.0467,
+          "200": 0.325
+        },
+        "turn_deg_per_km": 261.8,
+        "elev_min_m": 154.9,
+        "elev_max_m": 173.7,
+        "climb_m": 19.2,
+        "descent_m": 5.3,
+        "max_grade_pct": 5.0,
+        "p95_grade_pct": 4.9,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 6,
+        "junctions_per_km": 5.97,
+        "bridges_m": 85.2,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 9.6
+      }
     }
   },
   "branches": [
@@ -86,6 +154,6 @@
   "routes": {
     "osm-i5-samish-run": 7224.2
   },
-  "roads": 9,
-  "junctions": 5
+  "roads": 24,
+  "junctions": 9
 }
