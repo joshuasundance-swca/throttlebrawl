@@ -62,7 +62,7 @@ describe('the civic triangle is rideable rather than decorative', () => {
         sim.step([input]);
         snap = sim.snapshot();
         visited.add(snap.entities[playerId]!.road.edge);
-        boosted ||= snap.entities[playerId]!.boostS > 0;
+        boosted ||= (snap.entities[playerId]!.boostS ?? 0) > 0;
         crashes += sim.events().filter((e) => e.type === 'crash' && e.actor === playerId).length;
         if (sim.tick % 120 === 0) hashes.push(sim.hash());
       }
@@ -150,11 +150,12 @@ describe('the civic triangle is rideable rather than decorative', () => {
     me.yaw = -0.3;
     riderState(world).yAbs[me.id] = road.surfaceHeight(edge, s, me.pos.d);
     const bot = createBot();
+    const navigation = { ...c.route, shortcuts: [] };
     let returned = false;
     let crashes = 0;
     for (let tick = 0; tick < 600; tick++) {
       const a = blankActions();
-      bot.drive(sim.snapshot(), me.id, { ...c.route, shortcuts: [] }, a);
+      bot.drive(sim.snapshot(), me.id, navigation, a);
       sim.step([botInput(a)]);
       crashes += sim.events().filter((e) => e.type === 'crash' && e.actor === me.id).length;
       if (me.mode === 'Road' && me.pos.d < verge.dInner - 0.5) {
