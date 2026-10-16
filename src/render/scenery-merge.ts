@@ -78,6 +78,8 @@ function flatten(g: BufferGeometry): FlatForm {
   if (uv) form.uv = uv.array;
   const far = attr(src, 'farColor');
   if (far) form.fcol = far.array;
+  // The form retains its attribute arrays; the temporary geometry owns no live mesh or GPU buffer.
+  if (src !== g) src.dispose();
   return form;
 }
 

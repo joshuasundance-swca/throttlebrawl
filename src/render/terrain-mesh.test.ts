@@ -1,7 +1,7 @@
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { terrainAt, type BakedTerrain, type BakedTerrainPatch } from '../road';
-import { buildTerrainGeometry } from './terrain-mesh';
+import { buildTerrainChunks, buildTerrainGeometry } from './terrain-mesh';
 
 function ray(patch: BakedTerrainPatch, x: number, z: number) {
   const geometry = buildTerrainGeometry(patch);
@@ -81,5 +81,49 @@ describe('shared authored terrain geometry', () => {
     const before = JSON.stringify(patch);
     expect(ray(patch, 1, 1)[0]?.point.y).toBeCloseTo(Math.fround(3.1), 10);
     expect(JSON.stringify(patch)).toBe(before);
+  });
+
+  it('batches complete supplied faces by surface and centroid without splitting crossing faces or mutating input', () => {
+    const patch: BakedTerrainPatch = {
+      surface: 'grass',
+      vertices: [
+        [-50, 3.1, -50],
+        [-50, 4.1, 650],
+        [650, 5.1, -50],
+      ],
+      triangles: [[0, 1, 2]],
+    };
+    const terrain: BakedTerrain = {
+      patches: [
+        patch,
+        { ...patch, surface: 'water' },
+        { ...patch, vertices: patch.vertices.map(([x, y, z]) => [x + 10000, y, z]) },
+      ],
+    };
+    const before = JSON.stringify(terrain);
+    const chunks = buildTerrainChunks(terrain, (x, z) => `${Math.floor(x / 512)},${Math.floor(z / 512)}`);
+    try {
+      expect(chunks.length).toBe(terrain.patches.length);
+      expect(chunks.map((c) => c.surface)).toEqual(terrain.patches.map((p) => p.surface));
+      for (const [i, chunk] of chunks.entries()) {
+        expect(chunk.geometry.index).toBeNull();
+        expect(Array.from(chunk.geometry.getAttribute('position').array)).toEqual(
+          terrain.patches[i]!.vertices.flatMap((v) => v.map(Math.fround)),
+        );
+        expect(chunk.geometry.getAttribute('position').count).toBe(3);
+        const bounds = chunk.geometry.boundingBox!;
+        expect(bounds.max.x - bounds.min.x).toBe(700);
+        expect(bounds.max.z - bounds.min.z).toBe(700);
+        const normals = chunk.geometry.getAttribute('normal');
+        for (let v = 1; v < normals.count; v++) {
+          expect(normals.getX(v)).toBe(normals.getX(0));
+          expect(normals.getY(v)).toBe(normals.getY(0));
+          expect(normals.getZ(v)).toBe(normals.getZ(0));
+        }
+      }
+      expect(JSON.stringify(terrain)).toBe(before);
+    } finally {
+      for (const chunk of chunks) chunk.geometry.dispose();
+    }
   });
 });

@@ -36,6 +36,7 @@ import {
   terrainProfilePlan,
   terrainEndProfile,
   landJoinTriangles,
+  terrainAt,
   type Edge,
   type RoadNetwork,
 } from '../road';
@@ -71,6 +72,7 @@ import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
 import { deciduousGeometry } from './deciduous';
 import { SeaBands, seaPlanFor } from './sea-bands';
+import { buildTerrainChunks } from './terrain-mesh';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
@@ -83,10 +85,12 @@ import {
   LAND_TOP_M,
   ridableBandPast,
   SCENERY_KINDS,
+  SCENERY_RADIUS_M,
   SEAWALL_LAND_M,
   SUMMIT_REACH_M,
   WIDE_LAND_M,
   scatterEdge,
+  TRUNK_M,
   themeAt,
   waterCentre,
   type SceneryKind,
@@ -1101,6 +1105,7 @@ export function buildRoadScene(
   dressing?: RoadDressing,
   opts: RoadSceneOptions = {},
 ): RoadScene {
+  const authoredTerrain = road.terrain;
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
@@ -1303,7 +1308,7 @@ export function buildRoadScene(
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   const seed = opts.seed ?? 1;
   const tropical = isTropical(road.edges.map((e) => dressingOf(e, dressing).tags));
-  // A network that is not tropical gets the terrain skirt.
+  // Preserve the region's road-attached kit policy. Authored faces replace its natural ground.
   const terrain = !tropical;
   // Playtest 4 (P4-19): what holds a deck up is the deck's own tag. A `trestle` stretch stands on
   // timber bents, an `arch-bridge` stretch on concrete deck arches (with their kit loaded), and any
@@ -1805,6 +1810,7 @@ export function buildRoadScene(
           (b) => b.s0 < f.s1 && b.s1 > f.s0,
         );
         if (side !== zoneSide && railed) continue;
+        if (authoredTerrain && !railed) continue;
         const inner = side < 0 ? -outerL : outerR;
         const reach = Math.max(inner, side === zoneSide ? far + LAND_DIVE_M : e.dMax + LAND_FAR_M);
         const a = Math.max(0, f.s0 - LAND_TAPER_M);
@@ -2125,6 +2131,9 @@ export function buildRoadScene(
         const ramped = Math.min(h, LAKE_RAMP_M_PER_M * Math.max(0, (toNone[i] ?? 0) - 1) * step);
         shore.push(Number.isNaN(h) ? Number.NaN : plateauAt(s) - ramped);
       }
+      // Keep the theme's candidate reach for seeded scatter, but do not even generate legacy
+      // natural faces, profiles or join curtains when the authored terrain owns the ground.
+      if (authoredTerrain) continue;
       if (meets.some(Boolean))
         meetsRuns.push({
           edge: e,
@@ -2661,11 +2670,16 @@ export function buildRoadScene(
         if (overGap(k)) deck.breakStrip();
         const i = Math.max(0, Math.min(ss.length - 1, Math.round(s / step)));
         // A terrain network's land strip hides the fascia where it meets the verge: skip it there.
-        if (terrain && (reachOf[out][i] ?? 0) > 0) {
+        if (!authoredTerrain && terrain && (reachOf[out][i] ?? 0) > 0) {
           deck.breakStrip();
           continue;
         }
         const top = w(e.index, s, d, -0.02);
+        // A low legacy embankment is natural ground, not a deck fascia. Authored faces own it.
+        if (authoredTerrain && top.y < ELEVATED_M) {
+          deck.breakStrip();
+          continue;
+        }
         // Nor does it stand over a lower road's lanes beside it (a link down the embankment), within the 3 m a road
         // under a bridge lies below (the I-5's curtain at Lake Samish's east shore road: 1.3 m over its lanes).
         if (
@@ -3194,7 +3208,7 @@ export function buildRoadScene(
     const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
     return { x: (q.x - p.x) / l, z: (q.z - p.z) / l };
   };
-  for (const a of terrain ? road.edges : []) {
+  for (const a of terrain && !authoredTerrain ? road.edges : []) {
     for (const l of a.nextLinks) {
       const b = road.edges[l.edge];
       const [near, far] = CORNER_LEG_M;
@@ -3273,6 +3287,8 @@ export function buildRoadScene(
   };
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
   for (const [layer, a] of Object.entries(acc) as [Layer, ChunkedStrips][]) {
+    // Includes the legacy roadside strips, shelves, junction curtains and corner fills.
+    if (authoredTerrain && layer === 'land') continue;
     const kind = kindOf(layer);
     // Small solid fragments cost a full draw each. Keep fine-detail chunks unchanged because
     // their visibility uses the original cell; solid surfaces use their actual geometry bounds.
@@ -3290,9 +3306,46 @@ export function buildRoadScene(
       addMesh(key, mesh);
     }
   }
+  if (authoredTerrain) {
+    for (const { key, surface, geometry } of buildTerrainChunks(authoredTerrain, chunkKey)) {
+      const mesh = new Mesh(geometry, look.material(surface === 'water' ? 'water' : 'land'));
+      mesh.name = surface === 'water' ? 'road-terrain-water' : 'road-terrain-land';
+      triangles += trisOf(geometry);
+      addMesh(key, mesh);
+    }
+    // Scattering remains seeded by the existing themes. Its resulting anchors use the actual
+    // natural surface, never the old roadside strip's height or its imagined far ground.
+    for (let i = spots.length - 1; i >= 0; i--) {
+      const spot = spots[i]!;
+      const water = spot.kind === 'boat' || spot.kind === 'skiff' || spot.kind === 'fogBank';
+      const ground = terrainAt(authoredTerrain, spot.p.x, spot.p.z);
+      const radius = (TRUNK_M[spot.kind] ?? SCENERY_RADIUS_M[spot.kind]) * spot.size;
+      const roots =
+        radius > 0
+          ? [
+              [radius, 0],
+              [-radius, 0],
+              [0, radius],
+              [0, -radius],
+            ]
+          : [];
+      const covered = roots.every(([dx, dz]) => {
+        const root = terrainAt(authoredTerrain, spot.p.x + dx!, spot.p.z + dz!);
+        return root && (root.surface === 'water') === water;
+      });
+      // A procedural island would manufacture land in the authored water or an authored hole.
+      if (!ground || (ground.surface === 'water') !== water || !covered || spot.kind === 'islet') {
+        spots.splice(i, 1);
+        continue;
+      }
+      spot.p = { ...spot.p, y: ground.y };
+    }
+  }
   const m = new Matrix4();
   const q = new Quaternion();
   const one = new Vector3(1, 1, 1);
+  // Includes procedural inputs with no mesh: empty instance batches and merged-scatter sources.
+  const ownedGeometries = new Set<BufferGeometry>();
   /** Instanced scenery, one InstancedMesh per chunk that has any, so it culls with its chunk. */
   const addInstanced = <T extends { p: Point3 }>(
     name: string,
@@ -3301,6 +3354,7 @@ export function buildRoadScene(
     spots: readonly T[],
     matrixOf: (spot: T) => Matrix4,
   ) => {
+    ownedGeometries.add(geo);
     const byChunk = new Map<string, T[]>();
     for (const s of spots) {
       const key = chunkKey(s.p.x, s.p.z);
@@ -3403,6 +3457,7 @@ export function buildRoadScene(
     if (!mine.length) continue;
     const geos = model ? model.variants : [standIn(kind)];
     if (model) for (const g of geos) shared.add(g);
+    else for (const g of geos) ownedGeometries.add(g);
     // Fog banks are unlit, in the region's fog-bank colour, so they melt into the haze.
     const fogHex = opts.palette?.['fogBank'];
     const material =
@@ -3488,7 +3543,7 @@ export function buildRoadScene(
 
   // The sea, at world y = 0 (sea level in the network frame). A tropical network with water beside its
   // roads (the Keys) draws it in colour bands (sea-bands.ts, playtest 4, P4-19); any other is one plane.
-  const seaPlan = tropical ? seaPlanFor(road, (e) => dressingOf(e, dressing).tags) : null;
+  const seaPlan = tropical && !authoredTerrain ? seaPlanFor(road, (e) => dressingOf(e, dressing).tags) : null;
   let sea: SeaBands | null = null;
   if (seaPlan) {
     const first = road.edges[0];
@@ -3507,7 +3562,7 @@ export function buildRoadScene(
     );
     group.add(sea.mesh);
     triangles += sea.triangles;
-  } else {
+  } else if (!authoredTerrain) {
     const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
     water.rotation.x = -Math.PI / 2;
     water.position.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
@@ -3515,7 +3570,7 @@ export function buildRoadScene(
     group.add(water);
     triangles += 2;
   }
-  meshes++;
+  if (!authoredTerrain) meshes++;
 
   return {
     group,
@@ -3542,6 +3597,14 @@ export function buildRoadScene(
     spots,
     bays: baySpots,
     landTop(edge, side, s, across) {
+      if (authoredTerrain) {
+        const e = road.edges[edge];
+        if (!e) return null;
+        const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
+        const p = w(edge, s, side * (outer + across), 0);
+        const ground = terrainAt(authoredTerrain, p.x, p.z);
+        return ground && ground.surface !== 'water' ? ground.y : null;
+      }
       const l = landOf[edge];
       if (!l || across <= LAKE_BANK_M) return null;
       const rows = l.shore[side];
@@ -3551,6 +3614,9 @@ export function buildRoadScene(
       return Number.isNaN(a) || Number.isNaN(b) ? null : (a + b) / 2;
     },
     landReach(edge, side, s) {
+      // Arbitrary holes cannot be represented by a continuous legacy strip width. Consumers
+      // that need such a strip must opt into the authored coverage query before placing props.
+      if (authoredTerrain) return 0;
       const l = landOf[edge];
       if (!l) return 0;
       const n = l.reach[side].length;
@@ -3582,7 +3648,7 @@ export function buildRoadScene(
           bobEuler.set(bob.pitch, s.turn, bob.roll, 'YXZ');
           b.mesh.setMatrixAt(
             i,
-            m.compose(bobAt.set(s.p.x, bob.rise, s.p.z), turn.setFromEuler(bobEuler), one),
+            m.compose(bobAt.set(s.p.x, s.p.y + bob.rise, s.p.z), turn.setFromEuler(bobEuler), one),
           );
         });
         b.mesh.instanceMatrix.needsUpdate = true;
@@ -3613,6 +3679,11 @@ export function buildRoadScene(
           (o.geometry as BufferGeometry).dispose();
         }
       });
+      for (const geometry of ownedGeometries) {
+        if (seen.has(geometry)) continue;
+        seen.add(geometry);
+        geometry.dispose();
+      }
     },
   };
 }
