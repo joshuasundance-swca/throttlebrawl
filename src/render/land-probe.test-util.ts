@@ -6,7 +6,7 @@ import { DoubleSide, Mesh, Ray, Vector3, type BufferGeometry, type Material, typ
 import type { RoadNetwork } from '../road';
 
 /** Surfaces a rider could see as ground (not the sea, the markings or the scenery). */
-const GROUND = /^road-(land|road|shoulder|shortcut|median|deck)/;
+const GROUND = /^road-(land|road|shoulder|shortcut|median|deck|terrain-land)/;
 const CELL_M = 8;
 const VERGE_M = 0.6;
 
