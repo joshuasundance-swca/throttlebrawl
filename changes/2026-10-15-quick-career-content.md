@@ -6,3 +6,5 @@ The career-content contract runs in the unit tier, so quick checks catch campaig
 event-route, progression and garage mistakes before the full simulation train. All existing
 assertions remain, and the test reads the same carried packs directly. Bot-driven career races
 remain in the simulation tier; this moves the configuration-only contract instead of duplicating it.
+Pack JSON changes also select this one contract in the local push hook, so configuration mistakes
+can be caught before publication without selecting a whole tier or following the import graph.

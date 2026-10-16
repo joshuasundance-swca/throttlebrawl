@@ -20,6 +20,33 @@ const roadContracts = [
 ].sort();
 
 describe('planPush', () => {
+  it('selects the quick career configuration contract for any pack JSON when present', () => {
+    const career = 'src/app/career-content.test.ts';
+    for (const source of [
+      'packs/future-pack/pack.json',
+      'packs/future-pack/events/new-race.json',
+      'packs/future-pack/careers/new-career.json',
+      'packs/future-pack/regions/future-ridge/routes/new-route.json',
+      'packs\\future-pack\\bikes\\new-bike.json',
+    ]) {
+      expect(planPush([source], tree(career)).tests, source).toEqual([career]);
+    }
+    expect(planPush(['packs/future-pack/pack.json'], tree()).tests).toEqual([]);
+    for (const source of ['src/ui/menu.ts', 'packs/future-pack/poster.png', 'docs/roadmap.md'])
+      expect(planPush([source], tree(career)).tests, source).toEqual([]);
+  });
+
+  it('combines pack configuration and road contracts once without selecting a whole tier', () => {
+    const career = 'src/app/career-content.test.ts';
+    const expected = [...roadContracts, career].sort();
+    const plan = planPush(
+      ['packs/future-pack/regions/future-ridge/routes/new-route.json', career],
+      tree(...expected),
+    );
+    expect(plan.mode).toBe('files');
+    expect(plan.tests).toEqual(expected);
+  });
+
   it('runs no tests for a push of docs, notes and Markdown only', () => {
     const plan = planPush(
       ['docs/engineering.md', 'changes/2026-10-03-x.md', 'AGENTS.md', 'docs/playtests/README.md'],
