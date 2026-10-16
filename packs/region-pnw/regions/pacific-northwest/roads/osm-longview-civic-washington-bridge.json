@@ -1,0 +1,146 @@
+{
+  "type": "road",
+  "id": "osm-longview-civic-washington-bridge",
+  "name": "Washington Way Bridge",
+  "realName": "Washington Way",
+  "network": "osm-pnw-longview-civic",
+  "from": "osm-pnw-longview-civic-j3",
+  "to": "osm-pnw-longview-civic-j4",
+  "lengthM": 47.0029,
+  "sampleSpacingM": 1.9584541666666666,
+  "speedLimitMps": 13.4,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -4.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 4.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 47.0029,
+      "side": "both",
+      "tag": "bridge"
+    }
+  ],
+  "features": [],
+  "barriers": [
+    {
+      "s0": 0.0,
+      "s1": 47.0029,
+      "side": "both",
+      "kind": "wall",
+      "heightM": 0.85,
+      "look": "guardrail"
+    }
+  ],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        3738.9803, 3737.2673, 3735.552, 3733.8347, 3732.1153, 3730.394, 3728.6708, 3726.9458, 3725.2191,
+        3723.4906, 3721.7603, 3720.0279, 3718.2933, 3716.556, 3714.8158, 3713.0719, 3711.324, 3709.5714,
+        3707.8134, 3706.0494, 3704.2789, 3702.5012, 3700.7159, 3698.9227, 3697.1213
+      ],
+      "y": [
+        6.373, 6.3732, 6.3731, 6.3726, 6.3716, 6.3699, 6.3672, 6.3634, 6.3583, 6.3516, 6.3432, 6.3328, 6.3205,
+        6.3061, 6.2897, 6.2715, 6.2518, 6.2309, 6.2094, 6.1879, 6.167, 6.1475, 6.1302, 6.1157, 6.1047
+      ],
+      "z": [
+        1776.9596, 1777.9088, 1778.8541, 1779.7956, 1780.7332, 1781.6674, 1782.598, 1783.5254, 1784.4496,
+        1785.3704, 1786.2877, 1787.2012, 1788.1103, 1789.0145, 1789.9128, 1790.8042, 1791.6876, 1792.5616,
+        1793.4247, 1794.2755, 1795.1126, 1795.9344, 1796.7396, 1797.5269, 1798.2953
+      ],
+      "kappa": [
+        0.0012059, 0.0011871, 0.0011531, 0.0011085, 0.0010595, 0.0010137, 0.00097936, 0.0009656, 0.00098108,
+        0.0010329, 0.0011283, 0.0012727, 0.001469, 0.0017179, 0.0020171, 0.0023612, 0.0027418, 0.0031482,
+        0.0035673, 0.0039849, 0.004387, 0.0047602, 0.0050932, 0.0053779, 0.0056135
+      ],
+      "grade": [
+        8.7056e-5, 2.2177e-5, -0.00014053, -0.00037611, -0.00069782, -0.0011169, -0.0016417, -0.0022762,
+        -0.0030195, -0.0038647, -0.0047975, -0.0057954, -0.0068273, -0.0078527, -0.0088226, -0.0096812,
+        -0.010369, -0.010824, -0.010993, -0.010827, -0.010297, -0.0093906, -0.0081183, -0.0065157, -0.0056377
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview-civic.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 266 points in 1 request(s) (lon, lat WGS84, sha256 67e3de46e29be519), bilinear (line washington)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "d36d9e6199589b79acc99b4df734ee8efa471dae121296dddf1c0f3ae9a96d7d"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 41 points in 1 request(s) (lon, lat WGS84, sha256 0429de49dcbca842), bilinear (line hudson)",
+        "retrievedAt": "2026-10-16T05:50:51Z",
+        "sha256": "6ddbdf45bfa7e550fca3b7a2e14d7b319b72e23de38b0173b2f4d85862a49d5b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Longview Washington Way, Hudson Street, 20th Avenue and 30th Avenue paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 18.3 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-longview-civic.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

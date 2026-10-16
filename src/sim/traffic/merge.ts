@@ -26,7 +26,8 @@ export function mergeStops(world: World, config: SimConfig, st: TrafficState): n
     });
     incomingCache.set(graph, incoming);
   }
-  const requests: { k: number; key: string; at: number; edge: number; lane: string }[] = [];
+  const requests: { k: number; key: string; at: number; edge: number; lane: string; occupied: boolean }[] =
+    [];
   const stops = st.id.map(() => Infinity);
   for (let k = 0; k < st.id.length; k++) {
     const path = st.paths[k];
@@ -48,7 +49,7 @@ export function mergeStops(world: World, config: SimConfig, st: TrafficState): n
       const lane = path.lane[i] ?? '';
       const key = `${edge}:${c.o[i] === 1 ? 'from' : 'to'}:${lane}`;
       if ((incoming.get(key)?.size ?? 0) < 2 || at - p.u > 80 || p.u - half >= at + 3) continue;
-      request = { k, key, at, edge, lane };
+      request = { k, key, at, edge, lane, occupied: p.u + half >= at };
       break;
     }
     if (!request) {
@@ -61,6 +62,10 @@ export function mergeStops(world: World, config: SimConfig, st: TrafficState): n
   }
   requests.sort(
     (a, b) =>
+      Number(b.occupied) - Number(a.occupied) ||
+      // Clear a reserved junction before honoring an upstream merge claim. Otherwise a car
+      // outside the junction can hold its exit while waiting for the car inside to clear it.
+      Number(!!st.junctionReservation[b.k]) - Number(!!st.junctionReservation[a.k]) ||
       Number(st.reservation[b.k] === b.key) - Number(st.reservation[a.k] === a.key) ||
       (st.waitTick[a.k] ?? 0) - (st.waitTick[b.k] ?? 0) ||
       (st.id[a.k] ?? 0) - (st.id[b.k] ?? 0),

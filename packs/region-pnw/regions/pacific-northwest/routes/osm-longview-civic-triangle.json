@@ -1,0 +1,126 @@
+{
+  "type": "route",
+  "id": "osm-longview-civic-triangle",
+  "name": "Longview: Civic Triangle",
+  "network": "osm-pnw-longview-civic",
+  "start": {
+    "road": "osm-longview-civic-approach",
+    "s": 24.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-longview-civic-30th",
+    "s": 754.0462
+  },
+  "mainPath": [
+    "osm-longview-civic-approach",
+    "osm-longview-civic-diagonal",
+    "osm-longview-civic-west-washington",
+    "osm-longview-civic-washington-bridge",
+    "osm-longview-civic-washington-west-bank",
+    "osm-longview-civic-30th"
+  ],
+  "allowedRoads": [
+    "osm-longview-civic-approach",
+    "osm-pnw-longview-civic-hudson-leave",
+    "osm-longview-civic-diagonal",
+    "osm-pnw-longview-civic-hudson-join",
+    "osm-longview-civic-west-washington",
+    "osm-longview-civic-washington-bridge",
+    "osm-longview-civic-washington-west-bank",
+    "osm-longview-civic-30th",
+    "osm-longview-civic-hudson",
+    "osm-longview-civic-20th",
+    "osm-pnw-longview-civic-hudson-in",
+    "osm-pnw-longview-civic-hudson-out",
+    "osm-pnw-longview-civic-hudson-traffic-in",
+    "osm-pnw-longview-civic-hudson-traffic-reverse-leave",
+    "osm-pnw-longview-civic-hudson-traffic-reverse-join"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-longview-civic-diagonal",
+      "s": 88.5082
+    },
+    {
+      "road": "osm-longview-civic-west-washington",
+      "s": 285.0192
+    },
+    {
+      "road": "osm-longview-civic-washington-bridge",
+      "s": 23.5014
+    },
+    {
+      "road": "osm-longview-civic-washington-west-bank",
+      "s": 399.0227
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-longview-civic-hudson",
+      "kind": "detour",
+      "marked": true,
+      "sign": "HUDSON / 20TH: LONGER GRID ROUTE. WASHINGTON: DIAGONAL.",
+      "aiTake": 0.45,
+      "traffic": "road",
+      "roads": [
+        "osm-pnw-longview-civic-hudson-in",
+        "osm-longview-civic-hudson",
+        "osm-longview-civic-20th",
+        "osm-pnw-longview-civic-hudson-out",
+        "osm-pnw-longview-civic-hudson-traffic-in",
+        "osm-pnw-longview-civic-hudson-traffic-reverse-leave",
+        "osm-pnw-longview-civic-hudson-traffic-reverse-join"
+      ]
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A one-pass city-street race. Choose the direct Washington diagonal or the longer Hudson/20th grid turns, then share the westward run and 30th Avenue finish. Both choices carry ordinary traffic in both directions. Real OSM alignment and USGS terrain with disclosed arcade widths and eased junctions; no claim that the detour is faster or that generic scenery reproduces real properties.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-15",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-pnw-longview-civic.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+          "retrievedAt": "2026-10-15T21:21:54Z",
+          "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 266 points in 1 request(s) (lon, lat WGS84, sha256 67e3de46e29be519), bilinear (line washington)",
+          "retrievedAt": "2026-10-16T05:50:51Z",
+          "sha256": "d36d9e6199589b79acc99b4df734ee8efa471dae121296dddf1c0f3ae9a96d7d"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 41 points in 1 request(s) (lon, lat WGS84, sha256 0429de49dcbca842), bilinear (line hudson)",
+          "retrievedAt": "2026-10-16T05:50:51Z",
+          "sha256": "6ddbdf45bfa7e550fca3b7a2e14d7b319b72e23de38b0173b2f4d85862a49d5b"
+        }
+      ]
+    }
+  }
+}

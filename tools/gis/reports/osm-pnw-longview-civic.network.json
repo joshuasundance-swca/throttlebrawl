@@ -1,0 +1,91 @@
+{
+  "network": "osm-pnw-longview-civic",
+  "lines": {
+    "washington": {
+      "lengthM": 2644.2,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "hudson leave": 0.15,
+        "hudson join": 0.05
+      },
+      "fun": {
+        "real_length_m": 2644.2,
+        "game_length_m": 2644.2,
+        "corners": 1,
+        "tightest_radius_m": 20.3,
+        "share_tighter_than_m": {
+          "50": 0.0144,
+          "100": 0.0189,
+          "200": 0.0333
+        },
+        "turn_deg_per_km": 53.0,
+        "elev_min_m": 2.7,
+        "elev_max_m": 6.6,
+        "climb_m": 3.1,
+        "descent_m": 5.8,
+        "max_grade_pct": 1.1,
+        "p95_grade_pct": 0.6,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 23,
+        "junctions_per_km": 8.7,
+        "bridges_m": 47.9,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 9.2
+      }
+    },
+    "hudson": {
+      "lengthM": 379.5,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "hudson join": 18.3
+      },
+      "fun": {
+        "real_length_m": 392.6,
+        "game_length_m": 379.5,
+        "corners": 2,
+        "tightest_radius_m": 38.4,
+        "share_tighter_than_m": {
+          "50": 0.0947,
+          "100": 0.2526,
+          "200": 0.3895
+        },
+        "turn_deg_per_km": 341.7,
+        "elev_min_m": 5.1,
+        "elev_max_m": 5.8,
+        "climb_m": 0.3,
+        "descent_m": 0.9,
+        "max_grade_pct": 0.8,
+        "p95_grade_pct": 0.7,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 3,
+        "junctions_per_km": 7.64,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 6.1
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-longview-civic-hudson",
+      "mainM": 262.0,
+      "branchM": 362.7,
+      "savesM": -100.7
+    }
+  ],
+  "routes": {
+    "osm-longview-civic-triangle": 2580.2
+  },
+  "roads": 15,
+  "junctions": 8
+}
