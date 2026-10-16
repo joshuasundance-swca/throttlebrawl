@@ -93,6 +93,7 @@ describe('the Longview street diamond is a playable one-pass choice', () => {
 
   it('rides from the real grid onto soft grass and back without moving sim state', () => {
     const c = isolated();
+    const navigation = { ...c.route, shortcuts: [] };
     const { sim } = createSimWithWorld(c);
     const player = sim.snapshot().entities.find((m) => m.kind === 'rider')!.id;
     const bot = createBot();
@@ -109,7 +110,7 @@ describe('the Longview street diamond is a playable one-pass choice', () => {
       if (!entered) {
         actions.throttle = 0.35;
         actions.steer = 0.35;
-      } else bot.drive(snapshot, player, { ...c.route, shortcuts: [] }, actions);
+      } else bot.drive(snapshot, player, navigation, actions);
       sim.step([botInput(actions)]);
       crashes += sim.events().filter((e) => e.type === 'crash' && e.actor === player).length;
     }
