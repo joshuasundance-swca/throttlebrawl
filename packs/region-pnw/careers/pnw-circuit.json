@@ -144,7 +144,13 @@
         "s": 300
       },
       "opens": ["osm-chuckanut-larrabee"],
-      "claims": ["osm-i5-nulle-run", "osm-i5-samish-summit", "osm-i5-lake-samish"]
+      "claims": [
+        "osm-i5-samish-summit",
+        "osm-i5-exit246-south",
+        "osm-i5-lake-samish",
+        "osm-i5-exit242-north",
+        "osm-i5-nulle-run"
+      ]
     },
     {
       "id": "chuckanut",
@@ -256,7 +262,12 @@
         "road": "osm-i5-lake-samish",
         "s": 3500
       },
-      "claims": ["osm-samish-east-shore", "osm-samish-north-shore"]
+      "claims": [
+        "osm-samish-north-shore",
+        "osm-samish-north-core",
+        "osm-samish-east-shore",
+        "osm-samish-exit242-sb-on"
+      ]
     },
     {
       "id": "big-cut",

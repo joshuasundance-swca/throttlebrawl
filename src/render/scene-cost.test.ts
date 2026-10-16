@@ -30,6 +30,8 @@
 // route pack, including new ones, from the shared allocation derived from the actual content.
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
+import { packClosure, packSubset, registryFromGlob } from '../content';
+import { trafficHeightM } from '../sim/api';
 import {
   CINEMATIC_CAMERA,
   cameraParams,
@@ -46,8 +48,45 @@ import {
   sweep,
   SWEPT_PACKS,
   track,
+  trafficClearanceOf,
   viewsAt,
 } from './scene-cost.test-util';
+
+const CONTENT = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+
+describe('the traffic clearance catalog', () => {
+  it('includes a live pack-closure body even when the region does not give it spawn weight', () => {
+    const pack = 'region-clinton';
+    const race = packSubset(CONTENT, packClosure(CONTENT, pack));
+    const regionId = `${pack}:clinton-iowa`;
+    const region = race.regions[regionId];
+    if (!region) throw new Error('no Clinton region');
+    const catalog = Object.entries(race.trafficTypes).sort(
+      (a, b) => trafficHeightM(a[1]) - trafficHeightM(b[1]),
+    );
+    const shortest = catalog[0];
+    const tallest = catalog.at(-1);
+    if (!shortest || !tallest) throw new Error('Clinton pack closure has no traffic catalog');
+    const fixture = {
+      ...race,
+      regions: {
+        ...race.regions,
+        [regionId]: {
+          ...region,
+          traffic: {
+            ...region.traffic,
+            mix: [{ kind: shortest[0], weight: 1, hazard: 'normal' as const }],
+          },
+        },
+      },
+      trafficTypes: { [shortest[0]]: shortest[1], [tallest[0]]: tallest[1] },
+    };
+
+    expect(fixture.regions[regionId]?.traffic.mix.map((entry) => entry.kind)).toEqual([shortest[0]]);
+    expect(trafficHeightM(tallest[1])).toBeGreaterThan(trafficHeightM(shortest[1]));
+    expect(trafficClearanceOf(region.networks[0]!, fixture)).toBe(trafficHeightM(tallest[1]));
+  });
+});
 
 describe('the current forward takedown cost views', () => {
   it('keeps each base view road aim and height with bounded victim bias and the capped chase lens', async () => {

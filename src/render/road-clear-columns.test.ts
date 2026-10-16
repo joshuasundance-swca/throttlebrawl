@@ -54,4 +54,23 @@ describe('ride columns follow the actual lanes', () => {
     const road = createRoadNetwork(fixtureNetwork([{ id: 'empty', lengthM: 10, kappa: 0, lanes: [] }]));
     expect(roadColumns(road).count).toBe(0);
   });
+
+  it('checks a tall vehicle envelope while leaving a clear overhead deck alone', () => {
+    const road = createRoadNetwork(fixtureNetwork([{ id: 'lower', lengthM: 10, kappa: 0 }]));
+    const cols = roadColumns(road, { highM: 4 });
+    const root = new Group();
+    root.name = 'crossing';
+    const p = road.toWorld(0, 5, 2, 0);
+    const deck = new Mesh(new BoxGeometry(2, 0.2, 2), new MeshBasicMaterial());
+    deck.name = 'road-deck';
+    deck.position.set(p.x, p.y + 5, p.z);
+    root.add(deck);
+    const clear = new Map<string, RoadHit>();
+    hitsIn(cols, root, floorOf, null, clear);
+    expect([...clear.values()]).toEqual([]);
+    deck.position.y = p.y + 3;
+    const blocked = new Map<string, RoadHit>();
+    hitsIn(cols, root, floorOf, null, blocked);
+    expect([...blocked.values()].some((h) => h.part === 'crossing/road-deck')).toBe(true);
+  });
 });

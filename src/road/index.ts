@@ -4,6 +4,22 @@ export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
 export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
 export { grassMedianSpan } from './median';
+export {
+  LAND_COMMON_REACH_DELTA_M,
+  clearGroundReach,
+  landIntervalPlan,
+  landWidthChangeOverRoad,
+  terrainProfilePlan,
+  keptSamples,
+} from './land-topology';
+export type {
+  LandIntervalPlan,
+  TerrainFan,
+  TerrainProfilePlan,
+  TerrainProfileRow,
+  Point3Like,
+} from './land-topology';
+export { BRUSH_STEP_M, brushClumpAt, hedged } from './brush';
 export type { LaneTransition } from './lane-transitions';
 export type {
   AdvanceResult,

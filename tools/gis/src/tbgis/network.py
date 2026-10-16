@@ -108,9 +108,13 @@ class CrossSection(Strict):
     # the |kappa| * dMax rule on). A join with the two-way roads either side narrows like any lane
     # drop (src/sim/riders/funnel.ts).
     oneWay: bool = False  # noqa: N815
+    # Retain a shared forward lane centre on a one-way tail; absent keeps the ordinary centre at 0.
+    oneWayOffsetM: float | None = Field(None, allow_inf_nan=False)  # noqa: N815
 
     @model_validator(mode="after")
     def _one_way(self) -> CrossSection:
+        if self.oneWayOffsetM is not None and not self.oneWay:
+            raise ValueError("oneWayOffsetM needs oneWay")
         if self.oneWay and (self.lanesPerDirection != 1 or self.medianM != 0):
             raise ValueError("a one-way section is one lane: lanesPerDirection 1 and no median")
         return self
@@ -311,6 +315,8 @@ class Leave(Staging):
     toOffsetM: float = 0.0  # noqa: N815 (across the branch's first road, where the connector lands)
     toLane: str = "R1"  # noqa: N815
     turnsM: tuple[float, float] = (15.0, 15.0)  # noqa: N815
+    # Optional game-elevation adaptation of the branch approach to the shared junction field.
+    accessProfileFitM: float | None = Field(None, gt=0)  # noqa: N815
 
     @model_validator(mode="after")
     def _centred(self) -> Leave:
@@ -329,6 +335,8 @@ class Join(Staging):
     fromOffsetM: float = 0.0  # noqa: N815 (across the branch's last road, where the connector starts)
     fromLane: str = "R1"  # noqa: N815
     turnsM: tuple[float, float] = (15.0, 15.0)  # noqa: N815
+    # As Leave.accessProfileFitM, measured back from the branch approach's end.
+    accessProfileFitM: float | None = Field(None, gt=0)  # noqa: N815
 
     @model_validator(mode="after")
     def _centred(self) -> Join:
@@ -396,6 +404,11 @@ class Branch(Strict):
 
     @model_validator(mode="after")
     def _traffic(self) -> Branch:
+        for end in (self.leave, self.join):
+            if end.accessProfileFitM is not None and (
+                end.synthetic or (self.trafficIngress is None and self.trafficReverse is None)
+            ):
+                raise ValueError("accessProfileFitM needs a traffic-enabled ordinary branch")
         if self.trafficIngress is not None:
             if self.traffic != "road":
                 raise ValueError("trafficIngress needs traffic road")
@@ -417,6 +430,39 @@ class StartGrid(Strict):
     rows: int = 3
     perRow: int = 2  # noqa: N815
     rowGapM: float = 8  # noqa: N815
+
+
+class TrafficChainEnd(TrafficIngress):
+    """A directed collar at an interior host cut; the access Line clips its own end."""
+
+    line: str
+    at: LatLon
+    pieceM: float = Field(40.0, gt=0)  # noqa: N815
+    shiftM: float = 0.0  # noqa: N815
+    # Optional source-authoring span over which a synthetic collar joins the projected host surface.
+    # This preserves the access Line's sampled profile while giving a long merge room to meet an
+    # independently elevated receiving road across their endpoint-connected pavement overlap.
+    surfaceJoinM: float | None = Field(None, gt=0)  # noqa: N815
+    # Optional source correction: meet the projected host elevation at this access Line endpoint,
+    # then ease back to its independently sampled profile over this distance.
+    accessProfileFitM: float | None = Field(None, gt=0)  # noqa: N815
+    accessProfileOffsetM: float = Field(0.0, allow_inf_nan=False)  # noqa: N815
+
+    @model_validator(mode="after")
+    def _access_profile(self) -> TrafficChainEnd:
+        if self.accessProfileOffsetM != 0 and self.accessProfileFitM is None:
+            raise ValueError("accessProfileOffsetM needs accessProfileFitM")
+        return self
+
+
+class TrafficChain(Strict):
+    """One source-profile drive chain owned by an existing rider branch's traffic policy."""
+
+    id: str = Field(pattern=ID)
+    line: str
+    branch: str
+    from_: TrafficChainEnd = Field(alias="from")
+    to: TrafficChainEnd
 
 
 class NetRoute(Strict):
@@ -445,7 +491,43 @@ class NetworkConfig(Strict):
     networkNotes: str  # noqa: N815
     lines: list[Line]
     branches: list[Branch] = Field(default_factory=list)
+    trafficChains: list[TrafficChain] = Field(default_factory=list)  # noqa: N815
     routes: list[NetRoute]
+
+    @model_validator(mode="after")
+    def _traffic_chains(self) -> NetworkConfig:
+        used_ids: set[str] = set()
+        used_lines: set[str] = set()
+        for chain in self.trafficChains:
+            if chain.id in used_ids or chain.line in used_lines:
+                raise ValueError("traffic chains need unique ids and dedicated lines")
+            used_ids.add(chain.id)
+            used_lines.add(chain.line)
+            owners = [b for b in self.branches if b.id == chain.branch]
+            if len(owners) != 1:
+                raise ValueError(f"traffic chain {chain.id}: needs exactly one existing branch owner")
+            owner = owners[0]
+            if chain.from_.line == chain.to.line or {chain.from_.line, chain.to.line} != {
+                owner.of,
+                owner.line,
+            }:
+                raise ValueError(f"traffic chain {chain.id}: hosts must be its owner's two different lines")
+            if any(chain.line in (b.line, b.of) for b in self.branches) or any(
+                rt.line == chain.line for rt in self.routes
+            ):
+                raise ValueError(f"traffic chain {chain.id}: access line must be dedicated")
+            for lid in (chain.line, chain.from_.line, chain.to.line):
+                if sum(ln.id == lid for ln in self.lines) != 1:
+                    raise ValueError(f"traffic chain {chain.id}: line {lid} must exist exactly once")
+            line = self.line(chain.line)
+            if any(
+                not cs.oneWay or cs.oneWayOffsetM not in (None, 0)
+                for cs in (line.crossSection, *line.roadLanes.values())
+            ):
+                raise ValueError(f"traffic chain {chain.id}: access line must be one-way R1")
+            if line.start is None or line.end is None:
+                raise ValueError(f"traffic chain {chain.id}: access line needs start and end")
+        return self
 
     @staticmethod
     def load(path: Path) -> NetworkConfig:
@@ -910,7 +992,13 @@ class Piece:
 def lane_section(cs: CrossSection) -> Json:
     section: Json
     if cs.oneWay:
-        lane = {"id": "R1", "dCenterM": 0, "widthM": cs.laneWidthM, "direction": 1, "kind": "drive"}
+        lane = {
+            "id": "R1",
+            "dCenterM": cs.oneWayOffsetM or 0,
+            "widthM": cs.laneWidthM,
+            "direction": 1,
+            "kind": "drive",
+        }
         section = {"s0": 0, "lanes": [lane]}
     else:
         section = {"s0": 0, "lanes": lanes(cs.laneWidthM, cs.lanesPerDirection, cs.medianM)}
@@ -1157,6 +1245,129 @@ def surface_reach(section: Json, right: bool) -> float:
     return -float(min(ln["dCenterM"] - ln["widthM"] / 2 for ln in lanes_)) + MAIN_VERGE_M
 
 
+def piece_surface(pc: Piece, x: float, z: float) -> tuple[float, float]:
+    """Plan distance and emitted height at the nearest point, extended laterally by its bank."""
+    dx, dz = np.diff(pc.x), np.diff(pc.z)
+    lengths2 = np.maximum(dx * dx + dz * dz, 1e-12)
+    t = np.clip(((x - pc.x[:-1]) * dx + (z - pc.z[:-1]) * dz) / lengths2, 0.0, 1.0)
+    px, pz = pc.x[:-1] + t * dx, pc.z[:-1] + t * dz
+    k = int(np.argmin(np.hypot(px - x, pz - z)))
+    length = math.sqrt(float(lengths2[k]))
+    d = (x - float(px[k])) * (-float(dz[k]) / length) + (z - float(pz[k])) * (float(dx[k]) / length)
+    bank = pc.bank if pc.bank is not None else np.zeros_like(pc.x)
+    y = float(pc.y[k] + t[k] * (pc.y[k + 1] - pc.y[k]))
+    slope = float(bank[k] + t[k] * (bank[k + 1] - bank[k]))
+    return float(math.hypot(float(px[k]) - x, float(pz[k]) - z)), y - d * slope
+
+
+def ribbon_quads(pc: Piece) -> list[F64]:
+    """Plan-view quads for the emitted lane-and-verge ribbon of a road piece."""
+    headings = np.unwrap(np.arctan2(np.gradient(pc.x), -np.gradient(pc.z)))
+    nx, nz = np.cos(headings), np.sin(headings)
+    lo, hi = -surface_reach(pc.lane_section, False), surface_reach(pc.lane_section, True)
+    left = np.column_stack((pc.x + lo * nx, pc.z + lo * nz))
+    right = np.column_stack((pc.x + hi * nx, pc.z + hi * nz))
+    return [np.array((left[i], right[i], right[i + 1], left[i + 1])) for i in range(len(pc.x) - 1)]
+
+
+def quads_overlap(a: F64, b: F64) -> bool:
+    """Whether two convex plan-view ribbon quads overlap, including a shared boundary."""
+    for poly in (a, b):
+        for p, q in pairwise(np.vstack((poly, poly[0]))):
+            axis = np.array((-(q[1] - p[1]), q[0] - p[0]))
+            pa, pb = a @ axis, b @ axis
+            if float(np.max(pa)) < float(np.min(pb)) - 1e-6 or float(np.max(pb)) < float(np.min(pa)) - 1e-6:
+                return False
+    return True
+
+
+def join_host_surface(pc: Piece, host: Piece, span: float, at_start: bool) -> None:
+    """Share the connected host overlap, easing into it over an authored endpoint span."""
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(pc.x), np.diff(pc.z)))))
+    if span >= float(station[-2]):
+        raise ValueError(
+            f"traffic chain {pc.id}: surfaceJoinM {span:.3f} m leaves no untouched collar "
+            f"profile before {float(station[-2]):.3f} m"
+        )
+    distance = station if at_start else station[-1] - station
+    sampled = [piece_surface(host, float(x), float(z)) for x, z in zip(pc.x, pc.z, strict=True)]
+    host_y = np.array([row[1] for row in sampled])
+    collar_quads, host_quads = ribbon_quads(pc), ribbon_quads(host)
+    overlaps = np.array([any(quads_overlap(a, b) for b in host_quads) for a in collar_quads])
+    order = range(len(overlaps)) if at_start else range(len(overlaps) - 1, -1, -1)
+    connected: list[int] = []
+    for i in order:
+        if not overlaps[i]:
+            break
+        connected.append(i)
+    if not connected:
+        raise ValueError(f"traffic chain {pc.id}: collar does not overlap its connected host")
+    first, last = min(connected), max(connected) + 1
+    connected_points = np.zeros(len(pc.x), dtype=np.bool_)
+    connected_points[first : last + 1] = True
+    boundary_distance = float(max(distance[connected_points]))
+    if boundary_distance >= span:
+        raise ValueError(
+            f"traffic chain {pc.id}: surfaceJoinM {span:.3f} m does not reach beyond its "
+            f"{boundary_distance:.3f} m host overlap"
+        )
+    weight = smoothstep(np.clip((span - distance) / (span - boundary_distance), 0.0, 1.0))
+    weight[connected_points] = 1.0
+    pc.y += weight * (host_y - pc.y)
+
+
+def fit_endpoint_profile(
+    pc: Piece, span: float, target: float, at_start: bool, target_grade: float | None = None
+) -> None:
+    """Ease an authored endpoint fit back to untouched source height and grade at its span."""
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(pc.x), np.diff(pc.z)))))
+    if span <= float(station[1]) or span >= float(station[-1]):
+        raise ValueError(f"road {pc.id}: accessProfileFitM must leave source profile")
+    distance = station if at_start else station[-1] - station
+    endpoint = 0 if at_start else len(pc.x) - 1
+    adjacent = 1 if at_start else len(pc.x) - 2
+    step = float(abs(station[adjacent] - station[endpoint]))
+    grade = float((pc.y[adjacent] - pc.y[endpoint]) / step) * (1 if at_start else -1)
+    weight = smoothstep(np.clip((span - distance) / span, 0.0, 1.0))
+    pc.y += weight * (target - float(pc.y[endpoint]))
+    if target_grade is not None:
+        t = np.clip(distance / span, 0.0, 1.0)
+        pc.y += (target_grade - grade) * (1 if at_start else -1) * distance * (1 - t) ** 2
+        grade = target_grade
+    pc.y[endpoint] = target
+    pc.y[adjacent] = target + grade * step * (1 if at_start else -1)
+
+
+def fit_access_profile(pc: Piece, host: Piece, span: float, offset: float, at_start: bool) -> None:
+    """Ease one dedicated access-road endpoint onto its host's projected elevation."""
+    endpoint = 0 if at_start else len(pc.x) - 1
+    target = piece_surface(host, float(pc.x[endpoint]), float(pc.z[endpoint]))[1] + offset
+    fit_endpoint_profile(pc, span, target, at_start)
+
+
+def fit_branch_profile(
+    pc: Piece,
+    main: BakedLine,
+    main_half: float,
+    span: float,
+    anchor: tuple[float, float, float, float],
+    at_start: bool,
+) -> None:
+    """Adapt a branch approach to its junction's existing broad shared height field."""
+    endpoint, adjacent, sign = (0, 1, 1) if at_start else (-1, -2, -1)
+    target = main.at(main.project(anchor[0], anchor[2])[0])[1]
+    step = float(np.hypot(pc.x[adjacent] - pc.x[endpoint], pc.z[adjacent] - pc.z[endpoint]))
+    grade = (
+        (
+            traffic_height(main, main_half, target, float(pc.x[adjacent]), float(pc.z[adjacent]))
+            - traffic_height(main, main_half, target, float(pc.x[endpoint]), float(pc.z[endpoint]))
+        )
+        / step
+        * sign
+    )
+    fit_endpoint_profile(pc, span, target, at_start, grade)
+
+
 def curve_piece(
     pid: str,
     name: str,
@@ -1171,6 +1382,7 @@ def curve_piece(
     main: BakedLine | None = None,
     half: float = 0.0,
     leaves_main: bool = True,
+    endpoint_grades: tuple[float, float] | None = None,
 ) -> Piece:
     """A branch connector road: the solved curve from a to b, its height eased between theirs. With
     ``span`` (u0, u1), only that stretch of the curve (a synthetic end's connector or staging road).
@@ -1197,6 +1409,15 @@ def curve_piece(
     if u1 == sh.length:
         x[-1], z[-1] = b[0], b[2]
     y = a[1] + (b[1] - a[1]) * smoothstep(s / sh.length)
+    if endpoint_grades is not None:
+        t = s / sh.length
+        g0, g1 = endpoint_grades
+        y = (
+            (2 * t**3 - 3 * t**2 + 1) * a[1]
+            + (t**3 - 2 * t**2 + t) * sh.length * g0
+            + (-2 * t**3 + 3 * t**2) * b[1]
+            + (t**3 - t**2) * sh.length * g1
+        )
     if main is not None:
         for i in range(len(s)):
             s_main, dist = main.project(float(x[i]), float(z[i]))
@@ -1263,6 +1484,88 @@ def require_drive_centre(pc: Piece, lane: str, offset: float, direction: int) ->
         raise ValueError(f"traffic ingress: {pc.id} {lane} must be a {name} drive lane centred at {offset:g}")
 
 
+@dataclass(frozen=True)
+class TrafficFrame:
+    x: float
+    y: float
+    z: float
+    heading: float
+    grade: float
+    bank: float
+
+    def point(self) -> tuple[float, float, float, float]:
+        return self.x, self.y, self.z, self.heading
+
+
+def directed_piece_frame(
+    pc: Piece, end: Literal["from", "to"], offset: float, direction: int
+) -> TrafficFrame:
+    """The emitted endpoint surface frame, in actual lane travel order (bank is a slope)."""
+    i, a, b = (0, 0, 1) if end == "from" else (-1, -2, -1)
+    h = math.atan2(float(pc.x[b] - pc.x[a]), float(pc.z[a] - pc.z[b]))
+    spacing = float(np.sum(np.hypot(np.diff(pc.x), np.diff(pc.z)))) / (len(pc.x) - 1)
+    bank = pc.bank if pc.bank is not None else np.zeros_like(pc.x)
+    y = pc.y - offset * bank
+    return TrafficFrame(
+        float(pc.x[i] + offset * math.cos(h)),
+        float(y[i]),
+        float(pc.z[i] + offset * math.sin(h)),
+        h + (math.pi if direction == -1 else 0),
+        float((y[b] - y[a]) / spacing) * direction,
+        float(bank[i]) * direction,
+    )
+
+
+def traffic_chain_collar(
+    pid: str,
+    a: TrafficFrame,
+    b: TrafficFrame,
+    spec: TrafficChainEnd,
+    spacing: float,
+    speed: float,
+    tags: list[str],
+    host: Piece | None = None,
+    host_at_start: bool = True,
+) -> Piece:
+    if a.bank != 0 or b.bank != 0:
+        raise ValueError(f"traffic chain {pid}: collars support only zero-bank endpoint surfaces")
+    sh = connector_shape(_xzh(a.point()), _xzh(b.point()), spec.turnsM, spec.widthM, spec.minRadiusM, pid)
+    pc = curve_piece(
+        pid,
+        "traffic access collar",
+        a.point(),
+        b.point(),
+        sh,
+        spec.widthM,
+        spacing,
+        speed,
+        tags,
+        endpoint_grades=(a.grade, b.grade),
+    )
+    pc.lane_section = lane_section(CrossSection(oneWay=True, laneWidthM=spec.widthM))
+    pc.bank = np.linspace(a.bank, b.bank, len(pc.x))
+    if spec.surfaceJoinM is not None:
+        if host is None:
+            raise ValueError(f"traffic chain {pid}: surfaceJoinM needs its emitted host piece")
+        join_host_surface(pc, host, spec.surfaceJoinM, host_at_start)
+    if len(pc.x) < 4:
+        raise ValueError(f"traffic chain {pid}: collar too short to match endpoint grades")
+    step = float(np.sum(np.hypot(np.diff(pc.x), np.diff(pc.z)))) / (len(pc.x) - 1)
+    # road_json derives endpoint grades with finite differences. Match those emitted
+    # slopes exactly. Traffic collars already have explicit endpoint heights and
+    # grades, so the shared-surface branch height blend must not reshape them.
+    pc.y[0], pc.y[-1] = a.y, b.y
+    pc.y[1], pc.y[-2] = a.y + a.grade * step, b.y - b.grade * step
+    return pc
+
+
+def traffic_height(main: BakedLine, main_half: float, branch_height: float, x: float, z: float) -> float:
+    """The common world-space junction field, also used to fit an authored branch endpoint."""
+    s, dist = main.project(x, z)
+    blend = float(smoothstep(np.array((dist - main_half) / 40.0)))
+    return main.at(s)[1] * (1 - blend) + branch_height * blend
+
+
 def align_traffic_height(
     pc: Piece,
     main: BakedLine,
@@ -1279,10 +1582,8 @@ def align_traffic_height(
     headings = np.unwrap(np.arctan2(np.gradient(pc.x), -np.gradient(pc.z)))
 
     def height(x: float, z: float) -> float:
-        s, dist = main.project(x, z)
         # A broad grade transition lets a planar cross-section represent the surface on every turn.
-        blend = float(smoothstep(np.array((dist - main_half) / 40.0)))
-        return main.at(s)[1] * (1 - blend) + branch_height * blend
+        return traffic_height(main, main_half, branch_height, x, z)
 
     for i in range(1, len(pc.x) - 1):
         nx, nz = math.cos(headings[i]), math.sin(headings[i])
@@ -1430,6 +1731,14 @@ def bake_network(
             key = f"{b.tag}-{kind}"
             centre[key] = s
             pieces[b.of].append((r4(s - piece / 2), r4(s + piece / 2), key))
+    chain_labels: set[str] = set()
+    for chain in cfg.trafficChains:
+        for side, end in (("from", chain.from_), ("to", chain.to)):
+            chain_label = f"{chain.id}-{side}-host"
+            chain_labels.add(chain_label)
+            s = lines[end.line].s_at(end.at) + end.shiftM
+            centre[chain_label] = s
+            pieces[end.line].append((r4(s - end.pieceM / 2), r4(s + end.pieceM / 2), chain_label))
     for lid, ps in pieces.items():
         ps.sort()
         for (_, a1, la), (b0, _, lb) in pairwise(ps):
@@ -1464,6 +1773,15 @@ def bake_network(
     order: list[Piece] = []
     by_line: dict[str, list[tuple[Piece, str | None]]] = {}
     for lid, bl in lines.items():
+        br = branch_of_line(cfg, lid)
+        ends = line_ends.get(lid, (None, None))
+        lo = ends[0] if ends[0] is not None else (br.leave.insetM if br else 0)
+        hi = ends[1] if ends[1] is not None else float(bl.p.s[-1]) - (br.join.insetM if br else 0)
+        for sa, sb, chain_label in pieces[lid]:
+            if chain_label in chain_labels and not (lo + PIECE_CLEAR_M <= sa < sb <= hi - PIECE_CLEAR_M):
+                raise ValueError(
+                    f"traffic chain {chain_label}: host cut must be interior to its retained line"
+                )
         cuts = line_cuts(cfg, bl, pieces[lid], line_ends.get(lid, (None, None)))
         ordinary = [sp for sp in cuts.spans if sp[2] is None]
         if len(ordinary) != len(bl.line.roads):
@@ -1578,6 +1896,23 @@ def bake_network(
         s_first, s_last = line_cuts_ends(b, line, staged)
         leave_pt = offset_point(main, centre[f"{b.tag}-leave"] - b.leave.pieceM / 2, b.leave.offsetM)
         land_pt = offset_point(line, s_first, b.leave.toOffsetM)
+        if first is last and b.leave.accessProfileFitM is not None and b.join.accessProfileFitM is not None:
+            length = float(np.sum(np.hypot(np.diff(first.x), np.diff(first.z))))
+            profile_spans = (b.leave.accessProfileFitM, b.join.accessProfileFitM)
+            if any(span <= cfg.sampleSpacingM or span >= length for span in profile_spans):
+                raise ValueError(f"branch {b.id}: accessProfileFitM must leave source profile")
+            if sum(profile_spans) >= length:
+                raise ValueError(f"branch {b.id}: branch profile fits must not overlap")
+        if b.leave.accessProfileFitM is not None:
+            fit_branch_profile(
+                first,
+                main,
+                surface_reach(before.lane_section, True),
+                b.leave.accessProfileFitM,
+                land_pt,
+                True,
+            )
+            land_pt = (land_pt[0], float(first.y[0]), land_pt[2], land_pt[3])
         st_in = staged.get((b.id, "leave"))
         sh_in = (
             st_in.shape
@@ -1592,6 +1927,11 @@ def bake_network(
             )
         )
         a2 = offset_point(line, s_last, b.join.fromOffsetM)
+        if b.join.accessProfileFitM is not None:
+            fit_branch_profile(
+                last, main, surface_reach(after.lane_section, True), b.join.accessProfileFitM, a2, False
+            )
+            a2 = (a2[0], float(last.y[-1]), a2[2], a2[3])
         t2 = offset_point(main, centre[f"{b.tag}-join"] + b.join.pieceM / 2, b.join.offsetM)
         st_out = staged.get((b.id, "join"))
         sh_out = (
@@ -1875,6 +2215,91 @@ def bake_network(
             }
         )
 
+    # Access profiles stay independent. Only their endpoint collars meet host surfaces;
+    # no shared junction height field is applied to the source line or its crossing.
+    for chain in cfg.trafficChains:
+        seq = by_line[chain.line]
+        first, last = seq[0][0], seq[-1][0]
+        require_forward_centre(first, "R1", 0)
+        require_forward_centre(last, "R1", 0)
+        if (
+            first is last
+            and chain.from_.accessProfileFitM is not None
+            and chain.to.accessProfileFitM is not None
+        ):
+            length = float(np.sum(np.hypot(np.diff(first.x), np.diff(first.z))))
+            if chain.from_.accessProfileFitM + chain.to.accessProfileFitM >= length:
+                raise ValueError(f"traffic chain {chain.id}: access profile fits must not overlap")
+        drop = {first.frm, last.to}
+        junctions[:] = [j for j in junctions if j["id"] not in drop]
+        collars: list[Piece] = []
+        for side, spec, access, access_end in (
+            ("from", chain.from_, first, "from"),
+            ("to", chain.to, last, "to"),
+        ):
+            label = f"{chain.id}-{side}-host"
+            host_seq = by_line[spec.line]
+            k = next(i for i, (_, lab) in enumerate(host_seq) if lab == label)
+            junction = by_label[label]
+            # The cut piece is the physical host surface under the collar. Lane direction still
+            # comes from an adjoining ordinary road because a cut inherits the section before it.
+            surface_host = host_seq[k][0]
+            candidates = []
+            for use_before in (True, False):
+                pc = host_seq[k - 1 if use_before else k + 1][0]
+                direction = 1 if use_before == (side == "from") else -1
+                if any(
+                    ln["id"] == spec.lane and ln["kind"] == "drive" and ln["direction"] == direction
+                    for ln in pc.lane_section["lanes"]
+                ):
+                    candidates.append((pc, "to" if use_before else "from", direction))
+            if len(candidates) != 1:
+                raise ValueError(f"traffic chain {chain.id}: host lane must be a directed drive lane")
+            host, end_name, direction = candidates[0]
+            host_end: Literal["from", "to"] = "to" if end_name == "to" else "from"
+            require_drive_centre(host, spec.lane, spec.offsetM, direction)
+            if spec.accessProfileFitM is not None:
+                fit_access_profile(
+                    access,
+                    surface_host,
+                    spec.accessProfileFitM,
+                    spec.accessProfileOffsetM,
+                    side == "from",
+                )
+            f_host = directed_piece_frame(host, host_end, spec.offsetM, direction)
+            f_access = directed_piece_frame(access, "from" if side == "from" else "to", 0, 1)
+            collar = traffic_chain_collar(
+                f"{cfg.id}-{chain.id}-{side}",
+                f_host if side == "from" else f_access,
+                f_access if side == "from" else f_host,
+                spec,
+                cfg.sampleSpacingM,
+                min(host.speed, access.speed),
+                bl_tags((access, None)),
+                surface_host,
+                side == "from",
+            )
+            collar.frm = collar.to = junction["id"]
+            if side == "from":
+                access.frm = junction["id"]
+            else:
+                access.to = junction["id"]
+            host_row = {"road": host.id, "end": host_end, "lane": spec.lane}
+            access_row = {"road": access.id, "end": access_end, "lane": "R1"}
+            junction["ends"].append({"road": access.id, "end": access_end})
+            junction["connectors"].append(
+                {
+                    "id": f"cx-{collar.id}",
+                    "road": collar.id,
+                    "trafficOnly": True,
+                    "from": host_row if side == "from" else access_row,
+                    "to": access_row if side == "from" else host_row,
+                }
+            )
+            collars.append(collar)
+        order += collars
+        branch_roads[chain.branch] += [*(pc.id for pc, _ in seq), *(pc.id for pc in collars)]
+
     # Junction ids in order (the branch lines' own end junctions were folded into their split and
     # merge junctions above).
     rename = {j["id"]: f"{cfg.id}-j{i}" for i, j in enumerate(junctions)}
@@ -2089,7 +2514,13 @@ def route_json(
                 named["aiTake"] = b.aiTake
             if b.traffic is not None:
                 named["traffic"] = b.traffic
-            branches.append({**named, "roads": branch_roads[b.id]})
+            members = branch_roads[b.id]
+            if b.traffic == "road" and b.trafficIngress is not None:
+                # Ambient traffic uses the dedicated entry. Keep the ordinary entry in
+                # allowedRoads and its rider lane rows, split zone and defaults untouched.
+                rider_ingress = f"{cfg.id}-{b.tag}-in"
+                members = [rid for rid in members if rid != rider_ingress]
+            branches.append({**named, "roads": members})
     finish_len = by_id[rt.finishRoad]["lengthM"]
     finish_s = finish_len + rt.finishS if rt.finishS < 0 else rt.finishS
     main = [pc.id for pc, lab in span if lab is None]

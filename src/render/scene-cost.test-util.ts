@@ -11,6 +11,8 @@ import {
 } from 'three';
 import { expect } from 'vitest';
 import budget from '../../tests/perf/budget.json';
+import { packClosure, packSubset, registryFromGlob, type ContentRegistry } from '../content';
+import { trafficHeightM } from '../sim/api';
 import {
   createRoadNetwork,
   loadPnwPlacesLayout,
@@ -75,10 +77,15 @@ const routeFiles = import.meta.glob<Route>('../../packs/*/regions/*/routes/*.jso
   eager: true,
   import: 'default',
 });
-const regionFiles = import.meta.glob<{ id: string; signs?: { id: string; text: string; status?: string }[] }>(
-  '../../packs/*/regions/*/region.json',
-  { eager: true, import: 'default' },
-);
+interface RegionFile {
+  id: string;
+  signs?: { id: string; text: string; status?: string }[];
+}
+const regionFiles = import.meta.glob<RegionFile>('../../packs/*/regions/*/region.json', {
+  eager: true,
+  import: 'default',
+});
+const content = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 // What the renderer loads beside the road (render/index.ts): the backdrop files and the region's scenes.
 const backdropNetworkFiles = import.meta.glob<BackdropNetworkFile>(
   '../../packs/*/assets/backdrop/*/networks/*.json',
@@ -128,6 +135,19 @@ export function track(id: string): { road: RoadNetwork; dressing: RoadDressing; 
     .map(([, r]) => r);
   const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
   return { road: createRoadNetwork({ network, roads }), dressing, pack };
+}
+
+/** The network pack closure's tallest live traffic body, as production presentation supplies it. */
+export function trafficClearanceOf(
+  networkId: string,
+  registry: ContentRegistry = content,
+): number | undefined {
+  const [networkPath] = Object.entries(networkFiles).find(([, n]) => n.id === networkId) ?? [];
+  if (!networkPath) return undefined;
+  const pack = /packs\/([^/]+)\//.exec(networkPath)?.[1] ?? '';
+  const race = packSubset(registry, packClosure(registry, pack));
+  const heights = Object.values(race.trafficTypes).map(trafficHeightM);
+  return heights.length ? Math.max(...heights) : undefined;
 }
 
 async function modelsFor(road: RoadNetwork, dressing: RoadDressing): Promise<SceneryModels> {
@@ -493,10 +513,12 @@ export async function stillSceneOf(
   );
   const floors = bdWater ? waterFloors(bdWater[1]) : [];
   const waterAt = floors.length > 0 ? waterAtOf(floors) : null;
+  const trafficClearanceM = trafficClearanceOf(networkId);
   const rs = buildRoadScene(road, look, dressing, {
     seed,
     models,
     roadsideDensity: 1,
+    ...(trafficClearanceM === undefined ? {} : { trafficClearanceM }),
     ...(waterAt ? { waterAt } : {}),
   });
   const { tropical, tags } = networkTags(road, dressing);

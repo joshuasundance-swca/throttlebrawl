@@ -14,14 +14,29 @@
   },
   "roads": [
     "osm-i5-samish-summit",
+    "osm-pnw-samish-core-exit246-nb-on-to-host",
+    "osm-i5-exit246-south",
     "osm-pnw-samish-lake-samish-leave",
     "osm-i5-lake-samish",
     "osm-pnw-samish-lake-samish-join",
+    "osm-i5-exit242-north",
+    "osm-pnw-samish-exit242-nb-off-core-from-host",
     "osm-i5-nulle-run",
     "osm-samish-north-shore",
+    "osm-pnw-samish-core-exit246-nb-on-from-host",
+    "osm-samish-north-core",
     "osm-samish-east-shore",
+    "osm-pnw-samish-exit242-nb-off-core-to-host",
+    "osm-samish-exit242-sb-on",
+    "osm-samish-exit242-nb-off",
+    "osm-samish-exit246-nb-on",
     "osm-pnw-samish-lake-samish-in",
-    "osm-pnw-samish-lake-samish-out"
+    "osm-pnw-samish-lake-samish-out",
+    "osm-pnw-samish-lake-samish-traffic-in",
+    "osm-pnw-samish-exit242-nb-off-core-from",
+    "osm-pnw-samish-exit242-nb-off-core-to",
+    "osm-pnw-samish-core-exit246-nb-on-from",
+    "osm-pnw-samish-core-exit246-nb-on-to"
   ],
   "junctions": [
     {
@@ -40,12 +55,106 @@
     },
     {
       "id": "osm-pnw-samish-j1",
+      "x": -1197.5419,
+      "y": 164.9224,
+      "z": -2760.7182,
+      "ends": [
+        {
+          "road": "osm-i5-samish-summit",
+          "end": "to"
+        },
+        {
+          "road": "osm-i5-exit246-south",
+          "end": "from"
+        },
+        {
+          "road": "osm-samish-exit246-nb-on",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-to-host-l2",
+          "road": "osm-pnw-samish-core-exit246-nb-on-to-host",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-i5-exit246-south",
+            "end": "from",
+            "lane": "L2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-to-host-l1",
+          "road": "osm-pnw-samish-core-exit246-nb-on-to-host",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-i5-exit246-south",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-to-host-r1",
+          "road": "osm-pnw-samish-core-exit246-nb-on-to-host",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-i5-exit246-south",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-to-host-r2",
+          "road": "osm-pnw-samish-core-exit246-nb-on-to-host",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-i5-exit246-south",
+            "end": "from",
+            "lane": "R2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-to",
+          "road": "osm-pnw-samish-core-exit246-nb-on-to",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-samish-exit246-nb-on",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "L2"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j2",
       "x": -548.9637,
       "y": 155.805,
       "z": -2474.1924,
       "ends": [
         {
-          "road": "osm-i5-samish-summit",
+          "road": "osm-i5-exit246-south",
           "end": "to"
         },
         {
@@ -62,7 +171,7 @@
           "id": "cx-osm-pnw-samish-lake-samish-leave-l2",
           "road": "osm-pnw-samish-lake-samish-leave",
           "from": {
-            "road": "osm-i5-samish-summit",
+            "road": "osm-i5-exit246-south",
             "end": "to",
             "lane": "L2"
           },
@@ -76,7 +185,7 @@
           "id": "cx-osm-pnw-samish-lake-samish-leave-l1",
           "road": "osm-pnw-samish-lake-samish-leave",
           "from": {
-            "road": "osm-i5-samish-summit",
+            "road": "osm-i5-exit246-south",
             "end": "to",
             "lane": "L1"
           },
@@ -90,7 +199,7 @@
           "id": "cx-osm-pnw-samish-lake-samish-leave-r1",
           "road": "osm-pnw-samish-lake-samish-leave",
           "from": {
-            "road": "osm-i5-samish-summit",
+            "road": "osm-i5-exit246-south",
             "end": "to",
             "lane": "R1"
           },
@@ -104,7 +213,7 @@
           "id": "cx-osm-pnw-samish-lake-samish-leave-r2",
           "road": "osm-pnw-samish-lake-samish-leave",
           "from": {
-            "road": "osm-i5-samish-summit",
+            "road": "osm-i5-exit246-south",
             "end": "to",
             "lane": "R2"
           },
@@ -118,7 +227,7 @@
           "id": "cx-osm-pnw-samish-lake-samish-in",
           "road": "osm-pnw-samish-lake-samish-in",
           "from": {
-            "road": "osm-i5-samish-summit",
+            "road": "osm-i5-exit246-south",
             "end": "to",
             "lane": "R2"
           },
@@ -128,17 +237,32 @@
             "lane": "R1"
           },
           "splitZone": {
-            "s0": 1052.0338,
-            "s1": 1102.0338,
+            "s0": 590.0191,
+            "s1": 640.0191,
             "d0": 8.0,
             "d1": 12.5
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-traffic-in",
+          "road": "osm-pnw-samish-lake-samish-traffic-in",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-i5-exit246-south",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-samish-north-shore",
+            "end": "from",
+            "lane": "R1"
           }
         }
       ],
       "control": "none"
     },
     {
-      "id": "osm-pnw-samish-j2",
+      "id": "osm-pnw-samish-j3",
       "x": 1812.6626,
       "y": 98.6927,
       "z": 2043.3113,
@@ -148,11 +272,11 @@
           "end": "to"
         },
         {
-          "road": "osm-i5-nulle-run",
+          "road": "osm-i5-exit242-north",
           "end": "from"
         },
         {
-          "road": "osm-samish-east-shore",
+          "road": "osm-samish-exit242-sb-on",
           "end": "to"
         }
       ],
@@ -166,7 +290,7 @@
             "lane": "L2"
           },
           "to": {
-            "road": "osm-i5-nulle-run",
+            "road": "osm-i5-exit242-north",
             "end": "from",
             "lane": "L2"
           }
@@ -180,7 +304,7 @@
             "lane": "L1"
           },
           "to": {
-            "road": "osm-i5-nulle-run",
+            "road": "osm-i5-exit242-north",
             "end": "from",
             "lane": "L1"
           }
@@ -194,7 +318,7 @@
             "lane": "R1"
           },
           "to": {
-            "road": "osm-i5-nulle-run",
+            "road": "osm-i5-exit242-north",
             "end": "from",
             "lane": "R1"
           }
@@ -208,7 +332,7 @@
             "lane": "R2"
           },
           "to": {
-            "road": "osm-i5-nulle-run",
+            "road": "osm-i5-exit242-north",
             "end": "from",
             "lane": "R2"
           }
@@ -217,12 +341,12 @@
           "id": "cx-osm-pnw-samish-lake-samish-out",
           "road": "osm-pnw-samish-lake-samish-out",
           "from": {
-            "road": "osm-samish-east-shore",
+            "road": "osm-samish-exit242-sb-on",
             "end": "to",
             "lane": "R1"
           },
           "to": {
-            "road": "osm-i5-nulle-run",
+            "road": "osm-i5-exit242-north",
             "end": "from",
             "lane": "R2"
           }
@@ -231,7 +355,101 @@
       "control": "none"
     },
     {
-      "id": "osm-pnw-samish-j3",
+      "id": "osm-pnw-samish-j4",
+      "x": 1879.3654,
+      "y": 92.2682,
+      "z": 2283.2144,
+      "ends": [
+        {
+          "road": "osm-i5-exit242-north",
+          "end": "to"
+        },
+        {
+          "road": "osm-i5-nulle-run",
+          "end": "from"
+        },
+        {
+          "road": "osm-samish-exit242-nb-off",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-from-host-l2",
+          "road": "osm-pnw-samish-exit242-nb-off-core-from-host",
+          "from": {
+            "road": "osm-i5-exit242-north",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "L2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-from-host-l1",
+          "road": "osm-pnw-samish-exit242-nb-off-core-from-host",
+          "from": {
+            "road": "osm-i5-exit242-north",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-from-host-r1",
+          "road": "osm-pnw-samish-exit242-nb-off-core-from-host",
+          "from": {
+            "road": "osm-i5-exit242-north",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-from-host-r2",
+          "road": "osm-pnw-samish-exit242-nb-off-core-from-host",
+          "from": {
+            "road": "osm-i5-exit242-north",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "R2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-from",
+          "road": "osm-pnw-samish-exit242-nb-off-core-from",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-samish-exit242-nb-off",
+            "end": "from",
+            "lane": "R1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j5",
       "x": 2013.9815,
       "y": 81.431,
       "z": 2767.8841,
@@ -245,13 +463,65 @@
       "control": "none"
     },
     {
-      "id": "osm-pnw-samish-j4",
+      "id": "osm-pnw-samish-j6",
+      "x": -509.7455,
+      "y": 153.7401,
+      "z": -2259.7343,
+      "ends": [
+        {
+          "road": "osm-samish-north-shore",
+          "end": "to"
+        },
+        {
+          "road": "osm-samish-north-core",
+          "end": "from"
+        },
+        {
+          "road": "osm-samish-exit246-nb-on",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-from-host-r1",
+          "road": "osm-pnw-samish-core-exit246-nb-on-from-host",
+          "from": {
+            "road": "osm-samish-north-shore",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-samish-north-core",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-core-exit246-nb-on-from",
+          "road": "osm-pnw-samish-core-exit246-nb-on-from",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-samish-north-core",
+            "end": "from",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-samish-exit246-nb-on",
+            "end": "from",
+            "lane": "R1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j7",
       "x": -425.674,
       "y": 102.8695,
       "z": -1178.1703,
       "ends": [
         {
-          "road": "osm-samish-north-shore",
+          "road": "osm-samish-north-core",
           "end": "to"
         },
         {
@@ -261,12 +531,64 @@
       ],
       "connectors": [],
       "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j8",
+      "x": 1651.8666,
+      "y": 96.4912,
+      "z": 1829.9101,
+      "ends": [
+        {
+          "road": "osm-samish-east-shore",
+          "end": "to"
+        },
+        {
+          "road": "osm-samish-exit242-sb-on",
+          "end": "from"
+        },
+        {
+          "road": "osm-samish-exit242-nb-off",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-to-host-r1",
+          "road": "osm-pnw-samish-exit242-nb-off-core-to-host",
+          "from": {
+            "road": "osm-samish-east-shore",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-samish-exit242-sb-on",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-exit242-nb-off-core-to",
+          "road": "osm-pnw-samish-exit242-nb-off-core-to",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-samish-exit242-nb-off",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-samish-east-shore",
+            "end": "to",
+            "lane": "L1"
+          }
+        }
+      ],
+      "control": "none"
     }
   ],
   "provenance": {
     "origin": "gis-pipeline",
     "author": "tools/gis",
-    "createdAt": "2026-10-06",
+    "createdAt": "2026-10-15",
     "tool": {
       "name": "tools/gis/src/tbgis/network.py",
       "version": "0.1.0",
@@ -279,8 +601,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
-        "retrievedAt": "2026-10-06T03:35:56Z",
-        "sha256": "2ace48bb4d9513d82afbab21e8450ed969946426693765363fa618574697f2a7"
+        "retrievedAt": "2026-10-15T23:26:15Z",
+        "sha256": "48308d23e7958678b29330ed6b26d5a941ffcfdf7fe966eca9e526fea95238af"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -288,7 +610,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
-        "retrievedAt": "2026-10-06T03:36:02Z",
+        "retrievedAt": "2026-10-16T01:03:49Z",
         "sha256": "baaa62875f41a7519250c0ca490ca9de911ad289fe104488cbf88250060628be"
       },
       {
@@ -297,15 +619,33 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
-        "retrievedAt": "2026-10-06T03:36:05Z",
+        "retrievedAt": "2026-10-16T01:03:52Z",
         "sha256": "e09ab342b8d9046d8001ec645b6def265c06e00b1e5700a5f46ed99064f568fb"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 73 points in 1 request(s) (lon, lat WGS84, sha256 f86e8e5f82874dcf), bilinear (line exit242-nb-off-core)",
+        "retrievedAt": "2026-10-16T01:03:54Z",
+        "sha256": "b7f409544147fd38d600e66a91a1e339bf1e407f57e627b183261ec72470d747"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 102 points in 1 request(s) (lon, lat WGS84, sha256 7f421af7894ab4b8), bilinear (line core-exit246-nb-on)",
+        "retrievedAt": "2026-10-16T01:03:55Z",
+        "sha256": "5497c14991700167c0ccdf5b73b287285dbe4f8822fb8728227b41f3e8992e26"
       }
     ],
     "modified": true,
-    "modifications": "2 real Interstate 5 and Lake Samish paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 43.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+    "modifications": "4 real Interstate 5 and Lake Samish paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 43.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
   },
   "meta": {
     "status": "live",
-    "notes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): Interstate 5 southbound over the Chuckanut Mountains, four lanes and a grass median, and Lake Samish's north and east shore roads, which leave it at exit 246 and rejoin it at the Nulle Road on-ramp (exit 242). Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure)."
+    "notes": "Interstate 5 southbound by Lake Samish, with the original rider shore choice and dedicated northbound access via Nulle Road and the Samish Way bridge. Source paths use OpenStreetMap and USGS bare-earth elevation; bridge decks, lanes, junction pieces and endpoint collars are synthesized for gameplay. Traffic-only access endpoint profiles adapt the bare-earth samples to their modeled host-road decks over authored 160 m spans; the Exit 246 shore endpoint adds 0.62 m to align the modeled crossing surface. The rider branch's first 80 m and last 120 m likewise adapt their game elevation and tangent grade to the highway junctions' shared surfaces, returning to the sampled source profiles outside those spans. Southbound ramp tails retain their forward lane; the shore core is shared by both directions."
   }
 }

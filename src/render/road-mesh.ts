@@ -28,8 +28,12 @@ import {
 import {
   chooseSetPieces,
   grassMedianSpan,
+  LAND_COMMON_REACH_DELTA_M,
   LANES_UNDER_Y_M,
+  landIntervalPlan,
+  landWidthChangeOverRoad,
   SEEDED_SET_PIECE_KINDS,
+  terrainProfilePlan,
   type Edge,
   type RoadNetwork,
 } from '../road';
@@ -117,6 +121,8 @@ const BOOST_LIFT_M = 0.045;
 const TRAFFIC_SURFACE_LIFT_M = -0.08;
 /** The road-format limit for connector and receiving surfaces that represent shared asphalt. */
 const SHARED_SURFACE_GAP_M = 0.15; // ROAD_LINT.shortcutHeightM in road/validate.ts.
+/** Flat surfaces closer than this flicker; the existing junction sweep protects this gap. */
+const FLAT_FLICKER_M = 0.03;
 
 export interface BarrierSpan {
   s0: number;
@@ -811,6 +817,12 @@ export interface RoadSceneOptions {
    * of the road; with none, the lake's land is the plateau it was.
    */
   waterAt?: ((x: number, z: number) => number | null) | undefined;
+  /**
+   * Tallest traffic body allowed in this presentation, m. A cap over a lower road keeps this much
+   * open above that road; absent leaves the old fully open crossing because the renderer cannot
+   * infer a safe vehicle envelope from road geometry alone.
+   */
+  trafficClearanceM?: number | undefined;
 }
 
 /** A road with this many drive lanes (both ways) or more is a highway: the 4-6 lane kind. [default] */
@@ -887,8 +899,8 @@ export const BURIED_M = 1.5;
 const LAND_OVER_ROAD_M = GROUND_OVER_ROAD_M;
 const LAND_ROAD_PROBE_M = 1;
 const LAND_ROAD_MARGIN_M = 0.5;
-/** The skirt keeps one road sample in this many. [default] */
-const SKIRT_EVERY = 3;
+/** Shared skirt profiles stay within 2 cm and span at most a quarter chunk. [default] */
+const SKIRT_SIMPLIFY = { tolM: 0.02, maxSpanM: ROAD_CHUNK_M / 4 };
 /** A far conifer's trunk and the drawn ground it needs round it, as (s, d-outward) offsets, m. */
 const FAR_ROOTS: readonly (readonly [number, number])[] = [
   [0, 0],
@@ -901,8 +913,10 @@ const FAR_ROOTS: readonly (readonly [number, number])[] = [
 const LAND_CAP_FOOT_Y = -0.4;
 /** Two roads' land at a join is bridged only where it stands within this height of each other, m. */
 const JOIN_LAND_DY_M = 0.5;
-/** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
-const LAND_CAP_NARROW_M = 2;
+/** Air above an allowed traffic body before the upper road's retaining face begins, m. */
+const LAND_CAP_CLEARANCE_MARGIN_M = 0.25;
+/** Coarse ground may batch a 256-quad fragment into an adjacent cell; its geometry bounds still cull it. */
+const LAND_SPARSE_CHUNK_TRIANGLES = 512;
 /**
  * A strip that runs on to another road runs on to other land this close past its edge, looked
  * for every SEAM_FILL_STEP_M, and reaches this far into it, m. [default]
@@ -1174,16 +1188,29 @@ export function buildRoadScene(
       const [lo, hi] = outerSpan(o);
       if (!(h.d > lo && h.d < hi)) continue;
       if (Math.abs(road.surfaceHeight(o.index, h.s, h.d) - p.y) > maxHeightGapM) continue;
+      // Raw source heights can agree while the drawn shoulder lies below the traffic fill.
+      // Keep that fill when it is visibly above the receiver; only the higher surface or a
+      // near-coplanar receiver owns it. Ordinary shortcut clipping retains its existing rule.
+      const ownsTraffic = (lift: number) =>
+        !includeShortcut || w(o.index, h.s, h.d, lift).y >= p.y + TRAFFIC_SURFACE_LIFT_M - FLAT_FLICKER_M;
       const l = laneSpans(road.lanesAt(o.index, h.s));
       const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
-      if (h.d >= llo && h.d <= lhi) return true;
+      if (h.d >= llo && h.d <= lhi) {
+        const lift = l.drive ? 0 : SHORTCUT_LIFT_M + (secretEdge(o.index) ? SECRET_LIFT_M : 0);
+        if (ownsTraffic(lift)) return true;
+        continue;
+      }
       // A shortcut omits its whole shoulder on a side where that shoulder yields to an ordinary
       // road. Its raw cross-section cannot own a traffic ribbon there: the traffic fill is what
       // closes the narrow space between the ordinary road and the shortcut lane.
       if (includeShortcut && hasShortcut(o) && underRoadSurface(o, h.s, h.d < llo ? lo : hi, false, Infinity))
         continue;
       // Only the shoulder span actually drawn here can cover the shortcut.
-      if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
+      if (
+        (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) &&
+        ownsTraffic(-0.02)
+      )
+        return true;
     }
     return false;
   };
@@ -1879,24 +1906,17 @@ export function buildRoadScene(
      * Whether land at p would stand over another road's lanes (LAND_ROAD_MARGIN_M wider, and as far past its ends)
      * by more than LAND_OVER_ROAD_M.
      */
-    const overLowerLanes = (p: Point3): boolean => {
+    const lowerLaneTop = (p: Point3): number | null => {
+      let top = -Infinity;
       for (const h of locator.at(p.x, p.z, e.index, LAND_ROAD_MARGIN_M)) {
         const o = road.edges[h.edge];
         if (!o || h.d <= o.dMin - LAND_ROAD_MARGIN_M || h.d >= o.dMax + LAND_ROAD_MARGIN_M) continue;
-        if (p.y - w(o.index, h.s, h.d, 0).y > LAND_OVER_ROAD_M) return true;
+        const y = w(o.index, h.s, h.d, 0).y;
+        if (p.y - y > LAND_OVER_ROAD_M) top = Math.max(top, y);
       }
-      return false;
+      return Number.isFinite(top) ? top : null;
     };
-    /** Whether the line from a to b passes over another road's lanes lower than it (looked for every LAND_ROAD_PROBE_M). */
-    const lineOverLowerLanes = (a: Point3, b: Point3): boolean => {
-      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / LAND_ROAD_PROBE_M));
-      for (let k = 0; k <= n; k++) {
-        const t = k / n;
-        const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
-        if (overLowerLanes(p)) return true;
-      }
-      return false;
-    };
+    const overLowerLanes = (p: Point3): boolean => lowerLaneTop(p) !== null;
     /**
      * Whether a landmark of this side stands beyond the usual strip but within the wide one (playtest 4, run B's
      * check: Old Town's city floor, `WIDE_LAND_M`, would have drowned the cruise ship's berth in ground): the
@@ -1931,24 +1951,27 @@ export function buildRoadScene(
     /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
     const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
     /** The skirt's flat ground as drawn, per side: each row's foot and far edge, and the rows kept. */
-    const flatOf: Record<-1 | 1, { rows: (readonly [Point3, Point3] | null)[]; kept: boolean[] }> = {
-      [-1]: { rows: [], kept: [] },
-      [1]: { rows: [], kept: [] },
+    const flatOf: Record<
+      -1 | 1,
+      { rows: (readonly [Point3, Point3] | null)[]; kept: boolean[]; breakBefore: boolean[] }
+    > = {
+      [-1]: { rows: [], kept: [], breakBefore: [] },
+      [1]: { rows: [], kept: [], breakBefore: [] },
     };
     /**
      * Whether (s, d) stands on the flat ground exactly as drawn (run W-O's skeptic: far conifers
      * stood over the water, where the kept rows' quads, not the per-row widths, end).
      */
     const onFlat = (side: -1 | 1, s: number, d: number): boolean => {
-      const { rows, kept } = flatOf[side];
+      const { rows, kept, breakBefore } = flatOf[side];
       let a = Math.max(0, Math.min(rows.length - 2, Math.floor(s / step)));
       let b = a + 1;
-      while (a > 0 && rows[a] && !kept[a]) a--;
-      while (b < rows.length - 1 && rows[b] && !kept[b]) b++;
+      while (a > 0 && rows[a] && !kept[a] && !breakBefore[a]) a--;
+      while (b < rows.length - 1 && rows[b] && !kept[b] && !breakBefore[b]) b++;
       const ra = rows[a];
       const rb = rows[b];
       if (!ra || !rb) return false;
-      for (let i = a + 1; i < b; i++) if (!rows[i]) return false;
+      for (let i = a + 1; i <= b; i++) if (!rows[i] || breakBefore[i]) return false;
       const p = w(e.index, s, d, 0);
       const [fa, xa] = ra;
       const [fb, xb] = rb;
@@ -2110,8 +2133,37 @@ export function buildRoadScene(
           rows: ss.map((s, i) => [s, reach[i] ?? 0, !!meets[i]] as const),
         });
       const ground = strip('land');
+      /** Longitudinal boundaries exposed when a sharp width change keeps only both rows' common reach. */
+      const commonCaps: (readonly [Point3, Point3])[] = [];
+      /** Narrow rows whose terrain profile ends beside a sharp common-reach transition. */
+      const commonProfileCaps = new Set<number>();
       /** A row is a lake side's with a bank: its land ends at the plateau, a wall and the flat shore. */
       const banked = (i: number) => !Number.isNaN(shore[i] ?? Number.NaN);
+      /**
+       * Whether the wedge omitted by a common-reach join would cover another road's lanes. Ordinary
+       * width changes stay joined; the common join exists only to keep this road's land off a lower one.
+       */
+      const widthChangeOverRoad = (i: number) => {
+        const s0 = ss[i - 1];
+        const s1 = ss[i];
+        const r0 = reach[i - 1] ?? 0;
+        const r1 = reach[i] ?? 0;
+        if (s0 === undefined || s1 === undefined || r0 <= 0 || r1 <= 0) return false;
+        return landWidthChangeOverRoad(s0, s1, r0, r1, LAND_ROAD_PROBE_M, (s, d) =>
+          overLowerLanes(w(e.index, s, side * (outer + d), LAND_TOP_M)),
+        );
+      };
+      /** Adjacent-row topology; bank intervals retain their wall-and-shore join. */
+      const intervals = ss.map((_, i) =>
+        i > 0
+          ? landIntervalPlan(
+              reach[i - 1] ?? 0,
+              reach[i] ?? 0,
+              !banked(i - 1) && !banked(i) && widthChangeOverRoad(i),
+            )
+          : ({ kind: 'absent' } as const),
+      );
+      const commonBreakBefore = intervals.map((plan) => plan.kind === 'common');
       /**
        * A plain row beside a bank: its wall has no height and its shore is the plateau, so the shore's band runs on
        * into it and no gap opens between the two rows' different widths (the plateau's, past the bank's wall).
@@ -2144,11 +2196,38 @@ export function buildRoadScene(
       ss.forEach((_, i) => {
         if (i > 0 && (reach[i] ?? 0) > 0) sceneryLandM += step;
       });
-      // The strip: from the verge to the land's edge, or to the bank's wall where it has one.
-      emit((i, s, r) => [
-        w(e.index, s, side * outer, LAND_TOP_M),
-        banked(i) ? wallTop(s) : w(e.index, s, side * (outer + r), LAND_TOP_M),
-      ]);
+      // The strip: from the verge to the land's edge, or to the bank's wall where it has one. Across
+      // a sharp width change, join only the reach common to both rows. The wider row's existing cap
+      // closes the omitted wedge; a diagonal from its outer corner to the narrow row could cross the
+      // lower road that caused the reach to stop.
+      ground.breakStrip();
+      ss.forEach((s, i) => {
+        const r = reach[i] ?? 0;
+        if (r <= 0) {
+          ground.breakStrip();
+          return;
+        }
+        const interval = intervals[i];
+        if (interval?.kind === 'common') {
+          const common = interval.reachM;
+          const s0 = ss[i - 1] ?? 0;
+          const a0 = w(e.index, s0, side * outer, LAND_TOP_M);
+          const b0 = w(e.index, s0, side * (outer + common), LAND_TOP_M);
+          const a1 = w(e.index, s, side * outer, LAND_TOP_M);
+          const b1 = w(e.index, s, side * (outer + common), LAND_TOP_M);
+          if (side < 0) ground.quad(b0, a0, b1, a1);
+          else ground.quad(a0, b0, a1, b1);
+          commonCaps.push([b0, b1]);
+          commonProfileCaps.add(interval.narrow === 0 ? i - 1 : i);
+        }
+        const pair = [
+          w(e.index, s, side * outer, LAND_TOP_M),
+          banked(i) ? wallTop(s) : w(e.index, s, side * (outer + r), LAND_TOP_M),
+        ] as const;
+        if (side < 0) ground.pair(pair[1], pair[0]);
+        else ground.pair(pair[0], pair[1]);
+      });
+      ground.breakStrip();
       emit((i, s) => (banked(i) || beside(i) ? [wallTop(s), wallFoot(s, i)] : null));
       emit((i, s, r) =>
         banked(i) || beside(i)
@@ -2169,18 +2248,21 @@ export function buildRoadScene(
         const r = reach[i] ?? 0;
         skirts.push(terrain && r > 0 && !meetsOf[side][i] && !wallOf[side][i] ? skirtAt(side, s, r) : null);
       });
-      // The skirt is wide and plain, so it keeps every third sample (and every sample where a run
-      // starts or ends): about half the land's triangles.
-      const run = (rows: (readonly [Point3, Point3] | null)[], thin = true) => {
+      // The skirt's shared feet simplify together; the strip's own edge still keeps every sample.
+      const run = (
+        rows: (readonly [Point3, Point3] | null)[],
+        kept?: readonly boolean[],
+        breakBefore: readonly boolean[] = [],
+      ) => {
         const g = strip('land');
-        const kept = keptRows(rows, thin);
         g.breakStrip();
         for (const [i, row] of rows.entries()) {
+          if (breakBefore[i]) g.breakStrip();
           if (!row) {
             g.breakStrip();
             continue;
           }
-          if (!kept[i]) continue;
+          if (kept && !kept[i]) continue;
           // Pairs in increasing d, so the faces point up (and out, on a slope).
           if (side < 0) g.pair(row[1], row[0]);
           else g.pair(row[0], row[1]);
@@ -2193,40 +2275,46 @@ export function buildRoadScene(
         const y = shoreTop(side, s, r);
         return y === null ? p : { ...p, y };
       };
+      const skirtRows = ss.map((s, i) => {
+        const k = skirts[i];
+        if (!k) return null;
+        const foot = outer + (reach[i] ?? 0) + k.run;
+        return [
+          top(s, reach[i] ?? 0),
+          at(s, foot, GROUND_Y),
+          at(s, foot + k.flat, GROUND_Y),
+          at(s, foot + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y),
+        ] as const;
+      });
       // The slope keeps every third foot but every top: its top edge is the strip's own edge, vertex
       // for vertex. Thinned there too, its chords cut inside a bend's arc and left a sliver open
       // between the strip and the slope (the 1 to 2 px light seam on Twin Peaks, run W-S): each
       // thinned quad is a fan from its two feet to every top between them.
       const g = strip('land');
-      const slope = ss.map((s, i): readonly [Point3, Point3] | null => {
-        const k = skirts[i];
-        const r = reach[i] ?? 0;
-        return k ? [top(s, r), at(s, outer + r + k.run, GROUND_Y)] : null;
-      });
-      const keptSlope = keptRows(slope);
-      for (let a = 0; a < slope.length; a++) {
-        const ra = slope[a];
-        if (!ra || !keptSlope[a]) continue;
-        let b = a + 1;
-        while (b < slope.length && slope[b] && !keptSlope[b]) b++;
-        const rb = slope[b];
-        if (!rb) continue;
-        const mid = Math.floor((a + b) / 2);
+      const skirtPlan = terrainProfilePlan(
+        skirtRows,
+        commonBreakBefore,
+        SKIRT_SIMPLIFY.tolM,
+        SKIRT_SIMPLIFY.maxSpanM,
+      );
+      const keptSlope = skirtPlan.kept;
+      for (const { from: a, to: b, mid } of skirtPlan.fans) {
+        const ra = skirtRows[a]!;
+        const rb = skirtRows[b]!;
         // Faces up (and out), as the strips' pairs in increasing d make them.
         const face = (t0: Point3, t1: Point3, foot: Point3) =>
           side > 0 ? g.tri(t0, foot, t1) : g.tri(t0, t1, foot);
-        for (let j = a; j < b; j++) face(slope[j]![0], slope[j + 1]![0], j < mid ? ra[1] : rb[1]);
-        const tm = slope[mid]![0];
+        for (let j = a; j < b; j++) face(skirtRows[j]![0], skirtRows[j + 1]![0], j < mid ? ra[1] : rb[1]);
+        const tm = skirtRows[mid]![0];
         if (side > 0) g.tri(ra[1], rb[1], tm);
         else g.tri(ra[1], tm, rb[1]);
       }
-      const flatRows = ss.map((s, i): readonly [Point3, Point3] | null => {
+      const flatRows = skirtRows.map((row, i): readonly [Point3, Point3] | null => {
         const k = skirts[i];
-        const foot = outer + (reach[i] ?? 0) + (k?.run ?? 0);
-        return k && k.flat > 0 ? [at(s, foot, GROUND_Y), at(s, foot + k.flat, GROUND_Y)] : null;
+        return row && k && k.flat > 0 ? [row[1], row[2]] : null;
       });
-      flatOf[side] = { rows: flatRows, kept: keptRows(flatRows) };
-      run(flatRows);
+      flatOf[side] = { rows: flatRows, kept: keptSlope, breakBefore: commonBreakBefore };
+      run(flatRows, keptSlope, commonBreakBefore);
       // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one. The
       // two are separate runs: joined, a row with a skirt and the next without one made a sliver
       // from the skirt's far edge back to the strip's (run W-P; the caps below close the step).
@@ -2243,13 +2331,13 @@ export function buildRoadScene(
             const nextToEdge = edgeShelf(i - 1) || edgeShelf(i + 1);
             if (skirted ? !k : !(edgeShelf(i) || nextToEdge)) return null;
             if (!skirted) return [top(s, r), at(s, outer + r + shelfOf(side, i), -0.4)];
-            if (!k) return null;
-            const far = outer + r + k.run + k.flat;
-            return [at(s, far, GROUND_Y), at(s, far + SCENERY_SHELF_M, -0.4)];
+            const row = skirtRows[i];
+            return row ? [row[2], row[3]] : null;
           }),
           // The shelf at the strip's edge hangs from that edge, drawn every row: thinned, its chords
           // left slivers of sky under the strip on the hairpins.
-          skirted,
+          skirted ? keptSlope : undefined,
+          commonBreakBefore,
         );
       }
       // End caps (run W-O's skeptic: "row houses stand on flat land plates that float, with sky and
@@ -2266,23 +2354,94 @@ export function buildRoadScene(
       };
       const caps = strip('land');
       /**
-       * A curtain from each point down under the sea, both faces (it is seen from either side). It leaves out a
-       * stretch whose top runs over another road's lanes below it: a cap across a road's half, where its land
-       * stops for a lower road crossing it, stood 0.7 m into that road's ride column (Switchback Street's end over
-       * the stair alley, the ride-column check of 2026-10-06).
+       * A curtain from each point down under the sea, both faces (it is seen from either side). Over a lower road,
+       * it stops above the active traffic catalog's tallest body plus an air gap. With no catalog it leaves that
+       * stretch open, preserving the safe behavior for direct and legacy callers: a full cap across a road's half
+       * once stood 0.7 m into Switchback Street's ride column (the ride-column check of 2026-10-06).
        */
       const curtain = (pts: readonly Point3[]) => {
-        const open = pts.map((p, i) => i > 0 && lineOverLowerLanes(pts[i - 1]!, p));
-        for (const flip of [false, true]) {
-          caps.breakStrip();
-          for (const [i, p] of pts.entries()) {
-            if (open[i]) caps.breakStrip();
-            const foot = { ...p, y: LAND_CAP_FOOT_Y };
-            if (flip) caps.pair(foot, p);
-            else caps.pair(p, foot);
+        const drawFace = (a: Point3, b: Point3, ay: number, by: number) => {
+          const af = { ...a, y: ay };
+          const bf = { ...b, y: by };
+          if (a.y === ay || b.y === by) {
+            // Where a profile meets its foot, one half of each quad has zero area.
+            if (a.y !== ay) {
+              caps.tri(a, b, af);
+              caps.tri(b, a, af);
+            }
+            if (b.y !== by) {
+              caps.tri(b, bf, af);
+              caps.tri(bf, b, af);
+            }
+          } else {
+            caps.quad(a, b, af, bf);
+            caps.quad(b, a, bf, af);
           }
-          caps.breakStrip();
+        };
+        let rows: (readonly [Point3, Point3])[] = [];
+        const flush = () => {
+          // Coalesce only collinear top-and-foot runs; every clearance step stays at its original height.
+          const kept = keptSamples(rows, 1e-7, SKIRT_SIMPLIFY.maxSpanM);
+          for (let i = 1; i < kept.length; i++) {
+            const [a, af] = rows[kept[i - 1]!]!;
+            const [b, bf] = rows[kept[i]!]!;
+            drawFace(a, b, af.y, bf.y);
+          }
+          rows = [];
+        };
+        const face = (a: Point3, b: Point3, ay: number, by: number) => {
+          const last = rows.at(-1);
+          if (last && (last[0].x !== a.x || last[0].y !== a.y || last[0].z !== a.z || last[1].y !== ay))
+            flush();
+          if (!rows.length) rows.push([a, { ...a, y: ay }]);
+          rows.push([b, { ...b, y: by }]);
+        };
+        const lerp = (a: Point3, b: Point3, t: number): Point3 => ({
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          z: a.z + (b.z - a.z) * t,
+        });
+        for (let i = 1; i < pts.length; i++) {
+          const a = pts[i - 1]!;
+          const b = pts[i]!;
+          const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / LAND_ROAD_PROBE_M));
+          const top = Array.from({ length: n + 1 }, (_, k) => lerp(a, b, k / n));
+          const lower = Array.from({ length: n }, (_, k) => {
+            const values = [
+              lowerLaneTop(top[k]!),
+              lowerLaneTop(lerp(top[k]!, top[k + 1]!, 0.5)),
+              lowerLaneTop(top[k + 1]!),
+            ].filter((v): v is number => v !== null);
+            return values.length ? Math.max(...values) : null;
+          });
+          if (!lower.some((v) => v !== null)) {
+            face(a, b, LAND_CAP_FOOT_Y, LAND_CAP_FOOT_Y);
+            continue;
+          }
+          const clearance = opts.trafficClearanceM;
+          if (!(clearance !== undefined && Number.isFinite(clearance) && clearance > 0)) continue;
+          let clearStart = -1;
+          const flushClear = (end: number) => {
+            if (clearStart < 0) return;
+            face(top[clearStart]!, top[end]!, LAND_CAP_FOOT_Y, LAND_CAP_FOOT_Y);
+            clearStart = -1;
+          };
+          for (let k = 0; k < n; k++) {
+            const floor = lower[k] ?? null;
+            if (floor === null) {
+              if (clearStart < 0) clearStart = k;
+              continue;
+            }
+            flushClear(k);
+            const before = k > 0 ? lower[k - 1] : null;
+            const after = k + 1 < n ? lower[k + 1] : null;
+            const ay = Math.max(floor, before ?? -Infinity) + clearance + LAND_CAP_CLEARANCE_MARGIN_M;
+            const by = Math.max(floor, after ?? -Infinity) + clearance + LAND_CAP_CLEARANCE_MARGIN_M;
+            if (ay < top[k]!.y && by < top[k + 1]!.y) face(top[k]!, top[k + 1]!, ay, by);
+          }
+          flushClear(n);
         }
+        flush();
       };
       /** Row i's land in cross-section, from the verge outward: the strip, then its skirt or shelf. */
       const profileOf = (i: number): Point3[] => profileRows(i).map(([, p]) => p);
@@ -2293,26 +2452,36 @@ export function buildRoadScene(
         const s = ss[i] ?? 0;
         const r = reach[i] ?? 0;
         const k = skirts[i];
+        const skirt = skirtRows[i];
         const profile: (readonly [number, Point3])[] = [[0, top(s, 0)]];
         if (banked(i))
           profile.push([LAKE_BANK_M, wallTop(s)], [LAKE_BANK_M + SEAWALL_SHELF_M, wallFoot(s, i)]);
-        profile.push([r, top(s, r)]);
-        if (k) {
-          profile.push([r + k.run, at(s, outer + r + k.run, GROUND_Y)]);
-          if (k.flat > 0) profile.push([r + k.run + k.flat, at(s, outer + r + k.run + k.flat, GROUND_Y)]);
-          profile.push([
-            r + k.run + k.flat + SCENERY_SHELF_M,
-            at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y),
-          ]);
+        profile.push([r, skirt?.[0] ?? top(s, r)]);
+        if (k && skirt) {
+          profile.push([r + k.run, skirt[1]]);
+          if (k.flat > 0) profile.push([r + k.run + k.flat, skirt[2]]);
+          profile.push([r + k.run + k.flat + SCENERY_SHELF_M, skirt[3]]);
         } else if (li === 2)
           profile.push([r + shelfOf(side, i), at(s, outer + r + shelfOf(side, i), LAND_CAP_FOOT_Y)]);
         return profile;
       };
+      for (const edge of commonCaps) curtain(edge);
+      // The wide row's top begins only after the common-width quad. Its slope still fans toward
+      // the wide row, so the narrow row's terrain cross-section would otherwise end open beside
+      // that fan. Close that exposed profile with the same lower-road-aware curtain as an end cap.
+      for (const i of commonProfileCaps) {
+        const r = reach[i] ?? 0;
+        curtain(
+          profileRows(i)
+            .filter(([d]) => d >= r)
+            .map(([, p]) => p),
+        );
+      }
       /** Closes row i's land past what the neighbouring land (level lj, reach rj) covers. */
       const capAt = (i: number, lj: number, rj: number) => {
         const li = level(i);
         const r = reach[i] ?? 0;
-        if (li === 0 || (lj >= li && rj >= r - LAND_CAP_NARROW_M)) return;
+        if (li === 0 || (lj >= li && rj >= r - LAND_COMMON_REACH_DELTA_M)) return;
         const s = ss[i] ?? 0;
         const [first, ...rest] = profileRows(i);
         const head = lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), first![1]] : rj < r ? [top(s, rj)] : [];
@@ -2585,7 +2754,12 @@ export function buildRoadScene(
       if (inGap(s, 0.5)) continue;
       for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
         const p = w(e.index, s, d, 0);
-        if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
+        if (p.y < ELEVATED_M) continue;
+        const top = p.y - 1;
+        // A support's whole square footprint must miss every lower lane it would cross.
+        // Other roads above the support or below its foot do not obstruct its placement.
+        if (locator.overLowerLanes(p.x, top, p.z, e.index, PYLON_M * Math.SQRT1_2, 0, top + 0.5)) continue;
+        pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: top + 0.5 });
       }
     }
     // A cable-car line: two slot rails down the middle of each travel lane.
@@ -3103,7 +3277,8 @@ export function buildRoadScene(
     const kind = kindOf(layer);
     // Small solid fragments cost a full draw each. Keep fine-detail chunks unchanged because
     // their visibility uses the original cell; solid surfaces use their actual geometry bounds.
-    const chunks = FINE_MESHES.has(`road-${layer}`) ? a.chunks : coalesceSparseChunks(a.chunks, 64);
+    const sparseLimit = layer === 'land' ? LAND_SPARSE_CHUNK_TRIANGLES : 64;
+    const chunks = FINE_MESHES.has(`road-${layer}`) ? a.chunks : coalesceSparseChunks(a.chunks, sparseLimit);
     for (const [key, part] of chunks) {
       if (part.isEmpty) continue;
       triangles += part.triangleCount;
@@ -3457,14 +3632,6 @@ interface SceneryBatch {
 
 const bobEuler = new Euler();
 const bobAt = new Vector3();
-
-/** The rows a thinned skirt strip keeps: every third, and every row where a run starts or ends. */
-function keptRows(rows: readonly (readonly [Point3, Point3] | null)[], thin = true): boolean[] {
-  return rows.map(
-    (row, i) =>
-      !!row && !(thin && i % SKIRT_EVERY !== 0 && i < rows.length - 1 && !!rows[i - 1] && !!rows[i + 1]),
-  );
-}
 
 /** Whether p lies in the triangle abc, seen from above (x and z). */
 function inTriangle(p: Point3, a: Point3, b: Point3, c: Point3): boolean {

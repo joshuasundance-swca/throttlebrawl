@@ -1,14 +1,14 @@
-// The traffic corridor: the chain of road edges traffic lives on, as one straight coordinate `u`.
-// Built once at race start by walking the network's junction links from the route's start edge,
-// both ways, taking at each junction only a road that has drive lanes and no shortcut lane, and
-// preferring the route's own roads (docs/milestones/M1.md, traffic-1 and road-2: "vehicles never
-// route onto shortcut lanes, and take only drive-lane connectors, in both directions").
+// A traffic corridor expresses a chain of road edges as one distance coordinate `u`.
+// The legacy reference corridor is built at race start, preferring route roads with drive lanes
+// and no shortcut lanes. Network traffic also uses short committed corridors through explicitly
+// permitted movements; their lateral offsets and lane identities preserve connector handoffs.
 //
 // Each chain link has an orientation `o`: +1 when u grows with the edge's s, -1 when a junction
 // joined the edge the other way round. A corridor direction `c` (+1 toward growing u) maps to an
 // edge direction `c·o`, and a corridor lateral offset `cd` to an edge offset `cd·o`, so a vehicle
 // crosses any junction without special cases and never loses or doubles distance.
 import type { EdgeLink, RoadNetwork, RoadPos } from '../../road';
+import { lateSteps } from '../late';
 import type { SimConfig } from '../types';
 
 /** Plain data (kept in sim state, so it hashes and serializes). */
@@ -241,9 +241,12 @@ export interface LaneMap {
   u0: number[];
   plus: number[];
   minus: number[];
+  /** Committed corridors only: source rank to receiving rank at the next section/edge. */
+  next?: { plus: number[][]; minus: number[][] };
 }
 
 export function buildLaneMap(road: RoadNetwork, c: Corridor): LaneMap {
+  if (c.dOff !== undefined) return lateSteps().committedLaneMap(road, c);
   const segs: { u0: number; plus: number; minus: number }[] = [];
   c.edges.forEach((edge, i) => {
     const e = road.edges[edge];
@@ -290,6 +293,17 @@ export function laneEndOnMap(m: LaneMap, u: number, dir: number, rank: number, r
   let i = 0;
   while (i + 1 < n && (m.u0[i + 1] ?? Infinity) <= u) i++;
   if ((count[i] ?? 0) <= rank) return 0;
+  if (m.next) {
+    const links = dir === 1 ? m.next.plus : m.next.minus;
+    let currentRank = rank;
+    for (let j = i; j + dir >= 0 && j + dir < n; j += dir) {
+      const at = dir === 1 ? (m.u0[j + 1] ?? 0) - u : u - (m.u0[j] ?? 0);
+      if (at > range) return Infinity;
+      currentRank = links[j]?.[currentRank] ?? -1;
+      if (currentRank < 0) return at;
+    }
+    return Infinity;
+  }
   if (dir === 1) {
     for (let j = i + 1; j < n; j++) {
       const at = (m.u0[j] ?? 0) - u;
@@ -373,11 +387,8 @@ export function lanesAt(road: RoadNetwork, c: Corridor, u: number, dir: number):
       (l) =>
         (l.kind === 'drive' || (c.dOff !== undefined && l.kind === 'shortcut')) && l.direction * o === dir,
     )
-    .map((l) => ({ cd: (l.dCenterM - (c.dOff?.[i] ?? 0)) * o, width: l.widthM }))
-    .sort(
-      (a, b) =>
-        Math.abs(a.cd + (c.dOff?.[i] ?? 0) * o) - Math.abs(b.cd + (c.dOff?.[i] ?? 0) * o) || a.cd - b.cd,
-    );
+    .sort((a, b) => Math.abs(a.dCenterM) - Math.abs(b.dCenterM) || (a.dCenterM - b.dCenterM) * o)
+    .map((l) => ({ cd: (l.dCenterM - (c.dOff?.[i] ?? 0)) * o, width: l.widthM }));
 }
 
 /** Which physical side of the road a coordinate occupies, accounting for connector offsets. */

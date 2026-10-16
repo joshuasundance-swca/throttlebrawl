@@ -37,6 +37,7 @@ import {
   type Object3D,
 } from 'three';
 import type { BakedVerge, RoadNetwork } from '../road';
+import { BRUSH_STEP_M, brushClumpAt, hedged } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
 import {
   type BarrierLook,
@@ -72,8 +73,6 @@ export const VERGE_LIFT_M = -0.045;
 export const VERGE_CHUNK_M = 512;
 /** One fence panel's length along the road: what one smash breaks at the least, m. [default] */
 export const FENCE_SEG_M = 2;
-/** Metres between fern clumps along a `brush` edge. [default] */
-const BRUSH_STEP_M = 3.5;
 /**
  * A hedge panel's length along the band's edge, m [default]: a panel is cut shorter where the edge
  * turns (HEDGE_TURN_RAD) or the bend is tight, so a hedge follows a hairpin panel by panel.
@@ -85,7 +84,6 @@ export const HEDGE_OFF_M = 0.45;
 const HEDGE_TURN_RAD = 0.45;
 /** A hedge panel shorter than this is left out (the fold inside a bend tighter than the hedge is wide), m. */
 const HEDGE_MIN_M = 0.25;
-/** The road's own tags that make a brush edge a hedge. */
 const HEDGE_TAG = 'gardens';
 // The railing's numbers (a panel's length, its stand-off from the lane edge, its draw distance) live with
 // its look in barrier-looks.ts; these re-exports are what the railing's tests read.
@@ -97,7 +95,6 @@ export { RAILING_DRAW_M, RAILING_OUT_M, RAILING_SEG_M };
 const FENCE_CLEAR_M = 0.2;
 const HEDGE_CLEAR_M = 0.4;
 const LOOK_CLEAR_M = 0.3;
-const BRUSH_CLEAR_M = 0.9;
 /** A panel's line is looked along at this many steps, ends included. */
 const KIT_SAMPLES = 4;
 
@@ -702,14 +699,10 @@ export class VergeLayer {
           list.push(panel);
         }
         for (let s = BRUSH_STEP_M / 2; s < e.length; s += BRUSH_STEP_M) {
-          const v = road.vergeAt(e.index, s, name);
-          if (v.widthM < MIN_BAND_M || v.edge !== 'brush' || hedged(e.tags, side, s)) continue;
-          const k = hash(e.index, s, side);
-          const at = road.toWorld(e.index, s + (k - 0.5) * 1.2, v.dOuter + side * (0.25 + k * 0.5), -0.05);
-          const size = 0.75 + hash(e.index, s, side * 3) * 0.6;
-          // A clump's fronds reach about a metre from its middle: none leans over another road's lanes.
-          if (this.onOtherLanes(e.index, at, at, BRUSH_CLEAR_M * size)) continue;
-          q.setFromAxisAngle(up, k * Math.PI * 2);
+          const at = brushClumpAt(road, e.index, s, side);
+          if (!at) continue;
+          const size = at.size;
+          q.setFromAxisAngle(up, at.turn * Math.PI * 2);
           const m = new Matrix4().compose(new Vector3(at.x, at.y, at.z), q, new Vector3(size, size, size));
           this.clumps.push({ x: at.x, z: at.z, m });
         }
@@ -1253,27 +1246,4 @@ export class VergeLayer {
     for (const g of this.geometries) g.dispose();
     for (const m of [this.dust.mesh, this.leaves.mesh, this.boards.mesh, ...this.instanced()]) m.dispose();
   }
-}
-
-/** Whether a road's own tags make its brush edge a hedge at s on a side (a `gardens` tag over it). */
-function hedged(
-  tags: readonly { s0: number; s1: number; side?: string; tag: string }[],
-  side: Side,
-  s: number,
-): boolean {
-  return tags.some(
-    (t) =>
-      t.tag === HEDGE_TAG &&
-      s >= t.s0 &&
-      s <= t.s1 &&
-      (t.side === undefined || t.side === 'both' || t.side === (side < 0 ? 'left' : 'right')),
-  );
-}
-
-/** A stable 0..1 value per (edge, s, side), for the ferns' jitter (the same each build). */
-function hash(edge: number, s: number, side: number): number {
-  let h = (edge * 374761393 + Math.round(s * 10) * 668265263 + side * 2147483647) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  h ^= h >>> 16;
-  return (h >>> 0) / 4294967296;
 }

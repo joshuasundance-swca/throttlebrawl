@@ -32,19 +32,20 @@
 import { Fog, Frustum, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, backdropFilesFor, loadNetworkWater, type BackdropStats } from './backdrop';
-import type {
-  EntitySnapshot,
-  RendererStats,
-  RoadNetwork,
-  SimEvent,
-  SimSnapshot,
-  SimTrafficTypeDef,
+import {
+  trafficHeightM,
+  type EntitySnapshot,
+  type RendererStats,
+  type RoadNetwork,
+  type SimEvent,
+  type SimSnapshot,
+  type SimTrafficTypeDef,
 } from '../sim/api';
 import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
 import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
-import { AirPays } from './air-pays';
-import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
+import type { AirPays } from './air-pays';
+import type { Boards, BoardCatalog, BoardSlot, VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
 import type { EventProps } from './event-props';
 import type { Smashables } from './smashables';
@@ -94,8 +95,9 @@ export type { LookEnv, LookStyle, MaterialKind, MaterialParams } from './look';
 export { MIN_THREAT_DRAW_M, createFlatLook } from './look';
 export type { BarrierSpan, EdgeDressing, FeatureSpan, RoadDressing, TagSpan } from './road-mesh';
 export type { EntityViewCounts, RiderProportions } from './views';
-export type { BoardCatalog, BoardItem, BoardKind, SignStyle, VisibleContent } from './boards';
-export { signStyleOf } from './boards';
+export type { BoardCatalog, BoardItem, BoardKind, VisibleContent } from './boards';
+export type { SignStyle } from './board-style';
+export { signStyleOf } from './board-style';
 export type { FeelCounts } from './effects';
 export type { SpeedLineCounts } from './speed-lines';
 export type { RenderParams } from './tuning';
@@ -391,9 +393,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const camera = new PerspectiveCamera(62, 16 / 9, 0.3, CAMERA_FAR_M);
   const params = defaultRenderParams();
   const views = new EntityViews(look, { ...opts, params }, scope);
-  const boards = new Boards(look);
-  // Air that pays (the pitch deck's #13): the chalk mark and the newspaper.
-  const airPays = new AirPays();
+  let boards: Boards | null = null;
   // The race's moving parts, one lazy chunk off the first-load JavaScript (race-parts.ts: the menu's
   // grid needs none of them). It is fetched as the renderer starts, so it is in long before a race
   // can start (it waits for the base pack's real roads); until then none is drawn.
@@ -403,6 +403,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // - W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
   // - Run W-T: the roadside smashables, standing or in pieces, from the snapshot. The standing ones
   //   share the road events' still batch: one draw call for both (the draw-call headroom).
+  // - Run W-T's landing chalk and newspaper (air-pays.ts).
+  // - The vetoable road signs and billboards (boards.ts), built for the latest road when this arrives.
   let race: {
     effects: FeelEffects;
     speedLines: SpeedLines;
@@ -410,7 +412,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     rainColourOf: (env: LookEnv) => string | null;
     eventProps: EventProps;
     smashables: Smashables;
+    airPays: AirPays;
   } | null = null;
+  /** Newspaper crashes received while the race-parts chunk is pending. */
+  const pendingAirEvents: SimEvent[] = [];
   let raceLoading = false;
   const loadRace = () => {
     if (race || raceLoading) return;
@@ -428,13 +433,20 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (rainEnv) rain.set(m.rainColourOf(rainEnv));
       const eventProps = new m.EventProps(look);
       const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
+      const airPays = new m.AirPays();
+      boards = new m.Boards(look);
+      boards.hide(hiddenRefs);
+      buildBoards();
+      airPays.setStructures(structurePlan);
+      airPays.pushEvents(pendingAirEvents);
+      pendingAirEvents.length = 0;
       views.setEffects(effects);
       camera.add(effects.tint, speedLines.root, rain.root);
-      for (const o of [effects.root, eventProps.root, smashables.root]) {
+      for (const o of [effects.root, eventProps.root, smashables.root, airPays.root, boards.root]) {
         persistent.add(o);
         scene.add(o);
       }
-      race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables };
+      race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables, airPays };
     });
   };
   const noFeel: FeelCounts = { sparks: 0, drops: 0, paper: 0, rings: 0, reactors: 0, tint: 0 };
@@ -442,12 +454,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   /** The last road's look environment: the drizzle's colour comes from it once rain.ts is in. */
   let rainEnv: LookEnv | null = null;
   const backdrop = new Backdrop(scope);
-  const persistent = new Set<Object3D>([views.root, boards.root, airPays.root, camera, backdrop.root]);
+  const persistent = new Set<Object3D>([views.root, camera, backdrop.root]);
   for (const o of persistent) scene.add(o);
   loadRace();
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
+  /** Tallest body in the active traffic catalog; absent until a catalog is supplied. */
+  let trafficClearanceM: number | undefined;
+  const clearanceOf = (defs: readonly SimTrafficTypeDef[]) =>
+    defs.length ? Math.max(...defs.map(trafficHeightM)) : undefined;
   /** The roofs over the current road (roofs.ts): the drizzle stops under them. */
   let roofs: readonly RoofSpan[] = [];
   let sceneSeed = 1;
@@ -462,7 +478,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (plan === structurePlan) return;
     structurePlan = plan;
     views.setStructures(plan);
-    airPays.setStructures(plan);
+    race?.airPays.setStructures(plan);
   };
   /** Whether the race's region names a fog colour: its haze then closes in (render.regionFogFarM). */
   let regionFog = false;
@@ -487,12 +503,20 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let textSurfacesModule: typeof import('./text-surfaces') | null = null;
   let textSurfaces: TextSurfaceLayer | null = null;
   let roadCatalog: BoardCatalog | undefined;
+  const buildBoards = () => {
+    if (roadArgs)
+      boards?.build(
+        roadArgs.road,
+        (id) => roadArgs?.dressing?.[id]?.features as readonly BoardSlot[] | undefined,
+        roadCatalog,
+      );
+  };
   /** The race's time of day: dusk and night light Duval's neon names and its string lights (playtest 4, P4-16). */
   let roadTime: string | undefined;
   /** Whether the roadside layer's name boards (Duval's shop names) are in the text layer yet (they place over the first frames). */
   let roadsideWords = false;
   const visibleContent = (): VisibleContent[] => [
-    ...boards.visibleContent(camera),
+    ...(boards?.visibleContent(camera) ?? []),
     ...(textSurfaces?.visibleContent(camera) ?? []),
   ];
   let trafficIds: string[] = [];
@@ -982,6 +1006,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       seed: sceneSeed,
       models,
       palette,
+      ...(trafficClearanceM === undefined ? {} : { trafficClearanceM }),
       ...(water && water.road === roadArgs.road ? { waterAt: water.at } : {}),
     });
     scene.add(roadScene.group);
@@ -1115,7 +1140,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     race?.effects.resetTransient();
     race?.speedLines.resetTransient();
     race?.rain.resetTransient();
-    airPays.resetTransient();
+    race?.airPays.resetTransient();
+    pendingAirEvents.length = 0;
     verge?.resetTransient();
     rigs?.resetTransient();
     lastFrameAt = -1;
@@ -1126,7 +1152,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     sceneryVisible = 0;
     structurePlan = null;
     views.setStructures(null);
-    airPays.setStructures(null);
+    race?.airPays.setStructures(null);
   };
   const installRoad = (
     road: RoadNetwork,
@@ -1194,7 +1220,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     requestScenes(road);
     requestWater(road);
     requestModels();
-    boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
+    buildBoards();
   };
   return {
     applyPresentation(recipe, options) {
@@ -1207,6 +1233,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       look.select(recipe.look);
       applyQuality(recipe.quality.tier, recipe.quality.scale);
       trafficIds = trafficTypes.map((d) => d.contentId);
+      trafficClearanceM = clearanceOf(trafficTypes);
       views.setTrafficTypes(trafficTypes, true);
       if (rigs) {
         rigs.setPlayerPaint(playerPaint);
@@ -1227,13 +1254,20 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       installRoad(road, env, dressing, catalog);
     },
     setTrafficTypes(defs) {
+      const nextClearance = clearanceOf(defs);
+      const rebuild = nextClearance !== trafficClearanceM;
+      trafficClearanceM = nextClearance;
       views.setTrafficTypes(defs);
       trafficIds = defs.map((d) => d.contentId);
+      if (rebuild) buildRoad();
       requestModels();
     },
     pushEvents(events) {
       views.pushEvents(events);
-      airPays.pushEvents(events);
+      if (race) race.airPays.pushEvents(events);
+      else
+        for (const event of events)
+          if (event.type === 'crash' && event.data['attempt'] === 'newspaper') pendingAirEvents.push(event);
       verge?.pushEvents(events);
       rigs?.pushEvents(events);
     },
@@ -1282,7 +1316,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         race.eventProps.sync(curr, t);
         race.smashables.sync(curr, t);
       } else loadRace();
-      airPays.update(prev, curr, alpha, t);
+      race?.airPays.update(prev, curr, alpha, t);
       // The tier's reach for the still scenery (quality.ts). Boards keep the slider's own: their words
       // are content, and threats are never trimmed (they are not scenery).
       const reach = sceneryReach(params, quality);
@@ -1296,7 +1330,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
-      boards.update(pose.x, pose.z, params.sceneryDrawM);
+      boards?.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
       if (downtown) {
         // The cross traffic moves with the race: it stands still while the race does (paused).
@@ -1396,14 +1430,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pickContentAt(clientX, clientY) {
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
-      return boards.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
+      return boards?.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
     },
     structures: () => structurePlan,
     visibleContent: () => visibleContent(),
     visibleContentRefs: () => visibleContent().map((c) => c.ref),
     hideContent(refs) {
       const list = [...refs];
-      boards.hide(list);
+      boards?.hide(list);
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
       textSurfaces?.hide(list);

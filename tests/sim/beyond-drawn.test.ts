@@ -23,6 +23,7 @@
 // every bluff and bridge tag) is caught at Chuckanut, and "ground at the deck everywhere" over the Golden Gate's and
 // Seven Mile's water.
 import { describe, expect, it } from 'vitest';
+import { Mesh, Raycaster, Vector3, type Object3D } from 'three';
 import type { BackdropNetworkFile } from '../../src/render/backdrop/data';
 import { waterAtOf, waterFloors } from '../../src/render/backdrop/water';
 import { buildRoadScene } from '../../src/render/road-mesh';
@@ -127,6 +128,24 @@ function netOf(id: string): Net {
   const out = { net, road: t.road, config, drawnAt };
   nets.set(key, out);
   return out;
+}
+
+/** A direct Three.js ray against the scene's actual surface meshes, independent of DownIndex. */
+function directDrawnAt(n: Net, x: number, z: number, top: number): { y: number; name: string } | null {
+  const t = track(n.net);
+  const backdrop = Object.entries(backdropFiles).find(
+    ([p]) => packOf(p) === n.net.pack && p.endsWith(`/networks/${n.net.id}.json`),
+  )?.[1];
+  const floors = backdrop ? waterFloors(backdrop) : [];
+  const waterAt = floors.length ? waterAtOf(floors) : undefined;
+  const scene = buildRoadScene(t.road, look, t.dressing, { seed: 1, ...(waterAt ? { waterAt } : {}) });
+  const meshes: Object3D[] = [];
+  scene.group.traverse((o) => {
+    if (o instanceof Mesh && SURFACES.test(o.name)) meshes.push(o);
+  });
+  const hit = new Raycaster(new Vector3(x, top, z), new Vector3(0, -1, 0)).intersectObjects(meshes, false)[0];
+  scene.dispose();
+  return hit ? { y: hit.point.y, name: hit.object.name } : null;
 }
 
 /** The sim's own rule: a rider crossing the edge above what stands there, then `acrossM` past it, just above the deck. */
@@ -277,6 +296,57 @@ const counted = (f: Finding) =>
     .join(', ');
 
 describe('what lies past an edge is what is drawn there (every route network)', () => {
+  it('Tarpon Flats physical ground agrees with both direct and indexed drawn-surface queries', () => {
+    const n = netOf('keys-m1');
+    const edge = n.road.edgeIndex('m1-tarpon-flats');
+    const s = 95;
+    const side = 'left';
+    const across = 4;
+    const verge = n.road.vergeAt(edge, s, side);
+    const p = n.road.toWorld(edge, s, verge.dOuter - across, 0);
+    const deckY = n.road.surfaceHeight(edge, s, verge.dOuter);
+    const top = Math.max(p.y, deckY) + 3;
+    const indexed = n.drawnAt(p.x, p.z, top);
+    const direct = directDrawnAt(n, p.x, p.z, top);
+    const physical = simRule(n)(edge, s, side, across);
+    print(
+      `[beyond-drawn] Tarpon s 95 left +4 m: physical ${typeof physical === 'string' ? physical : `${physical.past} ${(physical.floorY - deckY).toFixed(2)}`}; indexed ${indexed.name} ${indexed.y === null ? 'null' : (indexed.y - deckY).toFixed(2)}; direct ${direct ? `${direct.name} ${(direct.y - deckY).toFixed(2)}` : 'null'}`,
+    );
+
+    expect(indexed.y).not.toBeNull();
+    expect(direct?.name).toBe(indexed.name);
+    expect(direct?.y).toBeCloseTo(indexed.y ?? Number.NaN, 5);
+    expect(physical).toMatchObject({ past: indexed.water ? 'water' : 'ground' });
+    expect((physical as { floorY: number }).floorY).toBeCloseTo(indexed.y ?? Number.NaN, 5);
+  });
+
+  it('keeps an ordinary shoulder and yields an overlapping Samish shoulder exactly where each is drawn', () => {
+    for (const [network, roadId, s, side] of [
+      ['keys-m1', 'm1-tarpon-flats', 39, 'left'],
+      ['osm-pnw-samish', 'osm-samish-exit246-nb-on', 307, 'left'],
+    ] as const) {
+      const n = netOf(network);
+      const edge = n.road.edgeIndex(roadId);
+      const verge = n.road.vergeAt(edge, s, side);
+      const p = n.road.toWorld(edge, s, verge.dOuter - 0.5, 0);
+      const deckY = n.road.surfaceHeight(edge, s, verge.dOuter);
+      const indexed = n.drawnAt(p.x, p.z, Math.max(p.y, deckY) + 3);
+      const direct = directDrawnAt(n, p.x, p.z, Math.max(p.y, deckY) + 3);
+      const physical = simRule(n)(edge, s, side, 0.5);
+      print(
+        `[beyond-drawn] ${roadId} s ${s} ${side} +0.5 m: physical ${typeof physical === 'string' ? physical : `${physical.past} ${(physical.floorY - deckY).toFixed(2)}`}; indexed ${indexed.name} ${indexed.y === null ? 'null' : (indexed.y - deckY).toFixed(2)}; direct ${direct ? `${direct.name} ${(direct.y - deckY).toFixed(2)}` : 'null'}`,
+      );
+      expect(indexed.y, roadId).not.toBeNull();
+      expect(direct?.name, roadId).toBe(indexed.name);
+      expect(direct?.y, roadId).toBeCloseTo(indexed.y ?? Number.NaN, 5);
+      expect(physical, roadId).toMatchObject({ past: indexed.water ? 'water' : 'ground' });
+      expect(
+        Math.abs((physical as { floorY: number }).floorY - (indexed.y ?? Number.NaN)),
+        roadId,
+      ).toBeLessThan(0.05);
+    }
+  });
+
   it('sees the I-5 median as ground when looking across from the Samish shore road', () => {
     const n = netOf('osm-pnw-samish');
     const edge = n.road.edgeIndex('osm-samish-east-shore');

@@ -9,4 +9,5 @@ export { raceStep } from './race/step';
 export { ridersStep } from './riders/step';
 export { trafficStep } from './traffic/step';
 export { populateNetwork } from './traffic/network-population';
+export { committedLaneMap } from './traffic/network';
 export { tumbleStep } from './tumble/step';

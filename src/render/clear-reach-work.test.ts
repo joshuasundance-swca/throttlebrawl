@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, fixtureNetwork, type RoadNetwork } from '../road';
+import { createRoadNetwork, fixtureNetwork, nearestOnEdges, type RoadNetwork } from '../road';
 import { EdgeLocator } from './overlap';
 import { track } from './scene-cost.test-util';
+
+/** Old `osm-samish-east-shore` s 4208 projected from the pre-split committed bake. */
+const ORIGINAL_LOWER_WORLD = { x: 1782.6501, z: 1998.9109 };
 
 /** Original quarter-metre search, retained independently of clearReach's empty-space shortcut. */
 function reference(
@@ -67,12 +70,29 @@ describe('ground clearance search in empty space', () => {
   it('preserves the original clipping on actual lower-road joins, empty bands and both strip directions', () => {
     const { road } = track('osm-pnw-samish');
     const main = road.edgeIndex('osm-i5-lake-samish');
-    const shore = road.edgeIndex('osm-samish-east-shore');
+    const shore = road.edgeIndex('osm-samish-exit242-sb-on');
+    // The shore host was split. Anchor the regression at its unchanged I-5 world site and find the
+    // station on the new southbound tail, rather than carrying the old east-shore local station over.
+    const site = road.toWorld(main, 5358, 12, 0);
+    const lowerAtSite = nearestOnEdges(road, [shore], site.x, site.z);
+    if (!lowerAtSite) throw new Error('no lower road at the I-5 regression site');
+    const under = road.toWorld(shore, lowerAtSite.s, 0, 0);
+    expect(
+      Math.hypot(site.x - under.x, site.z - under.z),
+      'the lower control stays at the same crossing',
+    ).toBeLessThan(6);
+    expect(
+      Math.hypot(ORIGINAL_LOWER_WORLD.x - under.x, ORIGINAL_LOWER_WORLD.z - under.z),
+      'the lower control preserves the pre-split world site',
+    ).toBeLessThan(1);
+    // The access-profile fit now meets the highway deck here. This test's ground band is lifted
+    // 10 cm; it still exceeds the same 5 cm clearance rule used by reference and clearReach.
+    expect(site.y + 0.1 - under.y, 'the control remains below the queried ground band').toBeGreaterThan(0.05);
     const cases = [
       [main, 5358, 10, 30],
       [main, 1500, 10, 30],
-      [shore, 4208, -6, -24],
-      [shore, 4208, -24, -6],
+      [shore, lowerAtSite.s, -6, -24],
+      [shore, lowerAtSite.s, -24, -6],
       [main, 5358, 10, 10],
     ];
     let clipped = 0;

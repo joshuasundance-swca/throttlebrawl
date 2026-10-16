@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Group } from 'three';
 import { createRoadNetwork, fixtureNetwork } from '../road';
-import { canvasFake, deferred } from './presentation.test-util';
+import { canvasFake, deferred, NativeRendererFake } from './presentation.test-util';
 import { createRenderer, type RendererPresentationRecipe } from './index';
 import * as gateModule from './chunk-gate';
 import * as roadModule from './road-mesh';
@@ -10,7 +10,7 @@ import type { ChunkLoader } from './chunk-gate';
 import { EntityViews } from './views';
 import { riderLookOf } from './rider-looks';
 import * as roadApi from '../road';
-import type { SimEvent, SimSnapshot } from '../sim/api';
+import type { SimEvent, SimSnapshot, SimTrafficTypeDef } from '../sim/api';
 
 vi.mock('three', async (original) => {
   const { NativeRendererFake } = await import('./presentation.test-util');
@@ -31,6 +31,15 @@ const recipe = (): RendererPresentationRecipe => ({
   sceneSeed: 9,
   look: 'classic',
   quality: { tier: 'high', scale: 1 },
+});
+const trafficDef = (contentId: string, heightM: number): SimTrafficTypeDef => ({
+  contentId,
+  category: 'truck',
+  lengthM: 7,
+  widthM: 2.5,
+  cruiseMps: 20,
+  hazard: 'big',
+  heightM,
 });
 
 const families = [
@@ -62,7 +71,13 @@ function asyncScene(nestedFamily?: string) {
   const riderArrays: unknown[][] = [];
   const retries: (() => void)[] = [];
   const updates: { name: string; args: unknown[] }[] = [];
-  const layers: { name: string; pending: readonly SimEvent[]; hidden: Set<string> }[] = [];
+  const layers: {
+    name: string;
+    root: Group;
+    pending: readonly SimEvent[];
+    hidden: Set<string>;
+    structures: unknown[];
+  }[] = [];
   const constructors: { name: string; args: unknown[] }[] = [];
   const nested: { name: string; answer: ReturnType<typeof deferred<unknown>>; value: unknown }[] = [];
   const result = (name: string, value: unknown): Promise<unknown> => {
@@ -118,6 +133,7 @@ function asyncScene(nestedFamily?: string) {
       ready = true;
       pending: readonly SimEvent[] = [];
       hidden = new Set<string>();
+      structures: unknown[] = [];
       name = name;
       constructor(...args: unknown[]) {
         constructors.push({ name, args });
@@ -135,6 +151,9 @@ function asyncScene(nestedFamily?: string) {
         return [];
       }
       setFronts() {}
+      setStructures(plan: unknown) {
+        this.structures.push(plan);
+      }
       hide(refs: Iterable<string>) {
         for (const ref of refs) this.hidden.add(ref);
       }
@@ -149,6 +168,15 @@ function asyncScene(nestedFamily?: string) {
       }
       invalidatePresentation() {}
       set() {}
+      build(...args: unknown[]) {
+        updates.push({ name: `${name} build`, args });
+      }
+      visibleContent() {
+        return [];
+      }
+      pick() {
+        return null;
+      }
       fitTint() {}
       resetTransient() {
         this.pending = [];
@@ -178,11 +206,13 @@ function asyncScene(nestedFamily?: string) {
   const modules: Record<string, unknown> = {
     'film pass': { LookPost: layer('film pass') },
     'race parts': {
+      Boards: layer('boards'),
       FeelEffects: layer('effects'),
       SpeedLines: layer('lines'),
       Rain: layer('rain'),
       EventProps: layer('events'),
       Smashables: layer('smashables'),
+      AirPays: layer('air pays'),
       rainColourOf: () => null,
     },
     'rider rigs': { RiderRigs: layer('rider rigs') },
@@ -378,6 +408,80 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('installs late boards for the current road and catalog with pending vetoes, then keeps their root across resets', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const retired = t.calls.filter((call) => call.name === 'race parts').at(-1)!;
+    const catalog = { items: {} };
+    const next = { ...recipe(), boards: catalog };
+    t.renderer.applyPresentation(next, { reset: 'measurement-to-menu' });
+    t.renderer.hideContent(['probe:hidden-before-load']);
+    expect(t.renderer.visibleContent()).toEqual([]);
+    expect(t.renderer.pickContentAt(10, 10)).toBeNull();
+    await t.resolve(retired);
+    expect(t.installed).not.toContain('boards');
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    const boards = t.layers.find((layer) => layer.name === 'boards')!;
+    expect(boards).toBeDefined();
+    expect(boards.hidden.has('probe:hidden-before-load')).toBe(true);
+    expect(t.updates.filter((update) => update.name === 'boards build').at(-1)!.args).toEqual([
+      next.road,
+      expect.any(Function),
+      catalog,
+    ]);
+    const scene = boards.root.parent;
+    expect(scene).not.toBeNull();
+    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
+    expect(boards.root.parent).toBe(scene);
+    expect(t.layers.filter((layer) => layer.name === 'boards')).toEqual([boards]);
+    expect(t.updates.filter((update) => update.name === 'boards build').at(-1)!.args[0]).toBe(t.pick.road);
+    expect(t.updates.filter((update) => update.name === 'boards build').at(-1)!.args[2]).toBeUndefined();
+    expect(boards.hidden.has('probe:hidden-before-load')).toBe(true);
+  });
+
+  it('keeps rendering without boards after chunk failure and installs them through the existing retry', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!, null);
+    const native = NativeRendererFake.instances.at(-1)!;
+    const before = native.draws.length;
+    t.renderer.setRiderLooks([]);
+    t.renderer.render(null, null, 0, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 });
+    expect(native.draws.length).toBe(before + 1);
+    expect(t.installed).not.toContain('boards');
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    expect(t.installed).toContain('boards');
+  });
+
+  it('gives a late race-parts landing layer the current roof plan and its queued newspaper crash', async () => {
+    const t = asyncScene();
+    const plan = {} as NonNullable<ReturnType<typeof roadApi.structuresOf>>;
+    vi.spyOn(roadApi, 'structuresOf').mockReturnValue(plan);
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const snap: SimSnapshot = {
+      tick: 1,
+      entities: [],
+      timeScale: 1,
+      race: { over: false, routeLength: 1, finishOrder: [] },
+    };
+    t.renderer.render(snap, snap, 1, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 });
+    const crash: SimEvent = {
+      tick: 1,
+      type: 'crash',
+      actor: 0,
+      data: { attempt: 'newspaper' },
+    };
+    t.renderer.pushEvents([crash]);
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+
+    const air = t.layers.filter((layer) => layer.name === 'air pays').at(-1)!;
+    expect(air.structures).toEqual([plan]);
+    expect(air.pending).toEqual([crash]);
+    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
+    expect(air.structures).toEqual([plan, null]);
+    expect(air.pending).toEqual([]);
+  });
+
   it('retains warmed modules, veto refs, render tuning and reduce-motion through reset', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
@@ -461,7 +565,7 @@ describe('atomic renderer presentation', () => {
   });
   it('owns both recipe arrays and installs every recipe field with one synchronous road build', async () => {
     const t = asyncScene();
-    const traffic = [...t.pick.trafficTypes];
+    const traffic = [trafficDef('test:short', 2.5), trafficDef('test:tall', 4)];
     const riders = [...t.pick.riderLooks];
     const seen = vi.spyOn(EntityViews.prototype, 'setTrafficTypes');
     const build = vi.mocked(roadModule.buildRoadScene);
@@ -472,6 +576,7 @@ describe('atomic renderer presentation', () => {
     );
     expect(build).toHaveBeenCalledOnce();
     expect(build.mock.calls[0]![0]).toBe(t.pick.road);
+    expect(build.mock.calls[0]![3]).toMatchObject({ trafficClearanceM: 4 });
     expect(seen.mock.calls[0]![0]).not.toBe(traffic);
     expect(t.renderer.scenery().seed).toBe(t.pick.sceneSeed);
     expect(t.renderer.look).toBe(t.pick.look);
@@ -480,6 +585,26 @@ describe('atomic renderer presentation', () => {
     const pending = t.calls.filter((c) => c.name === 'rider rigs').at(-1)!;
     await t.resolve(pending);
     expect(t.riderArrays).toEqual([[]]);
+  });
+  it('rebuilds cap clearance only when a legacy traffic catalog changes its tallest body', () => {
+    const t = asyncScene();
+    const build = vi.mocked(roadModule.buildRoadScene);
+    t.renderer.applyPresentation(
+      { ...t.pick, trafficTypes: [trafficDef('test:tall', 4)] },
+      { reset: 'preserve' },
+    );
+    build.mockClear();
+
+    t.renderer.setTrafficTypes([trafficDef('test:also-tall', 4), trafficDef('test:short', 2.5)]);
+    expect(build).not.toHaveBeenCalled();
+    t.renderer.setTrafficTypes([trafficDef('test:short', 2.5)]);
+    expect(build).toHaveBeenCalledOnce();
+    expect(build.mock.calls[0]![3]).toMatchObject({ trafficClearanceM: 2.5 });
+
+    build.mockClear();
+    t.renderer.setTrafficTypes([]);
+    expect(build).toHaveBeenCalledOnce();
+    expect(build.mock.calls[0]![3]).not.toHaveProperty('trafficClearanceM');
   });
   it('retires prior tokens and accepts quality only for the current receipt', () => {
     vi.stubGlobal('window', { devicePixelRatio: 1 });

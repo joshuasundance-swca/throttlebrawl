@@ -155,8 +155,9 @@ export interface EntitySnapshot {
    * The bike's pitch, radians, nose up positive, from the horizontal (playtest 2, 2026-10-02: air
    * control and flips): the road's slope along the travel direction while grounded, the bike's own
    * attitude in the air. A flip runs on past ±2π (unwrapped) until the landing; render rotates the
-   * bike about its own lateral axis by it. 0 for other kinds. Optional for hand-built snapshots; the
-   * sim fills it for every entity.
+   * bike about its own lateral axis by it. A vehicle follows the road surface along its yawed travel
+   * direction; pedestrians and pickups use 0. Optional for hand-built snapshots; the sim fills it
+   * for every entity.
    */
   pitch?: number;
   /**

@@ -1,0 +1,147 @@
+{
+  "type": "road",
+  "id": "osm-pnw-samish-core-exit246-nb-on-from",
+  "name": "traffic access collar",
+  "realName": "traffic access collar",
+  "network": "osm-pnw-samish",
+  "from": "osm-pnw-samish-j6",
+  "to": "osm-pnw-samish-j6",
+  "lengthM": 87.4561,
+  "sampleSpacingM": 1.9876386363636365,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "R1",
+          "dCenterM": 0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 87.4561,
+      "side": "both",
+      "tag": "forest"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -462.9439, -464.692, -466.4165, -468.0987, -469.7541, -471.4062, -473.0583, -474.7104, -476.3625,
+        -478.0146, -479.6667, -481.3189, -482.971, -484.6231, -486.2752, -487.9273, -489.5794, -491.2315,
+        -492.8836, -494.5357, -496.1878, -497.84, -499.4921, -501.1442, -502.7963, -504.4484, -506.1005,
+        -507.7526, -509.4047, -511.0568, -512.709, -514.3611, -516.0132, -517.6653, -519.3174, -520.9695,
+        -522.6216, -524.2737, -525.9258, -527.578, -529.2301, -530.8847, -532.5607, -534.2705, -535.9995
+      ],
+      "y": [
+        152.2696, 152.3323, 152.394, 152.4557, 152.5168, 152.5775, 152.6377, 152.6974, 152.7564, 152.8143,
+        152.8705, 152.9247, 152.9769, 153.0271, 153.0755, 153.1223, 153.168, 153.2131, 153.2584, 153.3038,
+        153.3504, 153.3977, 153.4447, 153.4914, 153.5377, 153.5838, 153.6296, 153.6752, 153.7206, 153.7658,
+        153.811, 153.856, 153.901, 153.946, 153.991, 154.0361, 154.0812, 154.1265, 154.1719, 154.2175,
+        154.2634, 154.3095, 154.3558, 154.4023, 154.4496
+      ],
+      "z": [
+        -2225.7197, -2226.6657, -2227.6538, -2228.7123, -2229.8125, -2230.9177, -2232.0228, -2233.1279,
+        -2234.233, -2235.3381, -2236.4432, -2237.5483, -2238.6535, -2239.7586, -2240.8637, -2241.9688,
+        -2243.0739, -2244.179, -2245.2842, -2246.3893, -2247.4944, -2248.5995, -2249.7046, -2250.8097,
+        -2251.9148, -2253.02, -2254.1251, -2255.2302, -2256.3353, -2257.4404, -2258.5455, -2259.6506,
+        -2260.7558, -2261.8609, -2262.966, -2264.0711, -2265.1762, -2266.2813, -2267.3865, -2268.4916,
+        -2269.5967, -2270.698, -2271.7664, -2272.7798, -2273.7603
+      ],
+      "kappa": [
+        0.0, 0.012227, 0.020783, 0.012572, 0.0014774, 3.3587e-9, -7.9875e-15, 7.9875e-15, -9.5682e-14,
+        9.5682e-14, -7.9875e-15, 7.9875e-15, 0.0, -1.0367e-13, 1.0367e-13, 0.0, 0.0, 0.0, -7.9875e-15,
+        -8.7694e-14, 9.5682e-14, 0.0, -7.9875e-15, 7.9875e-15, -9.5682e-14, 9.5682e-14, -7.9875e-15,
+        7.9875e-15, 0.0, 6.4011e-14, -1.5696e-14, 1.1166e-13, 0.0, 0.0, 0.0, -1.1166e-13, 1.1166e-13, 0.0,
+        0.0, -2.6454e-9, -0.0011636, -0.0099016, -0.016368, -0.0096304, -0.0
+      ],
+      "grade": [
+        0.031559, 0.031311, 0.031042, 0.030894, 0.030652, 0.030411, 0.030143, 0.029843, 0.029413, 0.028708,
+        0.027786, 0.026779, 0.025757, 0.024789, 0.023943, 0.023278, 0.022842, 0.022733, 0.02281, 0.023134,
+        0.023631, 0.023743, 0.023562, 0.023393, 0.023242, 0.023107, 0.022989, 0.022888, 0.022805, 0.022738,
+        0.022688, 0.022655, 0.022639, 0.02264, 0.022658, 0.022693, 0.022745, 0.022813, 0.022899, 0.023002,
+        0.023122, 0.023258, 0.023364, 0.023582, 0.023767
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-samish.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
+        "retrievedAt": "2026-10-15T23:26:15Z",
+        "sha256": "48308d23e7958678b29330ed6b26d5a941ffcfdf7fe966eca9e526fea95238af"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
+        "retrievedAt": "2026-10-16T01:03:49Z",
+        "sha256": "baaa62875f41a7519250c0ca490ca9de911ad289fe104488cbf88250060628be"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
+        "retrievedAt": "2026-10-16T01:03:52Z",
+        "sha256": "e09ab342b8d9046d8001ec645b6def265c06e00b1e5700a5f46ed99064f568fb"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 73 points in 1 request(s) (lon, lat WGS84, sha256 f86e8e5f82874dcf), bilinear (line exit242-nb-off-core)",
+        "retrievedAt": "2026-10-16T01:03:54Z",
+        "sha256": "b7f409544147fd38d600e66a91a1e339bf1e407f57e627b183261ec72470d747"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 102 points in 1 request(s) (lon, lat WGS84, sha256 7f421af7894ab4b8), bilinear (line core-exit246-nb-on)",
+        "retrievedAt": "2026-10-16T01:03:55Z",
+        "sha256": "5497c14991700167c0ccdf5b73b287285dbe4f8822fb8728227b41f3e8992e26"
+      }
+    ],
+    "modified": true,
+    "modifications": "4 real Interstate 5 and Lake Samish paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 43.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-samish.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
