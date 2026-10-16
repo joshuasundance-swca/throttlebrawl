@@ -19,3 +19,8 @@ while waiting for that same junction. Whole-body receiving-space checks still ap
 The regression follows one actual vehicle generation across the complete detour in
 each direction. Its three-minute simulation watchdog allows dense queues to clear;
 the old arbitration still fails at that same bound.
+
+Junction claims also respect physical queue order: a rear car cannot reserve the
+junction while stopping the car ahead that blocks its own passage. Other approaches
+retain waiting-time priority, and bodies already crossing can clear. Focused short-
+and long-vehicle checks preserve separation through the released queue.
