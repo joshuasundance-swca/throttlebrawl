@@ -2,6 +2,9 @@
 // whole rider body is one draw call), and an accumulator for merged strips (so the whole road is a
 // handful of draw calls, however many edges the network has).
 import { BoxGeometry, BufferGeometry, Color, Float32BufferAttribute } from 'three';
+import { keptSamples, type Point3Like } from '../road';
+
+export { keptSamples } from '../road';
 
 export interface BoxPart {
   /** Width (x), height (y), depth (z), metres. */
@@ -80,66 +83,7 @@ export function mergeBoxes(parts: readonly BoxPart[]): BufferGeometry {
   return out;
 }
 
-export interface Point3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
-/** Metres from p to the segment a-b, in 3D. */
-function toSegment(p: Point3, a: Point3, b: Point3): number {
-  const ux = b.x - a.x;
-  const uy = b.y - a.y;
-  const uz = b.z - a.z;
-  const len2 = ux * ux + uy * uy + uz * uz;
-  const t =
-    len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * ux + (p.y - a.y) * uy + (p.z - a.z) * uz) / len2)) : 0;
-  return Math.hypot(p.x - (a.x + ux * t), p.y - (a.y + uy * t), p.z - (a.z + uz * t));
-}
-
-/**
- * Playtest 4 run B (mustFix 1: two real routes drew frames over the triangle budget): which samples of a
- * strip (each a row of points across it: a pair, or every edge of a road's surfaces) to keep so that it
- * draws the same surface with fewer triangles. A sample is dropped when each of its points, and those of
- * every sample dropped since the last one kept, lies within `tolM` of the straight line between the same
- * points of the kept samples around it, and `same(i, j)` says sample j is built as sample i is (its
- * colour, which surfaces it has). So a straight, even stretch is one long quad, and a bend, a crest, a
- * change of width or of colour keeps every sample it needs. The first and last samples are always kept,
- * and no kept span is longer than `maxSpanM` (along the first points). [default] numbers are the callers'.
- */
-export function keptSamples(
-  rows: readonly (readonly Point3[])[],
-  tolM: number,
-  maxSpanM: number,
-  same: (i: number, j: number) => boolean = () => true,
-): number[] {
-  const n = rows.length;
-  if (n <= 2) return rows.map((_, i) => i);
-  const kept = [0];
-  let i = 0;
-  while (i < n - 1) {
-    let j = i + 1;
-    // Reach as far as the straight strip from sample i still passes within tolM of every sample skipped.
-    while (j + 1 < n) {
-      const k = j + 1;
-      const ri = rows[i]!;
-      const rk = rows[k]!;
-      if (!same(i, k) || ri.length !== rk.length || !ri[0] || !rk[0]) break;
-      if (Math.hypot(rk[0].x - ri[0].x, rk[0].z - ri[0].z) > maxSpanM) break;
-      let fits = true;
-      for (let m = i + 1; m < k && fits; m++) {
-        const rm = rows[m]!;
-        fits = same(i, m) && rm.length === ri.length;
-        for (let p = 0; p < rm.length && fits; p++) fits = toSegment(rm[p]!, ri[p]!, rk[p]!) <= tolM;
-      }
-      if (!fits) break;
-      j = k;
-    }
-    kept.push(j);
-    i = j;
-  }
-  return kept;
-}
+export type Point3 = Point3Like;
 
 /**
  * Accumulates triangle strips into one geometry. A strip is a run of point pairs; `pair(a, b)`

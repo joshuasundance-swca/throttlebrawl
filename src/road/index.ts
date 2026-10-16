@@ -4,6 +4,19 @@ export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
 export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
 export { grassMedianSpan } from './median';
+export {
+  LAND_COMMON_REACH_DELTA_M,
+  landIntervalPlan,
+  terrainProfilePlan,
+  keptSamples,
+} from './land-topology';
+export type {
+  LandIntervalPlan,
+  TerrainFan,
+  TerrainProfilePlan,
+  TerrainProfileRow,
+  Point3Like,
+} from './land-topology';
 export type { LaneTransition } from './lane-transitions';
 export type {
   AdvanceResult,
