@@ -1,9 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../../src/road';
-import { BARRIER_LOOK_STYLES } from '../../src/render/barrier-looks';
+import {
+  createRoadNetwork,
+  readConnector,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../../src/road';
+import { BARRIER_LOOK_STYLES, barrierLookAt } from '../../src/render/barrier-looks';
 import { sizeOfBoard } from '../../src/render/boards';
 import { createFlatLook } from '../../src/render/look';
+import { EdgeLocator, laneExtentAt } from '../../src/render/overlap';
 import { VergeLayer } from '../../src/render/verge';
 
 // I-5 over the Chuckanut Mountains (playtest 4, P4-19, run C5; the identity sheets' I1): the interstate
@@ -66,8 +73,17 @@ const roads = network.roads.map(baked);
 const road: RoadNetwork = createRoadNetwork({ network, roads: roads as unknown as BakedRoad[] });
 const rangesOf = (r: Road, name: string) =>
   r.tags.filter((t) => t.tag === name && t.side === 'both').map((t) => [t.s0, t.s1]);
-/** Authored fragments and generated through-junction pieces that the bake actually tags as interstate. */
-const INTERSTATE = network.roads.filter((id) => rangesOf(baked(id), 'interstate').length > 0);
+const mainSet = new Set(MAIN);
+/** Generated through pieces whose normalized connector rows join two authored I-5 host fragments. */
+const through = network.junctions.flatMap((junction) =>
+  junction.connectors.flatMap((raw) => {
+    const row = readConnector(raw);
+    return row && mainSet.has(row.from.road) && mainSet.has(row.to.road) ? [row.road] : [];
+  }),
+);
+const expectedSet = new Set([...MAIN, ...through]);
+const EXPECTED_INTERSTATE = network.roads.filter((id) => expectedSet.has(id));
+const ACTUAL_INTERSTATE = network.roads.filter((id) => rangesOf(baked(id), 'interstate').length > 0);
 
 describe('I-5 is an interstate district in the bake config and in the baked roads alike', () => {
   it('lists the interstate tag on every road of the highway, and a deck tag so the bridges keep it', () => {
@@ -85,8 +101,10 @@ describe('I-5 is an interstate district in the bake config and in the baked road
 
   it('covers every forest stretch and bridge deck on the emitted interstate cohort, including host-cut pieces', () => {
     let examined = 0;
-    expect(INTERSTATE).toEqual(expect.arrayContaining(MAIN));
-    for (const id of INTERSTATE) {
+    expect(ACTUAL_INTERSTATE, 'only source hosts and their generated through pieces carry the tag').toEqual(
+      EXPECTED_INTERSTATE,
+    );
+    for (const id of EXPECTED_INTERSTATE) {
       const r = baked(id);
       expect(rangesOf(r, 'interstate').length, id).toBeGreaterThan(0);
       const want = [...rangesOf(r, 'forest'), ...rangesOf(r, 'bridge')].sort(
@@ -96,9 +114,9 @@ describe('I-5 is an interstate district in the bake config and in the baked road
       expect(got, id).toEqual(want);
       examined += got.length;
     }
-    console.log(`[examined] ${INTERSTATE.length} roads, ${examined} interstate runs`);
+    console.log(`[examined] ${EXPECTED_INTERSTATE.length} roads, ${examined} interstate runs`);
     // The shore drives and the branch ramps are not the interstate.
-    for (const id of network.roads.filter((x) => !INTERSTATE.includes(x)))
+    for (const id of network.roads.filter((x) => !expectedSet.has(x)))
       expect(rangesOf(baked(id), 'interstate'), id).toEqual([]);
   });
 
@@ -145,7 +163,7 @@ describe('the interstate district, drawn on the real network', () => {
   const mainEdges = road.edges.filter((e) => e.tags.some((t) => t.tag === 'interstate'));
 
   it('has a paved shoulder wider than the lanes own on both sides of every interstate road, ending hard', () => {
-    expect(mainEdges.map((e) => e.id).sort()).toEqual([...INTERSTATE].sort());
+    expect(mainEdges.map((e) => e.id).sort()).toEqual([...EXPECTED_INTERSTATE].sort());
     for (const e of mainEdges)
       for (const side of ['left', 'right'] as const) {
         const v = road.vergeAt(e.index, e.length / 2, side);
@@ -157,20 +175,60 @@ describe('the interstate district, drawn on the real network', () => {
       }
   });
 
-  it('draws a guard rail along the road and a concrete parapet on each bridge, and nothing of the other looks', () => {
+  it('draws every concrete parapet panel except where its segment crosses another road’s lanes', () => {
     const looks = verge.counts().looks;
     const guard = looks['guardrail']?.panels ?? 0;
     const concrete = looks['concrete']?.panels ?? 0;
     const total = mainEdges.reduce((n, e) => n + e.length, 0);
     const decks = mainEdges.flatMap((e) => e.barriers.map((b) => b.s1 - b.s0));
-    const seg = BARRIER_LOOK_STYLES.concrete.segM;
     expect(Object.keys(looks).sort()).toEqual(['concrete', 'guardrail']);
-    const possibleConcrete = decks.reduce((n, len) => n + 2 * Math.ceil(len / seg - 1e-6), 0);
-    // Every authored bridge keeps its concrete barrier above. The drawn layer leaves individual panels
-    // out where another live lane crosses one, by the same keep-clear rule as every barrier look.
-    expect(concrete).toBeGreaterThan(0);
-    expect(concrete).toBeGreaterThan(0.9 * possibleConcrete);
-    expect(concrete).toBeLessThanOrEqual(possibleConcrete);
+    const points = verge.lookPanelPoints('concrete');
+    const locator = new EdgeLocator(road);
+    const style = BARRIER_LOOK_STYLES.concrete;
+    let drawn = 0;
+    let left = 0;
+    let ghosts = 0;
+    let wrongly = 0;
+    for (const e of mainEdges) {
+      for (const side of [-1, 1] as const) {
+        const name = side < 0 ? 'left' : 'right';
+        const lane = side < 0 ? e.dMin : e.dMax;
+        for (const barrier of e.barriers) {
+          if (barrier.side !== 'both' && barrier.side !== name) continue;
+          const s1 = Math.min(e.length, barrier.s1);
+          for (let s0 = Math.max(0, barrier.s0); s0 < s1 - 1e-6; s0 += style.segM) {
+            expect(barrierLookAt(barrier, e.tags, name, s0), `${e.id} ${name} s ${s0}`).toBe('concrete');
+            const end = Math.min(s1, s0 + style.segM);
+            const d = lane + side * style.outM;
+            const a = road.toWorld(e.index, s0, d, 0);
+            const b = road.toWorld(e.index, end, d, 0);
+            const x = (a.x + b.x) / 2;
+            const z = (a.z + b.z) / 2;
+            const there = points.some((p) => Math.hypot(p.x - x, p.z - z) < 0.01);
+            const crossing = [0, 0.25, 0.5, 0.75, 1].some((t) =>
+              locator.at(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, e.index).some((hit) => {
+                const [lo, hi] = laneExtentAt(road, hit.edge, hit.s);
+                return hit.d > lo - 0.3 && hit.d < hi + 0.3;
+              }),
+            );
+            if (there) {
+              drawn++;
+              if (crossing) ghosts++;
+            } else {
+              left++;
+              if (!crossing) wrongly++;
+            }
+          }
+        }
+      }
+    }
+    expect(drawn, 'the public panel list contains every planned concrete panel').toBe(points.length);
+    expect(drawn, 'the bridges retain concrete parapets away from crossings').toBeGreaterThan(0);
+    expect(left, 'a live-lane crossing exercises the omission rule').toBeGreaterThan(0);
+    expect(ghosts, 'concrete panels drawn through another road’s lanes').toBe(0);
+    expect(wrongly, 'concrete panels omitted without another road under them').toBe(0);
+    expect(concrete).toBe(drawn);
+    console.log(`[examined] concrete parapets: ${drawn} drawn, ${left} omitted over other lanes`);
     // Two rails the whole way, less the decks and the stretches a branch leaves or joins by (the lead-in).
     const possible = (2 * (total - decks.reduce((a, b) => a + b, 0))) / BARRIER_LOOK_STYLES.guardrail.segM;
     console.log(
