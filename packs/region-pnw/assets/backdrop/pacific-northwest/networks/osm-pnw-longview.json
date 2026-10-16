@@ -16,6 +16,197 @@
         [-18000, 18000]
       ],
       "colour": "#566749"
+    },
+    {
+      "id": "longview-authored-mill-horizon",
+      "kind": "skyline",
+      "frame": "local",
+      "centre": [2700, 3450],
+      "radiusM": 600,
+      "count": 0,
+      "heightM": [12, 115],
+      "widthM": [12, 180],
+      "colours": ["#707a73"],
+      "gridDeg": -12,
+      "keepOutM": 800,
+      "towers": [
+        {
+          "at": [2300, 3440],
+          "heightM": 18,
+          "widthM": 220,
+          "depthM": 90,
+          "colour": "#788079",
+          "crown": "slant"
+        },
+        {
+          "at": [2550, 3490],
+          "heightM": 24,
+          "widthM": 170,
+          "depthM": 105,
+          "colour": "#686f69",
+          "crown": "flat"
+        },
+        {
+          "at": [2760, 3480],
+          "heightM": 16,
+          "widthM": 240,
+          "depthM": 100,
+          "colour": "#899087",
+          "crown": "slant"
+        },
+        {
+          "at": [3050, 3460],
+          "heightM": 22,
+          "widthM": 190,
+          "depthM": 105,
+          "colour": "#707970",
+          "crown": "flat"
+        },
+        {
+          "at": [2500, 3590],
+          "heightM": 110,
+          "widthM": 14,
+          "depthM": 14,
+          "colour": "#8c9188",
+          "crown": "flat"
+        },
+        {
+          "at": [2560, 3590],
+          "heightM": 92,
+          "widthM": 12,
+          "depthM": 12,
+          "colour": "#8c9188",
+          "crown": "flat"
+        },
+        {
+          "at": [2900, 3550],
+          "heightM": 64,
+          "widthM": 28,
+          "depthM": 30,
+          "colour": "#a5a99d",
+          "crown": "flat"
+        },
+        {
+          "at": [2950, 3550],
+          "heightM": 64,
+          "widthM": 28,
+          "depthM": 30,
+          "colour": "#959e94",
+          "crown": "flat"
+        }
+      ],
+      "networks": ["osm-pnw-longview"]
+    },
+    {
+      "id": "longview-authored-civic-horizon",
+      "kind": "skyline",
+      "frame": "local",
+      "centre": [3300, -1100],
+      "radiusM": 400,
+      "count": 0,
+      "heightM": [12, 42],
+      "widthM": [30, 160],
+      "colours": ["#8e7764"],
+      "gridDeg": -12,
+      "keepOutM": 800,
+      "towers": [
+        {
+          "at": [3140, -1100],
+          "heightM": 16,
+          "widthM": 140,
+          "depthM": 55,
+          "colour": "#917b68",
+          "crown": "slant"
+        },
+        {
+          "at": [3290, -1120],
+          "heightM": 20,
+          "widthM": 150,
+          "depthM": 60,
+          "colour": "#967d69",
+          "crown": "slant"
+        },
+        {
+          "at": [3290, -1120],
+          "heightM": 42,
+          "widthM": 32,
+          "depthM": 32,
+          "colour": "#c0b9a3",
+          "crown": "pyramid"
+        },
+        {
+          "at": [3470, -1100],
+          "heightM": 18,
+          "widthM": 150,
+          "depthM": 55,
+          "colour": "#887565",
+          "crown": "slant"
+        },
+        {
+          "at": [3630, -1190],
+          "heightM": 30,
+          "widthM": 55,
+          "depthM": 40,
+          "colour": "#ad9e83",
+          "crown": "stepped"
+        }
+      ],
+      "networks": ["osm-pnw-longview"]
+    },
+    {
+      "id": "longview-authored-north-woods",
+      "path": [
+        [-6500, -5600, 300],
+        [-2500, -5000, 420],
+        [1800, -5200, 350],
+        [5800, -4900, 440],
+        [10500, -5600, 320]
+      ],
+      "heightM": [160, 440],
+      "colour": "#3d5645",
+      "kind": "ridge",
+      "frame": "local",
+      "profile": "rolling",
+      "clearcuts": 0.12,
+      "clearcutColour": "#85836b",
+      "keepOutM": 800,
+      "networks": ["osm-pnw-longview"]
+    },
+    {
+      "id": "longview-authored-west-woods",
+      "path": [
+        [-4800, -5200, 400],
+        [-4700, -1000, 480],
+        [-4800, 2500, 400],
+        [-4800, 6000, 350]
+      ],
+      "heightM": [220, 480],
+      "colour": "#435b49",
+      "kind": "ridge",
+      "frame": "local",
+      "profile": "rolling",
+      "clearcuts": 0.12,
+      "clearcutColour": "#85836b",
+      "keepOutM": 800,
+      "networks": ["osm-pnw-longview"]
+    },
+    {
+      "id": "longview-authored-south-woods",
+      "path": [
+        [-6000, 7300, 230],
+        [-1600, 6700, 300],
+        [3200, 6900, 250],
+        [8000, 7300, 330]
+      ],
+      "heightM": [140, 330],
+      "colour": "#4d6252",
+      "kind": "ridge",
+      "frame": "local",
+      "profile": "rolling",
+      "clearcuts": 0.12,
+      "clearcutColour": "#85836b",
+      "keepOutM": 800,
+      "networks": ["osm-pnw-longview"]
     }
   ]
 }
