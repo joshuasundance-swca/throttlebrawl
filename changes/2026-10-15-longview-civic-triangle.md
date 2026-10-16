@@ -8,6 +8,8 @@ Hudson Street and 20th Avenue offer a longer grid detour, with a boost pad after
 corner. Both meet again before the bridge and the northbound 30th Avenue finish.
 The detour has ordinary traffic in both directions, and rivals can choose it too.
 The pad stays fixed after the detour corner.
+The six-metre rider turns rejoin the correct carriageway, including the edge of
+the riding line, rather than dropping an outside rider deep into oncoming traffic.
 
 The streets use OpenStreetMap alignment and new USGS terrain samples. Corner easing,
 lane widths, generous soft margins and the bridge guardrails are game adaptations.

@@ -133,7 +133,7 @@
       "marked": true,
       "sign": "HUDSON / 20TH: LONGER GRID ROUTE. WASHINGTON: DIAGONAL.",
       "aiTake": 0.45,
-      "connectorWidthM": 8,
+      "connectorWidthM": 6,
       "minRadiusM": 42.5,
       "leave": {
         "at": { "lat": 46.1378867, "lon": -122.9417341 },
