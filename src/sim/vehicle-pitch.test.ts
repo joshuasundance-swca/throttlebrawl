@@ -7,9 +7,14 @@ import { addMover } from './world';
 function scene(grade: number, bank: number) {
   const spec = [{ id: 'a', lengthM: 3000, kappa: 0, grade }] as const;
   const baked = fixtureNetwork(spec);
-  for (const road of baked.roads)
-    road.samples.data['bankRad'] = road.samples.data['bankRad']!.map(() => bank);
-  const config = { ...testConfig({ edges: spec }), road: createRoadNetwork(baked) };
+  const roads = baked.roads.map((road) => ({
+    ...road,
+    samples: {
+      ...road.samples,
+      data: { ...road.samples.data, bankRad: road.samples.data['bankRad']!.map(() => bank) },
+    },
+  }));
+  const config = { ...testConfig({ edges: spec }), road: createRoadNetwork({ ...baked, roads }) };
   return { config, ...createSimWithWorld(config) };
 }
 

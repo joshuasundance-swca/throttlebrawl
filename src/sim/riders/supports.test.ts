@@ -439,11 +439,11 @@ describe('riding it', () => {
       expect(supportKeyOf(sc.world, sc.rider.id)).toBe(`v:${vid}`);
       const riderY = sc.config.road.surfaceHeight(0, sc.rider.pos.s, sc.rider.pos.d) + sc.rider.h;
       const semiY = sc.config.road.surfaceHeight(0, semi!.pos.s, semi!.pos.d);
-      const tiltedRoofY = semiY + SEMI.heightM + grade * (sc.rider.pos.s - semi!.pos.s);
+      const tiltedRoofY = semiY + SEMI.heightM! + grade * (sc.rider.pos.s - semi!.pos.s);
       greatestRoofError = Math.max(greatestRoofError, Math.abs(riderY - tiltedRoofY));
     }
     console.log(`[examined] pitched-road semi roof: max support/roof-plane error ${greatestRoofError} m`);
-    expect(sc.rider.h).toBeCloseTo(SEMI.heightM, 6);
+    expect(sc.rider.h).toBeCloseTo(SEMI.heightM!, 6);
     expect(greatestRoofError).toBeLessThan(1e-6);
   });
 
