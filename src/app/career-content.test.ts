@@ -5,8 +5,8 @@
 // the maps, the events, the shop, and the rules' path from the first race to the teaser and free
 // play. The bot's own races are tests/sim/career-headless-*.test.ts.
 import { describe, expect, it } from 'vitest';
-import { buildSimConfig, regionChoices, streamForRoute } from '../../src/app';
-import { rideLock } from '../../src/app/career-flow';
+import { buildSimConfig, regionChoices, streamForRoute } from './index';
+import { rideLock } from './career-flow';
 import {
   bare,
   bestOpenRank,
@@ -26,10 +26,15 @@ import {
   startCareer,
   suggestedNode,
   type CareerDef,
-} from '../../src/career';
-import { packOf } from '../../src/content';
-import { DEFAULT_PROFILE, type Profile } from '../../src/save';
-import { REG } from './career-harness';
+} from '../career';
+import { packOf, registryFromGlob } from '../content';
+import { DEFAULT_PROFILE, type Profile } from '../save';
+
+// This contract builds configurations and settles results; it never steps a simulation.
+// Keep it in quick checks, independently of the headless career's bot-driving harness.
+const REG = registryFromGlob(
+  import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
+);
 
 const DEFS = careerDefs(REG);
 const KINDS = ['classic-race', 'takedown-hunt', 'cop-escape', 'grudge-match'];

@@ -372,7 +372,7 @@ export const networksOf = (pack: string): string[] =>
  * check rode under Bridge City's grass). No part is skipped by name.
  */
 export const GROUND =
-  /^(road-(road|shoulder|land|deck|marking|markingCenter|splitMark|splitZone|boostPad|shortcut|water)|verge-band)$/;
+  /^(road-(road|shoulder|land|median|deck|marking|markingCenter|splitMark|splitZone|boostPad|shortcut|water)|verge-band)$/;
 /**
  * The ground rule's height, m [default]: a kerb's. Paint over a crest's chord stands up to 0.13 m over the
  * curved asphalt; the grass the live check rode under on Bridge City's morrison-out stood 0.14 to 1.07 m over it

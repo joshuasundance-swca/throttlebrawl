@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
   lintRoadNetwork,
+  readConnector,
   type BakedNetwork,
   type BakedRoad,
   type BakedRoute,
@@ -120,12 +121,34 @@ describe('the region packs carry the real roads under ODbL', () => {
         expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
         const sourcePath = `tools/gis/networks/${id}.json`;
         const source = (existsSync(sourcePath) ? JSON.parse(readFileSync(sourcePath, 'utf8')) : {}) as {
+          lines?: {
+            roads: { id: string }[];
+            crossSection?: { laneWidthM?: number };
+            roadLanes?: Record<string, { laneWidthM?: number }>;
+          }[];
           branches?: {
             label: string;
             trafficIngress?: { widthM: number };
             trafficReverse?: Record<'leave' | 'join', { widthM: number }>;
           }[];
         };
+        // Source cross-sections are the independent width contract. A per-road override replaces
+        // the line section, as the compiler does; omitted laneWidthM keeps the source default 4 m.
+        const authoredWidths = new Map(
+          (source.lines ?? []).flatMap((line) =>
+            line.roads.map(
+              (r) => [r.id, (line.roadLanes?.[r.id] ?? line.crossSection)?.laneWidthM ?? 4] as const,
+            ),
+          ),
+        );
+        const connectorSources = new Map(
+          network.junctions.flatMap((j) =>
+            j.connectors.flatMap((raw) => {
+              const row = readConnector(raw);
+              return row ? [[row.road, row.from.road] as const] : [];
+            }),
+          ),
+        );
         const trafficMovements = new Map<string, { widthM: number; direction: 1 | -1 }>(
           (source.branches ?? []).flatMap((b) => [
             ...(b.trafficIngress
@@ -148,15 +171,19 @@ describe('the region packs carry the real roads under ODbL', () => {
             ),
           ]),
         );
-        // The hand-made roads' lanes (4 m since playtest 1), so weaving feels the same: one to three
-        // each way (the network bakes' highways have two; the Golden Gate's deck has three), and a
-        // junction's turn-off and rejoin carry one shortcut lane instead, so traffic never takes them.
-        // A one-way street is the exception (playtest 3, T9.3): Lombard's crooked block is one
-        // forward lane and nothing else, so its 5 m hairpins pass the width rule.
+        // Ordinary roads retain their authored widths (4 m by default), with one to three lanes
+        // each way (the network bakes' highways have two; the Golden Gate's deck has three).
+        // Rider turn-offs can use shortcut lanes; authored traffic movements have their own widths
+        // and directions. A one-way street carries one forward lane, including narrow park roads.
         for (const r of roads) {
           const lanes = r.laneSections[0]?.lanes ?? [];
           const drive = lanes.filter((l) => l.kind === 'drive');
-          for (const l of drive) expect(l.widthM, r.id).toBe(trafficMovements.get(r.id)?.widthM ?? 4);
+          const width =
+            trafficMovements.get(r.id)?.widthM ??
+            authoredWidths.get(r.id) ??
+            authoredWidths.get(connectorSources.get(r.id) ?? '') ??
+            4;
+          for (const l of drive) expect(l.widthM, r.id).toBe(width);
           const each = drive.filter((l) => l.direction === 1).length;
           if (drive.length === 0)
             expect(

@@ -8,7 +8,7 @@
 // of that bike's top speed, `raceLimitS`, so a long route or a slow bike gets longer); the cash ledger
 // never goes below $0; the grudges a race leaves are the next race's SimConfig.grudges; the history
 // keeps every race. The rules' own path from the first race to the teaser and free play, with
-// every race won, is tests/sim/career-content.test.ts: the dev bot is a fighter, not a racer (it
+// every race won, is src/app/career-content.test.ts: the dev bot is a fighter, not a racer (it
 // averages about 28 to 33 m/s against rival paces of 32 to 46), so it wins hunts, escapes and
 // knockdown grudges and loses most races to the line; its real record is printed.
 import { expect } from 'vitest';

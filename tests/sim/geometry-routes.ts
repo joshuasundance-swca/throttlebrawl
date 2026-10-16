@@ -147,7 +147,7 @@ export const SPREAD_SEEDS: readonly number[] = Array.from(
 
 /** Every mesh a rider could see as the ground or the sea, as road-mesh.ts names them. */
 export const SURFACES =
-  /^road-(land|water|road|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)/;
+  /^road-(land|water|road|median|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)/;
 
 const CELL_M = 8;
 const cellKey = (cx: number, cz: number) => (cx + 0x8000) * 0x10000 + (cz + 0x8000);

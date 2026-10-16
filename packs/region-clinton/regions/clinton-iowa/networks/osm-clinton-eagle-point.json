@@ -1,0 +1,118 @@
+{
+  "type": "road-network",
+  "id": "osm-clinton-eagle-point",
+  "name": "Eagle Point South and Central Loops (OSM network bake)",
+  "region": "clinton-iowa",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 41.897,
+    "originLonDeg": -90.177,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": ["osm-clinton-eagle-entry", "osm-clinton-eagle-south-loop", "osm-clinton-eagle-central-loop"],
+  "junctions": [
+    {
+      "id": "osm-clinton-eagle-point-j0",
+      "x": -253.5478,
+      "y": 230.0029,
+      "z": 171.6006,
+      "ends": [
+        {
+          "road": "osm-clinton-eagle-entry",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-eagle-point-j1",
+      "x": 34.7404,
+      "y": 232.0709,
+      "z": 134.2378,
+      "ends": [
+        {
+          "road": "osm-clinton-eagle-entry",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-eagle-south-loop",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-eagle-point-j2",
+      "x": 69.0327,
+      "y": 226.8584,
+      "z": 89.5627,
+      "ends": [
+        {
+          "road": "osm-clinton-eagle-south-loop",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-eagle-central-loop",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-eagle-point-j3",
+      "x": 7.0336,
+      "y": 231.0219,
+      "z": -89.4924,
+      "ends": [
+        {
+          "road": "osm-clinton-eagle-central-loop",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-clinton-eagle-point.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:57Z",
+        "sha256": "60dd79a1d5ed17064f8acab989132d8bfd3d4fcb30b4ee809456b1ee202466a1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 190 points in 1 request(s) (lon, lat WGS84, sha256 2611afdd90dca649), bilinear (line park)",
+        "retrievedAt": "2026-10-15T22:01:12Z",
+        "sha256": "79f3f59ef84410e80a36c347248db9a0d0c344a7e7d66b7266a5511517a8f0ec"
+      }
+    ],
+    "modified": true,
+    "modifications": "1 real Eagle Point Park entry, South Loop and Central Loop paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.0 m, spread back along each line), resampled at 1.5 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "One traversal of Eagle Point Park entry, South Loop and Central Loop, ending before the lodge junction. OSM line and actual USGS terrain; main approach two-way, loops forward-only following the city road-map arrows. No North Loop, pedestrian bridge, alternate or repeated-edge lap. Widths are arcade adaptations, not surveyed: entry two 3 m lanes plus 1.5 m shoulders each side; loops one 3 m lane; 0.5 m soft grass verges. The 8.94 m/s traffic pace and paved-shoulder patrol marker are gameplay choices, not surveyed signs or a real parking lot. No claim about current on-site motorcycle access or exact retaining-wall positions."
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "network": "osm-clinton-eagle-point",
+  "lines": {
+    "park": {
+      "lengthM": 1883.6,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 1883.6,
+        "game_length_m": 1883.6,
+        "corners": 19,
+        "tightest_radius_m": 8.5,
+        "share_tighter_than_m": {
+          "50": 0.3172,
+          "100": 0.4721,
+          "200": 0.5687
+        },
+        "turn_deg_per_km": 882.4,
+        "elev_min_m": 220.4,
+        "elev_max_m": 232.7,
+        "climb_m": 30.6,
+        "descent_m": 29.6,
+        "max_grade_pct": 11.7,
+        "p95_grade_pct": 8.3,
+        "share_steeper_than_pct": {
+          "8": 0.0541,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 0,
+        "junctions_per_km": 0.0,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 5.7
+      }
+    }
+  },
+  "branches": [],
+  "routes": {
+    "osm-clinton-eagle-point-run": 1813.4
+  },
+  "roads": 3,
+  "junctions": 4
+}
