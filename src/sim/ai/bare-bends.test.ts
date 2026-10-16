@@ -17,8 +17,8 @@ function approach(kappa: number, furniture: boolean) {
     road.tags = furniture ? [{ s0: 0, s1: road.lengthM, side: 'both', tag: 'row-houses' }] : [];
     road.barriers = [];
     road.laneSections[0]!.verges = {
-      left: { widthM: 4, surface: 'paved', edge: 'soft' },
-      right: { widthM: 4, surface: 'paved', edge: 'soft' },
+      left: { widthM: 4, surface: 'shoulder', edge: 'soft' },
+      right: { widthM: 4, surface: 'shoulder', edge: 'soft' },
     };
   }
   const road = createRoadNetwork(bundle);

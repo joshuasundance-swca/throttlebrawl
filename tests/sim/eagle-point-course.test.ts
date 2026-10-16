@@ -292,8 +292,8 @@ describe('Eagle Point: actual narrow-field driving', () => {
         );
       }
       expect(found.result, found.summary).not.toBeNull();
-      if (!found.result?.recording) return;
       const result = found.result;
+      if (!result?.recording) throw new Error('No Eagle Point finish recording');
       expect(result.entryDirections.sort()).toEqual([-1, 1]);
       expect(result.loopTraffic).toBeGreaterThan(0);
       const saved = decodeReplay(JSON.parse(JSON.stringify(encodeReplay(result.recording))) as unknown);
