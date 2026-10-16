@@ -23,6 +23,8 @@ import { timedOrder } from '../tests/sequencer';
 import FileTimes from '../tests/file-times';
 import { meanOverheads, parseLog, runnerSeconds, simRuns } from './timings.mjs';
 
+type PlanOrder = Parameters<typeof planSlices>[0]['order'];
+
 const timings = readTimings() as {
   overhead?: { unit?: number; sim?: number; e2e?: number };
   unit?: Record<string, number>;
@@ -93,7 +95,14 @@ describe('planSlices', () => {
       for (const tier of ['unit', 'sim'] as const) {
         const table = { [tier]: seconds, overhead: { [tier]: 0 } };
         expect(planTier(tier, files, 2, { timings: table, read: () => '' })).toEqual(
-          planSlices({ files, seconds, n: 2, ...TIERS[tier], overhead: 0 }),
+          planSlices({
+            files,
+            seconds,
+            n: 2,
+            ...TIERS[tier],
+            order: TIERS[tier].order as PlanOrder,
+            overhead: 0,
+          }),
         );
       }
     },
@@ -633,6 +642,7 @@ describe('whole jobs against their timeouts', () => {
             seconds: timings.e2e,
             n: 1,
             ...TIERS.e2e,
+            order: TIERS.e2e.order as PlanOrder,
             overhead: timings.overhead?.e2e,
             spread,
             lastExtra: i === plan.length - 1 ? timings.perf : 0,
