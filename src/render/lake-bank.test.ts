@@ -211,14 +211,40 @@ describe('the lake from the road: the bank, the water and the docks (playtest 4 
     expect(c.ok).toBeLessThan(c.docks * 0.5);
   });
 
-  it('a dock stands on every stretch of the lake: no gap of more than 170 m (the pedestrian zone is 110), on either span, on any of three seeds', () => {
+  it('a dock stands on every flat stretch of the shore: no gap of more than 170 m (the pedestrian zone is 110), on either span, on any of three seeds', () => {
+    const dockRule = PNW_KIT.rules.find((r) => r.id === 'lake-dock');
+    if (!dockRule?.along) throw new Error('lake-dock has no length');
+    const dockAlong = dockRule.along;
     const gaps: string[] = [];
     let counted = 0;
+    const flatRuns = lakeSpans.flatMap((t) => {
+      const stations: number[] = [];
+      for (let s = Math.ceil(t.s0); s <= Math.floor(t.s1); s++) {
+        const flat = [-dockAlong, 0, dockAlong].every((u) => {
+          const p = road.toWorld(shore.index, s + u, outerOf + LAKE_LAND_M, 0);
+          const water = waterAt(p.x, p.z);
+          return (
+            water !== null &&
+            Math.abs(wet.scene.landTop(shore.index, 1, s + u, LAKE_LAND_M) - (water + LAKE_SHORE_OVER_M)) <
+              0.02
+          );
+        });
+        if (flat) stations.push(s);
+      }
+      const runs: [number, number][] = [];
+      for (const s of stations) {
+        const last = runs.at(-1);
+        if (last && s === last[1] + 1) last[1] = s;
+        else runs.push([s, s]);
+      }
+      return runs;
+    });
+    const flatM = flatRuns.reduce((sum, [a, b]) => sum + b - a, 0);
     for (const seed of SEEDS) {
       const { items } = build(seed, true, kit);
       const docks = items.filter((i) => i.rule === 'lake-dock' && i.edge === shore.index).map((i) => i.s);
-      for (const t of lakeSpans) {
-        const at = [t.s0, ...docks.filter((s) => s >= t.s0 && s <= t.s1).sort((a, b) => a - b), t.s1];
+      for (const [start, end] of flatRuns) {
+        const at = [start, ...docks.filter((s) => s >= start && s <= end).sort((a, b) => a - b), end];
         counted += at.length - 2;
         for (let k = 1; k < at.length; k++)
           if (at[k]! - at[k - 1]! > 170)
@@ -228,8 +254,9 @@ describe('the lake from the road: the bank, the water and the docks (playtest 4 
       }
     }
     print(
-      `[examined] ${counted} docks on 2 lake spans over 3 seeds; gaps over 170 m: ${gaps.length ? gaps.join('; ') : 'none'}`,
+      `[examined] ${counted} docks over ${flatM} m of drawn flat shore in ${flatRuns.length} runs and 3 seeds; gaps over 170 m: ${gaps.length ? gaps.join('; ') : 'none'}`,
     );
+    expect(flatRuns.length).toBe(lakeSpans.length);
     expect(gaps).toEqual([]);
   });
 

@@ -13,7 +13,7 @@
 //   the water), the cabins wholly on the lake land; the lake's water past every lake side and never under
 //   a lane.
 // The checks build the real baked networks with the real CX6 models, the way the renderer does.
-import { InstancedMesh, Mesh, type BufferGeometry } from 'three';
+import { InstancedMesh, Mesh, Vector3, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -26,6 +26,7 @@ import {
 } from '../road';
 import type { BackdropNetworkFile } from './backdrop/data';
 import { waterAtOf, waterFloors } from './backdrop/water';
+import { GroundTris } from './land-probe.test-util';
 import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type SceneryModels } from './models';
@@ -146,7 +147,13 @@ function retagged(networkId: string, roadId: string, span: BakedTag) {
   return [plain, spanned].map((rs) => {
     const t = track(network, rs);
     const scene = buildRoadScene(t.road, look, t.dressing, { seed: SEED, roadsideDensity: 0 });
-    return { ...t, scene, tris: landTris(scene), edge: t.road.edgeIndex(roadId) };
+    return {
+      ...t,
+      scene,
+      tris: landTris(scene),
+      ground: new GroundTris(scene.group, /^road-land$/),
+      edge: t.road.edgeIndex(roadId),
+    };
   });
 }
 
@@ -156,11 +163,11 @@ function probeSkirt(
   span: BakedTag,
   side: -1 | 1,
   stripM: number,
-): { stations: number; skirted: number; reach: number[]; deep: number } {
-  const { road, scene, tris, edge } = built;
+): { stations: number; skirted: number; reach: number[]; wall: number } {
+  const { road, scene, tris, ground, edge } = built;
   let stations = 0;
   let skirted = 0;
-  let deep = 0;
+  let wall = 0;
   const reach: number[] = [];
   for (let s = span.s0 + 20; s <= span.s1 - 20; s += 20) {
     stations++;
@@ -169,19 +176,21 @@ function probeSkirt(
     const top = road.toWorld(edge, s, 0, 0).y;
     // Ground past the strip at the road's height or down a slope from it: the skirt. (The sea's shelf lies at
     // -0.4 m, under the sea; another road's skirt far below, under a lake's water, is not this side's.)
-    const ground = [4, 12, 30].some((past) => {
+    const skirtGround = [4, 12, 30].some((past) => {
       const p = road.toWorld(edge, s, side * (outer + stripM + past), 0);
       return landAt(tris, p.x, p.z).some((y) => y > top - 15 && y < top + 1);
     });
-    if (ground) skirted++;
-    // The drop: land drawn down to under the sea at the strip's edge.
-    const edgeP = road.toWorld(edge, s, side * (outer + stripM), 0);
-    const foot = tris.some((t) =>
-      [0, 3, 6].some((k) => Math.hypot(t[k]! - edgeP.x, t[k + 2]! - edgeP.z) < 0.3 && (t[k + 1] ?? 0) < -0.3),
-    );
-    if (foot) deep++;
+    if (skirtGround) skirted++;
+    // The drop is a closed wall at the strip's edge. Probe the drawn face halfway down, rather than requiring
+    // one of its tessellation vertices to coincide with this station on a curved road.
+    const fromP = road.toWorld(edge, s, side * (outer + stripM + 1), 0);
+    const toP = road.toWorld(edge, s, side * (outer + stripM - 1), 0);
+    const midY = (top - 0.4) / 2;
+    const from = new Vector3(fromP.x, midY, fromP.z);
+    const to = new Vector3(toP.x, midY, toP.z);
+    if (ground.firstHit(from, new Vector3(to.x - from.x, 0, to.z - from.z), 2.1) !== null) wall++;
   }
-  return { stations, skirted, reach, deep };
+  return { stations, skirted, reach, wall };
 }
 
 describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H1, I3)', () => {
@@ -191,14 +200,15 @@ describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H
     const control = probeSkirt(plain!, span, 1, BLUFF_LAND_M);
     const drop = probeSkirt(bluff!, span, 1, BLUFF_LAND_M);
     print(
-      `[examined] cliffs s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, bluff at ${drop.skirted}; bluff land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, drop to under the sea at ${drop.deep}`,
+      `[examined] cliffs s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, bluff at ${drop.skirted}; bluff land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, closed drop wall at ${drop.wall}`,
     );
     // The probe can see a skirt: the control has one nearly everywhere.
     expect(control.skirted).toBeGreaterThan(control.stations * 0.8);
     expect(Math.min(...control.reach)).toBeGreaterThan(BLUFF_LAND_M);
     expect(drop.skirted).toBe(0);
     for (const r of drop.reach) expect(r).toBeCloseTo(BLUFF_LAND_M, 5);
-    expect(drop.deep).toBe(drop.stations);
+    expect(control.wall).toBe(0);
+    expect(drop.wall).toBe(drop.stations);
     // The other side is untouched.
     for (let s = span.s0; s <= span.s1; s += 50)
       expect(bluff!.scene.landReach(bluff!.edge, -1, s)).toBe(plain!.scene.landReach(plain!.edge, -1, s));
@@ -211,7 +221,7 @@ describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H
     const control = probeSkirt(plain!, span, 1, LAKE_LAND_M);
     const drop = probeSkirt(lake!, span, 1, LAKE_LAND_M);
     print(
-      `[examined] east shore s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, lake at ${drop.skirted}; lake land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, drop at ${drop.deep}`,
+      `[examined] east shore s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, lake at ${drop.skirted}; lake land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, closed drop wall at ${drop.wall}`,
     );
     expect(control.skirted).toBeGreaterThan(control.stations * 0.8);
     expect(drop.skirted).toBe(0);
@@ -220,7 +230,8 @@ describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H
     expect(drop.reach.filter((r) => Math.abs(r - LAKE_LAND_M) < 1e-6).length).toBeGreaterThan(
       drop.stations * 0.8,
     );
-    expect(drop.deep).toBeGreaterThan(drop.stations * 0.8);
+    expect(control.wall).toBe(0);
+    expect(drop.wall).toBe(drop.stations);
     for (const b of [plain!, lake!]) b.scene.dispose();
   });
 
