@@ -1,4 +1,12 @@
-import { Mesh, Raycaster, Vector3, type MeshLambertMaterial } from 'three';
+import {
+  BoxGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  Raycaster,
+  Vector3,
+  type MeshLambertMaterial,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -15,6 +23,9 @@ import { createInputRecorder, createReplayController, decodeReplay, HASH_EVERY_T
 import { input, riderHarness, testConfig } from '../src/sim/riders/testing';
 import { createFlatLook } from '../src/render/look';
 import { buildRoadScene } from '../src/render/road-mesh';
+import { GroundTris } from '../src/render/land-probe.test-util';
+import { floorOf, GROUND_OVER_M } from '../src/render/road-clear.test-util';
+import { DownIndex, SURFACES } from '../tests/sim/geometry-routes';
 
 const roadFiles = import.meta.glob<BakedRoad>('../packs/*/regions/*/roads/*.json', {
   eager: true,
@@ -69,6 +80,19 @@ function fixture(kind?: BakedMedian['kind']) {
 }
 
 describe('authored grass medians are a distinct crossable surface', () => {
+  it('includes turf in physical-floor and visible-ground probes, with the ground-height rule', () => {
+    const group = new Group();
+    const median = new Mesh(new BoxGeometry(4, 0.2, 10), new MeshBasicMaterial());
+    median.name = 'road-median';
+    group.add(median);
+    const rays = new GroundTris(group);
+    const indexed = new DownIndex(group, SURFACES);
+    expect(rays.heightAt(0, 0)?.name).toBe('road-median');
+    expect(indexed.at(0, 0, 1)?.name).toBe('road-median');
+    expect(rays.heightAt(20, 0)).toBeNull();
+    expect(indexed.at(20, 0, 1)).toBeNull();
+    expect(floorOf('road-median')).toBe(GROUND_OVER_M);
+  });
   it('queries grass inside every authored grass section, including connector pieces, and asphalt on its lanes', () => {
     expect(authored.length).toBeGreaterThan(0);
     let probes = 0;
