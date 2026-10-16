@@ -1222,7 +1222,7 @@ describe('the landing invariant (decide)', () => {
       failing: [],
       lacks: [],
       mainCi: 'success',
-      control,
+      ...(control === undefined ? {} : { control }),
     });
     expect(c).toContain(diagnosis);
     expect(c).toContain('source-tree composition failure is excluded');
