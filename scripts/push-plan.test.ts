@@ -20,6 +20,14 @@ const roadContracts = [
 ].sort();
 
 describe('planPush', () => {
+  it('selects the cheap patrol placement contract for pack JSON and keeps it deduplicated', () => {
+    const patrol = 'tools/road/patrol-placement.test.ts';
+    const source = 'packs/future-pack/regions/future-ridge/roads/serpentine.json';
+    expect(planPush([source], tree(patrol)).tests).toEqual([patrol]);
+    expect(planPush([source, patrol], tree(patrol)).tests).toEqual([patrol]);
+    expect(planPush([source], tree()).tests).toEqual([]);
+    expect(planPush(['src/ui/menu.ts'], tree(patrol)).tests).toEqual([]);
+  });
   it('selects the quick career configuration contract for any pack JSON when present', () => {
     const career = 'src/app/career-content.test.ts';
     for (const source of [

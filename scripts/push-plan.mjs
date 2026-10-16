@@ -14,7 +14,7 @@
 //     a bounded backstop for contact/terrain composition, not import-graph selection.
 //   - four existing road-content contracts for any pack's road/network/route or region JSON;
 //     backdrop and scenes asset JSON select their matching contract only. Missing tests are omitted.
-//   - the short career configuration contract for any pack JSON, independently of those groups.
+//   - the short career and patrol-placement configuration contracts for any pack JSON.
 
 /** Changing any of these runs the whole unit tier. */
 const FULL = [
@@ -31,6 +31,7 @@ const UNIT_TEST = /^(src|scripts|tools)\/.+\.test\.ts$/;
 const SOURCE = /^(src|scripts|tools)\/.+\.(ts|mts|js|mjs)$/;
 const PACK_JSON = /^packs\/[^/]+\/.+\.json$/;
 const CAREER_CONTENT_TEST = 'src/app/career-content.test.ts';
+const PATROL_CONTENT_TEST = 'tools/road/patrol-placement.test.ts';
 const CONTACT_INPUT = [
   /^src\/(road|sim\/riders)\/.+\.ts$/,
   /^src\/sim\/modifiers\/moving\.ts$/,
@@ -78,6 +79,7 @@ export function planPush(changed, exists) {
       continue;
     }
     if (PACK_JSON.test(f) && exists(CAREER_CONTENT_TEST)) tests.add(CAREER_CONTENT_TEST);
+    if (PACK_JSON.test(f) && exists(PATROL_CONTENT_TEST)) tests.add(PATROL_CONTENT_TEST);
     if (ROAD_CONTENT.test(f)) {
       for (const t of ROAD_CONTENT_TESTS) if (exists(t)) tests.add(t);
     }
