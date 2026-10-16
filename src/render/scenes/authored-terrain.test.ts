@@ -41,7 +41,7 @@ function rectangle(x0: number, z0: number, x1: number, z1: number, y = 3, water 
 
 function scene(terrain?: BakedTerrain, tag = 'forest', density = 0, grade = 0, models?: SceneryModels) {
   const bundle = fixtureNetwork([{ id: 'r', lengthM: 200, kappa: 0, grade }]);
-  const tags = [{ s0: 0, s1: 200, side: 'both', tag }];
+  const tags = [{ s0: 0, s1: 200, side: 'both' as const, tag }];
   bundle.roads[0]!.tags = tags;
   const road = createRoadNetwork({
     ...bundle,
@@ -258,7 +258,7 @@ describe('authored natural terrain in the road scene', () => {
       BufferGeometry.prototype,
       'setAttribute',
     ) as BufferGeometry['setAttribute'];
-    vi.spyOn(BufferGeometry.prototype, 'setAttribute').mockImplementation(function (
+    vi.spyOn(BufferGeometry.prototype as BufferGeometry, 'setAttribute').mockImplementation(function (
       this: BufferGeometry,
       name: string,
       attribute: Parameters<BufferGeometry['setAttribute']>[1],
