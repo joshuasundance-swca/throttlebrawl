@@ -63,6 +63,7 @@ import {
   redSuiteJobs,
   route,
   selectBundle,
+  singleTreeMatches,
   stateOf,
   suiteResult,
   waitingNotes,
@@ -1052,6 +1053,17 @@ describe('assembly, on a real git repo', () => {
     ok('checkout', '-q', 'main');
   });
 
+  it('recognises only one valid head whose full tree is exactly the assembled tree', () => {
+    const one = assemble(git, base, [heads.p1!]);
+    expect(singleTreeMatches(git, one.tree, [heads.p1!])).toBe(true);
+    expect(singleTreeMatches(git, one.tree, [heads.p2!])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, [heads.p1!, heads.p2!])).toBe(false);
+    expect(singleTreeMatches(git, '', [heads.p1!])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, ['not-a-commit'])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, [sha('f')])).toBe(false);
+    expect(singleTreeMatches(git, one.tree, [])).toBe(false);
+  });
+
   it('drops a head that conflicts with an earlier one, and tells it apart from one that conflicts with main', () => {
     const r = assemble(git, base, [heads.p3!, heads.p4!, heads.p1!]);
     expect(r.merged).toEqual([heads.p3, heads.p1]);
@@ -1153,6 +1165,32 @@ describe('the landing invariant (decide)', () => {
     expect(decide({ ...at, control: 'cancelled' }).blame?.kind).toBe('unknown');
   });
 
+  it('an identical lone tree stays red after one run, excludes composition, and proves no persistence', () => {
+    const one = [bundle[0]!];
+    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'success' as const };
+    const d = decide({ ...at, sameTree: true, control: 'skipped' });
+    expect(d.blame).toEqual({ number: 11, sha: sha('a'), kind: 'same-tree' });
+    expect(d.statuses).toHaveLength(1);
+    expect(d.statuses[0]?.state).toBe('failure');
+    expect(d.statuses[0]?.description).toContain('exact PR tree fails once');
+    expect(d.why).toContain('exact PR tree failed once');
+    expect(d.why).toContain('persistence versus transience is unproven');
+
+    // Success, splits, main-red, timeouts and cancellation happen first; identity cannot alter them.
+    expect(decide({ ...input, sameTree: true }).verdict).toBe('green');
+    expect(decide({ ...input, result: 'failure', sameTree: true }).verdict).toBe('split');
+    expect(decide({ ...at, sameTree: true, mainCi: 'failure' }).verdict).toBe('main-red');
+    expect(
+      decide({
+        ...at,
+        sameTree: true,
+        timedOut: ['suite / browser (5/7)'],
+        failed: [],
+      }).verdict,
+    ).toBe('timed-out');
+    expect(decide({ ...at, result: 'cancelled', sameTree: true }).verdict).toBe('unfinished');
+  });
+
   it('never blames a PR while main itself is red, and the train waits for main', () => {
     const one = [bundle[0]!];
     const d = decide({ ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'failure' });
@@ -1160,6 +1198,42 @@ describe('the landing invariant (decide)', () => {
     expect(d.blame).toBeNull();
     expect(d.statuses).toEqual([expect.objectContaining({ state: 'pending' })]);
     expect(d.dispatch).toBe(false);
+  });
+
+  it.each([
+    ['skipped', 'branch control did not repeat it'],
+    ['success', 'branch control passed'],
+    ['failure', 'branch control failed'],
+    ['cancelled', 'branch control was cancelled'],
+    ['unexpected', 'branch control result is unrecognized'],
+    [undefined, 'branch control result is missing'],
+  ])('an identical tree reports the actual control outcome: %s', (control, diagnosis) => {
+    const one = [bundle[0]!];
+    const d = decide({ ...input, result: 'failure', bundle: one, now: nowOf(one), sameTree: true, control });
+    expect(d.blame?.kind).toBe('same-tree');
+    expect(d.land).toEqual([]);
+    expect(d.statuses[0]?.state).toBe('failure');
+    const c = blameComment({
+      kind: 'same-tree',
+      sha: sha('a'),
+      base,
+      run: 42,
+      url: 'u',
+      failing: [],
+      lacks: [],
+      mainCi: 'success',
+      ...(control === undefined ? {} : { control }),
+    });
+    expect(c).toContain(diagnosis);
+    expect(c).toContain('source-tree composition failure is excluded');
+    expect(c).not.toContain('It is a composition failure');
+    if (control !== 'skipped') {
+      for (const text of [d.why, d.statuses[0]!.description, c]) {
+        expect(text).not.toContain('once');
+        expect(text).not.toContain('control did not repeat');
+      }
+      expect(d.why).toContain(diagnosis);
+    }
   });
 
   it('a cancelled or unfinished suite concludes nothing and sends no train', () => {
@@ -1253,6 +1327,34 @@ describe('the landing invariant (decide)', () => {
       expect(m.blame).toBeNull();
       expect(m.dispatch).toBe(false);
     }
+  });
+
+  it.each([false, true])('an exact-tree timeout remains incomplete, with a failed sibling: %s', (mixed) => {
+    const failed = mixed ? ['suite / sim (3/6)'] : [];
+    const d = decide({ ...timedOutAlone(1), sameTree: true, control: 'skipped', failed });
+    expect(d.verdict).toBe('culprit');
+    expect(d.blame?.kind).toBe('same-tree');
+    expect(d.land).toEqual([]);
+    expect(d.statuses[0]?.state).toBe('failure');
+    expect(d.why).toContain('timed out once');
+    expect(d.why).not.toContain('tree failed once');
+    const c = blameComment({
+      kind: 'same-tree',
+      sha: sha('a'),
+      base,
+      run: 42,
+      url: 'u',
+      failing: [],
+      lacks: [],
+      mainCi: 'success',
+      control: 'skipped',
+      timedOut: late,
+      failed,
+    });
+    expect(c).toContain('exact source tree timed out once');
+    expect(c).toContain('full suite did not finish');
+    expect(c).not.toContain('full suite failed once');
+    expect(c.includes('also had failed jobs')).toBe(mixed);
   });
 });
 
@@ -1898,6 +2000,83 @@ describe('the commands, against a fake GitHub', () => {
     expect(skipped.lines).toContainEqual(expect.stringMatching(/^report: \*\*timed-out-unblamed\*\*/));
   });
 
+  it.each(['skipped', '', undefined])(
+    'report: exact-tree evidence preserves the control result: %s',
+    async (control) => {
+      const one = lone(1);
+      reportEnv(one);
+      vi.stubEnv('TRAIN_RESULT', 'failure');
+      vi.stubEnv('TRAIN_CONTROL', control);
+      vi.stubEnv('TRAIN_SINGLE_SAME_TREE', 'true');
+      const { lines } = capture();
+      fakeGitHub([
+        MAIN,
+        open(one),
+        [
+          OWN_JOBS[0],
+          () => ({
+            total_count: 1,
+            jobs: [
+              {
+                id: 112110821845,
+                name: 'suite / sim (3/6)',
+                status: 'completed',
+                conclusion: 'failure',
+                started_at: '2026-10-06T04:39:52Z',
+                completed_at: '2026-10-06T04:50:02Z',
+              },
+            ],
+          }),
+        ],
+        [LOG[0], () => 'FAIL tests/sim/x.test.ts > exact tree\n'],
+        mainRun('success'),
+        [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+      ]);
+      await cmdReport(CFG);
+      if (control === 'skipped') {
+        expect(lines).toContainEqual(
+          expect.stringMatching(/^report: \*\*culprit\*\*: .*exact PR tree failed once/),
+        );
+        expect(lines).toContainEqual(expect.stringContaining('exact source tree failed once'));
+        expect(lines).toContainEqual(expect.stringContaining('persistence versus transience is unproven'));
+      } else {
+        expect(lines).toContainEqual(expect.stringContaining('branch control result is missing'));
+        expect(lines.some((l) => l.includes('failed once') || l.includes('control did not repeat'))).toBe(
+          false,
+        );
+      }
+      expect(lines.some((l) => l.includes('It is a composition failure'))).toBe(false);
+      expect(lines.some((l) => l.includes('merge origin/main'))).toBe(false);
+      expect(lines.some((l) => l.includes('fails the full suite too'))).toBe(false);
+    },
+  );
+
+  it('report: a reachable cap-1 exact-tree timeout never claims the full suite failed', async () => {
+    const one = lone(1);
+    reportEnv(one);
+    vi.stubEnv('TRAIN_SINGLE_SAME_TREE', 'true');
+    const { lines } = capture();
+    fakeGitHub([
+      MAIN,
+      open(one),
+      OWN_JOBS,
+      notes(true),
+      LOG,
+      mainRun('success'),
+      MAIN_JOBS,
+      prFiles(11, ['src/render/road.ts']),
+      [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+    ]);
+    await cmdReport(CFG);
+    expect(lines).toContainEqual(expect.stringMatching(/^report: \*\*culprit\*\*: .*timed out once/));
+    expect(lines).toContainEqual(expect.stringContaining('exact source tree timed out once'));
+    expect(lines).toContainEqual(expect.stringContaining('full suite did not finish'));
+    expect(lines.some((l) => l.includes('full suite failed once') || l.includes('tree failed once'))).toBe(
+      false,
+    );
+    expect(lines).toContainEqual(expect.stringContaining('would post gate=failure'));
+  });
+
   // A FAIL row's text comes from a PR's own log, and the report job holds write tokens: a line it
   // prints that starts with "::" would be read as a workflow command (the fail-fast review, 5).
   it('report: no line it prints from a PR log can start a workflow command', async () => {
@@ -2057,6 +2236,23 @@ describe('what a red train says', () => {
         mainCi: 'pending',
       }),
     ).toContain('fails the full suite too');
+    const same = blameComment({
+      kind: 'same-tree',
+      control: 'skipped',
+      sha: sha('a'),
+      base: sha('b'),
+      run: 9,
+      url: 'u',
+      failing: [],
+      lacks: [],
+      mainCi: 'success',
+    });
+    expect(same).toContain('exact source tree failed once');
+    expect(same).toContain('composition failure is excluded');
+    expect(same).toContain('persistence versus transience is unproven');
+    expect(same).toContain('If it looks like a flake, push again');
+    expect(same).not.toContain('fails the full suite too');
+    expect(same).not.toContain('passes the full suite');
     expect(conflictComment({ sha: sha('a'), base: sha('b'), run: 9, url: 'u' })).toContain(
       'merge origin/main',
     );
@@ -2345,6 +2541,14 @@ describe('the workflows', () => {
     expect([...jobs(suite).keys()]).toEqual(['static', 'unit', 'sim', 'browser']);
   });
 
+  it('plan publishes the explicit exact-tree flag that control and report consume', () => {
+    const plan = jobs(train).get('plan') ?? '';
+    expect(plan).toContain('\n      single_same_tree: ${{ steps.plan.outputs.single_same_tree }}\n');
+    expect(readFileSync(new URL('./train.mjs', import.meta.url), 'utf8')).toContain(
+      "single_same_tree: singleTreeMatches(gitRun, asm.tree, heads) ? 'true' : 'false'",
+    );
+  });
+
   // The landing invariant and the off switch also hang on these call sites: with `full: false`, or
   // with no heads to assemble, a gate or a train would go green on less than the whole suite on
   // exactly the bundle.
@@ -2364,7 +2568,7 @@ describe('the workflows', () => {
       expect(ride, line).toContain(`\n      ${line}\n`);
     const control = t.get('control') ?? '';
     expect(control).toMatch(
-      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.suite\.result == 'failure'\n/m,
+      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
     );
     expect(control).toContain('\n      full: true\n');
     expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
@@ -2389,6 +2593,9 @@ describe('the workflows', () => {
     );
     expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
     expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
+    expect(report).toContain(
+      '\n          TRAIN_SINGLE_SAME_TREE: ${{ needs.plan.outputs.single_same_tree }}\n',
+    );
     expect(report).toContain('\n          TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}\n');
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
   });

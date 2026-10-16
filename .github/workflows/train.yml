@@ -22,7 +22,7 @@
 #   whether or not a train departs.
 # - suite (contents: read): the full suite on main + the bundle, the same suite.yml ci.yml runs.
 # - control (contents: read): a lone PR that failed, on its own branch, to tell its own failure
-#   from a composition failure.
+#   from a composition failure, unless plan proved that branch and train have the same full tree.
 # - report (statuses, PR comments, dispatch; runs main's own scripts only): results, the landing,
 #   and the next train.
 # PR titles, bodies and branch names never reach a run: line; scripts read them from the API.
@@ -71,6 +71,7 @@ jobs:
       conflicts: ${{ steps.plan.outputs.conflicts }}
       notes: ${{ steps.plan.outputs.notes }}
       single: ${{ steps.plan.outputs.single }}
+      single_same_tree: ${{ steps.plan.outputs.single_same_tree }}
       wait_main: ${{ steps.plan.outputs.wait_main }}
     steps:
       # Main's own scripts (this workflow's commit). PR heads are fetched as git objects and merged
@@ -165,13 +166,15 @@ jobs:
       notes-base: ${{ needs.plan.outputs.base }}
 
   # A lone PR that failed, once more on its own branch, to tell its own failure from a composition
-  # failure. Only when the suite reports `failure`: a job that runs past its time limit makes the
+  # failure. When its full Git tree is already the assembled train tree, that exact content failed
+  # once and composition is impossible, so report gives the distinct one-run diagnosis without
+  # repeating all 23 jobs. Only when the suite reports `failure`: a job that runs past its time limit makes the
   # suite read `cancelled` (report finds it by the job's annotation and counts it red), so a lone PR
   # that timed out is judged with its own branch untested: blamed only at cap 1, when its diff can
   # reach the job and main's own run of that job passed (scripts/train.mjs decide).
   control:
     needs: [plan, suite]
-    if: always() && !cancelled() && needs.plan.outputs.single != '' && needs.suite.result == 'failure'
+    if: always() && !cancelled() && needs.plan.outputs.single != '' && needs.plan.outputs.single_same_tree != 'true' && needs.suite.result == 'failure'
     permissions:
       contents: read
     uses: ./.github/workflows/suite.yml
@@ -234,6 +237,7 @@ jobs:
           TRAIN_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           TRAIN_RESULT: ${{ needs.suite.result }}
           TRAIN_CONTROL: ${{ needs.control.result }}
+          TRAIN_SINGLE_SAME_TREE: ${{ needs.plan.outputs.single_same_tree }}
           TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}
           TRAIN_BASE: ${{ needs.plan.outputs.base }}
           TRAIN_TREE: ${{ needs.plan.outputs.tree }}
