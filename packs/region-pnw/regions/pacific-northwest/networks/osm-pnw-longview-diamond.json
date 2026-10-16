@@ -1,0 +1,379 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-longview-diamond",
+  "name": "Longview street diamond (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 46.15,
+    "originLonDeg": -123.0,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-longview-diamond-approach",
+    "osm-pnw-longview-diamond-outer-leave",
+    "osm-longview-diamond-20th",
+    "osm-longview-diamond-diagonal",
+    "osm-pnw-longview-diamond-outer-join",
+    "osm-longview-diamond-west-washington",
+    "osm-longview-diamond-washington-bridge",
+    "osm-longview-diamond-west-bank",
+    "osm-longview-diamond-30th",
+    "osm-longview-diamond-olympia",
+    "osm-longview-diamond-kessler",
+    "osm-pnw-longview-diamond-outer-in",
+    "osm-pnw-longview-diamond-outer-out",
+    "osm-pnw-longview-diamond-outer-traffic-in",
+    "osm-pnw-longview-diamond-outer-traffic-reverse-leave",
+    "osm-pnw-longview-diamond-outer-traffic-reverse-join"
+  ],
+  "junctions": [
+    {
+      "id": "osm-pnw-longview-diamond-j0",
+      "x": 4656.1456,
+      "y": 6.709,
+      "z": 1030.7121,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-approach",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j1",
+      "x": 4462.5347,
+      "y": 6.6066,
+      "z": 781.9619,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-approach",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-20th",
+          "end": "from"
+        },
+        {
+          "road": "osm-longview-diamond-olympia",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-leave-l1",
+          "road": "osm-pnw-longview-diamond-outer-leave",
+          "from": {
+            "road": "osm-longview-diamond-approach",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-20th",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-leave-r1",
+          "road": "osm-pnw-longview-diamond-outer-leave",
+          "from": {
+            "road": "osm-longview-diamond-approach",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-20th",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-in",
+          "road": "osm-pnw-longview-diamond-outer-in",
+          "from": {
+            "road": "osm-longview-diamond-approach",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-olympia",
+            "end": "from",
+            "lane": "R1"
+          },
+          "splitZone": {
+            "s0": 230.9665,
+            "s1": 270.9665,
+            "d0": 3.5,
+            "d1": 8.0
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-traffic-in",
+          "road": "osm-pnw-longview-diamond-outer-traffic-in",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-longview-diamond-approach",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-olympia",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-traffic-reverse-leave",
+          "road": "osm-pnw-longview-diamond-outer-traffic-reverse-leave",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-longview-diamond-approach",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-olympia",
+            "end": "from",
+            "lane": "L1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j2",
+      "x": 4256.5281,
+      "y": 5.1758,
+      "z": 1465.1255,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-20th",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-diagonal",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j3",
+      "x": 3808.7912,
+      "y": 6.5497,
+      "z": 1736.4315,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-diagonal",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-west-washington",
+          "end": "from"
+        },
+        {
+          "road": "osm-longview-diamond-kessler",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-join-l1",
+          "road": "osm-pnw-longview-diamond-outer-join",
+          "from": {
+            "road": "osm-longview-diamond-diagonal",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-west-washington",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-join-r1",
+          "road": "osm-pnw-longview-diamond-outer-join",
+          "from": {
+            "road": "osm-longview-diamond-diagonal",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-west-washington",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-out",
+          "road": "osm-pnw-longview-diamond-outer-out",
+          "from": {
+            "road": "osm-longview-diamond-kessler",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-west-washington",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-longview-diamond-outer-traffic-reverse-join",
+          "road": "osm-pnw-longview-diamond-outer-traffic-reverse-join",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-longview-diamond-kessler",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-longview-diamond-west-washington",
+            "end": "from",
+            "lane": "L1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j4",
+      "x": 3738.5518,
+      "y": 6.4182,
+      "z": 1776.7515,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-west-washington",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-washington-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j5",
+      "x": 3696.258,
+      "y": 6.0983,
+      "z": 1797.1728,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-washington-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-west-bank",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j6",
+      "x": 2910.559,
+      "y": 2.922,
+      "z": 1899.4209,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-west-bank",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-30th",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j7",
+      "x": 2897.5882,
+      "y": 3.641,
+      "z": 1109.6435,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-30th",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-longview-diamond-j8",
+      "x": 4142.3141,
+      "y": 7.0339,
+      "z": 399.0221,
+      "ends": [
+        {
+          "road": "osm-longview-diamond-olympia",
+          "end": "to"
+        },
+        {
+          "road": "osm-longview-diamond-kessler",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-16",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview-diamond.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 331 points in 1 request(s) (lon, lat WGS84, sha256 2de3df334158d837), bilinear (line inner)",
+        "retrievedAt": "2026-10-16T11:43:46Z",
+        "sha256": "67cdd224b3e9773347960da9800b19d01e95a7a590ccc5b4ab1a6c63bb66bdff"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 202 points in 1 request(s) (lon, lat WGS84, sha256 f34411eda6900243), bilinear (line outer)",
+        "retrievedAt": "2026-10-16T11:43:47Z",
+        "sha256": "410de5edcf26c9536e505f32ff92ce2365ef7ddfb7a8228b2ef3d790e4b5d78b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Longview Olympia Way, 20th Avenue, Washington Way, Kessler Boulevard and 30th Avenue paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 35.8 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A separate one-pass street-diamond prototype. Approach northwest on Olympia Way: turn down 20th Avenue and Washington Way for the shorter main path, or continue on Olympia and sweep down Kessler Boulevard on the longer outer alternate. Both reconnect at Washington before its mapped bridge and the shared 30th Avenue finish. Source OSM captured 2026-10-15; USGS 3DEP source elevation. Arcade lane widths, grass margins, eased corners and junction movements are adaptations, not surveyed lanes, verified turn restrictions or current access advice. Generic town scenery is not mapped properties. No lake geometry, nested Hudson choice, reward compensation or claim of time parity."
+  }
+}

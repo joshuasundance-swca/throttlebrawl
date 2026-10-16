@@ -24,6 +24,30 @@ const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof buildSimConfi
   JSON.parse(JSON.stringify(rest)) as { event: { routeId?: string } } & Record<string, unknown>;
 
 describe('app: real-road routes', () => {
+  it('offers the street diamond alongside the existing Longview courses', () => {
+    const eventId = 'region-pnw:pnw-t1-bridge-city';
+    const route = 'region-pnw:osm-longview-street-diamond';
+    const authored = ALL.routes[route];
+    expect(authored, 'the new course is separately registered').toBeDefined();
+    expect(ALL.regions['region-pnw:pacific-northwest']?.networks).toContain(authored!.network);
+    const choices = routeChoices(ALL, eventId);
+    for (const id of [route, 'region-pnw:osm-longview-civic-triangle', 'region-pnw:osm-longview-port-shift'])
+      expect(
+        choices.some((c) => c.id === id),
+        id,
+      ).toBe(true);
+    const raced = buildSimConfig(ALL, streamForEvent(ALL, eventId, undefined, route), {
+      seed: 1,
+      eventId,
+      route,
+    });
+    expect(raced.event.routeId).toBe(route);
+    const choicesInRace = raced.route.branches.filter((b) => b.declared);
+    expect(choicesInRace).toHaveLength(1);
+    expect(choicesInRace[0]?.kind).toBe('alternate');
+    expect(choicesInRace[0]?.gainM).toBeLessThan(0);
+  });
+
   it('registers the civic triangle and offers it as a separate playable Longview choice', () => {
     const eventId = 'region-pnw:pnw-t1-bridge-city';
     const route = 'region-pnw:osm-longview-civic-triangle';

@@ -1,0 +1,91 @@
+{
+  "network": "osm-pnw-longview-diamond",
+  "lines": {
+    "inner": {
+      "lengthM": 3291.7,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "outer leave": 19.89,
+        "outer join": 35.82
+      },
+      "fun": {
+        "real_length_m": 3296.8,
+        "game_length_m": 3291.7,
+        "corners": 3,
+        "tightest_radius_m": 33.1,
+        "share_tighter_than_m": {
+          "50": 0.0276,
+          "100": 0.0635,
+          "200": 0.0853
+        },
+        "turn_deg_per_km": 100.7,
+        "elev_min_m": 2.7,
+        "elev_max_m": 6.7,
+        "climb_m": 3.4,
+        "descent_m": 6.5,
+        "max_grade_pct": 1.3,
+        "p95_grade_pct": 0.6,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 28,
+        "junctions_per_km": 8.49,
+        "bridges_m": 47.9,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 21.0
+      }
+    },
+    "outer": {
+      "lengthM": 1982.9,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "outer join": 33.89
+      },
+      "fun": {
+        "real_length_m": 2001.0,
+        "game_length_m": 1982.9,
+        "corners": 1,
+        "tightest_radius_m": 31.4,
+        "share_tighter_than_m": {
+          "50": 0.0267,
+          "100": 0.0428,
+          "200": 0.0837
+        },
+        "turn_deg_per_km": 131.4,
+        "elev_min_m": 6.0,
+        "elev_max_m": 7.0,
+        "climb_m": 2.3,
+        "descent_m": 2.4,
+        "max_grade_pct": 1.1,
+        "p95_grade_pct": 0.7,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 13,
+        "junctions_per_km": 6.5,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 23.1
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-longview-diamond-olympia",
+      "mainM": 1250.9,
+      "branchM": 1976.7,
+      "savesM": -725.9
+    }
+  ],
+  "routes": {
+    "osm-longview-street-diamond": 3219.6
+  },
+  "roads": 16,
+  "junctions": 9
+}

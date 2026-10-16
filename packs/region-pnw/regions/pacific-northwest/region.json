@@ -12,7 +12,8 @@
     "osm-pnw-samish",
     "osm-pnw-portland",
     "osm-pnw-longview",
-    "osm-pnw-longview-civic"
+    "osm-pnw-longview-civic",
+    "osm-pnw-longview-diamond"
   ],
   "timeOfDayOptions": [
     {
