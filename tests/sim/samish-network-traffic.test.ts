@@ -121,7 +121,7 @@ describe('Samish source access in the running traffic and race systems', () => {
             .lanesAt(car.pos.edge, car.pos.s)
             .some(
               (lane) =>
-                lane.kind === 'drive' &&
+                (lane.kind === 'drive' || lane.kind === 'shortcut') &&
                 lane.direction === car.pos.dir &&
                 Math.abs(lane.dCenterM - car.pos.d) <= lane.widthM / 2,
             ),
