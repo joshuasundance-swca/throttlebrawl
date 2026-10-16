@@ -22,7 +22,7 @@
 #   whether or not a train departs.
 # - suite (contents: read): the full suite on main + the bundle, the same suite.yml ci.yml runs.
 # - control (contents: read): a lone PR that failed, on its own branch, to tell its own failure
-#   from a composition failure.
+#   from a composition failure, unless plan proved that branch and train have the same full tree.
 # - report (statuses, PR comments, dispatch; runs main's own scripts only): results, the landing,
 #   and the next train.
 # PR titles, bodies and branch names never reach a run: line; scripts read them from the API.

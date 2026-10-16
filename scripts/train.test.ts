@@ -1176,7 +1176,9 @@ describe('the landing invariant (decide)', () => {
     expect(d.why).toContain('exact PR tree failed once');
     expect(d.why).toContain('persistence unproven');
 
-    // Main-red and pure-timeout decisions happen first; identity never makes either blameable.
+    // Success, splits, main-red, timeouts and cancellation happen first; identity cannot alter them.
+    expect(decide({ ...input, sameTree: true }).verdict).toBe('green');
+    expect(decide({ ...input, result: 'failure', sameTree: true }).verdict).toBe('split');
     expect(decide({ ...at, sameTree: true, mainCi: 'failure' }).verdict).toBe('main-red');
     expect(
       decide({
@@ -1186,6 +1188,7 @@ describe('the landing invariant (decide)', () => {
         failed: [],
       }).verdict,
     ).toBe('timed-out');
+    expect(decide({ ...at, result: 'cancelled', sameTree: true }).verdict).toBe('unfinished');
   });
 
   it('never blames a PR while main itself is red, and the train waits for main', () => {
@@ -2435,6 +2438,14 @@ describe('the workflows', () => {
     expect(jobs(train).get('control')).toContain(SUITE_CALL);
     for (const text of [ci, train]) expect(text).not.toContain('npm run check');
     expect([...jobs(suite).keys()]).toEqual(['static', 'unit', 'sim', 'browser']);
+  });
+
+  it('plan publishes the explicit exact-tree flag that control and report consume', () => {
+    const plan = jobs(train).get('plan') ?? '';
+    expect(plan).toContain('\n      single_same_tree: ${{ steps.plan.outputs.single_same_tree }}\n');
+    expect(readFileSync(new URL('./train.mjs', import.meta.url), 'utf8')).toContain(
+      "single_same_tree: singleTreeMatches(gitRun, asm.tree, heads) ? 'true' : 'false'",
+    );
   });
 
   // The landing invariant and the off switch also hang on these call sites: with `full: false`, or
