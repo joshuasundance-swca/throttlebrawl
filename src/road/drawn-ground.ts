@@ -25,6 +25,13 @@
 // Pure + - * / and Math.min/max/abs/floor/round/ceil (no trig), like the rest of road/.
 import type { BakedBarrier } from './types';
 import type { Edge, RoadNetwork } from './network';
+import {
+  clearGroundReach,
+  landIntervalPlan,
+  landWidthChangeOverRoad,
+  terrainProfilePlan,
+  type LandIntervalPlan,
+} from './land-topology';
 import { themeAt, type LandTheme, type SideTheme } from './themes';
 import { lakeWaterAt } from './water';
 
@@ -63,6 +70,12 @@ const LAND_TOP_M = -0.09;
 const LAND_OVER_ROAD_M = 0.05;
 const LAND_ROAD_PROBE_M = 1;
 const LAND_ROAD_MARGIN_M = 0.5;
+/** A shoulder yields this far short of a lower road's lanes, probing at the renderer's cadence, m. */
+const GROUND_YIELD_MARGIN_M = 0.25;
+const GROUND_YIELD_PROBE_M = 0.25;
+/** A shoulder more than this far over another road yields to it; its drawn lift below asphalt, m. */
+const GROUND_OVER_ROAD_M = 0.05;
+const SHOULDER_LIFT_M = -0.02;
 
 /** The land's reach past the verge at s on a side of an edge, m (0 = no land). */
 export type LandReach = (edge: number, side: -1 | 1, s: number) => number;
@@ -186,6 +199,8 @@ interface EdgeLand {
   step: number;
   n: number;
   reachAt: (side: -1 | 1, i: number) => number;
+  /** Whether interval i..i+1 must stop at its shared reach to avoid covering lower lanes. */
+  commonAt: (side: -1 | 1, i: number) => boolean;
   skirtAt: (side: -1 | 1, i: number) => Skirt | null;
   /** Whether row i's land runs on to another road. */
   meetsAt: (side: -1 | 1, i: number) => boolean;
@@ -222,6 +237,14 @@ const SKIRT_RUN_M = [6, 90] as const;
 const SKIRT_FLAT_M = [70, 35, 12, 0] as const;
 const SKIRT_WATER_CLEAR_M = 22;
 const SKIRT_ROAD_PROBE_M = 8;
+/** Render's geometric error and longest retained span for one shared terrain profile. */
+const SKIRT_SIMPLIFY_TOL_M = 0.02;
+const SKIRT_SIMPLIFY_MAX_SPAN_M = 128;
+/** A lake bank's plateau, shore and wall match render's bank rows. */
+const LAKE_BANK_M = 4.2;
+const LAKE_SHORE_OVER_M = 0.3;
+const LAKE_WALL_MIN_M = 0.5;
+const LAKE_RAMP_M_PER_M = 0.5;
 /** A network with any of these tags (or none at all) is tropical, with no skirt (render/scenery.ts `isTropical`). */
 const TROPICAL_TAGS: ReadonlySet<string> = new Set(['palms', 'beach', 'mangrove', 'swamp']);
 
@@ -242,6 +265,35 @@ interface LandOf {
   rows: (edge: number) => EdgeLand | null;
 }
 
+interface LandSpan {
+  i: number;
+  j: number;
+  t: number;
+  plan: LandIntervalPlan;
+  reach: number;
+}
+
+/** The render interval about s and its drawn outer reach. */
+function landSpanAt(
+  l: EdgeLand,
+  side: -1 | 1,
+  s: number,
+  commonEligible: (i: number, j: number) => boolean,
+): LandSpan {
+  const i = Math.max(0, Math.min(l.n - 1, Math.floor(s / l.step)));
+  const j = Math.min(l.n - 1, i + 1);
+  const t = Math.max(0, Math.min(1, s / l.step - i));
+  const a = l.reachAt(side, i);
+  const b = l.reachAt(side, j);
+  const plan = landIntervalPlan(a, b, commonEligible(i, j));
+  if (plan.kind === 'common') return { i, j, t, plan, reach: plan.reachM };
+  if (plan.kind === 'joined')
+    return { i, j, t, plan, reach: plan.reach0M + (plan.reach1M - plan.reach0M) * t };
+  // No quad joins a row of land to one without. On a row itself, the quad before it reaches it too.
+  const reach = a > 0 && b <= 0 && t === 0 && i > 0 && l.reachAt(side, i - 1) > 0 ? a : 0;
+  return { i, j, t, plan, reach };
+}
+
 const kept = new WeakMap<RoadNetwork, LandOf>();
 
 /**
@@ -260,8 +312,20 @@ export function landReachOf(road: RoadNetwork): LandReach {
  * quad, so its edge runs straight from one sample's reach to the next (where `landReachOf` takes the narrower).
  * What a rider out past the edge meets (road/beyond.ts `beyondAt`).
  */
-export function landEdgeOf(road: RoadNetwork): LandReach {
-  return landOf(road).edge;
+export function landEdgeOf(road: RoadNetwork, lakeLevel: number | null = null): LandReach {
+  const land = landOf(road);
+  if (lakeLevel === null) return land.edge;
+  const banks = lakeBanksOf(road, lakeLevel);
+  return (edge, side, s) => {
+    const rows = land.rows(edge);
+    if (!rows) return 0;
+    return landSpanAt(
+      rows,
+      side,
+      s,
+      (i, j) => rows.commonAt(side, i) && !banks.at(edge, side, i) && !banks.at(edge, side, j),
+    ).reach;
+  };
 }
 
 /** The terrain skirt past each edge's land strip, by its road scene's rule (`Skirt`), worked out as asked for. */
@@ -354,22 +418,23 @@ function landOf(road: RoadNetwork): LandOf {
       for (let d = d0; d < d1; d += PROBE_M) if (lowerRoadAt(s, side * d, 1)) return false;
       return true;
     };
+    /** Whether land at (s, d) would stand over another road's expanded drivable band. */
+    const overLowerLanes = (s: number, d: number): boolean => {
+      const p = road.toWorld(e.index, s, d, LAND_TOP_M);
+      return covered(
+        p.x,
+        p.z,
+        e.index,
+        (o, os, od) =>
+          p.y - road.toWorld(o.index, os, od, 0).y > LAND_OVER_ROAD_M
+            ? [o.dMin - LAND_ROAD_MARGIN_M, o.dMax + LAND_ROAD_MARGIN_M]
+            : null,
+        LAND_ROAD_MARGIN_M,
+      );
+    };
     /** Whether the land strip from d0 out to d1 would stand over another road's edges by more than LAND_OVER_ROAD_M. */
     const landOverRoad = (s: number, side: -1 | 1, d0: number, d1: number): boolean => {
-      for (let d = d0; d <= d1 + 1e-6; d += LAND_ROAD_PROBE_M) {
-        const p = road.toWorld(e.index, s, side * d, LAND_TOP_M);
-        const over = covered(
-          p.x,
-          p.z,
-          e.index,
-          (o, os, od) =>
-            p.y - road.toWorld(o.index, os, od, 0).y > LAND_OVER_ROAD_M
-              ? [o.dMin - LAND_ROAD_MARGIN_M, o.dMax + LAND_ROAD_MARGIN_M]
-              : null,
-          LAND_ROAD_MARGIN_M,
-        );
-        if (over) return true;
-      }
+      for (let d = d0; d <= d1 + 1e-6; d += LAND_ROAD_PROBE_M) if (overLowerLanes(s, side * d)) return true;
       return false;
     };
     const landmarks = e.features.filter((f) => f.kind === 'landmark' && f.params?.['overRoad'] !== true);
@@ -443,6 +508,25 @@ function landOf(road: RoadNetwork): LandOf {
       meets[side][i] = runsOn;
       return r;
     };
+    const common: Record<-1 | 1, (boolean | undefined)[]> = { [-1]: [], [1]: [] };
+    const commonAt = (side: -1 | 1, i: number): boolean => {
+      if (i < 0 || i + 1 >= ss.length) return false;
+      const had = common[side][i];
+      if (had !== undefined) return had;
+      const reach0 = reachAt(side, i);
+      const reach1 = reachAt(side, i + 1);
+      const outer = outerOf(side);
+      const value = landWidthChangeOverRoad(
+        ss[i] ?? 0,
+        ss[i + 1] ?? 0,
+        reach0,
+        reach1,
+        LAND_ROAD_PROBE_M,
+        (s, reach) => overLowerLanes(s, side * (outer + reach)),
+      );
+      common[side][i] = value;
+      return value;
+    };
     /** The skirt past row i's strip, or null (render's `skirtAt`, on its own rows). */
     const skirtAt = (side: -1 | 1, i: number): Skirt | null => {
       const had = skirts[side][i];
@@ -494,7 +578,7 @@ function landOf(road: RoadNetwork): LandOf {
         : SEAWALL_SHELF_M;
     };
     const meetsAt = (side: -1 | 1, i: number): boolean => reachAt(side, i) > 0 && (meets[side][i] ?? false);
-    const made: EdgeLand = { step, n: ss.length, reachAt, skirtAt, meetsAt, shelfAt };
+    const made: EdgeLand = { step, n: ss.length, reachAt, commonAt, skirtAt, meetsAt, shelfAt };
     lazy[index] = made;
     return made;
   };
@@ -507,16 +591,7 @@ function landOf(road: RoadNetwork): LandOf {
   const outer: LandReach = (edge, side, s) => {
     const l = edgeLand(edge);
     if (!l) return 0;
-    const i = Math.max(0, Math.min(l.n - 1, Math.floor(s / l.step)));
-    const j = Math.min(l.n - 1, i + 1);
-    const a = l.reachAt(side, i);
-    const b = l.reachAt(side, j);
-    const t = Math.max(0, Math.min(1, s / l.step - i));
-    // Land stops at a row with none: no quad joins a row of land to one without. On a row itself, the quad before it
-    // reaches it too.
-    if (a <= 0) return 0;
-    if (b <= 0) return t === 0 && i > 0 && l.reachAt(side, i - 1) > 0 ? a : 0;
-    return a + (b - a) * t;
+    return landSpanAt(l, side, s, (i) => l.commonAt(side, i)).reach;
   };
   /** The two rows about s (the quad between them), and how far along it s lies; on a row, the quad before it too. */
   const rowsAbout = (l: EdgeLand, s: number): { i: number; j: number; t: number; before: number } => {
@@ -566,6 +641,8 @@ const NEAR_REACH_M = 260;
 const NEAR_PAST_M = 0.25;
 /** Along its own edge, a point this near the asking cross-section is that section's own, m. */
 const OWN_SECTION_M = 2;
+/** A projected cross-section must reconstruct the queried world point this closely, m. */
+const SECTION_WORLD_TOL_M = 0.5;
 /** This many exact world points are kept before they are let go. */
 const GROUND_KEPT = 4096;
 
@@ -582,6 +659,80 @@ export type GroundUnder = (
 
 const groundKept = new WeakMap<RoadNetwork, GroundUnder>();
 
+interface LakeBanks {
+  at: (edge: number, side: -1 | 1, row: number) => { plateau: number; drop: number } | null;
+  shoreAt: (edge: number, side: -1 | 1, s: number) => number | null;
+}
+
+const lakeBanksKept = new WeakMap<RoadNetwork, LakeBanks>();
+
+/** The exact rows whose lake-side land render replaces with a plateau, wall and shore. */
+function lakeBanksOf(road: RoadNetwork, lakeLevel: number | null): LakeBanks {
+  const known = lakeBanksKept.get(road);
+  if (known) return known;
+  const rows = landOf(road).rows;
+  const bankRows = new Map<string, { plateau: number; drop: number } | null>();
+  const at: LakeBanks['at'] = (e, side, i) => {
+    const id = `${e},${side},${i}`;
+    const had = bankRows.get(id);
+    if (had !== undefined) return had;
+    let out: { plateau: number; drop: number } | null = null;
+    const l = rows(e);
+    const ed = road.edges[e];
+    if (lakeLevel !== null && l && ed && i >= 0 && i < l.n) {
+      const s = i * l.step;
+      const r = l.reachAt(side, i);
+      if (
+        r > LAKE_BANK_M + 2 &&
+        !l.meetsAt(side, i) &&
+        themeAt(ed.tags, side > 0 ? 'right' : 'left', s) === 'lake'
+      ) {
+        const verge = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
+        const plateau = road.toWorld(e, s, side * (verge + LAKE_BANK_M), LAND_TOP_M).y;
+        const mid = road.toWorld(e, s, side * (verge + (LAKE_BANK_M + r) / 2), 0);
+        const far = road.toWorld(e, s, side * (verge + r + 1), 0);
+        const water = lakeWaterAt(road.id, mid.x, mid.z);
+        if (water !== null && lakeWaterAt(road.id, far.x, far.z) !== null) {
+          const drop = plateau - (water + LAKE_SHORE_OVER_M);
+          if (drop >= LAKE_WALL_MIN_M) out = { plateau, drop };
+        }
+      }
+    }
+    bankRows.set(id, out);
+    return out;
+  };
+  const shoreRow = (e: number, side: -1 | 1, i: number): number | null => {
+    const bank = at(e, side, i);
+    const l = rows(e);
+    if (!bank || !l) return null;
+    let toNone = Infinity;
+    for (const dir of [-1, 1]) {
+      for (let k = 1; i + dir * k >= 0 && i + dir * k < l.n; k++) {
+        if (!at(e, side, i + dir * k)) {
+          toNone = Math.min(toNone, k);
+          break;
+        }
+      }
+    }
+    return bank.plateau - Math.min(bank.drop, LAKE_RAMP_M_PER_M * Math.max(0, toNone - 1) * l.step);
+  };
+  const shoreAt: LakeBanks['shoreAt'] = (e, side, s) => {
+    const l = rows(e);
+    if (!l || lakeLevel === null) return null;
+    const i = Math.max(0, Math.min(l.n - 1, Math.floor(s / l.step)));
+    const j = Math.min(l.n - 1, i + 1);
+    const t = Math.max(0, Math.min(1, s / l.step - i));
+    const a = shoreRow(e, side, i);
+    const b = shoreRow(e, side, j);
+    if (a === null) return null;
+    if (b === null) return t === 0 ? a : null;
+    return a + (b - a) * t;
+  };
+  const made = { at, shoreAt };
+  lakeBanksKept.set(road, made);
+  return made;
+}
+
 interface GroundPoint {
   x: number;
   y: number;
@@ -589,11 +740,14 @@ interface GroundPoint {
   s: number;
 }
 type GroundTriangle = readonly [GroundPoint, GroundPoint, GroundPoint];
+type TerrainUnder = (edge: number, x: number, z: number) => { y: number; s: number } | null;
+
+const terrainKept = new WeakMap<RoadNetwork, { banks: LakeBanks; under: TerrainUnder }>();
 
 /** Terrain is drawn in world-space triangles, not at the projection onto a curved centre line. */
-function terrainUnderOf(
-  road: RoadNetwork,
-): (edge: number, x: number, z: number) => { y: number; s: number } | null {
+function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
+  const known = terrainKept.get(road);
+  if (known?.banks === banks) return known.under;
   const perEdge = new Map<number, Map<string, GroundTriangle[]>>();
   const cellM = 16;
   const cell = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
@@ -632,17 +786,19 @@ function terrainUnderOf(
     };
     const strip = (
       pairs: readonly (readonly [GroundPoint, GroundPoint] | null)[],
-      thin = true,
+      kept?: readonly boolean[],
+      breakBefore: readonly boolean[] = [],
       flip = false,
     ) => {
       let last: readonly [GroundPoint, GroundPoint] | null = null;
       for (let i = 0; i < pairs.length; i++) {
+        if (breakBefore[i]) last = null;
         const row = pairs[i];
         if (!row) {
           last = null;
           continue;
         }
-        if (thin && i % 3 !== 0 && i < pairs.length - 1 && pairs[i - 1] && pairs[i + 1]) continue;
+        if (kept && !kept[i]) continue;
         if (last) quad(flip ? [last[1], last[0]] : last, flip ? [row[1], row[0]] : row);
         last = row;
       }
@@ -669,56 +825,87 @@ function terrainUnderOf(
           pairs.push([p(outer), p(width)]);
           if (s >= end) break;
         }
-        strip(pairs, false, side < 0);
+        strip(pairs, undefined, [], side < 0);
+      }
+      const landRows = Array.from({ length: rows.n }, (_, i): readonly [GroundPoint, GroundPoint] | null => {
+        const r = rows.reachAt(side, i);
+        if (r <= 0 || themeAt(ed.tags, side > 0 ? 'right' : 'left', i * rows.step) === 'lake') return null;
+        const a = road.toWorld(edge, i * rows.step, side * outer, LAND_TOP_M);
+        const b = road.toWorld(edge, i * rows.step, side * (outer + r), LAND_TOP_M);
+        return [point(i, side, outer, a.y), point(i, side, outer + r, b.y)] as const;
+      });
+      for (let i = 1; i < landRows.length; i++) {
+        const a = landRows[i - 1];
+        const b = landRows[i];
+        if (!a || !b) continue;
+        const plan = landIntervalPlan(
+          rows.reachAt(side, i - 1),
+          rows.reachAt(side, i),
+          rows.commonAt(side, i - 1) && !banks.at(edge, side, i - 1) && !banks.at(edge, side, i),
+        );
+        const commonRow = (row: readonly [GroundPoint, GroundPoint], at: number) => {
+          if (plan.kind !== 'common') return row;
+          const far = road.toWorld(edge, at * rows.step, side * (outer + plan.reachM), LAND_TOP_M);
+          return [row[0], point(at, side, outer + plan.reachM, far.y)] as const;
+        };
+        const aRow = commonRow(a, i - 1);
+        const bRow = commonRow(b, i);
+        quad(side < 0 ? [aRow[1], aRow[0]] : aRow, side < 0 ? [bRow[1], bRow[0]] : bRow);
+      }
+      const skirtRows = Array.from({ length: rows.n }, (_, i) => {
+        const k = rows.skirtAt(side, i);
+        if (!k || banks.at(edge, side, i)) return null;
+        const r = rows.reachAt(side, i);
+        const foot = outer + r + k.run;
+        return [
+          point(i, side, outer + r, k.top),
+          point(i, side, foot, SKIRT_GROUND_Y),
+          point(i, side, foot + k.flat, SKIRT_GROUND_Y),
+          point(i, side, foot + k.flat + SHELF_RUN_M, SHELF_FOOT_Y),
+        ] as const;
+      });
+      const breakBefore = skirtRows.map(
+        (_, i) =>
+          i > 0 &&
+          landIntervalPlan(
+            rows.reachAt(side, i - 1),
+            rows.reachAt(side, i),
+            rows.commonAt(side, i - 1) && !banks.at(edge, side, i - 1) && !banks.at(edge, side, i),
+          ).kind === 'common',
+      );
+      const profile = terrainProfilePlan(
+        skirtRows,
+        breakBefore,
+        SKIRT_SIMPLIFY_TOL_M,
+        SKIRT_SIMPLIFY_MAX_SPAN_M,
+      );
+      for (const { from, to, mid } of profile.fans) {
+        const a = skirtRows[from]!;
+        const b = skirtRows[to]!;
+        const face = (t0: GroundPoint, t1: GroundPoint, foot: GroundPoint) =>
+          side > 0 ? tri(t0, foot, t1) : tri(t0, t1, foot);
+        for (let j = from; j < to; j++) face(skirtRows[j]![0], skirtRows[j + 1]![0], j < mid ? a[1] : b[1]);
+        if (side > 0) tri(a[1], b[1], skirtRows[mid]![0]);
+        else tri(a[1], skirtRows[mid]![0], b[1]);
       }
       strip(
-        Array.from({ length: rows.n }, (_, i) => {
-          const r = rows.reachAt(side, i);
-          if (r <= 0 || themeAt(ed.tags, side > 0 ? 'right' : 'left', i * rows.step) === 'lake') return null;
-          const a = road.toWorld(edge, i * rows.step, side * outer, LAND_TOP_M);
-          const b = road.toWorld(edge, i * rows.step, side * (outer + r), LAND_TOP_M);
-          return [point(i, side, outer, a.y), point(i, side, outer + r, b.y)] as const;
-        }),
-        false,
+        skirtRows.map((row, i) =>
+          row && (rows.skirtAt(side, i)?.flat ?? 0) > 0 ? ([row[1], row[2]] as const) : null,
+        ),
+        profile.kept,
+        breakBefore,
         side < 0,
       );
-      const slopes = Array.from({ length: rows.n }, (_, i): readonly [GroundPoint, GroundPoint] | null => {
-        const k = rows.skirtAt(side, i);
-        if (!k) return null;
-        const r = rows.reachAt(side, i);
-        return [point(i, side, outer + r, k.top), point(i, side, outer + r + k.run, SKIRT_GROUND_Y)];
-      });
-      const kept = slopes.map(
-        (row, i) => !!row && !(i % 3 !== 0 && i < slopes.length - 1 && slopes[i - 1] && slopes[i + 1]),
-      );
-      for (let a = 0; a < slopes.length; a++) {
-        const ra = slopes[a];
-        if (!ra || !kept[a]) continue;
-        let b = a + 1;
-        while (b < slopes.length && slopes[b] && !kept[b]) b++;
-        const rb = slopes[b];
-        if (!rb) continue;
-        const mid = Math.floor((a + b) / 2);
-        for (let j = a; j < b; j++) tri(slopes[j]![0], slopes[j + 1]![0], j < mid ? ra[1] : rb[1]);
-        tri(ra[1], rb[1], slopes[mid]![0]);
-      }
       strip(
-        Array.from({ length: rows.n }, (_, i) => {
-          const k = rows.skirtAt(side, i);
-          if (!k || k.flat <= 0) return null;
-          const from = outer + rows.reachAt(side, i) + k.run;
-          return [
-            point(i, side, from, SKIRT_GROUND_Y),
-            point(i, side, from + k.flat, SKIRT_GROUND_Y),
-          ] as const;
-        }),
-        true,
+        skirtRows.map((row) => (row ? ([row[2], row[3]] as const) : null)),
+        profile.kept,
+        breakBefore,
         side < 0,
       );
     }
     return grid;
   };
-  return (edge, x, z) => {
+  const under: TerrainUnder = (edge, x, z) => {
     let grid = perEdge.get(edge);
     if (!grid) {
       grid = make(edge);
@@ -732,10 +919,14 @@ function terrainUnderOf(
       const v = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
       if (u < -1e-8 || v < -1e-8 || u + v > 1 + 1e-8) continue;
       const y = u * a.y + v * b.y + (1 - u - v) * c.y;
-      if (best === null || y > best.y) best = { y, s: u * a.s + v * b.s + (1 - u - v) * c.s };
+      if (best === null || y > best.y) {
+        best = { y, s: u * a.s + v * b.s + (1 - u - v) * c.s };
+      }
     }
     return best;
   };
+  terrainKept.set(road, { banks, under });
+  return under;
 }
 
 /**
@@ -766,8 +957,8 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
     return m;
   };
   const section = sectionGroundOf(road, lakeLevel);
-  const terrain = terrainUnderOf(road);
-  const land = landEdgeOf(road);
+  const terrain = terrainUnderOf(road, lakeBanksOf(road, lakeLevel));
+  const land = landEdgeOf(road, lakeLevel);
   const zones = zoneReachOf(road);
   const painted = splitPaintOf(road);
   const skirts = skirtOf(road);
@@ -821,8 +1012,14 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
       const outer = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
       const strip = land(e, side, s);
       const inStrip = Math.abs(d) <= outer + strip || Math.abs(d) <= zones(e, side, s) || painted(e, s, d);
+      const projected = road.toWorld(e, s, d, 0);
+      const px = projected.x - x;
+      const pz = projected.z - z;
+      const sectionNear = px * px + pz * pz <= SECTION_WORLD_TOL_M * SECTION_WORLD_TOL_M;
       const sectionY =
-        (inStrip || skirts(e, side, s) === null) && past <= NEAR_PAST_M ? section(e, s, d) : null;
+        sectionNear && (inStrip || skirts(e, side, s) === null) && past <= NEAR_PAST_M
+          ? section(e, s, d, { x, z })
+          : null;
       const face = terrain(e, x, z);
       const y = typeof sectionY === 'number' ? sectionY : null;
       if (face !== null && (y === null || face.y > y)) out.push(e, face.s, face.y, 1);
@@ -979,15 +1176,13 @@ export function splitPaintOf(road: RoadNetwork): SplitPaintAt {
  * degrees; the terrain skirt's is 1 in 2.2); a steeper one, the shelf off a high strip, is a face to fall past.
  */
 const GENTLE = 0.5;
-/** A lake's bank: the land at the road's height this far past the verge, then the shore this far over the water where the land stands this far over that (render/scenery.ts LAKE_BANK_M, LAKE_SHORE_OVER_M; road-mesh.ts LAKE_WALL_MIN_M). */
-const LAKE_BANK_M = 4.2;
-const LAKE_SHORE_OVER_M = 0.3;
-const LAKE_WALL_MIN_M = 0.5;
-/** Where a lake's bank begins or ends, its wall grows this many metres per metre along the road (road-mesh.ts LAKE_RAMP_M_PER_M). */
-const LAKE_RAMP_M_PER_M = 0.5;
-
 /** The highest ground one edge's cross-section draws at (s, d), world y, or null where it draws none there. */
-export type SectionGround = (edge: number, s: number, d: number) => number | null;
+export type SectionGround = (
+  edge: number,
+  s: number,
+  d: number,
+  world?: { x: number; z: number },
+) => number | null;
 
 const sectionKept = new WeakMap<RoadNetwork, SectionGround>();
 
@@ -1002,81 +1197,105 @@ const sectionKept = new WeakMap<RoadNetwork, SectionGround>();
 export function sectionGroundOf(road: RoadNetwork, lakeLevel: number | null = null): SectionGround {
   const known = sectionKept.get(road);
   if (known) return known;
-  const land = landEdgeOf(road);
+  const covered = locator(road);
   const zones = zoneReachOf(road);
   const painted = splitPaintOf(road);
-  const skirt = skirtOf(road);
   const shelf = shelfOf(road);
   const rows = landOf(road).rows;
-  /** A row's bank (render's lake bank, road-mesh.ts): the plateau's height and its wall's full drop, or null. */
-  const banks = new Map<string, { plateau: number; drop: number } | null>();
-  const bankAt = (e: number, side: -1 | 1, i: number): { plateau: number; drop: number } | null => {
-    const id = `${e},${side},${i}`;
-    const had = banks.get(id);
-    if (had !== undefined) return had;
-    let out: { plateau: number; drop: number } | null = null;
-    const l = rows(e);
-    const ed = road.edges[e];
-    if (lakeLevel !== null && l && ed && i >= 0 && i < l.n) {
-      const s = i * l.step;
-      const r = l.reachAt(side, i);
-      if (
-        r > LAKE_BANK_M + 2 &&
-        !l.meetsAt(side, i) &&
-        themeAt(ed.tags, side > 0 ? 'right' : 'left', s) === 'lake'
-      ) {
-        const verge = side > 0 ? ed.dMax + VERGE_M : VERGE_M - ed.dMin;
-        const plateau = road.toWorld(e, s, side * (verge + LAKE_BANK_M), LAND_TOP_M).y;
-        const mid = road.toWorld(e, s, side * (verge + (LAKE_BANK_M + r) / 2), 0);
-        const far = road.toWorld(e, s, side * (verge + r + 1), 0);
-        const water = lakeWaterAt(road.id, mid.x, mid.z);
-        if (water !== null && lakeWaterAt(road.id, far.x, far.z) !== null) {
-          const drop = plateau - (water + LAKE_SHORE_OVER_M);
-          if (drop >= LAKE_WALL_MIN_M) out = { plateau, drop };
-        }
-      }
-    }
-    banks.set(id, out);
-    return out;
+  const banks = lakeBanksOf(road, lakeLevel);
+  const bankAt = banks.at;
+  const terrain = terrainUnderOf(road, banks);
+  const shoulderRows: (
+    { ss: number[]; left: (number | undefined)[]; right: (number | undefined)[] } | undefined
+  )[] = [];
+  const rowsOf = (ed: Edge) => {
+    const knownRows = shoulderRows[ed.index];
+    if (knownRows) return knownRows;
+    const gaps = ed.features.filter((f) => f.kind === 'gap');
+    const inGap = (s: number) =>
+      gaps.some((g) => s > Math.min(g.s0, g.s1) + 1e-6 && s < Math.max(g.s0, g.s1) - 1e-6);
+    const ss: number[] = [];
+    for (const s of [...samplesOf(ed), ...gaps.flatMap((g) => [g.s0, g.s1])].sort((a, b) => a - b))
+      if (!inGap(s) && (ss.length === 0 || s - ss[ss.length - 1]! > 1e-4)) ss.push(s);
+    const made = { ss, left: [], right: [] };
+    shoulderRows[ed.index] = made;
+    return made;
   };
-  /**
-   * The shore's height at row i: where the bank begins or ends its wall grows from none at LAKE_RAMP_M_PER_M along
-   * the road (road-mesh.ts: rows to the nearest row without a bank, the road's ends not counting as one).
-   */
-  const shoreRow = (e: number, side: -1 | 1, i: number): number | null => {
-    const b = bankAt(e, side, i);
-    const l = rows(e);
-    if (!b || !l) return null;
-    let toNone = Infinity;
-    for (const dir of [-1, 1]) {
-      for (let k = 1; i + dir * k >= 0 && i + dir * k < l.n; k++) {
-        if (!bankAt(e, side, i + dir * k)) {
-          toNone = Math.min(toNone, k);
-          break;
-        }
-      }
+  /** The rendered outer edge of one shoulder row after it yields to lower, non-traffic lanes. */
+  const shoulderRow = (ed: Edge, row: number, side: -1 | 1): number => {
+    const rows = rowsOf(ed);
+    const values = side < 0 ? rows.left : rows.right;
+    const knownReach = values[row];
+    if (knownReach !== undefined) return knownReach;
+    const s = rows.ss[row] ?? 0;
+    const lanes = road.lanesAt(ed.index, s);
+    const drive = lanes.filter((lane) => lane.kind === 'drive');
+    const surface = drive.length ? drive : lanes.filter((lane) => lane.kind === 'shortcut');
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const lane of surface) {
+      lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+      hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
     }
-    return b.plateau - Math.min(b.drop, LAKE_RAMP_M_PER_M * Math.max(0, toNone - 1) * l.step);
+    if (!(lo < hi)) return side < 0 ? ed.dMin : ed.dMax;
+    const near = side < 0 ? lo : hi;
+    const far = side < 0 ? ed.dMin - VERGE_M : ed.dMax + VERGE_M;
+    const blocked = (d: number): boolean => {
+      const p = road.toWorld(ed.index, s, d, SHOULDER_LIFT_M);
+      return covered(
+        p.x,
+        p.z,
+        ed.index,
+        (other, os, od) => {
+          if (other.isTrafficOnly || p.y - road.toWorld(other.index, os, od, 0).y <= GROUND_OVER_ROAD_M)
+            return null;
+          let laneLo = Infinity;
+          let laneHi = -Infinity;
+          for (const lane of road.lanesAt(other.index, os)) {
+            laneLo = Math.min(laneLo, lane.dCenterM - lane.widthM / 2);
+            laneHi = Math.max(laneHi, lane.dCenterM + lane.widthM / 2);
+          }
+          return laneLo < laneHi ? [laneLo - GROUND_YIELD_MARGIN_M, laneHi + GROUND_YIELD_MARGIN_M] : null;
+        },
+        GROUND_YIELD_MARGIN_M + 0.25,
+      );
+    };
+    const reach = clearGroundReach(near, far, GROUND_YIELD_PROBE_M, blocked) ?? near;
+    values[row] = reach;
+    return reach;
   };
-  /** The shore's height at s, straight between the rows about it, or null where either has no bank. */
-  const shoreAt = (e: number, side: -1 | 1, s: number): number | null => {
-    const l = rows(e);
-    if (!l || lakeLevel === null) return null;
-    const i = Math.max(0, Math.min(l.n - 1, Math.floor(s / l.step)));
-    const j = Math.min(l.n - 1, i + 1);
-    const t = Math.max(0, Math.min(1, s / l.step - i));
-    const a = shoreRow(e, side, i);
-    const b = shoreRow(e, side, j);
-    if (a === null) return null;
-    if (b === null) return t === 0 ? a : null;
+  /** The shoulder edge between the renderer's rows. */
+  const shoulderReach = (ed: Edge, s: number, side: -1 | 1): number => {
+    const rows = rowsOf(ed);
+    let lo = 0;
+    let hi = rows.ss.length - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if ((rows.ss[mid] ?? 0) <= s) lo = mid;
+      else hi = mid - 1;
+    }
+    const i = lo;
+    const j = Math.min(rows.ss.length - 1, i + 1);
+    const s0 = rows.ss[i] ?? 0;
+    const s1 = rows.ss[j] ?? s0;
+    const t = s1 > s0 ? Math.max(0, Math.min(1, (s - s0) / (s1 - s0))) : 0;
+    const a = shoulderRow(ed, i, side);
+    const b = shoulderRow(ed, j, side);
     return a + (b - a) * t;
   };
-  const at: SectionGround = (e, s, d) => {
+  const at: SectionGround = (e, s, d, exactWorld) => {
     const ed = road.edges[e];
     if (!ed) return null;
     const lo = ed.dMin - VERGE_M;
     const hi = ed.dMax + VERGE_M;
-    if (d >= lo && d <= hi) return holeIn(road, e, s) ? null : road.toWorld(e, s, d, 0).y;
+    const onDrawnRoad = ed.isTrafficOnly
+      ? d >= lo && d <= hi
+      : d < ed.dMin
+        ? d >= shoulderReach(ed, s, -1)
+        : d > ed.dMax
+          ? d <= shoulderReach(ed, s, 1)
+          : true;
+    if (onDrawnRoad) return holeIn(road, e, s) ? null : road.toWorld(e, s, d, 0).y;
     const side = d > 0 ? 1 : -1;
     const out = side > 0 ? d - hi : lo - d;
     const y = (h: number) => road.toWorld(e, s, d, h).y;
@@ -1086,13 +1305,21 @@ export function sectionGroundOf(road: RoadNetwork, lakeLevel: number | null = nu
     };
     if (painted(e, s, d)) take(y(ZONE_FILL_LIFT_M));
     if (side * d <= zones(e, side, s)) take(y(ZONE_LIFT_M));
-    const r = land(e, side, s);
+    const l = rows(e);
+    if (!l) return best;
+    const span = landSpanAt(
+      l,
+      side,
+      s,
+      (i, j) => l.commonAt(side, i) && !bankAt(e, side, i) && !bankAt(e, side, j),
+    );
+    const r = span.reach;
     if (r <= 0) return best;
     const edgeD = side * ((side > 0 ? hi : -lo) + r);
     if (out <= r) {
       // A lake's bank (Lake Samish): the land at the road's height to the bank, then the shore just over the water.
       if (out > LAKE_BANK_M) {
-        const shore = shoreAt(e, side, s);
+        const shore = banks.shoreAt(e, side, s);
         if (shore !== null) {
           take(shore);
           return best;
@@ -1102,15 +1329,13 @@ export function sectionGroundOf(road: RoadNetwork, lakeLevel: number | null = nu
       return best;
     }
     const past = out - r;
-    const top = road.toWorld(e, s, edgeD, LAND_TOP_M).y;
-    const k = skirt(e, side, s);
-    if (k) {
-      if (past <= k.run) take(k.top - ((k.top - SKIRT_GROUND_Y) * past) / k.run);
-      else if (past <= k.run + k.flat) take(SKIRT_GROUND_Y);
-      else if (past <= k.run + k.flat + SHELF_RUN_M)
-        take(SKIRT_GROUND_Y - ((SKIRT_GROUND_Y - SHELF_FOOT_Y) * (past - k.run - k.flat)) / SHELF_RUN_M);
+    const world = exactWorld ?? road.toWorld(e, s, d, 0);
+    const face = terrain(e, world.x, world.z);
+    if (face) {
+      take(face.y);
       return best;
     }
+    const top = road.toWorld(e, s, edgeD, LAND_TOP_M).y;
     const run = shelf(e, side, s);
     if (run !== null && past <= run && top - SHELF_FOOT_Y <= GENTLE * run)
       take(top - ((top - SHELF_FOOT_Y) * past) / run);

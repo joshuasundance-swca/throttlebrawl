@@ -313,11 +313,39 @@ describe('what lies past an edge is what is drawn there (every route network)', 
       `[beyond-drawn] Tarpon s 95 left +4 m: physical ${typeof physical === 'string' ? physical : `${physical.past} ${(physical.floorY - deckY).toFixed(2)}`}; indexed ${indexed.name} ${indexed.y === null ? 'null' : (indexed.y - deckY).toFixed(2)}; direct ${direct ? `${direct.name} ${(direct.y - deckY).toFixed(2)}` : 'null'}`,
     );
 
-    expect(indexed.name).toBe('road-water');
+    expect(indexed.y).not.toBeNull();
     expect(direct?.name).toBe(indexed.name);
     expect(direct?.y).toBeCloseTo(indexed.y ?? Number.NaN, 5);
-    expect(physical).toMatchObject({ past: 'water' });
+    expect(physical).toMatchObject({ past: indexed.water ? 'water' : 'ground' });
     expect((physical as { floorY: number }).floorY).toBeCloseTo(indexed.y ?? Number.NaN, 5);
+  });
+
+  it('keeps an ordinary shoulder and yields an overlapping Samish shoulder exactly where each is drawn', () => {
+    for (const [network, roadId, s, side] of [
+      ['keys-m1', 'm1-tarpon-flats', 39, 'left'],
+      ['osm-pnw-samish', 'osm-samish-exit246-nb-on', 307, 'left'],
+    ] as const) {
+      const n = netOf(network);
+      const edge = n.road.edgeIndex(roadId);
+      const sign = side === 'right' ? 1 : -1;
+      const verge = n.road.vergeAt(edge, s, side);
+      const p = n.road.toWorld(edge, s, verge.dOuter + sign * 0.5, 0);
+      const deckY = n.road.surfaceHeight(edge, s, verge.dOuter);
+      const indexed = n.drawnAt(p.x, p.z, Math.max(p.y, deckY) + 3);
+      const direct = directDrawnAt(n, p.x, p.z, Math.max(p.y, deckY) + 3);
+      const physical = simRule(n)(edge, s, side, 0.5);
+      print(
+        `[beyond-drawn] ${roadId} s ${s} ${side} +0.5 m: physical ${typeof physical === 'string' ? physical : `${physical.past} ${(physical.floorY - deckY).toFixed(2)}`}; indexed ${indexed.name} ${indexed.y === null ? 'null' : (indexed.y - deckY).toFixed(2)}; direct ${direct ? `${direct.name} ${(direct.y - deckY).toFixed(2)}` : 'null'}`,
+      );
+      expect(indexed.y, roadId).not.toBeNull();
+      expect(direct?.name, roadId).toBe(indexed.name);
+      expect(direct?.y, roadId).toBeCloseTo(indexed.y ?? Number.NaN, 5);
+      expect(physical, roadId).toMatchObject({ past: indexed.water ? 'water' : 'ground' });
+      expect(
+        Math.abs((physical as { floorY: number }).floorY - (indexed.y ?? Number.NaN)),
+        roadId,
+      ).toBeLessThan(0.05);
+    }
   });
 
   it('sees the I-5 median as ground when looking across from the Samish shore road', () => {
