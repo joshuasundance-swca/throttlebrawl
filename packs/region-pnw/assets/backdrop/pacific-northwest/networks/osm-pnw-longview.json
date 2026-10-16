@@ -21,136 +21,138 @@
       "id": "longview-authored-mill-horizon",
       "kind": "skyline",
       "frame": "local",
-      "centre": [2700, 3450],
+      "centre": [3000, 2850],
       "radiusM": 600,
       "count": 0,
       "heightM": [12, 115],
       "widthM": [12, 180],
-      "colours": ["#707a73"],
+      "colours": ["#3e4945"],
       "gridDeg": -12,
       "keepOutM": 800,
       "towers": [
         {
-          "at": [2300, 3440],
+          "at": [2600, 2840],
           "heightM": 18,
           "widthM": 220,
           "depthM": 90,
-          "colour": "#788079",
+          "colour": "#3e4945",
           "crown": "slant"
         },
         {
-          "at": [2550, 3490],
+          "at": [2850, 2890],
           "heightM": 24,
           "widthM": 170,
           "depthM": 105,
-          "colour": "#686f69",
+          "colour": "#34403c",
           "crown": "flat"
         },
         {
-          "at": [2760, 3480],
+          "at": [3060, 2880],
           "heightM": 16,
           "widthM": 240,
           "depthM": 100,
-          "colour": "#899087",
+          "colour": "#4d5950",
           "crown": "slant"
         },
         {
-          "at": [3050, 3460],
+          "at": [3350, 2860],
           "heightM": 22,
           "widthM": 190,
           "depthM": 105,
-          "colour": "#707970",
+          "colour": "#3c4840",
           "crown": "flat"
         },
         {
-          "at": [2500, 3590],
+          "at": [2800, 2990],
           "heightM": 110,
           "widthM": 14,
           "depthM": 14,
-          "colour": "#8c9188",
+          "colour": "#5d645a",
           "crown": "flat"
         },
         {
-          "at": [2560, 3590],
+          "at": [2860, 2990],
           "heightM": 92,
           "widthM": 12,
           "depthM": 12,
-          "colour": "#8c9188",
+          "colour": "#555d54",
           "crown": "flat"
         },
         {
-          "at": [2900, 3550],
+          "at": [3200, 2950],
           "heightM": 64,
           "widthM": 28,
           "depthM": 30,
-          "colour": "#a5a99d",
+          "colour": "#636e60",
           "crown": "flat"
         },
         {
-          "at": [2950, 3550],
+          "at": [3250, 2950],
           "heightM": 64,
           "widthM": 28,
           "depthM": 30,
-          "colour": "#959e94",
+          "colour": "#566151",
           "crown": "flat"
         }
       ],
+      "exaggerate": 1.35,
       "networks": ["osm-pnw-longview"]
     },
     {
       "id": "longview-authored-civic-horizon",
       "kind": "skyline",
       "frame": "local",
-      "centre": [3300, -1100],
+      "centre": [3300, -500],
       "radiusM": 400,
       "count": 0,
       "heightM": [12, 42],
       "widthM": [30, 160],
-      "colours": ["#8e7764"],
+      "colours": ["#764f3d"],
       "gridDeg": -12,
       "keepOutM": 800,
       "towers": [
         {
-          "at": [3140, -1100],
+          "at": [3140, -500],
           "heightM": 16,
           "widthM": 140,
           "depthM": 55,
-          "colour": "#917b68",
+          "colour": "#764f3d",
           "crown": "slant"
         },
         {
-          "at": [3290, -1120],
+          "at": [3290, -520],
           "heightM": 20,
           "widthM": 150,
           "depthM": 60,
-          "colour": "#967d69",
+          "colour": "#80523e",
           "crown": "slant"
         },
         {
-          "at": [3290, -1120],
+          "at": [3290, -520],
           "heightM": 42,
           "widthM": 32,
           "depthM": 32,
-          "colour": "#c0b9a3",
+          "colour": "#b5a78b",
           "crown": "pyramid"
         },
         {
-          "at": [3470, -1100],
+          "at": [3470, -500],
           "heightM": 18,
           "widthM": 150,
           "depthM": 55,
-          "colour": "#887565",
+          "colour": "#6d4b3d",
           "crown": "slant"
         },
         {
-          "at": [3630, -1190],
+          "at": [3630, -590],
           "heightM": 30,
           "widthM": 55,
           "depthM": 40,
-          "colour": "#ad9e83",
+          "colour": "#8e7960",
           "crown": "stepped"
         }
       ],
+      "exaggerate": 1.5,
       "networks": ["osm-pnw-longview"]
     },
     {
