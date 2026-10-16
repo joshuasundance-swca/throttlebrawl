@@ -10,7 +10,7 @@
   "osmExtract": ".cache/osm/pnw-samish.json",
   "outRoot": "packs/region-pnw/regions/pacific-northwest",
   "waysLabel": "Interstate 5 and Lake Samish",
-  "networkNotes": "Interstate 5 southbound by Lake Samish, with the original rider shore choice and dedicated northbound access via Nulle Road and the Samish Way bridge. Source paths use OpenStreetMap and USGS bare-earth elevation; bridge decks, lanes, junction pieces and endpoint collars are synthesized for gameplay. Southbound ramp tails retain their forward lane; the shore core is shared by both directions.",
+  "networkNotes": "Interstate 5 southbound by Lake Samish, with the original rider shore choice and dedicated northbound access via Nulle Road and the Samish Way bridge. Source paths use OpenStreetMap and USGS bare-earth elevation; bridge decks, lanes, junction pieces and endpoint collars are synthesized for gameplay. Traffic-only access endpoint profiles adapt the bare-earth samples to their modeled host-road decks over authored 160 m spans; the Exit 246 shore endpoint adds 0.62 m to align the modeled crossing surface. Southbound ramp tails retain their forward lane; the shore core is shared by both directions.",
   "lines": [
     {
       "id": "i5",
@@ -541,6 +541,8 @@
         "lane": "L2",
         "widthM": 4.0,
         "turnsM": [20.0, 20.0],
+        "surfaceJoinM": 40.0,
+        "accessProfileFitM": 160.0,
         "minRadiusM": 42.5
       },
       "to": {
@@ -555,6 +557,7 @@
         "lane": "L1",
         "widthM": 4.0,
         "turnsM": [40.0, 40.0],
+        "surfaceJoinM": 80.0,
         "minRadiusM": 42.5
       }
     },
@@ -574,6 +577,9 @@
         "lane": "L1",
         "widthM": 4.0,
         "turnsM": [20.0, 20.0],
+        "surfaceJoinM": 40.0,
+        "accessProfileFitM": 160.0,
+        "accessProfileOffsetM": 0.62,
         "minRadiusM": 42.5
       },
       "to": {
@@ -588,6 +594,8 @@
         "lane": "L2",
         "widthM": 4.0,
         "turnsM": [20.0, 20.0],
+        "surfaceJoinM": 64.0,
+        "accessProfileFitM": 160.0,
         "minRadiusM": 42.5
       }
     }

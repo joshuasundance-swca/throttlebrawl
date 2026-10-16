@@ -31,7 +31,12 @@ from tbgis.network import (
     correction,
     curve_piece,
     directed_piece_frame,
+    fit_access_profile,
+    join_host_surface,
     lane_section,
+    piece_surface,
+    quads_overlap,
+    ribbon_quads,
     road_json,
     solve_shape,
     stretch_config,
@@ -783,6 +788,21 @@ def test_traffic_chain_refuses_reused_lines_and_two_way_overrides() -> None:
         NetworkConfig.model_validate(data)
 
 
+def test_traffic_chain_refuses_overlapping_access_profile_fits() -> None:
+    cfg = chain_config()
+    source = bake_line(cfg, cfg.line("c"), CHAIN_WAYS, chain_land)
+    span = float(source.p.s[-1]) * 0.6
+    data = cfg.model_dump(by_alias=True, exclude_none=True)
+    data["trafficChains"][0]["from"]["accessProfileFitM"] = span
+    data["trafficChains"][0]["to"]["accessProfileFitM"] = span
+    with pytest.raises(ValueError, match="access profile fits must not overlap"):
+        bake_network(NetworkConfig.model_validate(data), OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+    del data["trafficChains"][0]["from"]["accessProfileFitM"]
+    with pytest.raises(ValidationError, match="accessProfileOffsetM needs accessProfileFitM"):
+        data["trafficChains"][0]["from"]["accessProfileOffsetM"] = -0.6
+        NetworkConfig.model_validate(data)
+
+
 @pytest.mark.parametrize(
     "patch,message",
     [
@@ -814,10 +834,151 @@ def test_directed_surface_frame_reverses_grade_and_bank_and_collars_reject_nonze
     assert reverse.bank == -forward.bank == -0.1
     assert math.cos(reverse.heading - forward.heading) == pytest.approx(-1)
     cfg = chain_config()
-    host = bake_line(cfg, cfg.line("a"), CHAIN_WAYS, chain_land)
     target = TrafficFrame(20, 10, -200, 0, 0, 0)
     with pytest.raises(ValueError, match="zero-bank endpoint"):
-        traffic_chain_collar("bad", forward, target, cfg.trafficChains[0].from_, 2, 20, [], host, 10, True)
+        traffic_chain_collar("bad", forward, target, cfg.trafficChains[0].from_, 2, 20, [])
+
+
+def test_traffic_chain_collar_preserves_its_endpoint_fitted_height_profile() -> None:
+    cfg = chain_config()
+    spec = cfg.trafficChains[0].from_
+    a = TrafficFrame(0, 3, 0, 0, 0.02, 0)
+    b = TrafficFrame(20, 8, -100, 0, 0.01, 0)
+    shape = connector_shape(
+        (a.x, a.z, a.heading),
+        (b.x, b.z, b.heading),
+        spec.turnsM,
+        spec.widthM,
+        spec.minRadiusM,
+        "height-profile-control",
+    )
+    expected = curve_piece(
+        "expected",
+        "expected",
+        a.point(),
+        b.point(),
+        shape,
+        spec.widthM,
+        2,
+        20,
+        [],
+        endpoint_grades=(a.grade, b.grade),
+    )
+    step = float(np.sum(np.hypot(np.diff(expected.x), np.diff(expected.z)))) / (len(expected.x) - 1)
+    expected.y[0], expected.y[-1] = a.y, b.y
+    expected.y[1], expected.y[-2] = a.y + a.grade * step, b.y - b.grade * step
+    actual = traffic_chain_collar("actual", a, b, spec, 2, 20, [])
+
+    assert actual.y == pytest.approx(expected.y)
+
+
+def test_access_profile_fit_changes_only_its_endpoint_span_and_preserves_endpoint_grade() -> None:
+    access = curve_piece(
+        "access", "access", (0, 10, 0, 0), (0, 16, -200, 0), Shape(0, 0, 0, 10, 180, 10), 4, 2, 20, []
+    )
+    host = curve_piece(
+        "host", "host", (0, 7, 0, 0), (0, 9, -200, 0), Shape(0, 0, 0, 10, 180, 10), 4, 2, 20, []
+    )
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(access.x), np.diff(access.z)))))
+    access.y = 10 + 0.03 * station
+    original_x, original_y, original_z = access.x.copy(), access.y.copy(), access.z.copy()
+
+    fit_access_profile(access, host, 50, -0.6, True)
+
+    target = piece_surface(host, float(access.x[0]), float(access.z[0]))[1] - 0.6
+    assert access.x == pytest.approx(original_x)
+    assert access.z == pytest.approx(original_z)
+    assert access.y[0] == pytest.approx(target)
+    assert (access.y[1] - access.y[0]) / (station[1] - station[0]) == pytest.approx(0.03)
+    assert access.y[station >= 50] == pytest.approx(original_y[station >= 50])
+
+    access.y = original_y.copy()
+    fit_access_profile(access, host, 50, 0, False)
+    target = piece_surface(host, float(access.x[-1]), float(access.z[-1]))[1]
+    assert access.y[-1] == pytest.approx(target)
+    assert (access.y[-1] - access.y[-2]) / (station[-1] - station[-2]) == pytest.approx(0.03)
+    assert access.y[station <= station[-1] - 50] == pytest.approx(original_y[station <= station[-1] - 50])
+
+
+def test_host_surface_join_does_not_latch_onto_an_unrelated_later_crossing() -> None:
+    collar = curve_piece(
+        "collar", "collar", (0, 3, 0, 0), (0, 3, -100, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, []
+    )
+    host = replace(
+        collar,
+        id="host",
+        x=np.array((0.0, 0.0, 20.0, 20.0, 0.0, 0.0)),
+        y=np.full(6, 10.0),
+        z=np.array((0.0, -10.0, -10.0, -80.0, -80.0, -90.0)),
+        bank=np.zeros(6),
+    )
+    original = collar.y.copy()
+
+    join_host_surface(collar, host, 30, True)
+
+    later = int(np.argmin(np.hypot(collar.x, collar.z + 80)))
+    assert collar.y[later] == pytest.approx(original[later])
+    assert collar.y[0] == pytest.approx(10)
+
+
+def test_traffic_chain_collar_can_join_a_host_surface_over_an_authored_profile_span() -> None:
+    cfg = chain_config()
+    base_spec = cfg.trafficChains[0].to
+    spec = base_spec.model_copy(update={"surfaceJoinM": 30.0})
+    a = TrafficFrame(20, 3, 0, 0, 0.01, 0)
+    b = TrafficFrame(0, 7, -100, 0, 0.02, 0)
+    baseline = traffic_chain_collar("baseline", a, b, base_spec, 2, 20, [])
+    host = curve_piece(
+        "host", "host", (0, 6.6, -80, 0), (0, 8.6, -180, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, []
+    )
+    host.y = 6.6 + 0.02 * np.linspace(0, 100, len(host.y))
+    host.bank = np.zeros_like(host.y)
+
+    actual = traffic_chain_collar("actual", a, b, spec, 2, 20, [], host, False)
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(actual.x), np.diff(actual.z)))))
+    distance = station[-1] - station
+    sampled = [piece_surface(host, float(x), float(z)) for x, z in zip(actual.x, actual.z, strict=True)]
+    host_y = np.array([row[1] for row in sampled])
+    overlaps = np.array([any(quads_overlap(a, b) for b in ribbon_quads(host)) for a in ribbon_quads(actual)])
+    connected = []
+    for i in range(len(overlaps) - 1, -1, -1):
+        if not overlaps[i]:
+            break
+        connected.append(i)
+    points = np.zeros(len(actual.x), dtype=np.bool_)
+    points[min(connected) : max(connected) + 2] = True
+    boundary = float(max(distance[points]))
+    weight = np.clip((30 - distance) / (30 - boundary), 0, 1)
+    weight = weight * weight * (3 - 2 * weight)
+    weight[points] = 1
+    expected = baseline.y + weight * (host_y - baseline.y)
+    step = station[1] - station[0]
+    expected[0], expected[-1] = a.y, b.y
+    expected[1], expected[-2] = a.y + a.grade * step, b.y - b.grade * step
+
+    assert actual.y == pytest.approx(expected)
+    assert actual.y[distance > 30] == pytest.approx(baseline.y[distance > 30])
+    assert actual.y[0] == pytest.approx(a.y)
+    assert actual.y[1] == pytest.approx(a.y + a.grade * step)
+    assert actual.y[-2] == pytest.approx(b.y - b.grade * step)
+    assert actual.y[-1] == pytest.approx(b.y)
+
+    start_host = replace(
+        host,
+        id="start-host",
+        x=np.full(11, 20.0),
+        y=np.linspace(2.6, 3.0, 11),
+        z=np.linspace(20.0, 0.0, 11),
+        bank=np.zeros(11),
+    )
+    departing = traffic_chain_collar("departing", a, b, spec, 2, 20, [], start_host, True)
+    assert departing.y[0] == pytest.approx(a.y)
+    assert departing.y[1] == pytest.approx(a.y + a.grade * step)
+    assert departing.y[station > 30] == pytest.approx(baseline.y[station > 30])
+
+    too_short = base_spec.model_copy(update={"surfaceJoinM": float(station[-2])})
+    with pytest.raises(ValueError, match="leaves no untouched collar profile"):
+        traffic_chain_collar("short", a, b, too_short, 2, 20, [], host, False)
 
 
 def test_shared_junction_height_preserves_paths_and_endpoints_and_leaves_the_main_surface() -> None:

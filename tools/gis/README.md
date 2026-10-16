@@ -315,8 +315,14 @@ Peaks stretch from one cached extract to byte-identical files.
   into ordinary fragments and a through piece; two traffic-only collars connect the source line
   to direction-valid host lanes. The access line must have explicit `start` and `end` clips and
   a centred one-way R1 cross-section, including any per-road overrides. It keeps its own sampled
-  source elevation between the collars. Endpoint fitting currently accepts ordinary, unbanked host
-  surfaces; unsupported banked endpoints fail rather than silently changing their shape.
+  source elevation between the collars. An end may use `accessProfileFitM` to ease its dedicated
+  access line from the modeled host-deck elevation back to that source profile, with a finite
+  `accessProfileOffsetM` only when the two modeled decks need an authored vertical alignment.
+  `surfaceJoinM` makes the collar share the endpoint-connected host ribbon, then eases back to the
+  fitted collar profile. These are road-deck modeling controls, not surveyed elevations; their
+  source config and generated provenance note must say why they are used. Endpoint fitting
+  currently accepts ordinary, unbanked host surfaces; unsupported banked endpoints fail rather
+  than silently changing their shape.
   The branch remains a flat road list in the emitted pack: this adds no runtime format. A dedicated
   forward ingress replaces the rider ingress only in ambient membership; the rider's allowed roads,
   split and default links remain available. Choose clips in actual travel order, beyond overlapping

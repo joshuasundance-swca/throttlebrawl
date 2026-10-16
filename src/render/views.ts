@@ -768,7 +768,7 @@ export class EntityViews {
         const i = (slots[key] = (slots[key] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(key, i + 1);
         const wide = dims.widthM / v.widthM;
-        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
+        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(wide, wide, dims.lengthM / v.lengthM);
         mesh.setMatrixAt(
           i,
@@ -787,7 +787,7 @@ export class EntityViews {
         const dims = this.trafficTypes.get(e.contentId) ?? TRAFFIC_FIGURE_DIMS[fig];
         const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(fig, i + 1);
-        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
+        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(dims.widthM, TRAFFIC_FIGURE_HEIGHT_M[fig], dims.lengthM);
         mesh.setMatrixAt(
           i,
@@ -800,7 +800,7 @@ export class EntityViews {
         const dims = this.trafficTypes.get(e.contentId) ?? FIGURE_DEFAULT_DIMS[fig];
         const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(fig, i + 1);
-        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
+        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(dims.widthM, FIGURE_HEIGHT_M[fig], dims.lengthM);
         mesh.setMatrixAt(
           i,
@@ -813,7 +813,7 @@ export class EntityViews {
         const dims = def ?? DEFAULT_DIMS[shape];
         const i = (slots[shape] = (slots[shape] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(shape, i + 1);
-        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
+        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(dims.widthM, SHAPE_HEIGHT[shape], dims.lengthM);
         mesh.setMatrixAt(
           i,

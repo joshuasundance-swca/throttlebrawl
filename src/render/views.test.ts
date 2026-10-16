@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, InstancedMesh, Matrix4 } from 'three';
+import { BoxGeometry, Euler, Group, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssetManifest } from '../assets';
 import * as content from '../content';
@@ -92,6 +92,46 @@ function owner() {
 }
 
 describe('EntityViews exact reset and vehicle presentation edges', () => {
+  it('pitches every vehicle presentation branch and interpolates without losing lean', () => {
+    const v = new EntityViews(createFlatLook());
+    const modelType = { ...type, contentId: 'base:model-probe' };
+    const figureType = { ...type, contentId: 'region-pnw:log-truck', category: 'truck' as const };
+    const oddityType = { ...type, contentId: 'base:runaway-mobile-home', category: 'oddity' as const };
+    v.setTrafficTypes([modelType, figureType, oddityType, type]);
+    const geometry = new BoxGeometry(1, 1, 1);
+    v.setVehicleModels(
+      new Map([
+        [
+          modelType.contentId,
+          {
+            variants: [
+              { asset: 'pitch-probe', geometry, lengthM: 1, widthM: 1, heightM: 1, hoodAt: { y: 0.5, z: 0 } },
+            ],
+            paint: ['#ffffff'],
+          },
+        ],
+      ]),
+    );
+    const kinds = [modelType.contentId, figureType.contentId, oddityType.contentId, type.contentId];
+    const before = snapshot(kinds.map((contentId, id) => entity(id, 'vehicle', { contentId, pitch: -0.3 })));
+    const after = snapshot(
+      kinds.map((contentId, id) => entity(id, 'vehicle', { contentId, heading: 0.4, lean: 0.2, pitch: 0.3 })),
+    );
+    v.sync(before, after, 0.25, 0);
+
+    const expected = new Quaternion().setFromEuler(new Euler(-0.15, 0.1, -0.05, 'YXZ'));
+    const names = ['views-vehicle:pitch-probe', 'views-logTruck', 'views-mobileHome', 'views-car'];
+    for (const name of names) {
+      const mesh = v.root.getObjectByName(name) as InstancedMesh | undefined;
+      expect(mesh, name).toBeInstanceOf(InstancedMesh);
+      const matrix = new Matrix4();
+      mesh!.getMatrixAt(0, matrix);
+      const actual = new Quaternion();
+      matrix.decompose(new Vector3(), actual, new Vector3());
+      expect(Math.abs(actual.dot(expected)), name).toBeCloseTo(1, 6);
+    }
+  });
+
   it('clears four reused-ID pose maps and draws baseline pedestrian/on-foot poses', () => {
     const look = createFlatLook();
     const v = new EntityViews(look);

@@ -430,6 +430,20 @@ class TrafficChainEnd(TrafficIngress):
     at: LatLon
     pieceM: float = Field(40.0, gt=0)  # noqa: N815
     shiftM: float = 0.0  # noqa: N815
+    # Optional source-authoring span over which a synthetic collar joins the projected host surface.
+    # This preserves the access Line's sampled profile while giving a long merge room to meet an
+    # independently elevated receiving road across their endpoint-connected pavement overlap.
+    surfaceJoinM: float | None = Field(None, gt=0)  # noqa: N815
+    # Optional source correction: meet the projected host elevation at this access Line endpoint,
+    # then ease back to its independently sampled profile over this distance.
+    accessProfileFitM: float | None = Field(None, gt=0)  # noqa: N815
+    accessProfileOffsetM: float = Field(0.0, allow_inf_nan=False)  # noqa: N815
+
+    @model_validator(mode="after")
+    def _access_profile(self) -> TrafficChainEnd:
+        if self.accessProfileOffsetM != 0 and self.accessProfileFitM is None:
+            raise ValueError("accessProfileOffsetM needs accessProfileFitM")
+        return self
 
 
 class TrafficChain(Strict):
@@ -1222,6 +1236,94 @@ def surface_reach(section: Json, right: bool) -> float:
     return -float(min(ln["dCenterM"] - ln["widthM"] / 2 for ln in lanes_)) + MAIN_VERGE_M
 
 
+def piece_surface(pc: Piece, x: float, z: float) -> tuple[float, float]:
+    """Plan distance and emitted height at the nearest point, extended laterally by its bank."""
+    dx, dz = np.diff(pc.x), np.diff(pc.z)
+    lengths2 = np.maximum(dx * dx + dz * dz, 1e-12)
+    t = np.clip(((x - pc.x[:-1]) * dx + (z - pc.z[:-1]) * dz) / lengths2, 0.0, 1.0)
+    px, pz = pc.x[:-1] + t * dx, pc.z[:-1] + t * dz
+    k = int(np.argmin(np.hypot(px - x, pz - z)))
+    length = math.sqrt(float(lengths2[k]))
+    d = (x - float(px[k])) * (-float(dz[k]) / length) + (z - float(pz[k])) * (float(dx[k]) / length)
+    bank = pc.bank if pc.bank is not None else np.zeros_like(pc.x)
+    y = float(pc.y[k] + t[k] * (pc.y[k + 1] - pc.y[k]))
+    slope = float(bank[k] + t[k] * (bank[k + 1] - bank[k]))
+    return float(math.hypot(float(px[k]) - x, float(pz[k]) - z)), y - d * slope
+
+
+def ribbon_quads(pc: Piece) -> list[F64]:
+    """Plan-view quads for the emitted lane-and-verge ribbon of a road piece."""
+    headings = np.unwrap(np.arctan2(np.gradient(pc.x), -np.gradient(pc.z)))
+    nx, nz = np.cos(headings), np.sin(headings)
+    lo, hi = -surface_reach(pc.lane_section, False), surface_reach(pc.lane_section, True)
+    left = np.column_stack((pc.x + lo * nx, pc.z + lo * nz))
+    right = np.column_stack((pc.x + hi * nx, pc.z + hi * nz))
+    return [np.array((left[i], right[i], right[i + 1], left[i + 1])) for i in range(len(pc.x) - 1)]
+
+
+def quads_overlap(a: F64, b: F64) -> bool:
+    """Whether two convex plan-view ribbon quads overlap, including a shared boundary."""
+    for poly in (a, b):
+        for p, q in pairwise(np.vstack((poly, poly[0]))):
+            axis = np.array((-(q[1] - p[1]), q[0] - p[0]))
+            pa, pb = a @ axis, b @ axis
+            if float(np.max(pa)) < float(np.min(pb)) - 1e-6 or float(np.max(pb)) < float(np.min(pa)) - 1e-6:
+                return False
+    return True
+
+
+def join_host_surface(pc: Piece, host: Piece, span: float, at_start: bool) -> None:
+    """Share the connected host overlap, easing into it over an authored endpoint span."""
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(pc.x), np.diff(pc.z)))))
+    if span >= float(station[-2]):
+        raise ValueError(
+            f"traffic chain {pc.id}: surfaceJoinM {span:.3f} m leaves no untouched collar "
+            f"profile before {float(station[-2]):.3f} m"
+        )
+    distance = station if at_start else station[-1] - station
+    sampled = [piece_surface(host, float(x), float(z)) for x, z in zip(pc.x, pc.z, strict=True)]
+    host_y = np.array([row[1] for row in sampled])
+    collar_quads, host_quads = ribbon_quads(pc), ribbon_quads(host)
+    overlaps = np.array([any(quads_overlap(a, b) for b in host_quads) for a in collar_quads])
+    order = range(len(overlaps)) if at_start else range(len(overlaps) - 1, -1, -1)
+    connected: list[int] = []
+    for i in order:
+        if not overlaps[i]:
+            break
+        connected.append(i)
+    if not connected:
+        raise ValueError(f"traffic chain {pc.id}: collar does not overlap its connected host")
+    first, last = min(connected), max(connected) + 1
+    connected_points = np.zeros(len(pc.x), dtype=np.bool_)
+    connected_points[first : last + 1] = True
+    boundary_distance = float(max(distance[connected_points]))
+    if boundary_distance >= span:
+        raise ValueError(
+            f"traffic chain {pc.id}: surfaceJoinM {span:.3f} m does not reach beyond its "
+            f"{boundary_distance:.3f} m host overlap"
+        )
+    weight = smoothstep(np.clip((span - distance) / (span - boundary_distance), 0.0, 1.0))
+    weight[connected_points] = 1.0
+    pc.y += weight * (host_y - pc.y)
+
+
+def fit_access_profile(pc: Piece, host: Piece, span: float, offset: float, at_start: bool) -> None:
+    """Ease one dedicated access-road endpoint onto its host's projected elevation."""
+    station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(pc.x), np.diff(pc.z)))))
+    if span <= float(station[1]) or span >= float(station[-1]):
+        raise ValueError(f"traffic chain {pc.id}: accessProfileFitM must leave source profile")
+    distance = station if at_start else station[-1] - station
+    endpoint = 0 if at_start else len(pc.x) - 1
+    adjacent = 1 if at_start else len(pc.x) - 2
+    step = float(abs(station[adjacent] - station[endpoint]))
+    grade = float((pc.y[adjacent] - pc.y[endpoint]) / step) * (1 if at_start else -1)
+    target = piece_surface(host, float(pc.x[endpoint]), float(pc.z[endpoint]))[1] + offset
+    weight = smoothstep(np.clip((span - distance) / span, 0.0, 1.0))
+    pc.y += weight * (target - float(pc.y[endpoint]))
+    pc.y[endpoint] = target
+    pc.y[adjacent] = target + grade * step * (1 if at_start else -1)
+
+
 def curve_piece(
     pid: str,
     name: str,
@@ -1378,9 +1480,8 @@ def traffic_chain_collar(
     spacing: float,
     speed: float,
     tags: list[str],
-    host: BakedLine,
-    half: float,
-    leaves: bool,
+    host: Piece | None = None,
+    host_at_start: bool = True,
 ) -> Piece:
     if a.bank != 0 or b.bank != 0:
         raise ValueError(f"traffic chain {pid}: collars support only zero-bank endpoint surfaces")
@@ -1395,19 +1496,20 @@ def traffic_chain_collar(
         spacing,
         speed,
         tags,
-        None,
-        host,
-        half,
-        leaves,
-        (a.grade, b.grade),
+        endpoint_grades=(a.grade, b.grade),
     )
     pc.lane_section = lane_section(CrossSection(oneWay=True, laneWidthM=spec.widthM))
     pc.bank = np.linspace(a.bank, b.bank, len(pc.x))
+    if spec.surfaceJoinM is not None:
+        if host is None:
+            raise ValueError(f"traffic chain {pid}: surfaceJoinM needs its emitted host piece")
+        join_host_surface(pc, host, spec.surfaceJoinM, host_at_start)
     if len(pc.x) < 4:
         raise ValueError(f"traffic chain {pid}: collar too short to match endpoint grades")
     step = float(np.sum(np.hypot(np.diff(pc.x), np.diff(pc.z)))) / (len(pc.x) - 1)
     # road_json derives endpoint grades with finite differences. Match those emitted
-    # slopes exactly, including after the host-overlap height blend.
+    # slopes exactly. Traffic collars already have explicit endpoint heights and
+    # grades, so the shared-surface branch height blend must not reshape them.
     pc.y[0], pc.y[-1] = a.y, b.y
     pc.y[1], pc.y[-2] = a.y + a.grade * step, b.y - b.grade * step
     return pc
@@ -2049,6 +2151,14 @@ def bake_network(
         first, last = seq[0][0], seq[-1][0]
         require_forward_centre(first, "R1", 0)
         require_forward_centre(last, "R1", 0)
+        if (
+            first is last
+            and chain.from_.accessProfileFitM is not None
+            and chain.to.accessProfileFitM is not None
+        ):
+            length = float(np.sum(np.hypot(np.diff(first.x), np.diff(first.z))))
+            if chain.from_.accessProfileFitM + chain.to.accessProfileFitM >= length:
+                raise ValueError(f"traffic chain {chain.id}: access profile fits must not overlap")
         drop = {first.frm, last.to}
         junctions[:] = [j for j in junctions if j["id"] not in drop]
         collars: list[Piece] = []
@@ -2060,6 +2170,9 @@ def bake_network(
             host_seq = by_line[spec.line]
             k = next(i for i, (_, lab) in enumerate(host_seq) if lab == label)
             junction = by_label[label]
+            # The cut piece is the physical host surface under the collar. Lane direction still
+            # comes from an adjoining ordinary road because a cut inherits the section before it.
+            surface_host = host_seq[k][0]
             candidates = []
             for use_before in (True, False):
                 pc = host_seq[k - 1 if use_before else k + 1][0]
@@ -2074,6 +2187,14 @@ def bake_network(
             host, end_name, direction = candidates[0]
             host_end: Literal["from", "to"] = "to" if end_name == "to" else "from"
             require_drive_centre(host, spec.lane, spec.offsetM, direction)
+            if spec.accessProfileFitM is not None:
+                fit_access_profile(
+                    access,
+                    surface_host,
+                    spec.accessProfileFitM,
+                    spec.accessProfileOffsetM,
+                    side == "from",
+                )
             f_host = directed_piece_frame(host, host_end, spec.offsetM, direction)
             f_access = directed_piece_frame(access, "from" if side == "from" else "to", 0, 1)
             collar = traffic_chain_collar(
@@ -2084,8 +2205,7 @@ def bake_network(
                 cfg.sampleSpacingM,
                 min(host.speed, access.speed),
                 bl_tags((access, None)),
-                lines[spec.line],
-                surface_reach(host.lane_section, spec.offsetM >= 0),
+                surface_host,
                 side == "from",
             )
             collar.frm = collar.to = junction["id"]

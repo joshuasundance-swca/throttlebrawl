@@ -129,10 +129,12 @@ interface ConfigOptions {
   tags?: readonly BakedTag[];
   /** The road's curvature, 1/m (positive: a right turn); 0, a straight road. */
   kappa?: number;
+  /** The road's constant rise per metre. */
+  grade?: number;
 }
 
 function makeConfig(opts: ConfigOptions = {}): SimConfig {
-  const bundle = fixtureNetwork([{ id: 'a', lengthM: 2000, kappa: opts.kappa ?? 0 }]);
+  const bundle = fixtureNetwork([{ id: 'a', lengthM: 2000, kappa: opts.kappa ?? 0, grade: opts.grade ?? 0 }]);
   const road0 = bundle.roads[0];
   if (!road0) throw new Error('no road');
   const road = createRoadNetwork({
@@ -417,6 +419,33 @@ describe('riding it', () => {
     expect(down?.data).toMatchObject({ quality: 'clean', on: 'vehicle' });
     return { sc, vid };
   }
+
+  it('a semi roof remains the road-height support while it climbs a pitched road', () => {
+    const grade = 0.1;
+    const sc = scene(makeConfig({ grade }), {
+      s: 399,
+      d: 0,
+      speed: 20,
+      air: { h: 4.05, vy: -1 },
+    });
+    const vid = sc.vehicle(T_SEMI, 400);
+    sc.rider.pos.d = laneD(sc, vid);
+    expect(untilDown(sc)?.data).toMatchObject({ quality: 'clean', on: 'vehicle' });
+    let greatestRoofError = 0;
+    for (let t = 0; t < 120; t++) {
+      sc.step(held(0, 1));
+      const semi = sc.world.movers[vid];
+      expect(semi).toBeDefined();
+      expect(supportKeyOf(sc.world, sc.rider.id)).toBe(`v:${vid}`);
+      const riderY = sc.config.road.surfaceHeight(0, sc.rider.pos.s, sc.rider.pos.d) + sc.rider.h;
+      const semiY = sc.config.road.surfaceHeight(0, semi!.pos.s, semi!.pos.d);
+      const tiltedRoofY = semiY + SEMI.heightM + grade * (sc.rider.pos.s - semi!.pos.s);
+      greatestRoofError = Math.max(greatestRoofError, Math.abs(riderY - tiltedRoofY));
+    }
+    console.log(`[examined] pitched-road semi roof: max support/roof-plane error ${greatestRoofError} m`);
+    expect(sc.rider.h).toBeCloseTo(SEMI.heightM, 6);
+    expect(greatestRoofError).toBeLessThan(1e-6);
+  });
 
   it('rides a semi for 10 s on the brake, carried at its speed; let go, the wind rolls him off its tail', () => {
     const { sc, vid } = onSemi();

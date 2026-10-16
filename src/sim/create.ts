@@ -1,6 +1,6 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
-import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
+import { atan, atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
 import { waterLevelOf } from '../road';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon, stealPreview } from './combat';
@@ -167,7 +167,11 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       styleRun: m.kind === 'rider' ? styleRunOf(world, config, m.id) : null,
       // Air control and flips (playtest 2): the bike's pitch while riding, and the trick in the air.
       pitch:
-        m.kind === 'rider' && (m.mode === 'Road' || m.mode === 'Airborne') ? (riders.pitch[m.id] ?? 0) : 0,
+        m.kind === 'rider' && (m.mode === 'Road' || m.mode === 'Airborne')
+          ? (riders.pitch[m.id] ?? 0)
+          : m.kind === 'vehicle'
+            ? atan(m.pos.dir * (c * f.grade - s * f.bank))
+            : 0,
       trick: m.kind === 'rider' && m.mode === 'Airborne' ? trickOf(riders.trick[m.id]) : null,
       // Air that pays (the pitch deck's #13): where a player in the air will touch down.
       touchdown: touchdownOf(world, config, m),
