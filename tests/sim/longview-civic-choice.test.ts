@@ -8,6 +8,7 @@ import { blankActions, botInput, createBot } from '../../src/dev/bot';
 import {
   createRoadNetwork,
   createRouteProgress,
+  readConnector,
   type BakedNetwork,
   type BakedRoad,
   type BakedRoute,
@@ -15,7 +16,7 @@ import {
 import { createSimWithWorld } from '../../src/sim/create';
 import { riderState } from '../../src/sim/riders';
 import { raceState } from '../../src/sim/race';
-import { TRAFFIC } from '../../src/sim/traffic';
+import { TRAFFIC, trafficState } from '../../src/sim/traffic';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
 import type { SimConfig, SimInput } from '../../src/sim/types';
 import { firstSeed, ISOLATED } from './batch';
@@ -71,6 +72,7 @@ describe('the civic triangle is rideable rather than decorative', () => {
         .filter((e) => !road.edges[e]!.isConnector);
       expect(branchRoads.some((e) => visited.has(e))).toBe(choice === 'grid');
       expect(boosted).toBe(choice === 'grid');
+      expect(crashes).toBe(0);
       expect(snap.race.finishOrder).toContain(playerId);
       expect(snap.entities[playerId]!.road.edge).toBe(progress.finish.edge);
       expect(raceState(world).checkpoint[playerId]).toBe(config.route.checkpoints.length);
@@ -206,5 +208,118 @@ describe('the civic triangle is rideable rather than decorative', () => {
     process.stdout.write(
       `[examined] ${search.summary}; ${search.result?.ticks} ticks; maximum ${search.result?.maximum} ordinary vehicles\n`,
     );
+  });
+
+  it('observes the same vehicle generation enter, traverse and leave the entire branch in both directions', () => {
+    const reg = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+    const eventId = 'region-pnw:pnw-t1-bridge-city';
+    const base = buildSimConfig(reg, streamForEvent(reg, eventId), { seed: 1, eventId });
+    const branch = route.branches!.find((b) => b.traffic === 'road')!;
+    const streets = branch.roads.map((id) => road.edgeIndex(id)).filter((e) => !road.edges[e]!.isConnector);
+    const streetSet = new Set(streets);
+    const hostSet = new Set(progress.mainEdges);
+    const rows = baked.junctions
+      .flatMap((j) => j.connectors)
+      .map((value) => {
+        const row = readConnector(value);
+        if (!row) throw new Error('invalid civic connector row');
+        return row;
+      });
+    const directionOf = (r: (typeof rows)[number]) => {
+      const e = road.edges[road.edgeIndex(r.from.road)]!;
+      return road.lanesAt(e.index, r.from.end === 'from' ? 0 : e.length).find((l) => l.id === r.from.lane)!
+        .direction;
+    };
+    const isDriveMovement = (r: (typeof rows)[number]) =>
+      road.lanesAt(road.edgeIndex(r.road), 0).some((l) => l.kind === 'drive');
+    const expected = ([1, -1] as const).map((dir) => {
+      const entry = rows.find(
+        (r) =>
+          directionOf(r) === dir &&
+          isDriveMovement(r) &&
+          (dir === 1
+            ? hostSet.has(road.edgeIndex(r.from.road)) && streetSet.has(road.edgeIndex(r.to.road))
+            : hostSet.has(road.edgeIndex(r.to.road)) && streetSet.has(road.edgeIndex(r.from.road))),
+      )!;
+      const exit = rows.find(
+        (r) =>
+          directionOf(r) === dir &&
+          (dir === 1
+            ? streetSet.has(road.edgeIndex(r.from.road)) && hostSet.has(road.edgeIndex(r.to.road))
+            : streetSet.has(road.edgeIndex(r.to.road)) && hostSet.has(road.edgeIndex(r.from.road))),
+      )!;
+      return {
+        dir,
+        edges: [
+          road.edgeIndex(dir === 1 ? entry.from.road : entry.to.road),
+          road.edgeIndex(entry.road),
+          ...(dir === 1 ? streets : [...streets].reverse()),
+          road.edgeIndex(exit.road),
+          road.edgeIndex(dir === 1 ? exit.to.road : exit.from.road),
+        ],
+      };
+    });
+    const search = firstSeed(
+      'Longview civic complete vehicle generations',
+      [1, 2, 3, 4],
+      (seed) => {
+        const c: SimConfig = {
+          ...base,
+          seed,
+          road,
+          route: progress,
+          riders: base.riders.filter((r) => r.role === 'player'),
+          tuning: { ...base.tuning, ...ISOLATED, 'traffic.density': 1 },
+        };
+        const { sim, world } = createSimWithWorld(c);
+        const anchor = road.edgeIndex(route.mainPath[1]!);
+        const me = world.movers.find((m) => m.kind === 'rider')!;
+        me.pos = { edge: anchor, s: road.edges[anchor]!.length / 2, d: 5, dir: 1 };
+        riderState(world).yAbs[me.id] = road.surfaceHeight(anchor, me.pos.s, me.pos.d);
+        const histories = new Map<string, number[]>();
+        const completed = new Map<number, { identity: string; edges: string[] }>();
+        for (let tick = 0; tick < 60 * 90 && completed.size < expected.length; tick++) {
+          const input = blankActions();
+          input.brake = 1;
+          sim.step([botInput(input)]);
+          const st = trafficState(world);
+          const vehicles = new Map(
+            sim
+              .snapshot()
+              .entities.filter((m) => m.kind === 'vehicle')
+              .map((m) => [m.id, m]),
+          );
+          for (let slot = 0; slot < st.id.length; slot++) {
+            const id = st.id[slot]!;
+            const mover = vehicles.get(id);
+            if (!mover) continue;
+            const generation = st.generation[slot];
+            expect(Number.isSafeInteger(generation) && generation! > 0).toBe(true);
+            const identity = `${id}:${generation}`;
+            const history = histories.get(identity) ?? [];
+            if (history.at(-1) !== mover.road.edge) history.push(mover.road.edge);
+            histories.set(identity, history);
+            for (const want of expected) {
+              if (completed.has(want.dir)) continue;
+              const first = history.indexOf(want.edges[0]!);
+              if (first >= 0 && want.edges.every((edge, i) => history[first + i] === edge))
+                completed.set(want.dir, { identity, edges: want.edges.map((edge) => road.edges[edge]!.id) });
+            }
+          }
+        }
+        return {
+          completed: [...completed].map(([dir, evidence]) => ({ dir, ...evidence })),
+          ticks: sim.tick,
+          generations: histories.size,
+        };
+      },
+      (r) => r.completed.length === expected.length,
+    );
+    expect(
+      search.result,
+      `${search.summary}: ${JSON.stringify(search.tried.map((s) => s.result))}`,
+    ).not.toBeNull();
+    expect(search.result?.completed.map((r) => r.dir).sort()).toEqual([-1, 1]);
+    process.stdout.write(`[examined] ${search.summary}; ${JSON.stringify(search.result)}\n`);
   });
 });
