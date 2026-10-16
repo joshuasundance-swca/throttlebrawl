@@ -6,3 +6,4 @@ export { SpeedLines } from './speed-lines';
 export { Rain, rainColourOf } from './rain';
 export { EventProps } from './event-props';
 export { Smashables } from './smashables';
+export { AirPays } from './air-pays';

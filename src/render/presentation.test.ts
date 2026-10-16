@@ -71,7 +71,12 @@ function asyncScene(nestedFamily?: string) {
   const riderArrays: unknown[][] = [];
   const retries: (() => void)[] = [];
   const updates: { name: string; args: unknown[] }[] = [];
-  const layers: { name: string; pending: readonly SimEvent[]; hidden: Set<string> }[] = [];
+  const layers: {
+    name: string;
+    pending: readonly SimEvent[];
+    hidden: Set<string>;
+    structures: unknown[];
+  }[] = [];
   const constructors: { name: string; args: unknown[] }[] = [];
   const nested: { name: string; answer: ReturnType<typeof deferred<unknown>>; value: unknown }[] = [];
   const result = (name: string, value: unknown): Promise<unknown> => {
@@ -127,6 +132,7 @@ function asyncScene(nestedFamily?: string) {
       ready = true;
       pending: readonly SimEvent[] = [];
       hidden = new Set<string>();
+      structures: unknown[] = [];
       name = name;
       constructor(...args: unknown[]) {
         constructors.push({ name, args });
@@ -144,6 +150,9 @@ function asyncScene(nestedFamily?: string) {
         return [];
       }
       setFronts() {}
+      setStructures(plan: unknown) {
+        this.structures.push(plan);
+      }
       hide(refs: Iterable<string>) {
         for (const ref of refs) this.hidden.add(ref);
       }
@@ -192,6 +201,7 @@ function asyncScene(nestedFamily?: string) {
       Rain: layer('rain'),
       EventProps: layer('events'),
       Smashables: layer('smashables'),
+      AirPays: layer('air pays'),
       rainColourOf: () => null,
     },
     'rider rigs': { RiderRigs: layer('rider rigs') },
@@ -387,6 +397,35 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('gives a late race-parts landing layer the current roof plan and its queued newspaper crash', async () => {
+    const t = asyncScene();
+    const plan = {} as NonNullable<ReturnType<typeof roadApi.structuresOf>>;
+    vi.spyOn(roadApi, 'structuresOf').mockReturnValue(plan);
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const snap: SimSnapshot = {
+      tick: 1,
+      entities: [],
+      timeScale: 1,
+      race: { over: false, routeLength: 1, finishOrder: [] },
+    };
+    t.renderer.render(snap, snap, 1, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 });
+    const crash: SimEvent = {
+      tick: 1,
+      type: 'crash',
+      actor: 0,
+      data: { attempt: 'newspaper' },
+    };
+    t.renderer.pushEvents([crash]);
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+
+    const air = t.layers.filter((layer) => layer.name === 'air pays').at(-1)!;
+    expect(air.structures).toEqual([plan]);
+    expect(air.pending).toEqual([crash]);
+    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
+    expect(air.structures).toEqual([plan, null]);
+    expect(air.pending).toEqual([]);
+  });
+
   it('retains warmed modules, veto refs, render tuning and reduce-motion through reset', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });

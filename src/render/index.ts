@@ -44,7 +44,7 @@ import {
 import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
 import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
-import { AirPays } from './air-pays';
+import type { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
 import type { EventProps } from './event-props';
@@ -393,8 +393,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const params = defaultRenderParams();
   const views = new EntityViews(look, { ...opts, params }, scope);
   const boards = new Boards(look);
-  // Air that pays (the pitch deck's #13): the chalk mark and the newspaper.
-  const airPays = new AirPays();
   // The race's moving parts, one lazy chunk off the first-load JavaScript (race-parts.ts: the menu's
   // grid needs none of them). It is fetched as the renderer starts, so it is in long before a race
   // can start (it waits for the base pack's real roads); until then none is drawn.
@@ -404,6 +402,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // - W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
   // - Run W-T: the roadside smashables, standing or in pieces, from the snapshot. The standing ones
   //   share the road events' still batch: one draw call for both (the draw-call headroom).
+  // - Run W-T's landing chalk and newspaper (air-pays.ts).
   let race: {
     effects: FeelEffects;
     speedLines: SpeedLines;
@@ -411,7 +410,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     rainColourOf: (env: LookEnv) => string | null;
     eventProps: EventProps;
     smashables: Smashables;
+    airPays: AirPays;
   } | null = null;
+  /** Newspaper crashes received while the race-parts chunk is pending. */
+  const pendingAirEvents: SimEvent[] = [];
   let raceLoading = false;
   const loadRace = () => {
     if (race || raceLoading) return;
@@ -429,13 +431,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (rainEnv) rain.set(m.rainColourOf(rainEnv));
       const eventProps = new m.EventProps(look);
       const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
+      const airPays = new m.AirPays();
+      airPays.setStructures(structurePlan);
+      airPays.pushEvents(pendingAirEvents);
+      pendingAirEvents.length = 0;
       views.setEffects(effects);
       camera.add(effects.tint, speedLines.root, rain.root);
-      for (const o of [effects.root, eventProps.root, smashables.root]) {
+      for (const o of [effects.root, eventProps.root, smashables.root, airPays.root]) {
         persistent.add(o);
         scene.add(o);
       }
-      race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables };
+      race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables, airPays };
     });
   };
   const noFeel: FeelCounts = { sparks: 0, drops: 0, paper: 0, rings: 0, reactors: 0, tint: 0 };
@@ -443,7 +449,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   /** The last road's look environment: the drizzle's colour comes from it once rain.ts is in. */
   let rainEnv: LookEnv | null = null;
   const backdrop = new Backdrop(scope);
-  const persistent = new Set<Object3D>([views.root, boards.root, airPays.root, camera, backdrop.root]);
+  const persistent = new Set<Object3D>([views.root, boards.root, camera, backdrop.root]);
   for (const o of persistent) scene.add(o);
   loadRace();
   let roadScene: RoadScene | null = null;
@@ -467,7 +473,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (plan === structurePlan) return;
     structurePlan = plan;
     views.setStructures(plan);
-    airPays.setStructures(plan);
+    race?.airPays.setStructures(plan);
   };
   /** Whether the race's region names a fog colour: its haze then closes in (render.regionFogFarM). */
   let regionFog = false;
@@ -1121,7 +1127,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     race?.effects.resetTransient();
     race?.speedLines.resetTransient();
     race?.rain.resetTransient();
-    airPays.resetTransient();
+    race?.airPays.resetTransient();
+    pendingAirEvents.length = 0;
     verge?.resetTransient();
     rigs?.resetTransient();
     lastFrameAt = -1;
@@ -1132,7 +1139,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     sceneryVisible = 0;
     structurePlan = null;
     views.setStructures(null);
-    airPays.setStructures(null);
+    race?.airPays.setStructures(null);
   };
   const installRoad = (
     road: RoadNetwork,
@@ -1244,7 +1251,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pushEvents(events) {
       views.pushEvents(events);
-      airPays.pushEvents(events);
+      if (race) race.airPays.pushEvents(events);
+      else
+        for (const event of events)
+          if (event.type === 'crash' && event.data['attempt'] === 'newspaper') pendingAirEvents.push(event);
       verge?.pushEvents(events);
       rigs?.pushEvents(events);
     },
@@ -1293,7 +1303,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         race.eventProps.sync(curr, t);
         race.smashables.sync(curr, t);
       } else loadRace();
-      airPays.update(prev, curr, alpha, t);
+      race?.airPays.update(prev, curr, alpha, t);
       // The tier's reach for the still scenery (quality.ts). Boards keep the slider's own: their words
       // are content, and threats are never trimmed (they are not scenery).
       const reach = sceneryReach(params, quality);

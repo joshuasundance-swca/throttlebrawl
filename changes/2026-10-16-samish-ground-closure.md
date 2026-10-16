@@ -9,6 +9,7 @@ Sharp changes in roadside land width also close the exposed side of their terrai
 Terrain slopes and their adjoining flat ground now use fewer triangles while keeping their shared edges closed.
 Those adjoining pieces now reuse one terrain profile, avoiding repeated geometry work without changing the drawn ground.
 Vehicle figures likewise share their common placement work without changing their scale, paint or pose.
+The landing chalk and newspaper now load with the rest of the race effects instead of the opening menu.
 
 The scenery check now finds ground by the mesh's actual bounds after batching, replacing its assumption
 that every mesh stays within one named chunk of a prop. It still checks every scenery anchor and the

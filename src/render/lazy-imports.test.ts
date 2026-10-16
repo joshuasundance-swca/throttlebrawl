@@ -89,6 +89,11 @@ function enclosingLoadChunk(source: string, at: number): number {
 }
 
 describe("a race's lazy imports (polish batch F's check, punch item 4)", () => {
+  it('keeps the chalk mark and newspaper behind the existing race-parts import', () => {
+    expect(SOURCES['./index.ts']).not.toMatch(/import\s+(?!type\b)[^;]*\sfrom ['"]\.\/air-pays['"]/);
+    expect(SOURCES['./race-parts.ts']).toMatch(/export \{ AirPays \} from ['"]\.\/air-pays['"]/);
+  });
+
   it('finds a bare import, and passes one inside loadChunk (the negative control)', () => {
     expect(unguardedImports("void import('./landmarks').then(async (m) => { use(m); });")).toEqual([
       './landmarks',
