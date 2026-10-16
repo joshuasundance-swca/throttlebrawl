@@ -47,6 +47,7 @@ import {
   type TrickId,
 } from '../types';
 import type { Mover, World } from '../world';
+import { terrainGrade, terrainGroundAt } from './terrain';
 
 export const AIR_TUNING: readonly TuningParamDecl[] = [
   {
@@ -178,6 +179,8 @@ export interface AirState extends SpinState {
 
 /** The ground's pitch under a mover, along its travel direction, radians. */
 export function slopeAt(config: SimConfig, m: Mover): number {
+  const ground = terrainGroundAt(config.road, m.pos);
+  if (ground) return atan(terrainGrade(config.road, m.pos, m.yaw, ground));
   return atan(config.road.frameAt(m.pos.edge, m.pos.s).grade * m.pos.dir);
 }
 

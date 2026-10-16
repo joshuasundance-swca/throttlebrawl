@@ -27,32 +27,22 @@
 // Playtest 3's moves (the K0a contract): the wheelie (sim/riders/wheelie.ts), the drift
 // (sim/riders/drift.ts) and road gaps and jumpable walls (sim/riders/gap.ts) plug in through hooks
 // below, each neutral while its move is off, so their lanes never edit this file.
-import { atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
-import { courseEdgeTopAt, edgeTopAt, sRateFactor, type Structure } from '../../road';
+import { clamp, type TuningParamDecl, type VergeEdge } from '../../core';
+import type { Structure } from '../../road';
 import type { RideLimits } from '../ground';
 import type { TumbleState } from '../tumble';
 import type { MovesSnapshot, SimConfig, SimRiderDef, TouchdownSnapshot } from '../types';
-import { AIR_TUNING, holdingPaper, slopeAt, startFlight, touchdown, type AirState } from './air';
+import { AIR_TUNING, slopeAt, startFlight, type AirState } from './air';
 import { RIDER_BODY_HEIGHT_M } from './contact';
-import { COURSE_TUNING, courseEdgesOn, groundEdgeOpen, roadPastLine } from './course';
+import { COURSE_TUNING, courseEdgesOn } from './course';
 import { driftMoves, DRIFT_TUNING, newDriftState, type DriftState } from './drift';
 import { FUNNEL_TUNING } from './funnel';
 import { FURNITURE_TUNING } from './furniture';
 import { smokeTopScale, SMOKE_TUNING } from './smoke';
-import { deckHeight, KERB_M, movingDecks, NO_DECKS, stagingGuideAt } from './features';
-import {
-  GAP_TUNING,
-  handYaw,
-  newGapState,
-  overFalls,
-  overMarkOf,
-  overStep,
-  roadUnder,
-  type GapState,
-  type OverMark,
-} from './gap';
-import { supportAt, supportKindOf, supportsOn, SUPPORTS_TUNING } from './supports';
-import { plannedFrontAt, racePlanOf, structuresOver, STRUCTURES_TUNING, topNear } from './structures';
+import { KERB_M } from './features';
+import { GAP_TUNING, newGapState, overMarkOf, type GapState } from './gap';
+import { supportKindOf, SUPPORTS_TUNING } from './supports';
+import { STRUCTURES_TUNING, topNear } from './structures';
 import { uturnForget, UTURN_TUNING, type UturnState } from './uturn';
 import { limitsAt, brokenFencesOf, vergeState } from './verge';
 import { speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -610,7 +600,13 @@ export const SPLIT_GUIDE_LEAD_M = 90;
  * split with no barrier event, no scrape and no speed lost, and its d stays inside the zone, so it
  * takes the branch. Only where the zone leads onto an edge the race allows.
  */
-function splitGuideAt(config: SimConfig, edge: number, s: number, side: 1 | -1, limit: number): boolean {
+export function splitGuideAt(
+  config: SimConfig,
+  edge: number,
+  s: number,
+  side: 1 | -1,
+  limit: number,
+): boolean {
   for (const z of config.road.splitZones()) {
     if (z.edge !== edge || (z.d0 + z.d1 >= 0 ? 1 : -1) !== side) continue;
     const s0 = z.end === 'to' ? z.s0 - SPLIT_GUIDE_LEAD_M : z.s0;
@@ -633,7 +629,7 @@ function splitGuideAt(config: SimConfig, edge: number, s: number, side: 1 | -1, 
  *   the structures plan where none of them stands at him (a gap in the row: an alley, a lot);
  * - `held`: what is drawn there holds him (a barrier, the water, the ferns, a fence, a building, a deck's edge).
  */
-type EdgeHold = 'guide' | 'taper' | 'open' | 'held';
+export type EdgeHold = 'guide' | 'taper' | 'open' | 'held';
 
 export function edgeHold(
   world: World,
@@ -643,21 +639,7 @@ export function edgeHold(
   lim: RideLimits,
   feet: number,
 ): EdgeHold {
-  const limit = side > 0 ? lim.hi : lim.lo;
-  if (splitGuideAt(config, at.edge, at.s, side, limit) || stagingGuideAt(config, at.edge)) return 'guide';
-  if (side > 0 ? lim.hiTaper === true : lim.loTaper === true) return 'taper';
-  if (!courseEdgesOn(world.params)) return 'held';
-  const kind = side > 0 ? lim.hiEdge : lim.loEdge;
-  const vside = side > 0 ? 'right' : 'left';
-  if (groundEdgeOpen(config.road, at.edge, at.s, vside, kind)) return 'open';
-  // Another road's lanes just past the line (a junction, a split's branches): nothing stands in them.
-  if (roadPastLine(config, at.edge, at.s, side, kind)) return 'open';
-  const gap =
-    kind === 'hard' &&
-    racePlanOf(world, config) !== null &&
-    plannedFrontAt(config.road, at.edge, at.s, vside) &&
-    frontStructure(world, config, at, feet, side, limit) === null;
-  return gap ? 'open' : 'held';
+  return lateSteps().riderEdgeHold(world, config, at, side, lim, feet);
 }
 
 /**
@@ -685,9 +667,6 @@ export function edgeHoldAt(
   };
 }
 
-/** How far past a building front's band edge its building is looked for, m (Old Town's fronts stand 0.3 m back). */
-const FRONT_PROBE_M = [0.05, 0.3, 0.6] as const;
-
 /**
  * Whether a structure is a wall to a rider whose feet are at world height `feet` near (x, z): its top there
  * is more than a kerb over his feet (less is a step he rides onto) and its underside is below his head (a
@@ -710,15 +689,7 @@ export function frontStructure(
   side: 1 | -1,
   limit: number,
 ): Structure | null {
-  const plan = racePlanOf(world, config);
-  if (!plan) return null;
-  const road = config.road;
-  if (!plannedFrontAt(road, pos.edge, pos.s, side > 0 ? 'right' : 'left')) return null;
-  for (const k of FRONT_PROBE_M) {
-    const p = road.toWorld(pos.edge, pos.s, limit + side * (BIKE_HALF_WIDTH_M + k), 0);
-    for (const s of structuresOver(plan, p.x, p.z)) if (wallTo(s, p.x, p.z, feet)) return s;
-  }
-  return null;
+  return lateSteps().riderFrontStructure(world, config, pos, feet, side, limit);
 }
 
 /**
@@ -732,19 +703,7 @@ export function edgeTopOf(
   world: World,
   config: SimConfig,
 ): (edge: number, s: number, side: 'left' | 'right') => number | null {
-  const road = config.road;
-  const fronts = racePlanOf(world, config) !== null && supportsOn(world);
-  // The course's honest edges (sim/riders/course.ts): every edge is cleared above what is drawn there (the
-  // ferns, a fence; nothing at a soft edge or a deck's bare edge), never held at any height by nothing.
-  const course = courseEdgesOn(world.params);
-  const top = course ? courseEdgeTopAt : edgeTopAt;
-  return (edge, s, side) => {
-    if (fronts && plannedFrontAt(road, edge, s, side)) return 0;
-    // Another road's lanes just past the edge (sim/riders/course.ts `roadPastLine`): nothing stands there.
-    const sign = side === 'right' ? 1 : -1;
-    if (course && roadPastLine(config, edge, s, sign, road.vergeAt(edge, s, side).edge)) return 0;
-    return top(road, edge, s, side);
-  };
+  return lateSteps().riderEdgeTopOf(world, config);
 }
 
 /**
@@ -752,173 +711,22 @@ export function edgeTopOf(
  * edge): negative over a crest, positive in a dip. The same either way along the road.
  */
 export function crestCurvature(config: SimConfig, edge: number, s: number): number {
-  const len = config.road.edges[edge]?.length ?? 0;
-  const s0 = Math.max(0, s - CREST_SPAN_M);
-  const s1 = Math.min(len, s + CREST_SPAN_M);
-  if (s1 - s0 < CREST_SPAN_M) return 0;
-  return (config.road.frameAt(edge, s1).grade - config.road.frameAt(edge, s0).grade) / (s1 - s0);
+  return lateSteps().riderCrestCurvature(config, edge, s);
 }
 
-/** The touch-down forecast marches the flight in steps this long, s, for at most FORECAST_MAX_S. */
-const FORECAST_STEP_S = 1 / 30;
-const FORECAST_MAX_S = 4;
-
-/**
- * Where a player's rider in the air will touch down (the pitch deck's #13: the chalk mark), for the
- * snapshot: the flight marched on at its speed and heading under gravity, over the road's real
- * surface (a ramp's far side, a dip), until it meets the ground; its sideways drift eased as
- * `riders.airAlign` lines the bike up. `crooked` when landing as the bike is now would wobble or
- * worse: sideways, off the slope, leaned over, or still holding the newspaper. Null on the ground
- * and for riders no player drives. Presentation only: it reads the state, it never writes it.
- * Supports (sim/riders/supports.ts): a top the flight comes down onto first (a truck's roof where its
- * velocity takes it by then, a parked pickup) is where the mark goes, at the top's height.
- */
+/** Air-only reads share the race's existing lazy step boundary; menu grids need neither. */
 export function touchdownOf(world: World, config: SimConfig, m: Mover): TouchdownSnapshot | null {
-  const def = config.riders[m.riderIndex];
-  if (m.kind !== 'rider' || m.mode !== 'Airborne' || !def || def.controller.kind !== 'player') return null;
-  const st = riderState(world);
-  const road = config.road;
-  const pos = m.pos;
-  const gravity = GRAVITY * accelMultiplierOf(config);
-  const align = world.params['riders.airAlign'] ?? 0;
-  const at = { edge: pos.edge, s: pos.s, d: pos.d, dir: pos.dir };
-  let y = st.yAbs[m.id] ?? road.surfaceHeight(pos.edge, pos.s, pos.d);
-  let vy = st.vy[m.id] ?? 0;
-  let yaw = m.yaw;
-  let v = m.speed;
-  // The air drag the flight itself feels (stepAirborne): the bike slows toward its top speed's drag.
-  const boostTop = (st.boost[m.id] ?? 0) > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
-  const top = topSpeedOf(world, config, def.bike.topSpeedMps) * smokeScaleOf(world, st, m, def) + boostTop;
-  const drag =
-    top > 0
-      ? (def.bike.accelMps2 * (world.params['riders.accelScale'] ?? 1) * accelMultiplierOf(config)) /
-        (top * top)
-      : 0;
-  let t = 0;
-  let onTop = 0;
-  const dt = FORECAST_STEP_S;
-  const tops = supportsOn(world);
-  const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
-  // Over the barrier (2026-10-06, sim/riders/gap.ts): the flight meets the edge by the same rule the
-  // rider does (`overStep`, on its own copy of the mark), so a flight past a rail that ends in the water
-  // has no mark (there is no landing to aim at), and one that comes down on another road, or at the
-  // edge of ground past it, has its mark there.
-  const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
-  const edgeTop = edgeTopOf(world, config);
-  const groundOut = courseEdgesOn(world.params);
-  let mark: OverMark | null = overMarkOf(st, m.id);
-  for (; t < FORECAST_MAX_S; t += dt) {
-    v = Math.max(0, v - drag * v * v * dt);
-    const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
-    const prev = { edge: at.edge, s: at.s, d: at.d, gap: y - road.surfaceHeight(at.edge, at.s, at.d) };
-    at.s += at.dir * along * dt;
-    at.d += at.dir * v * sin(yaw) * dt;
-    yaw -= align * yaw * dt;
-    y += vy * dt - 0.5 * gravity * dt * dt;
-    vy -= gravity * dt;
-    if (road.advance(at) === 'deadEnd') break;
-    const step = overStep(config, at, y, mark, limits, BIKE_HALF_WIDTH_M, edgeTop, groundOut);
-    mark = step.mark;
-    if (step.setD !== undefined) at.d = step.setD;
-    if (step.hand) {
-      yaw = handYaw(road, at, step.hand, yaw);
-      at.edge = step.hand.edge;
-      at.s = step.hand.s;
-      at.d = step.hand.d;
-      at.dir = step.hand.dir;
-    }
-    const pastEdge = mark !== null && step.result === 'past';
-    // Out past the edge over water or a drop (or ground, with the course's edges on), and it falls: out of
-    // bounds, not a landing.
-    if (pastEdge && mark && overFalls(mark, y, groundOut)) return null;
-    // Below the barrier's top (or at a ground edge): it holds the flight at its limit.
-    if (step.holdD !== undefined) at.d = step.holdD;
-    const gap = y - road.surfaceHeight(at.edge, at.s, at.d);
-    const here = { edge: at.edge, s: at.s, d: at.d, ahead: t + dt };
-    const sup = tops
-      ? supportAt(world, config, m, here, decks, (h) => prev.gap >= h - 1e-6 && gap <= h)
-      : null;
-    if (sup) {
-      // Onto a top: back to where the flight came down through its height.
-      const k = prev.gap > sup.top ? (prev.gap - sup.top) / (prev.gap - gap) : 1;
-      if (prev.edge === at.edge) {
-        at.s = prev.s + (at.s - prev.s) * k;
-        at.d = prev.d + (at.d - prev.d) * k;
-      }
-      t += dt * k;
-      onTop = sup.top;
-      break;
-    }
-    // Out past the edge its road's plane does not go on: only a road under it, or the ground's
-    // edge (put back at the limit above), ends the flight there.
-    if (gap <= 0 && !pastEdge) {
-      // Back to where the flight crossed the ground, between the two steps.
-      const k = prev.gap > 0 ? prev.gap / (prev.gap - gap) : 1;
-      if (prev.edge === at.edge) {
-        at.s = prev.s + (at.s - prev.s) * k;
-        at.d = prev.d + (at.d - prev.d) * k;
-      }
-      t += dt * k;
-      break;
-    }
-  }
-  const p = road.toWorld(at.edge, at.s, at.d, onTop);
-  const f = road.frameAt(at.edge, at.s);
-  const tx = f.tx * at.dir;
-  const tz = f.tz * at.dir;
-  const fx = cos(yaw) * tx - sin(yaw) * tz;
-  const fz = cos(yaw) * tz + sin(yaw) * tx;
-  const lateral = Math.abs(v * sin(yaw));
-  const crashAt = world.params['riders.landingCrashMps'] ?? 4;
-  const td = touchdown(st, m, slopeAt(config, m));
-  const crooked =
-    holdingPaper(st, m.id) || td.crashes || td.wobbles || lateral >= crashAt * LANDING_WOBBLE_FRACTION;
-  return { x: p.x, y: p.y, z: p.z, heading: atan2(-fx, -fz), inS: t, crooked };
+  if (
+    m.kind !== 'rider' ||
+    m.mode !== 'Airborne' ||
+    config.riders[m.riderIndex]?.controller.kind !== 'player'
+  )
+    return null;
+  return lateSteps().riderTouchdown(world, config, m);
 }
 
-/**
- * What lies straight below a rider in the air, as a world height (`EntitySnapshot.floorY`; the maintainer,
- * 2026-10-06: "consistent physics and gameplay is important here so players know what to expect"): the
- * shadow falls there and the camera judges its height over it. The top of a support the rider is above
- * (a truck's roof, a parked pickup; sim/riders/supports.ts) or a ramp truck's deck, else the road's
- * surface; out past the edge of its road (over the barrier, sim/riders/gap.ts) another road under it
- * (the old Seven Mile Bridge), else the water or the drop's floor, or the band's edge where ground lies
- * past it. Null for anyone not in the air. Presentation only: it reads the state, it never writes it.
- */
 export function floorOf(world: World, config: SimConfig, m: Mover): number | null {
-  if (m.kind !== 'rider' || m.mode !== 'Airborne') return null;
-  const st = riderState(world);
-  const road = config.road;
-  const pos = m.pos;
-  const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  const y = st.yAbs[m.id] ?? surface + m.h;
-  const tops = supportsOn(world);
-  const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
-  const up = y - surface;
-  const on = tops
-    ? supportAt(
-        world,
-        config,
-        m,
-        { edge: pos.edge, s: pos.s, d: pos.d, ahead: 0 },
-        decks,
-        (h) => h <= up + 1e-6,
-      )
-    : null;
-  const mark = overMarkOf(st, m.id);
-  if (mark) {
-    // Out past the edge: a structure's top under it (a roof past the sidewalk) first.
-    if (on) return surface + on.top;
-    const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
-    const to = roadUnder(config, pos, y, limits);
-    if (to) return road.surfaceHeight(to.edge, to.s, to.d);
-    // The ground the scene draws there (with the course's edges on), else the old rules' band edge.
-    return mark.past === 'ground' && !courseEdgesOn(world.params)
-      ? road.surfaceHeight(pos.edge, pos.s, mark.d)
-      : mark.floorY;
-  }
-  const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
-  return surface + Math.max(0, ramp, on ? on.top : 0);
+  return m.kind === 'rider' && m.mode === 'Airborne' ? lateSteps().riderFloor(world, config, m) : null;
 }
 
 export const ridersSystem: SimSystem = {

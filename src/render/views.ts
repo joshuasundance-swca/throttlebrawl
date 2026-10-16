@@ -60,8 +60,9 @@ import {
 import type { LookStyle } from './look';
 import type { RiderRigs } from './riders';
 import type { BakedVehicle, VehicleSets } from './vehicles';
-import type { StructurePlan } from '../road';
+import type { RoadNetwork, StructurePlan } from '../road';
 import { fitRoof } from './roof-fit';
+import { fitTerrain } from './terrain-fit';
 import {
   BlobShadows,
   DEFAULT_VEHICLE_SHADOW,
@@ -459,6 +460,10 @@ export class EntityViews {
   private readonly shadows = new BlobShadows();
   /** The race's structures plan, when it has been made (`setStructures`). */
   private structures: StructurePlan | null = null;
+  private road: RoadNetwork | null = null;
+  private readonly terrainTilt = new Quaternion();
+  private readonly terrainUp = new Vector3(0, 1, 0);
+  private readonly terrainNormal = new Vector3();
   private readonly look: LookStyle;
   private readonly proportions: (contentId: string) => RiderProportions;
   private readonly riders = new Map<number, RiderView>();
@@ -554,6 +559,11 @@ export class EntityViews {
    */
   setStructures(plan: StructurePlan | null): void {
     this.structures = plan;
+  }
+
+  /** Replace the authored ground source along with the scene; null restores legacy presentation. */
+  setRoad(road: RoadNetwork | null): void {
+    this.road = road;
   }
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */
@@ -699,6 +709,7 @@ export class EntityViews {
     this.now = 0;
     this.eye = null;
     this.structures = null;
+    this.road = null;
   }
 
   /**
@@ -978,6 +989,12 @@ export class EntityViews {
         : null;
     if (roof) {
       sh.add(at.x, roof.y, at.z, heading, size, at.y - roof.y, roof);
+      return;
+    }
+    const land = fitTerrain(this.road, at.x, at.y, at.z, heading, size.lengthM, size.widthM);
+    if (land === null) return;
+    if (land) {
+      sh.add(at.x, land.y, at.z, heading, size, fixed ?? at.y - land.y, land);
       return;
     }
     sh.add(at.x, ground, at.z, heading, size, fixed ?? at.y - ground);
@@ -1329,6 +1346,19 @@ export class EntityViews {
     const airborne = e.mode === 'Airborne';
     root.rotation.x = airborne ? (p.pitch ?? 0.12) : 0;
     root.rotation.z = -p.lean + wob;
+    if (this.road?.terrain && e.mode === 'Road' && e.grounded) {
+      const roof = this.structures ? fitRoof(this.structures, p.x, p.y, p.z, p.heading, 2.3, 1.1) : null;
+      const land = roof ? null : fitTerrain(this.road, p.x, p.y, p.z);
+      if (land && Math.abs(land.y - p.y) <= 0.3) {
+        // The rig adds its own wheelie about a tyre. Sim pitch already includes that wheelie,
+        // so only the source ground normal belongs on the root frame.
+        this.terrainTilt.setFromUnitVectors(
+          this.terrainUp,
+          this.terrainNormal.set(land.nx, land.ny, land.nz),
+        );
+        root.quaternion.premultiply(this.terrainTilt);
+      }
+    }
     if (airborne && p.pitch !== undefined) {
       this.v.set(0, RIDER_CENTRE_M, 0).applyEuler(root.rotation);
       root.position.x -= this.v.x;

@@ -37,7 +37,7 @@ import {
   type Object3D,
 } from 'three';
 import type { BakedVerge, RoadNetwork } from '../road';
-import { BRUSH_STEP_M, brushClumpAt, hedged } from '../road';
+import { BRUSH_STEP_M, DRAWN_VERGE_M, brushClumpAt, hedged } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
 import {
   type BarrierLook,
@@ -621,6 +621,8 @@ export class VergeLayer {
         // The band, then (a second pass, its own strip) the shallows past a water edge. Each unbroken run
         // is drawn with only the samples its shape needs (keptSamples: playtest 4 run B, mustFix 1).
         for (const pass of ['band', 'shallows'] as const) {
+          // Authored water has its own faces and holes; a road-height shallows strip would cover them.
+          if (road.terrain && pass === 'shallows') continue;
           const run: { pair: [Point3, Point3]; colour: string }[] = [];
           const flush = () => {
             const kept = keptSamples(
@@ -647,13 +649,23 @@ export class VergeLayer {
             const lift = pass === 'band' ? VERGE_LIFT_M : VERGE_LIFT_M - 0.01;
             let dFar = pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M;
             if (pass === 'band') {
+              // Only the road's own shoulder may retain this flat overlay. Outside it, authored
+              // terrain supplies all natural ground, including slopes and absent coverage.
+              if (road.terrain) {
+                dFar =
+                  side < 0 ? Math.max(dFar, e.dMin - DRAWN_VERGE_M) : Math.min(dFar, e.dMax + DRAWN_VERGE_M);
+                if ((dFar - v.dInner) * side <= 0) {
+                  flush();
+                  continue;
+                }
+              }
               // The band stops where it would lie over a lower road's lanes (a link down the embankment, a branch
               // that leaves lower): the I-5's band stood up to 1.55 m over Lake Samish's links.
               const reach = this.locator.clearReach(
                 e.index,
                 s,
                 v.dInner,
-                v.dOuter,
+                dFar,
                 lift,
                 GROUND_YIELD_MARGIN_M,
                 GROUND_OVER_ROAD_M,

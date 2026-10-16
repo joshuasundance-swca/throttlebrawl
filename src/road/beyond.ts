@@ -25,6 +25,7 @@ import { lanesNear } from './course';
 import { groundUnderOf, sectionGroundOf } from './drawn-ground';
 import type { RoadNetwork } from './network';
 import { lakeWaterAt } from './water';
+import { terrainAt } from './terrain';
 
 /**
  * Each network's water level, world y, m: the sea, a lake, a river [default]. A network left out is at
@@ -338,6 +339,15 @@ export function beyondAt(
   const from = sign * road.vergeAt(edge, s, side).dOuter;
   const at = from + Math.max(0, acrossM);
   const point = road.toWorld(edge, s, sign * at, 0);
+  if (road.terrain) {
+    const source = terrainAt(road.terrain, point.x, point.z);
+    // The source coverage is independent of this road's strip and of gaps in its deck.
+    // Include actual road surfaces at this point, without importing the course's road-band query.
+    const ground = groundUnderOf(road)(point.x, point.z, Infinity);
+    if (source?.surface === 'water' && (ground === null || source.y > ground))
+      return { past: 'water', floorY: source.y };
+    return ground === null ? { past: 'drop', floorY: 0 } : { past: 'ground', floorY: ground };
+  }
   const water = lakeWaterAt(road.id, point.x, point.z) ?? 0;
   const tagged = pastAt(road, edge, s, side);
   const none: Beyond = { past: tagged === 'ground' ? 'drop' : tagged, floorY: water };

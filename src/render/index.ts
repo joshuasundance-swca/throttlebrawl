@@ -438,6 +438,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       boards.hide(hiddenRefs);
       buildBoards();
       airPays.setStructures(structurePlan);
+      airPays.setRoad(roadArgs?.road ?? null);
       airPays.pushEvents(pendingAirEvents);
       pendingAirEvents.length = 0;
       views.setEffects(effects);
@@ -1153,6 +1154,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     structurePlan = null;
     views.setStructures(null);
     race?.airPays.setStructures(null);
+    views.setRoad(null);
+    race?.airPays.setRoad(null);
   };
   const installRoad = (
     road: RoadNetwork,
@@ -1192,6 +1195,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     }
     roadTime = env.timeOfDay;
     roadArgs = { road, dressing, density: params.roadsideDensity };
+    views.setRoad(road);
+    race?.airPays.setRoad(road);
     roofs = roofSpans(road);
     buildRoad();
     if (vergeModule) buildVerge(pendingVerge);

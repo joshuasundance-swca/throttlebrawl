@@ -1,7 +1,7 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan, atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
-import { waterLevelOf } from '../road';
+import { terrainAt, waterLevelOf } from '../road';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon, stealPreview } from './combat';
 import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
@@ -78,8 +78,11 @@ const SYSTEMS = orderSystems([
 function floorField(world: World, config: SimConfig, m: Mover): { floorY?: number } {
   const air = floorOf(world, config, m);
   if (air !== null) return { floorY: air };
-  if (m.kind === 'rider' && m.mode === 'Tumble' && (tumbleRecord(world, m.id)?.overboard ?? -1) >= 0)
-    return { floorY: waterLevelOf(config.road) };
+  const record = m.kind === 'rider' && m.mode === 'Tumble' ? tumbleRecord(world, m.id) : null;
+  if (record && record.overboard >= 0) {
+    const source = terrainAt(config.road.terrain, record.rider.x, record.rider.z);
+    return { floorY: source?.y ?? waterLevelOf(config.road) };
+  }
   return {};
 }
 
@@ -147,7 +150,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       throttle: riders.throttle[m.id] ?? 0,
       rpm: riders.rpm[m.id] ?? 0,
       gear: riders.gear[m.id] ?? 0,
-      grounded: m.h <= 0,
+      grounded: m.kind === 'rider' && road.terrain ? m.mode === 'Road' : m.h <= 0,
       health: riders.health[m.id] ?? 0,
       healthMax: def?.healthMax ?? 0,
       ...combatView(world, m.id),
