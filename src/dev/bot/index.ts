@@ -9,7 +9,8 @@
 // - rides the route: the centre of a travel lane in its direction, or a `shortcut` lane when the
 //   road offers one; and it takes road-2's ramp shortcut once: in the last SHORTCUT_APPROACH_M
 //   before a split zone on the route (`RouteProgress.shortcuts`) it moves into the zone, holds off
-//   fights, and follows a car going its way rather than swerve out of the zone; while a car coming
+//   fights, and follows a car going its way rather than swerve out of the zone; a stopped queue
+//   allows its ordinary slow filtering within an own-side zone when there is safe room; while a car coming
 //   the other way is in the zone's line it keeps to its own side and rides on, never stopping in
 //   that car's path, and one running beside the line neither keeps it off nor stops it;
 // - avoids traffic: a vehicle ahead in its line makes it pick another lane of its own direction,
@@ -197,17 +198,16 @@ function zoneLine(z: ShortcutZone): number {
 }
 
 /**
- * Does a zone's line run through lanes that go the other way (a cut that leaves from the oncoming
- * side, Bridge City's)? The lanes are those at the zone's start.
+ * Does a zone's line run through a lane of this direction? The lanes are those at its start.
  */
-function crossesOncoming(z: ShortcutZone, route: RouteQueries, dir: 1 | -1): boolean {
+function zoneInDirection(z: ShortcutZone, route: RouteQueries, dir: 1 | -1): boolean {
   const line = zoneLine(z);
   const lane = route
     .lanesAt(z.edge, z.s0)
     .find(
       (l) => (l.kind === 'drive' || l.kind === 'shoulder') && Math.abs(line - l.dCenterM) <= l.widthM / 2,
     );
-  return lane !== undefined && lane.direction === -dir;
+  return lane !== undefined && lane.direction === dir;
 }
 
 /** What the bot has done so far this race (the browser test and the batch print these). */
@@ -333,6 +333,33 @@ export function createBot(): BotController {
       if (Math.abs(o.road.d - d) < ONCOMING_IN_LINE_M) return false;
     }
     return true;
+  }
+
+  /** The same stopped-queue recovery on ordinary roads and inside an own-side choice. */
+  function filterLine(
+    snap: SimSnapshot,
+    me: EntitySnapshot,
+    lanes: readonly LaneInfo[],
+    targetD: number,
+    zone?: ShortcutZone,
+  ): number | undefined {
+    const lead = blockerAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M);
+    const leadStopped = lead !== null && lead.o.road.dir === me.road.dir && lead.o.speed < 0.5;
+    if (!leadStopped) filtering = false;
+    else if (stillTicks >= STUCK_TICKS || backing.has(lead.o.id)) filtering = true;
+    if (!filtering) return undefined;
+    return [
+      ...lanes.filter((l) => l.kind === 'shoulder' && l.direction === me.road.dir).map((l) => l.dCenterM),
+      // A wide single lane can have passing room without a separately named shoulder.
+      ...lanes
+        .filter((l) => rideable(l, me.road.dir))
+        .flatMap((l) => [l.dCenterM - l.widthM / 2 + 0.6, l.dCenterM + l.widthM / 2 - 0.6])
+        .sort((a, b) => Math.abs(a - me.road.d) - Math.abs(b - me.road.d)),
+    ].find(
+      (d) =>
+        (!zone || (d >= Math.min(zone.d0, zone.d1) + 0.6 && d <= Math.max(zone.d0, zone.d1) - 0.6)) &&
+        shoulderClear(snap, me, d),
+    );
   }
 
   /**
@@ -507,7 +534,7 @@ export function createBot(): BotController {
         wasDown = false;
         ownSideUntil = snap.tick + REMOUNT_OWN_SIDE_TICKS;
         const near = zonesOf(route).find((z) => approaching(z, me.road.edge, me.road.s, me.road.dir));
-        if (near && crossesOncoming(near, route, me.road.dir)) shortcutDone = true;
+        if (near && zoneInDirection(near, route, -me.road.dir as 1 | -1)) shortcutDone = true;
       }
       if (me.mode === 'Airborne' || !me.grounded) {
         a.throttle = 1;
@@ -624,8 +651,19 @@ export function createBot(): BotController {
         // and is never a reason to stop: a stopped bike holds that car at its nose.
         if (!clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M, dir)) {
           ({ throttle, brake } = follow(snap, me, targetD, dir));
+          // A stopped queue must not hold this commitment forever. Filter only on our own
+          // side, within the choice itself, with the ordinary clearance and walking pace.
+          const shoulder = zoneInDirection(zone, route, dir)
+            ? filterLine(snap, me, lanes, targetD, zone)
+            : undefined;
+          if (shoulder !== undefined) {
+            targetD = shoulder;
+            throttle = me.speed < FILTER_MPS ? 1 : 0;
+            brake = me.speed > FILTER_MPS + 1 ? 0.5 : 0;
+          }
         } else {
           dodging = false;
+          filtering = false;
         }
       } else if (!clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
         // Another lane of its own direction first (nearest first); the oncoming lane only when none
@@ -641,32 +679,14 @@ export function createBot(): BotController {
         // Stopped behind a vehicle that is stopped too (STUCK_TICKS): its own side's shoulder, when
         // nothing on it would touch the bike, past the queue at FILTER_MPS. It keeps at it while the
         // vehicle in its line stays stopped, and rejoins its lane once that line is clear.
-        const lead = free ? null : blockerAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M);
-        const leadStopped = lead !== null && lead.o.road.dir === dir && lead.o.speed < 0.5;
-        if (!leadStopped) filtering = false;
-        else if (stillTicks >= STUCK_TICKS || backing.has(lead.o.id)) filtering = true;
-        const shoulder = filtering
-          ? [
-              ...lanes
-                .filter((l) => l.kind === 'shoulder' && l.direction === dir)
-                .map((l) => ({ dCenterM: l.dCenterM })),
-              // A wide single lane can have passing room without a separately named shoulder.
-              // Keep the bike inside its lane and apply the same vehicle clearance and speed cap.
-              ...own
-                .flatMap((l) =>
-                  [l.dCenterM - l.widthM / 2 + 0.6, l.dCenterM + l.widthM / 2 - 0.6].map((dCenterM) => ({
-                    dCenterM,
-                  })),
-                )
-                .sort((a, b) => Math.abs(a.dCenterM - d) - Math.abs(b.dCenterM - d)),
-            ].find((l) => shoulderClear(snap, me, l.dCenterM))
-          : undefined;
+        if (free) filtering = false;
+        const shoulder = free ? undefined : filterLine(snap, me, lanes, targetD);
         if (free) {
           if (!dodging) stats.trafficDodges++;
           dodging = true;
           targetD = free.d;
-        } else if (shoulder) {
-          targetD = shoulder.dCenterM;
+        } else if (shoulder !== undefined) {
+          targetD = shoulder;
           throttle = me.speed < FILTER_MPS ? 1 : 0;
           brake = me.speed > FILTER_MPS + 1 ? 0.5 : 0;
         } else {
