@@ -2,6 +2,7 @@
 // and deterministic, like the sim. The road lane (road-1, road-2) owns this folder after app-1.
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
+export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
 export { grassMedianSpan } from './median';
 export type { LaneTransition } from './lane-transitions';
 export type {
@@ -176,7 +177,7 @@ export type {
   StructureSink,
   StructureSpec,
 } from './structures';
-export { COURSE_STEP_M, courseAt, lanesNear } from './course';
+export { COURSE_STEP_M, courseAt, lanesNear, roadsideGroundHeight } from './course';
 export type { CourseSpot } from './course';
 // The car ferry's numbers (small: render's roofs and the places both read them, and so does its planner).
 export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';

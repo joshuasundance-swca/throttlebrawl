@@ -128,7 +128,7 @@ describe('the course on the ground: an edge with nothing drawn holds nothing', (
   const soft = band(8, 'sand', 'soft');
   const start = { s: 100, d: LANE_EDGE + 8 - 1.2, speed: 25, yaw: 0.45 };
 
-  it('past a soft edge the rider is out: the quick reset with the penalty, and the respawn at the crossing', () => {
+  it('past a soft edge with no drawn ground the rider is out: the penalty and respawn at the crossing', () => {
     const r = run(courseConfig({ verge: soft }), start, 400, (evs) => evs.some((e) => e.type === 'respawn'));
     const crash = ofType(r.events, 'crash');
     const splash = ofType(r.events, 'splash');
