@@ -54,7 +54,7 @@ function longFlight(command = gas, holdTicks = Infinity, speed = SPEED) {
   let takeoffPitch = 0;
   let beforePitch = 0;
   const events: SimEvent[] = [];
-  for (let tick = 0; tick < 60 * 10 && !events.some((e) => e.type === 'land'); tick++) {
+  for (let tick = 0; tick < 60 * 10 && !events.some((e) => e.type === 'land' || e.type === 'crash'); tick++) {
     const airborne = h.rider.mode === 'Airborne';
     // Gas over the lip, then real brake/kick inputs: no injected flight or attitude state.
     beforePitch = st.pitch[id] ?? 0;
