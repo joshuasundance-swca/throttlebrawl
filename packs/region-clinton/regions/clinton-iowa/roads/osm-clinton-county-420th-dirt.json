@@ -42,19 +42,7 @@
           "direction": 1,
           "kind": "shoulder"
         }
-      ],
-      "verges": {
-        "left": {
-          "widthM": 3.0,
-          "surface": "grass",
-          "edge": "soft"
-        },
-        "right": {
-          "widthM": 3.0,
-          "surface": "grass",
-          "edge": "soft"
-        }
-      }
+      ]
     }
   ],
   "tags": [

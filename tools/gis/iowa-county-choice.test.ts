@@ -134,4 +134,43 @@ describe('Rural Rush county-road choice', () => {
     }
     process.stdout.write(`[county preserved anchors] ${JSON.stringify(distances)}\n`);
   });
+
+  it('uses rail edges only on the county bridge and grass verges on its approaches', () => {
+    const network = read<BakedNetwork>(`${root}/networks/osm-clinton-ia136.json`);
+    const roads = network.roads.map((id) => read<BakedRoad>(`${root}/roads/${id}.json`));
+    const road = createRoadNetwork({ network, roads });
+    const bridged = roads.filter((r) => r.surface === 'dirt' && r.barriers?.some((b) => b.kind === 'rail'));
+    expect(bridged.length).toBeGreaterThan(0);
+    let railChecks = 0;
+    let grassChecks = 0;
+    const grassWidths = new Set<number>();
+    for (const r of bridged) {
+      const rails = r.barriers!.filter((b) => b.kind === 'rail');
+      const stations = new Set([0, r.lengthM / 2, r.lengthM]);
+      for (const rail of rails)
+        for (const s of [rail.s0 - 1, rail.s0, (rail.s0 + rail.s1) / 2, rail.s1, rail.s1 + 1])
+          if (s >= 0 && s <= r.lengthM) stations.add(s);
+      for (const s of stations)
+        for (const side of ['left', 'right'] as const) {
+          const verge = road.vergeAt(road.edgeIndex(r.id), s, side);
+          const railed = rails.some((b) => s >= b.s0 && s <= b.s1 && (b.side === side || b.side === 'both'));
+          if (railed) {
+            expect(verge.edge, `${r.id} ${s} ${side}`).toBe('rail');
+            expect(verge.widthM).toBe(0);
+            railChecks++;
+          } else {
+            expect(verge.edge).toBe('soft');
+            expect(verge.surface).toBe('grass');
+            expect(verge.widthM).toBeGreaterThan(0);
+            grassWidths.add(verge.widthM);
+            grassChecks++;
+          }
+        }
+    }
+    expect(railChecks).toBeGreaterThan(0);
+    expect(grassChecks).toBeGreaterThan(0);
+    process.stdout.write(
+      `[county bridge verges] ${JSON.stringify({ railChecks, grassChecks, grassWidthsM: [...grassWidths] })}\n`,
+    );
+  });
 });

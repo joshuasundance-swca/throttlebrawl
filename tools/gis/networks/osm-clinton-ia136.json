@@ -230,6 +230,11 @@
       "roadSurface": {
         "osm-clinton-county-420th-dirt": "dirt",
         "osm-clinton-county-180th": "dirt"
+      },
+      "roadLanes": {
+        "osm-clinton-county-420th-dirt": {
+          "laneWidthM": 3.5
+        }
       }
     }
   ],
