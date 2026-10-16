@@ -17,10 +17,12 @@ function fixture() {
     },
     { id: 'b', lengthM: 100, kappa: 0, lanes: highwayLanes(2) },
   ]);
+  const hostEnd = bundle.network.junctions.find((j) => j.id === bundle.roads[0]!.to)!;
   bundle.roads[1]!.from = bundle.roads[1]!.to = 'turn-j';
   bundle.roads[0]!.to = bundle.roads[2]!.from = 'turn-j';
   bundle.network.junctions = [
     {
+      ...hostEnd,
       id: 'turn-j',
       ends: [
         { road: 'a', end: 'to' },

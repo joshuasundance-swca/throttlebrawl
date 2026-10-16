@@ -85,7 +85,7 @@ describe('the chapter opens in the city', () => {
     expect(samish.length).toBeGreaterThanOrEqual(2);
     const route = REG.routes[SAMISH_ROUTE];
     if (!route) throw new Error('no Samish route');
-    const branchRoads = new Set(route.branches.flatMap((b) => b.roads));
+    const branchRoads = new Set((route.branches ?? []).flatMap((b) => b.roads));
     const interstate = (samishSource.lines.find((l) => l.id === 'i5')?.roads ?? [])
       .filter((r) => r.tags?.includes('interstate'))
       .map((r) => r.id);
