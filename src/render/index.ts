@@ -124,9 +124,16 @@ export interface ViewPose {
   fov: number;
   /** Camera roll about its view axis, radians (optional). */
   roll?: number;
+  /** Complete world up with roll already applied; when absent, use world-up and `roll`. */
+  upX?: number;
+  upY?: number;
+  upZ?: number;
 }
 
-export type InterpolatedEntity = Pick<EntitySnapshot, 'id' | 'x' | 'y' | 'z' | 'heading' | 'speed' | 'lean'>;
+export type InterpolatedEntity = Pick<
+  EntitySnapshot,
+  'id' | 'x' | 'y' | 'z' | 'heading' | 'speed' | 'lean' | 'pitch'
+>;
 
 /** Linear interpolation between two snapshots of one entity (never extrapolates past `curr`). */
 export function interpolateEntity(
@@ -142,6 +149,16 @@ export function interpolateEntity(
   let dh = b.heading - a.heading;
   if (dh > Math.PI) dh -= 2 * Math.PI;
   if (dh < -Math.PI) dh += 2 * Math.PI;
+  const pitch: Pick<InterpolatedEntity, 'pitch'> = {};
+  if (b.pitch !== undefined) {
+    const from = a.pitch ?? b.pitch;
+    const delta = b.pitch - from;
+    // Flight pitch is deliberately unwrapped. Landing and other mode changes can reset whole
+    // turns to the ground angle: interpolate the equivalent nearby angle, never rewind the flips.
+    const dp =
+      a.mode === 'Airborne' && b.mode === 'Airborne' ? delta : Math.atan2(Math.sin(delta), Math.cos(delta));
+    pitch.pitch = from + dp * t;
+  }
   return {
     id,
     x: a.x + (b.x - a.x) * t,
@@ -150,6 +167,7 @@ export function interpolateEntity(
     heading: a.heading + dh * t,
     speed: a.speed + (b.speed - a.speed) * t,
     lean: a.lean + (b.lean - a.lean) * t,
+    ...pitch,
   };
 }
 
@@ -1224,8 +1242,23 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       camera.fov = pose.fov;
       camera.updateProjectionMatrix();
       camera.position.set(pose.x, pose.y, pose.z);
+      const { upX, upY, upZ } = pose;
+      const vx = pose.lookX - pose.x;
+      const vy = pose.lookY - pose.y;
+      const vz = pose.lookZ - pose.z;
+      const oriented =
+        typeof upX === 'number' &&
+        typeof upY === 'number' &&
+        typeof upZ === 'number' &&
+        Number.isFinite(upX) &&
+        Number.isFinite(upY) &&
+        Number.isFinite(upZ) &&
+        Math.hypot(vy * upZ - vz * upY, vz * upX - vx * upZ, vx * upY - vy * upX) > 1e-6;
+      // Always reset it: a roll-only view after an inverted helmet frame must use world-up.
+      if (oriented) camera.up.set(upX, upY, upZ);
+      else camera.up.set(0, 1, 0);
       camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
-      if (pose.roll) camera.rotateZ(pose.roll);
+      if (!oriented && pose.roll) camera.rotateZ(pose.roll);
       // The riders are placed through the view the camera has this frame: a rig it cannot see is not drawn (polish J3).
       rigs?.setCamera(pose.x, pose.y, pose.z);
       rigs?.setView(frustumOf(camera, viewFrustum));
