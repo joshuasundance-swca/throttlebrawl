@@ -2,6 +2,8 @@ import { openMainMenu, openQuickPlay } from './menu-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { domId, menuRegions, offeredRoutes } from './packs-on-disk';
 
+test.describe.configure({ mode: 'parallel' });
+
 // The menu's road chips reach every road, visibly, at every text size (playtest 4, run B, punch
 // item 10). The row of chips runs past the screen's right edge (at Largest on San Francisco's nine
 // chips, five were off the screen) and it scrolled by swipe with nothing to say so; on a first visit
