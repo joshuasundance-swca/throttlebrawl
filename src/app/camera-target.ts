@@ -5,7 +5,7 @@ import type { CameraTarget } from '../camera';
 import type { EntitySnapshot } from '../sim/api';
 
 /** The interpolated entity, as render's `interpolateEntity` gives it. */
-type Interpolated = Pick<CameraTarget, 'id' | 'x' | 'y' | 'z' | 'heading' | 'speed' | 'lean'>;
+type Interpolated = Pick<CameraTarget, 'id' | 'x' | 'y' | 'z' | 'heading' | 'speed' | 'lean' | 'pitch'>;
 
 /**
  * The camera's target: the interpolated pose with the snapshot's mode, auto-target, road position, the

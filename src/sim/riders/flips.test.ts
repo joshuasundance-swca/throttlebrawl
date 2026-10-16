@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { PI, TAU } from '../../core';
 import { createSim } from '../api';
+import { createSimWithWorld } from '../create';
 import { InputFlag, type SimConfig, type SimEvent, type SimInput } from '../types';
 import { FLIP_ACCEL, touchdown } from './air';
 import { riderState } from './index';
@@ -37,6 +38,75 @@ const gas = (): SimInput => input(1);
 const withFlags = (i: SimInput, flags: number): SimInput => ({ ...i, flags });
 const brake = (): SimInput => input(0, 1);
 const kick = (): SimInput => withFlags(input(1), InputFlag.kick);
+
+/** A longer physical ramp flight, with stock gravity, impact limits and air control. */
+function longFlight(command = gas, holdTicks = Infinity, speed = SPEED) {
+  const config = testConfig({
+    edges: [
+      { id: 'runup', lengthM: 200, kappa: 0 },
+      { id: 'ramp', lengthM: 16, kappa: 0, grade: 0.65 },
+      { id: 'landing', lengthM: 600, kappa: 0 },
+    ],
+  });
+  const h = riderHarness(config, { edge: 0, s: 195, d: 0, speed });
+  const st = riderState(h.world);
+  const id = h.rider.id;
+  let airTicks = 0;
+  let takeoffPitch = 0;
+  let beforePitch = 0;
+  const events: SimEvent[] = [];
+  for (let tick = 0; tick < 60 * 10 && !events.some((e) => e.type === 'land' || e.type === 'crash'); tick++) {
+    const airborne = h.rider.mode === 'Airborne';
+    // Gas over the lip, then real brake/kick inputs: no injected flight or attitude state.
+    beforePitch = st.pitch[id] ?? 0;
+    events.push(...h.step(airborne && airTicks >= 3 && airTicks < holdTicks ? command() : gas()));
+    if (airborne) airTicks++;
+    else if (h.rider.mode === 'Airborne') takeoffPitch = st.pitch[id] ?? 0;
+  }
+  return {
+    takeoffPitch,
+    beforePitch,
+    land: events.find((e) => e.type === 'land'),
+    crash: events.find((e) => e.type === 'crash'),
+  };
+}
+
+describe('long ramp flights', () => {
+  it('five complete turns in either direction land like the same jump with fewer turns or none', () => {
+    const level = longFlight();
+    const fewer = longFlight(brake, 33);
+    expect(level.land?.data['flips']).toBe(0);
+    expect(Number(fewer.land?.data['flips'])).toBeGreaterThan(0);
+    expect(Number(fewer.land?.data['flips'])).toBeLessThan(5);
+    expect(level.crash).toBeUndefined();
+    expect(fewer.crash).toBeUndefined();
+    for (const command of [brake, kick]) {
+      const r = longFlight(command);
+      // The event rounds turns: prove five actual turns before touchdown resets the pitch.
+      expect(Math.abs(r.beforePitch - r.takeoffPitch)).toBeGreaterThanOrEqual(5 * TAU);
+      expect(Number(r.land?.data['flips'])).toBeGreaterThanOrEqual(5);
+      expect(r.land?.data['trick']).toBe(command === brake ? 'backflip' : 'frontflip');
+      expect(r.land?.data['quality']).toBe(level.land?.data['quality']);
+      expect(r.land?.data['verticalMps']).toBe(level.land?.data['verticalMps']);
+      expect(r.land?.data['airTicks']).toBe(level.land?.data['airTicks']);
+      expect(r.crash).toBeUndefined();
+    }
+  });
+
+  it('a harder drop still crashes even with no rotation, and flipping does not soften its impact', () => {
+    const level = longFlight(gas, Infinity, 38);
+    expect(Math.abs(level.beforePitch - level.takeoffPitch)).toBeLessThan(TAU);
+    expect(level.land?.data['quality']).toBe('crash');
+    expect(level.crash?.data['cause']).toBe('landing');
+    for (const command of [brake, kick]) {
+      const r = longFlight(command, Infinity, 38);
+      expect(r.land?.data['quality']).toBe('crash');
+      expect(r.land?.data['verticalMps']).toBe(level.land?.data['verticalMps']);
+      expect(Math.abs(Number(r.land?.data['pitchOff']))).toBeLessThan(0.8);
+      expect(r.crash?.data['cause']).toBe('landing');
+    }
+  });
+});
 
 function fly(pilot: Pilot, tuning: Record<string, number> = {}, configure?: (c: SimConfig) => SimConfig) {
   let config = testConfig({ edges: RAMP, tuning });
@@ -189,6 +259,80 @@ describe('tricks', () => {
 });
 
 describe('flips in the whole sim: style cash, the snapshot and replays', () => {
+  it('credits one five-turn landing and repeats hashes from the same grounded fixture and input tape', () => {
+    const rewards = {
+      perNearMissCash: 0,
+      perAirtimeCash: 50,
+      perOncomingSecondCash: 0,
+      perTakedownCash: 0,
+      takedownComboScale: 0,
+      perStealCash: 0,
+    };
+    const trickScale = 2;
+    const base = testConfig({
+      edges: [
+        { id: 'runup', lengthM: 200, kappa: 0 },
+        { id: 'ramp', lengthM: 16, kappa: 0, grade: 0.65 },
+        { id: 'landing', lengthM: 600, kappa: 0 },
+      ],
+      start: { road: 'runup', s: 195, dir: 1 },
+      tuning: { 'race.styleTrickScale': trickScale },
+    });
+    const config = { ...base, event: { ...base.event, style: rewards } };
+    const wholeFlight = (recorded?: readonly SimInput[]) => {
+      const { sim, world } = createSimWithWorld(config);
+      const player = world.movers.find((m) => m.kind === 'rider');
+      if (!player) throw new Error('The fixture needs its player');
+      // Both runs use the same grounded-speed fixture, not a serialized replay from rest.
+      expect(player.mode).toBe('Road');
+      player.speed = SPEED;
+      const hashes: number[] = [];
+      const inputs: SimInput[] = [];
+      const events: SimEvent[] = [];
+      let airTicks = 0;
+      let takeoffPitch = 0;
+      let beforePitch = 0;
+      let contactAt = -1;
+      for (let tick = 0; tick < 60 * 10 && (contactAt < 0 || tick - contactAt <= 60); tick++) {
+        const before = sim.snapshot().entities.find((e) => e.slot === 0);
+        const airborne = before?.mode === 'Airborne';
+        const command = recorded ? recorded[tick] : airborne && airTicks >= 3 ? brake() : gas();
+        if (!command) break;
+        inputs.push(command);
+        sim.step([command]);
+        hashes.push(sim.hash());
+        const stepEvents = sim.events();
+        events.push(...stepEvents);
+        const after = sim.snapshot().entities.find((e) => e.slot === 0);
+        if (airborne) airTicks++;
+        else if (after?.mode === 'Airborne') takeoffPitch = after.pitch ?? 0;
+        if (contactAt < 0 && stepEvents.some((e) => e.type === 'land' || e.type === 'crash')) {
+          contactAt = tick;
+          beforePitch = before?.pitch ?? 0;
+        }
+      }
+      return { hashes, inputs, events, takeoffPitch, beforePitch };
+    };
+    const a = wholeFlight();
+    const b = wholeFlight(a.inputs);
+    expect(b.inputs).toEqual(a.inputs);
+    expect(b.hashes).toEqual(a.hashes);
+    expect(b.events).toEqual(a.events);
+    expect(Math.abs(a.beforePitch - a.takeoffPitch)).toBeGreaterThanOrEqual(5 * TAU);
+    expect(a.events.some((e) => e.type === 'crash')).toBe(false);
+    const lands = a.events.filter((e) => e.type === 'land');
+    expect(lands).toHaveLength(1);
+    const land = lands[0];
+    expect(land?.data['trick']).toBe('backflip');
+    expect(Number(land?.data['flips'])).toBeGreaterThanOrEqual(5);
+    const awards = a.events.filter((e) => e.type === 'style' && e.data['kind'] === 'trick');
+    expect(awards).toHaveLength(1);
+    expect(awards[0]?.data['trick']).toBe(land?.data['trick']);
+    expect(awards[0]?.data['flips']).toBe(land?.data['flips']);
+    expect(awards[0]?.data['points']).toBe(rewards.perAirtimeCash * trickScale * Number(land?.data['flips']));
+    expect(awards[0]?.causeId).toBe(land?.causeId);
+  });
+
   const run = () => {
     const base = testConfig({ edges: RAMP, start: { road: 'runup', s: 60, dir: 1 } });
     const config: SimConfig = {

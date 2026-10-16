@@ -81,6 +81,8 @@ export interface CameraTarget {
   /** Entity id, so the rig can pick out the events that involve this rider. */
   id?: number | undefined;
   lean?: number | undefined;
+  /** Absolute bike pitch, nose up positive, unwrapped during flips; already includes wheelies. */
+  pitch?: number | undefined;
   /** The drift's slip angle, radians, positive when the nose points right (EntitySnapshot.drift). */
   drift?: number | undefined;
   /** The wheelie's angle above the slope, radians (EntitySnapshot.wheelie). */
@@ -322,6 +324,10 @@ interface Placement {
   lookZ: number;
   fov: number;
   roll: number;
+  /** An unrolled up seed for a full helmet rotation, including at vertical or inverted pitch. */
+  upX?: number;
+  upY?: number;
+  upZ?: number;
 }
 
 const finite = (v: number): boolean => Number.isFinite(v);
@@ -655,7 +661,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     const reach = Math.max(0, params.helmetReachM);
     const right = Math.min(reach, Math.max(-reach, h * Math.sin(lean)));
     const fwd = params.helmetForwardM;
-    return {
+    const pl: Placement = {
       x: t.x + ch * right - sh * fwd,
       y: t.y + h * Math.cos(lean),
       z: t.z - sh * right - ch * fwd,
@@ -664,6 +670,30 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       lookZ: t.z + s.aimZ.x,
       fov: s.fov.x,
       roll: s.roll.x,
+    };
+    // Keep the collision-safe eye exactly where it was. Only its sight follows the published
+    // attitude. Reduced motion retains the road aim: scaling an unwrapped turn would jump when
+    // the sim resets its turn count on landing. Reduce-shake alone still follows the attitude.
+    if (t.pitch === undefined || !Number.isFinite(t.pitch) || motionAmount < 1) return pl;
+    const dx = pl.lookX - pl.x;
+    const dz = pl.lookZ - pl.z;
+    const length = Math.hypot(dx, dz);
+    const ahead = length > 1e-6 ? length : Math.max(1, params.helmetLookAheadM);
+    const fx = length > 1e-6 ? dx / length : -Math.sin(s.yaw.x);
+    const fz = length > 1e-6 ? dz / length : -Math.cos(s.yaw.x);
+    // The neutral down-look uses only the local eye/aim heights, never the road grade or the
+    // wheelie aim rise: the sim's absolute pitch already carries the ground slope and wheelie.
+    const angle = t.pitch + Math.atan2(params.helmetAimHeightM - (pl.y - t.y), ahead);
+    const c = Math.cos(angle);
+    const sn = Math.sin(angle);
+    return {
+      ...pl,
+      lookX: pl.x + fx * c * ahead,
+      lookY: pl.y + sn * ahead,
+      lookZ: pl.z + fz * c * ahead,
+      upX: -fx * sn,
+      upY: c,
+      upZ: -fz * sn,
     };
   };
 
@@ -698,7 +728,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     let { x, y, z, lookX, lookY, lookZ } = pl;
     const { fx, fz, rx, rz } = axes();
 
-    // View basis: right = view × worldUp, up = right × view.
+    // View basis: right = view × up seed, up = right × view. The helmet carries its up
+    // through the full rotation, so vertical views have no singularity and inversion stays inverted.
     let vx = lookX - x;
     let vy = lookY - y;
     let vz = lookZ - z;
@@ -712,23 +743,29 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       vy /= vl;
       vz /= vl;
     }
-    let bx = -vz;
-    let bz = vx;
-    const bl = Math.hypot(bx, bz);
+    const sx = pl.upX ?? 0;
+    const sy = pl.upY ?? 1;
+    const sz = pl.upZ ?? 0;
+    let bx = vy * sz - vz * sy;
+    let by = vz * sx - vx * sz;
+    let bz = vx * sy - vy * sx;
+    const bl = Math.hypot(bx, by, bz);
     if (bl < 1e-6) {
       bx = rx;
+      by = 0;
       bz = rz;
     } else {
       bx /= bl;
+      by /= bl;
       bz /= bl;
     }
-    const ux = -bz * vy;
+    const ux = by * vz - bz * vy;
     const uy = bz * vx - bx * vz;
-    const uz = bx * vy;
+    const uz = bx * vy - by * vx;
 
     if (shakeSide !== 0 || shakeUp !== 0) {
       const ox = bx * shakeSide + ux * shakeUp;
-      const oy = uy * shakeUp;
+      const oy = by * shakeSide + uy * shakeUp;
       const oz = bz * shakeSide + uz * shakeUp;
       x += ox;
       y += oy;
@@ -751,7 +788,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       fov: pl.fov,
       roll,
       upX: -bx * sr + ux * cr,
-      upY: uy * cr,
+      upY: -by * sr + uy * cr,
       upZ: -bz * sr + uz * cr,
     };
   };
