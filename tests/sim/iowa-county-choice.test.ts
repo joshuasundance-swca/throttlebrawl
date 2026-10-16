@@ -176,11 +176,12 @@ it('a Rental Moped can steer back from the county dirt road grass margin', () =>
   me.yaw = -0.3;
   riderState(world).yAbs[me.id] = config.road.surfaceHeight(edge.index, s, me.pos.d);
   const bot = createBot();
+  const navigation = { ...config.route, shortcuts: [] };
   let returned = false;
   const crashes = [];
   for (let tick = 0; tick < 600; tick++) {
     const actions = emptyActions();
-    bot.drive(sim.snapshot(), me.id, { ...config.route, shortcuts: [] }, actions);
+    bot.drive(sim.snapshot(), me.id, navigation, actions);
     sim.step([toSimInput(actions)]);
     crashes.push(...sim.events().filter((e) => e.type === 'crash'));
     if (me.mode === 'Road' && me.pos.d < verge.dInner - 0.5) {
@@ -247,7 +248,7 @@ it('ordinary traffic populates the county roads in both directions', () => {
   expect(r.branchTraffic).toEqual([-1, 1]);
 }, 120_000);
 
-it('the longer starter-bike stunt detour earns existing style cash with an honest time cost', () => {
+it('the longer starter-bike stunt detour earns existing style points with an honest time cost', () => {
   const direct = run(false, 'base:rustbucket-400');
   const detour = run(true, 'base:rustbucket-400', false, true);
   process.stdout.write(
@@ -319,9 +320,12 @@ it.each([1, -1] as const)(
         const { sim, world } = createSimWithWorld(config);
         const me = world.movers[0]!;
         const initial = road.edges[expected[0]!]!;
+        // The finite forward host is short: an anchor 150 m before its end excludes every
+        // natural spawn-grid candidate. The real race start leaves a host approach to observe.
+        if (dir === 1) expect(initial.index).toBe(config.route.start.edge);
         me.pos = {
           edge: initial.index,
-          s: dir === 1 ? Math.max(0, initial.length - 150) : Math.min(150, initial.length),
+          s: dir === 1 ? config.route.start.s : Math.min(150, initial.length),
           d: dir === 1 ? initial.dMin + 0.5 : initial.dMax - 0.5,
           dir,
         };
@@ -383,12 +387,11 @@ it.each([1, -1] as const)(
             me.yaw = 0;
             riderState(world).yAbs[me.id] = road.surfaceHeight(me.pos.edge, me.pos.s, me.pos.d);
           }
-          if (!selected && tick >= 2400) {
-            reason = 'no observed host-to-ingress generation';
-            break;
-          }
+          // A junction queue can drain several movements before this generation enters.
+          // Ingress and traversal share the existing finite simulation bound above.
           sim.step([quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 })]);
         }
+        if (!selected) reason = 'no observed host-to-ingress generation';
         return {
           reason,
           identity: selected ? `${selected.id}:${selected.generation}` : null,
