@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { landIntervalPlan, terrainProfilePlan, type TerrainProfileRow } from './land-topology';
+import {
+  landIntervalPlan,
+  landWidthChangeOverRoad,
+  terrainProfilePlan,
+  type TerrainProfileRow,
+} from './land-topology';
 
 const row = (s: number, flat = 4): TerrainProfileRow => [
   { x: 0, y: 4, z: s },
@@ -14,6 +19,19 @@ describe('landIntervalPlan', () => {
     expect(landIntervalPlan(6, 24, true)).toEqual({ kind: 'common', reachM: 6, narrow: 0 });
     expect(landIntervalPlan(24, 6, false)).toEqual({ kind: 'joined', reach0M: 24, reach1M: 6 });
     expect(landIntervalPlan(0, 24, true)).toEqual({ kind: 'absent' });
+  });
+
+  it('detects only covered points in the omitted unequal-width wedge', () => {
+    const seen: [number, number][] = [];
+    const covered = landWidthChangeOverRoad(0, 2, 14, 20, 1, (s, d) => {
+      seen.push([s, d]);
+      return s === 1 && d === 17;
+    });
+
+    expect(covered).toBe(true);
+    expect(seen).toContainEqual([1, 17]);
+    expect(seen.every(([, d]) => d > 14)).toBe(true);
+    expect(landWidthChangeOverRoad(0, 2, 24, 6, 1, () => false)).toBe(false);
   });
 });
 

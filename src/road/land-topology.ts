@@ -26,6 +26,32 @@ export function landIntervalPlan(
   return { kind: 'joined', reach0M, reach1M };
 }
 
+/**
+ * Whether the wedge between unequal adjacent land reaches covers another road. Sampling includes
+ * both longitudinal endpoints and the wider row's outer boundary; callers provide the physical
+ * road-coverage query so this topology rule stays independent of a renderer or road locator.
+ */
+export function landWidthChangeOverRoad(
+  s0M: number,
+  s1M: number,
+  reach0M: number,
+  reach1M: number,
+  probeM: number,
+  covered: (sM: number, acrossM: number) => boolean,
+): boolean {
+  if (s1M <= s0M || reach0M <= 0 || reach1M <= 0 || probeM <= 0) return false;
+  const common = Math.min(reach0M, reach1M);
+  const n = Math.max(1, Math.ceil((s1M - s0M) / probeM));
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    const s = s0M + (s1M - s0M) * t;
+    const far = reach0M + (reach1M - reach0M) * t;
+    for (let d = common + probeM; d < far; d += probeM) if (covered(s, d)) return true;
+    if (far > common && covered(s, far)) return true;
+  }
+  return false;
+}
+
 export type TerrainProfileRow<P extends Point3Like = Point3Like> = readonly [P, P, P, P] | null;
 
 export interface TerrainFan {
