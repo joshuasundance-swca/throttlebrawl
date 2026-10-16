@@ -16,7 +16,7 @@ import {
   type TuningValues,
   type VergeEdge,
 } from '../core';
-import type { RoadNetwork } from '../road';
+import { roadsideGroundHeight, type RoadNetwork } from '../road';
 
 /**
  * Each surface's grip (a scale on steering authority) and speed (a scale on top speed and
@@ -146,7 +146,12 @@ export function groundUnder(
   d: number,
   h: number,
 ): GroundSurface | null {
-  return h > 0 ? null : road.groundAt(edge, s, d);
+  if (h > 0) return null;
+  const own = road.groundAt(edge, s, d);
+  if (own !== null) return own;
+  return roadsideGroundHeight(road, edge, s, d) === null
+    ? null
+    : road.vergeAt(edge, s, d < 0 ? 'left' : 'right').surface;
 }
 
 /** The grip and speed scales for a ground, from the race's tuning; 1 and 1 in the air. */

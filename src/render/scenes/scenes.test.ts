@@ -5,8 +5,17 @@
 // drawn: every file well formed and every sign short, scenes on their own ground and never on a
 // road or the band a rider rides, the same scenes for the same seed, each scene once a race, one
 // mesh and one material per scene, the far level of detail, and the roadside props keeping off.
+import { Mesh, Raycaster, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../../road';
+import {
+  courseAt,
+  COURSE_STEP_M,
+  createRoadNetwork,
+  sectionGroundOf,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../../road';
 import { createFlatLook } from '../look';
 import { buildRoadScene, type RoadDressing, type RoadScene } from '../road-mesh';
 import { KEYS_KIT, PNW_KIT, scatterRoadside, SF_KIT, type RoadsideKit } from '../roadside';
@@ -336,12 +345,42 @@ describe.each(NETWORKS)('the scenes along %s', (id) => {
           expect(p.def.on, `${p.def.id} theme`).toContain(themeAt(tags, sideName, p.s + u));
           const land = w.scene.landReach(p.edge, p.side, p.s + u);
           if (water) expect(across - r, `${p.def.id} off the land`).toBeGreaterThan(land);
-          else expect(land, `${p.def.id} on the land`).toBeGreaterThanOrEqual(across + r - 1e-6);
+          else if (themeAt(tags, sideName, p.s) === 'rural' && across + r > land) {
+            // Rural scenes may use the existing flat skirt after the near strip becomes playable.
+            for (const v of [-r, 0, r])
+              expect(sectionGroundOf(w.road)(p.edge, p.s + u, p.d + v), `${p.def.id} flat footing`).toBe(p.y);
+          } else expect(land, `${p.def.id} on the land`).toBeGreaterThanOrEqual(across + r - 1e-6);
         }
         if (!water)
           expect(across - r).toBeGreaterThanOrEqual(
             ridableBandPast(w.road, p.edge, p.side, p.s, outer) - 1e-6,
           );
+        if (!water && themeAt(tags, sideName, p.s) === 'rural') {
+          w.scene.update(0, 0, 0, 1e9, 1e9, Infinity);
+          w.scene.group.updateMatrixWorld(true);
+          const ground: Object3D[] = [];
+          w.scene.group.traverse((o) => {
+            if (o instanceof Mesh && o.name === 'road-land') ground.push(o);
+          });
+          expect(ground.length).toBeGreaterThan(0);
+          const plan = { items: [], cellM: 32, cells: new Map() };
+          for (let i = -1; i < 16; i++) {
+            const radius = i < 0 ? 0 : r;
+            const x = p.x + Math.cos((i * Math.PI) / 8) * radius;
+            const z = p.z + Math.sin((i * Math.PI) / 8) * radius;
+            const pos = w.road.project(x, z, p.edge);
+            expect(
+              courseAt(w.road, plan, pos, p.y + COURSE_STEP_M).kind,
+              `${p.def.id}: actual-height footprint outside the course`,
+            ).toBe('out');
+            const hit = new Raycaster(new Vector3(x, p.y + 0.1, z), new Vector3(0, -1, 0)).intersectObjects(
+              ground,
+              false,
+            )[0];
+            expect(hit, `${p.def.id}: rendered support across the footprint`).toBeDefined();
+            expect(hit!.point.y).toBeCloseTo(p.y, 2);
+          }
+        }
         // Never on any road: the scene's footprint clears every road's drawn half width.
         for (const o of w.road.edges) {
           const half = Math.max(-o.dMin, o.dMax) + 0.6;
