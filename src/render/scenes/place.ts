@@ -4,12 +4,20 @@
 // stands past the ridable ground band (off-road riders never meet it), on the land the road scene
 // drew all across its footprint (or on open water past it), clear of other roads, of the road's
 // features and of the scenery already standing. Presentation only: the sim never sees a scene.
-import type { RoadNetwork } from '../../road';
+import {
+  groundUnderOf,
+  landEdgeOf,
+  sectionGroundOf,
+  skirtOf,
+  COURSE_STEP_M,
+  type RoadNetwork,
+} from '../../road';
 import {
   LAND_TOP_M,
   ridableBandPast,
   SCENERY_RADIUS_M,
   scatterHash,
+  sceneryOffCourse,
   themeAt,
   type ScenerySpot,
   type SideTag,
@@ -153,11 +161,38 @@ export function placeScenes(input: SceneInput): PlacedScene[] {
     const band = water ? 0 : ridableBandPast(road, edge, side, s, outer);
     const want = sc.acrossM[0] + (sc.acrossM[1] - sc.acrossM[0]) * scatterHash(seed, 4111 + edge, s, salt);
     let across = Math.max(want, band + r);
+    let farY: number | null = null;
+    let nearFits = true;
     for (const u of [-r, 0, r]) {
       if (!sc.on.includes(themeAt(tags, sideName, s + u))) return null;
       const land = input.landReach(edge, side, s + u);
       if (water) across = Math.max(across, land + r + 2);
-      else if (land < across + r) return null;
+      else if (land < across + r) nearFits = false;
+    }
+    if (!nearFits) {
+      // Rural solids are render-only. Once its near grass strip becomes playable, a
+      // vignette may stand on the existing flat skirt, never on its slope or a new pad.
+      if (water || themeAt(tags, sideName, s) !== 'rural') return null;
+      const edgeOf = landEdgeOf(road);
+      const skirt = skirtOf(road);
+      let from = band;
+      let to = Infinity;
+      for (let u = -r; u <= r; u += Math.min(1, r || 1)) {
+        if (themeAt(tags, sideName, s + u) !== 'rural') return null;
+        const flat = skirt(edge, side, s + u);
+        if (!flat || flat.flat <= 0) return null;
+        const start = edgeOf(edge, side, s + u) + flat.run;
+        from = Math.max(from, start);
+        to = Math.min(to, start + flat.flat);
+      }
+      if (to - from < 2 * r + 1) return null;
+      across = from + r + 0.5 + (to - from - 2 * r - 1) * scatterHash(seed, 5111 + edge, s, salt);
+      const ground = sectionGroundOf(road);
+      farY = ground(edge, s, side * (outer + across));
+      if (farY === null) return null;
+      for (const u of [-r, 0, r])
+        for (const v of [-r, 0, r])
+          if (ground(edge, s + u, side * (outer + across + v)) !== farY) return null;
     }
     // A water scene stands on open water near the road, not out at sea.
     if (water && across > sc.acrossM[1] + 12) return null;
@@ -174,7 +209,24 @@ export function placeScenes(input: SceneInput): PlacedScene[] {
     );
     if (onFeature) return null;
     const p = road.toWorld(edge, s, d, water ? 0 : LAND_TOP_M);
-    const y = water ? 0 : p.y;
+    const y = water ? 0 : (farY ?? p.y);
+    if (!water && themeAt(tags, sideName, s) === 'rural') {
+      // The far side of a hairpin can have its own playable strip here. Lane-only
+      // clearance is insufficient now: keep every rural solid off all course ground.
+      if (!sceneryOffCourse(road, edge, s, d, y, r)) return null;
+      if (farY !== null) {
+        const ground = groundUnderOf(road);
+        for (let i = -1; i < 16; i++) {
+          const radius = i < 0 ? 0 : r;
+          const height = ground(
+            p.x + Math.cos((i * Math.PI) / 8) * radius,
+            p.z + Math.sin((i * Math.PI) / 8) * radius,
+            y + COURSE_STEP_M,
+          );
+          if (height === null || Math.abs(height - y) > 1e-6) return null;
+        }
+      }
+    }
     if (otherRoad(edge, s, p.x, p.z, r)) return null;
     if (hitsScenery(p.x, p.z, r)) return null;
     if (out.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < file.everyM * MIN_GAP_SHARE)) return null;

@@ -15,12 +15,17 @@
 // houses on their own themes, conifers on the far ground of a forest, and fog banks offshore.
 import {
   landmarkParams,
+  courseAt,
+  COURSE_STEP_M,
+  landEdgeOf,
+  roadsideGroundHeight,
   scatterHash,
   themeAt,
   type LandTheme,
   type RoadNetwork,
   type SideTag,
   type SideTheme,
+  type StructurePlan,
 } from '../road';
 import type { Point3 } from './geometry';
 
@@ -563,8 +568,34 @@ export function ridableBandPast(
   outer: number,
 ): number {
   const v = road.vergeAt(edge, s, side < 0 ? 'left' : 'right');
+  if (roadsideGroundHeight(road, edge, s, v.dOuter + side * 0.5) !== null)
+    return landEdgeOf(road)(edge, side, s);
   if (v.widthM <= 0) return 0;
   return Math.max(0, side * v.dOuter - outer);
+}
+
+const NO_STRUCTURES: StructurePlan = { items: [], cellM: 32, cells: new Map() };
+
+/** Sample a render-only rural solid's foot at its actual height, including other roads' grass. */
+export function sceneryOffCourse(
+  road: RoadNetwork,
+  edge: number,
+  s: number,
+  d: number,
+  y: number,
+  radius: number,
+): boolean {
+  const p = road.toWorld(edge, s, d, 0);
+  for (let i = -1; i < 16; i++) {
+    const r = i < 0 ? 0 : radius;
+    const pos = road.project(
+      p.x + Math.cos((i * Math.PI) / 8) * r,
+      p.z + Math.sin((i * Math.PI) / 8) * r,
+      edge,
+    );
+    if (courseAt(road, NO_STRUCTURES, pos, y + COURSE_STEP_M).kind !== 'out') return false;
+  }
+  return true;
 }
 
 /** What the scatter needs from the road builder, for one edge. */
@@ -953,6 +984,41 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       }
     }
     if (houses.size > 0) upgradeTerrace(side, outer, houses);
+    // Rural grass is playable across the near strip. Keep seeded copses on existing flat
+    // skirt ground, with the same real-root and other-road checks as far conifers.
+    const di = SCENERY_KINDS.indexOf('deciduous');
+    const ruralSpacing = SCATTER_SPACING_M.deciduous / e.density;
+    for (let k = 0; e.skirt && e.onFarGround; k++) {
+      const s = (k + h(di, k, side, 30)) * ruralSpacing;
+      if (s > e.length) break;
+      if (e.theme(side, s) !== 'rural' || h(di, k, side, 31) > RATE.rural.deciduous!) continue;
+      const far = e.skirt(side, s);
+      const radius = SCENERY_RADIUS_M.deciduous * 1.1;
+      if (!far || far.to - far.from < radius * 2 + 8) continue;
+      const across = far.from + radius + 4 + (far.to - far.from - radius * 2 - 8) * h(di, k, side, 32);
+      const n = 2 + Math.floor(h(di, k, side, 33) * 3);
+      for (let j = 0; j < n; j++) {
+        const ts = s + (h(di, k, side, 34 + j * 4) - 0.5) * 9;
+        const ta = across + (h(di, k, side, 35 + j * 4) - 0.5) * 8;
+        const td = side * (outer + ta);
+        if (ts < 0 || ts > e.length || e.theme(side, ts) !== 'rural') continue;
+        const ground = e.skirt(side, ts);
+        if (!ground || ta - radius < ground.from || ta + radius > ground.to) continue;
+        if (!e.clear(ts, td, radius) || !e.onFarGround(side, ts, td)) continue;
+        const p = e.world(ts, td, 0);
+        out.push({
+          kind: 'deciduous',
+          variant: 0,
+          p: { x: p.x, y: ground.y, z: p.z },
+          turn: h(di, k, side, 36 + j * 4) * Math.PI * 2,
+          size: 0.8 + h(di, k, side, 37 + j * 4) * 0.3,
+          phase: 0,
+          edge: e.edge,
+          s: ts,
+          d: td,
+        });
+      }
+    }
     // A forest goes on past the verge's strip: conifers on the far ground of the terrain skirt.
     const ci = SCENERY_KINDS.indexOf('conifer');
     const farSpacing = FAR_CONIFER_SPACING_M / e.density;

@@ -47,9 +47,7 @@ function courseConfig(
   const bundle = fixtureNetwork(STRAIGHT);
   const roads = bundle.roads.map((r) => ({
     ...r,
-    // These are unsupported-edge controls, not scenery runoff: suppress the fixture's default
-    // palm land strip. A soft band with connected drawn ground is now covered by Eagle's tests.
-    tags: opts.tags ? [...opts.tags] : [{ s0: 0, s1: 3000, side: 'both' as const, tag: 'not-land' }],
+    ...(opts.tags ? { tags: [...opts.tags] } : {}),
     laneSections: opts.verge
       ? r.laneSections.map((sec) => ({ ...sec, verges: { left: opts.verge, right: opts.verge } }))
       : r.laneSections,
@@ -228,7 +226,7 @@ describe('the course in the air: cleared above what is drawn, out past it', () =
       `[examined] 3 m over a soft edge: furthest d ${r.maxD.toFixed(2)}, crash ${JSON.stringify(crash?.data)}`,
     );
     expect(r.maxD).toBeGreaterThan(LANE_EDGE + 8 + 2);
-    expect(crash?.data).toMatchObject({ cause: 'over', past: 'drop', overboard: true });
+    expect(crash?.data).toMatchObject({ cause: 'over', past: 'ground', overboard: true });
     expect(ofType(r.events, 'land')).toEqual([]);
     const old = fly(soft, 3, OLD_RULES);
     console.log(
@@ -244,7 +242,7 @@ describe('the course in the air: cleared above what is drawn, out past it', () =
     expect(ofType(low.events, 'crash').filter((e) => e.data['cause'] === 'over')).toEqual([]);
     const high = fly(brush, 3);
     expect(high.maxD).toBeGreaterThan(LANE_EDGE + 6 + 2);
-    expect(ofType(high.events, 'crash')[0]?.data).toMatchObject({ cause: 'over', past: 'drop' });
+    expect(ofType(high.events, 'crash')[0]?.data).toMatchObject({ cause: 'over', past: 'ground' });
   });
 
   it('he wakes where he left the road, however far along he went off it (a run on the roofs gains nothing)', () => {
@@ -283,7 +281,7 @@ describe('the course in the air: cleared above what is drawn, out past it', () =
     console.log(
       `[examined] left the road at s ${crossedAt.toFixed(2)}, came down 40 m on: ${JSON.stringify(crash?.data)}`,
     );
-    expect(crash?.data).toMatchObject({ cause: 'over', past: 'drop' });
+    expect(crash?.data).toMatchObject({ cause: 'over', past: 'ground' });
     expect(Number(crash?.data['crossS'])).toBeCloseTo(crossedAt, 9);
     expect(me.mode).toBe('Road');
     expect(me.pos.s).toBeCloseTo(crossedAt, 9);

@@ -103,13 +103,30 @@ describe('the ground under the wheels', () => {
     expect(groundUnder(road, a, 50, 0, 0)).toBe('asphalt');
     expect(groundUnder(road, cut, 50, 0, 0)).toBe('dirt');
     expect(groundUnder(road, a, 50, right.dInner + 1, 0)).toBe('sand');
-    // This original probe is on the existing palm land strip, not empty space past the course.
-    expect(groundUnder(road, a, 50, right.dOuter + 1, 0)).toBe('sand');
-    expect(surfaceFeel({}, groundUnder(road, a, 50, right.dOuter + 1, 0))).toEqual(SURFACE_FEEL.sand);
+    // Non-opted palm scenery retains its original sand-band limit.
+    expect(groundUnder(road, a, 50, right.dOuter + 1, 0)).toBeNull();
     expect(beyondAt(road, a, 50, 'right', 100).past).not.toBe('ground');
     expect(groundUnder(road, a, 50, right.dOuter + 100, 0)).toBeNull();
     expect(groundUnder(road, a, 50, 0, 0.5)).toBeNull();
     expect(groundUnder(road, a, 50, right.dOuter + 1, 0.5)).toBeNull();
+  });
+
+  it('uses grass feel on connected rural runoff, with no ground while airborne', () => {
+    const bundle = fixtureBranchNetwork();
+    const road = createRoadNetwork({
+      ...bundle,
+      roads: bundle.roads.map((r) => ({
+        ...r,
+        tags: [{ s0: 0, s1: r.lengthM, side: 'both' as const, tag: 'rural' }],
+      })),
+    });
+    const a = road.edgeIndex('a');
+    for (const side of [-1, 1] as const) {
+      const d = road.vergeAt(a, 50, side < 0 ? 'left' : 'right').dOuter + side * 2;
+      expect(groundUnder(road, a, 50, d, 0)).toBe('grass');
+      expect(surfaceFeel({}, groundUnder(road, a, 50, d, 0))).toEqual(SURFACE_FEEL.grass);
+      expect(groundUnder(road, a, 50, d, 0.5)).toBeNull();
+    }
   });
 
   it('does not extend the mathematical road surface over a water edge', () => {

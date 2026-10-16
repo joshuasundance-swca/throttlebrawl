@@ -83,9 +83,9 @@ describe('the course: what a rider would come down on', () => {
   it('is out past the band with nothing under it: the road plane runs on there, the course does not', () => {
     // Negative control: the road's own plane is defined past its band (surfaceHeight does not stop).
     expect(Number.isFinite(road.surfaceHeight(0, 30, rightEdge + 3))).toBe(true);
-    // The original half-metre probes are on a rendered palm strip, now correctly rideable.
-    expect(courseAt(road, plan, { edge: 0, s: 30, d: rightEdge + 0.5 }, 1).kind).toBe('road');
-    expect(courseAt(road, plan, { edge: 0, s: 30, d: leftEdge - 0.5 }, 1).kind).toBe('road');
+    // Palm scenery keeps its existing course boundary until its solids have physical contacts.
+    expect(courseAt(road, plan, { edge: 0, s: 30, d: rightEdge + 0.5 }, 1)).toEqual({ kind: 'out' });
+    expect(courseAt(road, plan, { edge: 0, s: 30, d: leftEdge - 0.5 }, 1)).toEqual({ kind: 'out' });
     expect(courseAt(road, plan, { edge: 0, s: 30, d: 100 }, 1)).toEqual({ kind: 'out' });
     expect(courseAt(road, plan, { edge: 0, s: 30, d: -100 }, 1)).toEqual({ kind: 'out' });
   });
@@ -95,10 +95,9 @@ describe('the course: what a rider would come down on', () => {
     expect(over).toEqual({ kind: 'top', id: 0, y: 6 });
     // Resting on it, a hair under its roof, still counts (COURSE_STEP_M).
     expect(courseAt(road, plan, { edge: 0, s: 100, d: 20 }, 6 - COURSE_STEP_M / 2)).toEqual(over);
-    // Below the roof, and past its footprint, the existing rendered ground strip is under him.
-    // Walls remain the contact rules' business; this query chooses the highest support below.
-    expect(courseAt(road, plan, { edge: 0, s: 100, d: 20 }, 4)).toMatchObject({ kind: 'road', edge: 0 });
-    expect(courseAt(road, plan, { edge: 0, s: 125, d: 20 }, 9)).toMatchObject({ kind: 'road', edge: 0 });
+    // Below the roof, and past its footprint, this non-opted palm course has no support.
+    expect(courseAt(road, plan, { edge: 0, s: 100, d: 20 }, 4)).toEqual({ kind: 'out' });
+    expect(courseAt(road, plan, { edge: 0, s: 125, d: 20 }, 9)).toEqual({ kind: 'out' });
   });
 
   it('is another road of the network where it lies under the rider: its lanes and its band, by its own s and d', () => {
@@ -132,6 +131,18 @@ describe('the course: what a rider would come down on', () => {
     expect(backOnA).toMatchObject({ kind: 'road', edge: 0 });
     if (backOnA.kind === 'road') expect(backOnA.d).toBeCloseTo(0, 6);
   });
+});
+
+it('extends only rural soft grass, leaving other scenery cohorts outside their existing verge', () => {
+  for (const tag of ['rural', 'palms', 'forest', 'beach', 'lake']) {
+    const bundle = fixtureNetwork([{ id: 'a', lengthM: 300, kappa: 0 }]);
+    bundle.roads[0]!.tags = [{ s0: 0, s1: 300, side: 'both', tag }];
+    const road = createRoadNetwork(bundle);
+    for (const side of [-1, 1] as const) {
+      const d = road.vergeAt(0, 150, side < 0 ? 'left' : 'right').dOuter + side * 2;
+      expect(roadsideGroundHeight(road, 0, 150, d) !== null, `${tag}/${side}`).toBe(tag === 'rural');
+    }
+  }
 });
 
 it('natural runoff does not erase water, cliff protection or a tight turn with no ground strip', () => {
