@@ -1,0 +1,165 @@
+{
+  "type": "road",
+  "id": "osm-pnw-longview-diamond-outer-leave",
+  "name": "outer-leave junction",
+  "realName": "Olympia Way",
+  "network": "osm-pnw-longview-diamond",
+  "from": "osm-pnw-longview-diamond-j1",
+  "to": "osm-pnw-longview-diamond-j1",
+  "lengthM": 99.9902,
+  "sampleSpacingM": 1.9998040000000001,
+  "speedLimitMps": 11.2,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -4.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 4.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ],
+      "verges": {
+        "left": {
+          "widthM": 6.0,
+          "surface": "grass",
+          "edge": "soft"
+        },
+        "right": {
+          "widthM": 6.0,
+          "surface": "grass",
+          "edge": "soft"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 99.9902,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        4503.8191, 4502.5519, 4501.2644, 4499.9546, 4498.6202, 4497.259, 4495.8688, 4494.4472, 4492.992,
+        4491.5011, 4489.9725, 4488.4044, 4486.7953, 4485.1442, 4483.4506, 4481.7144, 4479.9362, 4478.1176,
+        4476.2605, 4474.368, 4472.4439, 4470.4928, 4468.52, 4466.5316, 4464.5341, 4462.5347, 4460.5405,
+        4458.5585, 4456.5958, 4454.6594, 4452.756, 4450.8917, 4449.0724, 4447.3032, 4445.5883, 4443.9313,
+        4442.3349, 4440.8009, 4439.3305, 4437.9239, 4436.5807, 4435.2996, 4434.0792, 4432.9172, 4431.8112,
+        4430.7581, 4429.755, 4428.7987, 4427.8857, 4427.0129, 4426.1769
+      ],
+      "y": [
+        6.6746, 6.675, 6.675, 6.6745, 6.6736, 6.6723, 6.6707, 6.6687, 6.6664, 6.6639, 6.6612, 6.6583, 6.6553,
+        6.6522, 6.649, 6.6458, 6.6425, 6.6391, 6.6356, 6.632, 6.6282, 6.6242, 6.62, 6.6157, 6.6112, 6.6066,
+        6.602, 6.5973, 6.5927, 6.5883, 6.5842, 6.5803, 6.5769, 6.5739, 6.5713, 6.5693, 6.5677, 6.5666, 6.5659,
+        6.5656, 6.5657, 6.566, 6.5666, 6.5675, 6.5685, 6.5697, 6.5711, 6.5727, 6.5745, 6.5764, 6.5785
+      ],
+      "z": [
+        806.6799, 805.1326, 803.6021, 802.0908, 800.6011, 799.1358, 797.698, 796.2913, 794.9193, 793.5863,
+        792.2968, 791.0556, 789.868, 788.7395, 787.676, 786.6836, 785.7685, 784.9369, 784.195, 783.5489,
+        783.0042, 782.5663, 782.2396, 782.0282, 781.9349, 781.9619, 782.1089, 782.374, 782.7567, 783.2556,
+        783.8683, 784.5916, 785.4216, 786.3534, 787.382, 788.5014, 789.7057, 790.9887, 792.344, 793.7655,
+        795.247, 796.7827, 798.367, 799.9946, 801.6608, 803.361, 805.0911, 806.8476, 808.627, 810.4264,
+        812.2433
+      ],
+      "kappa": [
+        -0.0059122, -0.0066051, -0.0073602, -0.0081793, -0.0090629, -0.010011, -0.011021, -0.012091,
+        -0.013217, -0.014392, -0.015611, -0.016863, -0.018139, -0.019426, -0.020712, -0.021982, -0.02322,
+        -0.02441, -0.025535, -0.026579, -0.027527, -0.028362, -0.029073, -0.029647, -0.030071, -0.030054,
+        -0.029701, -0.029798, -0.029789, -0.029641, -0.029357, -0.028939, -0.028395, -0.027731, -0.026957,
+        -0.026083, -0.02512, -0.024081, -0.022979, -0.021826, -0.020637, -0.019423, -0.018197, -0.016972,
+        -0.015759, -0.014567, -0.013405, -0.012283, -0.011206, -0.01018, -0.0092094
+      ],
+      "grade": [
+        0.00019076, 8.5265e-5, -0.00012692, -0.00033858, -0.00054389, -0.00073727, -0.00091385, -0.0010699,
+        -0.0012032, -0.001313, -0.0014003, -0.0014679, -0.0015198, -0.0015609, -0.0015969, -0.0016333,
+        -0.0016751, -0.0017261, -0.0017884, -0.0018623, -0.0019457, -0.0020347, -0.0021232, -0.0022039,
+        -0.002269, -0.0023111, -0.0023246, -0.0023033, -0.0022425, -0.0021409, -0.0019997, -0.0018231,
+        -0.0016173, -0.0013905, -0.0011515, -0.00090957, -0.00067327, -0.00044971, -0.00024421, -5.9917e-5,
+        0.00010219, 0.00024309, 0.00036528, 0.00047234, 0.00056837, 0.00065737, 0.00074286, 0.0008275,
+        0.00091291, 0.00099962, 0.0010433
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-16",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-longview-diamond.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:54Z",
+        "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 331 points in 1 request(s) (lon, lat WGS84, sha256 2de3df334158d837), bilinear (line inner)",
+        "retrievedAt": "2026-10-16T11:43:46Z",
+        "sha256": "67cdd224b3e9773347960da9800b19d01e95a7a590ccc5b4ab1a6c63bb66bdff"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 202 points in 1 request(s) (lon, lat WGS84, sha256 f34411eda6900243), bilinear (line outer)",
+        "retrievedAt": "2026-10-16T11:43:47Z",
+        "sha256": "410de5edcf26c9536e505f32ff92ce2365ef7ddfb7a8228b2ef3d790e4b5d78b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Longview Olympia Way, 20th Avenue, Washington Way, Kessler Boulevard and 30th Avenue paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 35.8 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-longview-diamond.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

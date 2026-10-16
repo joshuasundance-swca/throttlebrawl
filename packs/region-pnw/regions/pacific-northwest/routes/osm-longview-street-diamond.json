@@ -1,0 +1,131 @@
+{
+  "type": "route",
+  "id": "osm-longview-street-diamond",
+  "name": "Longview: Street Diamond",
+  "network": "osm-pnw-longview-diamond",
+  "start": {
+    "road": "osm-longview-diamond-approach",
+    "s": 32.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-longview-diamond-30th",
+    "s": 753.9153
+  },
+  "mainPath": [
+    "osm-longview-diamond-approach",
+    "osm-longview-diamond-20th",
+    "osm-longview-diamond-diagonal",
+    "osm-longview-diamond-west-washington",
+    "osm-longview-diamond-washington-bridge",
+    "osm-longview-diamond-west-bank",
+    "osm-longview-diamond-30th"
+  ],
+  "allowedRoads": [
+    "osm-longview-diamond-approach",
+    "osm-pnw-longview-diamond-outer-leave",
+    "osm-longview-diamond-20th",
+    "osm-longview-diamond-diagonal",
+    "osm-pnw-longview-diamond-outer-join",
+    "osm-longview-diamond-west-washington",
+    "osm-longview-diamond-washington-bridge",
+    "osm-longview-diamond-west-bank",
+    "osm-longview-diamond-30th",
+    "osm-longview-diamond-olympia",
+    "osm-longview-diamond-kessler",
+    "osm-pnw-longview-diamond-outer-in",
+    "osm-pnw-longview-diamond-outer-out",
+    "osm-pnw-longview-diamond-outer-traffic-in",
+    "osm-pnw-longview-diamond-outer-traffic-reverse-leave",
+    "osm-pnw-longview-diamond-outer-traffic-reverse-join"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-longview-diamond-20th",
+      "s": 337.4618
+    },
+    {
+      "road": "osm-longview-diamond-diagonal",
+      "s": 247.9719
+    },
+    {
+      "road": "osm-longview-diamond-west-washington",
+      "s": 25.4958
+    },
+    {
+      "road": "osm-longview-diamond-washington-bridge",
+      "s": 23.4975
+    },
+    {
+      "road": "osm-longview-diamond-west-bank",
+      "s": 398.9572
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-longview-diamond-olympia",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "OLYMPIA / KESSLER: LONGER OUTER ROUTE. 20TH / WASHINGTON: INNER ROUTE.",
+      "aiTake": 0.35,
+      "traffic": "road",
+      "roads": [
+        "osm-longview-diamond-olympia",
+        "osm-longview-diamond-kessler",
+        "osm-pnw-longview-diamond-outer-out",
+        "osm-pnw-longview-diamond-outer-traffic-in",
+        "osm-pnw-longview-diamond-outer-traffic-reverse-leave",
+        "osm-pnw-longview-diamond-outer-traffic-reverse-join"
+      ]
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A one-pass street-diamond prototype: take 20th and Washington inside, or the longer Olympia/Kessler outer alternate. Rejoin Washington before the shared bridge and 30th Avenue finish. Both paths carry ordinary two-way traffic. Real OSM alignment and USGS terrain with arcade widths, grass recovery margins and eased turns; no claim of equal race times or mapped lake scenery.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-16",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-pnw-longview-diamond.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+          "retrievedAt": "2026-10-15T21:21:54Z",
+          "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 331 points in 1 request(s) (lon, lat WGS84, sha256 2de3df334158d837), bilinear (line inner)",
+          "retrievedAt": "2026-10-16T11:43:46Z",
+          "sha256": "67cdd224b3e9773347960da9800b19d01e95a7a590ccc5b4ab1a6c63bb66bdff"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 202 points in 1 request(s) (lon, lat WGS84, sha256 f34411eda6900243), bilinear (line outer)",
+          "retrievedAt": "2026-10-16T11:43:47Z",
+          "sha256": "410de5edcf26c9536e505f32ff92ce2365ef7ddfb7a8228b2ef3d790e4b5d78b"
+        }
+      ]
+    }
+  }
+}

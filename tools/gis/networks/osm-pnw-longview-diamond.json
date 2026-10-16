@@ -1,0 +1,306 @@
+{
+  "id": "osm-pnw-longview-diamond",
+  "name": "Longview street diamond (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "originLatDeg": 46.15,
+    "originLonDeg": -123.0
+  },
+  "osmQuery": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+  "osmExtract": ".cache/osm/pnw-longview.json",
+  "outRoot": "packs/region-pnw/regions/pacific-northwest",
+  "sampleSpacingM": 2,
+  "waysLabel": "Longview Olympia Way, 20th Avenue, Washington Way, Kessler Boulevard and 30th Avenue",
+  "networkNotes": "A separate one-pass street-diamond prototype. Approach northwest on Olympia Way: turn down 20th Avenue and Washington Way for the shorter main path, or continue on Olympia and sweep down Kessler Boulevard on the longer outer alternate. Both reconnect at Washington before its mapped bridge and the shared 30th Avenue finish. Source OSM captured 2026-10-15; USGS 3DEP source elevation. Arcade lane widths, grass margins, eased corners and junction movements are adaptations, not surveyed lanes, verified turn restrictions or current access advice. Generic town scenery is not mapped properties. No lake geometry, nested Hudson choice, reward compensation or claim of time parity.",
+  "lines": [
+    {
+      "id": "inner",
+      "pathFrom": {
+        "lat": 46.1407113,
+        "lon": -122.9397393
+      },
+      "pathTo": {
+        "lat": 46.139888,
+        "lon": -122.9622736
+      },
+      "start": {
+        "lat": 46.1407113,
+        "lon": -122.9397393
+      },
+      "end": {
+        "lat": 46.139888,
+        "lon": -122.9622736
+      },
+      "via": [
+        {
+          "lat": 46.1429503,
+          "lon": -122.9422477
+        },
+        {
+          "lat": 46.1367281,
+          "lon": -122.9446825
+        },
+        {
+          "lat": 46.1327287,
+          "lon": -122.9623331
+        }
+      ],
+      "routeTags": {
+        "name": "^(Olympia Way|20th Avenue|Washington Way|30th Avenue)$"
+      },
+      "wayFilter": [
+        {
+          "@id": "^(5882042|53057477|5880132|1503405166|129381274|129381273|876117692|914535557)$"
+        }
+      ],
+      "respectOneway": true,
+      "splitOnNameChange": true,
+      "minRoadM": 40,
+      "splitBridgeMinM": 30,
+      "smoothing": {
+        "headingSigmaM": 28
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 15,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4,
+        "lanesPerDirection": 1,
+        "verges": {
+          "left": {
+            "widthM": 6,
+            "surface": "grass",
+            "edge": "soft"
+          },
+          "right": {
+            "widthM": 6,
+            "surface": "grass",
+            "edge": "soft"
+          }
+        }
+      },
+      "bridgeBarrier": {
+        "kind": "wall",
+        "heightM": 0.85,
+        "look": "guardrail"
+      },
+      "roadLanes": {
+        "osm-longview-diamond-washington-bridge": {
+          "laneWidthM": 4,
+          "lanesPerDirection": 1
+        }
+      },
+      "roads": [
+        {
+          "id": "osm-longview-diamond-approach",
+          "name": "Olympia Approach",
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "diamond-patrol-shoulder",
+              "s0": 4,
+              "s1": 20,
+              "d0": 5,
+              "d1": 7
+            }
+          ]
+        },
+        {
+          "id": "osm-longview-diamond-20th",
+          "name": "20th Avenue",
+          "tags": ["town"]
+        },
+        {
+          "id": "osm-longview-diamond-diagonal",
+          "name": "Washington Diagonal",
+          "tags": ["town"]
+        },
+        {
+          "id": "osm-longview-diamond-west-washington",
+          "name": "West Washington Way",
+          "tags": ["town"]
+        },
+        {
+          "id": "osm-longview-diamond-washington-bridge",
+          "name": "Washington Way Bridge",
+          "tags": []
+        },
+        {
+          "id": "osm-longview-diamond-west-bank",
+          "name": "Washington West Bank",
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "diamond-washington-walkers",
+              "s0": 100,
+              "s1": 160,
+              "d0": 6.5,
+              "d1": 9,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["rain-shell-hiker", "trail-runner"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-longview-diamond-30th",
+          "name": "30th Avenue",
+          "tags": ["town"]
+        }
+      ]
+    },
+    {
+      "id": "outer",
+      "pathFrom": {
+        "lat": 46.1429503,
+        "lon": -122.9422477
+      },
+      "pathTo": {
+        "lat": 46.1343662,
+        "lon": -122.9507149
+      },
+      "via": [
+        {
+          "lat": 46.1465608,
+          "lon": -122.946304
+        }
+      ],
+      "wayFilter": [
+        {
+          "@id": "^(5882042|5881972|1497703017|1497703016|1497699461|1497699460)$"
+        }
+      ],
+      "respectOneway": true,
+      "splitOnNameChange": true,
+      "minRoadM": 40,
+      "smoothing": {
+        "headingSigmaM": 28
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 15,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4,
+        "lanesPerDirection": 1,
+        "verges": {
+          "left": {
+            "widthM": 6,
+            "surface": "grass",
+            "edge": "soft"
+          },
+          "right": {
+            "widthM": 6,
+            "surface": "grass",
+            "edge": "soft"
+          }
+        }
+      },
+      "roads": [
+        {
+          "id": "osm-longview-diamond-olympia",
+          "name": "Outer Olympia Way",
+          "tags": ["town"]
+        },
+        {
+          "id": "osm-longview-diamond-kessler",
+          "name": "Kessler Boulevard",
+          "tags": ["town"]
+        }
+      ]
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-longview-diamond-olympia",
+      "line": "outer",
+      "of": "inner",
+      "label": "outer",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "OLYMPIA / KESSLER: LONGER OUTER ROUTE. 20TH / WASHINGTON: INNER ROUTE.",
+      "aiTake": 0.35,
+      "connectorWidthM": 6,
+      "minRadiusM": 42.5,
+      "leave": {
+        "at": {
+          "lat": 46.1429503,
+          "lon": -122.9422477
+        },
+        "pieceM": 100,
+        "offsetM": 4.5,
+        "lane": "R1",
+        "zone": {
+          "lengthM": 40,
+          "d0": 3.5,
+          "d1": 8
+        },
+        "insetM": 110,
+        "toOffsetM": 2,
+        "toLane": "R1",
+        "turnsM": [20, 20]
+      },
+      "join": {
+        "at": {
+          "lat": 46.1343662,
+          "lon": -122.9507149
+        },
+        "pieceM": 60,
+        "offsetM": 2,
+        "lane": "R1",
+        "insetM": 220,
+        "fromOffsetM": 2,
+        "fromLane": "R1",
+        "turnsM": [20, 20]
+      },
+      "traffic": "road",
+      "trafficIngress": {
+        "offsetM": 2,
+        "lane": "R1",
+        "widthM": 4,
+        "turnsM": [40, 40],
+        "minRadiusM": 42.5
+      },
+      "trafficReverse": {
+        "leave": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -2,
+          "branchLane": "L1",
+          "widthM": 4,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        },
+        "join": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -2,
+          "branchLane": "L1",
+          "widthM": 4,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-longview-street-diamond",
+      "name": "Longview: Street Diamond",
+      "line": "inner",
+      "startRoad": "osm-longview-diamond-approach",
+      "startS": 32,
+      "finishRoad": "osm-longview-diamond-30th",
+      "finishS": -40,
+      "notes": "A one-pass street-diamond prototype: take 20th and Washington inside, or the longer Olympia/Kessler outer alternate. Rejoin Washington before the shared bridge and 30th Avenue finish. Both paths carry ordinary two-way traffic. Real OSM alignment and USGS terrain with arcade widths, grass recovery margins and eased turns; no claim of equal race times or mapped lake scenery."
+    }
+  ]
+}
