@@ -21,10 +21,11 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import type { StructurePlan } from '../road';
+import type { RoadNetwork, StructurePlan } from '../road';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { fitRoof } from './roof-fit';
+import { fitTerrain } from './terrain-fit';
 import { groundYOf } from './shadows';
 
 /** The chalk's colours: clean, and crooked. */
@@ -127,6 +128,7 @@ export class AirPays {
   private readonly clean = new Color(CHALK_CLEAN);
   private readonly crookedColor = new Color(CHALK_CROOKED);
   private structures: StructurePlan | null = null;
+  private road: RoadNetwork | null = null;
   private readonly up = new Vector3(0, 1, 0);
   private readonly normal = new Vector3();
   private readonly tilt = new Quaternion();
@@ -164,6 +166,10 @@ export class AirPays {
   /** The race's structures plan, once there is one: the mark lies on a roof (see `updateMark`). Null: the ground. */
   setStructures(plan: StructurePlan | null): void {
     this.structures = plan;
+  }
+
+  setRoad(road: RoadNetwork | null): void {
+    this.road = road;
   }
 
   /** Sim events: a newspaper crash (the paper flies off). */
@@ -205,15 +211,22 @@ export class AirPays {
     const roof = this.structures
       ? fitRoof(this.structures, x, y, z, td.heading, RING_R * 2, RING_R * 2)
       : null;
-    if (roof) {
-      this.mark.position.set(x, roof.y + LIFT_M, z);
+    // Include the tick ahead of the ring in the fit's footprint.
+    const support = roof ?? fitTerrain(this.road, x, y, z, td.heading, 2.52, 1.62);
+    if (support === null) {
+      this.mark.visible = false;
+      this.counts.mark = false;
+      return;
+    }
+    if (support) {
+      this.mark.position.set(x, support.y + LIFT_M, z);
       this.tilt.setFromAxisAngle(this.up, td.heading);
-      if (roof.nx !== 0 || roof.nz !== 0)
+      if (support.nx !== 0 || support.nz !== 0)
         this.tilt.premultiply(
-          this.level.setFromUnitVectors(this.up, this.normal.set(roof.nx, roof.ny, roof.nz)),
+          this.level.setFromUnitVectors(this.up, this.normal.set(support.nx, support.ny, support.nz)),
         );
       this.mark.quaternion.copy(this.tilt);
-      this.mark.scale.set(roof.scale, 1, roof.scale);
+      this.mark.scale.set(support.scale, 1, support.scale);
     } else {
       this.mark.position.set(x, y + LIFT_M, z);
       this.mark.rotation.set(0, td.heading, 0);
@@ -297,6 +310,7 @@ export class AirPays {
     this.paper.visible = false;
     this.counts = { mark: false, crooked: false, paper: false };
     this.structures = null;
+    this.road = null;
   }
 
   stats(): AirPaysCounts {
