@@ -225,6 +225,8 @@ describe('the Portland pieces stay on the Portland network', () => {
   it('draws none of them on the gorge, the Sound or the other Pacific Northwest roads', () => {
     const ids = new Set(PORTLAND.map((p) => p.id));
     expect(PORTLAND.every((p) => p.networks?.length === 1 && p.networks[0] === ID)).toBe(true);
+    // Positive control: removing these pieces really changes the built Portland geometry.
+    expect(build().soup.pos).not.toEqual(build(WITHOUT).soup.pos);
     for (const other of Object.values(backdropNetworks)) {
       if (other.network === ID) continue;
       const roads = Object.values(networkFiles).find((n) => n.id === other.network);
@@ -233,10 +235,14 @@ describe('the Portland pieces stay on the Portland network', () => {
         network: roads,
         roads: Object.values(roadFiles).filter((r) => roads.roads.includes(r.id)),
       });
-      const { stats } = buildSoup(region, other, roadPointsOf(net2.edges, 1), 7);
+      const points = roadPointsOf(net2.edges, 1);
+      const { soup, stats } = buildSoup(region, other, points, 7);
+      const withoutPortland = buildSoup({ ...region, pieces: WITHOUT }, other, points, 7);
       for (const id of ids) expect(stats.moving, `${other.network} ${id}`).not.toContain(id);
-      expect(stats.kinds.skyline ?? 0, other.network).toBe(0);
-      expect(stats.kinds.bridge ?? 0, other.network).toBe(0);
+      // Other courses can have their own skylines and bridges. Removing Portland's authored pieces
+      // must leave their complete built geometry unchanged, including colors and moving attributes.
+      expect(soup, other.network).toEqual(withoutPortland.soup);
+      expect(stats.kinds, other.network).toEqual(withoutPortland.stats.kinds);
     }
   });
 });
