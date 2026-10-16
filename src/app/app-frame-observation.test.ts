@@ -14,8 +14,11 @@ const boundary = vi.hoisted(() => ({
   context: null as ((lost: boolean) => void) | null,
   lost: false,
   pose: true,
+  missingRiders: false,
   render: vi.fn(),
   audioFrame: vi.fn(),
+  countdownBeat: vi.fn(),
+  inputSample: vi.fn(),
   driver: vi.fn(),
   activeDriver: null as ((actions: import('../input').ActionState) => void) | null,
   receipt: vi.fn(
@@ -43,6 +46,8 @@ const boundary = vi.hoisted(() => ({
   wakeLoss: null as Parameters<typeof import('../platform').acquireWakeLease>[0]['onLost'] | null,
   missingRoads: false,
   roadWait: null as Promise<void> | null,
+  chunkWait: null as Promise<void> | null,
+  chunkMissing: false,
 }));
 
 vi.mock('../sim/api', async (original) => {
@@ -58,6 +63,7 @@ vi.mock('../sim/api', async (original) => {
           if (key === 'snapshot')
             return () => {
               const snapshot = target.snapshot();
+              if (boundary.missingRiders) return { ...snapshot, entities: [] };
               if (config.seed !== 2 || !boundary.finishMeasurementStep || target.tick === 0) return snapshot;
               return {
                 ...snapshot,
@@ -106,6 +112,10 @@ vi.mock('../content', async (original) => {
   const module = await original<typeof import('../content')>();
   return {
     ...module,
+    loadChunk: async <T>(name: string, load: () => Promise<T>, env?: import('../content').ChunkEnv) => {
+      await boundary.chunkWait;
+      return boundary.chunkMissing ? null : module.loadChunk(name, load, env);
+    },
     createPackLibrary: (options: Parameters<typeof module.createPackLibrary>[0]) => {
       const library = module.createPackLibrary(options);
       return {
@@ -202,6 +212,7 @@ vi.mock('../audio', async (original) => ({
       {
         get(_target, key) {
           if (key === 'frame') return boundary.audioFrame;
+          if (key === 'countdownBeat') return boundary.countdownBeat;
           if (key === 'state') return () => boundary.audioState;
           if (key === 'nextRadio' || key === 'skipTrack') return boundary.retune;
           if (key === 'acquireSuspendLease')
@@ -236,6 +247,7 @@ vi.mock('../input', async (original) => ({
         get(_target, key) {
           if (key === 'sample')
             return () => {
+              boundary.inputSample();
               boundary.activeDriver?.({
                 steer: 0,
                 throttle: 0,
@@ -329,10 +341,15 @@ describe('AppHandle actual render wiring', () => {
     boundary.syncLive.mockClear();
     boundary.lost = false;
     boundary.pose = true;
+    boundary.missingRiders = false;
     boundary.missingRoads = false;
     boundary.roadWait = null;
+    boundary.chunkWait = null;
+    boundary.chunkMissing = false;
     boundary.render.mockReset();
     boundary.audioFrame.mockReset();
+    boundary.countdownBeat.mockReset();
+    boundary.inputSample.mockReset();
     boundary.driver.mockReset();
     visible = { visibilityState: 'visible' };
     vi.stubGlobal('document', visible);
@@ -604,11 +621,41 @@ describe('AppHandle actual render wiring', () => {
     expect(seen.at(-1)!.epoch).toBeGreaterThan(hiddenEpoch);
   });
 
+  it('draws the current grid before the first countdown beat, dropping preparation input', () => {
+    (window as Window & { __countdown?: boolean }).__countdown = true;
+    app.tap();
+    app.startRace();
+    const order: string[] = [];
+    boundary.render.mockImplementation(() => order.push('draw'));
+    boundary.countdownBeat.mockImplementation((beat: number) => order.push(String(beat)));
+    boundary.recorderCalls = [];
+    app.setLockstep(180);
+    frame();
+    expect(order).toEqual(['draw']);
+    expect(app.snapshot()!.tick).toBe(0);
+    expect(boundary.inputSample).toHaveBeenCalled();
+    expect(boundary.recorderCalls).toEqual([]);
+    expect(seen.at(-1)!.eligible).toBe(false);
+    frame();
+    expect(order).toEqual(['draw', '3', '2', '1', 'draw']);
+    expect(app.snapshot()!.tick).toBe(0);
+    expect(boundary.uiWrite).toHaveBeenCalledWith('setCountdown', 'GO');
+    app.setLockstep(1);
+    frame();
+    expect(app.snapshot()!.tick).toBe(1);
+    expect(boundary.recorderCalls).toContain('record');
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3], [2], [1]]);
+    expect(app.checkReplay(app.replayFile())).toMatchObject({ ticks: 1, desync: null, keyMatches: true });
+  });
+
   it('observes countdown release and the first sim step through the real app step hook', () => {
     (window as Window & { __countdown?: boolean }).__countdown = true;
     app.tap();
     app.startRace();
     app.setLockstep(180);
+    frame(); // prepare the grid, even when lockstep requests an entire countdown
+    expect(app.snapshot()!.tick).toBe(0);
+    expect(boundary.countdownBeat).not.toHaveBeenCalled();
     frame(); // the entire countdown, no simulation tick
     expect(app.snapshot()!.tick).toBe(0);
     expect(seen.at(-1)!.eligible).toBe(false);
@@ -618,6 +665,151 @@ describe('AppHandle actual render wiring', () => {
     expect(frame().eligible).toBe(true);
     expect(app.snapshot()!.tick).toBeGreaterThan(0);
     expect(seen.at(-1)!.epoch).toBeGreaterThan(heldEpoch);
+  });
+
+  it.each(['pose', 'context', 'pause', 'hidden'] as const)(
+    'does not release grid preparation while blocked by %s',
+    (blocked) => {
+      (window as Window & { __countdown?: boolean }).__countdown = true;
+      app.tap();
+      app.startRace();
+      app.setLockstep(180);
+      if (blocked === 'pose') boundary.pose = false;
+      if (blocked === 'context') context(true);
+      if (blocked === 'pause') pause(true);
+      if (blocked === 'hidden') {
+        visible.visibilityState = 'hidden';
+        boundary.lifecycle!.onHidden('visibility');
+      }
+      frame();
+      frame();
+      expect(app.snapshot()!.tick).toBe(0);
+      expect(boundary.countdownBeat).not.toHaveBeenCalled();
+      expect(boundary.recorderCalls).not.toContain('record');
+      boundary.pose = true;
+      if (blocked === 'context') context(false);
+      if (blocked === 'hidden') {
+        visible.visibilityState = 'visible';
+        boundary.lifecycle!.onShown();
+      }
+      pause(false);
+      frame();
+      expect(boundary.countdownBeat).not.toHaveBeenCalled();
+      frame();
+      expect(boundary.countdownBeat.mock.calls).toEqual([[3], [2], [1]]);
+      expect(app.snapshot()!.tick).toBe(0);
+    },
+  );
+
+  it('a failed grid draw cannot release preparation before a successful draw', () => {
+    (window as Window & { __countdown?: boolean }).__countdown = true;
+    app.tap();
+    app.startRace();
+    app.setLockstep(180);
+    boundary.render.mockImplementationOnce(() => {
+      throw new Error('grid draw failed');
+    });
+    const retry = queue[0]!;
+    expect(() => frame()).toThrow('grid draw failed');
+    expect(boundary.countdownBeat).not.toHaveBeenCalled();
+    expect(app.snapshot()!.tick).toBe(0);
+    // Retry the same loop callback explicitly; a thrown renderer does not schedule another RAF.
+    queue.push(retry);
+    frame();
+    expect(boundary.countdownBeat).not.toHaveBeenCalled();
+    frame();
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3], [2], [1]]);
+  });
+
+  it('a cached menu pose cannot prepare a race without a current rider to frame', () => {
+    (window as Window & { __countdown?: boolean }).__countdown = true;
+    app.tap();
+    frame(); // the menu has a usable cached pose
+    boundary.missingRiders = true;
+    app.startRace();
+    app.setLockstep(180);
+    frame();
+    frame();
+    expect(app.snapshot()!.entities).toEqual([]);
+    expect(app.snapshot()!.tick).toBe(0);
+    expect(boundary.countdownBeat).not.toHaveBeenCalled();
+    boundary.missingRiders = false;
+    boundary.callbacks!.onRestart!();
+    frame();
+    expect(boundary.countdownBeat).not.toHaveBeenCalled();
+    frame();
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3], [2], [1]]);
+  });
+
+  it('pauses a prepared countdown without restarting or repeating its beats', () => {
+    (window as Window & { __countdown?: boolean }).__countdown = true;
+    app.tap();
+    app.startRace();
+    app.setLockstep(60);
+    frame();
+    frame();
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3]]);
+    pause(true);
+    frame();
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3]]);
+    pause(false);
+    frame();
+    frame();
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3], [2], [1]]);
+    expect(boundary.uiWrite.mock.calls.filter(([key]) => key === 'setCountdown')).toEqual([
+      ['setCountdown', '3'],
+      ['setCountdown', '2'],
+      ['setCountdown', '1'],
+      ['setCountdown', 'GO'],
+    ]);
+    expect(app.snapshot()!.tick).toBe(0);
+    app.setLockstep(1);
+    frame();
+    expect(app.snapshot()!.tick).toBe(1);
+    expect(boundary.countdownBeat.mock.calls).toEqual([[3], [2], [1]]);
+  });
+
+  it.each(['renderer', 'subscriber', 'menu'] as const)(
+    'a grid draw interrupted by %s cannot prepare a replacement race',
+    (interruption) => {
+      (window as Window & { __countdown?: boolean }).__countdown = true;
+      app.tap();
+      app.startRace();
+      const abandoned = app.snapshot();
+      app.setLockstep(1);
+      const replace = () => {
+        if (interruption === 'menu') {
+          app.backToMenu();
+          app.startRace();
+        } else boundary.callbacks!.onRestart!();
+      };
+      if (interruption === 'renderer') boundary.render.mockImplementationOnce(replace);
+      else {
+        const off = app.subscribeFrames(() => {
+          off();
+          replace();
+        }, vi.fn());
+      }
+      frame();
+      expect(app.snapshot()).not.toBe(abandoned);
+      expect(boundary.countdownBeat).not.toHaveBeenCalled();
+      frame();
+      expect(boundary.countdownBeat).not.toHaveBeenCalled();
+      frame();
+      expect(boundary.countdownBeat.mock.calls).toEqual([[3]]);
+      expect(app.snapshot()!.tick).toBe(0);
+    },
+  );
+
+  it('keeps countdown-disabled launches advancing before their first usable pose', () => {
+    app.tap();
+    app.startRace();
+    boundary.pose = false;
+    app.setLockstep(1);
+    frame();
+    expect(app.snapshot()!.tick).toBe(1);
+    expect(boundary.countdownBeat).not.toHaveBeenCalled();
+    expect(boundary.recorderCalls).toContain('record');
   });
 
   it.each(['free play', 'career'] as const)(
@@ -900,7 +1092,7 @@ describe('AppHandle actual render wiring', () => {
     app.tap();
     boundary.suspension = new Promise(() => {});
     const pending = begin();
-    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await vi.dynamicImportSettled();
     expect(boundary.audioAcquire).toHaveBeenCalledTimes(1);
     const press = () =>
       window.dispatchEvent(
@@ -963,6 +1155,47 @@ describe('AppHandle actual render wiring', () => {
       expect(boundary.audioAcquire).not.toHaveBeenCalled();
     },
   );
+  it('held diagnostic code aborts promptly; late fulfillment cannot overwrite a following ordinary race', async () => {
+    app.tap();
+    let resolve!: () => void;
+    boundary.chunkWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    const controller = new AbortController();
+    let settled = false;
+    const pending = app.beginMeasurement({ signal: controller.signal, driverForRepeat: () => vi.fn() });
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.dynamicImportSettled();
+    expect(settled).toBe(false);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    controller.abort();
+    expect(await pending).toMatchObject({ reason: 'aborted' });
+    app.startRace();
+    const current = app.snapshot(),
+      receipts = boundary.receipt.mock.calls.length;
+    resolve();
+    await vi.dynamicImportSettled();
+    expect(app.snapshot()).toBe(current);
+    expect(boundary.receipt.mock.calls.length).toBe(receipts);
+    expect(app.state()).toBe('race');
+  });
+  it('unavailable diagnostic code releases ownership and permits a subsequent measurement', async () => {
+    app.tap();
+    const normal = app.snapshot();
+    boundary.chunkMissing = true;
+    await expect(begin()).rejects.toThrow('Measurement scene code unavailable');
+    expect(app.snapshot()).toBe(normal);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    boundary.chunkMissing = false;
+    const next = await begin();
+    expect(next.kind).toBe('started');
+    if (next.kind === 'started') {
+      next.session.stop('collector-target');
+      await next.session.ended;
+    }
+  });
   it('held content preparation aborts promptly; late fulfillment cannot overwrite a following ordinary race', async () => {
     app.tap();
     boundary.missingRoads = true;
@@ -983,7 +1216,7 @@ describe('AppHandle actual render wiring', () => {
     const current = app.snapshot(),
       receipts = boundary.receipt.mock.calls.length;
     resolve();
-    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await vi.dynamicImportSettled();
     expect(app.snapshot()).toBe(current);
     expect(boundary.receipt.mock.calls.length).toBe(receipts);
     expect(app.state()).toBe('race');
