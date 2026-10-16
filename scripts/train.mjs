@@ -632,6 +632,17 @@ export function canReach(files, job) {
   return code.some((f) => !NOT_SIM_OR_BROWSER.some((re) => re.test(f)));
 }
 
+/** Describe only the reported control outcome; absence never proves that a run was skipped. */
+function sameTreeControl(/** @type {string | undefined} */ control) {
+  if (control === 'skipped')
+    return 'the branch control did not repeat it, so persistence versus transience is unproven';
+  if (control === 'success')
+    return 'the branch control passed on the same source tree, so the runs disagree despite source identity';
+  if (control === 'failure') return 'the branch control failed on the same source tree too';
+  if (control === 'cancelled') return 'the branch control was cancelled, so its outcome is inconclusive';
+  return control ? 'the branch control result is unrecognized' : 'the branch control result is missing';
+}
+
 // ---------------------------------------------------------------------------------------------
 // What a finished train posts
 
@@ -654,7 +665,7 @@ export function canReach(files, job) {
  */
 export function decide({
   result,
-  control = 'skipped',
+  control,
   sameTree = false,
   timedOut = [],
   failed = [],
@@ -829,7 +840,7 @@ export function decide({
   const red = late ? 'timed out' : 'fails';
   const where =
     kind === 'same-tree'
-      ? `exact PR tree ${red} once on main`
+      ? `exact PR tree ${red}${control === 'skipped' ? ' once' : ''} on main`
       : kind === 'composition'
         ? `passes on its branch, ${red} on main`
         : `${red} alone on main`;
@@ -846,7 +857,7 @@ export function decide({
     dispatch: true,
     why:
       kind === 'same-tree'
-        ? `#${p.number}'s exact PR tree failed once on main ${b7}; composition excluded, persistence unproven`
+        ? `#${p.number}'s exact PR tree ${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''} on main ${b7}; composition excluded; ${sameTreeControl(control)}`
         : `#${p.number} ${late ? 'timed out' : 'failed'} alone on main ${b7} (${kind})`,
   };
 }
@@ -1043,7 +1054,7 @@ export const COMMENT_TAG = '<!-- bundle-train -->';
 /**
  * The comment on a PR that failed alone, or timed out alone (`timedOut` names the suite jobs that
  * ran past their time limit; `reached`, those of them its diff can reach and main's own run passed).
- * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, timedOut?: string[], reached?: string[] }} o
+ * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, control?: string, timedOut?: string[], failed?: string[], reached?: string[] }} o
  */
 export function blameComment({
   kind,
@@ -1054,14 +1065,17 @@ export function blameComment({
   failing,
   lacks,
   mainCi,
+  control,
   timedOut = [],
+  failed = [],
   reached = [],
 }) {
   const late = timedOut.length > 0;
   const red = late ? 'timed out' : 'fails';
+  const exactResult = `${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''}`;
   const head =
     kind === 'same-tree'
-      ? `**Bundle train ${run}: this PR's exact source tree failed once in the train.**`
+      ? `**Bundle train ${run}: this PR's exact source tree ${exactResult} in the train.**`
       : kind === 'composition'
         ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
         : `**Bundle train ${run}: this PR ${red} alone on main.**`;
@@ -1081,7 +1095,7 @@ export function blameComment({
     );
   lines.push(
     kind === 'same-tree'
-      ? '- The assembled train and this PR head have the same full Git tree. The full suite failed once on that exact source tree; the branch control did not repeat it, so persistence versus transience is unproven and a source-tree composition failure is excluded.'
+      ? `- The assembled train and this PR head have the same full Git tree. ${late ? `The full suite did not finish${failed.length ? ' and also had failed jobs' : ''}` : `The full suite ${exactResult} on that exact source tree`}; ${sameTreeControl(control)}; a source-tree composition failure is excluded.`
       : kind === 'own'
         ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
         : kind === 'composition'
@@ -1788,7 +1802,7 @@ export async function cmdReport(cfg = loadConfig()) {
   const base = env.TRAIN_BASE ?? '';
   const run = runNumber();
   const reported = env.TRAIN_RESULT ?? '';
-  const control = env.TRAIN_CONTROL || 'skipped';
+  const control = env.TRAIN_CONTROL;
   const sameTree = env.TRAIN_SINGLE_SAME_TREE === 'true';
   const say = (/** @type {string} */ s) => {
     console.log(`report: ${s}`);
@@ -1906,7 +1920,9 @@ export async function cmdReport(cfg = loadConfig()) {
       failing,
       lacks,
       mainCi,
+      control,
       timedOut,
+      failed: failedJobs,
       reached: timedOut.filter((j) => files !== null && canReach(files, j) && mainJobs[j] === 'success'),
     });
   }
