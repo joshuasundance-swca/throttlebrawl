@@ -9,7 +9,7 @@ import { groundUnder, SURFACE_FEEL, surfaceFeel } from '../../src/sim/ground';
 import { createSimWithWorld } from '../../src/sim/create';
 import { riderState } from '../../src/sim/riders';
 import { ISOLATED } from './batch';
-import { beyondAt, courseAt, pastAt, roadsideGroundHeight } from '../../src/road';
+import { beyondAt, courseAt, pastAt, roadsideGroundHeight, terrainAt } from '../../src/road';
 import { routeNetworks, track } from './geometry-routes';
 
 const registry = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
@@ -79,7 +79,16 @@ describe('Eagle Point recoverable roadside on a rental moped', () => {
     const edge = config.road.edges.find(
       (e) => !config.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1),
     )!;
-    const r = excursion(config, edge.index, edge.length / 2, 1, false, 100);
+    // The former fixed 100 m probe now lies on real authored land. Derive a point
+    // beyond all source faces rather than treating a distance from asphalt as a hazard.
+    const p = config.road.toWorld(edge.index, edge.length / 2, 0, 0);
+    const outside =
+      Math.max(
+        ...config.road.terrain!.patches.flatMap((patch) =>
+          patch.vertices.map(([x, , z]) => Math.hypot(x - p.x, z - p.z)),
+        ),
+      ) + 20;
+    const r = excursion(config, edge.index, edge.length / 2, 1, false, outside);
     expect(r.events.find((e) => e.type === 'crash')?.data).toMatchObject({ cause: 'over', past: 'ground' });
     expect(r.recovered).toBe(false);
   });
@@ -88,8 +97,12 @@ describe('Eagle Point recoverable roadside on a rental moped', () => {
     for (const edge of config.road.edges) {
       const s = edge.length / 2;
       const d = config.road.vergeAt(edge.index, s, 'right').dOuter + 0.8;
-      expect(groundUnder(config.road, edge.index, s, d, 0)).toBe('grass');
-      expect(surfaceFeel(config.tuning, groundUnder(config.road, edge.index, s, d, 0))).toEqual(
+      const p = config.road.toWorld(edge.index, s, d, 0);
+      const ground = terrainAt(config.road.terrain, p.x, p.z);
+      expect(ground?.surface).toBe('grass');
+      const h = ground!.y - p.y;
+      expect(groundUnder(config.road, edge.index, s, d, h)).toBe('grass');
+      expect(surfaceFeel(config.tuning, groundUnder(config.road, edge.index, s, d, h))).toEqual(
         SURFACE_FEEL.grass,
       );
     }

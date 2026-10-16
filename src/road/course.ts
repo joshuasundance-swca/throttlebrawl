@@ -82,7 +82,7 @@ export function roadBandHeight(road: RoadNetwork, edge: number, s: number, d: nu
   if (road.terrain) {
     if (gapAt(road, edge, s, d)) return null;
     const e = road.edges[edge];
-    const verge = e?.isTrafficOnly ? 0 : DRAWN_VERGE_M;
+    const verge = DRAWN_VERGE_M;
     return e && d >= e.dMin - verge && d <= e.dMax + verge ? road.surfaceHeight(edge, s, d) : null;
   }
   const left = road.vergeAt(edge, s, 'left').dOuter;

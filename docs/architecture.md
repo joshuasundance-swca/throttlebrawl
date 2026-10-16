@@ -361,6 +361,19 @@ unpopulated; tick zero fills it before movement, identically with cold or warm r
 
 ## Physical world
 
+`[default]` Eagle Point now opts into authored natural terrain. The optional network's indexed
+Float32 faces are shared by drawing, support, landing, crashed bodies and grounded rider
+presentation; land and water keep their real height independently of the rider's reference road.
+The road collar is an authored blend into coarse source elevation. Coverage holes and the
+bounded outer edge receive no synthetic land or sea. Networks without this field retain the
+legacy strip described below. `road/terrain.ts` caches a bounded face hierarchy per source;
+`road/course.ts` includes land below the height ceiling after road and structure support, with
+existing support winning equal-height ties. `sim/riders/terrain.ts` supplies source height/grade;
+`sim/riders/step.ts` advances field riding in world metres without selecting a different pass of
+a looping road. Forecasts and riding-only helpers use the existing lazy race-step boundary.
+The [content contract](./content-packs.md#authored-natural-terrain) records authoring limits and
+which scenery consumers need support migration before another network opts in.
+
 `[decided]` The [2026-10-15 road feedback](./playtests/roads-2026-10-15.md#riding-feedback-and-road-choices) clarifies that a change in grass colour is not a course edge. `[default]` The first rollout is soft rural grass: `roadsideGroundHeight` in `road/course.ts` extends it onto the scene's existing connected land strip, reading `landEdgeOf` and `sectionGroundOf`, requiring continuous support from the verge and leaving a nominal half-metre bike margin before the strip's outer edge. No ground is synthesized or widened; grass retains its surface penalties through `sim/ground.ts`. Other scenery cohorts keep their previous verge limits. Barriers, hard edges, water, missing strips and tight-turn folds retain their consequences. `render/scenery.ts`'s shared `ridableBandPast` keeps rural render-only solids off this strip. Sparse seeded deciduous copses use the existing flat terrain skirt and its actual-root/other-road checks; open stretches remain, while counts and locations may change. Rural staged scenes may also fall back to that flat ground only when their entire footprint fits, at its actual height, clear of roads, features, trees and other scenes. Unsupported plots remain empty. The original trunk-out and rendered-root guarantees remain; near-strip scenery placement is replaced by supported far-flat placement. These props still have no sim contacts. Lake banks, riding the terrain skirt, broader scenery physics and general hillside riding remain follow-up work. Acceptance drives the Rental Moped back from both sides of Eagle Point's loops and checks actual rendered support beneath the bike, moved trees and scene footprints. This is not phone verification.
 
 `[decided]` (the maintainer, 2026-10-06: "consistent physics and gameplay is important here so players know what to expect and how to interact with the world"; then, to a road race in a physical world with honest edges, "Yeah that sounds good :)") Everything a rider can reach is physical at its drawn shape, buildings and landmarks included; the course has edges with one visible consequence each; beyond the course is out of bounds. The rules are in [the product spec](./product-spec.md#world-frame). This section is how it is built.

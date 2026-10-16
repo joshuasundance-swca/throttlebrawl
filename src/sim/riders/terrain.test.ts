@@ -4,7 +4,7 @@ import { createSimWithWorld } from '../create';
 import { quantizeInput } from '../api';
 import { BIKE_HALF_WIDTH_M, riderState, touchdownOf } from './index';
 import { testConfig } from './testing';
-import { moveOnTerrain } from './terrain';
+import { moveOnTerrain } from './step';
 import { tumbleRecord } from '../tumble';
 
 const edges = [{ id: 'a', lengthM: 300, kappa: 0, grade: 0.01 }];
