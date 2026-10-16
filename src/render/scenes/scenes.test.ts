@@ -10,7 +10,7 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork 
 import { createFlatLook } from '../look';
 import { buildRoadScene, type RoadDressing, type RoadScene } from '../road-mesh';
 import { KEYS_KIT, PNW_KIT, scatterRoadside, SF_KIT, type RoadsideKit } from '../roadside';
-import { ridableBandPast, themeAt, type SideTag } from '../scenery';
+import { ridableBandPast, SCENERY_RADIUS_M, themeAt, type ScenerySpot, type SideTag } from '../scenery';
 import { SCENES_PER_RACE, scenesProblems, SIGN_MAX_WORDS, type ScenesFile } from './data';
 import { ScenesLayer } from './layer';
 import { placeScenes, type PlacedScene } from './place';
@@ -84,7 +84,7 @@ function place(id: string, seed: number): PlacedScene[] {
 }
 
 describe('the scenes files', () => {
-  it('are well formed, one per region, with five live scenes or more and every sign headline-short', () => {
+  it('are well formed, one per region, with authored content and every live sign headline-short', () => {
     const regions = new Set(Object.values(networkFiles).map((n) => n.region));
     expect(regions.size).toBeGreaterThan(0);
     for (const region of regions) {
@@ -92,12 +92,22 @@ describe('the scenes files', () => {
       expect(scenesProblems(file), region).toEqual([]);
       expect(file.region).toBe(region);
       const live = file.scenes.filter((s) => s.status === 'live');
-      expect(live.length, region).toBeGreaterThanOrEqual(5);
+      // Vetoed entries stay as the taste log; cutting every scene must not demand replacements.
+      expect(file.scenes.length, region).toBeGreaterThan(0);
       for (const s of live) expect(s.sign.text.split(/\s+/).length, s.id).toBeLessThanOrEqual(SIGN_MAX_WORDS);
       print(`${region}: ${live.map((s) => `${s.id} "${s.sign.text}"`).join('; ')}`);
     }
     // One file per region: no more files than regions (each region found one above).
     expect(Object.keys(sceneFiles).length).toBe(regions.size);
+  });
+
+  it('accepts rural side themes while still refusing unknown themes', () => {
+    const file = fileOf('pacific-northwest').file;
+    const scene = file.scenes[0]!;
+    expect(scenesProblems({ ...file, scenes: [{ ...scene, on: ['rural'] }] })).toEqual([]);
+    expect(scenesProblems({ ...file, scenes: [{ ...scene, on: ['not-a-theme'] }] })).toContain(
+      'scenes[0]: on must list side themes',
+    );
   });
 
   it("carries the pitch's three scenes word for word, unless the maintainer cut one", () => {
@@ -162,6 +172,145 @@ describe('the scenes files', () => {
       'scenes[1]: on must list side themes',
       'scenes[1].sign: all caps',
     ]);
+  });
+});
+
+describe('Clinton rural scenes', () => {
+  const id = 'osm-clinton-ia136';
+
+  it('actually places a bounded, varied live line-up across seeds', () => {
+    const { file } = fileOf('clinton-iowa');
+    const live = file.scenes.filter((s) => s.status === 'live' && s.on.includes('rural'));
+    const lineUps = new Set<string>();
+    const seen = new Set<string>();
+    for (const seed of SEEDS) {
+      const placed = place(id, seed);
+      if (live.length) expect(placed.length, `seed ${seed}: actual rural scene placement`).toBeGreaterThan(0);
+      else expect(placed).toEqual([]);
+      expect(placed.length).toBeLessThanOrEqual(file.maxPerRace ?? SCENES_PER_RACE);
+      for (const p of placed) {
+        expect(p.def.status).toBe('live');
+        expect(p.def.on).toContain('rural');
+        const w = world(id, seed);
+        for (const tree of w.scene.spots.filter((sp) => sp.kind === 'deciduous'))
+          expect(
+            Math.hypot(p.x - tree.p.x, p.z - tree.p.z),
+            `${p.def.id}: broadleaf clearance`,
+          ).toBeGreaterThanOrEqual(p.def.radiusM + SCENERY_RADIUS_M.deciduous * tree.size);
+        for (const f of w.road.edges[p.edge]!.features)
+          if (['billboard', 'boostPad', 'rampTruck', 'roadsideZone', 'copSpawn'].includes(f.kind)) {
+            const r = p.def.radiusM + 3;
+            const overlaps =
+              p.s + r >= Math.min(f.s0, f.s1) &&
+              p.s - r <= Math.max(f.s0, f.s1) &&
+              p.d + r >= Math.min(f.d0, f.d1) &&
+              p.d - r <= Math.max(f.d0, f.d1);
+            expect(overlaps, `${p.def.id}: ${f.kind} clearance`).toBe(false);
+          }
+        seen.add(p.def.id);
+      }
+      lineUps.add(
+        placed
+          .map((p) => p.def.id)
+          .sort()
+          .join(','),
+      );
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(Math.min(1, live.length));
+    if (live.length > (file.maxPerRace ?? SCENES_PER_RACE)) expect(lineUps.size).toBeGreaterThan(1);
+    print(`${id}: ${seen.size} distinct rural scenes, ${lineUps.size} line-ups over ${SEEDS.length} seeds`);
+  });
+
+  it('keeps the full scene footprint clear of broadleaf trees, with unblocked placement as a control', () => {
+    const w = world(id, 1);
+    const precedent = fileOf('pacific-northwest').file;
+    const file: ScenesFile = {
+      ...precedent,
+      region: w.region,
+      maxPerRace: 1,
+      // An explicit live fixture keeps the positive control independent of future content vetoes.
+      scenes: [{ ...precedent.scenes[0]!, status: 'live', on: ['rural'] }],
+    };
+    const input = {
+      road: w.road,
+      seed: 1,
+      file,
+      landReach: (e: number, side: -1 | 1, s: number) => w.scene.landReach(e, side, s),
+      spots: [] as ScenerySpot[],
+    };
+    const clear = placeScenes(input);
+    expect(clear.length, 'the control really places a scene without a tree there').toBeGreaterThan(0);
+    const trees: ScenerySpot[] = clear.map((p) => ({
+      kind: 'deciduous',
+      variant: 0,
+      p: { x: p.x, y: p.y, z: p.z },
+      turn: 0,
+      size: 1,
+      phase: 0,
+      edge: p.edge,
+      s: p.s,
+      d: p.d,
+    }));
+    const blocked = placeScenes({ ...input, spots: trees });
+    expect(blocked.map((p) => [p.edge, p.s, p.d])).not.toEqual(clear.map((p) => [p.edge, p.s, p.d]));
+    for (const p of blocked)
+      for (const tree of trees)
+        expect(Math.hypot(p.x - tree.p.x, p.z - tree.p.z)).toBeGreaterThanOrEqual(
+          p.def.radiusM + SCENERY_RADIUS_M.deciduous * tree.size,
+        );
+  });
+
+  it('draws cheap signs and far stand-ins, hides vetoed scenes, and never places draft or vetoed content', () => {
+    const w = world(id, 1);
+    const { pack, file } = fileOf(w.region);
+    const input = {
+      road: w.road,
+      seed: 1,
+      pack,
+      file,
+      landReach: (e: number, side: -1 | 1, s: number) => w.scene.landReach(e, side, s),
+      spots: w.scene.spots,
+    };
+    const layer = new ScenesLayer(look, input);
+    try {
+      if (!file.scenes.some((s) => s.status === 'live' && s.on.includes('rural'))) {
+        expect(layer.views).toEqual([]);
+        return;
+      }
+      expect(layer.views.length).toBeGreaterThan(0);
+      expect(new Set(layer.views.map((v) => v.mesh.material)).size).toBe(1);
+      for (const v of layer.views) {
+        expect(v.triangles, v.placed.def.id).toBeLessThanOrEqual(260);
+        expect(v.farVertices).toBeLessThan(v.allVertices);
+        expect(v.farVertices / 3).toBeGreaterThanOrEqual(12);
+        expect(v.ref).toBe(`${pack}:scenes/${w.region}#${v.placed.def.id}`);
+        const position = v.mesh.geometry.getAttribute('position');
+        for (let i = 0; i < position.count; i++)
+          expect(
+            Math.hypot(position.getX(i), position.getZ(i)),
+            `${v.placed.def.id}: authored footprint`,
+          ).toBeLessThanOrEqual(v.placed.def.radiusM);
+        const { x, z } = v.placed;
+        layer.update(x + 10, z, 360, 200);
+        expect(v.mesh.visible).toBe(true);
+        expect(v.mesh.geometry.drawRange.count).toBe(v.allVertices);
+        layer.update(x + 300, z, 360, 200);
+        expect(v.mesh.visible).toBe(true);
+        expect(v.mesh.geometry.drawRange.count).toBe(v.farVertices);
+        layer.hide([v.ref]);
+        layer.update(x + 10, z, 360, 200);
+        expect(v.mesh.visible).toBe(false);
+      }
+      for (const status of ['draft', 'vetoed'] as const)
+        expect(
+          placeScenes({ ...input, file: { ...file, scenes: file.scenes.map((s) => ({ ...s, status })) } }),
+        ).toEqual([]);
+      print(
+        `${id}: ${layer.views.map((v) => `${v.placed.def.id} ${v.triangles} triangles (far ${v.farVertices / 3})`).join(', ')}`,
+      );
+    } finally {
+      layer.dispose();
+    }
   });
 });
 

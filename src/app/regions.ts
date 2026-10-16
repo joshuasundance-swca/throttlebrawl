@@ -268,7 +268,7 @@ const shortStreet = (name: string) => name.replace(/ (Street|Avenue|Boulevard|Dr
 
 /**
  * The race-setup route picker's list for a region's event (the maintainer, 2026-10-01: "Yes, add
- * as routes"): the event's own hand-made road first (the default, raced at the Race length
+ * as routes"): the event's own route first (the default, raced at the Race length
  * setting), then each real-road route (`realRoutes`) by its name, with the real road or streets it
  * follows. A region pack's real routes are listed once its road data is fetched. [default]
  */
@@ -278,7 +278,7 @@ export function routeChoices(reg: ContentRegistry, eventId: string): RouteChoice
   const own: RouteChoice = {
     id: null,
     name: event.name ?? event.id,
-    blurb: 'The hand-made road, at your Race length.',
+    blurb: 'The event route, at your Race length.',
     lengthM: null,
   };
   const real = realRoutes(reg, key).map((id): RouteChoice => {

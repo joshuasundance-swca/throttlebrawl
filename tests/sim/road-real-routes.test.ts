@@ -196,13 +196,22 @@ describe('real roads as routes: each one races well inside its region race', () 
           .every((l) => Math.abs((cop?.d ?? 0) - l.dCenterM) >= l.widthM / 2);
         expect(off, 'the patrol waits off the travel lanes').toBe(true);
       }
-      // The rest wait on the shoulder at the route's lot (its first copSpawn, s 4 to 20), off the
-      // travel lanes, behind the grid (sim/cops copSpawnPos).
+      // The rest wait at an authored lot, off the travel lanes and behind the grid. Its range
+      // comes from this road, so another course can place its lot without changing this test.
+      const lots = config.road.featuresOf(startEdge, 'copSpawn');
       for (const i of cops.filter((k) => !patrol.includes(k))) {
         const cop = riders[i]?.road;
-        expect(cop?.s ?? -1, 'the cop waits at the lot').toBeGreaterThanOrEqual(4);
-        expect(cop?.s ?? 99, 'the cop waits at the lot').toBeLessThanOrEqual(20);
-        expect(Math.abs(cop?.d ?? 0), 'on the shoulder').toBeGreaterThanOrEqual(4);
+        expect(
+          lots.some((lot) => cop !== undefined && cop.s >= lot.s0 && cop.s <= lot.s1),
+          'the cop waits within an authored lot',
+        ).toBe(true);
+        expect(
+          config.road
+            .lanesAt(cop?.edge ?? -1, cop?.s ?? 0)
+            .filter((lane) => lane.kind === 'drive')
+            .every((lane) => Math.abs((cop?.d ?? 0) - lane.dCenterM) >= lane.widthM / 2),
+          'the lot is off the travel lanes',
+        ).toBe(true);
       }
       const own = buildSimConfig(REG, STREAMS.forEvent(REG, c.event), { seed: 1, eventId: c.event });
       expect(config.riders.map((r) => r.contentId)).toEqual(own.riders.map((r) => r.contentId));
@@ -231,7 +240,8 @@ describe('real roads as routes: each one races well inside its region race', () 
       expect(res.offRoute).toBe(0);
       expect(res.finishTick, `the bot finishes (${res.end})`).toBeGreaterThan(0);
       expect(res.maxTraffic).toBeGreaterThan(0);
-      expect(peds.length, "the region's pedestrians stand at the roadside").toBeGreaterThan(0);
+      if (regionPeds(c).length > 0)
+        expect(peds.length, "the region's authored pedestrians stand at the roadside").toBeGreaterThan(0);
     }, 300_000);
   }
 

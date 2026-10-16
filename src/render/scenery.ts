@@ -94,7 +94,9 @@ export type SceneryKind =
   // concrete gun battery, a clump of coyote brush and an outcrop of red chert
   | 'battery'
   | 'brush'
-  | 'outcrop';
+  | 'outcrop'
+  // Original procedural broadleaf, never a coastal or conifer model fallback.
+  | 'deciduous';
 export const SCENERY_KINDS: readonly SceneryKind[] = [
   'palm',
   'mangrove',
@@ -114,6 +116,7 @@ export const SCENERY_KINDS: readonly SceneryKind[] = [
   'battery',
   'brush',
   'outcrop',
+  'deciduous',
 ];
 
 export interface ScenerySpot {
@@ -174,6 +177,7 @@ export const SCATTER_SPACING_M: Readonly<Record<SceneryKind, number>> = {
   battery: 140,
   brush: 22,
   outcrop: 24,
+  deciduous: 75,
 };
 /** Share of a theme's candidate spots that get each kind. [default] */
 const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = {
@@ -185,6 +189,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   industrial: {},
   sawmill: { sawmill: 1, conifer: 0.35 },
   forest: { conifer: 1 },
+  rural: { deciduous: 0.7 },
   crossing: {},
   plaza: {},
   downtown: {},
@@ -233,6 +238,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   // Playtest 4 (P4-19, C4): the bluff's shelf holds the parapet and the madrones; the lake's bank, cabins and docks.
   'bluff',
   'lake',
+  'rural',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
@@ -259,6 +265,7 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   battery: [8, 6],
   brush: [3.5, 14],
   outcrop: [4, 12],
+  deciduous: [8, 10],
 };
 /**
  * How big a headland battery stands, times CX6's model (30 m by 3.7 m, a 5.5 m deep front to a 9 m back).
@@ -290,6 +297,7 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   brush: 1.2,
   // the chert's four beds lean over about 3 m to a side
   outcrop: 3.6,
+  deciduous: 4.8,
 };
 /**
  * What of each kind a rider would hit, as a radius round its anchor, m (off-road, run W-R): a palm's
@@ -300,6 +308,7 @@ export const TRUNK_M: Partial<Record<SceneryKind, number>> = {
   pole: 0.3,
   conifer: 0.8,
   coastTree: 0.8,
+  deciduous: 0.5,
   // a rock is as solid as a trunk, and a shrub is not: it stands past the band like the rest
   outcrop: 2.6,
   brush: 0.9,
@@ -392,6 +401,7 @@ const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   arch: 2,
   // the cypress and the eucalyptus (models.ts, `sfIdentity`)
   coastTree: 2,
+  deciduous: 1,
   apartment: 6,
   // one root each: the scatter names the variant (`HEADLANDS_VARIANT`)
   battery: 1,
@@ -635,6 +645,7 @@ const LAND_KINDS: readonly SceneryKind[] = [
   'battery',
   'brush',
   'outcrop',
+  'deciduous',
 ];
 /** Kinds that face the road (their +Z turns toward the centre line). */
 const FACES_ROAD = new Set<SceneryKind>(['shack', 'house', 'sawmill', 'battery']);
@@ -888,20 +899,24 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
           )
             continue;
         }
-        if (kind === 'conifer') {
-          // A cluster of one to three trees around the spot, each on land and clear on its own.
-          const n = 1 + Math.floor(h(ki, k, side, 3) * 3);
+        if (kind === 'conifer' || kind === 'deciduous') {
+          // Sparse rural copses or forest clusters, each tree on land and clear on its own.
+          const n = (kind === 'deciduous' ? 2 : 1) + Math.floor(h(ki, k, side, 3) * 3);
           for (let t = 0; t < n; t++) {
             const ts = s + (t === 0 ? 0 : (h(ki, k * 8 + t, side, 9) - 0.5) * 9);
             const ta = across + (t === 0 ? 0 : (h(ki, k * 8 + t, side, 10) - 0.5) * 8);
+            if (kind === 'deciduous' && e.theme(side, ts) !== 'rural') continue;
             if (ts - radius < 0 || ts + radius > e.length || ta < Math.max(near, clearOf)) continue;
             if (ta + radius > Math.min(e.landReach(side, ts - radius), e.landReach(side, ts + radius)))
               continue;
             const td = side * (outer + ta);
             if (t > 0 && !e.clear(ts, td, radius)) continue;
-            const c = conifer(h(ki, k * 8 + t, side, 11), h(ki, k * 8 + t, side, 12));
+            const c =
+              kind === 'conifer'
+                ? conifer(h(ki, k * 8 + t, side, 11), h(ki, k * 8 + t, side, 12))
+                : { variant: 0, size: 0.8 + 0.3 * h(ki, k * 8 + t, side, 12) };
             const turn = h(ki, k * 8 + t, side, 13) * Math.PI * 2;
-            place('conifer', ts, td, LAND_TOP_M, turn, k, side, c.variant, c.size);
+            place(kind, ts, td, LAND_TOP_M, turn, k, side, c.variant, c.size);
           }
           continue;
         }

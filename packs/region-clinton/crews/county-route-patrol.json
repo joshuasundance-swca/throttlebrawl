@@ -1,0 +1,15 @@
+{
+  "type": "crew",
+  "id": "county-route-patrol",
+  "name": "County Route Patrol",
+  "kind": "law",
+  "region": "clinton-iowa",
+  "stanceTowardPlayer": "hostile",
+  "rivalCrews": [],
+  "jurisdiction": { "sign": "END OF JURISDICTION. Your mileage has been recorded." },
+  "meta": {
+    "status": "live",
+    "notes": "An invented agency for the first Clinton race. No real department name, badge or insignia.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-15" }
+  }
+}

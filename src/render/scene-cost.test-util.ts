@@ -187,11 +187,18 @@ export const ROUTES = Object.values(routeFiles);
 export const ROUTE_PACK = new Map(
   Object.entries(routeFiles).map(([path, r]) => [r.id, /packs\/([^/]+)\//.exec(path)?.[1] ?? ''] as const),
 );
-/** The packs whose routes the sweep's three files ride, one file each. */
-export const SWEPT_PACKS = ['base', 'region-sf', 'region-pnw'] as const;
+/** Keep the two large packs in dedicated files; every other carried pack rides the default file. */
+const DEDICATED_PACKS = { sf: ['region-sf'], pnw: ['region-pnw'] };
+export const SCENE_COST_SHARDS = {
+  ...DEDICATED_PACKS,
+  other: [...new Set(ROUTE_PACK.values())].filter(
+    (pack) => !Object.values(DEDICATED_PACKS).flat().includes(pack),
+  ),
+};
+/** The packs actually scheduled by the three sweep files, derived from their shared allocation. */
+export const SWEPT_PACKS = Object.values(SCENE_COST_SHARDS).flat();
 /** A pack's routes. */
-export const routesOf = (pack: (typeof SWEPT_PACKS)[number]): Route[] =>
-  ROUTES.filter((r) => ROUTE_PACK.get(r.id) === pack);
+export const routesOf = (pack: string): Route[] => ROUTES.filter((r) => ROUTE_PACK.get(r.id) === pack);
 const DRAW_M = RENDER_TUNING.find((d) => d.id === 'render.sceneryDrawM')?.default ?? 360;
 const LOD_M = RENDER_TUNING.find((d) => d.id === 'render.sceneryLodM')?.default ?? SCENERY_LOD_M;
 /**

@@ -37,6 +37,24 @@ describe('riderLookOf: which models a rider draws with (run W-R)', () => {
     });
   });
 
+  it('a new local rider can reuse an existing body without changing their identity or role', () => {
+    const source = {
+      contentId: 'region-new:local-patrol',
+      role: 'cop' as const,
+      bikeId: 'base:rustbucket-400',
+    };
+    const reused = riderLookOf({ ...source, look: { riderModel: 'sgt-pruitt' } });
+    expect(reused.riderModel).toBe('models/riders/sgt-pruitt');
+    expect(reused.contentId).toBe(source.contentId);
+    expect(reused.law).toBe(true);
+    expect(riderLookOf({ ...source, look: { riderModel: 'models/riders/sgt-pruitt' } }).riderModel).toBe(
+      'models/riders/sgt-pruitt',
+    );
+    expect(riderLookOf({ ...source, look: { riderModel: '' } }).riderModel).toBe(
+      'models/riders/local-patrol',
+    );
+  });
+
   it('the palette repaints the bike; bad colours are dropped, none keeps the bike its own', () => {
     const l = riderLookOf({
       contentId: 'base:x',

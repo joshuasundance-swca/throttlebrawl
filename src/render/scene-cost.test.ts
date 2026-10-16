@@ -25,8 +25,9 @@
 //   staged scenes, the boards, and the roadside as the renderer builds it (keeping off the scenes'
 //   and the landmarks' ground, with a lake's docks at its level).
 // The negative control at the end proves the sweep sees an over-budget view that the old checkpoints
-// could not. The sweep is shared (scene-cost.test-util.ts) by three files, one per pack's routes, so CI
-// runs them side by side: this one (the Keys), scene-cost-sf.test.ts and scene-cost-pnw.test.ts.
+// could not. The sweep is shared (scene-cost.test-util.ts) by three files, so CI runs them side by side:
+// scene-cost-sf.test.ts and scene-cost-pnw.test.ts carry the large packs; this file carries every other
+// route pack, including new ones, from the shared allocation derived from the actual content.
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
@@ -38,6 +39,7 @@ import {
   ROUTE_PACK,
   ROUTES,
   routesOf,
+  SCENE_COST_SHARDS,
   SAMPLE_M,
   STILL_TRIS_MAX,
   stillSceneOf,
@@ -81,8 +83,8 @@ describe('the current forward takedown cost views', () => {
   });
 });
 
-describe('the still scene along every Keys route, at its peak view', () => {
-  for (const route of routesOf('base')) {
+describe('the still scene along every route outside the dedicated pack shards, at its peak view', () => {
+  for (const route of SCENE_COST_SHARDS.other.flatMap(routesOf)) {
     it(
       `${route.id}: inside its share of the draw-call and triangle budget`,
       () => checkRoute(route),
@@ -92,11 +94,12 @@ describe('the still scene along every Keys route, at its peak view', () => {
 });
 
 describe('the branch checkpoints', () => {
-  it('ride every route, in one of the three files', () => {
+  it('ride every carried route exactly once across the shared file allocation', () => {
     const lost = ROUTES.filter(
       (r) => !(SWEPT_PACKS as readonly string[]).includes(ROUTE_PACK.get(r.id) ?? ''),
     );
     expect(lost.map((r) => r.id)).toEqual([]);
+    expect(new Set(SWEPT_PACKS).size).toBe(SWEPT_PACKS.length);
     expect(SWEPT_PACKS.map((p) => routesOf(p).length).reduce((a, b) => a + b, 0)).toBe(ROUTES.length);
   });
 

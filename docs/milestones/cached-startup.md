@@ -50,6 +50,20 @@ These are local observations on different feature heads, not a controlled per-op
 benchmark or phone evidence. CI and the served-build check were pending when these probes were recorded.
 The exact end-to-end timing assertion is restored in `app-offline.spec.ts`.
 
+## Isolated CI measurement, 2026-10-15
+
+`[default]` The complete production cached-startup/offline-race case now lives in
+`tests/perf/cached-startup.spec.ts`. The existing performance runner executes it with one worker,
+after that runner's browser slice finishes. The exact `<5000` assertion and every cache, HTTP,
+held-navigation, visibility, usable-menu, offline-race and cleanup control remain. Full gates still
+require it; this is a relocation, without duplicate execution or a relaxed budget.
+
+The previous browser slice ran two workers and overlapped another software-rendered game with this
+measurement. Recorded misses were 5843.5, 5177.7 and 5909.2 ms; isolated desktop diagnostics passed,
+but those runs do not prove that contention caused the misses. This places the timing contract in
+the repository's existing serial performance context. CI on the changed tree and a coordinated
+served-build check still establish acceptance; desktop evidence remains separate from phone timing.
+
 A separate local Lake Samish first-launch/restart probe reproduced a long first countdown beat:
 3274.2 and 3304.4 ms from the DOM's "3" transition to "2", with one "3" transition per launch.
 Profiles identified repeated indexed road queries as substantial work. Adding subtree bounds

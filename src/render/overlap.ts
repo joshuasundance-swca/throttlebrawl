@@ -258,6 +258,25 @@ export class EdgeLocator {
     overM: number,
     filter: (edge: number) => boolean = () => true,
   ): number | null {
+    // At fixed s, toWorld is affine in d (including banking). Every probe lies between these
+    // endpoints. If their entire expanded cell rectangle contains no other edge's vertex,
+    // lanesUnder cannot find a candidate anywhere on the strip. Keep the original search
+    // whenever there is even one candidate; this skips empty space without changing clipping.
+    const cells = (this.vertexCells ??= this.indexVertices());
+    const near = this.road.toWorld(edge, s, dNear, lift);
+    const far = this.road.toWorld(edge, s, dFar, lift);
+    const reach = this.laneReach + margin;
+    const i0 = Math.floor((Math.min(near.x, far.x) - reach) / VERTEX_CELL_M);
+    const i1 = Math.floor((Math.max(near.x, far.x) + reach) / VERTEX_CELL_M);
+    const j0 = Math.floor((Math.min(near.z, far.z) - reach) / VERTEX_CELL_M);
+    const j1 = Math.floor((Math.max(near.z, far.z) + reach) / VERTEX_CELL_M);
+    let candidate = false;
+    for (let i = i0; i <= i1 && !candidate; i++) {
+      for (let j = j0; j <= j1 && !candidate; j++) {
+        candidate = (cells.get(vertexKey(i, j)) ?? []).some((v) => Math.floor(v / VERTEX_STRIDE) !== edge);
+      }
+    }
+    if (!candidate) return dFar;
     const over = (d: number): boolean => {
       const p = this.road.toWorld(edge, s, d, lift);
       return this.overLowerLanes(p.x, p.y, p.z, edge, margin, overM, Infinity, filter);

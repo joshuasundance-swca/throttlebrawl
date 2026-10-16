@@ -67,6 +67,12 @@ describe('P4-12: the menu race options reach the race config', () => {
       const probe = `${eventId.split(':')[0]}:probe-${only}`;
       const reg = {
         ...ALL,
+        // Opt this fixture into road events explicitly: a new region may intentionally ship
+        // without them. Its authored opt-out must not decide a test of light eligibility.
+        events: {
+          ...ALL.events,
+          [eventId]: { ...ALL.events[eventId]!, modifiers: { pool: 'region-default' as const } },
+        },
         modifiers: {
           ...ALL.modifiers,
           [probe]: { ...anyModifier, id: probe.split(':')[1] ?? '', eligibility: { timeOfDay: [only] } },

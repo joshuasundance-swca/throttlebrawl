@@ -318,6 +318,7 @@ export const THINNABLE_KINDS: ReadonlySet<ScenerySpot['kind']> = new Set([
   'mangrove',
   'conifer',
   'coastTree',
+  'deciduous',
   'brush',
 ]);
 

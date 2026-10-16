@@ -1,0 +1,78 @@
+{
+  "formatVersion": 1,
+  "region": "clinton-iowa",
+  "everyM": 750,
+  "maxPerRace": 2,
+  "scenes": [
+    {
+      "id": "corn-stand",
+      "status": "live",
+      "note": "Original generic rural vignette, not a mapped property or actual business.",
+      "on": ["rural"],
+      "acrossM": [6, 10],
+      "radiusM": 2.8,
+      "sign": {
+        "text": "CORN. EXACT CHANGE.",
+        "at": [0, 1.65, 1.3],
+        "size": [2.7, 0.85],
+        "bg": "#eee4c9",
+        "fg": "#455839",
+        "posts": 2
+      },
+      "parts": [
+        { "box": [2.6, 0.12, 1.2], "at": [0, 0.95, 0], "colour": "#9a7953", "far": true },
+        { "box": [0.14, 0.9, 1], "at": [-1, 0.45, 0], "colour": "#65503d" },
+        { "box": [0.14, 0.9, 1], "at": [1, 0.45, 0], "colour": "#65503d" },
+        { "box": [0.9, 0.35, 0.7], "at": [-0.6, 1.18, 0], "colour": "#c0a843", "far": true },
+        { "box": [0.7, 0.3, 0.7], "at": [0.4, 1.15, 0], "colour": "#b7a041", "far": true },
+        { "box": [0.25, 0.2, 0.25], "at": [1, 1.12, 0.35], "colour": "#667c86" }
+      ]
+    },
+    {
+      "id": "pickup-window",
+      "status": "live",
+      "note": "Original generic rural vignette, not a mapped property or actual business.",
+      "on": ["rural"],
+      "acrossM": [6, 10],
+      "radiusM": 2.8,
+      "sign": {
+        "text": "PICKUP WINDOW. STILL WAITING.",
+        "at": [0, 1.6, 1.3],
+        "size": [2.9, 1],
+        "bg": "#e1ddd1",
+        "fg": "#48494a",
+        "posts": 2
+      },
+      "parts": [
+        { "box": [2.3, 0.2, 1.7], "at": [0, 0.1, -0.1], "colour": "#8b7152", "far": true },
+        { "box": [1.3, 1.3, 1.1], "at": [-0.25, 0.85, -0.2], "colour": "#a58b61", "far": true },
+        { "box": [0.12, 1.32, 1.12], "at": [-0.25, 0.85, -0.2], "colour": "#65503d" },
+        { "box": [1.32, 0.12, 1.12], "at": [-0.25, 1.1, -0.2], "colour": "#65503d" },
+        { "box": [0.55, 0.6, 0.6], "at": [0.8, 0.5, 0.2], "colour": "#938b72" }
+      ]
+    },
+    {
+      "id": "hay-no-delivery",
+      "status": "live",
+      "note": "Original generic rural vignette, not a mapped property or actual business.",
+      "on": ["rural"],
+      "acrossM": [6, 10],
+      "radiusM": 2.8,
+      "sign": {
+        "text": "HAY. NO DELIVERY.",
+        "at": [0, 1.7, 1.4],
+        "size": [2.5, 0.85],
+        "bg": "#e9d9ad",
+        "fg": "#65503d",
+        "posts": 2
+      },
+      "parts": [
+        { "box": [1.3, 0.8, 1.1], "at": [-0.7, 0.4, -0.1], "colour": "#b59b54", "far": true },
+        { "box": [1.3, 0.8, 1.1], "at": [0.7, 0.4, -0.1], "colour": "#bdab69", "far": true },
+        { "box": [1.3, 0.8, 1.1], "at": [0, 1.2, -0.1], "colour": "#bca15c", "far": true },
+        { "box": [0.06, 0.82, 1.12], "at": [0, 1.2, -0.1], "colour": "#938b72" },
+        { "box": [1.5, 0.08, 0.2], "at": [0.7, 0.04, 0.8], "rotY": 0.25, "colour": "#8b7152" }
+      ]
+    }
+  ]
+}

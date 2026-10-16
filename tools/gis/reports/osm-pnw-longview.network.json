@@ -1,0 +1,45 @@
+{
+  "network": "osm-pnw-longview",
+  "lines": {
+    "port-shift": {
+      "lengthM": 10120.4,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 10120.4,
+        "game_length_m": 10120.4,
+        "corners": 3,
+        "tightest_radius_m": 29.0,
+        "share_tighter_than_m": {
+          "50": 0.0107,
+          "100": 0.0164,
+          "200": 0.0262
+        },
+        "turn_deg_per_km": 52.2,
+        "elev_min_m": 1.5,
+        "elev_max_m": 11.1,
+        "climb_m": 27.8,
+        "descent_m": 29.5,
+        "max_grade_pct": 5.4,
+        "p95_grade_pct": 2.6,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 23,
+        "junctions_per_km": 2.27,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 14.1
+      }
+    }
+  },
+  "branches": [],
+  "routes": {
+    "osm-longview-port-shift": 10040.3
+  },
+  "roads": 5,
+  "junctions": 6
+}
