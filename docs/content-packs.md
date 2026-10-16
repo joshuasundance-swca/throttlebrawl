@@ -1241,6 +1241,8 @@ are preserved with the offline [terrain recipe](../tools/gis/terrain/README.md).
 collar is an authored blend below the road, and river height is a DEM proxy, not a surveyed
 shore or current river stage. No rails are added merely because grass changes shade.
 The narrow rural verges remain; legacy vignette placement has no land reach on this network.
+Render-only land scatter is omitted, including trees, because authored land is playable and
+these solids have no contacts. Water props retain source-height and coverage checks.
 Enabling other scenery cohorts requires checking their ground support and contacts first:
 pedestrians, ground-based landmarks, planned furniture and smashables do not automatically
 inherit the new source. Do not enable terrain on another route without that consumer check.

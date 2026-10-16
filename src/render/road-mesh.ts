@@ -3314,11 +3314,16 @@ export function buildRoadScene(
       triangles += trisOf(geometry);
       addMesh(key, mesh);
     }
-    // Scattering remains seeded by the existing themes. Its resulting anchors use the actual
-    // natural surface, never the old roadside strip's height or its imagined far ground.
+    // Render-only land solids have no contacts. Authored land is rideable, so the old
+    // far-ground placement cannot move those solids onto it. Water props remain beyond
+    // the water hazard and use the actual source surface, including its holes.
     for (let i = spots.length - 1; i >= 0; i--) {
       const spot = spots[i]!;
       const water = spot.kind === 'boat' || spot.kind === 'skiff' || spot.kind === 'fogBank';
+      if (!water) {
+        spots.splice(i, 1);
+        continue;
+      }
       const ground = terrainAt(authoredTerrain, spot.p.x, spot.p.z);
       const radius = (TRUNK_M[spot.kind] ?? SCENERY_RADIUS_M[spot.kind]) * spot.size;
       const roots =
@@ -3334,8 +3339,7 @@ export function buildRoadScene(
         const root = terrainAt(authoredTerrain, spot.p.x + dx!, spot.p.z + dz!);
         return root && (root.surface === 'water') === water;
       });
-      // A procedural island would manufacture land in the authored water or an authored hole.
-      if (!ground || (ground.surface === 'water') !== water || !covered || spot.kind === 'islet') {
+      if (!ground || ground.surface !== 'water' || !covered) {
         spots.splice(i, 1);
         continue;
       }

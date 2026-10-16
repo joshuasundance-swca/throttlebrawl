@@ -220,75 +220,69 @@ describe('authored natural terrain in the road scene', () => {
     }
   });
 
-  it('grounds scatter on authored land and removes candidates over water or absent coverage', () => {
+  it('keeps render-only land solids off playable authored ground, water and uncovered space', () => {
     const full: BakedTerrain = { patches: [rectangle(-150, -200, 150, 0, 7)] };
+    const legacy = scene(undefined, 'forest', 1).built;
     const control = scene(full, 'forest', 1).built;
     const selective: BakedTerrain = {
       patches: [rectangle(-150, -200, 0, -100, 7), rectangle(-150, -100, 0, 0, 9, true)],
     };
     const selected = scene(selective, 'forest', 1).built;
     try {
-      expect(control.spots.length).toBeGreaterThan(0);
-      expect(selected.spots.length).toBeGreaterThan(0);
-      expect(selected.spots.length).toBeLessThan(control.spots.length);
-      for (const spot of control.spots) expect(spot.p.y).toBe(7);
-      control.update(0, 0, 0, 1000, 1000, Infinity);
-      const merged = meshes(control, 'road-scenery');
-      expect(merged.length).toBeGreaterThan(0);
-      for (const mesh of merged) {
-        const positions = mesh.geometry.getAttribute('position');
-        let floor = Infinity;
-        for (let i = 0; i < positions.count; i++) floor = Math.min(floor, positions.getY(i));
-        expect(floor).toBe(7);
-      }
-      for (const spot of selected.spots) {
-        expect(terrainAt(selective, spot.p.x, spot.p.z)?.surface).toBe('grass');
-        expect(spot.p.y).toBe(7);
-      }
+      expect(legacy.spots.some((s) => s.kind === 'conifer')).toBe(true);
+      expect(control.spots).toEqual([]);
+      expect(selected.spots).toEqual([]);
     } finally {
+      legacy.dispose();
       control.dispose();
       selected.dispose();
     }
   });
 
-  it('releases every generated scene and scatter geometry exactly once after building merged scenery', () => {
-    const generated = new Set<BufferGeometry>();
-    const disposed: BufferGeometry[] = [];
-    const setAttribute = Reflect.get(
-      BufferGeometry.prototype,
-      'setAttribute',
-    ) as BufferGeometry['setAttribute'];
-    vi.spyOn(BufferGeometry.prototype as BufferGeometry, 'setAttribute').mockImplementation(function (
-      this: BufferGeometry,
-      name: string,
-      attribute: Parameters<BufferGeometry['setAttribute']>[1],
-    ) {
-      generated.add(this);
-      return setAttribute.call(this, name, attribute);
-    });
-    vi.spyOn(BufferGeometry.prototype, 'dispose').mockImplementation(function (this: BufferGeometry) {
-      disposed.push(this);
-    });
-    try {
-      const { built } = scene({ patches: [rectangle(-150, -200, 150, 0, 7)] }, 'forest', 1);
-      built.update(0, 0, 0, 1000, 1000, Infinity);
-      expect(built.merged().built).toBeGreaterThan(0);
-      built.dispose();
-      expect(generated.size).toBeGreaterThan(0);
-      for (const geometry of generated)
-        expect(
-          disposed.filter((g) => g === geometry).length,
-          `generated ${geometry.type} geometry disposal`,
-        ).toBe(1);
-    } finally {
-      vi.restoreAllMocks();
-    }
-  });
+  it.each([false, true])(
+    'releases generated scene and scatter geometry exactly once (authored %s)',
+    (authored) => {
+      const generated = new Set<BufferGeometry>();
+      const disposed: BufferGeometry[] = [];
+      const setAttribute = Reflect.get(
+        BufferGeometry.prototype,
+        'setAttribute',
+      ) as BufferGeometry['setAttribute'];
+      vi.spyOn(BufferGeometry.prototype as BufferGeometry, 'setAttribute').mockImplementation(function (
+        this: BufferGeometry,
+        name: string,
+        attribute: Parameters<BufferGeometry['setAttribute']>[1],
+      ) {
+        generated.add(this);
+        return setAttribute.call(this, name, attribute);
+      });
+      vi.spyOn(BufferGeometry.prototype, 'dispose').mockImplementation(function (this: BufferGeometry) {
+        disposed.push(this);
+      });
+      try {
+        const { built } = authored
+          ? scene({ patches: [rectangle(-150, -200, 150, 0, 7, true)] }, 'water', 1)
+          : scene(undefined, 'forest', 1);
+        built.update(0, 0, 0, 1000, 1000, Infinity);
+        if (authored) expect(built.spots.some((s) => s.kind === 'boat' || s.kind === 'skiff')).toBe(true);
+        else expect(built.merged().built).toBeGreaterThan(0);
+        built.dispose();
+        expect(generated.size).toBeGreaterThan(0);
+        for (const geometry of generated)
+          expect(
+            disposed.filter((g) => g === geometry).length,
+            `generated ${geometry.type} geometry disposal`,
+          ).toBe(1);
+      } finally {
+        vi.restoreAllMocks();
+      }
+    },
+  );
 
-  it('retains model-cache geometries while disposing its authored scene', () => {
+  it('retains model-cache geometries while disposing a scene with merged land scenery', () => {
     const model = new BoxGeometry(1, 4, 1).translate(0, 2, 0);
     const disposal = vi.spyOn(model, 'dispose');
-    const { built } = scene({ patches: [rectangle(-150, -200, 150, 0, 7)] }, 'forest', 1, 0, {
+    const { built } = scene(undefined, 'forest', 1, 0, {
       conifers: { kind: 'conifers', variants: [model], doubleSided: false },
     });
     try {
