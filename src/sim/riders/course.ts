@@ -27,6 +27,9 @@
 import { cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
 import {
   courseAt,
+  BRUSH_STEP_M,
+  brushClumpAt,
+  hedged,
   drawnEdgeAt,
   lanesNear,
   type CourseSpot,
@@ -186,6 +189,12 @@ export function roadPastLine(
   // A listed barrier holds only where its panel survives render's lane clearance. Authored
   // truck cuts stand outside their visible walls; real road junctions keep their openings.
   if (road.barrierAt(edge, s, vside)) return drawnEdgeAt(road, edge, s, vside) === null;
+  // A fern removed over another road leaves its interval open. Use render's actual
+  // discrete phase, jitter, size and clearance, rather than a nominal nearby probe.
+  if (kind === 'brush' && !hedged(road.edges[edge]?.tags ?? [], side, s)) {
+    const station = (Math.floor(s / BRUSH_STEP_M) + 0.5) * BRUSH_STEP_M;
+    return brushClumpAt(road, edge, station, side) === null;
+  }
   const length = road.edges[edge]?.length ?? 0;
   const at = (sa: number) => {
     const u = sa < 0 ? 0 : sa > length ? length : sa;

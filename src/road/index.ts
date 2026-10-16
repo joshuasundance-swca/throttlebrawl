@@ -4,6 +4,7 @@ export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
 export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
 export { grassMedianSpan } from './median';
+export { BRUSH_STEP_M, brushClumpAt, hedged } from './brush';
 export type { LaneTransition } from './lane-transitions';
 export type {
   AdvanceResult,
