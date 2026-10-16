@@ -26,3 +26,7 @@ same wide-prop footprint rings against the first drawn surface, with controls fo
 The listed-barrier check now compares a moving rider's first contact with the panel at that contact
 station, replacing its assumption that the rider stayed at the starting station for the whole step.
 It keeps the same rays, body reach, approach angles, wall samples, truck-cut checks and handover checks.
+
+At overlapping traffic connections, pavement now follows the actual drawn height of the receiving
+lane or shoulder. A traffic strip above a lower shoulder remains visible, while near-coplanar
+stacked surfaces are still removed. This keeps the northbound Samish connection supported.

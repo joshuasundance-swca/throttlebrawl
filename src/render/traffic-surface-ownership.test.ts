@@ -46,12 +46,16 @@ function ownershipFixture(): RoadNetwork {
     straight('traffic-under', 24, 0, DRIVE),
     straight('ordinary-host', 40, 0, WIDE),
     straight('ordinary-shortcut', 44, 0, SHORTCUT),
+    straight('lower-host', 60, 0, WIDE),
+    straight('traffic-raised', 64, 0.13, DRIVE),
+    straight('close-host', 80, 0, WIDE),
+    straight('traffic-close', 84, 0.1, DRIVE),
   ];
-  const connector = (id: string, host: string) => ({
+  const connector = (id: string, host: string, lane = 'S1') => ({
     id: `${id}-row`,
     road: id,
-    from: { road: host, end: 'from' as const, lane: 'S1' },
-    to: { road: host, end: 'to' as const, lane: 'S1' },
+    from: { road: host, end: 'from' as const, lane },
+    to: { road: host, end: 'to' as const, lane },
     trafficOnly: true,
   });
   const network: BakedNetwork = {
@@ -67,6 +71,8 @@ function ownershipFixture(): RoadNetwork {
         connectors: [
           connector('traffic-covered', 'shortcut-host'),
           connector('traffic-under', 'elevated-host'),
+          connector('traffic-raised', 'lower-host', 'R1'),
+          connector('traffic-close', 'close-host', 'R1'),
         ],
       },
     ],
@@ -104,6 +110,26 @@ describe('shared junction asphalt', () => {
     expect(namesAt('traffic-under', -2)).toEqual(['road-shortcut', 'road-road']);
     expect(namesAt('traffic-under', 1)).toEqual(['road-road']);
     expect(across.filter((d) => !namesAt('traffic-under', d).includes('road-road'))).toEqual([]);
+  });
+
+  it('keeps a traffic fill above a lower receiver, while removing a near-coplanar pair', () => {
+    const point = (id: string, d = -2) => road.toWorld(road.edgeIndex(id), LENGTH_M / 2, d, 0);
+    // Clipping to this lower road would leave the vehicle floating more than the junction
+    // contract's 12 cm. Its own fill is visibly above the receiver and must remain.
+    for (const d of [-2, -0.9]) {
+      const raised = point('traffic-raised', d);
+      const raisedHits = ground.allAt(raised.x, raised.z, 10);
+      expect(raised.y - raisedHits[0]!.y).toBeLessThan(0.12);
+      expect(raisedHits[0]!.y).toBeGreaterThan(0.03);
+    }
+    const close = point('traffic-close');
+    const closeHeights = ground.allAt(close.x, close.z, 10).map((h) => h.y.toFixed(5));
+    // Here the two drawn surfaces would be only 2 cm apart: the receiver still owns it.
+    expect([...new Set(closeHeights)]).toEqual(['0.00000']);
+    // The same raw heights above a shoulder differ by another 2 cm in the drawing: its own
+    // traffic fill is now visibly separated, so a raw-height-only decision is insufficient.
+    const shoulder = point('traffic-close', -0.9);
+    expect(ground.allAt(shoulder.x, shoulder.z, 10)[0]!.y).toBeGreaterThan(0);
   });
 
   it('preserves the existing clipping of an ordinary shortcut beneath a road', () => {

@@ -121,6 +121,8 @@ const BOOST_LIFT_M = 0.045;
 const TRAFFIC_SURFACE_LIFT_M = -0.08;
 /** The road-format limit for connector and receiving surfaces that represent shared asphalt. */
 const SHARED_SURFACE_GAP_M = 0.15; // ROAD_LINT.shortcutHeightM in road/validate.ts.
+/** Flat surfaces closer than this flicker; the existing junction sweep protects this gap. */
+const FLAT_FLICKER_M = 0.03;
 
 export interface BarrierSpan {
   s0: number;
@@ -1186,16 +1188,29 @@ export function buildRoadScene(
       const [lo, hi] = outerSpan(o);
       if (!(h.d > lo && h.d < hi)) continue;
       if (Math.abs(road.surfaceHeight(o.index, h.s, h.d) - p.y) > maxHeightGapM) continue;
+      // Raw source heights can agree while the drawn shoulder lies below the traffic fill.
+      // Keep that fill when it is visibly above the receiver; only the higher surface or a
+      // near-coplanar receiver owns it. Ordinary shortcut clipping retains its existing rule.
+      const ownsTraffic = (lift: number) =>
+        !includeShortcut || w(o.index, h.s, h.d, lift).y >= p.y + TRAFFIC_SURFACE_LIFT_M - FLAT_FLICKER_M;
       const l = laneSpans(road.lanesAt(o.index, h.s));
       const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
-      if (h.d >= llo && h.d <= lhi) return true;
+      if (h.d >= llo && h.d <= lhi) {
+        const lift = l.drive ? 0 : SHORTCUT_LIFT_M + (secretEdge(o.index) ? SECRET_LIFT_M : 0);
+        if (ownsTraffic(lift)) return true;
+        continue;
+      }
       // A shortcut omits its whole shoulder on a side where that shoulder yields to an ordinary
       // road. Its raw cross-section cannot own a traffic ribbon there: the traffic fill is what
       // closes the narrow space between the ordinary road and the shortcut lane.
       if (includeShortcut && hasShortcut(o) && underRoadSurface(o, h.s, h.d < llo ? lo : hi, false, Infinity))
         continue;
       // Only the shoulder span actually drawn here can cover the shortcut.
-      if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
+      if (
+        (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) &&
+        ownsTraffic(-0.02)
+      )
+        return true;
     }
     return false;
   };
