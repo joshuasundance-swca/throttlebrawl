@@ -6,8 +6,17 @@
 // a test puts them), so the rules are pinned, not the ride; tests/sim/cops-patrol.test.ts races
 // every region and route.
 import { describe, expect, it } from 'vitest';
-import { tuningDefaults } from '../../core';
-import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } from '../../road';
+import { nextFloat, tuningDefaults } from '../../core';
+import {
+  compileTrack,
+  createRoadNetwork,
+  createRouteProgress,
+  fixtureBranchTrack,
+  fixtureNetwork,
+  type BakedNetworkBundle,
+  type BakedRoute,
+  type RoadPos,
+} from '../../road';
 import { SIM_TUNING, type SimConfig, type SimEvent, type SimEventCops, type SimRiderDef } from '../api';
 import { ridersSystem } from '../riders';
 import { addMover, createWorld, type World } from '../world';
@@ -108,6 +117,41 @@ const patrol = (over: Partial<SimEventCops> = {}): SimEventCops => ({
   ...over,
 });
 
+/** A supported long alternative, with either a late rejoin or a long main-road tail after it. */
+function forkConfig(safePrefix = true, rejoinEarly = false): SimConfig {
+  const source = fixtureBranchTrack();
+  source.points = [...source.points.slice(0, -1), [0, -3600]];
+  if (rejoinEarly) source.roads = source.roads.map((r) => (r.id === 'b' ? { ...r, lengthM: 400 } : r));
+  source.branches = source.branches!.map((b) => ({
+    ...b,
+    via: [{ x: 1500, z: -1500, headingDeg: 180, turnM: 80 }],
+    named: { id: 'long-way', kind: 'detour' as const, marked: true, aiTake: 0.25 },
+  }));
+  const baked = compileTrack(source);
+  const bundle = baked as unknown as BakedNetworkBundle;
+  const routeFile = baked.routes[0] as unknown as BakedRoute;
+  const roads = bundle.roads.map((r) =>
+    safePrefix || r.id !== 'a'
+      ? r
+      : {
+          ...r,
+          laneSections: [
+            {
+              s0: 0,
+              lanes: [{ id: 'R1', dCenterM: 0, widthM: 3, direction: 1 as const, kind: 'drive' as const }],
+              verges: {
+                left: { widthM: 0.5, surface: 'grass' as const, edge: 'soft' as const },
+                right: { widthM: 0.5, surface: 'grass' as const, edge: 'soft' as const },
+              },
+            },
+          ],
+        },
+  );
+  const road = createRoadNetwork({ network: bundle.network, roads });
+  const route = createRouteProgress(road, routeFile);
+  return { ...config(patrol({ baseCount: 0 })), road, route };
+}
+
 function lawWorld(cfg: SimConfig) {
   const world: World = createWorld(cfg);
   const at = (s: number, d: number): RoadPos => ({ edge: 0, s, d, dir: 1 });
@@ -141,6 +185,63 @@ function lawWorld(cfg: SimConfig) {
 const patrolCops = (w: World) => COPS.filter((id) => (copsState(w).patrolAt[id] ?? -1) >= 0);
 
 describe('playtest 2: the patrol', () => {
+  it('places the first patrol before an early long fork, with safe fallback when the shared prefix has no parking', () => {
+    const safe = forkConfig();
+    const branch = safe.route.branches.find((b) => b.id === 'long-way')!;
+    const choice = branch.choice!;
+    const forkAt = safe.route.progressAt(choice.edge, choice.s0);
+    expect(branch.edges.reduce((n, i) => n + safe.road.edges[i]!.length, 0)).toBeGreaterThan(
+      PATROL.longBranchM,
+    );
+    expect(forkAt).toBeLessThan(PATROL.minProgress * safe.route.length);
+    const world = createWorld(safe);
+    const spots = patrolSpots(world, safe, 2);
+    const streamControl = createWorld(safe);
+    nextFloat(streamControl.rng.cops);
+    nextFloat(streamControl.rng.cops);
+    expect(world.rng.cops).toEqual(streamControl.rng.cops);
+    expect(spots.length).toBeGreaterThanOrEqual(1);
+    expect(spots[0]!.at).toBeGreaterThanOrEqual(0);
+    expect(spots[0]!.at).toBeLessThan(forkAt - 60);
+    expect(spots[0]!.pos.edge).toBe(choice.edge);
+    expect(
+      safe.road
+        .lanesAt(spots[0]!.pos.edge, spots[0]!.pos.s)
+        .some((l) => l.kind === 'shoulder' && l.dCenterM === spots[0]!.pos.d),
+    ).toBe(true);
+    if (spots.length > 1) expect(spots[1]!.at - spots[0]!.at).toBeGreaterThanOrEqual(PATROL.spacingM);
+    const unsafe = forkConfig(false);
+    const fallback = patrolSpots(createWorld(unsafe), unsafe, 2);
+    expect(fallback.length).toBeGreaterThanOrEqual(1);
+    expect(fallback.every((s) => s.pos.edge !== choice.edge)).toBe(true);
+    expect(
+      fallback.every((s) =>
+        unsafe.road.lanesAt(s.pos.edge, s.pos.s).some((l) => l.kind === 'shoulder' && l.dCenterM === s.pos.d),
+      ),
+    ).toBe(true);
+  });
+  it('keeps normal placement when a long branch rejoins before the first patrol', () => {
+    const cfg = forkConfig(true, true);
+    const branch = cfg.route.branches.find((b) => b.id === 'long-way')!;
+    const after = Math.max(
+      ...branch.edges.map((edge) => cfg.route.progressAt(edge, cfg.road.edges[edge]!.length)),
+    );
+    // Removing choice metadata only disables prefix relocation; the road, route and safe-space
+    // exclusions remain the same, so this is the ordinary timed placement control.
+    const timed = { ...cfg, route: { ...cfg.route, branches: [] } };
+    const ordinary = patrolSpots(createWorld(timed), timed, 2);
+    expect(ordinary[0]!.at).toBeGreaterThan(after);
+    expect(patrolSpots(createWorld(cfg), cfg, 2)).toEqual(ordinary);
+  });
+  it('keeps escape patrol timing because its opening pursuit already meets the rider before a fork', () => {
+    const fixture = forkConfig();
+    const escape: SimConfig = { ...fixture, event: { ...fixture.event, kind: 'cop-escape' } };
+    const timed = { ...escape, route: { ...escape.route, branches: [] } };
+    const ordinary = patrolSpots(createWorld(timed), timed, 2);
+    const choice = escape.route.branches.find((b) => b.id === 'long-way')!.choice!;
+    expect(ordinary[0]!.at).toBeGreaterThan(escape.route.progressAt(choice.edge, choice.s0));
+    expect(patrolSpots(createWorld(escape), escape, 2)).toEqual(ordinary);
+  });
   it('uses an earlier safe shoulder when the timed window has no parking, without parking in narrow lanes', () => {
     const cfg = config(patrol({ baseCount: 0 }));
     const oneWay = [{ id: 'R1', dCenterM: 0, widthM: 3, direction: 1 as const, kind: 'drive' as const }];

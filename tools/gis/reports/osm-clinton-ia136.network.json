@@ -1,0 +1,91 @@
+{
+  "network": "osm-clinton-ia136",
+  "lines": {
+    "ia136": {
+      "lengthM": 5165.8,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "county leave": 0.14,
+        "county join": 1.59
+      },
+      "fun": {
+        "real_length_m": 5166.7,
+        "game_length_m": 5165.8,
+        "corners": 0,
+        "tightest_radius_m": 184.1,
+        "share_tighter_than_m": {
+          "50": 0.0,
+          "100": 0.0,
+          "200": 0.0147
+        },
+        "turn_deg_per_km": 52.7,
+        "elev_min_m": 245.4,
+        "elev_max_m": 268.5,
+        "climb_m": 33.5,
+        "descent_m": 14.8,
+        "max_grade_pct": 2.5,
+        "p95_grade_pct": 2.2,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 4,
+        "junctions_per_km": 0.77,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 2.6
+      }
+    },
+    "county": {
+      "lengthM": 3908.0,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "county join": 13.42
+      },
+      "fun": {
+        "real_length_m": 3917.3,
+        "game_length_m": 3908.0,
+        "corners": 1,
+        "tightest_radius_m": 31.2,
+        "share_tighter_than_m": {
+          "50": 0.0097,
+          "100": 0.0156,
+          "200": 0.0197
+        },
+        "turn_deg_per_km": 28.0,
+        "elev_min_m": 226.4,
+        "elev_max_m": 259.4,
+        "climb_m": 97.6,
+        "descent_m": 83.1,
+        "max_grade_pct": 10.9,
+        "p95_grade_pct": 8.5,
+        "share_steeper_than_pct": {
+          "8": 0.0972,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 2,
+        "junctions_per_km": 0.51,
+        "bridges_m": 7.7,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 6.6
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-clinton-county-420th-paved",
+      "mainM": 2932.9,
+      "branchM": 3887.1,
+      "savesM": -954.2
+    }
+  ],
+  "routes": {
+    "osm-clinton-ia136-run": 5055.8
+  },
+  "roads": 15,
+  "junctions": 8
+}

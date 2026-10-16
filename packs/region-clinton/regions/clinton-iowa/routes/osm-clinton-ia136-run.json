@@ -10,22 +10,64 @@
   },
   "finish": {
     "road": "osm-clinton-ia136-west-bends",
-    "s": 1673.8842
+    "s": 1671.9246
   },
   "mainPath": [
     "osm-clinton-ia136-east-bends",
+    "osm-clinton-ia136-east-county-approach",
     "osm-clinton-ia136-middle-bends",
+    "osm-clinton-ia136-middle-county-return",
     "osm-clinton-ia136-west-bends"
   ],
   "allowedRoads": [
     "osm-clinton-ia136-east-bends",
+    "osm-clinton-ia136-county-leave",
+    "osm-clinton-ia136-east-county-approach",
     "osm-clinton-ia136-middle-bends",
-    "osm-clinton-ia136-west-bends"
+    "osm-clinton-ia136-county-join",
+    "osm-clinton-ia136-middle-county-return",
+    "osm-clinton-ia136-west-bends",
+    "osm-clinton-county-420th-paved",
+    "osm-clinton-county-420th-dirt",
+    "osm-clinton-county-180th",
+    "osm-clinton-ia136-county-in",
+    "osm-clinton-ia136-county-out",
+    "osm-clinton-ia136-county-traffic-in",
+    "osm-clinton-ia136-county-traffic-reverse-leave",
+    "osm-clinton-ia136-county-traffic-reverse-join"
   ],
   "checkpoints": [
     {
+      "road": "osm-clinton-ia136-east-county-approach",
+      "s": 792.4643
+    },
+    {
       "road": "osm-clinton-ia136-middle-bends",
-      "s": 729.9512
+      "s": 613.9717
+    },
+    {
+      "road": "osm-clinton-ia136-middle-county-return",
+      "s": 56.496
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-clinton-county-420th-paved",
+      "kind": "detour",
+      "marked": true,
+      "sign": "COUNTY DETOUR: LONGER. Dirt roads and an optional stunt truck.",
+      "aiTake": 0.25,
+      "traffic": "road",
+      "roads": [
+        "osm-clinton-ia136-county-in",
+        "osm-clinton-county-420th-paved",
+        "osm-clinton-county-420th-dirt",
+        "osm-clinton-county-180th",
+        "osm-clinton-ia136-county-out",
+        "osm-clinton-ia136-county-traffic-in",
+        "osm-clinton-ia136-county-traffic-reverse-leave",
+        "osm-clinton-ia136-county-traffic-reverse-join"
+      ]
     }
   ],
   "closed": false,
@@ -36,15 +78,15 @@
   },
   "meta": {
     "status": "live",
-    "notes": "First bounded Clinton course: one pass northwest along IA 136's rural bends. No invented shortcut or repeated-edge lap. Road widths and soft grass verges are gameplay adaptations, not a survey.",
+    "notes": "One pass northwest on IA 136 with a marked longer 420th Avenue–180th Street county detour. Same finish, no repeated lap. Source geometry and USGS terrain; dirt and race features are disclosed gameplay adaptations.",
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
       "createdAt": "2026-10-15",
       "tool": {
-        "name": "tools/gis/src/tbgis/cli.py",
+        "name": "tools/gis/src/tbgis/network.py",
         "version": "0.1.0",
-        "configRef": "tools/gis/configs/osm-clinton-ia136.json"
+        "configRef": "tools/gis/networks/osm-clinton-ia136.json"
       },
       "sources": [
         {
@@ -61,9 +103,18 @@
           "spdx": "LicenseRef-US-Public-Domain",
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
-          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear (line ia136)",
           "retrievedAt": "2026-10-15T21:26:10Z",
           "sha256": "00c56964f5592388b4b8de9aba834736864214624c8c13c0c312047379ca327e"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 393 points in 1 request(s) (lon, lat WGS84, sha256 46ec1c2a3c86b111), bilinear (line county)",
+          "retrievedAt": "2026-10-16T06:05:45Z",
+          "sha256": "dda1bd310872c31d7ffc045b64d0154cb2a033de8fdd5eefe60092af0250938f"
         }
       ]
     }

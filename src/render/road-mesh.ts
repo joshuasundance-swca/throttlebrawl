@@ -115,6 +115,8 @@ const BOOST_LIFT_M = 0.045;
 /** Traffic movements fill junction asphalt beneath its existing lanes and shoulders (-0.02 m).
  * Eight centimetres leaves more than the 3 cm flicker gap plus mesh simplification tolerance. */
 const TRAFFIC_SURFACE_LIFT_M = -0.08;
+/** The road-format limit for connector and receiving surfaces that represent shared asphalt. */
+const SHARED_SURFACE_GAP_M = 0.15; // ROAD_LINT.shortcutHeightM in road/validate.ts.
 
 export interface BarrierSpan {
   s0: number;
@@ -1157,22 +1159,41 @@ export function buildRoadScene(
     }
     return r;
   };
-  /** Whether a main (non-shortcut) road draws its surface under a point of edge e. */
-  const underMain = (e: Edge, s: number, d: number): boolean => {
+  /** Whether another road draws its surface under a point of edge e. */
+  const underRoadSurface = (
+    e: Edge,
+    s: number,
+    d: number,
+    includeShortcut: boolean,
+    maxHeightGapM: number,
+  ): boolean => {
     const p = w(e.index, s, d, 0);
     for (const h of locator.at(p.x, p.z, e.index)) {
       const o = road.edges[h.edge];
-      if (!o || hasShortcut(o) || o.isTrafficOnly) continue;
+      if (!o || (!includeShortcut && hasShortcut(o)) || o.isTrafficOnly) continue;
       const [lo, hi] = outerSpan(o);
       if (!(h.d > lo && h.d < hi)) continue;
+      if (Math.abs(road.surfaceHeight(o.index, h.s, h.d) - p.y) > maxHeightGapM) continue;
       const l = laneSpans(road.lanesAt(o.index, h.s));
       const [llo, lhi] = l.drive ?? l.shortcut ?? [0, 0];
       if (h.d >= llo && h.d <= lhi) return true;
+      // A shortcut omits its whole shoulder on a side where that shoulder yields to an ordinary
+      // road. Its raw cross-section cannot own a traffic ribbon there: the traffic fill is what
+      // closes the narrow space between the ordinary road and the shortcut lane.
+      if (includeShortcut && hasShortcut(o) && underRoadSurface(o, h.s, h.d < llo ? lo : hi, false, Infinity))
+        continue;
       // Only the shoulder span actually drawn here can cover the shortcut.
       if (h.d < llo ? h.d > shoulderReach(o, h.s, -1) : h.d < shoulderReach(o, h.s, 1)) return true;
     }
     return false;
   };
+  const underMain = (e: Edge, s: number, d: number): boolean => underRoadSurface(e, s, d, false, Infinity);
+  // Dedicated vehicle movements are fitted to a receiving road but still carry their own fill
+  // beside it. Where either an ordinary or shortcut ribbon is within the road format's accepted
+  // connector-height gap, that receiving ribbon owns the shared asphalt. A separated crossing
+  // keeps both surfaces.
+  const underReceivingRoad = (e: Edge, s: number, d: number): boolean =>
+    underRoadSurface(e, s, d, true, SHARED_SURFACE_GAP_M);
   /** Whether another road's lanes (drive or shortcut) run under a point of edge e. */
   const onOtherLanes = (e: Edge, s: number, d: number): boolean => {
     const p = w(e.index, s, d, 0);
@@ -1305,7 +1326,7 @@ export function buildRoadScene(
     const outerL = e.dMin - VERGE_M;
     const outerR = e.dMax + VERGE_M;
     const shortcutEdge = hasShortcut(e);
-    const clippedEdge = shortcutEdge;
+    const clippedEdge = shortcutEdge || e.isTrafficOnly === true;
     const gore = gores.get(e.index);
     // A secret fork leaves a shortcut road, and both are shortcut surfaces: it draws just over the
     // road it leaves, in the same colour, so the two never flicker where they overlap (run W-U).
@@ -1330,17 +1351,27 @@ export function buildRoadScene(
     // the main road.
     const plainClip = (s: number): Clip => {
       const l = laneSpans(road.lanesAt(e.index, s));
-      const span = l.drive ?? l.shortcut ?? ([0, 0] as [number, number]);
+      const span: [number, number] = e.isTrafficOnly
+        ? [outerL, outerR]
+        : (l.drive ?? l.shortcut ?? ([0, 0] as [number, number]));
       return { lo: span[0], hi: span[1], vergeL: true, vergeR: true, goreL: false, goreR: false };
     };
     const clips: Clip[] = sd.map((s) => {
       const c = plainClip(s);
       const span: [number, number] = [c.lo, c.hi];
       if (!clippedEdge) return c;
-      if (underMain(e, s, outerL)) {
+      const covered = e.isTrafficOnly ? underReceivingRoad : underMain;
+      const coveredL = covered(e, s, outerL);
+      const coveredR = covered(e, s, outerR);
+      // Shortcuts overlap the receiving edge by CLIP_LAP_M so two independently simplified road
+      // borders cannot leave a crack. A traffic fill clipped on just one side ends at that surface
+      // instead of preserving a coplanar sliver. Between receiving roads on both sides it retains
+      // the lap so their independently moving borders cannot open a wedge through the middle.
+      const lap = e.isTrafficOnly && !(coveredL && coveredR) ? 0 : CLIP_LAP_M;
+      if (coveredL) {
         c.vergeL = false;
         let free = span[0];
-        while (free < span[1] && underMain(e, s, free)) free += 0.1;
+        while (free < span[1] && covered(e, s, free)) free += 0.1;
         // Refined to a millimetre or so, then laid a little over the main road's edge: the two
         // edges are straight between rows that are 2 m apart, and at the shallow angle a shortcut
         // leaves at, a few centimetres of difference is a metres-long sliver of open ground.
@@ -1349,29 +1380,29 @@ export function buildRoadScene(
           let inn = free;
           for (let k = 0; k < 7; k++) {
             const mid = (out + inn) / 2;
-            if (underMain(e, s, mid)) out = mid;
+            if (covered(e, s, mid)) out = mid;
             else inn = mid;
           }
-          free = inn - CLIP_LAP_M;
+          free = inn - lap;
         }
         if (gore !== undefined && gore > span[0] && gore < free) {
           c.lo = gore;
           c.goreL = true;
         } else c.lo = Math.max(span[0], Math.min(free, span[1]));
       }
-      if (underMain(e, s, outerR)) {
+      if (coveredR) {
         c.vergeR = false;
         let free = span[1];
-        while (free > c.lo && underMain(e, s, free)) free -= 0.1;
+        while (free > c.lo && covered(e, s, free)) free -= 0.1;
         if (free > c.lo && free < span[1]) {
           let out = free + 0.1;
           let inn = free;
           for (let k = 0; k < 7; k++) {
             const mid = (out + inn) / 2;
-            if (underMain(e, s, mid)) out = mid;
+            if (covered(e, s, mid)) out = mid;
             else inn = mid;
           }
-          free = inn + CLIP_LAP_M;
+          free = inn + lap;
         }
         if (gore !== undefined && gore < span[1] && gore > free) {
           c.hi = gore;
@@ -1380,6 +1411,17 @@ export function buildRoadScene(
       }
       return c;
     });
+    // A fully owned row beside a partly exposed row otherwise pinches the remaining fill to one
+    // point. The two straight strip edges then leave a triangular hole before the receiving road
+    // reaches it. Keep the transition row whole; traffic fill is unsimplified and sits 8 cm below
+    // the receiving surface, so it closes that wedge without a coplanar pair.
+    if (e.isTrafficOnly) {
+      const collapsed = clips.map((c) => c.hi - c.lo < 1e-6);
+      for (let i = 0; i < clips.length; i++) {
+        if (collapsed[i] && ((i > 0 && !collapsed[i - 1]) || (i + 1 < clips.length && !collapsed[i + 1])))
+          clips[i] = plainClip(sd[i]!);
+      }
+    }
     // The end row of a connector that meets a road head on (a real road's branch) is "under" that
     // road only at the one point where the two meet, and clipping it there pinches the connector to
     // nothing over its last sample step: a wedge-shaped hole through to the ground below (playtest 4,
@@ -1451,9 +1493,9 @@ export function buildRoadScene(
     }[] = [
       {
         kind: brickEdge ? 'brick' : 'road',
-        span: (l, _c, s) => {
+        span: (l, c, s) => {
           if (!l.drive) return null;
-          const span: [number, number] = e.isTrafficOnly ? [outerL, outerR] : l.drive;
+          const span: [number, number] = e.isTrafficOnly ? [c.lo, c.hi] : l.drive;
           return [span[0], medianAt(s)?.[0] ?? span[1]];
         },
         lift: surfaceLift,
