@@ -2073,6 +2073,8 @@ export function buildRoadScene(
       const ground = strip('land');
       /** Longitudinal boundaries exposed when a sharp width change keeps only both rows' common reach. */
       const commonCaps: (readonly [Point3, Point3])[] = [];
+      /** Narrow rows whose terrain profile ends beside a sharp common-reach transition. */
+      const commonProfileCaps = new Set<number>();
       /** A row is a lake side's with a bank: its land ends at the plateau, a wall and the flat shore. */
       const banked = (i: number) => !Number.isNaN(shore[i] ?? Number.NaN);
       /**
@@ -2134,6 +2136,7 @@ export function buildRoadScene(
           if (side < 0) ground.quad(b0, a0, b1, a1);
           else ground.quad(a0, b0, a1, b1);
           commonCaps.push([b0, b1]);
+          commonProfileCaps.add((reach[i - 1] ?? 0) < r ? i - 1 : i);
         }
         const pair = [
           w(e.index, s, side * outer, LAND_TOP_M),
@@ -2318,7 +2321,6 @@ export function buildRoadScene(
           flushClear(n);
         }
       };
-      for (const edge of commonCaps) curtain(edge);
       /** Row i's land in cross-section, from the verge outward: the strip, then its skirt or shelf. */
       const profileOf = (i: number): Point3[] => profileRows(i).map(([, p]) => p);
       /** Row i's cross-section with each point's distance past the verge (a bank's wall stands inside the reach). */
@@ -2343,6 +2345,18 @@ export function buildRoadScene(
           profile.push([r + shelfOf(side, i), at(s, outer + r + shelfOf(side, i), LAND_CAP_FOOT_Y)]);
         return profile;
       };
+      for (const edge of commonCaps) curtain(edge);
+      // The wide row's top begins only after the common-width quad. Its slope still fans toward
+      // the wide row, so the narrow row's terrain cross-section would otherwise end open beside
+      // that fan. Close that exposed profile with the same lower-road-aware curtain as an end cap.
+      for (const i of commonProfileCaps) {
+        const r = reach[i] ?? 0;
+        curtain(
+          profileRows(i)
+            .filter(([d]) => d >= r)
+            .map(([, p]) => p),
+        );
+      }
       /** Closes row i's land past what the neighbouring land (level lj, reach rj) covers. */
       const capAt = (i: number, lj: number, rj: number) => {
         const li = level(i);
