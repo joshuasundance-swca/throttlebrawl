@@ -19,6 +19,7 @@ import {
 } from '../../road';
 import { createFlatLook } from '../look';
 import type { SceneryModels } from '../models';
+import { bakeRepoModel } from '../model-files.test-util';
 import { buildRoadScene, type RoadScene } from '../road-mesh';
 import { boatBob } from '../scenery';
 
@@ -301,6 +302,40 @@ describe('authored natural terrain in the road scene', () => {
       model.dispose();
     }
   });
+
+  for (const grade of [0, 0.04]) {
+    it(`retains the cached trestle model on scene disposal with ${grade === 0 ? 'no' : 'drawn'} bent instances`, async () => {
+      const model = await bakeRepoModel('trestleBent');
+      const disposals = model.variants.map((g) => vi.spyOn(g, 'dispose'));
+      const bundle = fixtureNetwork([{ id: 'trestle', lengthM: 200, kappa: 0, grade }]);
+      const tags = ['bridge', 'trestle'].map((tag) => ({ s0: 0, s1: 200, side: 'both', tag }));
+      const road = createRoadNetwork({ ...bundle, network: { ...bundle.network, terrain: { patches: [] } } });
+      const built = buildRoadScene(
+        road,
+        createFlatLook(),
+        { trestle: { tags, barriers: [] } },
+        {
+          roadsideDensity: 0,
+          models: { trestleBent: model },
+        },
+      );
+      try {
+        const bents = meshes(built, 'road-trestle') as InstancedMesh[];
+        if (grade > 0) {
+          expect(bents.length).toBeGreaterThan(0);
+          expect(bents.reduce((n, m) => n + m.count, 0)).toBeGreaterThan(0);
+          for (const bent of bents) expect(bent.geometry).toBe(model.variants[0]);
+        } else {
+          expect(bents).toHaveLength(0);
+        }
+        built.dispose();
+        for (const disposal of disposals) expect(disposal).not.toHaveBeenCalled();
+      } finally {
+        for (const disposal of disposals) disposal.mockRestore();
+        for (const geometry of model.variants) geometry.dispose();
+      }
+    });
+  }
 
   it('keeps authored faces intact across distant chunks, bounds work by supplied faces and disposes each geometry once', () => {
     const terrain: BakedTerrain = { patches: [rectangle(10, -100, 30, 0), rectangle(10000, -100, 10030, 0)] };
