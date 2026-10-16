@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { PI, TAU } from '../../core';
 import { createSim } from '../api';
+import { createSimWithWorld } from '../create';
 import { InputFlag, type SimConfig, type SimEvent, type SimInput } from '../types';
 import { FLIP_ACCEL, touchdown } from './air';
 import { riderState } from './index';
@@ -258,6 +259,80 @@ describe('tricks', () => {
 });
 
 describe('flips in the whole sim: style cash, the snapshot and replays', () => {
+  it('credits one five-turn landing and repeats hashes from the same grounded fixture and input tape', () => {
+    const rewards = {
+      perNearMissCash: 0,
+      perAirtimeCash: 50,
+      perOncomingSecondCash: 0,
+      perTakedownCash: 0,
+      takedownComboScale: 0,
+      perStealCash: 0,
+    };
+    const trickScale = 2;
+    const base = testConfig({
+      edges: [
+        { id: 'runup', lengthM: 200, kappa: 0 },
+        { id: 'ramp', lengthM: 16, kappa: 0, grade: 0.65 },
+        { id: 'landing', lengthM: 600, kappa: 0 },
+      ],
+      start: { road: 'runup', s: 195, dir: 1 },
+      tuning: { 'race.styleTrickScale': trickScale },
+    });
+    const config = { ...base, event: { ...base.event, style: rewards } };
+    const wholeFlight = (recorded?: readonly SimInput[]) => {
+      const { sim, world } = createSimWithWorld(config);
+      const player = world.movers.find((m) => m.kind === 'rider');
+      if (!player) throw new Error('The fixture needs its player');
+      // Both runs use the same grounded-speed fixture, not a serialized replay from rest.
+      expect(player.mode).toBe('Road');
+      player.speed = SPEED;
+      const hashes: number[] = [];
+      const inputs: SimInput[] = [];
+      const events: SimEvent[] = [];
+      let airTicks = 0;
+      let takeoffPitch = 0;
+      let beforePitch = 0;
+      let contactAt = -1;
+      for (let tick = 0; tick < 60 * 10 && (contactAt < 0 || tick - contactAt <= 60); tick++) {
+        const before = sim.snapshot().entities.find((e) => e.slot === 0);
+        const airborne = before?.mode === 'Airborne';
+        const command = recorded ? recorded[tick] : airborne && airTicks >= 3 ? brake() : gas();
+        if (!command) break;
+        inputs.push(command);
+        sim.step([command]);
+        hashes.push(sim.hash());
+        const stepEvents = sim.events();
+        events.push(...stepEvents);
+        const after = sim.snapshot().entities.find((e) => e.slot === 0);
+        if (airborne) airTicks++;
+        else if (after?.mode === 'Airborne') takeoffPitch = after.pitch ?? 0;
+        if (contactAt < 0 && stepEvents.some((e) => e.type === 'land' || e.type === 'crash')) {
+          contactAt = tick;
+          beforePitch = before?.pitch ?? 0;
+        }
+      }
+      return { hashes, inputs, events, takeoffPitch, beforePitch };
+    };
+    const a = wholeFlight();
+    const b = wholeFlight(a.inputs);
+    expect(b.inputs).toEqual(a.inputs);
+    expect(b.hashes).toEqual(a.hashes);
+    expect(b.events).toEqual(a.events);
+    expect(Math.abs(a.beforePitch - a.takeoffPitch)).toBeGreaterThanOrEqual(5 * TAU);
+    expect(a.events.some((e) => e.type === 'crash')).toBe(false);
+    const lands = a.events.filter((e) => e.type === 'land');
+    expect(lands).toHaveLength(1);
+    const land = lands[0];
+    expect(land?.data['trick']).toBe('backflip');
+    expect(Number(land?.data['flips'])).toBeGreaterThanOrEqual(5);
+    const awards = a.events.filter((e) => e.type === 'style' && e.data['kind'] === 'trick');
+    expect(awards).toHaveLength(1);
+    expect(awards[0]?.data['trick']).toBe(land?.data['trick']);
+    expect(awards[0]?.data['flips']).toBe(land?.data['flips']);
+    expect(awards[0]?.data['points']).toBe(rewards.perAirtimeCash * trickScale * Number(land?.data['flips']));
+    expect(awards[0]?.causeId).toBe(land?.causeId);
+  });
+
   const run = () => {
     const base = testConfig({ edges: RAMP, start: { road: 'runup', s: 60, dir: 1 } });
     const config: SimConfig = {
