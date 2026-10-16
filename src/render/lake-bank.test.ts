@@ -223,11 +223,8 @@ describe('the lake from the road: the bank, the water and the docks (playtest 4 
         const flat = [-dockAlong, 0, dockAlong].every((u) => {
           const p = road.toWorld(shore.index, s + u, outerOf + LAKE_LAND_M, 0);
           const water = waterAt(p.x, p.z);
-          return (
-            water !== null &&
-            Math.abs(wet.scene.landTop(shore.index, 1, s + u, LAKE_LAND_M) - (water + LAKE_SHORE_OVER_M)) <
-              0.02
-          );
+          const land = wet.scene.landTop(shore.index, 1, s + u, LAKE_LAND_M);
+          return water !== null && land !== null && Math.abs(land - (water + LAKE_SHORE_OVER_M)) < 0.02;
         });
         if (flat) stations.push(s);
       }
