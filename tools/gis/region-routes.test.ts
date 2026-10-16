@@ -32,6 +32,7 @@ import {
   type OpenSeam,
 } from '../../src/render/land-probe.test-util';
 import { createFlatLook } from '../../src/render/look';
+import { terrainAt } from '../../src/road/terrain';
 import { buildRoadScene, ROAD_CHUNK_M, type RoadDressing } from '../../src/render/road-mesh';
 import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 
@@ -256,7 +257,8 @@ function rayLookup(group: Object3D, keep: RegExp): GroundLookup {
 }
 
 /** What a ray straight down may meet: the ground, the sea, the road and what is painted on them. */
-const GROUND = /^road-(land|water|road|shoulder|shortcut|deck|marking|splitZone|rampMark|boost)/;
+const GROUND =
+  /^road-(land|water|terrain-land|terrain-water|road|shoulder|shortcut|deck|marking|splitZone|rampMark|boost)/;
 /**
  * A seed with this many land spots or more looks its ground up in a grid (gridLookup); one with
  * fewer (Seven Mile's 89 a seed, the Golden Gate's 25) stays on the Raycaster, which costs less
@@ -440,7 +442,7 @@ function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) 
         list.push(`seed ${seed}: ${s.kind} on the ${edge?.id} bridge at s ${s.s.toFixed(1)}`);
       for (const p of footprint(s, road)) {
         const hit = ground(p.x, s.p.y + 30, p.z, 400);
-        if (hit !== 'road-land') {
+        if (hit !== 'road-land' && hit !== 'road-terrain-land') {
           list.push(
             `seed ${seed}: ${s.kind} on ${edge?.id} s ${s.s.toFixed(1)} d ${s.d.toFixed(1)} over ${hit}`,
           );
@@ -479,13 +481,18 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
       tagged.every((t) => OPEN.has(t)) ||
       (tagged.includes('pdx-blocks') && tagged.every((t) => BLOCKS.has(t))) ||
       (tagged.includes('key-oldtown') && tagged.every((t) => OLDTOWN.has(t)));
-    if (open) expect(spots, 'open grass hills, city blocks and the Old Town scatter nothing').toBe(0);
+    const authored = baked(id).network.terrain !== undefined;
+    if (authored) {
+      // Render-only solids must not become ghost obstacles on physically rideable source land.
+      expect(spots, 'authored terrain omits nonphysical land scatter').toBe(0);
+      expect(farSpots).toBe(0);
+    } else if (open) expect(spots, 'open grass hills, city blocks and the Old Town scatter nothing').toBe(0);
     else expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
     // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3), on the networks
     // that grow one (Russian Hill and Key West have no forest).
     const forest = baked(id).roads.some((r) => (r.tags ?? []).some((t) => t.tag === 'forest'));
-    if (forest) expect(farSpots).toBeGreaterThan(1000);
+    if (forest && !authored) expect(farSpots).toBeGreaterThan(1000);
     expect(farBad.slice(0, 12)).toEqual([]);
   }, 240_000);
 });
@@ -516,31 +523,95 @@ const fmtSeam = (o: OpenSeam) =>
 // its turn-off stands in for the ramp's parallel stretch (the bake's shiftM), and the one where the
 // lake road leaves I-5's side closed with #377 (no sliver between the land and its slope).
 
-describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', (id) => {
-  it('never ends in mid-air: every raised edge of it is closed down to the ground', () => {
-    const { road, built } = landScene(id);
-    const ground = new GroundTris(built.group);
-    const { probes, drops, open, joins } = openLandEnds(road, ground);
-    const seams = openSeams(road, ground);
-    process.stdout.write(
-      `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked beside the road, ` +
-        `${joins} steps across junctions, ${drops} drops of over 2 m looked under, ${open.length} open; ` +
-        `${seams.probes} shoulder-to-land seam points, ${seams.open.length} open\n`,
-    );
-    built.dispose();
-    // Total elevation change does not imply a cliff beside the road: a gradual rural rise can
-    // have no abrupt drops. Inspect every drop the geometry walk finds, and keep the floating-
-    // plate negative control below to prove the walk detects open raised edges.
-    expect(probes).toBeGreaterThan(1000);
-    // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
-    expect(joins).toBeGreaterThan(0);
-    expect(open.slice(0, 12).map(fmtEnd)).toEqual([]);
-    // No crack between the shoulder and the land beside it (PR #609's fix lane), on every network with land
-    // beside its roads.
-    expect(seams.probes).toBeGreaterThan(100);
-    expect(seams.open.slice(0, 12).map(fmtSeam)).toEqual([]);
-  }, 240_000);
-});
+// A source patch may deliberately end or contain holes. Check every authored face against its
+// physical query and drawing below; retain the closed-strip contract for legacy-generated land.
+describe.each(PACKS.flatMap((p) => p.networks).filter((id) => !baked(id).network.terrain))(
+  'the land of the real road %s',
+  (id) => {
+    it('never ends in mid-air: every raised edge of it is closed down to the ground', () => {
+      const { road, built } = landScene(id);
+      const ground = new GroundTris(built.group);
+      const { probes, drops, open, joins } = openLandEnds(road, ground);
+      const seams = openSeams(road, ground);
+      process.stdout.write(
+        `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked beside the road, ` +
+          `${joins} steps across junctions, ${drops} drops of over 2 m looked under, ${open.length} open; ` +
+          `${seams.probes} shoulder-to-land seam points, ${seams.open.length} open\n`,
+      );
+      built.dispose();
+      // Total elevation change does not imply a cliff beside the road: a gradual rural rise can
+      // have no abrupt drops. Inspect every drop the geometry walk finds, and keep the floating-
+      // plate negative control below to prove the walk detects open raised edges.
+      expect(probes).toBeGreaterThan(1000);
+      // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
+      expect(joins).toBeGreaterThan(0);
+      expect(open.slice(0, 12).map(fmtEnd)).toEqual([]);
+      // No crack between the shoulder and the land beside it (PR #609's fix lane), on every network with land
+      // beside its roads.
+      expect(seams.probes).toBeGreaterThan(100);
+      expect(seams.open.slice(0, 12).map(fmtSeam)).toEqual([]);
+    }, 240_000);
+  },
+);
+
+describe.each(PACKS.flatMap((p) => p.networks).filter((id) => baked(id).network.terrain))(
+  'authored ground of the real road %s',
+  (id) => {
+    it('draws every physical land and water face; removing a source mesh is detected', () => {
+      const terrain = baked(id).network.terrain!;
+      const { road, built } = landScene(id);
+      const check = (ground: GroundTris) => {
+        let examined = 0;
+        const missing: string[] = [];
+        terrain.patches.forEach((patch, pi) => {
+          const vertices = patch.vertices.map((v) => v.map(Math.fround));
+          patch.triangles.forEach((indices, ti) => {
+            const centre = [0, 1, 2].map(
+              (axis) => indices.reduce((sum, i) => sum + vertices[i]![axis]!, 0) / 3,
+            );
+            const [x, y, z] = centre as [number, number, number];
+            const kind = patch.surface === 'water' ? 'water' : 'land';
+            const physical = terrainAt(terrain, x, z, y + 0.001, kind);
+            const drawn = ground.allAt(x, z, y + 0.001);
+            examined++;
+            if (
+              !physical ||
+              Math.abs(physical.y - y) > 0.001 ||
+              !drawn.some((hit) => hit.name === `road-terrain-${kind}` && Math.abs(hit.y - y) < 0.001)
+            )
+              missing.push(`${pi}:${ti} ${kind}`);
+          });
+        });
+        return { examined, missing };
+      };
+      try {
+        const keep = /^road-terrain-(land|water)$/;
+        const result = check(new GroundTris(built.group, keep));
+        expect(result.examined).toBeGreaterThan(0);
+        expect(result.missing.slice(0, 12)).toEqual([]);
+        const seams = openSeams(road, new GroundTris(built.group));
+        expect(seams.open.slice(0, 12).map(fmtSeam)).toEqual([]);
+        let removed: Object3D | undefined;
+        built.group.traverse((o) => {
+          if (!removed && o instanceof Mesh && keep.test(o.name)) removed = o;
+        });
+        expect(removed).toBeDefined();
+        const parent = removed!.parent!;
+        parent.remove(removed!);
+        try {
+          expect(check(new GroundTris(built.group, keep)).missing.length).toBeGreaterThan(0);
+        } finally {
+          parent.add(removed!);
+        }
+        process.stdout.write(
+          `[examined] ${id}: ${result.examined} authored face centroids, ${seams.probes} seams; missing-mesh negative control detected\n`,
+        );
+      } finally {
+        built.dispose();
+      }
+    }, 240_000);
+  },
+);
 
 it('negative control: a plate of land laid beside the Hyde Street bridge, nothing under it, is found open', () => {
   // The skeptic's defect, rebuilt by hand: a 14 m by 16 m plate at the road's height on the bridge's

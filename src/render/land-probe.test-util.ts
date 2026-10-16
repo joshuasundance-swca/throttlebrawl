@@ -158,7 +158,7 @@ export function openSeams(road: RoadNetwork, ground: GroundTris): { probes: numb
         const land = road.toWorld(e.index, s, side * (outer + SEAM_LAND_M), 0);
         // The highest ground under 1 m over the road: an overpass above is not this road's land.
         const l = ground.heightAt(land.x, land.z, land.y + 1);
-        if (!l?.name.startsWith('road-land') || Math.abs(l.y - land.y) > SEAM_DROP_M) continue;
+        if (!l || !/^road-(land|terrain-land)/.test(l.name) || Math.abs(l.y - land.y) > SEAM_DROP_M) continue;
         probes++;
         const p = road.toWorld(e.index, s, side * (outer - SEAM_IN_M), 0);
         const h = ground.heightAt(p.x, p.z, p.y + 1);
@@ -200,7 +200,8 @@ interface WalkPt {
 }
 
 /**
- * Land that ends in mid-air. Walks each side of every road at a few distances past the verge, 2 m
+ * Legacy continuous-strip land that ends in mid-air. Authored patches may have bounded edges and
+ * holes; this strip/skirt closure contract does not apply to them. Walks each side of every road at a few distances past the verge, 2 m
  * at a time, reading the ground's height straight down. Where it drops more than 2 m in one step,
  * a ray from the low step, 1 m under the high ground, looks back under it to 6 m past the high
  * step. Closed ground (a slope, a bank, a cap) stops that ray; a plate that ends in mid-air lets it
