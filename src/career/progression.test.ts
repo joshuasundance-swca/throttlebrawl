@@ -29,7 +29,7 @@ import {
 // rivals ride bikes as good as your best)"; round 3: "Six bikes", regions "In order", fights a
 // "Gentle climb"). The rules on hand-made maps, with the design's numbers as the oracle
 // (docs/product-spec.md, "Rivals" and "Career"). The real packs are checked in
-// tests/sim/career-content.test.ts.
+// src/app/career-content.test.ts.
 
 const bike = (id: string, top: number, tags: string[] = []) => ({
   type: 'bike',
