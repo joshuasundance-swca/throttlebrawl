@@ -20,6 +20,7 @@
 // licence, the 4 m lanes and the scenery and land sweeps run on both networks in
 // region-routes.test.ts; the bot races them in tests/sim/road-real-routes.test.ts.
 import { describe, expect, it } from 'vitest';
+import { ISOLATED } from '../../tests/sim/batch';
 import { buildSimConfig, createStreamCache, regionChoices } from '../../src/app';
 import { lookup, registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
@@ -586,7 +587,7 @@ describe('the turn-off: a rider who keeps right takes the old road, the field ke
       const choice = regionChoices(reg).find((c) => lookup(reg.events, c.eventId).region === 'florida-keys');
       if (!choice) throw new Error('no Keys free-play event');
       const route = 'base:osm-seven-mile-run';
-      const config = buildSimConfig(
+      const baseConfig = buildSimConfig(
         reg,
         createStreamCache().forEvent(reg, choice.eventId, undefined, route),
         {
@@ -595,6 +596,22 @@ describe('the turn-off: a rider who keeps right takes the old road, the field ke
           route,
         },
       );
+      // This checks the real turn-off, jumps and finish with the full rider field. A changed
+      // patrol timing can legitimately bust this seed before the finish; law/world interactions
+      // have their own integration races. Keep all authored road contacts at the event defaults.
+      const config: SimConfig = {
+        ...baseConfig,
+        tuning: {
+          ...baseConfig.tuning,
+          ...ISOLATED,
+          'ground.offRoad': baseConfig.tuning['ground.offRoad']!,
+          'modifiers.propContact': baseConfig.tuning['modifiers.propContact']!,
+          'riders.courseEdges': baseConfig.tuning['riders.courseEdges']!,
+          'riders.supports': baseConfig.tuning['riders.supports']!,
+          'riders.structures': baseConfig.tuning['riders.structures']!,
+          'riders.furniture': baseConfig.tuning['riders.furniture']!,
+        },
+      };
       expect(config.event.routeId).toBe(route);
       const branch = new Set((OLD_ROAD?.roads ?? []).map((id) => config.road.edgeIndex(id)));
       const sim = createSim(config);

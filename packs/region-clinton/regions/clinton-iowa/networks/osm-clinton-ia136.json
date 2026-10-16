@@ -1,7 +1,7 @@
 {
   "type": "road-network",
   "id": "osm-clinton-ia136",
-  "name": "IA 136 rural bends (OSM bake)",
+  "name": "IA 136 and the 420th–180th county detour (OSM network bake)",
   "region": "clinton-iowa",
   "crs": {
     "kind": "tmerc",
@@ -12,7 +12,23 @@
   "chunking": {
     "kind": "none"
   },
-  "roads": ["osm-clinton-ia136-east-bends", "osm-clinton-ia136-middle-bends", "osm-clinton-ia136-west-bends"],
+  "roads": [
+    "osm-clinton-ia136-east-bends",
+    "osm-clinton-ia136-county-leave",
+    "osm-clinton-ia136-east-county-approach",
+    "osm-clinton-ia136-middle-bends",
+    "osm-clinton-ia136-county-join",
+    "osm-clinton-ia136-middle-county-return",
+    "osm-clinton-ia136-west-bends",
+    "osm-clinton-county-420th-paved",
+    "osm-clinton-county-420th-dirt",
+    "osm-clinton-county-180th",
+    "osm-clinton-ia136-county-in",
+    "osm-clinton-ia136-county-out",
+    "osm-clinton-ia136-county-traffic-in",
+    "osm-clinton-ia136-county-traffic-reverse-leave",
+    "osm-clinton-ia136-county-traffic-reverse-join"
+  ],
   "junctions": [
     {
       "id": "osm-clinton-ia136-j0",
@@ -30,34 +46,117 @@
     },
     {
       "id": "osm-clinton-ia136-j1",
-      "x": -1207.694,
-      "y": 250.5177,
-      "z": -1097.4334,
+      "x": 266.0164,
+      "y": 245.4248,
+      "z": -435.3928,
       "ends": [
         {
           "road": "osm-clinton-ia136-east-bends",
           "end": "to"
         },
         {
-          "road": "osm-clinton-ia136-middle-bends",
+          "road": "osm-clinton-ia136-east-county-approach",
+          "end": "from"
+        },
+        {
+          "road": "osm-clinton-county-420th-paved",
           "end": "from"
         }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-osm-clinton-ia136-county-leave-l1",
+          "road": "osm-clinton-ia136-county-leave",
+          "from": {
+            "road": "osm-clinton-ia136-east-bends",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-clinton-ia136-east-county-approach",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-leave-r1",
+          "road": "osm-clinton-ia136-county-leave",
+          "from": {
+            "road": "osm-clinton-ia136-east-bends",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-clinton-ia136-east-county-approach",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-in",
+          "road": "osm-clinton-ia136-county-in",
+          "from": {
+            "road": "osm-clinton-ia136-east-bends",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-clinton-county-420th-paved",
+            "end": "from",
+            "lane": "R1"
+          },
+          "splitZone": {
+            "s0": 187.9857,
+            "s1": 267.9857,
+            "d0": 3.5,
+            "d1": 9.0
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-traffic-in",
+          "road": "osm-clinton-ia136-county-traffic-in",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-clinton-ia136-east-bends",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-clinton-county-420th-paved",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-traffic-reverse-leave",
+          "road": "osm-clinton-ia136-county-traffic-reverse-leave",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-clinton-ia136-east-bends",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-clinton-county-420th-paved",
+            "end": "from",
+            "lane": "L1"
+          }
+        }
+      ],
       "control": "none"
     },
     {
       "id": "osm-clinton-ia136-j2",
-      "x": -2196.3461,
-      "y": 259.3048,
-      "z": -2067.587,
+      "x": -1208.0773,
+      "y": 250.5177,
+      "z": -1096.4577,
       "ends": [
         {
-          "road": "osm-clinton-ia136-middle-bends",
+          "road": "osm-clinton-ia136-east-county-approach",
           "end": "to"
         },
         {
-          "road": "osm-clinton-ia136-west-bends",
+          "road": "osm-clinton-ia136-middle-bends",
           "end": "from"
         }
       ],
@@ -66,13 +165,147 @@
     },
     {
       "id": "osm-clinton-ia136-j3",
-      "x": -2872.0808,
+      "x": -2163.2984,
+      "y": 259.7367,
+      "z": -1902.5009,
+      "ends": [
+        {
+          "road": "osm-clinton-ia136-middle-bends",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-ia136-middle-county-return",
+          "end": "from"
+        },
+        {
+          "road": "osm-clinton-county-180th",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-clinton-ia136-county-join-l1",
+          "road": "osm-clinton-ia136-county-join",
+          "from": {
+            "road": "osm-clinton-ia136-middle-bends",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-clinton-ia136-middle-county-return",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-join-r1",
+          "road": "osm-clinton-ia136-county-join",
+          "from": {
+            "road": "osm-clinton-ia136-middle-bends",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-clinton-ia136-middle-county-return",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-out",
+          "road": "osm-clinton-ia136-county-out",
+          "from": {
+            "road": "osm-clinton-county-180th",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-clinton-ia136-middle-county-return",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-clinton-ia136-county-traffic-reverse-join",
+          "road": "osm-clinton-ia136-county-traffic-reverse-join",
+          "trafficOnly": true,
+          "from": {
+            "road": "osm-clinton-county-180th",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-clinton-ia136-middle-county-return",
+            "end": "from",
+            "lane": "L1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j4",
+      "x": -2195.7657,
+      "y": 259.2986,
+      "z": -2067.9294,
+      "ends": [
+        {
+          "road": "osm-clinton-ia136-middle-county-return",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-ia136-west-bends",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j5",
+      "x": -2871.8805,
       "y": 268.5271,
-      "z": -3501.0933,
+      "z": -3499.5139,
       "ends": [
         {
           "road": "osm-clinton-ia136-west-bends",
           "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j6",
+      "x": 271.0961,
+      "y": 242.5453,
+      "z": -894.101,
+      "ends": [
+        {
+          "road": "osm-clinton-county-420th-paved",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-county-420th-dirt",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j7",
+      "x": 271.3529,
+      "y": 237.0621,
+      "z": -1902.1426,
+      "ends": [
+        {
+          "road": "osm-clinton-county-420th-dirt",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-county-180th",
+          "end": "from"
         }
       ],
       "connectors": [],
@@ -84,9 +317,9 @@
     "author": "tools/gis",
     "createdAt": "2026-10-15",
     "tool": {
-      "name": "tools/gis/src/tbgis/cli.py",
+      "name": "tools/gis/src/tbgis/network.py",
       "version": "0.1.0",
-      "configRef": "tools/gis/configs/osm-clinton-ia136.json"
+      "configRef": "tools/gis/networks/osm-clinton-ia136.json"
     },
     "sources": [
       {
@@ -103,16 +336,25 @@
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear (line ia136)",
         "retrievedAt": "2026-10-15T21:26:10Z",
         "sha256": "00c56964f5592388b4b8de9aba834736864214624c8c13c0c312047379ca327e"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 393 points in 1 request(s) (lon, lat WGS84, sha256 46ec1c2a3c86b111), bilinear (line county)",
+        "retrievedAt": "2026-10-16T06:05:45Z",
+        "sha256": "dda1bd310872c31d7ffc045b64d0154cb2a033de8fdd5eefe60092af0250938f"
       }
     ],
     "modified": true,
-    "modifications": "IA 136, northwest of Clinton ways stitched along the travel carriageway, heading Gaussian-smoothed (sigma 20 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (none; bridges kept); land elevation from 3DEP low-pass filtered (sigma 25 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): a straight deck between the land at each end (not measured); lanes simplified to one each way plus shoulders"
+    "modifications": "2 real IA 136, 420th Avenue and 180th Street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 13.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
   },
   "meta": {
     "status": "live",
-    "notes": "A bounded rural IA 136 race northwest of Clinton. Broad bends and passing straights, not a hairpin course. Uncompressed OSM line; 4 m lanes and soft 3 m grass verges are gameplay adaptations with unmeasured real widths. No construction-corridor or pedestrian-path geometry is used."
+    "notes": "IA 136 remains the faster direct line. The 420th Avenue–180th Street detour is longer and partly unpaved in OSM. Dirt is a game adaptation of unpaved tags, not a surveyed gravel claim; the bridge surface is unspecified in the source. Lane widths, verges and race stunt features are arcade adaptations. No private-property, named-landmark or current motorcycle-access claim. The shoulder stunt carrier is fictional race equipment on the paved approach, not a mapped roadside attraction; both travel lanes provide a ride-around. Existing highway feature identities retain their original along-line stations through the split; the patrol marker is tightened onto the paved shoulder."
   }
 }

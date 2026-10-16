@@ -11,6 +11,33 @@ export type LandIntervalPlan =
   | { kind: 'joined'; reach0M: number; reach1M: number }
   | { kind: 'common'; reachM: number; narrow: 0 | 1 };
 
+/** The clear part of a ground band, refined at the first blocked sample in either direction. */
+export function clearGroundReach(
+  dNear: number,
+  dFar: number,
+  probeM: number,
+  blocked: (d: number) => boolean,
+): number | null {
+  if (blocked(dNear)) return null;
+  const n = Math.max(1, Math.ceil(Math.abs(dFar - dNear) / probeM));
+  let clear = dNear;
+  for (let k = 1; k <= n; k++) {
+    const d = dNear + ((dFar - dNear) * k) / n;
+    if (!blocked(d)) {
+      clear = d;
+      continue;
+    }
+    let out = d;
+    for (let i = 0; i < 5; i++) {
+      const mid = (clear + out) / 2;
+      if (blocked(mid)) out = mid;
+      else clear = mid;
+    }
+    return clear;
+  }
+  return dFar;
+}
+
 /**
  * How adjacent roadside-land rows join. `commonEligible` is explicit because a lake-bank interval
  * has its own wall and shore topology and must keep that canonical join.

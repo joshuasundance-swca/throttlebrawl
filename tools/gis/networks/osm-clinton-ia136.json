@@ -1,0 +1,326 @@
+{
+  "id": "osm-clinton-ia136",
+  "region": "clinton-iowa",
+  "crs": {
+    "originLatDeg": 41.9,
+    "originLonDeg": -90.28
+  },
+  "osmExtract": ".cache/osm/clinton-ia136.json",
+  "osmQuery": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+  "outRoot": "packs/region-clinton/regions/clinton-iowa",
+  "name": "IA 136 and the 420th–180th county detour (OSM network bake)",
+  "waysLabel": "IA 136, 420th Avenue and 180th Street",
+  "networkNotes": "IA 136 remains the faster direct line. The 420th Avenue–180th Street detour is longer and partly unpaved in OSM. Dirt is a game adaptation of unpaved tags, not a surveyed gravel claim; the bridge surface is unspecified in the source. Lane widths, verges and race stunt features are arcade adaptations. No private-property, named-landmark or current motorcycle-access claim. The shoulder stunt carrier is fictional race equipment on the paved approach, not a mapped roadside attraction; both travel lanes provide a ride-around. Existing highway feature identities retain their original along-line stations through the split; the patrol marker is tightened onto the paved shoulder.",
+  "lines": [
+    {
+      "pathFrom": {
+        "lat": 41.8736337,
+        "lon": -90.2460357
+      },
+      "pathTo": {
+        "lat": 41.9469404,
+        "lon": -90.3375243
+      },
+      "start": {
+        "lat": 41.9019754,
+        "lon": -90.2738319
+      },
+      "end": {
+        "lat": 41.9314983,
+        "lon": -90.3145986
+      },
+      "splitAt": [
+        {
+          "lat": 41.9098753,
+          "lon": -90.2945573
+        },
+        {
+          "lat": 41.9186145,
+          "lon": -90.3064649
+        }
+      ],
+      "routeTags": {
+        "ref": "IA 136"
+      },
+      "smoothing": {
+        "headingSigmaM": 20
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 25,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "id": "ia136",
+      "realName": "Iowa Highway 136",
+      "crossSection": {
+        "laneWidthM": 4,
+        "verges": {
+          "left": {
+            "widthM": 3,
+            "surface": "grass",
+            "edge": "soft"
+          },
+          "right": {
+            "widthM": 3,
+            "surface": "grass",
+            "edge": "soft"
+          }
+        }
+      },
+      "roads": [
+        {
+          "id": "osm-clinton-ia136-east-bends",
+          "name": "East Bends",
+          "tags": ["rural"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "clinton-patrol-lot",
+              "s0": 5.0,
+              "s1": 25.0,
+              "d0": 4.2,
+              "d1": 5.3
+            },
+            {
+              "kind": "billboard",
+              "id": "clinton-136-sign",
+              "s0": 200.0,
+              "s1": 210.0,
+              "d0": 8,
+              "d1": 10,
+              "item": "highway-136"
+            }
+          ]
+        },
+        {
+          "id": "osm-clinton-ia136-east-county-approach",
+          "name": "East Bends",
+          "tags": ["rural"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "clinton-delivery-board",
+              "s0": 812.0142,
+              "s1": 822.0142,
+              "d0": -14,
+              "d1": -8,
+              "item": "delivery-window"
+            }
+          ]
+        },
+        {
+          "id": "osm-clinton-ia136-middle-bends",
+          "name": "Middle Bends",
+          "tags": ["rural"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "clinton-curve-sign",
+              "s0": 149.9534,
+              "s1": 159.9534,
+              "d0": 8,
+              "d1": 10,
+              "item": "bends-ahead"
+            }
+          ]
+        },
+        {
+          "id": "osm-clinton-ia136-middle-county-return",
+          "name": "Middle Bends",
+          "tags": ["rural"]
+        },
+        {
+          "id": "osm-clinton-ia136-west-bends",
+          "name": "West Bends",
+          "tags": ["rural"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "clinton-freight-board",
+              "s0": 548.9191,
+              "s1": 558.9191,
+              "d0": 8,
+              "d1": 14,
+              "item": "grain-forecast"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "county",
+      "pathFrom": {
+        "lat": 41.9039182,
+        "lon": -90.2767912
+      },
+      "pathTo": {
+        "lat": 41.9171268,
+        "lon": -90.306078
+      },
+      "via": [
+        {
+          "lat": 41.9171705,
+          "lon": -90.276613
+        }
+      ],
+      "wayFilter": [
+        {
+          "@id": "^(1021738989|1021742499|1021738990|15864301|15865354)$"
+        }
+      ],
+      "splitAt": [
+        {
+          "lat": 41.9080495,
+          "lon": -90.2767386
+        }
+      ],
+      "splitOnNameChange": true,
+      "smoothing": {
+        "headingSigmaM": 20
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 20,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 3.5,
+        "verges": {
+          "left": {
+            "widthM": 3,
+            "surface": "grass",
+            "edge": "soft"
+          },
+          "right": {
+            "widthM": 3,
+            "surface": "grass",
+            "edge": "soft"
+          }
+        }
+      },
+      "roads": [
+        {
+          "id": "osm-clinton-county-420th-paved",
+          "name": "420th Avenue",
+          "tags": ["rural"],
+          "features": [
+            {
+              "kind": "rampTruck",
+              "id": "county-shoulder-stunt-carrier",
+              "s0": 180,
+              "s1": 201.1,
+              "d0": 3.5,
+              "d1": 5.5
+            }
+          ]
+        },
+        {
+          "id": "osm-clinton-county-420th-dirt",
+          "name": "420th Avenue",
+          "tags": ["rural"]
+        },
+        {
+          "id": "osm-clinton-county-180th",
+          "name": "180th Street",
+          "tags": ["rural"]
+        }
+      ],
+      "roadSurface": {
+        "osm-clinton-county-420th-dirt": "dirt",
+        "osm-clinton-county-180th": "dirt"
+      },
+      "roadLanes": {
+        "osm-clinton-county-420th-dirt": {
+          "laneWidthM": 3.5
+        }
+      }
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-clinton-county-420th-paved",
+      "line": "county",
+      "of": "ia136",
+      "label": "county",
+      "kind": "detour",
+      "marked": true,
+      "sign": "COUNTY DETOUR: LONGER. Dirt roads and an optional stunt truck.",
+      "aiTake": 0.25,
+      "traffic": "road",
+      "connectorWidthM": 6,
+      "minRadiusM": 42.5,
+      "leave": {
+        "at": {
+          "lat": 41.9039182,
+          "lon": -90.2767912
+        },
+        "pieceM": 120,
+        "offsetM": 2,
+        "lane": "R1",
+        "zone": {
+          "lengthM": 80,
+          "d0": 3.5,
+          "d1": 9
+        },
+        "insetM": 120,
+        "toOffsetM": 1.75,
+        "toLane": "R1",
+        "turnsM": [40, 40]
+      },
+      "join": {
+        "at": {
+          "lat": 41.9171268,
+          "lon": -90.306078
+        },
+        "pieceM": 120,
+        "offsetM": 2,
+        "lane": "R1",
+        "insetM": 160,
+        "fromOffsetM": 1.75,
+        "fromLane": "R1",
+        "turnsM": [40, 40]
+      },
+      "trafficIngress": {
+        "offsetM": 2,
+        "lane": "R1",
+        "widthM": 4,
+        "turnsM": [40, 40],
+        "minRadiusM": 42.5
+      },
+      "trafficReverse": {
+        "leave": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -1.75,
+          "branchLane": "L1",
+          "widthM": 4,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        },
+        "join": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -1.75,
+          "branchLane": "L1",
+          "widthM": 4,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-clinton-ia136-run",
+      "name": "IA 136: Rural Rush",
+      "line": "ia136",
+      "startRoad": "osm-clinton-ia136-east-bends",
+      "startS": 50,
+      "finishRoad": "osm-clinton-ia136-west-bends",
+      "finishS": -60,
+      "notes": "One pass northwest on IA 136 with a marked longer 420th Avenue–180th Street county detour. Same finish, no repeated lap. Source geometry and USGS terrain; dirt and race features are disclosed gameplay adaptations."
+    }
+  ]
+}

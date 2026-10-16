@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { eventSchema, regionSchema } from '../../src/content/schema/entries';
-import { lintRoadNetwork } from '../../src/road/validate';
+import { createRoadNetwork, createRouteProgress, lintRoadNetwork } from '../../src/road';
 import type { BakedNetwork, BakedRoad, BakedRoute } from '../../src/road/types';
 
 // First Clinton slice: a bounded, one-pass race on the actual IA 136 line, with existing
@@ -32,21 +32,26 @@ describe('Clinton: IA 136 first course', () => {
     const route = read<BakedRoute>(`${ROOT}/routes/osm-clinton-ia136-run.json`);
     const roads = network.roads.map((id) => read<BakedRoad>(`${ROOT}/roads/${id}.json`));
     expect(lintRoadNetwork({ network, roads, routes: [route] })).toEqual([]);
-    const length = roads.reduce((sum, r) => sum + r.lengthM, 0);
+    const road = createRoadNetwork({ network, roads });
+    const progress = createRouteProgress(road, route);
+    const length = progress.length;
     expect(length).toBeGreaterThan(3000);
     expect(length).toBeLessThan(9000);
-    const curvature = roads.flatMap((r) => r.samples.data['kappa'] ?? []);
+    const main = progress.mainEdges.map((edge) => roads.find((r) => r.id === road.edges[edge]!.id)!);
+    const curvature = main.flatMap((r) => r.samples.data['kappa'] ?? []);
     // Broad highway bends, rather than the handoff's unverified technical-hairpin premise.
     expect(curvature.some((k) => k > 1 / 400)).toBe(true);
     expect(curvature.some((k) => k < -1 / 400)).toBe(true);
     let runM = 0;
     let passingM = 0;
-    for (const road of roads) {
-      const drive = road.laneSections[0]?.lanes.filter((lane) => lane.kind === 'drive') ?? [];
-      expect(drive.some((lane) => lane.direction === 1)).toBe(true);
-      expect(drive.some((lane) => lane.direction === -1)).toBe(true);
-      for (const k of road.samples.data['kappa'] ?? []) {
-        runM = Math.abs(k) < 1 / 600 ? runM + road.sampleSpacingM : 0;
+    for (const mainRoad of main) {
+      if (!road.edges[road.edgeIndex(mainRoad.id)]!.isConnector) {
+        const drive = mainRoad.laneSections[0]?.lanes.filter((lane) => lane.kind === 'drive') ?? [];
+        expect(drive.some((lane) => lane.direction === 1)).toBe(true);
+        expect(drive.some((lane) => lane.direction === -1)).toBe(true);
+      }
+      for (const k of mainRoad.samples.data['kappa'] ?? []) {
+        runM = Math.abs(k) < 1 / 600 ? runM + mainRoad.sampleSpacingM : 0;
         passingM = Math.max(passingM, runM);
       }
     }
