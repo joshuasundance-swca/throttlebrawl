@@ -46,7 +46,7 @@ async function workerOfAnotherBuild(route: Route) {
 }
 
 test.describe('offline', () => {
-  // Every other spec blocks service workers (playwright.config.ts); this one needs the game's.
+  // Service workers are blocked by default (playwright.config.ts); this suite needs the game's.
   test.use({ serviceWorkers: 'allow' });
 
   // Playtest 4 run A fix check, new mustFix 2b and punch item 1, with a simulated deploy (the preview
@@ -166,7 +166,7 @@ test.describe('offline', () => {
 
 // Playtest 4 run A fix check, new mustFix 2a: online, a deploy had renamed San Francisco's map files;
 // picking the region fetched 4 of them, all 404, and nothing reloaded (#584 heard only lazy chunks).
-// Service workers are blocked here, as in every other spec: the page fetches from the host itself.
+// Service workers are blocked here: the page fetches from the host itself.
 test('a region whose map files a deploy renamed reloads the tab once to the current build', async ({
   page,
 }) => {
