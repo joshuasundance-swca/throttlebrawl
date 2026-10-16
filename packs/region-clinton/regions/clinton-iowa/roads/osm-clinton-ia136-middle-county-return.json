@@ -1,0 +1,172 @@
+{
+  "type": "road",
+  "id": "osm-clinton-ia136-middle-county-return",
+  "name": "Middle Bends",
+  "realName": "State Highway 136",
+  "network": "osm-clinton-ia136",
+  "from": "osm-clinton-ia136-j3",
+  "to": "osm-clinton-ia136-j4",
+  "lengthM": 112.992,
+  "sampleSpacingM": 2.017714285714286,
+  "speedLimitMps": 22.4,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -4.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 4.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ],
+      "verges": {
+        "left": {
+          "widthM": 3.0,
+          "surface": "grass",
+          "edge": "soft"
+        },
+        "right": {
+          "widthM": 3.0,
+          "surface": "grass",
+          "edge": "soft"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 112.992,
+      "side": "both",
+      "tag": "rural"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -2189.185, -2189.7939, -2190.3858, -2190.9607, -2191.5189, -2192.0602, -2192.5848, -2193.0926,
+        -2193.5838, -2194.0584, -2194.5165, -2194.958, -2195.383, -2195.7916, -2196.1836, -2196.5591,
+        -2196.9181, -2197.2604, -2197.5859, -2197.8945, -2198.1859, -2198.46, -2198.7164, -2198.9549,
+        -2199.1752, -2199.3769, -2199.5598, -2199.7234, -2199.8675, -2199.9918, -2200.096, -2200.1798,
+        -2200.243, -2200.2855, -2200.3071, -2200.3077, -2200.2873, -2200.246, -2200.1837, -2200.1006,
+        -2199.9968, -2199.8726, -2199.7282, -2199.5638, -2199.3798, -2199.1763, -2198.9539, -2198.7127,
+        -2198.4533, -2198.1758, -2197.8808, -2197.5686, -2197.2397, -2196.8945, -2196.5334, -2196.1569,
+        -2195.7657
+      ],
+      "y": [
+        259.5354, 259.5311, 259.527, 259.523, 259.5193, 259.5157, 259.5123, 259.509, 259.5058, 259.5027,
+        259.4997, 259.4968, 259.494, 259.4911, 259.4884, 259.4856, 259.4829, 259.4801, 259.4774, 259.4746,
+        259.4718, 259.469, 259.4661, 259.4631, 259.4601, 259.457, 259.4539, 259.4506, 259.4472, 259.4438,
+        259.4402, 259.4364, 259.4326, 259.4286, 259.4244, 259.4201, 259.4156, 259.411, 259.4062, 259.4012,
+        259.3961, 259.3908, 259.3854, 259.3798, 259.374, 259.3682, 259.3622, 259.3561, 259.3499, 259.3436,
+        259.3372, 259.3308, 259.3244, 259.3179, 259.3114, 259.305, 259.2986
+      ],
+      "z": [
+        -1956.4166, -1958.3403, -1960.2692, -1962.2033, -1964.1423, -1966.086, -1968.0344, -1969.9871,
+        -1971.9441, -1973.9052, -1975.8703, -1977.8391, -1979.8115, -1981.7875, -1983.7667, -1985.7492,
+        -1987.7347, -1989.7232, -1991.7145, -1993.7084, -1995.705, -1997.704, -1999.7054, -2001.7089,
+        -2003.7146, -2005.7222, -2007.7316, -2009.7427, -2011.7552, -2013.7691, -2015.7841, -2017.8001,
+        -2019.8168, -2021.8341, -2023.8517, -2025.8694, -2027.887, -2029.9043, -2031.921, -2033.937,
+        -2035.9521, -2037.966, -2039.9785, -2041.9895, -2043.9988, -2046.0062, -2048.0116, -2050.0149,
+        -2052.0159, -2054.0144, -2056.0104, -2058.0039, -2059.9946, -2061.9825, -2063.9677, -2065.95,
+        -2067.9294
+      ],
+      "kappa": [
+        0.004388, 0.0043624, 0.0043377, 0.0043136, 0.0042901, 0.004267, 0.0042443, 0.0042223, 0.0042011,
+        0.0041812, 0.0041635, 0.0041483, 0.0041373, 0.0041317, 0.0041322, 0.0041401, 0.0041565, 0.0041813,
+        0.0042151, 0.0042579, 0.0043094, 0.0043687, 0.0044348, 0.0045062, 0.0045813, 0.0046583, 0.0047354,
+        0.0048107, 0.0048821, 0.004948, 0.0050073, 0.0050583, 0.0050997, 0.0051306, 0.0051503, 0.0051586,
+        0.0051552, 0.0051404, 0.0051146, 0.0050783, 0.0050329, 0.004979, 0.0049178, 0.0048505, 0.004778,
+        0.0047013, 0.0046209, 0.0045374, 0.0044507, 0.0043606, 0.0042663, 0.0041677, 0.0040634, 0.0039525,
+        0.0038341, 0.0037073, 0.0035716
+      ],
+      "grade": [
+        -0.0021439, -0.0020929, -0.001994, -0.0019017, -0.0018164, -0.0017385, -0.0016682, -0.0016056,
+        -0.0015508, -0.0015034, -0.0014634, -0.0014305, -0.0014042, -0.0013844, -0.0013706, -0.0013625,
+        -0.0013598, -0.0013622, -0.0013696, -0.0013817, -0.0013985, -0.0014198, -0.0014457, -0.001476,
+        -0.0015109, -0.0015502, -0.0015941, -0.0016426, -0.0016955, -0.0017528, -0.0018143, -0.0018799,
+        -0.0019492, -0.0020219, -0.0020976, -0.0021757, -0.0022557, -0.002337, -0.0024188, -0.0025005,
+        -0.0025811, -0.00266, -0.0027363, -0.0028092, -0.002878, -0.0029419, -0.003, -0.0030518, -0.0030966,
+        -0.0031339, -0.0031633, -0.0031843, -0.0031968, -0.0032005, -0.0031953, -0.0031813, -0.0031721
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-clinton-ia136.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:57Z",
+        "sha256": "60dd79a1d5ed17064f8acab989132d8bfd3d4fcb30b4ee809456b1ee202466a1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear (line ia136)",
+        "retrievedAt": "2026-10-15T21:26:10Z",
+        "sha256": "00c56964f5592388b4b8de9aba834736864214624c8c13c0c312047379ca327e"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 393 points in 1 request(s) (lon, lat WGS84, sha256 46ec1c2a3c86b111), bilinear (line county)",
+        "retrievedAt": "2026-10-16T06:05:45Z",
+        "sha256": "dda1bd310872c31d7ffc045b64d0154cb2a033de8fdd5eefe60092af0250938f"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real IA 136, 420th Avenue and 180th Street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 13.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-clinton-ia136.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
