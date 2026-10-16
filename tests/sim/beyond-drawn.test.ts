@@ -327,9 +327,8 @@ describe('what lies past an edge is what is drawn there (every route network)', 
     ] as const) {
       const n = netOf(network);
       const edge = n.road.edgeIndex(roadId);
-      const sign = side === 'right' ? 1 : -1;
       const verge = n.road.vergeAt(edge, s, side);
-      const p = n.road.toWorld(edge, s, verge.dOuter + sign * 0.5, 0);
+      const p = n.road.toWorld(edge, s, verge.dOuter - 0.5, 0);
       const deckY = n.road.surfaceHeight(edge, s, verge.dOuter);
       const indexed = n.drawnAt(p.x, p.z, Math.max(p.y, deckY) + 3);
       const direct = directDrawnAt(n, p.x, p.z, Math.max(p.y, deckY) + 3);

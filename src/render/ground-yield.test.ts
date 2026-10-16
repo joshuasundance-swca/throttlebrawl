@@ -14,7 +14,7 @@ import { VERGE_LIFT_M } from './verge';
 
 const I5 = 'osm-i5-lake-samish';
 const SOUTHBOUND_TAIL = 'osm-samish-exit242-sb-on';
-/** The unchanged I-5 world site over the south shore tail, where it stands 1.3 to 1.5 m higher. */
+/** The unchanged I-5 world site beside the south shore tail, now fitted to the highway deck. */
 const I5_S = 5358;
 /** Old `osm-samish-east-shore` s 4208 projected from the pre-split committed bake. */
 const ORIGINAL_LOWER_WORLD = { x: 1782.6501, z: 1998.9109 };
@@ -56,9 +56,27 @@ describe('EdgeLocator.clearReach at the split south shore tail', () => {
       Math.hypot(ORIGINAL_LOWER_WORLD.x - under.x, ORIGINAL_LOWER_WORLD.z - under.z),
       'the lower control preserves the pre-split world site',
     ).toBeLessThan(1);
-    expect(site.y - under.y, 'the I-5 stands over the shore road here').toBeGreaterThan(1);
+    expect(Math.abs(site.y - under.y), 'the fitted access meets the highway deck here').toBeLessThan(
+      GROUND_OVER_ROAD_M,
+    );
     const { v, reach } = reachOf(i5, I5_S, 'right');
     expect(v.widthM, 'the I-5 has a band here').toBeGreaterThan(1);
+    // At-grade surfaces no longer prove lane separation through their height alone. Check the
+    // remaining lane's physical span independently so moving it back under the band is still caught.
+    const steps = Math.max(1, Math.ceil(Math.abs(v.dOuter - v.dInner) / 0.25));
+    let projectedBandPoints = 0;
+    for (let k = 0; k <= steps; k++) {
+      const p = road.toWorld(i5, I5_S, v.dInner + ((v.dOuter - v.dInner) * k) / steps, 0);
+      const hit = loc.at(p.x, p.z, i5).find((h) => h.edge === shore);
+      if (!hit) continue;
+      projectedBandPoints++;
+      const [lo, hi] = laneExtentAt(road, shore, hit.s);
+      expect(
+        hit.d <= lo - GROUND_YIELD_MARGIN_M || hit.d >= hi + GROUND_YIELD_MARGIN_M,
+        'the remaining lane stays outside the band regardless of deck height',
+      ).toBe(true);
+    }
+    expect(projectedBandPoints, 'the separation check actually found the shore road').toBeGreaterThan(0);
     expect(reach, 'the remaining lane is outside the I-5 band').toBe(v.dOuter);
     // The control: the same road with no other road beside it (mid-road) keeps its whole band.
     const mid = reachOf(i5, 1500, 'right');
@@ -70,7 +88,7 @@ describe('EdgeLocator.clearReach at the split south shore tail', () => {
   });
 
   it('does not cut the lower road’s own band under the higher road’s lanes (only a road over a lower one yields)', () => {
-    // The shore road's left side faces the I-5: its band lies under the I-5's lanes, 1.3 m lower. It stays.
+    // The shore road's left side faces the I-5. Its band stays at the now-continuous deck join.
     const { v, reach } = reachOf(shore, shoreS, 'left');
     expect(v.widthM).toBeGreaterThan(1);
     expect(reach, 'the lower road’s band is not cut for a road above it').toBe(v.dOuter);
