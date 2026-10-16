@@ -51,7 +51,8 @@ function fixture(kind?: BakedMedian['kind']) {
     { id: 'bend', lengthM: 150, kappa: 0.006, grade: 0.03, lanes },
   ]);
   // A land road, above the renderer's sea plane; the test is about joined ground, not a causeway.
-  for (const r of bundle.roads) r.samples.data['y'] = r.samples.data['y']!.map((y) => y + 20);
+  for (const r of bundle.roads)
+    r.samples = { ...r.samples, data: { ...r.samples.data, y: r.samples.data['y']!.map((y) => y + 20) } };
   for (const j of bundle.network.junctions) j.y += 20;
   for (const r of bundle.roads) if (kind) r.laneSections[0]!.median = { kind, widthM: 4 };
   const road = createRoadNetwork(bundle);
