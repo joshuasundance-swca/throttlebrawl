@@ -3,6 +3,8 @@
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
 export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
+export { terrainAt } from './terrain';
+export type { TerrainSample } from './terrain';
 export { grassMedianSpan } from './median';
 export {
   LAND_COMMON_REACH_DELTA_M,
@@ -128,6 +130,8 @@ export type {
   BakedSamples,
   BakedSplitZone,
   BakedTag,
+  BakedTerrain,
+  BakedTerrainPatch,
   BakedVerge,
   FeatureKind,
   GapParams,
