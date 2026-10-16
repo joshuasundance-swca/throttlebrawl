@@ -74,6 +74,43 @@ describe('planSlices', () => {
     expect(plan.map((s) => s.predicted)).toEqual([102, 102]);
   });
 
+  it.each([
+    // Feasible: [b,c,d] / [a,e,f], path-order workers finish each at 4 s.
+    { seconds: { a: 3, b: 3, c: 2, d: 2, e: 3, f: 1 }, greedyMax: 5, feasibleMax: 4 },
+    // Feasible: [d,f] / [a,b,c,e], path-order workers finish each at 3 s.
+    { seconds: { a: 1, b: 1, c: 2, d: 1, e: 2, f: 3 }, greedyMax: 4, feasibleMax: 3 },
+  ])(
+    'refines a browser path-order trap from $greedyMax to $feasibleMax seconds',
+    ({ seconds, greedyMax, feasibleMax }) => {
+      const files = Object.keys(seconds);
+      const greedy = planSlices({ files, seconds, n: 2, workers: 2 });
+      expect(Math.max(...greedy.map((s) => s.predicted))).toBe(greedyMax);
+      const options = { timings: { e2e: seconds, overhead: { e2e: 0 } }, read: () => '' };
+      const plan = planTier('e2e', files, 2, options);
+      expectPartition(files, plan);
+      expect(Math.max(...plan.map((s) => s.predicted))).toBeLessThanOrEqual(feasibleMax);
+      expect(planTier('e2e', [...files].reverse(), 2, options)).toEqual(plan);
+      for (const tier of ['unit', 'sim'] as const) {
+        const table = { [tier]: seconds, overhead: { [tier]: 0 } };
+        expect(planTier(tier, files, 2, { timings: table, read: () => '' })).toEqual(
+          planSlices({ files, seconds, n: 2, ...TIERS[tier], overhead: 0 }),
+        );
+      }
+    },
+  );
+
+  it('keeps an impossible browser workload visibly over its line after refinement', () => {
+    const files = ['a', 'b', 'new'];
+    const plan = planTier('e2e', files, 2, {
+      timings: { e2e: { a: 500, b: 20 }, overhead: { e2e: 53 }, perf: 100 },
+      read: () => '',
+    });
+    expectPartition(files, plan);
+    expect(plan.every((s) => s.files.length > 0)).toBe(true);
+    expect(overLine(plan, 600).length).toBeGreaterThan(0);
+    expect(plan.find((s) => s.files.includes('a'))?.predicted).toBeGreaterThanOrEqual(553);
+  });
+
   it('counts a file with no measured time as the mean file, never as zero or the median', () => {
     // Most files are quick and a few are slow, so the median is far below what a new file costs
     // (the geometry sweeps: median 9.5 s, the new files 32 to 86 s on CI). The mean is not.
@@ -585,6 +622,24 @@ describe('whole jobs against their timeouts', () => {
       expectPartition(files, plan);
       expect(plan).toHaveLength(jobs[tier].slices);
       for (const slice of plan) expect(slice.files.length).toBeGreaterThan(0);
+      if (tier === 'e2e') {
+        const spread = spreadUsers(files) as string[];
+        // Re-evaluate each final partition with the unchanged standalone predictor: fallback,
+        // source-derived parallel mode, path order, setup and perf on only the last slice.
+        for (const [i, slice] of plan.entries()) {
+          expect(slice.files).toEqual([...slice.files].sort());
+          const [fixed] = planSlices({
+            files: slice.files,
+            seconds: timings.e2e,
+            n: 1,
+            ...TIERS.e2e,
+            overhead: timings.overhead?.e2e,
+            spread,
+            lastExtra: i === plan.length - 1 ? timings.perf : 0,
+          });
+          expect(slice.predicted).toBe(fixed?.predicted);
+        }
+      }
       expect(
         overLine(plan, jobs[tier].timeout),
         `${tier}: current inventory job seconds ${plan.map((s) => s.predicted).join(' / ')}`,
