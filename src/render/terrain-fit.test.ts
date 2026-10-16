@@ -65,7 +65,13 @@ describe('terrain mark fitting', () => {
 
   it('never replaces a missing land face with a water face or an endpoint-clamped road', () => {
     const terrain = slope(-20, 40);
-    const water: BakedTerrain = { patches: terrain.patches.map((p) => ({ ...p, surface: 'water' })) };
+    const water: BakedTerrain = {
+      patches: terrain.patches.map((p) => ({
+        ...p,
+        surface: 'water',
+        vertices: p.vertices.map(([x, , z]) => [x, 4, z]),
+      })),
+    };
     expect(fitTerrain(source(water), 20, 4, -100)).toBeNull();
     expect(fitTerrain(source(slope(-20, 40)), 0, 0, 10)).toBeNull();
   });

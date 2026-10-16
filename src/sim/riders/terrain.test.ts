@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedTerrain } from '../../road';
 import { createSimWithWorld } from '../create';
 import { quantizeInput } from '../api';
-import { riderState, touchdownOf } from './index';
+import { BIKE_HALF_WIDTH_M, riderState, touchdownOf } from './index';
 import { testConfig } from './testing';
 import { moveOnTerrain } from './terrain';
 
@@ -10,7 +10,7 @@ const edges = [{ id: 'a', lengthM: 300, kappa: 0, grade: 0.01 }];
 const input = quantizeInput({ throttle: 0.5, brake: 0, steer: 0, flags: 0 });
 const height = (x: number, z: number, slope: number) => 0.01 * -z + slope * (x - 5.5) - 0.06;
 
-function terrainConfig(slope = 0.05, curvature = 0, outerX = 80) {
+function terrainConfig(slope = 0.05, curvature = 0, outerX = 80, waterY?: number, rail = false) {
   const specs = edges.map((edge) => ({ ...edge, kappa: curvature }));
   const bundle = fixtureNetwork(specs);
   // The curved rider faces toward positive Z; keep the sustained movement probe on its authored field.
@@ -31,17 +31,39 @@ function terrainConfig(slope = 0.05, curvature = 0, outerX = 80) {
           [2, 3, 1],
         ],
       },
+      ...(waterY === undefined
+        ? []
+        : [
+            {
+              surface: 'water' as const,
+              vertices: [
+                [outerX, waterY, 0],
+                [outerX, waterY, -300],
+                [80, waterY, 0],
+                [80, waterY, -300],
+              ] as [number, number, number][],
+              triangles: [
+                [0, 2, 1],
+                [2, 3, 1],
+              ] as [number, number, number][],
+            },
+          ]),
     ],
   };
   const road = createRoadNetwork({
     network: { ...bundle.network, terrain },
     roads: bundle.roads.map((r) => ({
       ...r,
+      barriers: rail ? [{ s0: 0, s1: 300, side: 'right' as const, kind: 'rail' as const, heightM: 1 }] : [],
       laneSections: r.laneSections.map((section) => ({
         ...section,
         verges: {
           left: { widthM: 0.6, surface: 'grass' as const, edge: 'soft' as const },
-          right: { widthM: 0.6, surface: 'grass' as const, edge: 'soft' as const },
+          right: {
+            widthM: 0.6,
+            surface: 'grass' as const,
+            edge: rail ? ('rail' as const) : ('soft' as const),
+          },
         },
       })),
     })),
@@ -63,6 +85,70 @@ function terrainConfig(slope = 0.05, curvature = 0, outerX = 80) {
 }
 
 describe('riding authored physical terrain', () => {
+  it('rides the field beyond a real rail without being pulled back to the road', () => {
+    const config = terrainConfig(0.05, 0, 80, undefined, true);
+    const { sim, world } = createSimWithWorld(config);
+    const me = world.movers.find((m) => m.kind === 'rider')!;
+    me.pos.s = 100;
+    me.pos.d = 12;
+    me.speed = 10;
+    const p = config.road.toWorld(0, 100, 12, 0);
+    me.h = height(p.x, p.z, 0.05) - p.y;
+    riderState(world).yAbs[me.id] = p.y + me.h;
+    for (let tick = 0; tick < 30; tick++) {
+      sim.step([input]);
+      expect(me.pos.d).toBeCloseTo(12, 4);
+      expect(me.mode).toBe('Road');
+      expect(
+        sim.events().filter((e) => e.actor === me.id && ['crash', 'wobble', 'jump'].includes(e.type)),
+      ).toEqual([]);
+    }
+  });
+
+  it.each([false, true])('meets a real rail on the side it approached from (outside %s)', (outside) => {
+    const config = terrainConfig(0.05, 0, 80, undefined, true);
+    const { sim, world } = createSimWithWorld(config);
+    const me = world.movers.find((m) => m.kind === 'rider')!;
+    const line = config.road.vergeAt(0, 100, 'right').dOuter;
+    me.pos.s = 100;
+    me.pos.d = line + (outside ? BIKE_HALF_WIDTH_M + 0.01 : -BIKE_HALF_WIDTH_M - 0.01);
+    me.yaw = outside ? -0.5 : 0.5;
+    me.speed = 10;
+    const p = config.road.toWorld(0, 100, me.pos.d, 0);
+    me.h = outside ? height(p.x, p.z, 0.05) - p.y : 0;
+    riderState(world).yAbs[me.id] = p.y + me.h;
+    let contact = false;
+    for (let tick = 0; tick < 15; tick++) {
+      sim.step([input]);
+      contact ||= sim.events().some((e) => e.actor === me.id && e.type === 'wobble');
+      if (outside) expect(me.pos.d).toBeGreaterThanOrEqual(line + BIKE_HALF_WIDTH_M - 1e-6);
+      else expect(me.pos.d).toBeLessThanOrEqual(line - BIKE_HALF_WIDTH_M + 1e-6);
+      expect(sim.events().filter((e) => e.actor === me.id && e.type === 'crash')).toEqual([]);
+    }
+    expect(contact).toBe(true);
+  });
+
+  it('recognizes the actual water surface when riding beyond a field', () => {
+    const config = terrainConfig(0.5, 0, 12, 2.5);
+    const { sim, world } = createSimWithWorld(config);
+    const me = world.movers.find((m) => m.kind === 'rider')!;
+    me.pos.s = 100;
+    me.pos.d = 11.99;
+    me.yaw = 0.5;
+    me.speed = 10;
+    const p = config.road.toWorld(0, 100, me.pos.d, 0);
+    me.h = height(p.x, p.z, 0.5) - p.y;
+    riderState(world).yAbs[me.id] = p.y + me.h;
+    sim.step([input]);
+    const crashes = sim.events().filter((e) => e.actor === me.id && e.type === 'crash');
+    expect(crashes).toHaveLength(1);
+    expect(crashes[0]!.data.past).toBe('water');
+    expect(crashes[0]!.data.floorY).toBe(2.5);
+    const current = sim.snapshot().entities.find((e) => e.id === me.id)!;
+    expect(current.floorY).toBe(2.5);
+    expect(sim.events().filter((e) => e.actor === me.id && e.type === 'jump')).toEqual([]);
+  });
+
   it.each([1, -1] as const)('preserves world distance across a linked edge (direction %s)', (dir) => {
     const road = createRoadNetwork(
       fixtureNetwork([

@@ -335,7 +335,14 @@ function laneDropGuide(world: World, config: SimConfig, st: RiderState, m: Mover
  * only turned along the edge instead. Where the road
  * narrows ahead (a lane that ends, W-R), the edge funnels in first (laneDropGuide).
  */
-function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
+function barrierContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  dt: number,
+  from?: { edge: number; s: number; d: number },
+): void {
   if (laneDropGuide(world, config, st, m)) return;
   const pos = m.pos;
   // Out in a broken fence's yard (off-road): the gap follows the rider along the fence line, and
@@ -353,6 +360,40 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   const limit = side > 0 ? hi : lo;
   const feet = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
   const holds = edgeHold(world, config, pos, side, lim, feet);
+  const edgeKind = side > 0 ? lim.hiEdge : lim.loEdge;
+  if (
+    config.road.terrain &&
+    from?.edge === pos.edge &&
+    holds === 'held' &&
+    (edgeKind === 'rail' ||
+      edgeKind === 'hard' ||
+      config.road.barrierAt(pos.edge, pos.s, side > 0 ? 'right' : 'left'))
+  ) {
+    const vside = side > 0 ? 'right' : 'left';
+    const line = config.road.vergeAt(pos.edge, pos.s, vside).dOuter;
+    const previousLine = config.road.vergeAt(from.edge, from.s, vside).dOuter;
+    const outside = side * (from.d - previousLine) > 0;
+    if (outside) {
+      const outerLimit = line + side * BIKE_HALF_WIDTH_M;
+      const near = side * (pos.d - outerLimit) <= 0;
+      if (!near) {
+        st.touching[m.id] = 0;
+        if (!terrainGroundAt(config.road, pos, feet + KERB_M))
+          leaveCourse(world, config, m, side, limit, feet);
+        return;
+      }
+      // Meet the outer face, rather than moving through the rail to its road-facing side.
+      const v = m.speed,
+        yawBefore = m.yaw;
+      const contactSide = side === 1 ? -1 : 1;
+      const impact = scrapeAlong(config, m, contactSide, dt);
+      pos.d = outerLimit;
+      const newContact = st.touching[m.id] !== 1;
+      st.touching[m.id] = 1;
+      wallOutcome(world, st, m, { impact, v, yawBefore, side: contactSide, newContact });
+      return;
+    }
+  }
   if (holds === 'guide') {
     pos.d = limit;
     m.yaw = 0;
@@ -1782,7 +1823,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     m.h = yBefore - road.surfaceHeight(pos.edge, pos.s, pos.d);
   // Up on a structure's top its band's edge does not hold it: it rides to the top's edge, and off it.
   const eventsBeforeEdge = world.events.length;
-  if (!onStructure) barrierContact(world, config, st, m, dt);
+  if (!onStructure) barrierContact(world, config, st, m, dt, before);
   if (
     road.terrain &&
     world.events.slice(eventsBeforeEdge).some((e) => e.type === 'crash' && e.actor === m.id)

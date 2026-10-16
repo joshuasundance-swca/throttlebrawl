@@ -2,8 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { fixtureNetwork } from './fixture';
 import { createRoadNetwork } from './network';
 import type { BakedTerrain } from './types';
+import { courseAt, roadBandHeight } from './course';
 
 describe('road network terrain exposure', () => {
+  it('does not invent a solid road across a missing span of an authored network', () => {
+    const bundle = fixtureNetwork([{ id: 'road', lengthM: 100, kappa: 0 }]);
+    const road = createRoadNetwork({
+      network: { ...bundle.network, terrain: { patches: [] } },
+      roads: bundle.roads.map((r) => ({
+        ...r,
+        features: [{ id: 'hole', kind: 'gap' as const, s0: 40, s1: 60, d0: -5, d1: 5 }],
+      })),
+    });
+    const plan = { items: [], cellM: 32, cells: new Map() };
+    expect(roadBandHeight(road, 0, 30, 0)).toBe(0);
+    expect(courseAt(road, plan, { edge: 0, s: 30, d: 0 }, 0).kind).toBe('road');
+    expect(roadBandHeight(road, 0, 50, 0)).toBeNull();
+    expect(courseAt(road, plan, { edge: 0, s: 50, d: 0 }, 0).kind).toBe('out');
+  });
+
   it('retains exact readonly authored data without independently rounding or copying it', () => {
     const bundle = fixtureNetwork([{ id: 'road', lengthM: 100, kappa: 0 }]);
     const terrain: BakedTerrain = {

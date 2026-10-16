@@ -16,6 +16,7 @@ import { sRateFactor, type Edge, type RoadNetwork } from './network';
 import { structuresAt, topAt, type StructurePlan } from './structures';
 import { LAND_STRIP_M, landEdgeOf, sectionGroundOf } from './drawn-ground';
 import { DRAWN_VERGE_M } from './furniture';
+import { gapAt } from './gap';
 import { themeAt } from './themes';
 import { terrainAt, type TerrainSample } from './terrain';
 import type { GroundSurface } from '../core';
@@ -79,6 +80,7 @@ export function roadsideGroundHeight(road: RoadNetwork, edge: number, s: number,
 /** The surface's height at (s, d) when it lies on the edge's lanes or verge band, else null. */
 export function roadBandHeight(road: RoadNetwork, edge: number, s: number, d: number): number | null {
   if (road.terrain) {
+    if (gapAt(road, edge, s, d)) return null;
     const e = road.edges[edge];
     const verge = e?.isTrafficOnly ? 0 : DRAWN_VERGE_M;
     return e && d >= e.dMin - verge && d <= e.dMax + verge ? road.surfaceHeight(edge, s, d) : null;
