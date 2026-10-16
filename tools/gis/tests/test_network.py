@@ -19,18 +19,23 @@ from tbgis.fetch import FetchMeta
 from tbgis.lint import lint_network
 from tbgis.network import (
     BakedLine,
+    CrossSection,
     NetworkBake,
     NetworkConfig,
     Shape,
+    TrafficFrame,
     align_traffic_height,
     bake_line,
     bake_network,
     connector_shape,
     correction,
     curve_piece,
+    directed_piece_frame,
+    lane_section,
     road_json,
     solve_shape,
     stretch_config,
+    traffic_chain_collar,
     traffic_ingress_piece,
 )
 from tbgis.osm import Way
@@ -536,6 +541,283 @@ def reverse_config(**over: Any) -> NetworkConfig:
         "minRadiusM": 20,
     }
     return traffic_config(trafficReverse={"leave": movement, "join": movement}, **over)
+
+
+CHAIN_WAYS = [
+    *WAYS,
+    Way(
+        3,
+        {"highway": "secondary", "name": "C Road", "oneway": "yes"},
+        polyline([(1700, 80), (1500, 80), (1300, 0), (1400, -140), (1600, -220), (1400, -220)]),
+    ),
+]
+
+
+def chain_config() -> NetworkConfig:
+    data = reverse_config().model_dump(exclude_none=True)
+    data["lines"][0]["roads"].insert(1, {"id": "osm-test-a-fragment", "name": "A before access"})
+    data["lines"][1]["roads"].append({"id": "osm-test-b-fragment", "name": "B after access"})
+    data["lines"].append(
+        {
+            "id": "c",
+            "pathFrom": pt(1700, 80),
+            "pathTo": pt(1400, -220),
+            "start": pt(1700, 80),
+            "end": pt(1400, -220),
+            "routeTags": {"name": "^C Road$"},
+            "smoothing": {"headingSigmaM": 15},
+            "crossSection": {"oneWay": True},
+            "roads": [{"id": "osm-test-access", "name": "C Road"}],
+        }
+    )
+    data["trafficChains"] = [
+        {
+            "id": "reverse-access",
+            "line": "c",
+            "branch": "osm-test-b",
+            "from": {"line": "a", "at": pt(1800, 0), "lane": "L1", "offsetM": -3, "minRadiusM": 20},
+            "to": {"line": "b", "at": pt(1200, -300), "lane": "L1", "offsetM": -2, "minRadiusM": 20},
+        }
+    ]
+    return NetworkConfig.model_validate(data)
+
+
+def chain_land(sc: BakeConfig, rp: RealPath) -> tuple[F64, F64, None]:
+    s = np.linspace(0, float(rp.cum[-1]), 100)
+    return s, (18 + 0.01 * s) if sc.id.endswith("-c") else (3 + 0.005 * s), None
+
+
+def test_a_source_traffic_chain_joins_reverse_interior_lanes_on_two_host_lines() -> None:
+    cfg = chain_config()
+    actual = bake_network(cfg, OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+    rows = {c["road"]: c for j in actual.network["junctions"] for c in j["connectors"]}
+    before = rows["osm-test-net-reverse-access-from"]
+    after = rows["osm-test-net-reverse-access-to"]
+    assert before["from"] == {"road": "osm-test-a2", "end": "from", "lane": "L1"}
+    assert before["to"] == {"road": "osm-test-access", "end": "from", "lane": "R1"}
+    assert after["from"] == {"road": "osm-test-access", "end": "to", "lane": "R1"}
+    assert after["to"] == {"road": "osm-test-b", "end": "to", "lane": "L1"}
+    for row in (before, after):
+        assert row["trafficOnly"] is True and "splitZone" not in row
+    assert lint_network(actual.network, actual.roads, actual.routes) == []
+
+
+def test_one_way_tail_offset_preserves_forward_lane_centre_without_an_opposing_lane() -> None:
+    ordinary = lane_section(CrossSection(oneWay=True))
+    tail = lane_section(CrossSection(oneWay=True, oneWayOffsetM=2))
+    assert ordinary["lanes"] == [{"id": "R1", "dCenterM": 0, "widthM": 4, "direction": 1, "kind": "drive"}]
+    assert tail["lanes"] == [{**ordinary["lanes"][0], "dCenterM": 2}]
+    with pytest.raises(ValidationError, match="oneWayOffsetM needs oneWay"):
+        CrossSection(oneWayOffsetM=2)
+    for bad in (math.nan, math.inf):
+        with pytest.raises(ValidationError):
+            CrossSection(oneWay=True, oneWayOffsetM=bad)
+
+
+def test_chain_selects_the_reverse_host_after_a_one_way_tail_piece() -> None:
+    data = chain_config().model_dump(by_alias=True, exclude_none=True)
+    data["lines"][0]["roadLanes"] = {"osm-test-a-fragment": {"oneWay": True, "oneWayOffsetM": 3}}
+    actual = bake_network(NetworkConfig.model_validate(data), OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+    through = next(r for r in actual.roads if r["id"] == "osm-test-net-reverse-access-from-host")
+    assert not any(ln["id"] == "L1" for ln in through["laneSections"][0]["lanes"])
+    assert through["laneSections"][0]["lanes"][0]["dCenterM"] == 3
+    row = next(
+        c
+        for j in actual.network["junctions"]
+        for c in j["connectors"]
+        if c["road"] == "osm-test-net-reverse-access-from"
+    )
+    assert row["from"] == {"road": "osm-test-a2", "end": "from", "lane": "L1"}
+    assert lint_network(actual.network, actual.roads, actual.routes) == []
+
+
+def test_forward_chain_selects_before_to_then_after_from() -> None:
+    data = chain_config().model_dump(by_alias=True, exclude_none=True)
+    data["trafficChains"][0]["from"].update(lane="R1", offsetM=3)
+    data["trafficChains"][0]["to"].update(lane="R1", offsetM=2)
+    data["lines"][-1].update(
+        pathFrom=pt(1900, 80), start=pt(1900, 80), pathTo=pt(1100, -220), end=pt(1100, -220)
+    )
+    ways = [
+        *WAYS,
+        Way(
+            3,
+            {"highway": "secondary", "name": "C Road", "oneway": "yes"},
+            polyline([(1900, 80), (2100, 80), (2300, 0), (2200, -140), (900, -220), (1100, -220)]),
+        ),
+    ]
+    actual = bake_network(NetworkConfig.model_validate(data), OSM, ways, chain_land, "2026-10-02")
+    rows = {c["road"]: c for j in actual.network["junctions"] for c in j["connectors"]}
+    assert rows["osm-test-net-reverse-access-from"]["from"] == {
+        "road": "osm-test-a-fragment",
+        "end": "to",
+        "lane": "R1",
+    }
+    assert rows["osm-test-net-reverse-access-to"]["to"] == {
+        "road": "osm-test-b-fragment",
+        "end": "from",
+        "lane": "R1",
+    }
+    assert lint_network(actual.network, actual.roads, actual.routes) == []
+
+
+def test_omitting_traffic_chains_and_explicit_empty_relations_preserve_default_output(
+    baked: NetworkBake,
+) -> None:
+    actual = bake_network(config(trafficChains=[]), OSM, WAYS, flat, "2026-10-02")
+    assert actual == baked
+
+
+def test_source_chain_preserves_its_profile_crossing_and_matches_directed_endpoint_surfaces() -> None:
+    cfg = chain_config()
+    actual = bake_network(cfg, OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+    by_id = {r["id"]: r for r in actual.roads}
+    access = by_id["osm-test-access"]
+    source = bake_line(cfg, cfg.line("c"), CHAIN_WAYS, chain_land)
+    cols = access["samples"]["data"]
+    stations = np.linspace(0, source.p.s[-1], len(cols["y"]))
+    for name in ("x", "y", "z"):
+        assert cols[name] == pytest.approx(
+            np.interp(stations, source.p.s, getattr(source.p, name)), abs=0.0001
+        )
+    main = bake_line(cfg, cfg.line("a"), CHAIN_WAYS, chain_land)
+    crossing = int(np.argmin(np.abs(cols["z"])))
+    s_main, distance = main.project(cols["x"][crossing], cols["z"][crossing])
+    assert distance < 2
+    assert cols["y"][crossing] - main.at(s_main)[1] > 8
+    for row in (
+        c
+        for j in actual.network["junctions"]
+        for c in j["connectors"]
+        if c["road"].startswith("osm-test-net-reverse-access-") and c.get("trafficOnly")
+    ):
+        collar = by_id[row["road"]]["samples"]["data"]
+        for side, k in (("from", 0), ("to", -1)):
+            endpoint = row[side]
+            parent = by_id[endpoint["road"]]
+            p = parent["samples"]["data"]
+            lane = next(ln for ln in parent["laneSections"][0]["lanes"] if ln["id"] == endpoint["lane"])
+            i, a, b = (0, 0, 1) if endpoint["end"] == "from" else (-1, -2, -1)
+            h = math.atan2(p["x"][b] - p["x"][a], p["z"][a] - p["z"][b])
+            d, direction = lane["dCenterM"], lane["direction"]
+            expected = (
+                p["x"][i] + d * math.cos(h),
+                p["y"][i] - d * p["bankRad"][i],
+                p["z"][i] + d * math.sin(h),
+            )
+            for column, value in zip(("x", "y", "z"), expected, strict=True):
+                assert collar[column][k] == pytest.approx(value, abs=0.0002)
+            assert collar["grade"][k] == pytest.approx(p["grade"][i] * direction, abs=0.00002)
+            assert collar["bankRad"][k] == 0
+            ca, cb = (0, 1) if k == 0 else (-2, -1)
+            ch = math.atan2(collar["x"][cb] - collar["x"][ca], collar["z"][ca] - collar["z"][cb])
+            assert math.cos(ch - h - (math.pi if direction == -1 else 0)) > 0.9999
+
+
+def test_chain_cuts_preserve_rider_identity_through_routes_and_permission_membership() -> None:
+    cfg = chain_config()
+    actual = bake_network(cfg, OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+    baseline = bake_network(reverse_config(), OSM, WAYS, chain_land, "2026-10-02")
+    by_id = {r["id"]: r for r in actual.roads}
+    full, short = actual.routes
+    assert full["start"] == baseline.routes[0]["start"]
+    assert full["finish"] == baseline.routes[0]["finish"]
+    assert actual.report["routes"][full["id"]] == pytest.approx(
+        baseline.report["routes"][full["id"]], abs=0.01
+    )
+    branch = full["branches"][0]
+    assert branch["id"] == "osm-test-b" and branch["sign"] == baseline.routes[0]["branches"][0]["sign"]
+
+    def split(result: NetworkBake) -> dict[str, Any]:
+        return next(c for j in result.network["junctions"] for c in j["connectors"] if "splitZone" in c)
+
+    assert split(actual) == split(baseline)
+    added = {"osm-test-access", "osm-test-net-reverse-access-from", "osm-test-net-reverse-access-to"}
+    assert added <= set(full["allowedRoads"]) and added <= set(branch["roads"])
+    assert not added.intersection(short["allowedRoads"])
+    # Each legitimate main fragment owns its own generated checkpoint, in path order.
+    assert [c["road"] for c in full["checkpoints"]] == full["mainPath"][1:-1]
+    for checkpoint in full["checkpoints"]:
+        assert checkpoint["s"] == pytest.approx(by_id[checkpoint["road"]]["lengthM"] / 2, abs=0.0001)
+    for junction in actual.network["junctions"]:
+        chain_rows = [c for c in junction["connectors"] if c["road"] in added]
+        if not chain_rows:
+            continue
+        assert all(c.get("trafficOnly") and "splitZone" not in c for c in chain_rows)
+        through = [c for c in junction["connectors"] if not c.get("trafficOnly")]
+        assert through
+        for row in through:
+            assert row["from"]["lane"] == row["to"]["lane"]
+            assert row["from"]["end"] == "to" and row["to"]["end"] == "from"
+
+    data = cfg.model_dump(by_alias=True, exclude_none=True)
+    data["branches"][0].update(traffic="none", trafficIngress=None, trafficReverse=None)
+    excluded = bake_network(NetworkConfig.model_validate(data), OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+    assert excluded.routes[0]["branches"][0]["traffic"] == "none"
+    assert added <= set(excluded.routes[0]["branches"][0]["roads"])
+
+
+@pytest.mark.parametrize(
+    "change,message",
+    [
+        ({"branch": "missing"}, "existing branch owner"),
+        ({"line": "b"}, "access line must be dedicated"),
+        ({"from": {"line": "b", "at": pt(1200, -300), "lane": "L1", "offsetM": -2}}, "two different lines"),
+    ],
+)
+def test_traffic_chain_refuses_invalid_ownership(change: dict[str, Any], message: str) -> None:
+    data = chain_config().model_dump(by_alias=True, exclude_none=True)
+    data["trafficChains"][0].update(change)
+    with pytest.raises(ValidationError, match=message):
+        NetworkConfig.model_validate(data)
+
+
+def test_traffic_chain_refuses_reused_lines_and_two_way_overrides() -> None:
+    data = chain_config().model_dump(by_alias=True, exclude_none=True)
+    data["trafficChains"].append({**data["trafficChains"][0], "id": "another"})
+    with pytest.raises(ValidationError, match="unique ids and dedicated lines"):
+        NetworkConfig.model_validate(data)
+    data["trafficChains"].pop()
+    data["lines"][-1]["roadLanes"] = {"osm-test-access": {"oneWay": False}}
+    with pytest.raises(ValidationError, match="one-way R1"):
+        NetworkConfig.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "patch,message",
+    [
+        ({"offsetM": -4}, "drive lane centred"),
+        ({"lane": "L0", "offsetM": -10}, "directed drive lane"),
+        ({"at": pt(0, 0)}, "host cut must be interior"),
+        ({"at": pt(800, 0)}, "too close"),
+    ],
+)
+def test_traffic_chain_refuses_invalid_host_cuts_and_lane_centres(
+    patch: dict[str, Any], message: str
+) -> None:
+    data = chain_config().model_dump(by_alias=True, exclude_none=True)
+    data["trafficChains"][0]["from"].update(patch)
+    with pytest.raises(ValueError, match=message):
+        bake_network(NetworkConfig.model_validate(data), OSM, CHAIN_WAYS, chain_land, "2026-10-02")
+
+
+def test_directed_surface_frame_reverses_grade_and_bank_and_collars_reject_nonzero_bank() -> None:
+    pc = curve_piece(
+        "frame", "frame", (0, 3, 0, 0), (0, 8, -100, 0), Shape(0, 0, 0, 10, 80, 10), 4, 2, 20, []
+    )
+    pc.y = 3 + np.linspace(0, 5, len(pc.x))
+    pc.bank = np.full_like(pc.x, 0.1)
+    forward = directed_piece_frame(pc, "to", -2, 1)
+    reverse = directed_piece_frame(pc, "to", -2, -1)
+    assert forward.y == reverse.y == pytest.approx(8.2)
+    assert reverse.grade == pytest.approx(-forward.grade)
+    assert reverse.bank == -forward.bank == -0.1
+    assert math.cos(reverse.heading - forward.heading) == pytest.approx(-1)
+    cfg = chain_config()
+    host = bake_line(cfg, cfg.line("a"), CHAIN_WAYS, chain_land)
+    target = TrafficFrame(20, 10, -200, 0, 0, 0)
+    with pytest.raises(ValueError, match="zero-bank endpoint"):
+        traffic_chain_collar("bad", forward, target, cfg.trafficChains[0].from_, 2, 20, [], host, 10, True)
 
 
 def test_shared_junction_height_preserves_paths_and_endpoints_and_leaves_the_main_surface() -> None:

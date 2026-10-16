@@ -108,9 +108,13 @@ class CrossSection(Strict):
     # the |kappa| * dMax rule on). A join with the two-way roads either side narrows like any lane
     # drop (src/sim/riders/funnel.ts).
     oneWay: bool = False  # noqa: N815
+    # Retain a shared forward lane centre on a one-way tail; absent keeps the ordinary centre at 0.
+    oneWayOffsetM: float | None = Field(None, allow_inf_nan=False)  # noqa: N815
 
     @model_validator(mode="after")
     def _one_way(self) -> CrossSection:
+        if self.oneWayOffsetM is not None and not self.oneWay:
+            raise ValueError("oneWayOffsetM needs oneWay")
         if self.oneWay and (self.lanesPerDirection != 1 or self.medianM != 0):
             raise ValueError("a one-way section is one lane: lanesPerDirection 1 and no median")
         return self
@@ -419,6 +423,25 @@ class StartGrid(Strict):
     rowGapM: float = 8  # noqa: N815
 
 
+class TrafficChainEnd(TrafficIngress):
+    """A directed collar at an interior host cut; the access Line clips its own end."""
+
+    line: str
+    at: LatLon
+    pieceM: float = Field(40.0, gt=0)  # noqa: N815
+    shiftM: float = 0.0  # noqa: N815
+
+
+class TrafficChain(Strict):
+    """One source-profile drive chain owned by an existing rider branch's traffic policy."""
+
+    id: str = Field(pattern=ID)
+    line: str
+    branch: str
+    from_: TrafficChainEnd = Field(alias="from")
+    to: TrafficChainEnd
+
+
 class NetRoute(Strict):
     id: str = Field(pattern=OSM_ID)
     name: str
@@ -445,7 +468,43 @@ class NetworkConfig(Strict):
     networkNotes: str  # noqa: N815
     lines: list[Line]
     branches: list[Branch] = Field(default_factory=list)
+    trafficChains: list[TrafficChain] = Field(default_factory=list)  # noqa: N815
     routes: list[NetRoute]
+
+    @model_validator(mode="after")
+    def _traffic_chains(self) -> NetworkConfig:
+        used_ids: set[str] = set()
+        used_lines: set[str] = set()
+        for chain in self.trafficChains:
+            if chain.id in used_ids or chain.line in used_lines:
+                raise ValueError("traffic chains need unique ids and dedicated lines")
+            used_ids.add(chain.id)
+            used_lines.add(chain.line)
+            owners = [b for b in self.branches if b.id == chain.branch]
+            if len(owners) != 1:
+                raise ValueError(f"traffic chain {chain.id}: needs exactly one existing branch owner")
+            owner = owners[0]
+            if chain.from_.line == chain.to.line or {chain.from_.line, chain.to.line} != {
+                owner.of,
+                owner.line,
+            }:
+                raise ValueError(f"traffic chain {chain.id}: hosts must be its owner's two different lines")
+            if any(chain.line in (b.line, b.of) for b in self.branches) or any(
+                rt.line == chain.line for rt in self.routes
+            ):
+                raise ValueError(f"traffic chain {chain.id}: access line must be dedicated")
+            for lid in (chain.line, chain.from_.line, chain.to.line):
+                if sum(ln.id == lid for ln in self.lines) != 1:
+                    raise ValueError(f"traffic chain {chain.id}: line {lid} must exist exactly once")
+            line = self.line(chain.line)
+            if any(
+                not cs.oneWay or cs.oneWayOffsetM not in (None, 0)
+                for cs in (line.crossSection, *line.roadLanes.values())
+            ):
+                raise ValueError(f"traffic chain {chain.id}: access line must be one-way R1")
+            if line.start is None or line.end is None:
+                raise ValueError(f"traffic chain {chain.id}: access line needs start and end")
+        return self
 
     @staticmethod
     def load(path: Path) -> NetworkConfig:
@@ -910,7 +969,13 @@ class Piece:
 def lane_section(cs: CrossSection) -> Json:
     section: Json
     if cs.oneWay:
-        lane = {"id": "R1", "dCenterM": 0, "widthM": cs.laneWidthM, "direction": 1, "kind": "drive"}
+        lane = {
+            "id": "R1",
+            "dCenterM": cs.oneWayOffsetM or 0,
+            "widthM": cs.laneWidthM,
+            "direction": 1,
+            "kind": "drive",
+        }
         section = {"s0": 0, "lanes": [lane]}
     else:
         section = {"s0": 0, "lanes": lanes(cs.laneWidthM, cs.lanesPerDirection, cs.medianM)}
@@ -1171,6 +1236,7 @@ def curve_piece(
     main: BakedLine | None = None,
     half: float = 0.0,
     leaves_main: bool = True,
+    endpoint_grades: tuple[float, float] | None = None,
 ) -> Piece:
     """A branch connector road: the solved curve from a to b, its height eased between theirs. With
     ``span`` (u0, u1), only that stretch of the curve (a synthetic end's connector or staging road).
@@ -1197,6 +1263,15 @@ def curve_piece(
     if u1 == sh.length:
         x[-1], z[-1] = b[0], b[2]
     y = a[1] + (b[1] - a[1]) * smoothstep(s / sh.length)
+    if endpoint_grades is not None:
+        t = s / sh.length
+        g0, g1 = endpoint_grades
+        y = (
+            (2 * t**3 - 3 * t**2 + 1) * a[1]
+            + (t**3 - 2 * t**2 + t) * sh.length * g0
+            + (-2 * t**3 + 3 * t**2) * b[1]
+            + (t**3 - t**2) * sh.length * g1
+        )
     if main is not None:
         for i in range(len(s)):
             s_main, dist = main.project(float(x[i]), float(z[i]))
@@ -1261,6 +1336,81 @@ def require_drive_centre(pc: Piece, lane: str, offset: float, direction: int) ->
     ):
         name = "forward" if direction == 1 else "reverse"
         raise ValueError(f"traffic ingress: {pc.id} {lane} must be a {name} drive lane centred at {offset:g}")
+
+
+@dataclass(frozen=True)
+class TrafficFrame:
+    x: float
+    y: float
+    z: float
+    heading: float
+    grade: float
+    bank: float
+
+    def point(self) -> tuple[float, float, float, float]:
+        return self.x, self.y, self.z, self.heading
+
+
+def directed_piece_frame(
+    pc: Piece, end: Literal["from", "to"], offset: float, direction: int
+) -> TrafficFrame:
+    """The emitted endpoint surface frame, in actual lane travel order (bank is a slope)."""
+    i, a, b = (0, 0, 1) if end == "from" else (-1, -2, -1)
+    h = math.atan2(float(pc.x[b] - pc.x[a]), float(pc.z[a] - pc.z[b]))
+    spacing = float(np.sum(np.hypot(np.diff(pc.x), np.diff(pc.z)))) / (len(pc.x) - 1)
+    bank = pc.bank if pc.bank is not None else np.zeros_like(pc.x)
+    y = pc.y - offset * bank
+    return TrafficFrame(
+        float(pc.x[i] + offset * math.cos(h)),
+        float(y[i]),
+        float(pc.z[i] + offset * math.sin(h)),
+        h + (math.pi if direction == -1 else 0),
+        float((y[b] - y[a]) / spacing) * direction,
+        float(bank[i]) * direction,
+    )
+
+
+def traffic_chain_collar(
+    pid: str,
+    a: TrafficFrame,
+    b: TrafficFrame,
+    spec: TrafficChainEnd,
+    spacing: float,
+    speed: float,
+    tags: list[str],
+    host: BakedLine,
+    half: float,
+    leaves: bool,
+) -> Piece:
+    if a.bank != 0 or b.bank != 0:
+        raise ValueError(f"traffic chain {pid}: collars support only zero-bank endpoint surfaces")
+    sh = connector_shape(_xzh(a.point()), _xzh(b.point()), spec.turnsM, spec.widthM, spec.minRadiusM, pid)
+    pc = curve_piece(
+        pid,
+        "traffic access collar",
+        a.point(),
+        b.point(),
+        sh,
+        spec.widthM,
+        spacing,
+        speed,
+        tags,
+        None,
+        host,
+        half,
+        leaves,
+        (a.grade, b.grade),
+    )
+    pc.lane_section = lane_section(CrossSection(oneWay=True, laneWidthM=spec.widthM))
+    pc.bank = np.linspace(a.bank, b.bank, len(pc.x))
+    if len(pc.x) < 4:
+        raise ValueError(f"traffic chain {pid}: collar too short to match endpoint grades")
+    step = float(np.sum(np.hypot(np.diff(pc.x), np.diff(pc.z)))) / (len(pc.x) - 1)
+    # road_json derives endpoint grades with finite differences. Match those emitted
+    # slopes exactly, including after the host-overlap height blend.
+    pc.y[0], pc.y[-1] = a.y, b.y
+    pc.y[1], pc.y[-2] = a.y + a.grade * step, b.y - b.grade * step
+    return pc
 
 
 def align_traffic_height(
@@ -1430,6 +1580,14 @@ def bake_network(
             key = f"{b.tag}-{kind}"
             centre[key] = s
             pieces[b.of].append((r4(s - piece / 2), r4(s + piece / 2), key))
+    chain_labels: set[str] = set()
+    for chain in cfg.trafficChains:
+        for side, end in (("from", chain.from_), ("to", chain.to)):
+            chain_label = f"{chain.id}-{side}-host"
+            chain_labels.add(chain_label)
+            s = lines[end.line].s_at(end.at) + end.shiftM
+            centre[chain_label] = s
+            pieces[end.line].append((r4(s - end.pieceM / 2), r4(s + end.pieceM / 2), chain_label))
     for lid, ps in pieces.items():
         ps.sort()
         for (_, a1, la), (b0, _, lb) in pairwise(ps):
@@ -1464,6 +1622,15 @@ def bake_network(
     order: list[Piece] = []
     by_line: dict[str, list[tuple[Piece, str | None]]] = {}
     for lid, bl in lines.items():
+        br = branch_of_line(cfg, lid)
+        ends = line_ends.get(lid, (None, None))
+        lo = ends[0] if ends[0] is not None else (br.leave.insetM if br else 0)
+        hi = ends[1] if ends[1] is not None else float(bl.p.s[-1]) - (br.join.insetM if br else 0)
+        for sa, sb, chain_label in pieces[lid]:
+            if chain_label in chain_labels and not (lo + PIECE_CLEAR_M <= sa < sb <= hi - PIECE_CLEAR_M):
+                raise ValueError(
+                    f"traffic chain {chain_label}: host cut must be interior to its retained line"
+                )
         cuts = line_cuts(cfg, bl, pieces[lid], line_ends.get(lid, (None, None)))
         ordinary = [sp for sp in cuts.spans if sp[2] is None]
         if len(ordinary) != len(bl.line.roads):
@@ -1874,6 +2041,73 @@ def bake_network(
                 **staging,
             }
         )
+
+    # Access profiles stay independent. Only their endpoint collars meet host surfaces;
+    # no shared junction height field is applied to the source line or its crossing.
+    for chain in cfg.trafficChains:
+        seq = by_line[chain.line]
+        first, last = seq[0][0], seq[-1][0]
+        require_forward_centre(first, "R1", 0)
+        require_forward_centre(last, "R1", 0)
+        drop = {first.frm, last.to}
+        junctions[:] = [j for j in junctions if j["id"] not in drop]
+        collars: list[Piece] = []
+        for side, spec, access, access_end in (
+            ("from", chain.from_, first, "from"),
+            ("to", chain.to, last, "to"),
+        ):
+            label = f"{chain.id}-{side}-host"
+            host_seq = by_line[spec.line]
+            k = next(i for i, (_, lab) in enumerate(host_seq) if lab == label)
+            junction = by_label[label]
+            candidates = []
+            for use_before in (True, False):
+                pc = host_seq[k - 1 if use_before else k + 1][0]
+                direction = 1 if use_before == (side == "from") else -1
+                if any(
+                    ln["id"] == spec.lane and ln["kind"] == "drive" and ln["direction"] == direction
+                    for ln in pc.lane_section["lanes"]
+                ):
+                    candidates.append((pc, "to" if use_before else "from", direction))
+            if len(candidates) != 1:
+                raise ValueError(f"traffic chain {chain.id}: host lane must be a directed drive lane")
+            host, end_name, direction = candidates[0]
+            host_end: Literal["from", "to"] = "to" if end_name == "to" else "from"
+            require_drive_centre(host, spec.lane, spec.offsetM, direction)
+            f_host = directed_piece_frame(host, host_end, spec.offsetM, direction)
+            f_access = directed_piece_frame(access, "from" if side == "from" else "to", 0, 1)
+            collar = traffic_chain_collar(
+                f"{cfg.id}-{chain.id}-{side}",
+                f_host if side == "from" else f_access,
+                f_access if side == "from" else f_host,
+                spec,
+                cfg.sampleSpacingM,
+                min(host.speed, access.speed),
+                bl_tags((access, None)),
+                lines[spec.line],
+                surface_reach(host.lane_section, spec.offsetM >= 0),
+                side == "from",
+            )
+            collar.frm = collar.to = junction["id"]
+            if side == "from":
+                access.frm = junction["id"]
+            else:
+                access.to = junction["id"]
+            host_row = {"road": host.id, "end": host_end, "lane": spec.lane}
+            access_row = {"road": access.id, "end": access_end, "lane": "R1"}
+            junction["ends"].append({"road": access.id, "end": access_end})
+            junction["connectors"].append(
+                {
+                    "id": f"cx-{collar.id}",
+                    "road": collar.id,
+                    "trafficOnly": True,
+                    "from": host_row if side == "from" else access_row,
+                    "to": access_row if side == "from" else host_row,
+                }
+            )
+            collars.append(collar)
+        order += collars
+        branch_roads[chain.branch] += [*(pc.id for pc, _ in seq), *(pc.id for pc in collars)]
 
     # Junction ids in order (the branch lines' own end junctions were folded into their split and
     # merge junctions above).
