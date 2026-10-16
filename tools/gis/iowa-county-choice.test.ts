@@ -108,7 +108,7 @@ describe('Rural Rush county-road choice', () => {
     const distances = [];
     for (const anchor of baseline.anchors) {
       const matches = roads.flatMap((r) =>
-        r.features.filter((f) => f.id === anchor.id).map((feature) => ({ road: r, feature })),
+        (r.features ?? []).filter((f) => f.id === anchor.id).map((feature) => ({ road: r, feature })),
       );
       expect(matches, anchor.id).toHaveLength(1);
       const found = matches[0]!;
