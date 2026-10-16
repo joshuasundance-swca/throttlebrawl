@@ -3,6 +3,7 @@
 // never imports content/. Optional fields carry `| undefined` for exactOptionalPropertyTypes.
 import type {
   BarrierLook,
+  GroundSurface,
   LaneInfo,
   MedianKind,
   RoadSurface,
@@ -216,10 +217,23 @@ export function readConnector(v: unknown): BakedConnector | null {
   return out;
 }
 
+/** Authored coverage faces in network world metres (X east, Y up, Z south). */
+export interface BakedTerrainPatch {
+  readonly surface: GroundSurface | 'water';
+  readonly vertices: readonly (readonly [number, number, number])[];
+  readonly triangles: readonly (readonly [number, number, number])[];
+}
+
+/** Optional regional ground; omitted coverage supplies no additional surface. */
+export interface BakedTerrain {
+  readonly patches: readonly BakedTerrainPatch[];
+}
+
 export interface BakedNetwork {
   id: string;
   roads: readonly string[];
   junctions: readonly BakedJunction[];
+  terrain?: BakedTerrain | undefined;
 }
 
 export interface BakedRoute {
