@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "network": "osm-pnw-longview-civic",
+  "originLatDeg": 46.15,
+  "originLonDeg": -123.0,
+  "pieces": [
+    {
+      "id": "longview-civic-far-ground",
+      "kind": "floor",
+      "frame": "local",
+      "surface": "land",
+      "area": [
+        [-18000, -18000],
+        [18000, -18000],
+        [18000, 18000],
+        [-18000, 18000]
+      ],
+      "colour": "#566749"
+    }
+  ]
+}

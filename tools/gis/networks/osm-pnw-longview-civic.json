@@ -1,0 +1,195 @@
+{
+  "id": "osm-pnw-longview-civic",
+  "name": "Longview civic triangle (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": { "originLatDeg": 46.15, "originLonDeg": -123.0 },
+  "osmQuery": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+  "osmExtract": ".cache/osm/pnw-longview.json",
+  "outRoot": "packs/region-pnw/regions/pacific-northwest",
+  "sampleSpacingM": 2,
+  "waysLabel": "Longview Washington Way, Hudson Street, 20th Avenue and 30th Avenue",
+  "networkNotes": "A separate civic-street course: southwest on Washington Way, choose its diagonal or the longer Hudson Street and 20th Avenue grid detour, rejoin Washington, cross its mapped bridge and turn north on 30th Avenue. Only the two-way portion of Washington is selected; eastern one-way streets are outside this course. OSM reference fetched 2026-10-15. Road widths, shoulder margins, corner easing, junction movements and bridge protection are arcade adaptations, not surveyed lanes, turn restrictions or current access advice. Town dressing is generic regional scenery, not mapped properties or landmarks. No lake trail, repeated lap, claimed shortcut advantage or Port Shift replacement.",
+  "lines": [
+    {
+      "id": "washington",
+      "pathFrom": { "lat": 46.1384555, "lon": -122.940295 },
+      "pathTo": { "lat": 46.139888, "lon": -122.9622736 },
+      "start": { "lat": 46.1384555, "lon": -122.940295 },
+      "end": { "lat": 46.139888, "lon": -122.9622736 },
+      "via": [{ "lat": 46.1327287, "lon": -122.9623331 }],
+      "routeTags": { "name": "^(Washington Way|30th Avenue)$" },
+      "wayFilter": [
+        { "@id": "^(914561053|914561052|5880132|1503405166|129381274|129381273|876117692|914535557)$" }
+      ],
+      "respectOneway": true,
+      "splitOnNameChange": true,
+      "minRoadM": 40,
+      "splitBridgeMinM": 30,
+      "smoothing": { "headingSigmaM": 14 },
+      "elevation": { "sampleEveryM": 10, "lowPassSigmaM": 15, "bridgeDeck": "span", "humpHeightM": 0 },
+      "crossSection": {
+        "laneWidthM": 4,
+        "lanesPerDirection": 1,
+        "verges": {
+          "left": { "widthM": 6, "surface": "grass", "edge": "soft" },
+          "right": { "widthM": 6, "surface": "grass", "edge": "soft" }
+        }
+      },
+      "bridgeBarrier": { "kind": "wall", "heightM": 0.85, "look": "guardrail" },
+      "roadLanes": { "osm-longview-civic-washington-bridge": { "laneWidthM": 4, "lanesPerDirection": 1 } },
+      "roads": [
+        {
+          "id": "osm-longview-civic-approach",
+          "name": "Washington Approach",
+          "tags": ["town"],
+          "features": [
+            { "kind": "copSpawn", "id": "civic-patrol-shoulder", "s0": 4, "s1": 20, "d0": 5, "d1": 7 }
+          ]
+        },
+        { "id": "osm-longview-civic-diagonal", "name": "Washington Diagonal", "tags": ["town"] },
+        {
+          "id": "osm-longview-civic-west-washington",
+          "name": "West Washington Way",
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "civic-west-sign",
+              "s0": 450,
+              "s1": 460,
+              "d0": 11,
+              "d1": 14,
+              "pool": "signs"
+            }
+          ]
+        },
+        { "id": "osm-longview-civic-washington-bridge", "name": "Washington Way Bridge", "tags": [] },
+        { "id": "osm-longview-civic-washington-west-bank", "name": "Washington West Bank", "tags": ["town"] },
+        {
+          "id": "osm-longview-civic-30th",
+          "name": "30th Avenue",
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "civic-30th-board",
+              "s0": 250,
+              "s1": 270,
+              "d0": -18,
+              "d1": -12,
+              "pool": "billboards"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hudson",
+      "pathFrom": { "lat": 46.1378867, "lon": -122.9417341 },
+      "pathTo": { "lat": 46.1367281, "lon": -122.9446825 },
+      "via": [{ "lat": 46.1383783, "lon": -122.9442186 }],
+      "wayFilter": [{ "@id": "^(5880719|53057477)$" }],
+      "respectOneway": true,
+      "splitOnNameChange": true,
+      "minRoadM": 40,
+      "smoothing": { "headingSigmaM": 28 },
+      "elevation": { "sampleEveryM": 10, "lowPassSigmaM": 15, "bridgeDeck": "span", "humpHeightM": 0 },
+      "crossSection": {
+        "laneWidthM": 4,
+        "lanesPerDirection": 1,
+        "verges": {
+          "left": { "widthM": 6, "surface": "grass", "edge": "soft" },
+          "right": { "widthM": 6, "surface": "grass", "edge": "soft" }
+        }
+      },
+      "roads": [
+        { "id": "osm-longview-civic-hudson", "name": "Hudson Street", "tags": ["town"] },
+        {
+          "id": "osm-longview-civic-20th",
+          "name": "20th Avenue",
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "boostPad",
+              "id": "civic-grid-exit-pad",
+              "s0": 35,
+              "s1": 41,
+              "d0": 0.5,
+              "d1": 3.5,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "civic-grid-exit" }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-longview-civic-hudson",
+      "line": "hudson",
+      "of": "washington",
+      "label": "hudson",
+      "kind": "detour",
+      "marked": true,
+      "sign": "HUDSON / 20TH: LONGER GRID ROUTE. WASHINGTON: DIAGONAL.",
+      "aiTake": 0.45,
+      "connectorWidthM": 8,
+      "minRadiusM": 42.5,
+      "leave": {
+        "at": { "lat": 46.1378867, "lon": -122.9417341 },
+        "pieceM": 80,
+        "offsetM": 4.5,
+        "lane": "R1",
+        "zone": { "lengthM": 40, "d0": 3.5, "d1": 8 },
+        "insetM": 100,
+        "toOffsetM": 2,
+        "toLane": "R1",
+        "turnsM": [20, 20]
+      },
+      "join": {
+        "at": { "lat": 46.1367281, "lon": -122.9446825 },
+        "pieceM": 90,
+        "offsetM": 2,
+        "lane": "R1",
+        "insetM": 130,
+        "fromOffsetM": 2,
+        "fromLane": "R1",
+        "turnsM": [20, 20]
+      },
+      "traffic": "road",
+      "trafficIngress": { "offsetM": 2, "lane": "R1", "widthM": 4, "turnsM": [40, 40], "minRadiusM": 42.5 },
+      "trafficReverse": {
+        "leave": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -2,
+          "branchLane": "L1",
+          "widthM": 4,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        },
+        "join": {
+          "offsetM": -2,
+          "lane": "L1",
+          "branchOffsetM": -2,
+          "branchLane": "L1",
+          "widthM": 4,
+          "turnsM": [40, 40],
+          "minRadiusM": 42.5
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-longview-civic-triangle",
+      "name": "Longview: Civic Triangle",
+      "line": "washington",
+      "startRoad": "osm-longview-civic-approach",
+      "startS": 24,
+      "finishRoad": "osm-longview-civic-30th",
+      "finishS": -40,
+      "notes": "A one-pass city-street race. Choose the direct Washington diagonal or the longer Hudson/20th grid turns, then share the westward run and 30th Avenue finish. Both choices carry ordinary traffic in both directions. Real OSM alignment and USGS terrain with disclosed arcade widths and eased junctions; no claim that the detour is faster or that generic scenery reproduces real properties."
+    }
+  ]
+}
