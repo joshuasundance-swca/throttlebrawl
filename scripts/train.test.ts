@@ -1214,7 +1214,7 @@ describe('the landing invariant (decide)', () => {
     expect(d.land).toEqual([]);
     expect(d.statuses[0]?.state).toBe('failure');
     const c = blameComment({
-      kind: d.blame!.kind,
+      kind: 'same-tree',
       sha: sha('a'),
       base,
       run: 42,
@@ -1333,12 +1333,13 @@ describe('the landing invariant (decide)', () => {
     const failed = mixed ? ['suite / sim (3/6)'] : [];
     const d = decide({ ...timedOutAlone(1), sameTree: true, control: 'skipped', failed });
     expect(d.verdict).toBe('culprit');
+    expect(d.blame?.kind).toBe('same-tree');
     expect(d.land).toEqual([]);
     expect(d.statuses[0]?.state).toBe('failure');
     expect(d.why).toContain('timed out once');
     expect(d.why).not.toContain('tree failed once');
     const c = blameComment({
-      kind: d.blame!.kind,
+      kind: 'same-tree',
       sha: sha('a'),
       base,
       run: 42,
