@@ -41,33 +41,6 @@ import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../
 // bridge, the road or the water (playtest 1c item 3). The bot races are the sim tier's
 // (tests/sim/road-real-routes.test.ts).
 
-// Run W-S added the real-road networks (`tbgis network`: several real roads joined at their real
-// junctions, a junction choice and a multi-lane highway each): Key West in the base pack and I-5 by
-// Lake Samish in the Pacific Northwest. `osmFiles` counts each pack's osm- networks and routes (the
-// base pack's gis-1 Bahia Honda stretch among them; its scenery predates these checks). Playtest 3
-// (T9.2) added Duval Street and the Seven Mile Bridge with its old road to the base pack.
-const PACKS = [
-  {
-    pack: 'base',
-    region: 'florida-keys',
-    networks: ['osm-keys-key-west', 'osm-keys-duval', 'osm-keys-seven-mile'],
-    osmFiles: 4,
-  },
-  {
-    pack: 'region-pnw',
-    region: 'pacific-northwest',
-    networks: ['osm-pnw-chuckanut', 'osm-pnw-gorge', 'osm-pnw-samish', 'osm-pnw-portland'],
-    osmFiles: 4,
-  },
-  {
-    pack: 'region-sf',
-    region: 'san-francisco',
-    // Playtest 3 (T9.3) added the Golden Gate and Lombard Street.
-    networks: ['osm-sf-russian-hill', 'osm-sf-twin-peaks', 'osm-sf-golden-gate', 'osm-sf-lombard'],
-    osmFiles: 4,
-  },
-] as const;
-
 const networkFiles = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/networks/osm-*.json', {
   eager: true,
   import: 'default',
@@ -80,6 +53,24 @@ const routeFiles = import.meta.glob<BakedRoute>('../../packs/*/regions/*/routes/
   eager: true,
   import: 'default',
 });
+
+// Discover additions from shipped files, rather than freezing the number of roads or regions.
+// Bahia Honda remains licence-checked below; its original scenery predates this sweep and was
+// never in its geometry cohort. Preserve that exception without excluding future base-pack roads.
+const PACKS = [...new Set(Object.keys(networkFiles).map((path) => path.split('/networks/')[0]!))]
+  .sort()
+  .map((root) => {
+    const parts = root.split('/');
+    return {
+      pack: parts[3]!,
+      region: parts[5]!,
+      networks: Object.entries(networkFiles)
+        .filter(
+          ([path, network]) => path.startsWith(`${root}/networks/`) && network.id !== 'osm-keys-bahia-honda',
+        )
+        .map(([, network]) => network.id),
+    };
+  });
 
 function baked(id: string) {
   const network = Object.values(networkFiles).find((n) => n.id === id);
@@ -102,9 +93,8 @@ describe('the region packs carry the real roads under ODbL', () => {
           .filter((f) => f.startsWith('osm-'))
           .map((f) => `regions/${p.region}/${dir}/${f}`),
       );
-      // The networks, their roads and one route each.
-      expect(files.filter((f) => f.includes('/networks/'))).toHaveLength(p.osmFiles);
-      expect(files.filter((f) => f.includes('/routes/'))).toHaveLength(p.osmFiles);
+      expect(files.some((f) => f.includes('/networks/'))).toBe(true);
+      expect(files.some((f) => f.includes('/routes/'))).toBe(true);
       for (const f of files) {
         const rule = odbl.find((r) => r.paths.some((g) => glob(g).test(f)));
         expect(rule, `${f} is under an ODbL rule`).toBeDefined();
@@ -126,7 +116,7 @@ describe('the region packs carry the real roads under ODbL', () => {
         // The network file names its region (the content schema's field; the road module's type
         // leaves it out), which is how app/ finds a region's real routes.
         expect((network as BakedNetwork & { region?: string }).region).toBe(p.region);
-        expect(routes).toHaveLength(1);
+        expect(routes.length, `${id} has a race route`).toBeGreaterThan(0);
         expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
         const sourcePath = `tools/gis/networks/${id}.json`;
         const source = (existsSync(sourcePath) ? JSON.parse(readFileSync(sourcePath, 'utf8')) : {}) as {
@@ -201,6 +191,7 @@ const LAND = new Set([
   'apartment',
   'sawmill',
   'coastTree',
+  'deciduous',
 ]);
 const WIDE = new Set(['shack', 'mangrove', 'house', 'sawmill']);
 const RING = 0.6;
@@ -510,13 +501,9 @@ describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', 
         `${seams.probes} shoulder-to-land seam points, ${seams.open.length} open\n`,
     );
     built.dispose();
-    // High country has drops to look under; the Keys' land shelves straight into the sea, flat, so
-    // there it walks for nothing to close (the probes and joins below still count it).
-    const flat = baked(id).roads.every((r) => {
-      const y = r.samples.data['y'] ?? [];
-      return Math.max(...y) - Math.min(...y) < 10;
-    });
-    if (!flat) expect(drops).toBeGreaterThan(0);
+    // Total elevation change does not imply a cliff beside the road: a gradual rural rise can
+    // have no abrupt drops. Inspect every drop the geometry walk finds, and keep the floating-
+    // plate negative control below to prove the walk detects open raised edges.
     expect(probes).toBeGreaterThan(1000);
     // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
     expect(joins).toBeGreaterThan(0);

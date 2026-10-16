@@ -1,5 +1,6 @@
 // Which models a rider draws with (interview, 2026-10-02: "Real models now"; real silhouettes per
-// rival). The rider model is the rider's own (`models/riders/<id>`, from the dataset repo); the bike
+// rival). The rider model is the rider's own (`models/riders/<id>`, from the dataset repo), or an
+// existing body explicitly named by look.riderModel; the bike
 // model comes from the rider file's `look`: `bikeModel` names one of the base pack's bikes
 // (`models/bikes/<name>`, PR #300), else `bikeClass` picks that class's bike, else a cop rides the
 // police motorcycle and anyone else the bike their sim bike is. The player always rides the model of
@@ -55,6 +56,10 @@ const HEX = /^#[0-9a-f]{6}$/i;
 export function riderLookOf(src: RiderLookSource): RiderLook {
   const look = src.look && typeof src.look === 'object' ? (src.look as Record<string, unknown>) : {};
   const named = typeof look['bikeModel'] === 'string' ? look['bikeModel'] : null;
+  const rider =
+    typeof look['riderModel'] === 'string' && look['riderModel'].length > 0
+      ? look['riderModel']
+      : bare(src.contentId);
   const cls = typeof look['bikeClass'] === 'string' ? BIKE_CLASS_MODELS[look['bikeClass']] : undefined;
   const player = src.role === 'player';
   const bike = player
@@ -65,7 +70,7 @@ export function riderLookOf(src: RiderLookSource): RiderLook {
     : [];
   return {
     contentId: src.contentId,
-    riderModel: `models/riders/${bare(src.contentId)}`,
+    riderModel: rider.startsWith('models/riders/') ? rider : `models/riders/${rider}`,
     bikeModel: `models/bikes/${bike}`,
     paint: palette.length ? palette : null,
     law: src.role === 'cop',

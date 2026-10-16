@@ -1,0 +1,118 @@
+{
+  "type": "road-network",
+  "id": "osm-clinton-ia136",
+  "name": "IA 136 rural bends (OSM bake)",
+  "region": "clinton-iowa",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 41.9,
+    "originLonDeg": -90.28,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": ["osm-clinton-ia136-east-bends", "osm-clinton-ia136-middle-bends", "osm-clinton-ia136-west-bends"],
+  "junctions": [
+    {
+      "id": "osm-clinton-ia136-j0",
+      "x": 511.8153,
+      "y": 249.8178,
+      "z": -219.4288,
+      "ends": [
+        {
+          "road": "osm-clinton-ia136-east-bends",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j1",
+      "x": -1207.694,
+      "y": 250.5177,
+      "z": -1097.4334,
+      "ends": [
+        {
+          "road": "osm-clinton-ia136-east-bends",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-ia136-middle-bends",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j2",
+      "x": -2196.3461,
+      "y": 259.3048,
+      "z": -2067.587,
+      "ends": [
+        {
+          "road": "osm-clinton-ia136-middle-bends",
+          "end": "to"
+        },
+        {
+          "road": "osm-clinton-ia136-west-bends",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-clinton-ia136-j3",
+      "x": -2872.0808,
+      "y": 268.5271,
+      "z": -3501.0933,
+      "ends": [
+        {
+          "road": "osm-clinton-ia136-west-bends",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-15",
+    "tool": {
+      "name": "tools/gis/src/tbgis/cli.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/configs/osm-clinton-ia136.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+        "retrievedAt": "2026-10-15T21:21:57Z",
+        "sha256": "60dd79a1d5ed17064f8acab989132d8bfd3d4fcb30b4ee809456b1ee202466a1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 578 points in 1 request(s) (lon, lat WGS84, sha256 029e2c4255964ad4), bilinear",
+        "retrievedAt": "2026-10-15T21:26:10Z",
+        "sha256": "00c56964f5592388b4b8de9aba834736864214624c8c13c0c312047379ca327e"
+      }
+    ],
+    "modified": true,
+    "modifications": "IA 136, northwest of Clinton ways stitched along the travel carriageway, heading Gaussian-smoothed (sigma 20 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (none; bridges kept); land elevation from 3DEP low-pass filtered (sigma 25 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): a straight deck between the land at each end (not measured); lanes simplified to one each way plus shoulders"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A bounded rural IA 136 race northwest of Clinton. Broad bends and passing straights, not a hairpin course. Uncompressed OSM line; 4 m lanes and soft 3 m grass verges are gameplay adaptations with unmeasured real widths. No construction-corridor or pedestrian-path geometry is used."
+  }
+}

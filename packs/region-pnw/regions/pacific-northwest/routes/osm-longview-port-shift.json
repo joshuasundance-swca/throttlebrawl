@@ -1,0 +1,83 @@
+{
+  "type": "route",
+  "id": "osm-longview-port-shift",
+  "name": "Longview: Port Shift",
+  "network": "osm-pnw-longview",
+  "start": {
+    "road": "osm-longview-industrial",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-longview-38th",
+    "s": 1418.0377
+  },
+  "mainPath": [
+    "osm-longview-industrial",
+    "osm-longview-mount-solo",
+    "osm-longview-solo-connector",
+    "osm-longview-ocean-beach",
+    "osm-longview-38th"
+  ],
+  "allowedRoads": [
+    "osm-longview-industrial",
+    "osm-longview-mount-solo",
+    "osm-longview-solo-connector",
+    "osm-longview-ocean-beach",
+    "osm-longview-38th"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-longview-mount-solo",
+      "s": 1259.0388
+    },
+    {
+      "road": "osm-longview-solo-connector",
+      "s": 661.0103
+    },
+    {
+      "road": "osm-longview-ocean-beach",
+      "s": 1515.542
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A point-to-point Race through Longview's industrial roads and local connectors. The start and finish are deliberately separated: one pass, no lap counting. Real OSM alignment, smoothed corners and simplified arcade cross-sections; source captures and changes are recorded in provenance.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-15",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-pnw-longview.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](46.095,-123.040,46.165,-122.930);out tags geom;",
+          "retrievedAt": "2026-10-15T21:21:54Z",
+          "sha256": "704f4ef4d0558e238607a3fc5bba1a262766b7faa84677652ccfcda50e67fee1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 1073 points in 2 request(s) (lon, lat WGS84, sha256 317d73f59dc0dbc7), bilinear (line port-shift)",
+          "retrievedAt": "2026-10-15T21:24:50Z",
+          "sha256": "2ddb221bdaee4ca466a4b1127f508c42cb6af276a2c05edfb9fda6b610e601fb"
+        }
+      ]
+    }
+  }
+}

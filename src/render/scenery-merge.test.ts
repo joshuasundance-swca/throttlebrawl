@@ -157,7 +157,8 @@ describe('the still scenery, merged per block', () => {
       let placedVerts = 0;
       for (const s of still) {
         // The renderer's own kind-to-model table, so a new scenery kind needs no entry here.
-        const variants = models[MODEL_OF[s.kind]]?.variants;
+        const modelKind = MODEL_OF[s.kind];
+        const variants = modelKind ? models[modelKind]?.variants : undefined;
         expect(variants, s.kind).toBeDefined();
         const g = variants![Math.min(variants!.length - 1, s.variant)]!;
         placedVerts += g.getAttribute('position').count;

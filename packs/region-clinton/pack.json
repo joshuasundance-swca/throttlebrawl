@@ -1,0 +1,31 @@
+{
+  "type": "pack",
+  "id": "region-clinton",
+  "name": "Region: Clinton, Iowa",
+  "version": "0.1.0",
+  "formatVersion": 1,
+  "gameVersion": ">=0.1.0",
+  "dependencies": { "base": "^0.1.0" },
+  "description": "A first bounded Clinton course: a rural race on Iowa Highway 136, using the base bikes, regular rivals and traffic.",
+  "authors": ["the maintainer", "agents (see meta.provenance per entry)"],
+  "license": "MIT",
+  "licenseRules": [
+    {
+      "paths": [
+        "regions/*/networks/osm-*.json",
+        "regions/*/roads/osm-*.json",
+        "regions/*/roads/osm-*.bin",
+        "regions/*/routes/osm-*.json"
+      ],
+      "spdx": "ODbL-1.0",
+      "attribution": "Road data © OpenStreetMap contributors, available under the Open Database License.",
+      "licenseFile": "LICENSES/ODbL-1.0.txt"
+    }
+  ],
+  "assetSources": { "default": "baked", "rules": [] },
+  "defaults": { "tuning": "registry", "hud": "base:classic" },
+  "idAliases": {},
+  "meta": {
+    "notes": "A rough playable course, not a complete regional career. Reuses existing MIT game assets; the derived OSM road data has its own licence rule."
+  }
+}

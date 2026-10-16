@@ -27,7 +27,7 @@ import {
   type ModelKind,
   type SceneryModels,
 } from './models';
-import { buildRoadScene, rampTruckMatrix, type FeatureSpan, type RoadDressing } from './road-mesh';
+import { buildRoadScene, MODEL_OF, rampTruckMatrix, type FeatureSpan, type RoadDressing } from './road-mesh';
 import { ISLET_SINK_M, SCENERY_KINDS, themeAt } from './scenery';
 
 const look = createFlatLook();
@@ -425,10 +425,11 @@ describe('the Blender models (playtest 1c item 4)', async () => {
     console.log(`[examined] ${lines.join('; ')}`);
   });
 
-  it('replace every stand-in when they have loaded', () => {
+  it('replace every asset-backed stand-in when models have loaded', () => {
     const { road, dressing } = track('keys-m1');
     const scene = buildRoadScene(road, look, dressing, { models });
-    expect([...scene.stats.sceneryModels].sort()).toEqual([...SCENERY_KINDS].sort());
+    const assetBacked = SCENERY_KINDS.filter((kind) => MODEL_OF[kind] !== null);
+    expect([...scene.stats.sceneryModels].sort()).toEqual(assetBacked.sort());
     expect(scene.stats.rampTruckModels).toBe(scene.stats.rampTrucks);
     const geos = new Set<BufferGeometry>();
     scene.group.traverse((o) => {

@@ -62,6 +62,7 @@ import {
 import { EdgeLocator, GROUND_OVER_ROAD_M, GROUND_YIELD_MARGIN_M } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
+import { deciduousGeometry } from './deciduous';
 import { SeaBands, seaPlanFor } from './sea-bands';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
@@ -933,7 +934,8 @@ export const SCENERY_CHUNK_M = 256;
 
 /** Code-made stand-ins, drawn until a model loads (or if it fails). No mounds: they stand on land. */
 function standIn(kind: SceneryKind): BufferGeometry {
-  const parts: Record<SceneryKind, BoxPart[]> = {
+  if (kind === 'deciduous') return deciduousGeometry();
+  const parts: Record<Exclude<SceneryKind, 'deciduous'>, BoxPart[]> = {
     palm: [
       { size: [0.28, 2.4, 0.28], at: [0.1, 1.2, 0], color: '#8a6a45', rotX: 0.05 },
       { size: [0.24, 2.4, 0.24], at: [0.35, 3.4, 0.1], color: '#7d5f3d', rotX: -0.12 },
@@ -1004,8 +1006,8 @@ function standIn(kind: SceneryKind): BufferGeometry {
 /** Scenery kinds kept instanced: the boats bob every frame and the fog banks are unlit (run W-S). */
 const INSTANCED_KINDS: ReadonlySet<SceneryKind> = new Set(['skiff', 'boat', 'fogBank']);
 
-/** Which model draws each scenery kind (exported for the merge test, which counts each prop's vertices). */
-export const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
+/** Which model draws each scenery kind (null: original procedural geometry). Exported for merge tests. */
+export const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels | null>> = {
   palm: 'palms',
   mangrove: 'mangroves',
   shack: 'baitShack',
@@ -1024,6 +1026,7 @@ export const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   battery: 'sfHeadlands',
   brush: 'sfHeadlands',
   outcrop: 'sfHeadlands',
+  deciduous: null,
 };
 
 /**
@@ -3057,7 +3060,8 @@ export function buildRoadScene(
   for (const kind of SCENERY_KINDS) {
     const mine = placed.filter((s) => s.kind === kind);
     counts[kind] = mine.length;
-    const model = opts.models?.[MODEL_OF[kind]];
+    const modelKind = MODEL_OF[kind];
+    const model = modelKind ? opts.models?.[modelKind] : undefined;
     if (model) fromModels.push(kind);
     if (!mine.length) continue;
     const geos = model ? model.variants : [standIn(kind)];

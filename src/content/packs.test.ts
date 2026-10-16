@@ -15,6 +15,10 @@ import {
 import { buildRegistry, contentHashes, ContentError } from './registry';
 
 const ALL = import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' });
+const CARRIED_PACKS = Object.keys(ALL)
+  .filter((path) => /^\/packs\/[^/]+\/pack\.json$/.test(path))
+  .map((path) => path.split('/')[2]!)
+  .sort();
 
 /** The build's split, made from the eager glob: entries now, road data "fetched" from memory. */
 function sources(): PackSources & { fetched: string[] } {
@@ -88,7 +92,8 @@ describe('content: region packs at runtime', () => {
 
   it('combines every carried pack: base first, region ids qualified by their own pack', () => {
     const reg = registryFromGlob(ALL);
-    expect(reg.packs.map((p) => p.id)).toEqual(['base', 'region-pnw', 'region-sf']);
+    expect(reg.packs[0]?.id).toBe('base');
+    expect(reg.packs.map((p) => p.id).sort()).toEqual(CARRIED_PACKS);
     expect(reg.regions['base:florida-keys']).toBeDefined();
     expect(reg.regions['region-pnw:pacific-northwest']).toBeDefined();
     expect(reg.regions['region-sf:san-francisco']).toBeDefined();
@@ -129,7 +134,8 @@ describe('content: region packs at runtime', () => {
   it('the library carries the regions at once and fetches a region road data on demand, once', async () => {
     const src = sources();
     const lib = createPackLibrary({ sources: src });
-    expect(lib.packIds).toEqual(['base', 'region-pnw', 'region-sf']);
+    expect(lib.packIds[0]).toBe('base');
+    expect([...lib.packIds].sort()).toEqual(CARRIED_PACKS);
     // Entries now (the picker lists the region and its event); roads not yet.
     expect(lib.registry().regions['region-sf:san-francisco']?.name).toBe('San Francisco');
     expect(lib.registry().events['region-sf:sf-hill-sprint']).toBeDefined();
@@ -148,6 +154,7 @@ describe('content: region packs at runtime', () => {
     expect(lib.hasRoads('region-pnw')).toBe(false);
     await lib.loadRoads('region-pnw');
     await lib.loadRoads('base');
+    for (const pack of lib.packIds) await lib.loadRoads(pack);
     expect(contentHashes(lib.registry())).toEqual(contentHashes(registryFromGlob(ALL)));
   });
 

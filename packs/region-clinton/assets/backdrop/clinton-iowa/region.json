@@ -1,0 +1,63 @@
+{
+  "formatVersion": 1,
+  "region": "clinton-iowa",
+  "hazeM": 18000,
+  "hazeMax": 0.75,
+  "floorColour": "#798455",
+  "pieces": [
+    {
+      "id": "rural-far-ground",
+      "kind": "floor",
+      "frame": "local",
+      "surface": "land",
+      "area": [
+        [-22000, -22000],
+        [22000, -22000],
+        [22000, 22000],
+        [-22000, 22000]
+      ],
+      "colour": "#798455"
+    },
+    {
+      "id": "rural-north-horizon",
+      "kind": "ridge",
+      "frame": "local",
+      "path": [
+        [-14000, -10000, 310],
+        [-7000, -11000, 340],
+        [0, -11000, 315],
+        [8000, -9000, 320]
+      ],
+      "heightM": [275, 340],
+      "profile": "rolling",
+      "colour": "#667341",
+      "keepOutM": 1200
+    },
+    {
+      "id": "rural-south-horizon",
+      "kind": "ridge",
+      "frame": "local",
+      "path": [
+        [-14000, 7000, 320],
+        [-7000, 8500, 330],
+        [0, 8000, 305],
+        [8000, 6500, 315]
+      ],
+      "heightM": [275, 330],
+      "profile": "rolling",
+      "colour": "#5c6c45",
+      "keepOutM": 1200
+    },
+    {
+      "id": "rural-fair-weather",
+      "kind": "clouds",
+      "style": "cumulus",
+      "count": 5,
+      "distanceM": [8000, 18000],
+      "baseM": 900,
+      "topM": [1400, 1900],
+      "colour": "#e5e8df",
+      "shadeColour": "#bbc8c9"
+    }
+  ]
+}

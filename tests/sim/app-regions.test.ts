@@ -13,7 +13,7 @@ import {
   resumeFromRecording,
   roadsForHeader,
 } from '../../src/app';
-import { registryFromGlob } from '../../src/content';
+import { lookup, registryFromGlob } from '../../src/content';
 import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import {
@@ -99,10 +99,19 @@ describe('app: every region races headlessly through the real loader', () => {
       );
       expect(done, `the bot finishes ${choice.name} on one of seeds ${SEEDS.join(', ')}`).not.toBeNull();
       if (!done?.rec) return;
-      // The region's own traffic is on the road (not only base's).
-      if (choice.packId !== 'base')
+      // Reusing base vehicles is valid. Require regional vehicles when the authored mix uses
+      // them, rather than assuming that every new pack must duplicate the vehicle catalogue.
+      const region = lookup(REG.regions, choice.id);
+      const qualify = (id: string) => (id.includes(':') ? id : `${choice.packId}:${id}`);
+      const mixed = region.traffic.mix.filter((type) => type.weight > 0).map((type) => qualify(type.kind));
+      expect(
+        [...done.kinds].some((id) => mixed.includes(id)),
+        'authored traffic mix spawns',
+      ).toBe(true);
+      const local = mixed.filter((id) => id.startsWith(`${choice.packId}:`));
+      if (local.length > 0)
         expect(
-          [...done.kinds].some((k) => k.startsWith(`${choice.packId}:`)),
+          [...done.kinds].some((id) => local.includes(id)),
           'region traffic spawns',
         ).toBe(true);
       // The recording, saved as the debug file saves it, replays from its header alone: the road

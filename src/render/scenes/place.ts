@@ -8,6 +8,7 @@ import type { RoadNetwork } from '../../road';
 import {
   LAND_TOP_M,
   ridableBandPast,
+  SCENERY_RADIUS_M,
   scatterHash,
   themeAt,
   type ScenerySpot,
@@ -33,6 +34,8 @@ const SPOT_REACH: Partial<Record<ScenerySpot['kind'], readonly { r: number; back
   sawmill: [{ r: 16, back: 8.5 }],
   shack: [{ r: 3.8, back: 0 }],
   conifer: [{ r: 1.2, back: 0 }],
+  // The full broadleaf crown's existing clearance, rather than a narrow trunk-only disc.
+  deciduous: [{ r: SCENERY_RADIUS_M.deciduous, back: 0 }],
   palm: [{ r: 1, back: 0 }],
   mangrove: [{ r: 2.5, back: 0 }],
   pole: [{ r: 0.8, back: 0 }],

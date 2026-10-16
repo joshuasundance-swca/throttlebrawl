@@ -1,0 +1,32 @@
+{
+  "type": "event",
+  "id": "clinton-ia136-race",
+  "name": "Rural Rush",
+  "kind": "classic-race",
+  "region": "clinton-iowa",
+  "timeOfDay": "noon",
+  "weather": "dry",
+  "lengths": [{ "id": "standard", "route": "osm-clinton-ia136-run", "laps": 1 }],
+  "field": {
+    "riders": ["base:deacon-vane", "base:dial-up", "base:chad-speedwell", "base:kevin-from-accounting"],
+    "paceMps": 36.5
+  },
+  "traffic": { "densityScale": 0.8 },
+  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2, "heat": true },
+  "rules": {},
+  "objectives": [{ "id": "podium", "kind": "finish-place", "params": { "maxPlace": 3 }, "required": true }],
+  "rewards": {
+    "byPlaceCash": [1500, 900, 600, 300, 150],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A free-play ordinary race on a bounded rural IA 136 stretch. Existing rivals bring their own riding and combat behaviour; both travel directions have ordinary traffic. Broad curves and passing straights, not a technical hairpin track. No career progression or new objective system.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-15" }
+  }
+}
