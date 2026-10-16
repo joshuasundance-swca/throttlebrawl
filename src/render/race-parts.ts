@@ -7,3 +7,4 @@ export { Rain, rainColourOf } from './rain';
 export { EventProps } from './event-props';
 export { Smashables } from './smashables';
 export { AirPays } from './air-pays';
+export { Boards } from './boards';

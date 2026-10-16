@@ -45,7 +45,7 @@ import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
 import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
 import type { AirPays } from './air-pays';
-import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
+import type { Boards, BoardCatalog, BoardSlot, VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
 import type { EventProps } from './event-props';
 import type { Smashables } from './smashables';
@@ -392,7 +392,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const camera = new PerspectiveCamera(62, 16 / 9, 0.3, CAMERA_FAR_M);
   const params = defaultRenderParams();
   const views = new EntityViews(look, { ...opts, params }, scope);
-  const boards = new Boards(look);
+  let boards: Boards | null = null;
   // The race's moving parts, one lazy chunk off the first-load JavaScript (race-parts.ts: the menu's
   // grid needs none of them). It is fetched as the renderer starts, so it is in long before a race
   // can start (it waits for the base pack's real roads); until then none is drawn.
@@ -403,6 +403,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // - Run W-T: the roadside smashables, standing or in pieces, from the snapshot. The standing ones
   //   share the road events' still batch: one draw call for both (the draw-call headroom).
   // - Run W-T's landing chalk and newspaper (air-pays.ts).
+  // - The vetoable road signs and billboards (boards.ts), built for the latest road when this arrives.
   let race: {
     effects: FeelEffects;
     speedLines: SpeedLines;
@@ -432,12 +433,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const eventProps = new m.EventProps(look);
       const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
       const airPays = new m.AirPays();
+      boards = new m.Boards(look);
+      boards.hide(hiddenRefs);
+      buildBoards();
       airPays.setStructures(structurePlan);
       airPays.pushEvents(pendingAirEvents);
       pendingAirEvents.length = 0;
       views.setEffects(effects);
       camera.add(effects.tint, speedLines.root, rain.root);
-      for (const o of [effects.root, eventProps.root, smashables.root, airPays.root]) {
+      for (const o of [effects.root, eventProps.root, smashables.root, airPays.root, boards.root]) {
         persistent.add(o);
         scene.add(o);
       }
@@ -449,7 +453,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   /** The last road's look environment: the drizzle's colour comes from it once rain.ts is in. */
   let rainEnv: LookEnv | null = null;
   const backdrop = new Backdrop(scope);
-  const persistent = new Set<Object3D>([views.root, boards.root, camera, backdrop.root]);
+  const persistent = new Set<Object3D>([views.root, camera, backdrop.root]);
   for (const o of persistent) scene.add(o);
   loadRace();
   let roadScene: RoadScene | null = null;
@@ -498,12 +502,20 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let textSurfacesModule: typeof import('./text-surfaces') | null = null;
   let textSurfaces: TextSurfaceLayer | null = null;
   let roadCatalog: BoardCatalog | undefined;
+  const buildBoards = () => {
+    if (roadArgs)
+      boards?.build(
+        roadArgs.road,
+        (id) => roadArgs?.dressing?.[id]?.features as readonly BoardSlot[] | undefined,
+        roadCatalog,
+      );
+  };
   /** The race's time of day: dusk and night light Duval's neon names and its string lights (playtest 4, P4-16). */
   let roadTime: string | undefined;
   /** Whether the roadside layer's name boards (Duval's shop names) are in the text layer yet (they place over the first frames). */
   let roadsideWords = false;
   const visibleContent = (): VisibleContent[] => [
-    ...boards.visibleContent(camera),
+    ...(boards?.visibleContent(camera) ?? []),
     ...(textSurfaces?.visibleContent(camera) ?? []),
   ];
   let trafficIds: string[] = [];
@@ -1207,7 +1219,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     requestScenes(road);
     requestWater(road);
     requestModels();
-    boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
+    buildBoards();
   };
   return {
     applyPresentation(recipe, options) {
@@ -1317,7 +1329,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
-      boards.update(pose.x, pose.z, params.sceneryDrawM);
+      boards?.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
       if (downtown) {
         // The cross traffic moves with the race: it stands still while the race does (paused).
@@ -1417,14 +1429,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pickContentAt(clientX, clientY) {
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
-      return boards.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
+      return boards?.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
     },
     structures: () => structurePlan,
     visibleContent: () => visibleContent(),
     visibleContentRefs: () => visibleContent().map((c) => c.ref),
     hideContent(refs) {
       const list = [...refs];
-      boards.hide(list);
+      boards?.hide(list);
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
       textSurfaces?.hide(list);
