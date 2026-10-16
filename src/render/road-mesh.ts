@@ -2167,7 +2167,7 @@ export function buildRoadScene(
         skirts.push(terrain && r > 0 && !meetsOf[side][i] && !wallOf[side][i] ? skirtAt(side, s, r) : null);
       });
       // The skirt's shared feet simplify together; the strip's own edge still keeps every sample.
-      const run = (rows: (readonly [Point3, Point3] | null)[], thin = true, kept = keptRows(rows, thin)) => {
+      const run = (rows: (readonly [Point3, Point3] | null)[], kept?: readonly boolean[]) => {
         const g = strip('land');
         g.breakStrip();
         for (const [i, row] of rows.entries()) {
@@ -2175,7 +2175,7 @@ export function buildRoadScene(
             g.breakStrip();
             continue;
           }
-          if (!kept[i]) continue;
+          if (kept && !kept[i]) continue;
           // Pairs in increasing d, so the faces point up (and out, on a slope).
           if (side < 0) g.pair(row[1], row[0]);
           else g.pair(row[0], row[1]);
@@ -2188,57 +2188,50 @@ export function buildRoadScene(
         const y = shoreTop(side, s, r);
         return y === null ? p : { ...p, y };
       };
+      const skirtRows = ss.map((s, i) => {
+        const k = skirts[i];
+        if (!k) return null;
+        const foot = outer + (reach[i] ?? 0) + k.run;
+        return [
+          top(s, reach[i] ?? 0),
+          at(s, foot, GROUND_Y),
+          at(s, foot + k.flat, GROUND_Y),
+          at(s, foot + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y),
+        ] as const;
+      });
       // The slope keeps every third foot but every top: its top edge is the strip's own edge, vertex
       // for vertex. Thinned there too, its chords cut inside a bend's arc and left a sliver open
       // between the strip and the slope (the 1 to 2 px light seam on Twin Peaks, run W-S): each
       // thinned quad is a fan from its two feet to every top between them.
       const g = strip('land');
-      const slope = ss.map((s, i): readonly [Point3, Point3] | null => {
-        const k = skirts[i];
-        const r = reach[i] ?? 0;
-        return k ? [top(s, r), at(s, outer + r + k.run, GROUND_Y)] : null;
-      });
-      const keptSlope = keptRows(
-        ss.map((s, i) => {
-          const k = skirts[i];
-          if (!k) return null;
-          const foot = outer + (reach[i] ?? 0) + k.run;
-          return [
-            top(s, reach[i] ?? 0),
-            at(s, foot, GROUND_Y),
-            at(s, foot + k.flat, GROUND_Y),
-            at(s, foot + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y),
-          ];
-        }),
-      );
+      const keptSlope = keptRows(skirtRows);
       // A flat band's first/last nonempty row must remain even if its other profile points align.
       skirts.forEach((k, i) => {
         if (k && (!!k.flat !== !!skirts[i - 1]?.flat || !!k.flat !== !!skirts[i + 1]?.flat))
           keptSlope[i] = true;
       });
-      for (let a = 0; a < slope.length; a++) {
-        const ra = slope[a];
+      for (let a = 0; a < skirtRows.length; a++) {
+        const ra = skirtRows[a];
         if (!ra || !keptSlope[a]) continue;
         let b = a + 1;
-        while (b < slope.length && slope[b] && !keptSlope[b]) b++;
-        const rb = slope[b];
+        while (b < skirtRows.length && skirtRows[b] && !keptSlope[b]) b++;
+        const rb = skirtRows[b];
         if (!rb) continue;
         const mid = Math.floor((a + b) / 2);
         // Faces up (and out), as the strips' pairs in increasing d make them.
         const face = (t0: Point3, t1: Point3, foot: Point3) =>
           side > 0 ? g.tri(t0, foot, t1) : g.tri(t0, t1, foot);
-        for (let j = a; j < b; j++) face(slope[j]![0], slope[j + 1]![0], j < mid ? ra[1] : rb[1]);
-        const tm = slope[mid]![0];
+        for (let j = a; j < b; j++) face(skirtRows[j]![0], skirtRows[j + 1]![0], j < mid ? ra[1] : rb[1]);
+        const tm = skirtRows[mid]![0];
         if (side > 0) g.tri(ra[1], rb[1], tm);
         else g.tri(ra[1], tm, rb[1]);
       }
-      const flatRows = ss.map((s, i): readonly [Point3, Point3] | null => {
+      const flatRows = skirtRows.map((row, i): readonly [Point3, Point3] | null => {
         const k = skirts[i];
-        const foot = outer + (reach[i] ?? 0) + (k?.run ?? 0);
-        return k && k.flat > 0 ? [at(s, foot, GROUND_Y), at(s, foot + k.flat, GROUND_Y)] : null;
+        return row && k && k.flat > 0 ? [row[1], row[2]] : null;
       });
       flatOf[side] = { rows: flatRows, kept: keptSlope };
-      run(flatRows, true, keptSlope);
+      run(flatRows, keptSlope);
       // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one. The
       // two are separate runs: joined, a row with a skirt and the next without one made a sliver
       // from the skirt's far edge back to the strip's (run W-P; the caps below close the step).
@@ -2255,13 +2248,11 @@ export function buildRoadScene(
             const nextToEdge = edgeShelf(i - 1) || edgeShelf(i + 1);
             if (skirted ? !k : !(edgeShelf(i) || nextToEdge)) return null;
             if (!skirted) return [top(s, r), at(s, outer + r + shelfOf(side, i), -0.4)];
-            if (!k) return null;
-            const far = outer + r + k.run + k.flat;
-            return [at(s, far, GROUND_Y), at(s, far + SCENERY_SHELF_M, -0.4)];
+            const row = skirtRows[i];
+            return row ? [row[2], row[3]] : null;
           }),
           // The shelf at the strip's edge hangs from that edge, drawn every row: thinned, its chords
           // left slivers of sky under the strip on the hairpins.
-          skirted,
           skirted ? keptSlope : undefined,
         );
       }
@@ -2377,17 +2368,15 @@ export function buildRoadScene(
         const s = ss[i] ?? 0;
         const r = reach[i] ?? 0;
         const k = skirts[i];
+        const skirt = skirtRows[i];
         const profile: (readonly [number, Point3])[] = [[0, top(s, 0)]];
         if (banked(i))
           profile.push([LAKE_BANK_M, wallTop(s)], [LAKE_BANK_M + SEAWALL_SHELF_M, wallFoot(s, i)]);
-        profile.push([r, top(s, r)]);
-        if (k) {
-          profile.push([r + k.run, at(s, outer + r + k.run, GROUND_Y)]);
-          if (k.flat > 0) profile.push([r + k.run + k.flat, at(s, outer + r + k.run + k.flat, GROUND_Y)]);
-          profile.push([
-            r + k.run + k.flat + SCENERY_SHELF_M,
-            at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y),
-          ]);
+        profile.push([r, skirt?.[0] ?? top(s, r)]);
+        if (k && skirt) {
+          profile.push([r + k.run, skirt[1]]);
+          if (k.flat > 0) profile.push([r + k.run + k.flat, skirt[2]]);
+          profile.push([r + k.run + k.flat + SCENERY_SHELF_M, skirt[3]]);
         } else if (li === 2)
           profile.push([r + shelfOf(side, i), at(s, outer + r + shelfOf(side, i), LAND_CAP_FOOT_Y)]);
         return profile;
@@ -3561,9 +3550,8 @@ const bobEuler = new Euler();
 const bobAt = new Vector3();
 
 /** Shared skirt rows, with every run's ends kept and all cross-section points simplified together. */
-function keptRows(rows: readonly (readonly Point3[] | null)[], thin = true): boolean[] {
-  const kept = rows.map((row) => !!row && !thin);
-  if (!thin) return kept;
+function keptRows(rows: readonly (readonly Point3[] | null)[]): boolean[] {
+  const kept = rows.map(() => false);
   for (let i = 0; i < rows.length; i++) {
     if (!rows[i]) continue;
     let end = i + 1;
