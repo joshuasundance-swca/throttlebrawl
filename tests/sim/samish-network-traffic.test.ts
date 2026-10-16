@@ -232,10 +232,15 @@ describe('Samish source access in the running traffic and race systems', () => {
     );
   });
 
-  it.each(['main', 'shore'] as const)(
-    'finishes the actual %s ride with ordered checkpoint events and no classified timeout',
-    (choice) => {
-      const c = config();
+  it.each([
+    { choice: 'main', density: 0 },
+    { choice: 'shore', density: 0 },
+    { choice: 'main', density: 1 },
+    { choice: 'shore', density: 1 },
+  ] as const)(
+    'finishes the actual $choice ride at density $density with ordered checkpoint events and no classified timeout',
+    ({ choice, density }) => {
+      const c = config(1, density);
       const { sim, world } = createSimWithWorld(c);
       const player = world.movers.find((m) => c.riders[m.riderIndex]?.controller.kind === 'player')!.id;
       const bot = createBot();
@@ -276,7 +281,7 @@ describe('Samish source access in the running traffic and race systems', () => {
           .roads.map((r) => r.id))
           expect(visited).toContain(c.road.edgeIndex(id));
       process.stdout.write(
-        `[examined] Samish ${choice}: unclassified finish at tick ${sim.tick}, ${checkpoints.length} ordered checkpoints, ${visited.size} visited roads\n`,
+        `[examined] Samish ${choice} density ${density}: unclassified finish at tick ${sim.tick}, ${checkpoints.length} ordered checkpoints, ${visited.size} visited roads\n`,
       );
     },
     90000,

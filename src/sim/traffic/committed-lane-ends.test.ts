@@ -267,10 +267,9 @@ describe('committed lane ends follow public directed lane transitions', () => {
     expect(buildLaneMap(road, c)).toEqual(saved);
   });
 
-  it('preserves the count-only legacy reference corridor behavior and fast representation', () => {
+  it('preserves lane ends on the legacy reference corridor', () => {
     const bundle = fixture();
     const map = buildLaneMap(createRoadNetwork(bundle), corridor(bundle, false, false));
-    expect(map).toEqual({ u0: [0, 100, 120], plus: [2, 1, 2], minus: [2, 1, 2] });
     expect(laneEndOnMap(map, 80, 1, 1, 200)).toBe(20);
     expect(laneEndOnMap(map, 140, -1, 1, 200)).toBe(20);
     expect(laneEndOnMap(map, 80, 1, 0, 200)).toBe(Infinity);

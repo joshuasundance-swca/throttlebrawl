@@ -1,8 +1,7 @@
-// The traffic corridor: the chain of road edges traffic lives on, as one straight coordinate `u`.
-// Built once at race start by walking the network's junction links from the route's start edge,
-// both ways, taking at each junction only a road that has drive lanes and no shortcut lane, and
-// preferring the route's own roads (docs/milestones/M1.md, traffic-1 and road-2: "vehicles never
-// route onto shortcut lanes, and take only drive-lane connectors, in both directions").
+// A traffic corridor expresses a chain of road edges as one distance coordinate `u`.
+// The legacy reference corridor is built at race start, preferring route roads with drive lanes
+// and no shortcut lanes. Network traffic also uses short committed corridors through explicitly
+// permitted movements; their lateral offsets and lane identities preserve connector handoffs.
 //
 // Each chain link has an orientation `o`: +1 when u grows with the edge's s, -1 when a junction
 // joined the edge the other way round. A corridor direction `c` (+1 toward growing u) maps to an
