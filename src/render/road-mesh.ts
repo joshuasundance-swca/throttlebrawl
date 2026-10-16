@@ -28,8 +28,12 @@ import {
 import {
   chooseSetPieces,
   grassMedianSpan,
+  LAND_COMMON_REACH_DELTA_M,
   LANES_UNDER_Y_M,
+  landIntervalPlan,
+  landWidthChangeOverRoad,
   SEEDED_SET_PIECE_KINDS,
+  terrainProfilePlan,
   type Edge,
   type RoadNetwork,
 } from '../road';
@@ -905,8 +909,6 @@ const FAR_ROOTS: readonly (readonly [number, number])[] = [
 const LAND_CAP_FOOT_Y = -0.4;
 /** Two roads' land at a join is bridged only where it stands within this height of each other, m. */
 const JOIN_LAND_DY_M = 0.5;
-/** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
-const LAND_CAP_NARROW_M = 2;
 /** Air above an allowed traffic body before the upper road's retaining face begins, m. */
 const LAND_CAP_CLEARANCE_MARGIN_M = 0.25;
 /** Coarse ground may batch a 256-quad fragment into an adjacent cell; its geometry bounds still cull it. */
@@ -1892,24 +1894,27 @@ export function buildRoadScene(
     /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
     const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
     /** The skirt's flat ground as drawn, per side: each row's foot and far edge, and the rows kept. */
-    const flatOf: Record<-1 | 1, { rows: (readonly [Point3, Point3] | null)[]; kept: boolean[] }> = {
-      [-1]: { rows: [], kept: [] },
-      [1]: { rows: [], kept: [] },
+    const flatOf: Record<
+      -1 | 1,
+      { rows: (readonly [Point3, Point3] | null)[]; kept: boolean[]; breakBefore: boolean[] }
+    > = {
+      [-1]: { rows: [], kept: [], breakBefore: [] },
+      [1]: { rows: [], kept: [], breakBefore: [] },
     };
     /**
      * Whether (s, d) stands on the flat ground exactly as drawn (run W-O's skeptic: far conifers
      * stood over the water, where the kept rows' quads, not the per-row widths, end).
      */
     const onFlat = (side: -1 | 1, s: number, d: number): boolean => {
-      const { rows, kept } = flatOf[side];
+      const { rows, kept, breakBefore } = flatOf[side];
       let a = Math.max(0, Math.min(rows.length - 2, Math.floor(s / step)));
       let b = a + 1;
-      while (a > 0 && rows[a] && !kept[a]) a--;
-      while (b < rows.length - 1 && rows[b] && !kept[b]) b++;
+      while (a > 0 && rows[a] && !kept[a] && !breakBefore[a]) a--;
+      while (b < rows.length - 1 && rows[b] && !kept[b] && !breakBefore[b]) b++;
       const ra = rows[a];
       const rb = rows[b];
       if (!ra || !rb) return false;
-      for (let i = a + 1; i < b; i++) if (!rows[i]) return false;
+      for (let i = a + 1; i <= b; i++) if (!rows[i] || breakBefore[i]) return false;
       const p = w(e.index, s, d, 0);
       const [fa, xa] = ra;
       const [fb, xb] = rb;
@@ -2078,6 +2083,31 @@ export function buildRoadScene(
       /** A row is a lake side's with a bank: its land ends at the plateau, a wall and the flat shore. */
       const banked = (i: number) => !Number.isNaN(shore[i] ?? Number.NaN);
       /**
+       * Whether the wedge omitted by a common-reach join would cover another road's lanes. Ordinary
+       * width changes stay joined; the common join exists only to keep this road's land off a lower one.
+       */
+      const widthChangeOverRoad = (i: number) => {
+        const s0 = ss[i - 1];
+        const s1 = ss[i];
+        const r0 = reach[i - 1] ?? 0;
+        const r1 = reach[i] ?? 0;
+        if (s0 === undefined || s1 === undefined || r0 <= 0 || r1 <= 0) return false;
+        return landWidthChangeOverRoad(s0, s1, r0, r1, LAND_ROAD_PROBE_M, (s, d) =>
+          overLowerLanes(w(e.index, s, side * (outer + d), LAND_TOP_M)),
+        );
+      };
+      /** Adjacent-row topology; bank intervals retain their wall-and-shore join. */
+      const intervals = ss.map((_, i) =>
+        i > 0
+          ? landIntervalPlan(
+              reach[i - 1] ?? 0,
+              reach[i] ?? 0,
+              !banked(i - 1) && !banked(i) && widthChangeOverRoad(i),
+            )
+          : ({ kind: 'absent' } as const),
+      );
+      const commonBreakBefore = intervals.map((plan) => plan.kind === 'common');
+      /**
        * A plain row beside a bank: its wall has no height and its shore is the plateau, so the shore's band runs on
        * into it and no gap opens between the two rows' different widths (the plateau's, past the bank's wall).
        */
@@ -2120,14 +2150,9 @@ export function buildRoadScene(
           ground.breakStrip();
           return;
         }
-        if (
-          i > 0 &&
-          !banked(i - 1) &&
-          !banked(i) &&
-          (reach[i - 1] ?? 0) > 0 &&
-          Math.abs((reach[i - 1] ?? 0) - r) > LAND_CAP_NARROW_M
-        ) {
-          const common = Math.min(reach[i - 1] ?? 0, r);
+        const interval = intervals[i];
+        if (interval?.kind === 'common') {
+          const common = interval.reachM;
           const s0 = ss[i - 1] ?? 0;
           const a0 = w(e.index, s0, side * outer, LAND_TOP_M);
           const b0 = w(e.index, s0, side * (outer + common), LAND_TOP_M);
@@ -2136,7 +2161,7 @@ export function buildRoadScene(
           if (side < 0) ground.quad(b0, a0, b1, a1);
           else ground.quad(a0, b0, a1, b1);
           commonCaps.push([b0, b1]);
-          commonProfileCaps.add((reach[i - 1] ?? 0) < r ? i - 1 : i);
+          commonProfileCaps.add(interval.narrow === 0 ? i - 1 : i);
         }
         const pair = [
           w(e.index, s, side * outer, LAND_TOP_M),
@@ -2167,10 +2192,15 @@ export function buildRoadScene(
         skirts.push(terrain && r > 0 && !meetsOf[side][i] && !wallOf[side][i] ? skirtAt(side, s, r) : null);
       });
       // The skirt's shared feet simplify together; the strip's own edge still keeps every sample.
-      const run = (rows: (readonly [Point3, Point3] | null)[], kept?: readonly boolean[]) => {
+      const run = (
+        rows: (readonly [Point3, Point3] | null)[],
+        kept?: readonly boolean[],
+        breakBefore: readonly boolean[] = [],
+      ) => {
         const g = strip('land');
         g.breakStrip();
         for (const [i, row] of rows.entries()) {
+          if (breakBefore[i]) g.breakStrip();
           if (!row) {
             g.breakStrip();
             continue;
@@ -2204,20 +2234,16 @@ export function buildRoadScene(
       // between the strip and the slope (the 1 to 2 px light seam on Twin Peaks, run W-S): each
       // thinned quad is a fan from its two feet to every top between them.
       const g = strip('land');
-      const keptSlope = keptRows(skirtRows);
-      // A flat band's first/last nonempty row must remain even if its other profile points align.
-      skirts.forEach((k, i) => {
-        if (k && (!!k.flat !== !!skirts[i - 1]?.flat || !!k.flat !== !!skirts[i + 1]?.flat))
-          keptSlope[i] = true;
-      });
-      for (let a = 0; a < skirtRows.length; a++) {
-        const ra = skirtRows[a];
-        if (!ra || !keptSlope[a]) continue;
-        let b = a + 1;
-        while (b < skirtRows.length && skirtRows[b] && !keptSlope[b]) b++;
-        const rb = skirtRows[b];
-        if (!rb) continue;
-        const mid = Math.floor((a + b) / 2);
+      const skirtPlan = terrainProfilePlan(
+        skirtRows,
+        commonBreakBefore,
+        SKIRT_SIMPLIFY.tolM,
+        SKIRT_SIMPLIFY.maxSpanM,
+      );
+      const keptSlope = skirtPlan.kept;
+      for (const { from: a, to: b, mid } of skirtPlan.fans) {
+        const ra = skirtRows[a]!;
+        const rb = skirtRows[b]!;
         // Faces up (and out), as the strips' pairs in increasing d make them.
         const face = (t0: Point3, t1: Point3, foot: Point3) =>
           side > 0 ? g.tri(t0, foot, t1) : g.tri(t0, t1, foot);
@@ -2230,8 +2256,8 @@ export function buildRoadScene(
         const k = skirts[i];
         return row && k && k.flat > 0 ? [row[1], row[2]] : null;
       });
-      flatOf[side] = { rows: flatRows, kept: keptSlope };
-      run(flatRows, keptSlope);
+      flatOf[side] = { rows: flatRows, kept: keptSlope, breakBefore: commonBreakBefore };
+      run(flatRows, keptSlope, commonBreakBefore);
       // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one. The
       // two are separate runs: joined, a row with a skirt and the next without one made a sliver
       // from the skirt's far edge back to the strip's (run W-P; the caps below close the step).
@@ -2254,6 +2280,7 @@ export function buildRoadScene(
           // The shelf at the strip's edge hangs from that edge, drawn every row: thinned, its chords
           // left slivers of sky under the strip on the hairpins.
           skirted ? keptSlope : undefined,
+          commonBreakBefore,
         );
       }
       // End caps (run W-O's skeptic: "row houses stand on flat land plates that float, with sky and
@@ -2397,7 +2424,7 @@ export function buildRoadScene(
       const capAt = (i: number, lj: number, rj: number) => {
         const li = level(i);
         const r = reach[i] ?? 0;
-        if (li === 0 || (lj >= li && rj >= r - LAND_CAP_NARROW_M)) return;
+        if (li === 0 || (lj >= li && rj >= r - LAND_COMMON_REACH_DELTA_M)) return;
         const s = ss[i] ?? 0;
         const [first, ...rest] = profileRows(i);
         const head = lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), first![1]] : rj < r ? [top(s, rj)] : [];
@@ -3548,24 +3575,6 @@ interface SceneryBatch {
 
 const bobEuler = new Euler();
 const bobAt = new Vector3();
-
-/** Shared skirt rows, with every run's ends kept and all cross-section points simplified together. */
-function keptRows(rows: readonly (readonly Point3[] | null)[]): boolean[] {
-  const kept = rows.map(() => false);
-  for (let i = 0; i < rows.length; i++) {
-    if (!rows[i]) continue;
-    let end = i + 1;
-    while (end < rows.length && rows[end]) end++;
-    for (const k of keptSamples(
-      rows.slice(i, end) as readonly (readonly Point3[])[],
-      SKIRT_SIMPLIFY.tolM,
-      SKIRT_SIMPLIFY.maxSpanM,
-    ))
-      kept[i + k] = true;
-    i = end;
-  }
-  return kept;
-}
 
 /** Whether p lies in the triangle abc, seen from above (x and z). */
 function inTriangle(p: Point3, a: Point3, b: Point3, c: Point3): boolean {
