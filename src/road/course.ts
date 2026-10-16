@@ -1,6 +1,6 @@
 // The course and its edges (the maintainer, 2026-10-06, [decided]: a road race in a physical world with honest
 // edges; "consistent physics and gameplay is important here so players know what to expect"). In bounds is the
-// road, its verge band, any structure top (and anything standing on it, which is a structure too) and another
+// road, its verge and connected natural land strip, any structure top and another
 // road of the network; everything else is out, and crossing into it has one visible, consistent consequence (a
 // quick reset with the time penalty), never an invisible wall (docs/product-spec.md, "World frame";
 // docs/architecture.md, "Physical world").
@@ -14,6 +14,8 @@
 // answer.
 import { sRateFactor, type Edge, type RoadNetwork } from './network';
 import { structuresAt, topAt, type StructurePlan } from './structures';
+import { LAND_STRIP_M, landEdgeOf, sectionGroundOf } from './drawn-ground';
+import { themeAt } from './themes';
 
 /**
  * A surface this little over a rider still counts as under him, m [default]: a rider resting on a top or the road
@@ -23,7 +25,7 @@ export const COURSE_STEP_M = 0.05;
 
 /** What a rider at a point would come down on. */
 export type CourseSpot =
-  /** A road's lanes or its verge band, at that road's (s, d), and the surface's world height there. */
+  /** A road's lanes, verge or continuous natural land strip, and its surface's world height. */
   | {
       readonly kind: 'road';
       readonly edge: number;
@@ -38,11 +40,41 @@ export type CourseSpot =
 
 const OUT: CourseSpot = { kind: 'out' };
 
+/**
+ * Connected rural grass beside a soft verge is rideable, including across a change in grass
+ * colour (playtest, 2026-10-15). Use the scene's existing land strip, never extend the road plane
+ * into empty space. The strip stops before the terrain skirt; riding its downhill height field
+ * needs a separate terrain model. Lake banks have their own plateau/shore geometry, not this strip.
+ */
+export function roadsideGroundHeight(road: RoadNetwork, edge: number, s: number, d: number): number | null {
+  const e = road.edges[edge];
+  if (!e) return null;
+  const side = d < 0 ? -1 : 1;
+  const name = side < 0 ? 'left' : 'right';
+  const verge = road.vergeAt(edge, s, name);
+  if (verge.edge !== 'soft' || road.barrierAt(edge, s, name)) return null;
+  // Only rural grass opts in: its render-only solids are placed beyond this strip.
+  // Other scenery cohorts retain their verge limit until their contacts are implemented.
+  if (verge.surface !== 'grass' || themeAt(e.tags, name, s) !== 'rural') return null;
+  const from = side * verge.dOuter;
+  const across = side * d;
+  if (across <= from) return null;
+  const reach = landEdgeOf(road)(edge, side, s);
+  const outer = (side < 0 ? -e.dMin : e.dMax) + 0.6 + reach;
+  // Keep a nominal half-metre bike margin; the land query excludes folds and road overlaps.
+  if (reach <= 0 || across + 0.5 > outer) return null;
+  const ground = sectionGroundOf(road);
+  for (let out = from; out < across; out += 0.5) {
+    if (ground(edge, s, side * out) === null) return null;
+  }
+  return ground(edge, s, d);
+}
+
 /** The surface's height at (s, d) when it lies on the edge's lanes or verge band, else null. */
 function bandHeight(road: RoadNetwork, edge: number, s: number, d: number): number | null {
   const left = road.vergeAt(edge, s, 'left').dOuter;
   const right = road.vergeAt(edge, s, 'right').dOuter;
-  return d >= left && d <= right ? road.surfaceHeight(edge, s, d) : null;
+  return d >= left && d <= right ? road.surfaceHeight(edge, s, d) : roadsideGroundHeight(road, edge, s, d);
 }
 
 /** Every edge's samples in a grid of squares as wide as the farthest band's edge from its sample, and a spacing. */
@@ -68,7 +100,7 @@ function indexOf(road: RoadNetwork): RoadIndex {
       const s = i * e.spacing < e.length ? i * e.spacing : e.length;
       const left = -road.vergeAt(e.index, s, 'left').dOuter;
       const right = road.vergeAt(e.index, s, 'right').dOuter;
-      const reach = (left > right ? left : right) + e.spacing;
+      const reach = (left > right ? left : right) + e.spacing + LAND_STRIP_M;
       if (reach > cell) cell = reach;
     }
   }

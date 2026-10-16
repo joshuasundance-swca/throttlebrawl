@@ -1,12 +1,12 @@
 {
   "type": "pack",
   "id": "region-clinton",
-  "name": "Region: Clinton, Iowa",
+  "name": "Region: Iowa",
   "version": "0.1.0",
   "formatVersion": 1,
   "gameVersion": ">=0.1.0",
   "dependencies": { "base": "^0.1.0" },
-  "description": "A first bounded Clinton course: a rural race on Iowa Highway 136, using the base bikes, regular rivals and traffic.",
+  "description": "Iowa routes around Clinton: rural Highway 136 and Eagle Point Park, using the base bikes, regular rivals and traffic.",
   "authors": ["the maintainer", "agents (see meta.provenance per entry)"],
   "license": "MIT",
   "licenseRules": [

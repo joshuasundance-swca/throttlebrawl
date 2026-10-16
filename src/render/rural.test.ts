@@ -2,20 +2,32 @@ import { Mesh, Raycaster, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   courseAt,
+  COURSE_STEP_M,
   createRoadNetwork,
   deriveVerge,
   fixtureNetwork,
   planStreetFurniture,
   planStructures,
   type BakedTag,
+  type BakedNetwork,
+  type BakedRoad,
 } from '../road';
 import { deciduousGeometry } from './deciduous';
 import { createFlatLook } from './look';
 import { buildRoadScene } from './road-mesh';
-import { isTropical, themeAt } from './scenery';
+import { isTropical, sceneryOffCourse, themeAt } from './scenery';
 
 const LENGTH = 1200;
 const rural: readonly BakedTag[] = [{ s0: 0, s1: LENGTH, side: 'both', tag: 'rural' }];
+
+const networkFiles = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/networks/*.json', {
+  eager: true,
+  import: 'default',
+});
+const roadFiles = import.meta.glob<BakedRoad>('../../packs/*/regions/*/roads/*.json', {
+  eager: true,
+  import: 'default',
+});
 
 function ruralRoad(tags = rural) {
   const bundle = fixtureNetwork([{ id: 'r', lengthM: LENGTH, kappa: 0.0004, grade: 0.015 }]);
@@ -28,6 +40,66 @@ function scene(tags = rural, seed = 7) {
 }
 
 describe('opt-in temperate rural roadside', () => {
+  it('checks clearance at the actual footing height, without treating an elevated road as lower course ground', () => {
+    const road = ruralRoad();
+    const s = LENGTH / 2;
+    const roadY = road.surfaceHeight(0, s, 0);
+    expect(roadY).toBeGreaterThan(1);
+    expect(sceneryOffCourse(road, 0, s, 0, roadY, 0.6)).toBe(false);
+    expect(sceneryOffCourse(road, 0, s, 0, 0.25, 0.6)).toBe(true);
+  });
+
+  it('keeps actual rural-content trunks outside every playable road, including adjoining strips', () => {
+    let examined = 0;
+    let networks = 0;
+    for (const [path, network] of Object.entries(networkFiles)) {
+      const pack = path.split('/regions/')[0]!;
+      const roads = Object.entries(roadFiles)
+        .filter(([p, r]) => p.startsWith(pack + '/') && network.roads.includes(r.id))
+        .map(([, r]) => r);
+      if (!roads.some((r) => r.tags?.some((t) => t.tag === 'rural'))) continue;
+      networks++;
+      const road = createRoadNetwork({ network, roads });
+      for (const seed of [1, 7, 11]) {
+        const built = buildRoadScene(
+          road,
+          createFlatLook(),
+          Object.fromEntries(roads.map((r) => [r.id, r])),
+          { seed },
+        );
+        const plan = planStructures(road, seed, {}, {});
+        try {
+          for (const tree of built.spots.filter((s) => s.kind === 'deciduous')) {
+            for (const [ds, dd] of [
+              [0, 0],
+              [-0.6, 0],
+              [0.6, 0],
+              [0, -0.6],
+              [0, 0.6],
+            ])
+              expect(
+                courseAt(
+                  road,
+                  plan,
+                  { edge: tree.edge, s: tree.s + ds!, d: tree.d + dd! },
+                  tree.p.y + COURSE_STEP_M,
+                ).kind,
+                `${network.id}@${seed}: trunk ${tree.s}/${tree.d}`,
+              ).toBe('out');
+            examined++;
+          }
+        } finally {
+          built.dispose();
+        }
+      }
+    }
+    expect(networks).toBeGreaterThan(0);
+    expect(examined).toBeGreaterThan(0);
+    console.log(
+      `[examined] ${examined} real rural-content trees across ${networks} networks and three seeds`,
+    );
+  });
+
   it('selects rural ground with a soft grass band, preserves water priority and the omitted-tag default', () => {
     const tags: readonly BakedTag[] = [...rural, { s0: 200, s1: 300, side: 'left', tag: 'water-open' }];
     expect(themeAt(tags, 'right', 250)).toBe('rural');
