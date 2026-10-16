@@ -1351,7 +1351,7 @@ export function buildRoadScene(
     // the main road.
     const plainClip = (s: number): Clip => {
       const l = laneSpans(road.lanesAt(e.index, s));
-      const span = e.isTrafficOnly
+      const span: [number, number] = e.isTrafficOnly
         ? [outerL, outerR]
         : (l.drive ?? l.shortcut ?? ([0, 0] as [number, number]));
       return { lo: span[0], hi: span[1], vergeL: true, vergeR: true, goreL: false, goreR: false };
