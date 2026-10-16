@@ -206,9 +206,9 @@ const BEND_STEP_M = 4;
 /**
  * The fastest a rider can go now and still slow, braking at BEND_BRAKE_MPS2, to the speed that holds
  * each bend ahead (within its braking distance plus BEND_LOOK_EXTRA_M) on its line, m/s; Infinity with
- * no bend ahead. The rival AI and the cops keep under it on a street lined with solid furniture (the
- * live check of #619: on Russian Hill's and Duval's corners they were carried wide onto the sidewalk
- * into a trunk, a pole or a planter).
+ * no bend ahead. Racing rivals use it on every road, including bare bends. Cops also use it near
+ * solid furniture (the live check of #619: Russian Hill's and Duval's corners carried them wide onto
+ * the sidewalk into a trunk, a pole or a planter).
  */
 export function bendSpeed(world: World, config: SimConfig, m: Mover, steerRateMps: number): number {
   const road = config.road;

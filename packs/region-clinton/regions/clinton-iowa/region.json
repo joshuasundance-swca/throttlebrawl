@@ -4,7 +4,7 @@
   "name": "Clinton, Iowa",
   "blurb": "Broad bends outside town. The delivery window is closing.",
   "signStyle": "town",
-  "networks": ["osm-clinton-ia136"],
+  "networks": ["osm-clinton-ia136", "osm-clinton-eagle-point"],
   "timeOfDayOptions": [
     { "id": "noon", "lighting": "clinton-clear-noon" },
     {

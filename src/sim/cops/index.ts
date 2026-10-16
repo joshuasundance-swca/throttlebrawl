@@ -1453,7 +1453,8 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos |
 /**
  * Playtest 2's patrol spots, one per patrol cop (fewer when the route has no room): each a route
  * progress PATROL.windowsS into the race at PATROL.paceShare x the event's pace, drawn from the
- * cops stream (one draw per cop, always), then the first clear spot from there on.
+ * cops stream (one draw per cop, always), then the first clear spot from there on. If that window
+ * has no parking, a bounded backward search retains the route bounds and cop spacing.
  */
 export function patrolSpots(world: World, config: SimConfig, count: number): { at: number; pos: RoadPos }[] {
   const out: { at: number; pos: RoadPos }[] = [];
@@ -1465,11 +1466,26 @@ export function patrolSpots(world: World, config: SimConfig, count: number): { a
     let want = clamp(t * speed, PATROL.minProgress * length, PATROL.maxProgress * length);
     const last = out[out.length - 1];
     if (last) want = Math.max(want, last.at + PATROL.spacingM);
+    let found = false;
     for (let i = 0; i < PATROL.patrolTries; i++) {
       const at = want + i * PATROL.stepM;
       if (at > PATROL.maxProgress * length) break;
       const pos = routePosAt(config, at);
       const spot = pos && patrolSpot(config, pos, i >= PATROL.tries / 2);
+      if (spot) {
+        out.push({ at, pos: spot });
+        found = true;
+        break;
+      }
+    }
+    if (found) continue;
+    const earliest = Math.max(PATROL.minProgress * length, last ? last.at + PATROL.spacingM : 0);
+    for (let i = 1; i <= PATROL.patrolTries; i++) {
+      const at = want - i * PATROL.stepM;
+      if (at < earliest) break;
+      if (at > PATROL.maxProgress * length) continue;
+      const pos = routePosAt(config, at);
+      const spot = pos && patrolSpot(config, pos, true);
       if (spot) {
         out.push({ at, pos: spot });
         break;

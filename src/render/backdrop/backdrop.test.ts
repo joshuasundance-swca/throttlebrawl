@@ -111,7 +111,7 @@ describe('the backdrop data', () => {
 });
 
 describe('the first Longview and Clinton horizons', () => {
-  it.each(['osm-pnw-longview', 'osm-clinton-ia136'])(
+  it.each(['osm-pnw-longview', 'osm-clinton-ia136', 'osm-clinton-eagle-point'])(
     '%s: draws a land horizon below the roads, with distant hills and seeded clouds',
     (id) => {
       const { region, network } = filesFor(id);

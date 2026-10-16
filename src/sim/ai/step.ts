@@ -516,7 +516,7 @@ function driveRider(
   // fight's push read the traffic alone (`obstacles`).
   const fixed = furnitureSeen(world, config, m, Math.min(SEE_TRAFFIC_M, v * 6 + 40), FIXED_BEHIND_M);
   // A bike left on the road after a crash is solid too (pile-ups; the maintainer, 2026-10-06): it is kept
-  // clear of as the furniture is (`still`), but one on the road never slows it for bends.
+  // clear of as the furniture is (`still`).
   const dropped = droppedBikesSeen(world, config, m, Math.min(SEE_TRAFFIC_M, v * 6 + 40), FIXED_BEHIND_M);
   const still = dropped.length > 0 ? [...fixed, ...dropped] : fixed;
   const avoid = still.length > 0 ? [...obstacles, ...still] : obstacles;
@@ -858,10 +858,8 @@ function driveRider(
   // and slow enough to steer back across the kerb line between the pieces.
   if (fixed.length > 0 && racing && offRoadAmongFixed(pos.d, edge?.dMin ?? -5, edge?.dMax ?? 5, fixed))
     speedTarget = Math.min(speedTarget, FIXED_OFF_ROAD_MPS);
-  // A bend on a street lined with solid furniture: slow enough to hold it, so it is not carried wide onto
-  // the sidewalk into a trunk or a pole (Russian Hill's corners, in the live check of #619).
-  if (fixed.length > 0 && racing && def)
-    speedTarget = Math.min(speedTarget, bendSpeed(world, config, m, def.bike.steerRateMps));
+  // Slow enough to hold each bend, including bare roads where riding wide crosses the course edge.
+  if (racing && def) speedTarget = Math.min(speedTarget, bendSpeed(world, config, m, def.bike.steerRateMps));
 
   // Hard rule last: never steer into a vehicle (or a solid piece) alongside; hold at least its clearance from it.
   for (const o of avoid) {

@@ -11,7 +11,7 @@ import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } 
 import { SIM_TUNING, type SimConfig, type SimEvent, type SimEventCops, type SimRiderDef } from '../api';
 import { ridersSystem } from '../riders';
 import { addMover, createWorld, type World } from '../world';
-import { COP_CHASING, COP_PARKED, copsState, copsSystem, PATROL } from './index';
+import { COP_CHASING, COP_PARKED, copsState, copsSystem, PATROL, patrolSpots } from './index';
 
 const bike = {
   contentId: 'base:bike',
@@ -141,6 +141,45 @@ function lawWorld(cfg: SimConfig) {
 const patrolCops = (w: World) => COPS.filter((id) => (copsState(w).patrolAt[id] ?? -1) >= 0);
 
 describe('playtest 2: the patrol', () => {
+  it('uses an earlier safe shoulder when the timed window has no parking, without parking in narrow lanes', () => {
+    const cfg = config(patrol({ baseCount: 0 }));
+    const oneWay = [{ id: 'R1', dCenterM: 0, widthM: 3, direction: 1 as const, kind: 'drive' as const }];
+    const make = (shoulder: boolean) => {
+      const bundle = fixtureNetwork([
+        { id: 'entry', lengthM: 300, kappa: 0, ...(shoulder ? {} : { lanes: oneWay }) },
+        { id: 'narrow', lengthM: 1500, kappa: 0, lanes: oneWay },
+      ]);
+      for (const r of bundle.roads)
+        for (const section of r.laneSections)
+          section.verges = {
+            left: { widthM: 0.5, surface: 'grass', edge: 'soft' },
+            right: { widthM: 0.5, surface: 'grass', edge: 'soft' },
+          };
+      const road = createRoadNetwork(bundle);
+      const route = createRouteProgress(road, {
+        id: 'narrow',
+        network: bundle.network.id,
+        start: { road: 'entry', s: 60, dir: 1 },
+        finish: { road: 'narrow', s: 1480 },
+        mainPath: ['entry', 'narrow'],
+        allowedRoads: ['entry', 'narrow'],
+        closed: false,
+      });
+      return { ...cfg, road, route };
+    };
+    const safe = make(true);
+    const spots = patrolSpots(createWorld(safe), safe, 2);
+    expect(spots).toHaveLength(1);
+    expect(spots[0]!.pos.edge).toBe(safe.road.edgeIndex('entry'));
+    expect(spots[0]!.at).toBeGreaterThanOrEqual(PATROL.minProgress * safe.route.length);
+    expect(
+      safe.road
+        .lanesAt(spots[0]!.pos.edge, spots[0]!.pos.s)
+        .some((lane) => lane.kind === 'shoulder' && lane.dCenterM === spots[0]!.pos.d),
+    ).toBe(true);
+    const unsafe = make(false);
+    expect(patrolSpots(createWorld(unsafe), unsafe, 2)).toEqual([]);
+  });
   it('rolls one or two patrol cops (both occur over seeds 1-20) beside the lot starter; the rest wait in the lot', () => {
     const counts = new Set<number>();
     for (let seed = 1; seed <= 20; seed++) {
