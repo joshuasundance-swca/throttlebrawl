@@ -5,7 +5,7 @@ audience: player
 
 Lake Samish's new highway access roads no longer leave open terrain edges beside elevated crossings.
 The retaining faces close to each crossing while keeping enough height for the traffic allowed below.
-Sharp changes in roadside land width also close the exposed side of their terrain slope instead of leaving a view underneath it.
+At elevated crossings, sharp changes in roadside land width close the exposed side of the whole terrain profile instead of leaving a view underneath it. Width changes on open ground stay joined without an artificial cut.
 Terrain slopes and their adjoining flat ground now use fewer triangles while keeping their shared edges closed.
 Those adjoining pieces now reuse one terrain profile, avoiding repeated geometry work without changing the drawn ground.
 Vehicle figures likewise share their common placement work without changing their scale, paint or pose.
