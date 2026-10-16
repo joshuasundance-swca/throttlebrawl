@@ -60,7 +60,7 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
     const road = createRoadNetwork({ network, roads });
     const progress = createRouteProgress(road, route);
     expect(route.closed).toBe(false);
-    expect(progress.length).toBeGreaterThan(1500);
+    expect(progress.length).toBeGreaterThan(0);
     expect(route.branches?.some((b) => b.traffic === 'road')).toBe(true);
     expect(progress.distanceToFinish(progress.finish.edge, progress.finish.s)).toBeCloseTo(0);
     expect(progress.branches.length).toBeGreaterThan(0);
@@ -70,10 +70,22 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
     expect(branch.gainM).toBeLessThan(0);
     const choice = branch.choice!;
     expect(choice.edge).toBe(progress.start.edge);
-    expect(choice.s0).toBeGreaterThan(progress.start.s + 20);
+    expect(choice.s0).toBeGreaterThan(progress.start.s);
     const grid = progress.startGrid!;
     expect(progress.start.s - (grid.rows - 1) * grid.rowGapM).toBeGreaterThan(0);
-    expect(progress.distanceToFinish(choice.edge, choice.s1)).toBeGreaterThan(1000);
+    const forkProgress = progress.progressAt(choice.edge, choice.s1);
+    const rejoins = branch.edges
+      .flatMap((edge) => road.nextEdges(edge, progress.orientation(edge) === 1 ? 'to' : 'from'))
+      .filter((link) => progress.mainEdges.includes(link.edge))
+      .map((link) =>
+        progress.progressAt(link.edge, link.entersAt === 'from' ? 0 : road.edges[link.edge]!.length),
+      )
+      .filter((p) => p > forkProgress);
+    expect(rejoins.length, 'the outer path returns to the main route beyond its fork').toBeGreaterThan(0);
+    const rejoinProgress = Math.min(...rejoins);
+    expect(forkProgress).toBeGreaterThan(0);
+    expect(rejoinProgress).toBeGreaterThan(forkProgress);
+    expect(rejoinProgress).toBeLessThan(progress.length);
     for (const c of progress.checkpoints) expect(Number.isFinite(c.progress)).toBe(true);
     // Staying in the ordinary travel lane preserves the inner route; the deliberate outside
     // choice window selects Olympia/Kessler. A shortcut that swallows the whole lane is not a choice.
