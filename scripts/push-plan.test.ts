@@ -29,7 +29,9 @@ describe('planPush', () => {
       'packs/future-pack/regions/future-ridge/routes/new-route.json',
       'packs\\future-pack\\bikes\\new-bike.json',
     ]) {
-      expect(planPush([source], tree(career)).tests, source).toEqual([career]);
+      const plan = planPush([source], tree(career));
+      expect(plan.tests, source).toEqual([career]);
+      expect(plan.reason, source).toContain('pack configuration');
     }
     expect(planPush(['packs/future-pack/pack.json'], tree()).tests).toEqual([]);
     for (const source of ['src/ui/menu.ts', 'packs/future-pack/poster.png', 'docs/roadmap.md'])

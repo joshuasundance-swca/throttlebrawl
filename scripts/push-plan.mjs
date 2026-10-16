@@ -98,6 +98,6 @@ export function planPush(changed, exists) {
   return {
     mode: 'files',
     tests: [...tests].sort(),
-    reason: `${files.length} file(s); named unit tests and bounded contact/road-content contracts`,
+    reason: `${files.length} file(s); named unit tests and bounded contact, road-content and pack configuration contracts`,
   };
 }
