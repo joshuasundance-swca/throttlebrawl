@@ -14,6 +14,8 @@ the riding line, rather than dropping an outside rider deep into oncoming traffi
 The streets use OpenStreetMap alignment and new USGS terrain samples. Corner easing,
 lane widths, generous soft margins and the bridge guardrails are game adaptations.
 The roadside town scenery is generic, rather than a claim about mapped properties.
+Walkers occupy a grass-side stretch of West Washington, away from the bridge and
+traffic lanes. Their placement is game scenery, not a mapped walking route.
 Port Shift stays available as a separate course.
 
 Traffic occupying a receiving lane keeps priority. A car holding a junction can then

@@ -127,7 +127,31 @@ describe('Longview civic streets offer a complete two-way route choice', () => {
           }
         }
       }
-      process.stdout.write(`[examined] ${probes} rendered lane and recovery-margin points\n`);
+      let pedestrianPoints = 0;
+      for (const r of data.roads) {
+        const edge = road.edgeIndex(r.id);
+        for (const zone of r.features?.filter((f) => f.kind === 'roadsideZone') ?? []) {
+          for (let s = zone.s0; s <= zone.s1; s += 2) {
+            for (const d of [zone.d0, (zone.d0 + zone.d1) / 2, zone.d1]) {
+              const p = road.toWorld(edge, s, d, 0);
+              const hit = ground.heightAt(p.x, p.z, p.y + 0.5);
+              expect(hit, `${r.id} ${zone.id} drawn walking area`).not.toBeNull();
+              expect(Math.abs((hit?.y ?? Infinity) - p.y)).toBeLessThan(0.3);
+              expect(
+                road
+                  .lanesAt(edge, s)
+                  .every((l) => l.kind !== 'drive' || Math.abs(d - l.dCenterM) > l.widthM / 2),
+                `${r.id} ${zone.id} walkers start outside traffic lanes`,
+              ).toBe(true);
+              pedestrianPoints++;
+            }
+          }
+        }
+      }
+      expect(pedestrianPoints, 'the city course authors a grounded roadside walking area').toBeGreaterThan(0);
+      process.stdout.write(
+        `[examined] ${probes} rendered lane and recovery-margin points; ${pedestrianPoints} walking-area points\n`,
+      );
     } finally {
       scene.dispose();
     }

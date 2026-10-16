@@ -53,6 +53,15 @@
           "tags": ["town"],
           "features": [
             {
+              "kind": "roadsideZone",
+              "id": "civic-washington-walkers",
+              "s0": 200,
+              "s1": 260,
+              "d0": 6.5,
+              "d1": 9,
+              "params": { "spawns": "pedestrians", "kinds": ["rain-shell-hiker", "trail-runner"] }
+            },
+            {
               "kind": "billboard",
               "id": "civic-west-sign",
               "s0": 450,
