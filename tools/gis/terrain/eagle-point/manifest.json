@@ -1,0 +1,139 @@
+{
+  "inputs": {
+    "road_band": {
+      "path": "road-band.json",
+      "sha256": "d086ec1040a036f17432797d7c3b841a68e95c75fb33dfd01e7c3ebb6e13853d"
+    },
+    "grid": {
+      "path": "grid.json",
+      "sha256": "831b4b301712dd9fbd97440c426db7412ce44244e246e30f9d8a434b2967534e"
+    },
+    "river": {
+      "path": "river.json",
+      "sha256": "9d4af8b616972ef5b9a0af80007f889e5cab033d56ecedd4236bb186b9cb9491"
+    },
+    "water_samples": {
+      "path": "water-samples.json",
+      "sha256": "3425b22308007d6941b6bbddbb66c6d0d2fd962836129805f6ab56fa085d6775"
+    }
+  },
+  "authoring_versions": {
+    "shapely": "2.2.0",
+    "geos": "3.14.1",
+    "numpy": "2.5.3",
+    "pydantic": "2.13.5"
+  },
+  "expected_geometry_sha256": "6f503faa29eff956d639dc96c6f104e5948db3a30b991419862a4e3a562fa610",
+  "provenance": {
+    "network": "osm-clinton-eagle-point",
+    "frame": {
+      "originLatDeg": 41.897,
+      "originLonDeg": -90.177,
+      "x": "east",
+      "z": "south",
+      "height": "source DEM metres, not current water stage"
+    },
+    "source_artifact_sha256": {
+      "road_band": "4ea4d9bf25453f70ff014415b950129c1af3a2935d2e6728f4e49118cdd73cdb",
+      "grid": "bdaa8768d48589c55044a7610a8735992a2242d5e4131bac3b6f3d4e61bc970a",
+      "river": "05606ba0900a090e9e3b2e5438c2c8c9289090c52efbd0c2f98ddbcf8aa7ad39",
+      "water_samples": "7ef10e29ef3a1e1556e8e77f905bf765d853ddf0bdbcf4afe211816104609cfb"
+    },
+    "selected_original_json_sha256": "d81c6300a9ba307464be9e3dd64d4ff319f6c408511a43b2773a58def3e7e00a",
+    "road_band_loaded_source_sha256": {
+      "src/road/network.ts": "bb3b8c31307876d7123589ad99ef69aef7f87d7215340a7250dc469f070a8b39",
+      "src/core/index.ts": "9e2da45307113a383e73747c43cd20438137fd723d4b87b5d0adba46e9d481c3",
+      "src/core/math.ts": "e359e672bd2700e31fedc295a25e055085245b82dd90c61d77a028ea1d0154e3",
+      "src/core/hash.ts": "35d47b2a892a5d0eb2aaa8f0250ec5952a1d462fe24a6fe270b8d241f291eadd",
+      "src/core/rng.ts": "febfe91fd54af615caec21a289ad61c667003e0d0b8d2f566f5477eb729286be",
+      "src/core/version.ts": "c59b89c2eadb67ac6fa59c4864a26353bc4b3d371c528e7d2fe8c1dea90fc6df",
+      "src/core/layout.ts": "b20c31cc4f0d8aad143ea7ffa45bccab5128c38f3bcb5f54a317cbdaed1902f4",
+      "src/core/tuning.ts": "be4d0331cd2dd86d76bfaf5eb333769e318c7ea4f439743ded3149365ad381bf",
+      "src/core/callbacks.ts": "2d96c8f0f241035e4c221394d2190d586625c5347107653ac90fbab033df80a9",
+      "src/core/ids.ts": "a5abdf191904f160ed043b9030fcf1ded70671f4d1d7d4fc3606a6acfb3587e4",
+      "src/core/difficulty.ts": "456b9b5a59f5ecb4e94612b34e5c3a6a413ca3a50f62db180f6d937fc3369545",
+      "src/core/surfaces.ts": "e1c949a45bfb1d5b0c8697d6c22974971278dca041866222f9d341c2760ee8d3",
+      "src/core/grudge-rules.ts": "994315f37d624149c391a22b7afcf1d5a1ead6af16ef645c2428f8e2fd64abf3",
+      "src/core/routes.ts": "f4c4a39776cb17b986f424f1563b99094864cda3eb90cdc06e0f4c6bcede6645",
+      "src/core/smashables.ts": "affe80db86f9d15ecb96177a49bb5b875b0df48b4e75557753861a618e3f5e3b",
+      "src/core/career-race.ts": "0c6279ed395499ac84e9b640f6e960e7b90ff52e3408ca05b621b529a0f57bfd",
+      "src/core/heights.ts": "21368c0ac151ea638f216d4b474c1f813543382a4aa53f414a6eb4627c343529",
+      "src/core/samples.ts": "9aa9b1e78073626f591a01479cd0972b32c0996837770fbe88159a8d52be0472",
+      "src/road/lane-transitions.ts": "4ca67c6a87b29aa978e16f414b93a98717670f6e3a5eb4ce8c6618e2902ba2fa",
+      "src/road/types.ts": "08b73069275eb1317752ab30e156d29d1f317d0cf5f7e1f6fd8f735a972a337d",
+      "src/road/median.ts": "2f849abeb389b0442237611c3c9f3813960b801411219e9550f6c9ed3e4cd0d2",
+      "src/road/bridge-taper.ts": "44ef423969ec6803c068277e0e8d3263c9810097897ea6306524da98efd9d2f8",
+      "src/road/cross-section.ts": "c18d2347874691012ab6d1225fce75c269a9890a14dd6c1c9aa0111b4a725bdd",
+      "src/render/look.ts": "88455f9ce84294dac5d9790e11013f75b409dbea429a725585d4328b25324ae2",
+      "src/render/road-mesh.ts": "ea4c5b302b79c7501dfee651880f4059239897a4a570dea663a9515aca3e17f2",
+      "src/road/index.ts": "b100eb2f24b56df268553687ddcf20d022c9254b6a18d2d78cdea7a15a22214b",
+      "src/road/project-position.ts": "a50737001acd8d97a96112c08222fc7473ce29abc78947767079d99985054f24",
+      "src/road/drawn-ground.ts": "0c1ea87a309719896a3b49452416c82777b17afd18b2c5469e0248cc77545916",
+      "src/road/land-topology.ts": "eb99c0fad3ae0fb1676bb442d118ab019fd5c07049c69437a42f6a0fac777fbe",
+      "src/road/themes.ts": "257890fff323f9c37608811e34aca28b4f0d5af2edd6b040dd623b3d134c630b",
+      "src/road/water.ts": "f820120ec177fe3d8cbb88251c9c50b21032d849cd0893a0948c4f462c79ff08",
+      "src/road/terrain.ts": "b4aa6eaed6d1be145ea7ecc2f36861dac26e8bf46b56d380ccdb15fd5dab5d47",
+      "src/road/brush.ts": "bf55af1458192093a6064e1d32f67e37365218c27d0f7118b7811c7c679c773c",
+      "src/road/course.ts": "36be653aa63bb74ed1ca799b0e8467c9399114cb1d8df194b72aa7dc14883b26",
+      "src/road/structures.ts": "6cbe5eebf303bb0eda93ece58bb3c18b4d8a2217760a26efcb51c61773121fe5",
+      "src/road/setpieces.ts": "be8027d0556dd411330d91994f699f8da425e1490a9e6c6916d7f3b0b4b9b0ba",
+      "src/road/beyond.ts": "b6da3734bc1d86d874a86102a7783023d736e88845549e47d890ab14f4c8a334",
+      "src/road/gap.ts": "e4d90ba4be51c8b01561e3ba16cc75deeee54df3c758e18f146e29e56a9febf8",
+      "src/road/route.ts": "3085c61375ea6b9a9b1ed7916141dfbbb2f253916c0dbc8c9b37f104f893ef7d",
+      "src/road/fixture.ts": "f23b35e0ed3e000a2c695a08e91202cd6e37a3dcefa92b041b28ebe7ee10d518",
+      "src/road/compile.ts": "8bdeab300f074c70e9c4f4845ebcaca7906175d68bfe17abe2fd99055aeeb5a7",
+      "src/road/validate.ts": "7b36aec60c9f2077f694ef765ed01960cbe40e856e771563534f4e1262f18b1b",
+      "src/road/traffic-access.ts": "01c5dabc187b5d89538fc904dd56d961bd76ce013ee3136c7d7058902e7f9ce4",
+      "src/road/lanes-under.ts": "c0a3828aa0e9c2e083f0371b37b2701aa69452406bdc339dea67735f6f12cee3",
+      "src/road/furniture.ts": "e93ab0e0b98222895348b58bc51e7a260ebbfdb8ab8a6d3c4e7014fe6e29ce2d",
+      "src/road/ferry.ts": "993d58160403952c44f2fe84df45ad34e28bc66410646edd671748cc7a504ba6",
+      "src/render/bridge-bays.ts": "825dcc5d9155c67b14d30a9cdf0856fad0d0ab69e476975d970ba5de82525256",
+      "src/render/barrier-looks.ts": "6b17950ba1c341467fc52b296b874a5740bedd6d48de26dd674a27f4c1f78150",
+      "src/render/geometry.ts": "d30b66d69c32f8f35dc07be8f1077108b4d7677684dd7029404ab6ad30d4fbd6",
+      "src/render/overlap.ts": "953396f941165179fad00336ccee0106973b95dc90261c288be170c70c6afd71",
+      "src/render/deciduous.ts": "1ce0ba6b86786257327990813af613d36851626a31e2e01df006cbf41fb5e7b7",
+      "src/render/sea-bands.ts": "8bb7c66b1573e5f0f012da5b6d9ec9ca1575f50149fd13da124e1867909e0fda",
+      "src/render/scenery.ts": "e197a3b7d1951b022de2bded9196deaa06b2afecd274506633991d178b94d688",
+      "src/render/scenery-merge.ts": "8d218564df5d4349c4354bfb9cff9358f5ffd94449364c5bd0526e9bf098ba77",
+      "packs/region-clinton/regions/clinton-iowa/networks/osm-clinton-eagle-point.json": "d5ed1ead8e7ec2bc1780bcbb34e8d5d1c2a7eb2a8ed3689cac0d62c8256ec2ed",
+      "packs/region-clinton/regions/clinton-iowa/roads/osm-clinton-eagle-entry.json": "c3c31ecdf6af2d3d38985897850fe29f74d93f5c312af8e98a376702ffce24e2",
+      "packs/region-clinton/regions/clinton-iowa/roads/osm-clinton-eagle-south-loop.json": "6baa92b5aed4937f72e0f9a35769c2171c661eccd52300e530d3da46ec61178b",
+      "packs/region-clinton/regions/clinton-iowa/roads/osm-clinton-eagle-central-loop.json": "16352384f459f869db7bafabdea9790f787758e5cdd840cf6fb13a09d37b5508"
+    },
+    "road_band_extraction": "Only upward rendered road-road and road-shoulder faces in this Eagle scene. No generic whole-course, collision, surveyed-width, or continuous-boundary guarantee. Other layer kinds explicitly excluded. World XYZ is rounded to Float32 after actual matrixWorld transformation.",
+    "road_band_mesh_kinds": ["road-road", "road-shoulder"],
+    "dem_source": {
+      "source": "USGS 3DEP elevation (image service)",
+      "url": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples",
+      "query": "getSamples multipoint, 2806 points in 3 request(s) (lon, lat WGS84, sha256 81b0905fdf9eb0cb), bilinear",
+      "retrievedAt": "2026-10-16T16:30:52Z",
+      "sha256": "14e0dd996a9ff6fe3755b8e8785ea0c1b70cc828a178f112af931cb192d02796",
+      "bytes": 520405
+    },
+    "river_source": {
+      "source": "OpenStreetMap",
+      "relations": [405398, 405398, 411538],
+      "simplification_m": [2],
+      "spdx": "ODbL-1.0",
+      "attribution": "Â© OpenStreetMap contributors",
+      "url": "https://www.openstreetmap.org/copyright"
+    },
+    "road_source_license": {
+      "spdx": "ODbL-1.0",
+      "attribution": "Â© OpenStreetMap contributors",
+      "url": "https://www.openstreetmap.org/copyright"
+    },
+    "elevation_license": {
+      "spdx": "LicenseRef-US-Public-Domain",
+      "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program."
+    },
+    "processing": "AI-assisted offline geometry authoring from preserved public-derived numeric inputs; no synthetic source elevation substituted.",
+    "water": "Combined median of preserved interior-water DEM observations; not current stage or a datum validation.",
+    "limits": [
+      "Coarse bounded DEM, not surveyed riding terrain.",
+      "Source road/shoulder steps remain; the collar is tucked, not an exact continuous seam.",
+      "Binary fixed-precision noding moves boundaries and normalizes collapsed rings; final topology, not raw-double equality, is selected.",
+      "No whole-course, phone-performance, current-stage or runtime acceptance claim."
+    ]
+  }
+}
