@@ -5,6 +5,7 @@
 // traffic instead of the forest's. The rules are checked on the packs' files; the drift events'
 // targets against the drift bot are tests/sim/drift-events.test.ts, and "every route of a region has
 // an event" is career-content.test.ts.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, racePalette, raceSky, streamForRoute } from '../../src/app';
 import { careerDefs, eventPlan, type CareerDef } from '../../src/career';
@@ -14,6 +15,19 @@ const REGION = 'region-pnw:pacific-northwest';
 const BRIDGE_CITY = 'region-pnw:osm-bridge-city-run';
 /** The road tags downtown's traffic areas are keyed by: the blocks, and the decks of the bridges. */
 const DOWNTOWN = ['pdx-blocks', 'pdx-deck'] as const;
+const SAMISH_ROUTE = 'region-pnw:osm-i5-samish-run';
+
+interface SourceRoad {
+  id: string;
+  tags?: string[];
+}
+interface SourceLine {
+  id: string;
+  roads?: SourceRoad[];
+}
+const samishSource = JSON.parse(readFileSync('tools/gis/networks/osm-pnw-samish.json', 'utf8')) as {
+  lines: SourceLine[];
+};
 
 /** What a road file holds that these checks read: scenery tags over s ranges, and its features. */
 interface RoadFile {
@@ -67,11 +81,22 @@ describe('the chapter opens in the city', () => {
   });
 
   it('the Samish road stays on the map: its races are still there and its roads are claimed or opened', () => {
-    const samish = career.nodes.filter((n) => routeOf(n.event) === 'region-pnw:osm-i5-samish-run');
+    const samish = career.nodes.filter((n) => routeOf(n.event) === SAMISH_ROUTE);
     expect(samish.length).toBeGreaterThanOrEqual(2);
+    const route = REG.routes[SAMISH_ROUTE];
+    if (!route) throw new Error('no Samish route');
+    const branchRoads = new Set(route.branches.flatMap((b) => b.roads));
+    const interstate = (samishSource.lines.find((l) => l.id === 'i5')?.roads ?? [])
+      .filter((r) => r.tags?.includes('interstate'))
+      .map((r) => r.id);
+    const shoreHosts = (samishSource.lines.find((l) => l.id === 'samish')?.roads ?? [])
+      .map((r) => r.id)
+      .filter((id) => branchRoads.has(id));
+    expect(route.mainPath, 'the race uses every authored interstate host fragment').toEqual(interstate);
+    expect(interstate.length).toBeGreaterThan(0);
+    expect(shoreHosts.length).toBeGreaterThan(0);
     const reached = new Set(career.nodes.flatMap((n) => [n.road, ...n.opens, ...n.claims]));
-    for (const road of ['osm-i5-nulle-run', 'osm-i5-samish-summit', 'osm-i5-lake-samish'])
-      expect(reached.has(road), road).toBe(true);
+    for (const road of [...interstate, ...shoreHosts]) expect(reached.has(road), road).toBe(true);
   });
 });
 
