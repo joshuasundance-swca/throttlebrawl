@@ -100,6 +100,7 @@
       "packs/region-clinton/regions/clinton-iowa/roads/osm-clinton-eagle-south-loop.json": "6baa92b5aed4937f72e0f9a35769c2171c661eccd52300e530d3da46ec61178b",
       "packs/region-clinton/regions/clinton-iowa/roads/osm-clinton-eagle-central-loop.json": "16352384f459f869db7bafabdea9790f787758e5cdd840cf6fb13a09d37b5508"
     },
+    "road_band_loaded_source_meaning": "SHA-256 hashes identify the bytes loaded from the then-active integration worktree during extraction, not the recipe commit tree. No committed revision is asserted.",
     "road_band_extraction": "Only upward rendered road-road and road-shoulder faces in this Eagle scene. No generic whole-course, collision, surveyed-width, or continuous-boundary guarantee. Other layer kinds explicitly excluded. World XYZ is rounded to Float32 after actual matrixWorld transformation.",
     "road_band_mesh_kinds": ["road-road", "road-shoulder"],
     "dem_source": {
@@ -113,21 +114,31 @@
     "river_source": {
       "source": "OpenStreetMap",
       "relations": [405398, 405398, 411538],
+      "relations_meaning": "Per-polygon source relation sequence; repeated IDs identify separate polygons from the same relation.",
+      "distinct_relation_ids": [405398, 411538],
+      "retrieval": {
+        "source": "OpenStreetMap via Overpass API",
+        "url": "https://overpass-api.de/api/interpreter",
+        "query": "[out:json][timeout:90];relation(id:405398,411538);out geom;",
+        "retrievedAt": "2026-10-16T14:04:31Z",
+        "sha256": "c83b5f96e6c328e8010fb3bbaeaecf8705f8923800fd0fedea5d4bca631c2367",
+        "bytes": 4049524
+      },
       "simplification_m": [2],
       "spdx": "ODbL-1.0",
-      "attribution": "Â© OpenStreetMap contributors",
+      "attribution": "© OpenStreetMap contributors",
       "url": "https://www.openstreetmap.org/copyright"
     },
     "road_source_license": {
       "spdx": "ODbL-1.0",
-      "attribution": "Â© OpenStreetMap contributors",
+      "attribution": "© OpenStreetMap contributors",
       "url": "https://www.openstreetmap.org/copyright"
     },
     "elevation_license": {
       "spdx": "LicenseRef-US-Public-Domain",
       "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program."
     },
-    "processing": "AI-assisted offline geometry authoring from preserved public-derived numeric inputs; no synthetic source elevation substituted.",
+    "processing": "AI-assisted offline geometry authoring from preserved public-derived numeric inputs; no synthetic source elevation substituted. Output grass in the road collar is an authored blend toward the road-boundary plane with a 0.06 m tuck; output water uses a horizontal median DEM proxy.",
     "water": "Combined median of preserved interior-water DEM observations; not current stage or a datum validation.",
     "limits": [
       "Coarse bounded DEM, not surveyed riding terrain.",

@@ -35,7 +35,10 @@ An output cannot replace a preserved input or the other output.
 
 The fingerprint hashes ordered surface names and counts, followed by little-endian Float32 XYZ and
 unsigned 32-bit triangle indices. It therefore compares physical geometry independently of decimal
-spelling. Regeneration must match `expected_geometry_sha256` in the manifest. The original selected
+spelling. Regeneration must match `expected_geometry_sha256` in the manifest.
+Regeneration has been demonstrated in the current authoring environment. Pinned versions and the
+expected fingerprint fail closed on ordered Float32 vertex or index divergence; they do not
+guarantee identical output across platforms. The original selected
 JSON byte hash is retained separately in provenance. Output decimals use the first 1 through 9
 significant digits that preserve each Float32 value. **Round decoded coordinates to Float32 before
 physical use.** The road-band input is likewise restored to Float32 before any GEOS operation or
@@ -52,6 +55,11 @@ plane evaluation. DEM and river inputs retain their original double-precision va
 - `manifest.json`: hashes of those files, original artifact hashes, the renderer/pack source hashes,
   coordinate frame, source credits, authoring versions and selected physical geometry fingerprint.
 
+The renderer/pack hashes identify the extraction source bytes loaded from the then-active integration
+worktree, not the recipe commit tree; no committed revision is asserted. The river retrieval record
+preserves the Overpass endpoint, exact query, retrieval time and raw-response hash/byte count.
+Its repeated relation sequence follows polygon origins; distinct relation IDs are recorded separately.
+
 No complete HTTP response, redundant rendered-scene diagnostic, or previous proof history is
 required. The minimal road-band fixture is intentionally not a general mesh exporter. Recreating it
 from changed renderer/road data requires a fresh source extraction and review; this recipe does not
@@ -61,7 +69,9 @@ selected fingerprint requires source review, not accepting whatever a new bake h
 World metres use X east, Y up at source elevation, and Z south, in the network's Transverse Mercator
 frame on WGS84. The manifest records its origin. Elevation is a coarse USGS DEM, not a surveyed road
 contact surface. The water height is the median of prior interior-water DEM samples; it is **not a
-current river stage, flood model or datum validation**.
+current river stage, flood model or datum validation**. Preserved source elevation is not replaced
+with synthetic elevation. Output grass in the road collar is an authored blend/tuck, and the
+horizontal water surface is a DEM-median proxy rather than a measured water level.
 
 Road and river geometry derives from OpenStreetMap, © OpenStreetMap contributors, under
 [ODbL-1.0](https://www.openstreetmap.org/copyright); the region pack carries
@@ -106,7 +116,7 @@ python -m mypy --config-file tools/gis/pyproject.toml tools/gis/terrain
 ```
 
 The tests regenerate the selected geometry, round-trip every resulting vertex through shortened
-JSON, check Float32 extremes/nonfinite values, reject collapsed geometry and DEM no-data, and
+JSON, check representative Float32 edge values/nonfinite values, reject collapsed geometry and DEM no-data, and
 confirm validation failure preserves existing outputs. They do not need a browser or application
 build. Shapely's pinned distribution has no typing metadata; its geometry objects are the explicit
 untyped boundary in an otherwise strictly checked Python module.
