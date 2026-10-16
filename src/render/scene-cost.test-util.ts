@@ -11,7 +11,8 @@ import {
 } from 'three';
 import { expect } from 'vitest';
 import budget from '../../tests/perf/budget.json';
-import { trafficHeightM, type TrafficCategory } from '../sim/api';
+import { packClosure, packSubset, registryFromGlob, type ContentRegistry } from '../content';
+import { trafficHeightM } from '../sim/api';
 import {
   createRoadNetwork,
   loadPnwPlacesLayout,
@@ -78,23 +79,13 @@ const routeFiles = import.meta.glob<Route>('../../packs/*/regions/*/routes/*.jso
 });
 interface RegionFile {
   id: string;
-  networks: string[];
   signs?: { id: string; text: string; status?: string }[];
-  traffic: {
-    mix: { kind: string }[];
-    pedestrians?: { kind: string }[];
-    animals?: { kind: string }[];
-    areas?: { mix: { kind: string }[] }[];
-  };
 }
 const regionFiles = import.meta.glob<RegionFile>('../../packs/*/regions/*/region.json', {
   eager: true,
   import: 'default',
 });
-const trafficFiles = import.meta.glob<{ id: string; category: TrafficCategory; heightM?: number }>(
-  '../../packs/*/traffic/*.json',
-  { eager: true, import: 'default' },
-);
+const content = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 // What the renderer loads beside the road (render/index.ts): the backdrop files and the region's scenes.
 const backdropNetworkFiles = import.meta.glob<BackdropNetworkFile>(
   '../../packs/*/assets/backdrop/*/networks/*.json',
@@ -146,31 +137,16 @@ export function track(id: string): { road: RoadNetwork; dressing: RoadDressing; 
   return { road: createRoadNetwork({ network, roads }), dressing, pack };
 }
 
-/** The active region catalog's tallest traffic body, as production presentation supplies it. */
-export function trafficClearanceOf(networkId: string): number | undefined {
+/** The network pack closure's tallest live traffic body, as production presentation supplies it. */
+export function trafficClearanceOf(
+  networkId: string,
+  registry: ContentRegistry = content,
+): number | undefined {
   const [networkPath] = Object.entries(networkFiles).find(([, n]) => n.id === networkId) ?? [];
   if (!networkPath) return undefined;
   const pack = /packs\/([^/]+)\//.exec(networkPath)?.[1] ?? '';
-  const region = Object.entries(regionFiles).find(
-    ([path, value]) => path.includes(`/packs/${pack}/`) && value.networks.includes(networkId),
-  )?.[1];
-  if (!region) return undefined;
-  const kinds = new Set([
-    ...region.traffic.mix.map((entry) => entry.kind),
-    ...(region.traffic.pedestrians ?? []).map((entry) => entry.kind),
-    ...(region.traffic.animals ?? []).map((entry) => entry.kind),
-    ...(region.traffic.areas ?? []).flatMap((area) => area.mix.map((entry) => entry.kind)),
-  ]);
-  const heights = [...kinds].map((kind) => {
-    const split = kind.split(':');
-    const kindPack = split.length > 1 ? split[0]! : pack;
-    const id = split.length > 1 ? split[1]! : kind;
-    const entry = Object.entries(trafficFiles).find(
-      ([path, value]) => path.includes(`/packs/${kindPack}/`) && value.id === id,
-    )?.[1];
-    if (!entry) throw new Error(`no traffic type ${kind} for network ${networkId}`);
-    return trafficHeightM(entry);
-  });
+  const race = packSubset(registry, packClosure(registry, pack));
+  const heights = Object.values(race.trafficTypes).map(trafficHeightM);
   return heights.length ? Math.max(...heights) : undefined;
 }
 
