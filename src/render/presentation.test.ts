@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Group } from 'three';
 import { createRoadNetwork, fixtureNetwork } from '../road';
-import { canvasFake, deferred } from './presentation.test-util';
+import { canvasFake, deferred, NativeRendererFake } from './presentation.test-util';
 import { createRenderer, type RendererPresentationRecipe } from './index';
 import * as gateModule from './chunk-gate';
 import * as roadModule from './road-mesh';
@@ -73,6 +73,7 @@ function asyncScene(nestedFamily?: string) {
   const updates: { name: string; args: unknown[] }[] = [];
   const layers: {
     name: string;
+    root: Group;
     pending: readonly SimEvent[];
     hidden: Set<string>;
     structures: unknown[];
@@ -167,6 +168,15 @@ function asyncScene(nestedFamily?: string) {
       }
       invalidatePresentation() {}
       set() {}
+      build(...args: unknown[]) {
+        updates.push({ name: `${name} build`, args });
+      }
+      visibleContent() {
+        return [];
+      }
+      pick() {
+        return null;
+      }
       fitTint() {}
       resetTransient() {
         this.pending = [];
@@ -196,6 +206,7 @@ function asyncScene(nestedFamily?: string) {
   const modules: Record<string, unknown> = {
     'film pass': { LookPost: layer('film pass') },
     'race parts': {
+      Boards: layer('boards'),
       FeelEffects: layer('effects'),
       SpeedLines: layer('lines'),
       Rain: layer('rain'),
@@ -397,6 +408,51 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('installs late boards for the current road and catalog with pending vetoes, then keeps their root across resets', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const retired = t.calls.filter((call) => call.name === 'race parts').at(-1)!;
+    const catalog = { items: {} };
+    const next = { ...recipe(), boards: catalog };
+    t.renderer.applyPresentation(next, { reset: 'measurement-to-menu' });
+    t.renderer.hideContent(['probe:hidden-before-load']);
+    expect(t.renderer.visibleContent()).toEqual([]);
+    expect(t.renderer.pickContentAt(10, 10)).toBeNull();
+    await t.resolve(retired);
+    expect(t.installed).not.toContain('boards');
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    const boards = t.layers.find((layer) => layer.name === 'boards')!;
+    expect(boards).toBeDefined();
+    expect(boards.hidden.has('probe:hidden-before-load')).toBe(true);
+    expect(t.updates.filter((update) => update.name === 'boards build').at(-1)!.args).toEqual([
+      next.road,
+      expect.any(Function),
+      catalog,
+    ]);
+    const scene = boards.root.parent;
+    expect(scene).not.toBeNull();
+    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
+    expect(boards.root.parent).toBe(scene);
+    expect(t.layers.filter((layer) => layer.name === 'boards')).toEqual([boards]);
+    expect(t.updates.filter((update) => update.name === 'boards build').at(-1)!.args[0]).toBe(t.pick.road);
+    expect(t.updates.filter((update) => update.name === 'boards build').at(-1)!.args[2]).toBeUndefined();
+    expect(boards.hidden.has('probe:hidden-before-load')).toBe(true);
+  });
+
+  it('keeps rendering without boards after chunk failure and installs them through the existing retry', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!, null);
+    const native = NativeRendererFake.instances.at(-1)!;
+    const before = native.draws.length;
+    t.renderer.setRiderLooks([]);
+    t.renderer.render(null, null, 0, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 });
+    expect(native.draws.length).toBe(before + 1);
+    expect(t.installed).not.toContain('boards');
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    expect(t.installed).toContain('boards');
+  });
+
   it('gives a late race-parts landing layer the current roof plan and its queued newspaper crash', async () => {
     const t = asyncScene();
     const plan = {} as NonNullable<ReturnType<typeof roadApi.structuresOf>>;

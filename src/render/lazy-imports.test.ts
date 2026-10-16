@@ -89,6 +89,12 @@ function enclosingLoadChunk(source: string, at: number): number {
 }
 
 describe("a race's lazy imports (polish batch F's check, punch item 4)", () => {
+  it('keeps board construction behind race parts while exposing sign styles synchronously', () => {
+    expect(SOURCES['./index.ts']).not.toMatch(/import\s*\{\s*Boards\b/);
+    expect(SOURCES['./index.ts']).toMatch(/export \{ signStyleOf \} from ['"]\.\/boards['"]/);
+    expect(SOURCES['./race-parts.ts']).toMatch(/export \{ Boards \} from ['"]\.\/boards['"]/);
+  });
+
   it('keeps the chalk mark and newspaper behind the existing race-parts import', () => {
     expect(SOURCES['./index.ts']).not.toMatch(/import\s+(?!type\b)[^;]*\sfrom ['"]\.\/air-pays['"]/);
     expect(SOURCES['./race-parts.ts']).toMatch(/export \{ AirPays \} from ['"]\.\/air-pays['"]/);
