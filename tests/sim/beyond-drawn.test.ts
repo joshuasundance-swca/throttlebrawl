@@ -277,6 +277,13 @@ const counted = (f: Finding) =>
     .join(', ');
 
 describe('what lies past an edge is what is drawn there (every route network)', () => {
+  it('sees the I-5 median as ground when looking across from the Samish shore road', () => {
+    const n = netOf('osm-pnw-samish');
+    const edge = n.road.edgeIndex('osm-samish-east-shore');
+    const f = check(n, simRule(n), { edge, s0: 911, s1: 947, side: 'left' });
+    expect(f.counts['ground']).toBeGreaterThan(0);
+    expect([...f.ghostDrop, ...f.ghostFloor, ...f.floorOff]).toEqual([]);
+  });
   it('the land triangle beside a Lombard switchback is the physical floor at the same world point', () => {
     const n = netOf('osm-sf-lombard');
     const edge = n.road.edgeIndex('osm-sf-lombard-crooked');

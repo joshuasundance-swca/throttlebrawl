@@ -29,11 +29,11 @@ const allRoads = Object.values(
 );
 
 /** What a rider can be drawn on (the land strip beside the road and the sea are not it). */
-const DRIVABLE = /^road-(road|brick|shoulder|shortcut|deck)$/;
+const DRIVABLE = /^road-(road|brick|shoulder|shortcut|median|deck)$/;
 /** The flat surfaces that are meant to lie in one plane, so must not lie within a hair of each other. */
-const FLAT = /^road-(road|brick|shoulder|shortcut)$/;
+const FLAT = /^road-(road|brick|shoulder|shortcut|median)$/;
 /** Ground that closes a hole: the land strip beside the road is drawn a little below its edge. */
-const GROUND = /^road-(road|brick|shoulder|shortcut|deck|land)$/;
+const GROUND = /^road-(road|brick|shoulder|shortcut|median|deck|land)$/;
 /** Ground this far below the ride height or lower is not ground a rider is on, metres. */
 const HOLE_BELOW_M = 0.5;
 /** Road within this of a connector's end is part of the junction, metres. */
@@ -96,6 +96,20 @@ describe('the junction sweep: the checks can find what they look for', () => {
     slab(lifted, 'road-road', 0);
     slab(lifted, 'road-shortcut', 0.05);
     expect(over(lifted, 0, 0.05, false)).toEqual([]);
+  });
+
+  it('checks median support, height and overlap with the same rules as pavement', () => {
+    const clean = new Group();
+    slab(clean, 'road-median', 0);
+    expect(over(clean, 0, 0, true)).toEqual([]);
+    expect(over(clean, 20, 0, true)[0]).toMatch(/open ground/);
+    const high = new Group();
+    slab(high, 'road-median', 0.3);
+    expect(over(high, 0, 0, true)[0]).toMatch(/0\.30 m from the ride height/);
+    const overlap = new Group();
+    slab(overlap, 'road-road', 0);
+    slab(overlap, 'road-median', 0.01);
+    expect(over(overlap, 0, 0, false)[0]).toMatch(/1\.0 cm apart/);
   });
 });
 

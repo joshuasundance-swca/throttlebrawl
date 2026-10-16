@@ -2,6 +2,7 @@
 // and deterministic, like the sim. The road lane (road-1, road-2) owns this folder after app-1.
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
+export { grassMedianSpan } from './median';
 export type { LaneTransition } from './lane-transitions';
 export type {
   AdvanceResult,

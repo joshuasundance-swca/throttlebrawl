@@ -27,6 +27,7 @@ import {
 } from 'three';
 import {
   chooseSetPieces,
+  grassMedianSpan,
   LANES_UNDER_Y_M,
   SEEDED_SET_PIECE_KINDS,
   type Edge,
@@ -208,12 +209,11 @@ const FINE_MESHES = new Set([
 const OVERLAY_LAYERS = new Set<Layer>(['marking', 'markingCenter', 'cableSlot']);
 const OVERLAY_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
 /**
- * The same for a plain road's own surfaces (the first SOLID_SURFACES of an edge's surfaces: its lanes, a
- * shortcut's and the two shoulders), all on the same samples. Within 1 cm, under the 2.5 cm the shoulder
+ * The same for a plain road's own solid surfaces (carriageways, median, shortcut and shoulders),
+ * all on the same samples. Within 1 cm, under the 2.5 cm the shoulder
  * stands over the ground band and the 3 cm the lines stand over the road. [default]
  */
 const ROAD_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
-const SOLID_SURFACES = 4;
 /**
  * How far a simplified road's shoulder reaches over the land beside it, m: twice ROAD_SIMPLIFY.tolM, so
  * its straight outer edge always covers the land's edge, which keeps every sample. [default]
@@ -600,8 +600,17 @@ function goreLines(road: RoadNetwork): Map<number, number> {
 
 /** Layers that share a material kind but are separate meshes, so tests (and looks) can tell them apart. */
 type Layer =
-  MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark' | 'cableSlot' | 'rebar' | 'brickCourse';
+  | MaterialKind
+  | 'median'
+  | 'splitZone'
+  | 'splitMark'
+  | 'boostPad'
+  | 'boostMark'
+  | 'cableSlot'
+  | 'rebar'
+  | 'brickCourse';
 const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
+  median: 'land',
   splitZone: 'shortcut',
   splitMark: 'marking',
   boostPad: 'boost',
@@ -612,7 +621,12 @@ const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
   brickCourse: 'shoulder',
 };
 /** Layers drawn in their own colour rather than their kind's palette colour. */
-const LAYER_COLOR: Partial<Record<Layer, string>> = { cableSlot: '#5b5e63', rebar: '#7a4a2e' };
+const LAYER_COLOR: Partial<Record<Layer, string>> = {
+  cableSlot: '#5b5e63',
+  rebar: '#7a4a2e',
+  // The grass surface's existing colour (verge.ts), shaded by the active look like roadside turf.
+  median: '#6f9650',
+};
 const kindOf = (layer: Layer): MaterialKind => LAYER_KIND[layer] ?? (layer as MaterialKind);
 
 /** The ramp truck's defaults, as the road lane's contract gives them (docs/content-packs.md). */
@@ -1074,6 +1088,20 @@ export function buildRoadScene(
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
+  // Median widths depend only on lane sections, not resolved roadside verges. Reuse them within
+  // this scene build instead of allocating a full cross-section for every surface row and dash.
+  const medianSections = road.edges.map((edge) =>
+    edge.sections.map((section) => ({
+      s0: section.s0,
+      span: grassMedianSpan(section.lanes, section.median),
+    })),
+  );
+  const grassAt = (edge: Edge, s: number): [number, number] | null => {
+    const sections = medianSections[edge.index] ?? [];
+    let span = sections[0]?.span ?? null;
+    for (const section of sections) if (section.s0 <= s) span = section.span;
+    return span;
+  };
   const locator = new EdgeLocator(road);
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   // Playtest 4 (Pigeon Key): the sea round an island of a landmark's own is not open water.
@@ -1409,31 +1437,71 @@ export function buildRoadScene(
     const simplifyRoad = !clippedEdge && !e.isTrafficOnly && gore === undefined;
     const shoulderLap = simplifyRoad ? SHOULDER_LAP_M : 0;
     const surfaceLift = e.isTrafficOnly ? TRAFFIC_SURFACE_LIFT_M : 0;
-    const surfaces: {
-      kind: MaterialKind;
-      span: (l: LaneSpans, c: Clip) => [number, number] | null;
+    const hasGrassMedian = medianSections[e.index]?.some((section) => section.span !== null) ?? false;
+    const medianAt = (s: number) => grassAt(e, s);
+    const plannedSurfaces: {
+      kind: Layer;
+      span: (l: LaneSpans, c: Clip, s: number) => [number, number] | null;
       lift: number;
+      solid?: boolean;
+      medianOnly?: boolean;
       skip?: (s: number, span: [number, number]) => boolean;
       /** A ground band beside the lanes: the side it lies on, so it yields to a lower road's lanes (yieldReach). */
       side?: -1 | 1;
     }[] = [
       {
         kind: brickEdge ? 'brick' : 'road',
-        span: (l) => (l.drive ? (e.isTrafficOnly ? [outerL, outerR] : l.drive) : null),
+        span: (l, _c, s) => {
+          if (!l.drive) return null;
+          const span: [number, number] = e.isTrafficOnly ? [outerL, outerR] : l.drive;
+          return [span[0], medianAt(s)?.[0] ?? span[1]];
+        },
         lift: surfaceLift,
+        solid: true,
       },
-      { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
+      {
+        kind: brickEdge ? 'brick' : 'road',
+        span: (l, _c, s) => {
+          const m = medianAt(s);
+          return m && l.drive ? [m[1], e.isTrafficOnly ? outerR : l.drive[1]] : null;
+        },
+        lift: surfaceLift,
+        solid: true,
+        medianOnly: true,
+      },
+      { kind: 'median', span: (_l, _c, s) => medianAt(s), lift: surfaceLift, solid: true, medianOnly: true },
+      { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift, solid: true },
       {
         kind: 'shoulder',
         span: (l, c) => (c.vergeL && !e.isTrafficOnly ? [outerL - shoulderLap, lanesSpan(l)[0]] : null),
         lift: -0.02,
+        solid: true,
         side: -1,
       },
       {
         kind: 'shoulder',
         span: (l, c) => (c.vergeR && !e.isTrafficOnly ? [lanesSpan(l)[1], outerR + shoulderLap] : null),
         lift: -0.02,
+        solid: true,
         side: 1,
+      },
+      {
+        kind: 'markingCenter',
+        span: (_l, _c, s) => {
+          const m = medianAt(s);
+          return m ? [m[0] - 0.25, m[0] - 0.1] : null;
+        },
+        lift: 0.03 + surfaceLift,
+        medianOnly: true,
+      },
+      {
+        kind: 'markingCenter',
+        span: (_l, _c, s) => {
+          const m = medianAt(s);
+          return m ? [m[1] + 0.1, m[1] + 0.25] : null;
+        },
+        lift: 0.03 + surfaceLift,
+        medianOnly: true,
       },
       {
         kind: 'marking',
@@ -1448,10 +1516,11 @@ export function buildRoadScene(
         skip: (s, span) => inZone(s, span[1]),
       },
     ];
+    const surfaces = hasGrassMedian ? plannedSurfaces : plannedSurfaces.filter((surf) => !surf.medianOnly);
     const rowOf = (surf: (typeof surfaces)[number], i: number): [Point3, Point3] | null => {
       const s = sd[i] ?? 0;
       const c = clips[i];
-      let span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+      let span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c, s) : null;
       if (span && surf.side) span = yieldReach(s, span, surf.side, surf.lift);
       if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) return null;
       return [w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift)];
@@ -1460,7 +1529,7 @@ export function buildRoadScene(
     // surfaces of a plain road (its lanes and its two shoulders) keep only the samples their shape needs,
     // the same samples for all of them, so their shared edges still meet vertex for vertex. A road with a
     // shortcut or a gore keeps every sample: its clipped edges lap another road's by centimetres.
-    const solidRows = surfaces.slice(0, SOLID_SURFACES).map((surf) => sd.map((_, i) => rowOf(surf, i)));
+    const solidRows = surfaces.map((surf) => (surf.solid ? sd.map((_, i) => rowOf(surf, i)) : []));
     const keep = sd.map(() => true);
     if (simplifyRoad) {
       const breaks: number[] = [];
@@ -1480,7 +1549,7 @@ export function buildRoadScene(
       a.breakStrip();
       sd.forEach((_, i) => {
         if (overGap(i)) a.breakStrip();
-        const solid = n < SOLID_SURFACES;
+        const solid = surf.solid;
         if (solid && !keep[i]) return;
         const row = solid ? (solidRows[n]?.[i] ?? null) : rowOf(surf, i);
         if (!row) {
@@ -1703,6 +1772,8 @@ export function buildRoadScene(
     for (let s = 2; s + 3 < e.length; s += 12) {
       if (gaps.some((g) => s < g.s1 && s + 3 > g.s0)) continue;
       for (const div of laneSpans(road.lanesAt(e.index, s)).dividers) {
+        const median = medianAt(s);
+        if (median && div.d >= median[0] && div.d <= median[1]) continue;
         strip(div.opposite ? 'markingCenter' : 'marking').quad(
           w(e.index, s, div.d - 0.08, 0.03),
           w(e.index, s, div.d + 0.08, 0.03),
@@ -2707,6 +2778,56 @@ export function buildRoadScene(
       maxX = Math.max(maxX, e.x[i] ?? 0);
       minZ = Math.min(minZ, e.z[i] ?? 0);
       maxZ = Math.max(maxZ, e.z[i] ?? 0);
+    }
+  }
+  // Opposing carriageways' end rows can fan apart at a join, leaving a thin wedge through the
+  // newly exposed median. Close the three solid bands together, sharing their border vertices.
+  // The fill sits slightly below the end rows so their overlapping side cannot flicker. Only
+  // already-linked grass sections qualify: this creates no new route or crossing permission.
+  const medianJoins = new Set<string>();
+  for (const edge of road.edges) {
+    for (const [end, links] of [
+      ['from', edge.prevLinks],
+      ['to', edge.nextLinks],
+    ] as const) {
+      const s = end === 'from' ? 0 : edge.length;
+      const median = grassAt(edge, s);
+      if (!median || edge.isTrafficOnly) continue;
+      const drive = laneSpans(road.lanesAt(edge.index, s)).drive;
+      if (!drive) continue;
+      for (const link of links) {
+        const other = road.edges[link.edge];
+        if (!other || other.isTrafficOnly || link.splitZone || edge.surface !== other.surface) continue;
+        const key =
+          edge.index < other.index
+            ? `${edge.index}:${end}|${other.index}:${link.entersAt}`
+            : `${other.index}:${link.entersAt}|${edge.index}:${end}`;
+        if (medianJoins.has(key)) continue;
+        medianJoins.add(key);
+        const os = link.entersAt === 'from' ? 0 : other.length;
+        const om = grassAt(other, os);
+        if (!om) continue;
+        const od = laneSpans(road.lanesAt(other.index, os)).drive;
+        if (!od) continue;
+        const bands: [number, number][] = [[drive[0], median[0]], median, [median[1], drive[1]]];
+        const otherBands: [number, number][] = [[od[0], om[0]], om, [om[1], od[1]]];
+        for (const [i, band] of bands.entries()) {
+          const flip = end === link.entersAt;
+          const ob = otherBands[flip ? 2 - i : i]!;
+          const a = w(edge.index, s, band[0], -0.005);
+          const b = w(edge.index, s, band[1], -0.005);
+          const c = w(other.index, os, ob[flip ? 1 : 0], -0.005);
+          const d = w(other.index, os, ob[flip ? 0 : 1], -0.005);
+          const layer = i === 1 ? 'median' : edge.surface === 'brick' ? 'brick' : 'road';
+          const triangle = (p: Point3, q: Point3, r: Point3) => {
+            const up = (q.z - p.z) * (r.x - p.x) - (q.x - p.x) * (r.z - p.z);
+            if (up >= 0) strip(layer).tri(p, q, r);
+            else strip(layer).tri(p, r, q);
+          };
+          triangle(a, b, c);
+          triangle(b, d, c);
+        }
+      }
     }
   }
   // An edge's land at a junction is closed against the joined road's land on the same side there
