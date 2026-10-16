@@ -1,12 +1,12 @@
 {
-  "about": "Measured CI seconds per test file, averaged over the runs below, except race-recovery.spec.ts: 430.6 s is the mean of summed completed-case reporter durations from all 14 passing cases in each cancelled browser job 115403370665 (run 38428243669) and 115408787806 (run 38429802183), source head 6124261f; that recovery file matches main 1ea20ae. No incomplete neighboring files were imported. scripts/shard-plan.mjs balances the sim and browser slices with these estimates, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>...",
+  "about": "Measured CI seconds per test file, averaged over the runs below, except race-recovery.spec.ts: 430.6 s is the mean of summed completed-case reporter durations from all 14 passing cases in each cancelled browser job 115403370665 (run 38428243669) and 115408787806 (run 38429802183), source head 6124261f; that recovery file matches main 1ea20ae. No incomplete neighboring files were imported. scripts/shard-plan.mjs balances the sim and browser slices with these estimates, and tests/sequencer.ts starts the slowest unit and sim files first. Refresh: node scripts/timings.mjs <run-id>... Cached-startup relocation (2026-10-15): perf reserves 104.9 + 34.0 = 138.9 s, using the complete passing-case reporter duration in accepted train 38676443719, browser job 116231080970. This is a planning reservation, not a measured new perf total; the app-offline e2e estimate remains unchanged conservatively until a full refresh.",
   "runs": [38154684605, 38155619685],
   "overhead": {
     "e2e": 53,
     "sim": 16,
     "unit": 17
   },
-  "perf": 104.9,
+  "perf": 138.9,
   "unit": {
     "scripts/boot-preload.test.ts": 0,
     "scripts/browser-apt.test.ts": 0,
