@@ -7,6 +7,7 @@ export { grassMedianSpan } from './median';
 export {
   LAND_COMMON_REACH_DELTA_M,
   landIntervalPlan,
+  landWidthChangeOverRoad,
   terrainProfilePlan,
   keptSamples,
 } from './land-topology';
