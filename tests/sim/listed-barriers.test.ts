@@ -93,6 +93,42 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
       if (m instanceof Mesh && m.name === 'road-shortcut') shortcutMeshes.push(m as Mesh);
     });
     scene.group.updateMatrixWorld(true);
+    // A first step advances s before contact. Judge that contact at its own station,
+    // keeping the same four ray heights, body reach and endpoint footprint as below.
+    const panelAt = (edge: number, s: number, side: 1 | -1, height: number): boolean => {
+      const e = road.edges[edge]!;
+      const line = (side > 0 ? e.dMax : e.dMin) + side * 0.05;
+      const p = road.toWorld(edge, s, line, 0),
+        f = road.frameAt(edge, s);
+      const normal = new Vector3(-f.tz * side, 0, f.tx * side).normalize();
+      verge.update(p.x, p.z, null, 0);
+      verge.group.updateMatrixWorld(true);
+      const meshes = [...staticMeshes];
+      verge.group.traverse((m) => {
+        if (
+          m instanceof InstancedMesh &&
+          /^verge-(railing|concrete|guardrail)$/.test(m.name) &&
+          m.count > 0
+        ) {
+          m.computeBoundingSphere();
+          meshes.push(m);
+        }
+      });
+      for (const h of [0.2, 0.5, 0.8, 0.95])
+        for (const u of [0, -0.05, 0.05]) {
+          const q = road.toWorld(edge, Math.max(0, Math.min(e.length, s + u)), line, 0);
+          if (
+            new Raycaster(
+              new Vector3(q.x, q.y + height * h, q.z).addScaledVector(normal, -0.35),
+              normal,
+              0,
+              0.7,
+            ).intersectObjects(meshes, false).length
+          )
+            return true;
+        }
+      return false;
+    };
     for (const sample of samples) {
       const { edge, s, side, limit, height } = sample;
       const vside = side > 0 ? 'right' : 'left';
@@ -153,6 +189,9 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
         let firstAirborne = false;
         let firstHeld = false;
         let firstEdge = edge;
+        let firstS = s;
+        let firstHold = edgeHoldAt(world, config, edge, s, side);
+        let firstDrawn = drawnHeights.length > 0;
         const events: string[] = [];
         const firstEvents: string[] = [];
         for (let tick = 0; tick < 60; tick++) {
@@ -161,8 +200,17 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
           if (tick === 0) {
             firstEvents.push(...events);
             firstEdge = h.rider.pos.edge;
+            firstS = h.rider.pos.s;
             firstAirborne = h.rider.mode === 'Airborne';
-            firstHeld = firstEdge === edge && (h.rider.pos.d - limit) * side <= 1e-5;
+            firstHold = edgeHoldAt(world, config, firstEdge, firstS, side);
+            firstHeld = firstEdge === edge && (h.rider.pos.d - firstHold.limit) * side <= 1e-5;
+            if (!drawnHeights.length)
+              firstDrawn = panelAt(
+                firstEdge,
+                firstS,
+                side,
+                road.barrierAt(firstEdge, firstS, vside)?.heightM ?? height,
+              );
           }
           if (h.rider.pos.edge !== edge) {
             handed = true;
@@ -174,6 +222,9 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
           firstEdge: road.edges[firstEdge]?.id,
           firstAirborne,
           firstHeld,
+          firstS,
+          firstHold,
+          firstDrawn,
           handed,
           endEdge: road.edges[h.rider.pos.edge]?.id,
           endS: h.rider.pos.s,
@@ -189,13 +240,21 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
       if (!drawnHeights.length && hold.hold === 'held') failures.push(`${why}: held without a panel`);
       if (drawnHeights.length && hold.hold === 'open') failures.push(`${why}: drawn panel has open contact`);
       // At a junction a neighbouring road may replace the wall. Such a point is
-      // open contact, and its crossing trajectory must not receive a barrier event.
+      // open contact. A trajectory may reach a surviving panel later in its first step:
+      // the event and clamp are judged against drawing/contact at that actual station.
       if (!drawnHeights.length)
         for (const trajectory of trajectories) {
-          if (trajectory.firstEvents.some((e) => e === 'crash:barrier' || e === 'wobble:barrier'))
-            failures.push(`${why}: undrawn panel caused a barrier event at yaw ${trajectory.yaw}`);
-          if (hold.hold === 'open' && trajectory.firstHeld)
-            failures.push(`${why}: open crossing clamped at yaw ${trajectory.yaw}`);
+          if (
+            !trajectory.firstDrawn &&
+            trajectory.firstEvents.some((e) => e === 'crash:barrier' || e === 'wobble:barrier')
+          )
+            failures.push(
+              `${why}: undrawn panel at contact s${trajectory.firstS} caused a barrier event at yaw ${trajectory.yaw}`,
+            );
+          if (!trajectory.firstDrawn && trajectory.firstHold.hold === 'open' && trajectory.firstHeld)
+            failures.push(
+              `${why}: open crossing at contact s${trajectory.firstS} clamped at yaw ${trajectory.yaw}`,
+            );
         }
       const panel = road.toWorld(
         edge,

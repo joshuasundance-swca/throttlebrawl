@@ -18,6 +18,7 @@ export type {
   TerrainProfileRow,
   Point3Like,
 } from './land-topology';
+export { BRUSH_STEP_M, brushClumpAt, hedged } from './brush';
 export type { LaneTransition } from './lane-transitions';
 export type {
   AdvanceResult,
