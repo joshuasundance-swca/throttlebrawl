@@ -7,6 +7,7 @@ Longview gets a separate city-street race. Washington Way offers the direct diag
 Hudson Street and 20th Avenue offer a longer grid detour, with a boost pad after its
 corner. Both meet again before the bridge and the northbound 30th Avenue finish.
 The detour has ordinary traffic in both directions, and rivals can choose it too.
+The pad stays fixed after the detour corner.
 
 The streets use OpenStreetMap alignment and new USGS terrain samples. Corner easing,
 lane widths, generous soft margins and the bridge guardrails are game adaptations.

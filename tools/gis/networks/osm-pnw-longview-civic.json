@@ -116,7 +116,7 @@
               "s1": 41,
               "d0": 0.5,
               "d1": 3.5,
-              "params": { "boostMps": 8, "holdS": 1.5, "slot": "civic-grid-exit" }
+              "params": { "boostMps": 8, "holdS": 1.5 }
             }
           ]
         }
