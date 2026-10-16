@@ -33,3 +33,6 @@ stacked surfaces are still removed. This keeps the northbound Samish connection 
 
 Drawing and physical ground queries share the search for where a roadside band must stop over
 another road, preserving visible shoulders while leaving clipped space open.
+Physical ground also uses the same terrain spans and triangles as the drawing. Curved-road
+projections keep the original world position, preventing a distant hillside from becoming an
+invisible floor. Real drops and water remain hazards.
