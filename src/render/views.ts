@@ -39,7 +39,6 @@ import {
   FIGURE_PARTS,
   oddityFigureFor,
   pedFigureFor,
-  type OddityFigure,
   type PedFigure,
 } from './figures';
 import { mergeBoxes, type BoxPart } from './geometry';
@@ -60,7 +59,7 @@ import {
 } from './traffic-figures';
 import type { LookStyle } from './look';
 import type { RiderRigs } from './riders';
-import type { BakedVehicle, VehicleSet, VehicleSets } from './vehicles';
+import type { BakedVehicle, VehicleSets } from './vehicles';
 import type { StructurePlan } from '../road';
 import { fitRoof } from './roof-fit';
 import {
@@ -757,70 +756,71 @@ export class EntityViews {
         }
         this.seen.add(e.id);
         pickups++;
-      } else if (e.kind === 'vehicle' && this.vehicleSets.has(e.contentId)) {
-        // Playtest 3 (T12.2): a type with a Blender model draws as it, in the type's own size and
-        // one of its paints. The model is built at its own size, so each axis scales by how far the
-        // type is from it; the height follows the width (a shorter truck is not a lower one).
-        const set = this.vehicleSets.get(e.contentId) as VehicleSet;
-        const v = set.variants[Math.abs(e.id) % set.variants.length] as BakedVehicle;
-        const dims = this.trafficTypes.get(e.contentId) ?? v;
-        const key = vehicleKey(v.asset);
+      } else if (e.kind === 'vehicle') {
+        let key: string;
+        let width: number;
+        let height: number;
+        let length: number;
+        let tint: string;
+        const set = this.vehicleSets.get(e.contentId);
+        if (set) {
+          // Playtest 3 (T12.2): a type with a Blender model draws as it, in the type's own size and
+          // one of its paints. The model is built at its own size, so each axis scales by how far
+          // the type is from it; the height follows the width (a shorter truck is not a lower one).
+          const v = set.variants[Math.abs(e.id) % set.variants.length] as BakedVehicle;
+          const dims = this.trafficTypes.get(e.contentId) ?? v;
+          key = vehicleKey(v.asset);
+          width = height = dims.widthM / v.widthM;
+          length = dims.lengthM / v.lengthM;
+          const paint = set.paint.length ? set.paint : VEHICLE_PAINT_FALLBACK;
+          tint = paint[Math.abs(e.id) % paint.length] ?? '#ffffff';
+        } else {
+          let fig = trafficFigureFor(e.contentId);
+          if (fig) {
+            // W-P: each region's own traffic as itself (traffic-figures.ts). A car carrier whose
+            // ramp has come down draws it lowered, and stays fresh while it remains in view.
+            if (fig === 'carCarrier' && this.rampsDown.has(e.id)) {
+              fig = 'carCarrierRamp';
+              this.rampsDown.set(e.id, this.frames);
+            }
+            const dims = this.trafficTypes.get(e.contentId) ?? TRAFFIC_FIGURE_DIMS[fig];
+            key = fig;
+            width = dims.widthM;
+            height = TRAFFIC_FIGURE_HEIGHT_M[fig];
+            length = dims.lengthM;
+            tint = trafficFigureTint(fig, e.contentId, e.id);
+          } else {
+            // Traffic-4's oddities: the runaway mobile home and the parked boat on its trailer.
+            const oddity = oddityFigureFor(e.contentId);
+            if (oddity) {
+              const dims = this.trafficTypes.get(e.contentId) ?? FIGURE_DEFAULT_DIMS[oddity];
+              key = oddity;
+              width = dims.widthM;
+              height = FIGURE_HEIGHT_M[oddity];
+              length = dims.lengthM;
+              tint = '#ffffff';
+            } else {
+              const def = this.trafficTypes.get(e.contentId);
+              const shape = shapeFor(def, e.contentId);
+              const dims = def ?? DEFAULT_DIMS[shape];
+              const palette = shape === 'car' ? CAR_COLORS : TRUCK_COLORS;
+              key = shape;
+              width = dims.widthM;
+              height = SHAPE_HEIGHT[shape];
+              length = dims.lengthM;
+              tint = palette[e.id % palette.length] ?? '#ffffff';
+            }
+          }
+        }
         const i = (slots[key] = (slots[key] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(key, i + 1);
-        const wide = dims.widthM / v.widthM;
         this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
-        this.scale.set(wide, wide, dims.lengthM / v.lengthM);
+        this.scale.set(width, height, length);
         mesh.setMatrixAt(
           i,
           this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
         );
-        const paint = set.paint.length ? set.paint : VEHICLE_PAINT_FALLBACK;
-        mesh.setColorAt(i, this.color.setStyle(paint[Math.abs(e.id) % paint.length] ?? '#ffffff'));
-      } else if (e.kind === 'vehicle' && trafficFigureFor(e.contentId)) {
-        // W-P: each region's own traffic as itself (traffic-figures.ts).
-        let fig = trafficFigureFor(e.contentId) as keyof typeof TRAFFIC_FIGURE_HEIGHT_M;
-        // Playtest 3: a car carrier whose ramp has come down draws it lowered.
-        if (fig === 'carCarrier' && this.rampsDown.has(e.id)) {
-          fig = 'carCarrierRamp';
-          this.rampsDown.set(e.id, this.frames);
-        }
-        const dims = this.trafficTypes.get(e.contentId) ?? TRAFFIC_FIGURE_DIMS[fig];
-        const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
-        const mesh = this.ensureCapacity(fig, i + 1);
-        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
-        this.scale.set(dims.widthM, TRAFFIC_FIGURE_HEIGHT_M[fig], dims.lengthM);
-        mesh.setMatrixAt(
-          i,
-          this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
-        );
-        mesh.setColorAt(i, this.color.setStyle(trafficFigureTint(fig, e.contentId, e.id)));
-      } else if (e.kind === 'vehicle' && oddityFigureFor(e.contentId)) {
-        // Traffic-4's oddities: the runaway mobile home and the parked boat on its trailer.
-        const fig = oddityFigureFor(e.contentId) as OddityFigure;
-        const dims = this.trafficTypes.get(e.contentId) ?? FIGURE_DEFAULT_DIMS[fig];
-        const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
-        const mesh = this.ensureCapacity(fig, i + 1);
-        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
-        this.scale.set(dims.widthM, FIGURE_HEIGHT_M[fig], dims.lengthM);
-        mesh.setMatrixAt(
-          i,
-          this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
-        );
-        mesh.setColorAt(i, this.color.set('#ffffff'));
-      } else if (e.kind === 'vehicle') {
-        const def = this.trafficTypes.get(e.contentId);
-        const shape = shapeFor(def, e.contentId);
-        const dims = def ?? DEFAULT_DIMS[shape];
-        const i = (slots[shape] = (slots[shape] ?? 0) + 1) - 1;
-        const mesh = this.ensureCapacity(shape, i + 1);
-        this.euler.set(p.pitch ?? 0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
-        this.scale.set(dims.widthM, SHAPE_HEIGHT[shape], dims.lengthM);
-        mesh.setMatrixAt(
-          i,
-          this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
-        );
-        const palette = shape === 'car' ? CAR_COLORS : TRUCK_COLORS;
-        mesh.setColorAt(i, this.color.setStyle(palette[e.id % palette.length] ?? '#ffffff'));
+        mesh.setColorAt(i, this.color.setStyle(tint));
       } else if (e.kind === 'ped') {
         // People keep the pedestrian figure at its own size; animals get their own figure, scaled
         // to their type (traffic-4: the iguana, the pelican, the gator, the gator on a lawn chair).
