@@ -10,7 +10,7 @@
   "osmExtract": ".cache/osm/pnw-samish.json",
   "outRoot": "packs/region-pnw/regions/pacific-northwest",
   "waysLabel": "Interstate 5 and Lake Samish",
-  "networkNotes": "Interstate 5 southbound by Lake Samish, with the original rider shore choice and dedicated northbound access via Nulle Road and the Samish Way bridge. Source paths use OpenStreetMap and USGS bare-earth elevation; bridge decks, lanes, junction pieces and endpoint collars are synthesized for gameplay. Traffic-only access endpoint profiles adapt the bare-earth samples to their modeled host-road decks over authored 160 m spans; the Exit 246 shore endpoint adds 0.62 m to align the modeled crossing surface. Southbound ramp tails retain their forward lane; the shore core is shared by both directions.",
+  "networkNotes": "Interstate 5 southbound by Lake Samish, with the original rider shore choice and dedicated northbound access via Nulle Road and the Samish Way bridge. Source paths use OpenStreetMap and USGS bare-earth elevation; bridge decks, lanes, junction pieces and endpoint collars are synthesized for gameplay. Traffic-only access endpoint profiles adapt the bare-earth samples to their modeled host-road decks over authored 160 m spans; the Exit 246 shore endpoint adds 0.62 m to align the modeled crossing surface. The rider branch's first 80 m and last 120 m likewise adapt their game elevation and tangent grade to the highway junctions' shared surfaces, returning to the sampled source profiles outside those spans. Southbound ramp tails retain their forward lane; the shore core is shared by both directions.",
   "lines": [
     {
       "id": "i5",
@@ -485,6 +485,7 @@
           "d1": 12.5
         },
         "insetM": 140,
+        "accessProfileFitM": 80,
         "toOffsetM": 2,
         "toLane": "R1",
         "turnsM": [40, 40],
@@ -499,6 +500,7 @@
         "offsetM": 8,
         "lane": "R2",
         "insetM": 150,
+        "accessProfileFitM": 120,
         "fromOffsetM": 2,
         "fromLane": "R1",
         "turnsM": [20, 20],

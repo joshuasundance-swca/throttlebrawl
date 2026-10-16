@@ -315,6 +315,8 @@ class Leave(Staging):
     toOffsetM: float = 0.0  # noqa: N815 (across the branch's first road, where the connector lands)
     toLane: str = "R1"  # noqa: N815
     turnsM: tuple[float, float] = (15.0, 15.0)  # noqa: N815
+    # Optional game-elevation adaptation of the branch approach to the shared junction field.
+    accessProfileFitM: float | None = Field(None, gt=0)  # noqa: N815
 
     @model_validator(mode="after")
     def _centred(self) -> Leave:
@@ -333,6 +335,8 @@ class Join(Staging):
     fromOffsetM: float = 0.0  # noqa: N815 (across the branch's last road, where the connector starts)
     fromLane: str = "R1"  # noqa: N815
     turnsM: tuple[float, float] = (15.0, 15.0)  # noqa: N815
+    # As Leave.accessProfileFitM, measured back from the branch approach's end.
+    accessProfileFitM: float | None = Field(None, gt=0)  # noqa: N815
 
     @model_validator(mode="after")
     def _centred(self) -> Join:
@@ -400,6 +404,11 @@ class Branch(Strict):
 
     @model_validator(mode="after")
     def _traffic(self) -> Branch:
+        for end in (self.leave, self.join):
+            if end.accessProfileFitM is not None and (
+                end.synthetic or (self.trafficIngress is None and self.trafficReverse is None)
+            ):
+                raise ValueError("accessProfileFitM needs a traffic-enabled ordinary branch")
         if self.trafficIngress is not None:
             if self.traffic != "road":
                 raise ValueError("trafficIngress needs traffic road")
@@ -1307,21 +1316,56 @@ def join_host_surface(pc: Piece, host: Piece, span: float, at_start: bool) -> No
     pc.y += weight * (host_y - pc.y)
 
 
-def fit_access_profile(pc: Piece, host: Piece, span: float, offset: float, at_start: bool) -> None:
-    """Ease one dedicated access-road endpoint onto its host's projected elevation."""
+def fit_endpoint_profile(
+    pc: Piece, span: float, target: float, at_start: bool, target_grade: float | None = None
+) -> None:
+    """Ease an authored endpoint fit back to untouched source height and grade at its span."""
     station = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(pc.x), np.diff(pc.z)))))
     if span <= float(station[1]) or span >= float(station[-1]):
-        raise ValueError(f"traffic chain {pc.id}: accessProfileFitM must leave source profile")
+        raise ValueError(f"road {pc.id}: accessProfileFitM must leave source profile")
     distance = station if at_start else station[-1] - station
     endpoint = 0 if at_start else len(pc.x) - 1
     adjacent = 1 if at_start else len(pc.x) - 2
     step = float(abs(station[adjacent] - station[endpoint]))
     grade = float((pc.y[adjacent] - pc.y[endpoint]) / step) * (1 if at_start else -1)
-    target = piece_surface(host, float(pc.x[endpoint]), float(pc.z[endpoint]))[1] + offset
     weight = smoothstep(np.clip((span - distance) / span, 0.0, 1.0))
     pc.y += weight * (target - float(pc.y[endpoint]))
+    if target_grade is not None:
+        t = np.clip(distance / span, 0.0, 1.0)
+        pc.y += (target_grade - grade) * (1 if at_start else -1) * distance * (1 - t) ** 2
+        grade = target_grade
     pc.y[endpoint] = target
     pc.y[adjacent] = target + grade * step * (1 if at_start else -1)
+
+
+def fit_access_profile(pc: Piece, host: Piece, span: float, offset: float, at_start: bool) -> None:
+    """Ease one dedicated access-road endpoint onto its host's projected elevation."""
+    endpoint = 0 if at_start else len(pc.x) - 1
+    target = piece_surface(host, float(pc.x[endpoint]), float(pc.z[endpoint]))[1] + offset
+    fit_endpoint_profile(pc, span, target, at_start)
+
+
+def fit_branch_profile(
+    pc: Piece,
+    main: BakedLine,
+    main_half: float,
+    span: float,
+    anchor: tuple[float, float, float, float],
+    at_start: bool,
+) -> None:
+    """Adapt a branch approach to its junction's existing broad shared height field."""
+    endpoint, adjacent, sign = (0, 1, 1) if at_start else (-1, -2, -1)
+    target = main.at(main.project(anchor[0], anchor[2])[0])[1]
+    step = float(np.hypot(pc.x[adjacent] - pc.x[endpoint], pc.z[adjacent] - pc.z[endpoint]))
+    grade = (
+        (
+            traffic_height(main, main_half, target, float(pc.x[adjacent]), float(pc.z[adjacent]))
+            - traffic_height(main, main_half, target, float(pc.x[endpoint]), float(pc.z[endpoint]))
+        )
+        / step
+        * sign
+    )
+    fit_endpoint_profile(pc, span, target, at_start, grade)
 
 
 def curve_piece(
@@ -1515,6 +1559,13 @@ def traffic_chain_collar(
     return pc
 
 
+def traffic_height(main: BakedLine, main_half: float, branch_height: float, x: float, z: float) -> float:
+    """The common world-space junction field, also used to fit an authored branch endpoint."""
+    s, dist = main.project(x, z)
+    blend = float(smoothstep(np.array((dist - main_half) / 40.0)))
+    return main.at(s)[1] * (1 - blend) + branch_height * blend
+
+
 def align_traffic_height(
     pc: Piece,
     main: BakedLine,
@@ -1531,10 +1582,8 @@ def align_traffic_height(
     headings = np.unwrap(np.arctan2(np.gradient(pc.x), -np.gradient(pc.z)))
 
     def height(x: float, z: float) -> float:
-        s, dist = main.project(x, z)
         # A broad grade transition lets a planar cross-section represent the surface on every turn.
-        blend = float(smoothstep(np.array((dist - main_half) / 40.0)))
-        return main.at(s)[1] * (1 - blend) + branch_height * blend
+        return traffic_height(main, main_half, branch_height, x, z)
 
     for i in range(1, len(pc.x) - 1):
         nx, nz = math.cos(headings[i]), math.sin(headings[i])
@@ -1847,6 +1896,23 @@ def bake_network(
         s_first, s_last = line_cuts_ends(b, line, staged)
         leave_pt = offset_point(main, centre[f"{b.tag}-leave"] - b.leave.pieceM / 2, b.leave.offsetM)
         land_pt = offset_point(line, s_first, b.leave.toOffsetM)
+        if first is last and b.leave.accessProfileFitM is not None and b.join.accessProfileFitM is not None:
+            length = float(np.sum(np.hypot(np.diff(first.x), np.diff(first.z))))
+            profile_spans = (b.leave.accessProfileFitM, b.join.accessProfileFitM)
+            if any(span <= cfg.sampleSpacingM or span >= length for span in profile_spans):
+                raise ValueError(f"branch {b.id}: accessProfileFitM must leave source profile")
+            if sum(profile_spans) >= length:
+                raise ValueError(f"branch {b.id}: branch profile fits must not overlap")
+        if b.leave.accessProfileFitM is not None:
+            fit_branch_profile(
+                first,
+                main,
+                surface_reach(before.lane_section, True),
+                b.leave.accessProfileFitM,
+                land_pt,
+                True,
+            )
+            land_pt = (land_pt[0], float(first.y[0]), land_pt[2], land_pt[3])
         st_in = staged.get((b.id, "leave"))
         sh_in = (
             st_in.shape
@@ -1861,6 +1927,11 @@ def bake_network(
             )
         )
         a2 = offset_point(line, s_last, b.join.fromOffsetM)
+        if b.join.accessProfileFitM is not None:
+            fit_branch_profile(
+                last, main, surface_reach(after.lane_section, True), b.join.accessProfileFitM, a2, False
+            )
+            a2 = (a2[0], float(last.y[-1]), a2[2], a2[3])
         t2 = offset_point(main, centre[f"{b.tag}-join"] + b.join.pieceM / 2, b.join.offsetM)
         st_out = staged.get((b.id, "join"))
         sh_out = (
