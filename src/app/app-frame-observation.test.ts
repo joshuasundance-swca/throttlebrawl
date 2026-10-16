@@ -46,6 +46,8 @@ const boundary = vi.hoisted(() => ({
   wakeLoss: null as Parameters<typeof import('../platform').acquireWakeLease>[0]['onLost'] | null,
   missingRoads: false,
   roadWait: null as Promise<void> | null,
+  chunkWait: null as Promise<void> | null,
+  chunkMissing: false,
 }));
 
 vi.mock('../sim/api', async (original) => {
@@ -110,6 +112,10 @@ vi.mock('../content', async (original) => {
   const module = await original<typeof import('../content')>();
   return {
     ...module,
+    loadChunk: async <T>(name: string, load: () => Promise<T>, env?: import('../content').ChunkEnv) => {
+      await boundary.chunkWait;
+      return boundary.chunkMissing ? null : module.loadChunk(name, load, env);
+    },
     createPackLibrary: (options: Parameters<typeof module.createPackLibrary>[0]) => {
       const library = module.createPackLibrary(options);
       return {
@@ -338,6 +344,8 @@ describe('AppHandle actual render wiring', () => {
     boundary.missingRiders = false;
     boundary.missingRoads = false;
     boundary.roadWait = null;
+    boundary.chunkWait = null;
+    boundary.chunkMissing = false;
     boundary.render.mockReset();
     boundary.audioFrame.mockReset();
     boundary.countdownBeat.mockReset();
@@ -1084,7 +1092,7 @@ describe('AppHandle actual render wiring', () => {
     app.tap();
     boundary.suspension = new Promise(() => {});
     const pending = begin();
-    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await vi.dynamicImportSettled();
     expect(boundary.audioAcquire).toHaveBeenCalledTimes(1);
     const press = () =>
       window.dispatchEvent(
@@ -1147,6 +1155,47 @@ describe('AppHandle actual render wiring', () => {
       expect(boundary.audioAcquire).not.toHaveBeenCalled();
     },
   );
+  it('held diagnostic code aborts promptly; late fulfillment cannot overwrite a following ordinary race', async () => {
+    app.tap();
+    let resolve!: () => void;
+    boundary.chunkWait = new Promise<void>((done) => {
+      resolve = done;
+    });
+    const controller = new AbortController();
+    let settled = false;
+    const pending = app.beginMeasurement({ signal: controller.signal, driverForRepeat: () => vi.fn() });
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.dynamicImportSettled();
+    expect(settled).toBe(false);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    controller.abort();
+    expect(await pending).toMatchObject({ reason: 'aborted' });
+    app.startRace();
+    const current = app.snapshot(),
+      receipts = boundary.receipt.mock.calls.length;
+    resolve();
+    await vi.dynamicImportSettled();
+    expect(app.snapshot()).toBe(current);
+    expect(boundary.receipt.mock.calls.length).toBe(receipts);
+    expect(app.state()).toBe('race');
+  });
+  it('unavailable diagnostic code releases ownership and permits a subsequent measurement', async () => {
+    app.tap();
+    const normal = app.snapshot();
+    boundary.chunkMissing = true;
+    await expect(begin()).rejects.toThrow('Measurement scene code unavailable');
+    expect(app.snapshot()).toBe(normal);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    boundary.chunkMissing = false;
+    const next = await begin();
+    expect(next.kind).toBe('started');
+    if (next.kind === 'started') {
+      next.session.stop('collector-target');
+      await next.session.ended;
+    }
+  });
   it('held content preparation aborts promptly; late fulfillment cannot overwrite a following ordinary race', async () => {
     app.tap();
     boundary.missingRoads = true;
@@ -1167,7 +1216,7 @@ describe('AppHandle actual render wiring', () => {
     const current = app.snapshot(),
       receipts = boundary.receipt.mock.calls.length;
     resolve();
-    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await vi.dynamicImportSettled();
     expect(app.snapshot()).toBe(current);
     expect(boundary.receipt.mock.calls.length).toBe(receipts);
     expect(app.state()).toBe('race');

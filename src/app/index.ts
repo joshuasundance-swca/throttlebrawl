@@ -23,7 +23,7 @@ import type {
 import { createAudio, radioKeyAction, type AudioSuspendLeaseResult, type EngineSoundSpec } from '../audio';
 import type { WakeLease, WakeLeaseResult } from '../platform';
 import type { QualitySetting, RendererPresentationRecipe, RendererPresentationToken } from '../render';
-import { resolveMeasurementScene, type MeasurementSceneResult } from './measurement-scene';
+import type { MeasurementSceneResult } from './measurement-scene';
 import { createMeasurementRuntime } from './measurement-runtime';
 import {
   createFollowCamera,
@@ -43,6 +43,7 @@ import {
   contentHashes,
   createPackLibrary,
   loadBaseRoads,
+  loadChunk,
   lookup,
   packClosure,
   packOf,
@@ -3008,10 +3009,15 @@ export function createApp(opts: AppOptions): AppHandle {
       const missing = classic
         ? packClosure(registry, packOf(classic.eventId)).filter((id) => !library.hasRoads(id))
         : [];
-      await Promise.all([...missing.map((id) => library.loadRoads(id)), loadPlanners()]);
+      const [sceneCode] = await Promise.all([
+        loadChunk('measurement scene', () => import('./measurement-scene')),
+        ...missing.map((id) => library.loadRoads(id)),
+        loadPlanners(),
+      ]);
       // Only immutable content caches were filled. Selection and normal registry stay parked.
       if (signal.aborted) throw new Error('Measurement preparation retired');
-      return resolveMeasurementScene(library.registry(), selected);
+      if (!sceneCode) throw new Error('Measurement scene code unavailable');
+      return sceneCode.resolveMeasurementScene(library.registry(), selected);
     },
     acquireWake: acquireWakeLease,
     acquireAudio: (options) => audio.acquireSuspendLease(options),
