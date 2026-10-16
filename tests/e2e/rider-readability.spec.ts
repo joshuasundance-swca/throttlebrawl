@@ -6,29 +6,14 @@ import { readGlb } from '../../src/render/glb';
 import { riderLookOf } from '../../src/render/rider-looks';
 import { startRace } from './ui-layout-helpers';
 import { openQuickPlay } from './menu-navigation';
+import type { AppHandle } from '../../src/app';
+import type { TestHandle } from '../../src/dev';
 
 interface RiderFile {
   id: string;
   role: 'player-preset' | 'rival' | 'cop' | 'extra';
   bike: string;
   look?: unknown;
-}
-interface Entity {
-  id: number;
-  kind: string;
-  contentId: string;
-  mode: string;
-  speed: number;
-  x: number;
-  y: number;
-  z: number;
-  heading: number;
-  progress: number;
-}
-interface Snapshot {
-  tick: number;
-  entities: Entity[];
-  race: { over: boolean };
 }
 interface Raster {
   entityId: number;
@@ -40,19 +25,8 @@ interface Raster {
   attributes: Record<'position' | 'normal' | 'skinIndex' | 'skinWeight', number[]>;
 }
 type Browser = Window & {
-  __game: {
-    setSeed(seed: number): void;
-    setBot(on: boolean): void;
-    lockstep(ticks: number): void;
-    snapshot(): Snapshot;
-    playerId(): number;
-    rendererStats(): unknown;
-    fastForward(until: (s: Snapshot) => boolean, options: { perFrame: number; then: number }): void;
-    fastForwarding(): boolean;
-  };
-  __app: {
-    presentation(): { camera: unknown; display: unknown; look: string; riders: { loaded: string[] } };
-  };
+  __game?: TestHandle;
+  __app?: AppHandle;
   __riderRaster?: (entityId: number) => Raster;
   __riderReady?: number;
 };
@@ -168,16 +142,20 @@ test('selected base riders contribute their own moving production geometry and p
     await choose(page, 'weather', 'dry');
     await page.evaluate((seed) => {
       const g = (window as Browser).__game;
+      if (!g) throw new Error('No game test handle during race setup');
       g.setSeed(seed);
       g.setBot(true);
       g.lockstep(1);
     }, seed);
     await expect(page.locator('#race-options-race')).toBeVisible();
     await page.locator('#race-options-race').click();
-    await page.waitForFunction(() => (window as Browser).__game.snapshot()?.tick > 0);
+    await page.waitForFunction(() => ((window as Browser).__game?.snapshot()?.tick ?? 0) > 0);
     const initial = await page.evaluate(() => {
       const g = (window as Browser).__game;
-      return { ...g.snapshot(), playerId: g.playerId() };
+      if (!g) throw new Error('No game test handle after race start');
+      const snapshot = g.snapshot();
+      if (!snapshot) throw new Error('No race snapshot after start');
+      return { ...snapshot, playerId: g.playerId() };
     });
     const cohort = initial.entities.filter((e) => {
       const content = riders.get(e.contentId);
@@ -192,13 +170,16 @@ test('selected base riders contribute their own moving production geometry and p
       cohort.filter((e) => e.id !== initial.playerId).length,
       'the requested content-derived rival field spawned',
     ).toBe(expectedRivals);
+    const initialPlayer = initial.entities.find((e) => e.id === initial.playerId);
+    if (!initialPlayer) throw new Error('No player in initial race snapshot');
     const deadline = initial.tick + 600;
     for (let encounter = 0; encounter <= cohort.length; encounter++) {
       await page.evaluate(
         ({ done, deadline, startProgress, wanted }) => {
           const w = window as Browser,
             g = w.__game;
-          w.__riderReady = undefined;
+          if (!g) throw new Error('No game test handle during encounter search');
+          delete w.__riderReady;
           g.fastForward(
             (s) => {
               const me = s.entities.find((e) => e.id === g.playerId());
@@ -232,22 +213,30 @@ test('selected base riders contribute their own moving production geometry and p
           done: [...observed],
           deadline,
           wanted: cohort.map((e) => e.contentId),
-          startProgress: initial.entities.find((e) => e.id === initial.playerId)?.progress ?? 0,
+          startProgress: initialPlayer.progress,
         },
       );
-      await page.waitForFunction(() => !(window as Browser).__game.fastForwarding());
+      await page.waitForFunction(() => {
+        const game = (window as Browser).__game;
+        if (!game) throw new Error('No game test handle while waiting for encounter');
+        return !game.fastForwarding();
+      });
       await expect(page.locator('#pause-screen')).toBeVisible();
       const targetId = await page.evaluate(() => (window as Browser).__riderReady);
       if (targetId === undefined) break;
       const state = await page.evaluate((id) => {
         const w = window as Browser,
-          s = w.__game.snapshot();
+          game = w.__game,
+          app = w.__app;
+        if (!game || !app) throw new Error('No game or app handle during rider observation');
+        const s = game.snapshot();
+        if (!s) throw new Error('No race snapshot during rider observation');
         return {
           snapshot: s,
           target: s.entities.find((e) => e.id === id),
-          playerId: w.__game.playerId(),
-          presentation: w.__app.presentation(),
-          stats: w.__game.rendererStats(),
+          playerId: game.playerId(),
+          presentation: app.presentation(),
+          stats: game.rendererStats(),
           device: { width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio },
           raster: w.__riderRaster?.(id),
         };
@@ -266,9 +255,9 @@ test('selected base riders contribute their own moving production geometry and p
         bikeId: target.id === state.playerId ? 'base:superbike-1000' : `base:${content.bike}`,
         look: content.look,
       });
-      expect(state.presentation.riders.loaded).toEqual(
-        expect.arrayContaining([look.riderModel, look.bikeModel]),
-      );
+      const riderAssets = state.presentation.riders;
+      if (!riderAssets) throw new Error('No rider asset presentation during observation');
+      expect(riderAssets.loaded).toEqual(expect.arrayContaining([look.riderModel, look.bikeModel]));
       const geometry = {
         rider: expectPart(raster, part(look.riderModel, 'rider'), false),
         bike: expectPart(raster, part(look.bikeModel, 'bike'), true),
@@ -308,7 +297,8 @@ test('selected base riders contribute their own moving production geometry and p
       } finally {
         await style.evaluate((s) => (s as HTMLElement).remove());
       }
-      const player = state.snapshot.entities.find((e) => e.id === state.playerId)!;
+      const player = state.snapshot.entities.find((e) => e.id === state.playerId);
+      if (!player) throw new Error('No player in rider observation snapshot');
       evidence.push({
         ...state,
         raster: { ...raster, attributes: undefined },
