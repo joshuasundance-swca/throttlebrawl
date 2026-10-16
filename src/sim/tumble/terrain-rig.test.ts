@@ -124,11 +124,44 @@ describe('crash particles on authored source terrain', () => {
     stepCluster(railed, far, 1 / 60, 1, true, undefined, true);
     expect(centre(far.p).x).toBeCloseTo(30);
     const line = railed.vergeAt(0, 100, 'right').dOuter;
-    const near = cluster(railed, line + 0.1, 0.1);
-    for (const q of near.p) q.vx = 2;
+    const near = cluster(railed, line - 0.4, 0.1);
+    for (const q of near.p) q.vx = 6;
     stepCluster(railed, near, 1 / 60, 1, true, undefined, true);
     expect(centre(near.p).x).toBeLessThanOrEqual(line);
     expect(centre(near.p).vx).toBeLessThan(0);
+    const outside = cluster(railed, line + 0.4, 0.1);
+    for (const q of outside.p) q.vx = -6;
+    stepCluster(railed, outside, 1 / 60, 1, true, undefined, true);
+    expect(centre(outside.p).x).toBeGreaterThan(line);
+    expect(Math.min(...outside.p.map((q) => q.x))).toBeGreaterThanOrEqual(line - 1e-6);
+    expect(centre(outside.p).vx).toBeGreaterThan(0);
+  });
+
+  it('preserves already-overboard flight above road until actual water contact without another crossing event', () => {
+    const road = fixture([patch(-4, 0, 'water')]);
+    const c = cluster(road, 30, 5);
+    c.overboard = true;
+    for (let tick = 0; tick < 180 && !c.splashed; tick++) {
+      const contact = stepCluster(road, c, 1 / 60, 0, true, undefined, true);
+      expect(c.overboard).toBe(true);
+      expect(contact.railOver).toBe(false);
+    }
+    expect(c.splashed).toBe(true);
+    expect(centre(c.p).y).toBeCloseTo(-4);
+  });
+
+  it('ends existing overboard flight only when supporting land actually catches a particle', () => {
+    const road = fixture([patch(-4)]);
+    const c = cluster(road, 30, 5);
+    c.overboard = true;
+    stepCluster(road, c, 1 / 60, 0, true, undefined, true);
+    expect(c.overboard).toBe(true);
+    for (let tick = 0; tick < 180 && c.overboard; tick++) {
+      const contact = stepCluster(road, c, 1 / 60, 1, true, undefined, true);
+      expect(contact.railOver).toBe(false);
+    }
+    expect(c.overboard).toBe(false);
+    expect(Math.min(...c.p.map((q) => q.y))).toBeCloseTo(-4, 4);
   });
 
   it('keeps actual road and roof support and the omitted-terrain barrier rule', () => {

@@ -36,7 +36,7 @@ import {
   type RoadNetwork,
   type RoadPos,
 } from '../../road';
-import { wallBand, type TumbleBody } from './body';
+import { BODY_RADIUS_M, wallBand, type TumbleBody } from './body';
 
 const GRAVITY = 9.81;
 
@@ -377,9 +377,18 @@ function stepTerrainCluster(
   offRoad: boolean,
   tops?: TopUnder,
 ): ClusterContact {
+  const previous = centre(c.p);
+  previous.x -= previous.vx * dt;
+  previous.z -= previous.vz * dt;
   const ceilings = c.p.map((q) => q.y - q.vy * dt + CONTACT_M);
   const under = groundUnderOf(road);
+  const samples = new Map<
+    Particle,
+    { x: number; z: number; y: number; normal: { x: number; y: number; z: number } }
+  >();
   const support = (q: Particle, i: number) => {
+    const known = samples.get(q);
+    if (known && known.x === q.x && known.z === q.z) return known;
     const ceiling = ceilings[i] ?? q.y;
     const land = under(q.x, q.z, ceiling);
     const top = tops?.(q.x, q.z, ceiling) ?? null;
@@ -387,7 +396,9 @@ function stepTerrainCluster(
     const water = terrainAt(road.terrain, q.x, q.z, Infinity, 'water');
     const y = water && water.y >= solid ? -Infinity : solid;
     const face = terrainAt(road.terrain, q.x, q.z, ceiling, 'land');
-    return { y, normal: face && face.y === y ? face.normal : { x: 0, y: 1, z: 0 } };
+    const sample = { x: q.x, z: q.z, y, normal: face && face.y === y ? face.normal : { x: 0, y: 1, z: 0 } };
+    samples.set(q, sample);
+    return sample;
   };
   const hit = c.p.map((q, i) => q.y < support(q, i).y);
   for (let it = 0; it < ITERATIONS; it++) {
@@ -421,33 +432,48 @@ function stepTerrainCluster(
   let at = centre(c.p);
   let p = road.project(at.x, at.z, at.edge);
   const band = wallBand(road, p.edge, p.s, offRoad);
-  const d = clamp(p.d, band.lo, band.hi);
-  if (d !== p.d) {
-    const side = p.d > d ? 'right' : 'left';
+  for (const side of ['left', 'right'] as const) {
+    const sign = side === 'right' ? 1 : -1;
+    const line = (side === 'right' ? band.hi : band.lo) + sign * BODY_RADIUS_M;
     const top = courseEdgeTopAt(road, p.edge, p.s, side);
-    const deck = road.surfaceHeight(p.edge, p.s, d);
+    const deck = road.surfaceHeight(p.edge, p.s, line);
     const f = road.frameAt(p.edge, p.s);
-    const travel = Math.abs(-at.vx * f.tz + at.vz * f.tx) * dt;
-    // A wall has a local contact region, not an infinite halfspace across an entire field.
+    const previousD = p.d - (previous.x - at.x) * f.tz + (previous.z - at.z) * f.tx;
+    // Keep the body on the face it approached. An outside approach hits the field face of the rail.
+    const face = sign * (previousD - line) >= 0 ? sign : -sign;
+    const distance = face * (p.d - line);
     const roof = tops?.(at.x, at.z, at.y + CONTACT_M) ?? null;
     if (
       roof === null &&
       top !== null &&
       top > 0 &&
-      Math.abs(p.d - d) <= travel + 1 &&
+      distance < BODY_RADIUS_M &&
       at.y >= deck &&
       at.y <= deck + top
     ) {
-      barrierLine(road, c, p, offRoad, false);
+      const shift = line + face * BODY_RADIUS_M - p.d;
+      const nx = -f.tz * face;
+      const nz = f.tx * face;
+      for (const q of c.p) {
+        q.x -= f.tz * shift;
+        q.z += f.tx * shift;
+        const vn = q.vx * nx + q.vz * nz;
+        if (vn < 0) {
+          q.vx -= (1 + WALL_RESTITUTION) * vn * nx;
+          q.vz -= (1 + WALL_RESTITUTION) * vn * nz;
+        }
+      }
       at = centre(c.p);
       p = road.project(at.x, at.z, at.edge);
     }
   }
   const supported = c.p.some((q, i) => Number.isFinite(support(q, i).y));
+  const touching = c.p.some((q, i) => q.y <= support(q, i).y + CONTACT_M);
   const wasOverboard = c.overboard;
   const water = terrainAt(road.terrain, at.x, at.z, Infinity, 'water');
   c.overboard =
-    !supported && (at.y < road.surfaceHeight(p.edge, p.s, p.d) || (water !== null && at.y <= water.y));
+    (wasOverboard && !touching) ||
+    (!supported && (at.y < road.surfaceHeight(p.edge, p.s, p.d) || (water !== null && at.y <= water.y)));
   let splash = false;
   if (c.overboard) {
     if (water && at.y <= water.y) {
