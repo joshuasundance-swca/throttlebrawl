@@ -1,0 +1,38 @@
+{
+  "sourceCommit": "64284efc8b6b6d26b911b1382cfc56573b56c143",
+  "license": "ODbL-1.0",
+  "attribution": "Road data © OpenStreetMap contributors, available under the Open Database License.",
+  "note": "Original centre-line stations, before county junction pieces; lateral patrol placement may move onto pavement.",
+  "anchors": [
+    {
+      "id": "clinton-patrol-lot",
+      "kind": "copSpawn",
+      "x": 501.8828731950771,
+      "z": -230.66915185353994
+    },
+    {
+      "id": "clinton-136-sign",
+      "kind": "billboard",
+      "x": 361.85002207701456,
+      "z": -358.3115265882029
+    },
+    {
+      "id": "clinton-delivery-board",
+      "kind": "billboard",
+      "x": -476.0308655293851,
+      "z": -893.6501358542553
+    },
+    {
+      "id": "clinton-curve-sign",
+      "kind": "billboard",
+      "x": -1361.5351289568996,
+      "z": -1109.4854957813964
+    },
+    {
+      "id": "clinton-freight-board",
+      "kind": "billboard",
+      "x": -2155.289628323241,
+      "z": -2607.4916102930747
+    }
+  ]
+}
