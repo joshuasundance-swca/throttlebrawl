@@ -128,8 +128,9 @@ real junction choice.
   `insetM` inside it, and solves a turn-off and a rejoin connector between them (a turn, a straight
   and a turn, the hand-made compiler's shape) that leave and land with each road's heading. The
   turn-off's row carries the split zone (`leave.zone`, on the right: keep right to take it). Both
-  connectors carry one `shortcut` lane, so traffic stays on the main road; the branch's own roads
-  keep their real lanes and carry none. `shiftM` moves a junction along the main line off the real
+  rider connectors carry one `shortcut` lane. Ambient traffic stays on the main road unless the
+  branch explicitly opts in with valid drive movements below. The branch's own roads keep their
+  real lanes. `shiftM` moves a junction along the main line off the real
   gore (at a wide fork the main road already bends there; beside a ramp the connector then stands in
   for the ramp's first stretch, where the two roads' land would overlap). `minRadiusM` (playtest 4,
   P4-4 and P4-8) is the tightest bend either connector may have: the bake tries the turn lengths in
@@ -307,6 +308,22 @@ Peaks stretch from one cached extract to byte-identical files.
   Traffic asphalt fills beneath the existing surface without adding another set of shoulders.
   Runtime traffic reserves physically overlapping turns together, including connector-to-connector
   overlap, until the full vehicle body has cleared. Height-separated surfaces stay independent.
+- **Source-profile traffic access** (`trafficChains`, optional on a network) connects the two host
+  lines of an existing branch through a dedicated source line. Each entry names `id`, `line`,
+  `branch`, `from` and `to`. Each end names its host `line`, real `at` point, `pieceM`, `shiftM`,
+  `offsetM` and drive `lane`, plus the curve settings used by `trafficIngress`. The host is cut
+  into ordinary fragments and a through piece; two traffic-only collars connect the source line
+  to direction-valid host lanes. The access line must have explicit `start` and `end` clips and
+  a centred one-way R1 cross-section, including any per-road overrides. It keeps its own sampled
+  source elevation between the collars. Endpoint fitting currently accepts ordinary, unbanked host
+  surfaces; unsupported banked endpoints fail rather than silently changing their shape.
+  The branch remains a flat road list in the emitted pack: this adds no runtime format. A dedicated
+  forward ingress replaces the rider ingress only in ambient membership; the rider's allowed roads,
+  split and default links remain available. Choose clips in actual travel order, beyond overlapping
+  host ribbons, while retaining `pathFrom`/`pathTo` context for smoothing. Endpoint position and
+  grade fits alone do not prove clearance: inspect the rendered body envelope, supports, terrain
+  and movement through each rejoin. The Samish config demonstrates northbound ramp access to its
+  two-way shore core, separate from its southbound rider ramp tails.
 - **The bake's own lint** (`src/tbgis/lint.py`) now also runs these rules, so a bad bake fails
   before it is written:
   - the jump lint: from a ramp, gap or ramp truck to its expected landing, `|kappa|` stays at or
@@ -333,6 +350,10 @@ Peaks stretch from one cached extract to byte-identical files.
     shoulders. The road format's width rule is `|kappa| * dMax < 0.5`, and a two-way table has dMax
     4.75 m (a 9.5 m radius at the tightest); one lane has 2 m (4 m). Lombard's crooked block turns at
     5.3 m. The roads either side stay two-way, and the join narrows like any lane drop.
+    A network cross-section may additionally set finite `oneWayOffsetM` to retain an existing
+    carriageway's lateral centre while removing the opposing lane. It requires `oneWay`; omission
+    retains the centred default. Samish's southbound tails use +2 m, while dedicated access lines
+    remain centred.
   - `roadSurface` (a line): a surface per road id where it differs from the line's (the block is
     brick, its street asphalt).
   - `roads[].realName`: what the picker calls the road when the map's own name is not the one to show

@@ -2472,7 +2472,12 @@ export function buildRoadScene(
       if (inGap(s, 0.5)) continue;
       for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
         const p = w(e.index, s, d, 0);
-        if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
+        if (p.y < ELEVATED_M) continue;
+        const top = p.y - 1;
+        // A support's whole square footprint must miss every lower lane it would cross.
+        // Other roads above the support or below its foot do not obstruct its placement.
+        if (locator.overLowerLanes(p.x, top, p.z, e.index, PYLON_M * Math.SQRT1_2, 0, top + 0.5)) continue;
+        pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: top + 0.5 });
       }
     }
     // A cable-car line: two slot rails down the middle of each travel lane.

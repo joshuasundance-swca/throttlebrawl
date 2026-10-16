@@ -47,6 +47,7 @@ const PER = 7;
 
 export interface RoadColumns {
   road: RoadNetwork;
+  highM: number;
   pts: Float64Array;
   cells: Map<number, number[]>;
   coarse: Set<number>;
@@ -57,7 +58,10 @@ export interface RoadColumns {
 const key = (i: number, j: number) => (i + 0x8000) * 0x10000 + (j + 0x8000);
 
 /** The ride column over every lane of every edge of a network (branches, shortcuts, joins and leaves). */
-export function roadColumns(road: RoadNetwork): RoadColumns {
+export function roadColumns(
+  road: RoadNetwork,
+  options: { highM?: number; include?: (edge: number, s: number, d: number) => boolean } = {},
+): RoadColumns {
   const raw: number[] = [];
   for (const e of road.edges) {
     for (let s = 0; s <= e.length + 1e-6; s += STEP_M) {
@@ -68,6 +72,7 @@ export function roadColumns(road: RoadNetwork): RoadColumns {
         hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
       }
       for (let d = lo + RIM_M; d <= hi - RIM_M + 1e-6; d += STEP_M) {
+        if (options.include && !options.include(e.index, s, d)) continue;
         const p = road.toWorld(e.index, s, d, 0);
         raw.push(p.x, p.y, p.z, e.index, s, d, Math.min(d - lo, hi - d));
       }
@@ -95,7 +100,7 @@ export function roadColumns(road: RoadNetwork): RoadColumns {
         list.push(q);
       }
   }
-  return { road, pts, cells, coarse, count: n };
+  return { road, highM: options.highM ?? RIDE_HIGH_M, pts, cells, coarse, count: n };
 }
 
 export interface RoadHit {
@@ -239,7 +244,7 @@ function trianglesOf(
     const nz = ux * vy - uy * vx;
     const wall = floor >= RIDE_LOW_M || Math.abs(ny) < FLAT_NY * Math.hypot(nx, ny, nz);
     // The box's reach along the triangle's normal: a box whose centre lies further off its plane misses it.
-    const half = (RIDE_HIGH_M - RIDE_LOW_M) / 2;
+    const half = (cols.highM - RIDE_LOW_M) / 2;
     const reach = HALF_M * Math.abs(nx) + half * Math.abs(ny) + HALF_M * Math.abs(nz);
     const plane = nx * a.x + ny * a.y + nz * a.z;
     const visitCell = (i: number, j: number) => {
@@ -250,7 +255,7 @@ function trianglesOf(
         const py = pts[q * PER + 1] ?? 0;
         const pz = pts[q * PER + 2] ?? 0;
         const lo = py + floor;
-        const hi = py + RIDE_HIGH_M;
+        const hi = py + cols.highM;
         if (maxY < lo || minY > hi || maxX < px - HALF_M || minX > px + HALF_M) continue;
         if (maxZ < pz - HALF_M || minZ > pz + HALF_M) continue;
         // The ground's rule: its surface over the point itself (a box would reach uphill on a steep street).
