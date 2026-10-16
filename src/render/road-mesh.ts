@@ -901,6 +901,8 @@ const LAND_CAP_FOOT_Y = -0.4;
 const JOIN_LAND_DY_M = 0.5;
 /** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
 const LAND_CAP_NARROW_M = 2;
+/** Coarse ground may batch a 256-quad fragment into an adjacent cell; its geometry bounds still cull it. */
+const LAND_SPARSE_CHUNK_TRIANGLES = 512;
 /**
  * A strip that runs on to another road runs on to other land this close past its edge, looked
  * for every SEAM_FILL_STEP_M, and reaches this far into it, m. [default]
@@ -2102,11 +2104,41 @@ export function buildRoadScene(
       ss.forEach((_, i) => {
         if (i > 0 && (reach[i] ?? 0) > 0) sceneryLandM += step;
       });
-      // The strip: from the verge to the land's edge, or to the bank's wall where it has one.
-      emit((i, s, r) => [
-        w(e.index, s, side * outer, LAND_TOP_M),
-        banked(i) ? wallTop(s) : w(e.index, s, side * (outer + r), LAND_TOP_M),
-      ]);
+      // The strip: from the verge to the land's edge, or to the bank's wall where it has one. Across
+      // a sharp width change, join only the reach common to both rows. The wider row's existing cap
+      // closes the omitted wedge; a diagonal from its outer corner to the narrow row could cross the
+      // lower road that caused the reach to stop.
+      ground.breakStrip();
+      ss.forEach((s, i) => {
+        const r = reach[i] ?? 0;
+        if (r <= 0) {
+          ground.breakStrip();
+          return;
+        }
+        if (
+          i > 0 &&
+          !banked(i - 1) &&
+          !banked(i) &&
+          (reach[i - 1] ?? 0) > 0 &&
+          Math.abs((reach[i - 1] ?? 0) - r) > LAND_CAP_NARROW_M
+        ) {
+          const common = Math.min(reach[i - 1] ?? 0, r);
+          const s0 = ss[i - 1] ?? 0;
+          const a0 = w(e.index, s0, side * outer, LAND_TOP_M);
+          const b0 = w(e.index, s0, side * (outer + common), LAND_TOP_M);
+          const a1 = w(e.index, s, side * outer, LAND_TOP_M);
+          const b1 = w(e.index, s, side * (outer + common), LAND_TOP_M);
+          if (side < 0) ground.quad(b0, a0, b1, a1);
+          else ground.quad(a0, b0, a1, b1);
+        }
+        const pair = [
+          w(e.index, s, side * outer, LAND_TOP_M),
+          banked(i) ? wallTop(s) : w(e.index, s, side * (outer + r), LAND_TOP_M),
+        ] as const;
+        if (side < 0) ground.pair(pair[1], pair[0]);
+        else ground.pair(pair[0], pair[1]);
+      });
+      ground.breakStrip();
       emit((i, s) => (banked(i) || beside(i) ? [wallTop(s), wallFoot(s, i)] : null));
       emit((i, s, r) =>
         banked(i) || beside(i)
@@ -3066,7 +3098,8 @@ export function buildRoadScene(
     const kind = kindOf(layer);
     // Small solid fragments cost a full draw each. Keep fine-detail chunks unchanged because
     // their visibility uses the original cell; solid surfaces use their actual geometry bounds.
-    const chunks = FINE_MESHES.has(`road-${layer}`) ? a.chunks : coalesceSparseChunks(a.chunks, 64);
+    const sparseLimit = layer === 'land' ? LAND_SPARSE_CHUNK_TRIANGLES : 64;
+    const chunks = FINE_MESHES.has(`road-${layer}`) ? a.chunks : coalesceSparseChunks(a.chunks, sparseLimit);
     for (const [key, part] of chunks) {
       if (part.isEmpty) continue;
       triangles += part.triangleCount;

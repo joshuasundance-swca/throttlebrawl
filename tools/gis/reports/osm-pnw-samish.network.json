@@ -109,23 +109,23 @@
       }
     },
     "core-exit246-nb-on": {
-      "lengthM": 984.7,
+      "lengthM": 974.7,
       "lanesPerDirection": 1,
       "driftClosedM": {},
       "fun": {
-        "real_length_m": 984.7,
-        "game_length_m": 984.7,
+        "real_length_m": 974.7,
+        "game_length_m": 974.7,
         "corners": 2,
         "tightest_radius_m": 23.1,
         "share_tighter_than_m": {
-          "50": 0.0355,
-          "100": 0.0477,
-          "200": 0.3316
+          "50": 0.0359,
+          "100": 0.0482,
+          "200": 0.335
         },
-        "turn_deg_per_km": 267.0,
-        "elev_min_m": 155.9,
+        "turn_deg_per_km": 269.4,
+        "elev_min_m": 156.3,
         "elev_max_m": 173.7,
-        "climb_m": 18.3,
+        "climb_m": 17.8,
         "descent_m": 5.3,
         "max_grade_pct": 5.0,
         "p95_grade_pct": 4.9,
@@ -136,7 +136,7 @@
         "launch_crests": 0,
         "launch_speed_mps": null,
         "junctions": 5,
-        "junctions_per_km": 5.08,
+        "junctions_per_km": 5.13,
         "bridges_m": 85.2,
         "tunnels_m": 0.0,
         "max_deviation_m": 9.6
