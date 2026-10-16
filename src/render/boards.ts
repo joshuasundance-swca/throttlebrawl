@@ -23,6 +23,8 @@ import { lanesUnderOf } from '../road';
 import type { RoadNetwork } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
+import { signStyleOf, type SignStyle } from './board-style';
+export { SIGN_STYLES, signStyleOf, type SignStyle } from './board-style';
 
 /**
  * `cone` (run W-U, the pitch deck's #14: "an 'INCIDENT SITE #3' cone where you were busted"): a
@@ -159,9 +161,6 @@ const BOARD_MOVE_MAX_M = 12;
  * - `blade`: San Francisco's street blades, blue-green on black lamp-post iron;
  * - `town`: the Northwest's mossy routed-cedar town signs.
  */
-export const SIGN_STYLES = ['default', 'mile-marker', 'historic', 'guide', 'blade', 'town'] as const;
-export type SignStyle = (typeof SIGN_STYLES)[number];
-
 export interface BoardFace {
   bg: string;
   fg: string;
@@ -178,11 +177,6 @@ export const SIGN_FACES: Record<SignStyle, BoardFace> = {
   blade: { bg: '#1f4e6b', fg: '#ffffff', frame: '#232323', border: '#ffffff' },
   town: { bg: '#34483a', fg: '#f1e8c9', frame: '#6b5a3a', border: '#c9b98a' },
 };
-
-/** The sign style a pack named, or null when it names none this build knows. */
-export function signStyleOf(name: unknown): SignStyle | null {
-  return (SIGN_STYLES as readonly unknown[]).includes(name) ? (name as SignStyle) : null;
-}
 
 /**
  * The style a board wears: only a `sign` takes one (billboards and the incident cones keep their
