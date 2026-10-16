@@ -217,7 +217,7 @@ describe('the lake from the road: the bank, the water and the docks (playtest 4 
     const dockAlong = dockRule.along;
     const gaps: string[] = [];
     let counted = 0;
-    const flatRuns = lakeSpans.flatMap((t) => {
+    const flatRunsBySpan = lakeSpans.map((t) => {
       const stations: number[] = [];
       for (let s = Math.ceil(t.s0); s <= Math.floor(t.s1); s++) {
         const flat = [-dockAlong, 0, dockAlong].every((u) => {
@@ -237,8 +237,12 @@ describe('the lake from the road: the bank, the water and the docks (playtest 4 
         if (last && s === last[1] + 1) last[1] = s;
         else runs.push([s, s]);
       }
-      return runs;
+      return { span: t, runs };
     });
+    const withoutFlatShore = flatRunsBySpan
+      .filter(({ runs }) => runs.length === 0)
+      .map(({ span }) => `${span.s0}..${span.s1}`);
+    const flatRuns = flatRunsBySpan.flatMap(({ runs }) => runs);
     const flatM = flatRuns.reduce((sum, [a, b]) => sum + b - a, 0);
     for (const seed of SEEDS) {
       const { items } = build(seed, true, kit);
@@ -256,7 +260,7 @@ describe('the lake from the road: the bank, the water and the docks (playtest 4 
     print(
       `[examined] ${counted} docks over ${flatM} m of drawn flat shore in ${flatRuns.length} runs and 3 seeds; gaps over 170 m: ${gaps.length ? gaps.join('; ') : 'none'}`,
     );
-    expect(flatRuns.length).toBe(lakeSpans.length);
+    expect(withoutFlatShore).toEqual([]);
     expect(gaps).toEqual([]);
   });
 

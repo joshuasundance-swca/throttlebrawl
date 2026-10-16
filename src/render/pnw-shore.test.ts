@@ -163,11 +163,12 @@ function probeSkirt(
   span: BakedTag,
   side: -1 | 1,
   stripM: number,
-): { stations: number; skirted: number; reach: number[]; wall: number } {
+): { stations: number; skirted: number; reach: number[]; wallMid: number; wallBelowSea: number } {
   const { road, scene, tris, ground, edge } = built;
   let stations = 0;
   let skirted = 0;
-  let wall = 0;
+  let wallMid = 0;
+  let wallBelowSea = 0;
   const reach: number[] = [];
   for (let s = span.s0 + 20; s <= span.s1 - 20; s += 20) {
     stations++;
@@ -181,16 +182,19 @@ function probeSkirt(
       return landAt(tris, p.x, p.z).some((y) => y > top - 15 && y < top + 1);
     });
     if (skirtGround) skirted++;
-    // The drop is a closed wall at the strip's edge. Probe the drawn face halfway down, rather than requiring
-    // one of its tessellation vertices to coincide with this station on a curved road.
+    // The drop is a closed wall at the strip's edge. Probe the drawn face halfway down and just above its
+    // below-sea foot, rather than requiring a tessellation vertex to coincide with this station on a curve.
     const fromP = road.toWorld(edge, s, side * (outer + stripM + 1), 0);
     const toP = road.toWorld(edge, s, side * (outer + stripM - 1), 0);
-    const midY = (top - 0.4) / 2;
-    const from = new Vector3(fromP.x, midY, fromP.z);
-    const to = new Vector3(toP.x, midY, toP.z);
-    if (ground.firstHit(from, new Vector3(to.x - from.x, 0, to.z - from.z), 2.1) !== null) wall++;
+    const wallAt = (y: number) => {
+      const from = new Vector3(fromP.x, y, fromP.z);
+      const to = new Vector3(toP.x, y, toP.z);
+      return ground.firstHit(from, new Vector3(to.x - from.x, 0, to.z - from.z), 2.1) !== null;
+    };
+    if (wallAt((top - 0.4) / 2)) wallMid++;
+    if (wallAt(-0.35)) wallBelowSea++;
   }
-  return { stations, skirted, reach, wall };
+  return { stations, skirted, reach, wallMid, wallBelowSea };
 }
 
 describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H1, I3)', () => {
@@ -200,15 +204,17 @@ describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H
     const control = probeSkirt(plain!, span, 1, BLUFF_LAND_M);
     const drop = probeSkirt(bluff!, span, 1, BLUFF_LAND_M);
     print(
-      `[examined] cliffs s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, bluff at ${drop.skirted}; bluff land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, closed drop wall at ${drop.wall}`,
+      `[examined] cliffs s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, bluff at ${drop.skirted}; bluff land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, closed drop wall at mid-height ${drop.wallMid}, below sea ${drop.wallBelowSea}`,
     );
     // The probe can see a skirt: the control has one nearly everywhere.
     expect(control.skirted).toBeGreaterThan(control.stations * 0.8);
     expect(Math.min(...control.reach)).toBeGreaterThan(BLUFF_LAND_M);
     expect(drop.skirted).toBe(0);
     for (const r of drop.reach) expect(r).toBeCloseTo(BLUFF_LAND_M, 5);
-    expect(control.wall).toBe(0);
-    expect(drop.wall).toBe(drop.stations);
+    expect(control.wallMid).toBe(0);
+    expect(control.wallBelowSea).toBe(0);
+    expect(drop.wallMid).toBe(drop.stations);
+    expect(drop.wallBelowSea).toBe(drop.stations);
     // The other side is untouched.
     for (let s = span.s0; s <= span.s1; s += 50)
       expect(bluff!.scene.landReach(bluff!.edge, -1, s)).toBe(plain!.scene.landReach(plain!.edge, -1, s));
@@ -221,7 +227,7 @@ describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H
     const control = probeSkirt(plain!, span, 1, LAKE_LAND_M);
     const drop = probeSkirt(lake!, span, 1, LAKE_LAND_M);
     print(
-      `[examined] east shore s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, lake at ${drop.skirted}; lake land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, closed drop wall at ${drop.wall}`,
+      `[examined] east shore s ${span.s0}..${span.s1} right, ${drop.stations} stations: forest skirt ground found at ${control.skirted}, lake at ${drop.skirted}; lake land reach ${Math.min(...drop.reach)}..${Math.max(...drop.reach)} m, closed drop wall at mid-height ${drop.wallMid}, below sea ${drop.wallBelowSea}`,
     );
     expect(control.skirted).toBeGreaterThan(control.stations * 0.8);
     expect(drop.skirted).toBe(0);
@@ -230,8 +236,10 @@ describe('the drop seam: a bluff or a lake side ends in a drop, with no skirt (H
     expect(drop.reach.filter((r) => Math.abs(r - LAKE_LAND_M) < 1e-6).length).toBeGreaterThan(
       drop.stations * 0.8,
     );
-    expect(control.wall).toBe(0);
-    expect(drop.wall).toBe(drop.stations);
+    expect(control.wallMid).toBe(0);
+    expect(control.wallBelowSea).toBe(0);
+    expect(drop.wallMid).toBe(drop.stations);
+    expect(drop.wallBelowSea).toBe(drop.stations);
     for (const b of [plain!, lake!]) b.scene.dispose();
   });
 
