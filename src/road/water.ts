@@ -1,6 +1,15 @@
 // The existing lake floor is authored in local world metres. Physics reads its exact outline,
 // so the lake cannot become a water plane outside the water the backdrop draws.
 import samish from '../../packs/region-pnw/assets/backdrop/pacific-northwest/networks/osm-pnw-samish.json';
+import type { RoadNetwork } from './network';
+import { terrainAt } from './terrain';
+
+/** Authored water at/below maxY, world metres; omitted terrain retains the legacy lake/sea policy. */
+export function waterAt(road: RoadNetwork, x: number, z: number, maxY = Infinity): number | null {
+  if (road.terrain) return terrainAt(road.terrain, x, z, maxY, 'water')?.y ?? null;
+  const y = lakeWaterAt(road.id, x, z) ?? 0;
+  return y <= maxY ? y : null;
+}
 
 /** The height drawn inside an above-sea lake, or null outside it. Private to road queries. */
 export function lakeWaterAt(id: string, x: number, z: number): number | null {
