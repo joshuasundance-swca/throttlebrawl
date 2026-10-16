@@ -30,3 +30,6 @@ It keeps the same rays, body reach, approach angles, wall samples, truck-cut che
 At overlapping traffic connections, pavement now follows the actual drawn height of the receiving
 lane or shoulder. A traffic strip above a lower shoulder remains visible, while near-coplanar
 stacked surfaces are still removed. This keeps the northbound Samish connection supported.
+
+Drawing and physical ground queries share the search for where a roadside band must stop over
+another road, preserving visible shoulders while leaving clipped space open.

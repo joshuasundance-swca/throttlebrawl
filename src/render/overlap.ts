@@ -4,7 +4,7 @@
 // keep land strips off the asphalt, and (polish J2) keeps every piece of a road's edge kit (verge fence,
 // brush, hedge, guardrail, bridge rail and posts, bridge bays) off another road's lanes. It is
 // presentation only: the sim decides with its own queries.
-import type { Edge, RoadNetwork } from '../road';
+import { clearGroundReach, type Edge, type RoadNetwork } from '../road';
 
 export interface EdgeHit {
   edge: number;
@@ -281,24 +281,7 @@ export class EdgeLocator {
       const p = this.road.toWorld(edge, s, d, lift);
       return this.overLowerLanes(p.x, p.y, p.z, edge, margin, overM, Infinity, filter);
     };
-    if (over(dNear)) return null;
-    const n = Math.max(1, Math.ceil(Math.abs(dFar - dNear) / LOWER_PROBE_M));
-    let clear = dNear;
-    for (let k = 1; k <= n; k++) {
-      const d = dNear + ((dFar - dNear) * k) / n;
-      if (!over(d)) {
-        clear = d;
-        continue;
-      }
-      let out = d;
-      for (let i = 0; i < 5; i++) {
-        const mid = (clear + out) / 2;
-        if (over(mid)) out = mid;
-        else clear = mid;
-      }
-      return clear;
-    }
-    return dFar;
+    return clearGroundReach(dNear, dFar, LOWER_PROBE_M, over);
   }
 
   /**

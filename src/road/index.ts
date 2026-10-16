@@ -6,6 +6,7 @@ export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-gro
 export { grassMedianSpan } from './median';
 export {
   LAND_COMMON_REACH_DELTA_M,
+  clearGroundReach,
   landIntervalPlan,
   landWidthChangeOverRoad,
   terrainProfilePlan,
