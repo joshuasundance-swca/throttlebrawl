@@ -14,3 +14,5 @@ Traffic queues now let cars already crossing clear their junction before upstrea
 The traversal fixture now observes from the real race start, where normal spawning has room. Its unsupported 40-second ingress assumption is replaced by complete traversal within the existing five-minute simulation bound; it still detects the demonstrated queue lock without the runtime repair. Style checks measure existing event points rather than asserting a result-screen cash calculation.
 
 The small county bridge's physical edges now agree with its contextual rails. That dirt road uses the standard derived rural verges: five metres of grass on each approach, replacing its explicit three-metre bands, and a rail edge with no grass band on the bridge itself. Lane widths, source elevations and the rail's mapped span stay unchanged; no blanket roadside barrier is added.
+
+At a junction, a dedicated traffic movement now leaves shared asphalt to the receiving road while keeping its own uncovered pavement. A road at another height remains separate. This removes the county return's thin overlapping surfaces without changing its lanes, route or traffic path.
