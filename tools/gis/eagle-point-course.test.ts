@@ -8,6 +8,9 @@ import {
   createRoadNetwork,
   courseAt,
   terrainAt,
+  roadBandHeight,
+  DRAWN_VERGE_M,
+  ROAD_SURFACE_SIMPLIFY,
   lintRoadNetwork,
   type BakedNetwork,
   type BakedRoad,
@@ -28,6 +31,91 @@ function course() {
 }
 
 describe('Eagle Point: one pass through the South and Central loops', () => {
+  it('keeps a racing-speed exit onto drawn grass physically supported', () => {
+    const { network, roads } = course();
+    const road = createRoadNetwork({ network, roads });
+    const edge = road.edgeIndex('osm-clinton-eagle-central-loop');
+    const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
+    const built = buildRoadScene(road, createFlatLook(), dressing, {
+      seed: 1,
+      terrainChunks: buildTerrainChunks,
+    });
+    const ground = new GroundTris(built.group);
+    try {
+      // Exact crossing from the deterministic 22.35 m/s Rustbucket reproduction. The rendered
+      // shoulder laps the terrain cutout here, but the former nominal band rejected its last cm.
+      const pos = { edge, s: 276.8026182689802, d: -2.1099562593355556 };
+      const p = road.toWorld(edge, pos.s, pos.d, 0);
+      const drawn = ground.allAt(p.x, p.z, p.y + 0.4);
+      expect(drawn.some((hit) => hit.name === 'road-shoulder' && Math.abs(hit.y - p.y) < 0.05)).toBe(true);
+      expect(terrainAt(road.terrain, p.x, p.z)).toBeNull();
+      const coldStart = performance.now();
+      expect(courseAt(road, { items: [], cellM: 32, cells: new Map() }, pos, p.y + 0.3).kind).not.toBe('out');
+      const coldMs = performance.now() - coldStart;
+      const warmStart = performance.now();
+      let supported = 0;
+      for (let i = 0; i < 1000; i++) if (roadBandHeight(road, pos.edge, pos.s, pos.d) !== null) supported++;
+      const warmMs = performance.now() - warmStart;
+      expect(supported).toBe(1000);
+      process.stdout.write(
+        `[shoulder query cost] cold course query ${coldMs.toFixed(2)} ms; 1000 cached band queries ${warmMs.toFixed(2)} ms on dev-machine Node, not renderer/phone timing\n`,
+      );
+    } finally {
+      built.dispose();
+    }
+  }, 90_000);
+
+  it('the compensated shoulder stays on the actual mesh, including tight-curve wedges', () => {
+    const { network, roads } = course();
+    const road = createRoadNetwork({ network, roads });
+    const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
+    const built = buildRoadScene(road, createFlatLook(), dressing, {
+      seed: 1,
+      terrainChunks: buildTerrainChunks,
+    });
+    // Expose shoulder wedges by removing only natural terrain from the control query and rays.
+    // Otherwise the grass under a missing shoulder masks a false road-band extension.
+    const ground = new GroundTris(built.group, /^road-(road|shoulder)$/);
+    const exposed = createRoadNetwork({ network: { ...network, terrain: { patches: [] } }, roads });
+    let accepted = 0;
+    let outside = 0;
+    const falseSupport: string[] = [];
+    try {
+      for (const edge of road.edges)
+        for (let s = 0.25; s < edge.length; s += 1)
+          for (const side of [-1, 1] as const)
+            for (const fraction of [0.25, 0.5, 0.75, 1, 2, 4, 10]) {
+              const outer = side < 0 ? edge.dMin - DRAWN_VERGE_M : edge.dMax + DRAWN_VERGE_M;
+              const d = outer + side * ROAD_SURFACE_SIMPLIFY.tolM * fraction;
+              const p = road.toWorld(edge.index, s, d, 0);
+              const hits = ground.allAt(p.x, p.z, p.y + 0.4);
+              const hit = hits.some((h) => Math.abs(h.y - p.y) < 0.1);
+              const physical = roadBandHeight(road, edge.index, s, d);
+              if (physical !== null) {
+                accepted++;
+                if (!hit) falseSupport.push(`${edge.id} s=${s} d=${d}`);
+              } else if (hits.length === 0) {
+                expect(
+                  courseAt(
+                    exposed,
+                    { items: [], cellM: 32, cells: new Map() },
+                    { edge: edge.index, s, d },
+                    p.y + 0.3,
+                  ).kind,
+                ).toBe('out');
+                outside++;
+              }
+            }
+      process.stdout.write(
+        `[shoulder support] ${accepted} accepted shoulder rays, ${outside} exposed empty-wedge controls; false support ${JSON.stringify(falseSupport.slice(0, 10))}\n`,
+      );
+      expect(accepted).toBeGreaterThan(0);
+      expect(outside).toBeGreaterThan(0);
+      expect(falseSupport.slice(0, 10)).toEqual([]);
+    } finally {
+      built.dispose();
+    }
+  }, 90_000);
   it('is offered in the Clinton route picker, while a network in another region is excluded', () => {
     const registry = registryFromGlob(
       import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }),

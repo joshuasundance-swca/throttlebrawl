@@ -19,6 +19,7 @@ import { DRAWN_VERGE_M } from './furniture';
 import { gapAt } from './gap';
 import { themeAt } from './themes';
 import { terrainAt, type TerrainSample } from './terrain';
+import { onPlainShoulder, ROAD_SURFACE_SIMPLIFY, SHOULDER_LAP_M } from './surface-sampling';
 import type { GroundSurface } from '../core';
 
 /**
@@ -82,8 +83,16 @@ export function roadBandHeight(road: RoadNetwork, edge: number, s: number, d: nu
   if (road.terrain) {
     if (gapAt(road, edge, s, d)) return null;
     const e = road.edges[edge];
-    const verge = DRAWN_VERGE_M;
-    return e && d >= e.dMin - verge && d <= e.dMax + verge ? road.surfaceHeight(edge, s, d) : null;
+    if (!e) return null;
+    const lo = e.dMin - DRAWN_VERGE_M,
+      hi = e.dMax + DRAWN_VERGE_M;
+    if (d >= lo && d <= hi) return road.surfaceHeight(edge, s, d);
+    // Only ask the cached exact shoulder triangles near the lap. This bounded envelope is an
+    // early-out, never support in its own right; the triangle query rejects empty curve wedges.
+    const reach = SHOULDER_LAP_M + ROAD_SURFACE_SIMPLIFY.tolM;
+    return d >= lo - reach && d <= hi + reach && onPlainShoulder(road, e, s, d)
+      ? road.surfaceHeight(edge, s, d)
+      : null;
   }
   const left = road.vergeAt(edge, s, 'left').dOuter;
   const right = road.vergeAt(edge, s, 'right').dOuter;
