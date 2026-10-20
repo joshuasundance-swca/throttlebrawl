@@ -107,6 +107,16 @@ interface Piece {
   name: string;
   box: Box;
 }
+/** Test-only world-pass contribution, with actual entity-bound rest attributes and controls. */
+interface RiderRaster {
+  entityId: number;
+  visible: number;
+  hidden: number;
+  unobstructed: number;
+  width: number;
+  height: number;
+  attributes: Record<'position' | 'normal' | 'skinIndex' | 'skinWeight', number[]>;
+}
 interface Measured {
   viewport: { w: number; h: number };
   /** The strip as painted, or null when it is not up. */
@@ -374,6 +384,7 @@ async function installLayoutProbe(page: Page) {
     let maskAssignments: { name: string; entity: number | undefined; white: boolean }[] = [];
     const maskMaterials = new Map<MaskMaterial, [MaskMaterial, MaskMaterial]>();
     const maskStats = { draws: 0, totalMs: 0, maxMs: 0 };
+    let raster = { count: 0, width: 0, height: 0 };
     window.addEventListener('pagehide', () => {
       for (const pair of maskMaterials.values()) pair.forEach((m) => m.dispose());
       maskMaterials.clear();
@@ -421,10 +432,11 @@ gl_FragColor.rgb = vec3(1.0);
       camera: CameraLike,
       render: NonNullable<Observed['render']>,
       xray = false,
+      targetEntityId?: number,
     ) => {
       const gl = renderer.getContext?.();
       const canvas = renderer.domElement;
-      const me = (window as TestWindow).__game?.playerId();
+      const me = targetEntityId ?? (window as TestWindow).__game?.playerId();
       if (!gl || !canvas || me === undefined || !drawn)
         throw new Error('painted player mask has no actual race draw');
       const started = performance.now();
@@ -436,13 +448,19 @@ gl_FragColor.rgb = vec3(1.0);
       maskAssignments = [];
       const walk = (node: NodeLike, entity?: number) => {
         const id = node.userData.entityId ?? entity;
+        // Layout keeps the whole followed entity family. An explicit rider observation must
+        // instead prove the actual model contributes, never its shadow, weapon or proxy.
+        const selected =
+          targetEntityId === undefined
+            ? id === me
+            : node.name === 'rig-mesh' && !!node.skeleton && node.userData.entityId === me;
         if (node.material) {
-          maskAssignments.push({ name: node.name, entity: id, white: id === me });
+          maskAssignments.push({ name: node.name, entity: id, white: selected });
           const original = node.material;
           saved.push({ node, material: original });
           node.material = Array.isArray(original)
-            ? original.map((m) => maskMaterial(m, id === me, xray))
-            : maskMaterial(original, id === me, xray);
+            ? original.map((m) => maskMaterial(m, selected, xray))
+            : maskMaterial(original, selected, xray);
         }
         node.children.forEach((child) => walk(child, id));
       };
@@ -465,6 +483,9 @@ gl_FragColor.rgb = vec3(1.0);
         const pixels = new Uint8Array(width * height * 4);
         gl.readPixels(viewport[0] ?? 0, viewport[1] ?? 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
         if (gl.getError() !== gl.NO_ERROR) throw new Error('painted player mask readPixels failed');
+        let count = 0;
+        for (let i = 0; i < pixels.length; i += 4) if (pixels[i] || pixels[i + 1] || pixels[i + 2]) count++;
+        raster = { count, width, height };
         const rect = canvas.getBoundingClientRect();
         // LookPost uses center + four axial samples at ±width, not an iterative outline.
         // Expand by the observed pass's bounded device-pixel reach (zero in Classic), preserving
@@ -564,12 +585,70 @@ gl_FragColor.rgb = vec3(1.0);
       __playerIdentityControl?: () => { planted: boolean; unchanged: boolean; maskBound?: boolean };
       __playerMaskEmptyControl?: (mode?: 'visibility' | 'straight' | 'premultiplied') => void;
       __playerDepthControl?: () => { negative: Piece[]; positive: Piece[]; w: number; h: number };
+      __riderRaster?: (entityId: number) => RiderRaster;
       __game?: {
         playerId(): number;
         snapshot(): { entities?: { id: number; x: number; y: number; z: number; mode: string }[] } | null;
       };
     };
     w.__THREE_DEVTOOLS__ = hook;
+    w.__riderRaster = (entityId) => {
+      if (!drawn) throw new Error('rider observation has no actual race draw');
+      const nodes: NodeLike[] = [];
+      const visit = (node: NodeLike) => {
+        nodes.push(node);
+        node.children.forEach(visit);
+      };
+      drawn.scene.children?.forEach(visit);
+      const rigs = nodes.filter(
+        (node) => node.name === 'rig-mesh' && node.skeleton && node.userData.entityId === entityId,
+      );
+      if (rigs.length !== 1) throw new Error(`rider ${entityId}: expected one actual skinned rig`);
+      const rig = rigs[0];
+      if (!rig?.geometry) throw new Error('rider observation has no geometry');
+      const attributes = {} as RiderRaster['attributes'];
+      for (const key of ['position', 'normal', 'skinIndex', 'skinWeight'] as const) {
+        const attribute = rig.geometry.attributes[key];
+        if (!attribute) throw new Error(`rider observation has no ${key}`);
+        attributes[key] = Array.from(attribute.array);
+      }
+      const own = [rig];
+      const visibility = own.map((node) => node.visible);
+      try {
+        paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render, false, entityId);
+        const visible = raster.count;
+        // Same actual entity hidden: a missing target is never silently a successful zero.
+        own.forEach((node) => {
+          node.visible = false;
+        });
+        let hidden: number;
+        try {
+          paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render, false, entityId);
+          hidden = raster.count;
+        } finally {
+          own.forEach((node, i) => {
+            node.visible = visibility[i] ?? false;
+          });
+        }
+        paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render, true, entityId);
+        return {
+          entityId,
+          visible,
+          hidden,
+          unobstructed: raster.count,
+          width: raster.width,
+          height: raster.height,
+          attributes,
+        };
+      } finally {
+        own.forEach((node, i) => {
+          node.visible = visibility[i] ?? false;
+        });
+        // A rival's measurement must not satisfy the legacy followed-player cache.
+        maskSerial = -1;
+        paintMask(drawn.renderer, drawn.scene, drawn.camera, drawn.render);
+      }
+    };
     // The bike, then the rider on it, as boxes in the rider's frame: across, up from the ground,
     // along (metres; this is the check's own measure, fitted to the painted rider in CI's screenshots).
     const SHAPE: { min: [number, number, number]; max: [number, number, number] }[] = [
