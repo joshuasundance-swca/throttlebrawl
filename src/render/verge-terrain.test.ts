@@ -11,6 +11,7 @@ import {
 } from '../road';
 import { createFlatLook } from './look';
 import { buildRoadScene } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
 import { VERGE_LIFT_M, VergeLayer } from './verge';
 
 const look = createFlatLook();
@@ -79,7 +80,12 @@ describe('authored terrain bounds the legacy verge surface', () => {
       const terrain: BakedTerrain = { patches: [patch(-120, -70, surface), patch(-50, 0, surface)] };
       const authored = fixture(terrain, 6, surface === 'water' ? 'water' : 'soft');
       const legacy = fixture(undefined, 6, surface === 'water' ? 'water' : 'soft');
-      const scene = buildRoadScene(authored.road, look, {}, { roadsideDensity: 0 });
+      const scene = buildRoadScene(
+        authored.road,
+        look,
+        {},
+        { terrainChunks: buildTerrainChunks, roadsideDensity: 0 },
+      );
       scene.group.updateMatrixWorld(true);
       const source: Mesh[] = [];
       scene.group.traverse((o) => {
@@ -162,7 +168,12 @@ describe('authored terrain bounds the legacy verge surface', () => {
   it('caps traffic fill bands at the actual road fill span and draws no zero-width bands', () => {
     const authored = fixture({ patches: [] }, 6, 'soft', true);
     const zero = fixture({ patches: [] }, 0);
-    const scene = buildRoadScene(authored.road, look, {}, { roadsideDensity: 0 });
+    const scene = buildRoadScene(
+      authored.road,
+      look,
+      {},
+      { terrainChunks: buildTerrainChunks, roadsideDensity: 0 },
+    );
     scene.group.updateMatrixWorld(true);
     try {
       const e = authored.road.edges[0]!;

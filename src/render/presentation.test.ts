@@ -214,6 +214,7 @@ function asyncScene(nestedFamily?: string) {
       EventProps: layer('events'),
       Smashables: layer('smashables'),
       AirPays: layer('air pays'),
+      TerrainTrees: layer('terrain trees'),
       rainColourOf: () => null,
     },
     'rider rigs': { RiderRigs: layer('rider rigs') },
@@ -409,6 +410,22 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('holds authored physical scenery until its current drawing chunk arrives, with a legacy control', async () => {
+    const t = asyncScene();
+    expect(t.renderer.physicalWorldReady!()).toBe(true);
+    const bundle = fixtureNetwork([{ id: 'terrain', lengthM: 80, kappa: 0 }]);
+    const road = createRoadNetwork({ ...bundle, network: { ...bundle.network, terrain: { patches: [] } } });
+    t.renderer.applyPresentation({ ...t.pick, road }, { reset: 'preserve' });
+    expect(t.renderer.physicalWorldReady!()).toBe(false);
+    const pending = t.calls.filter((call) => call.name === 'race parts').at(-1)!;
+    await t.resolve(pending, null);
+    expect(t.renderer.physicalWorldReady!()).toBe(false);
+    t.renderer.setRiderLooks([]); // the existing retry boundary
+    t.renderer.render(null, null, 0, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 62 });
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    expect(t.renderer.physicalWorldReady!()).toBe(true);
+    expect(t.installed).toContain('terrain trees');
+  });
   it('installs late boards for the current road and catalog with pending vetoes, then keeps their root across resets', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });

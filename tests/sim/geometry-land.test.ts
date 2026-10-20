@@ -26,6 +26,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
 import { buildRoadScene, BURIED_M, networkTags, type RoadScene } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 import { VergeLayer } from '../../src/render/verge';
 import type { ScenerySpot } from '../../src/render/scenery';
 import { badSpots } from './geometry-scenery';
@@ -49,7 +50,7 @@ const scenes = new Map<string, RoadScene>();
 const sceneOf = (t: Track): RoadScene => {
   let s = scenes.get(t.id);
   if (!s) {
-    s = buildRoadScene(t.road, look, t.dressing, { seed: 1 });
+    s = buildRoadScene(t.road, look, t.dressing, { seed: 1, terrainChunks: buildTerrainChunks });
     scenes.set(t.id, s);
   }
   return s;

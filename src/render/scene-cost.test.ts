@@ -28,10 +28,12 @@
 // could not. The sweep is shared (scene-cost.test-util.ts) by three files, so CI runs them side by side:
 // scene-cost-sf.test.ts and scene-cost-pnw.test.ts carry the large packs; this file carries every other
 // route pack, including new ones, from the shared allocation derived from the actual content.
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
+import { BoxGeometry, Frustum, Group, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera } from 'three';
 import { describe, expect, it } from 'vitest';
 import { packClosure, packSubset, registryFromGlob } from '../content';
 import { trafficHeightM } from '../sim/api';
+import { planTerrainTrees } from '../road/structures/terrain-trees';
+import { firstSeed } from '../../tests/sim/batch';
 import {
   CINEMATIC_CAMERA,
   cameraParams,
@@ -53,6 +55,44 @@ import {
 } from './scene-cost.test-util';
 
 const CONTENT = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+
+describe('physical terrain trees in the actual cost scene', () => {
+  it('counts drawn trunks on shipped rural terrain and detects their omission', async () => {
+    const candidates = ROUTES.map((r) => track(r.network)).filter(({ road }) => road.terrain);
+    expect(candidates.length).toBeGreaterThan(0);
+    const found = firstSeed(
+      'source-rooted rural trees in cost scene',
+      [1, 2, 3, 4],
+      (seed) =>
+        candidates
+          .map(({ road }) => ({ road, tree: planTerrainTrees(road, seed).items[0] }))
+          .find((p) => p.tree),
+      (result) => result !== undefined,
+    );
+    const chosen = found.result;
+    expect(chosen?.tree).toBeDefined();
+    const tree = chosen!.tree!;
+    const { scene } = await stillSceneOf(chosen!.road.id, found.seed);
+    const camera = new PerspectiveCamera(62, 915 / 412, 0.3, 200);
+    camera.position.set(tree.x + 15, tree.baseY + 5, tree.z + 15);
+    camera.lookAt(tree.x, tree.baseY + 3, tree.z);
+    camera.updateMatrixWorld(true);
+    const frustum = new Frustum().setFromProjectionMatrix(
+      new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+    );
+    scene.update(camera.position.x, camera.position.z);
+    const count = () =>
+      [...scene.count(frustum)]
+        .filter(([key]) => key.endsWith('/physical-rural-trees'))
+        .reduce((sum, [, load]) => sum + load.tris, 0);
+    expect(count()).toBeGreaterThan(0);
+    const root = scene.roots().find((r) => r.getObjectByName('physical-rural-trees'));
+    expect(root).toBeDefined();
+    root!.visible = false;
+    expect(count(), 'the same detector must catch an omitted physical-tree layer').toBe(0);
+    root!.visible = true;
+  });
+});
 
 describe('the traffic clearance catalog', () => {
   it('includes a live pack-closure body even when the region does not give it spawn weight', () => {

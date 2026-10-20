@@ -14,6 +14,7 @@ const boundary = vi.hoisted(() => ({
   context: null as ((lost: boolean) => void) | null,
   lost: false,
   pose: true,
+  worldReady: true,
   missingRiders: false,
   render: vi.fn(),
   audioFrame: vi.fn(),
@@ -172,6 +173,7 @@ vi.mock('../render', async (original) => {
         {
           get(_target, key) {
             if (key === 'contextLost') return boundary.lost;
+            if (key === 'physicalWorldReady') return () => boundary.worldReady;
             if (key === 'onContextChange')
               return (cb: (lost: boolean) => void) => {
                 boundary.context = cb;
@@ -341,6 +343,7 @@ describe('AppHandle actual render wiring', () => {
     boundary.syncLive.mockClear();
     boundary.lost = false;
     boundary.pose = true;
+    boundary.worldReady = true;
     boundary.missingRiders = false;
     boundary.missingRoads = false;
     boundary.roadWait = null;
@@ -811,6 +814,26 @@ describe('AppHandle actual render wiring', () => {
     expect(boundary.countdownBeat).not.toHaveBeenCalled();
     expect(boundary.recorderCalls).toContain('record');
   });
+
+  it.each([false, true])(
+    'waits for physical scenery before simulation or countdown (countdown=%s)',
+    (enabled) => {
+      (window as Window & { __countdown?: boolean }).__countdown = enabled;
+      boundary.worldReady = false;
+      app.tap();
+      app.startRace();
+      app.setLockstep(180);
+      frame();
+      frame();
+      expect(app.snapshot()!.tick).toBe(0);
+      expect(boundary.countdownBeat).not.toHaveBeenCalled();
+      expect(boundary.recorderCalls).not.toContain('record');
+      boundary.worldReady = true;
+      frame();
+      frame();
+      expect(app.snapshot()!.tick).toBeGreaterThan(0);
+    },
+  );
 
   it.each(['free play', 'career'] as const)(
     'refreshes both foreground loading assignments for %s failures',

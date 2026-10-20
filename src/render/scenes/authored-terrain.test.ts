@@ -22,6 +22,7 @@ import type { SceneryModels } from '../models';
 import { bakeRepoModel } from '../model-files.test-util';
 import { buildRoadScene, type RoadScene } from '../road-mesh';
 import { boatBob } from '../scenery';
+import { buildTerrainChunks } from '../terrain-mesh';
 
 function rectangle(x0: number, z0: number, x1: number, z1: number, y = 3, water = false): BakedTerrainPatch {
   return {
@@ -51,7 +52,13 @@ function scene(terrain?: BakedTerrain, tag = 'forest', density = 0, grade = 0, m
     road,
     createFlatLook(),
     { r: { tags, barriers: [{ s0: 10, s1: 40, side: 'left', kind: 'wall' }] } },
-    { seed: 7, roadsideDensity: density, postRoads: () => true, ...(models ? { models } : {}) },
+    {
+      terrainChunks: buildTerrainChunks,
+      seed: 7,
+      roadsideDensity: density,
+      postRoads: () => true,
+      ...(models ? { models } : {}),
+    },
   );
   built.group.updateMatrixWorld(true);
   return { road, built };
@@ -74,6 +81,20 @@ function ray(built: RoadScene, x: number, z: number, names?: string[]) {
 }
 
 describe('authored natural terrain in the road scene', () => {
+  it('requires the drawing builder, with explicit pending and ready controls', () => {
+    const bundle = fixtureNetwork([{ id: 'r', lengthM: 200, kappa: 0 }]);
+    const road = createRoadNetwork({
+      ...bundle,
+      network: { ...bundle.network, terrain: { patches: [rectangle(-50, -200, 50, 0)] } },
+    });
+    expect(() => buildRoadScene(road, createFlatLook())).toThrow('requires its drawing builder');
+    const pending = buildRoadScene(road, createFlatLook(), undefined, { terrainChunks: null });
+    expect(meshes(pending, 'road-terrain-land')).toEqual([]);
+    pending.dispose();
+    const ready = buildRoadScene(road, createFlatLook(), undefined, { terrainChunks: buildTerrainChunks });
+    expect(meshes(ready, 'road-terrain-land').length).toBeGreaterThan(0);
+    ready.dispose();
+  });
   it('raycasts the actual two-axis slopes and shared boundary at physical Float32 heights and normals', () => {
     const terrain: BakedTerrain = {
       patches: [
@@ -310,6 +331,7 @@ describe('authored natural terrain in the road scene', () => {
         { trestle: { tags, barriers: [] } },
         {
           roadsideDensity: 0,
+          terrainChunks: buildTerrainChunks,
           models: { trestleBent: model },
         },
       );

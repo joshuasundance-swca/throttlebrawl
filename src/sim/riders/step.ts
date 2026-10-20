@@ -36,6 +36,7 @@ import {
   touchdown,
 } from './air';
 import { terrainGrade, terrainGroundAt } from './terrain';
+import { trunkTouch, noteTreeTouch } from './terrain-trees';
 import { RIDER_CONTACT_HALF_WIDTH_M, applyShove, riderContacts, RIDER_BODY_HEIGHT_M } from './contact';
 import { groundEdgeOpen, roadPastLine, leaveCourse, courseEdgesOn, courseSpotOf } from './course';
 import { driftTakeoff, driftStep, driftDown } from './drift';
@@ -1300,6 +1301,39 @@ function structureContact(
   });
 }
 
+/** Rural trees stand on source terrain, not on the rider's reference road plane. */
+function treeContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  feet0: number,
+  feet1: number,
+): boolean {
+  if (!config.road.terrain) return false;
+  const from = world.events.length;
+  inMetres(config, m, before, (move) => {
+    const hit = trunkTouch(config, m.pos, m.yaw, move, feet0, feet1);
+    const newContact = noteTreeTouch(world, m.id, hit ? hit.piece.tree.id + 1 : 0);
+    if (!hit) return;
+    const extra = { object: 'rural-tree', terrainTree: String(hit.piece.tree.id) };
+    if (hit.cap) {
+      wallOutcome(world, st, m, {
+        impact: Math.abs(st.vy[m.id] ?? 0),
+        v: m.speed,
+        yawBefore: m.yaw,
+        side: 1,
+        newContact,
+        extra: { ...extra, hit: 'cap' },
+        vehicle: true,
+      });
+      keepOff(hit.piece.shape, m.pos, m.yaw, 0, m.pos.d >= hit.piece.shape.d ? 1 : -1);
+    } else meetSolid(world, st, m, move, hit, { extra, newContact });
+  });
+  return world.events.slice(from).some((e) => e.type === 'crash' && e.actor === m.id);
+}
+
 /**
  * A rider in the air meeting a structure (sim/riders/structures.ts), the ground's rule: a wall below its top is
  * met by `meetSolid`; a top too small to hold the bike (a post, a rail, a café table) that the rider comes down
@@ -1879,6 +1913,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     return;
   }
   structureContact(world, config, st, m, before);
+  treeContact(world, config, st, m, before, yBefore, road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h);
   // On a support: its speed over it after the contacts (a scrape, a brush with a lamp beside it), and
   // the support's velocity as read this tick (the next tick's jolt is measured from it).
   if (sup) {
@@ -2223,6 +2258,11 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // above by the fall speed. A crash ends the flight here.
   if (!onTop && airStructures(world, config, st, m, airFrom, y, st.yAbs[m.id] ?? y)) {
     m.h = Math.max(0, y - surface);
+    st.yAbs[m.id] = y;
+    return;
+  }
+  if (treeContact(world, config, st, m, airFrom, st.yAbs[m.id] ?? y, y)) {
+    m.h = y - road.surfaceHeight(pos.edge, pos.s, pos.d);
     st.yAbs[m.id] = y;
     return;
   }

@@ -1533,6 +1533,11 @@ export function createApp(opts: AppOptions): AppHandle {
         measurement.fail('driver-conflict');
         return;
       }
+      if (renderer.physicalWorldReady?.() === false) {
+        input.sample(SIM_DT);
+        if (input.lastActions().pause) measurement.action('manual-pause', () => {});
+        return;
+      }
       const grid = d.countdown.step();
       measurement.progress(d.curr.tick, d.countdown.holding);
       const cmd = input.sample(SIM_DT);
@@ -1564,6 +1569,11 @@ export function createApp(opts: AppOptions): AppHandle {
     }
     if (measurement?.owned) return;
     if (!race) return;
+    if (renderer.physicalWorldReady?.() === false) {
+      input.sample(SIM_DT);
+      cycleViewOnPress();
+      return;
+    }
     if (preparingGrid === race) {
       input.sample(SIM_DT);
       cycleViewOnPress();
