@@ -1,7 +1,7 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan, atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
-import { terrainAt, waterLevelOf } from '../road';
+import { prewarmPlainShoulderSupport, terrainAt, waterLevelOf } from '../road';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon, stealPreview } from './combat';
 import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
@@ -215,6 +215,7 @@ export function createSim(config: SimConfig): Sim {
 export function createSimWithWorld(config: SimConfig): { sim: Sim; world: World } {
   const known = new Set(SIM_TUNING.filter((d) => d.affectsSim).map((d) => d.id));
   const world = createWorld(config);
+  prewarmPlainShoulderSupport(config.road);
   config.riders.forEach((_def, i) => addMover(world, 'rider', gridPosition(config, i), i));
   for (const system of SYSTEMS) system.init(world, config);
   let last: SimEvent[] = [];

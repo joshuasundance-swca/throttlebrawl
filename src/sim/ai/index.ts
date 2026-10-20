@@ -25,12 +25,9 @@
 // (the dev bot's line, just inside its inner edge). Traffic still has the last word on the line.
 // Law riders (cops) are not driven here: cops-1 writes their inputs from the cops phase.
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
-import { clamp, createRng, nextFloat, streamSeed, type EntityId, type TuningParamDecl } from '../../core';
-import type { RoadNetwork } from '../../road';
-import { raceState } from '../race';
+import { clamp, createRng, nextFloat, streamSeed, type TuningParamDecl } from '../../core';
 import type { SimConfig } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
-import type { ObstacleSize, Seen } from './sense';
 import { rivalTakeChance, SHORTCUT_APPROACH_M } from './branches';
 import { signatureGapScale } from './level';
 import { initSignature } from './signature';
@@ -203,13 +200,6 @@ export { SHORTCUT_APPROACH_M };
 /** Shortcut bits kept per rider (a route has a handful). */
 export const MAX_SHORTCUTS = 30;
 export const TAU = 6.283185307179586;
-// ai-2 takedown intent (M2, [default]).
-/** A rail this close to the target's side of the road (metres of d) is worth pushing it toward. */
-const RAIL_NEAR_M = 3.5;
-/** An oncoming car within this many seconds of closing (plus a margin) makes the oncoming side the pick. */
-const ONCOMING_WARN_S = 4;
-const ONCOMING_MARGIN_M = 20;
-
 export function isAiRider(config: SimConfig, m: Mover): boolean {
   const def = config.riders[m.riderIndex];
   return m.kind === 'rider' && def?.controller.kind === 'ai' && def.faction !== 'law';
@@ -221,70 +211,6 @@ export function profileOf(world: World, config: SimConfig, m: Mover): AiProfile 
   return c?.kind === 'ai'
     ? resolveProfile(c.style, c.personality, quirks)
     : resolveProfile('racer', undefined, quirks);
-}
-
-/**
- * The riders `id` holds a race-long grudge against (noted by tumble-2 through `noteGrudge`), in
- * ascending id order. Racers who have finished are left out: the grudge ends at their finish.
- */
-export function grudgeTargets(world: World, id: EntityId): EntityId[] {
-  const out: EntityId[] = [];
-  const race = raceState(world);
-  for (const [against, holders] of Object.entries(world.facts.grudgeNotedBy)) {
-    const target = Number(against);
-    if (holders.includes(id) && !race.finishOrder.includes(target)) out.push(target);
-  }
-  return out;
-}
-
-/**
- * Takedown intent (ai-2): the way along road d (+1 or −1) a hit should push the target, or 0 for
- * no preference. An oncoming car about to pass the target on its oncoming side wins; then a rail
- * close to the target. With neither, there is nothing to push the target into, so no preference:
- * the brawler keeps the side it is on (M1), rather than circling a target for an empty road. The
- * victim of a hit is knocked away from the attacker, so the attacker rides on the other side.
- */
-export function takedownPush(
-  road: RoadNetwork,
-  target: Mover,
-  obstacles: readonly { s: Seen; size: ObstacleSize }[],
-): number {
-  const t = target.pos;
-  // The oncoming side of the road: where its drive lanes lie against the target's own.
-  let own = 0;
-  let ownN = 0;
-  let other = 0;
-  let otherN = 0;
-  for (const l of road.lanesAt(t.edge, t.s)) {
-    if (l.kind !== 'drive') continue;
-    if (l.direction === t.dir) {
-      own += l.dCenterM;
-      ownN++;
-    } else {
-      other += l.dCenterM;
-      otherN++;
-    }
-  }
-  const oncoming = otherN === 0 ? 0 : other / otherN >= (ownN === 0 ? t.d : own / ownN) ? 1 : -1;
-  if (oncoming !== 0) {
-    for (const o of obstacles) {
-      if (o.s.vAlong >= 0 || o.s.mover.kind !== 'vehicle') continue;
-      if ((o.s.mover.pos.d - t.d) * oncoming <= 0) continue;
-      const front = o.s.ahead - o.size.halfLength;
-      if (o.s.ahead + o.size.halfLength < 0) continue;
-      if (front <= (target.speed - o.s.vAlong) * ONCOMING_WARN_S + ONCOMING_MARGIN_M) return oncoming;
-    }
-  }
-  const edge = road.edges[t.edge];
-  if (edge) {
-    for (const side of [1, -1] as const) {
-      const b = road.barrierAt(t.edge, t.s, side > 0 ? 'right' : 'left');
-      if (b?.kind !== 'rail') continue;
-      const rim = side > 0 ? edge.dMax : edge.dMin;
-      if (Math.abs(rim - t.d) <= RAIL_NEAR_M) return side;
-    }
-  }
-  return 0;
 }
 
 /**
