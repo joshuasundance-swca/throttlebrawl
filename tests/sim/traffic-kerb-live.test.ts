@@ -4,10 +4,9 @@
 //
 // Playtest 3, traffic manners (T4.1; docs/architecture.md, "Traffic"): over ten seeded San Francisco
 // races, where the e-scooters and delivery e-bikes ride the kerb, the bot never crashes into a light
-// kerb rider: every contact is a wobble with `data.kerb` and the cyclist topples. The same ten races
-// with the two sliders at 0 (`traffic.kerbYield`, `traffic.kerbSoft`: the rules before this change)
-// are the "before" column in the printed counts, so the test shows what the change did. The scenario
-// cases (the dodge's timing and clearance, the topple, the golf cart) are in
+// kerb rider: every contact is a wobble with `data.kerb` and the cyclist topples. The ten enabled
+// seeds run as serial cases with per-seed safety assertions and an aggregate exposure check. The
+// controlled negative cases (including disabled soft contact and absent tuning keys) are in
 // src/sim/traffic/kerb-yield.test.ts.
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildSimConfig, createStreamCache } from '../../src/app';
