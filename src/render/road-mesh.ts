@@ -37,6 +37,8 @@ import {
   terrainEndProfile,
   landJoinTriangles,
   DRAWN_VERGE_M,
+  ROAD_SURFACE_SIMPLIFY,
+  SHOULDER_LAP_M,
   terrainAt,
   type Edge,
   type RoadNetwork,
@@ -228,12 +230,7 @@ const OVERLAY_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
  * all on the same samples. Within 1 cm, under the 2.5 cm the shoulder
  * stands over the ground band and the 3 cm the lines stand over the road. [default]
  */
-const ROAD_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
-/**
- * How far a simplified road's shoulder reaches over the land beside it, m: twice ROAD_SIMPLIFY.tolM, so
- * its straight outer edge always covers the land's edge, which keeps every sample. [default]
- */
-const SHOULDER_LAP_M = 2 * ROAD_SIMPLIFY.tolM;
+const ROAD_SIMPLIFY = ROAD_SURFACE_SIMPLIFY;
 
 /** Metres from (x, z) to the nearest point of the chunk `key` names (0 inside it). */
 export function chunkDistance(key: string, x: number, z: number): number {

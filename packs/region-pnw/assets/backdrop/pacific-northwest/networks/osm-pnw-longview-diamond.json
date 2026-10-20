@@ -156,6 +156,39 @@
       "networks": ["osm-pnw-longview-diamond"]
     },
     {
+      "id": "longview-authored-civic-west-roofs",
+      "kind": "skyline",
+      "frame": "local",
+      "centre": [1500, 1670],
+      "radiusM": 250,
+      "count": 0,
+      "heightM": [16, 40],
+      "widthM": [55, 140],
+      "colours": ["#764f3d"],
+      "gridDeg": -12,
+      "keepOutM": 800,
+      "towers": [
+        {
+          "at": [1400, 1700],
+          "heightM": 24,
+          "widthM": 140,
+          "depthM": 75,
+          "colour": "#764f3d",
+          "crown": "slant"
+        },
+        {
+          "at": [1610, 1640],
+          "heightM": 40,
+          "widthM": 70,
+          "depthM": 50,
+          "colour": "#8e7960",
+          "crown": "stepped"
+        }
+      ],
+      "exaggerate": 1.5,
+      "networks": ["osm-pnw-longview-diamond"]
+    },
+    {
       "id": "longview-authored-north-woods",
       "path": [
         [-6500, -5600, 300],
