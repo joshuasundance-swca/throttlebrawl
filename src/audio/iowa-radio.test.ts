@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { registryFromGlob } from '../content';
 import { FakeAudioContext } from './fake-context';
 import { composeFor, RADIO_BAND } from './radio-band';
-import { RADIO_PRESETS } from './radio-compose';
+import { RADIO_PRESETS, trackSeed } from './radio-compose';
 import { FOLK_FORMS } from './radio-compose-regional';
 import { GARAGE_FORMS } from './radio-compose-extra';
 import {
@@ -34,6 +34,7 @@ describe('Iowa radio audition', () => {
       expect(genreOf(station)).toBe(genre);
       expect(station.tracks.length).toBeGreaterThanOrEqual(3);
       const songs = new Set<string>();
+      const seeds = new Set<number>();
       const forms = new Set<string>();
       for (const track of station.tracks) {
         expect(track.ref).toBe(stationTrackRef(station.packId, station.id, track.id));
@@ -48,6 +49,7 @@ describe('Iowa radio audition', () => {
         const song = composeFor(track);
         expect(song).not.toBeNull();
         expect(song!.preset).toBe(presetFor[genre]);
+        expect(song!.seed).toBe(trackSeed(track.ref));
         expect(song!.form).toBe(params?.['progression']);
         expect(song!.bpm).toBe(params?.['bpm']);
         expect(song!.notes.length).toBeGreaterThan(0);
@@ -61,9 +63,11 @@ describe('Iowa radio audition', () => {
           ),
         ).toBe(true);
         songs.add(JSON.stringify(song!.notes));
+        seeds.add(song!.seed);
         forms.add(song!.form);
       }
       expect(songs.size).toBe(station.tracks.length);
+      expect(seeds.size).toBe(station.tracks.length);
       expect(forms.size).toBeGreaterThan(1);
       const cut = new Set([station.tracks[0]!.ref]);
       expect(playlist(station, 7, cut).length).toBe(station.tracks.length - 1);
