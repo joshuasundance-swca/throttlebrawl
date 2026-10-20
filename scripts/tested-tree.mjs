@@ -25,6 +25,7 @@ import { git } from './lib.mjs';
 
 export const ARTIFACT_PREFIX = 'tested-tree-';
 const TREE = /^[0-9a-f]{40}$/;
+const positiveId = (id) => Number.isSafeInteger(id) && id > 0;
 
 /** The artifact a passed full suite uploads for the tree it tested. */
 export function artifactName(/** @type {string} */ tree) {
@@ -50,9 +51,9 @@ export function candidates(artifacts, tree) {
     .filter(
       (a) =>
         a.name === name &&
-        !a.expired &&
-        typeof a.workflow_run?.id === 'number' &&
-        a.workflow_run.repository_id !== undefined &&
+        a.expired === false &&
+        positiveId(a.workflow_run?.id) &&
+        positiveId(a.workflow_run?.repository_id) &&
         a.workflow_run.head_repository_id === a.workflow_run.repository_id,
     )
     .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
@@ -99,7 +100,7 @@ export async function decide(tree, { repo, api }) {
         reason: `tree ${short}: run lookup failed (${message(err)}); running the whole suite`,
       };
     }
-    if (runVouches(run)) {
+    if (run?.id === a.workflow_run?.id && runVouches(run)) {
       return {
         skip: true,
         reason: `tree ${short}: ${run.path === '.github/workflows/train.yml' ? 'train' : 'PR'} run ${run.id} recorded this exact tree after its full suite passed; skipping the suite (${run.html_url ?? ''})`,

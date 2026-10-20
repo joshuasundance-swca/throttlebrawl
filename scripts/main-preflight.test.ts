@@ -147,6 +147,31 @@ function scenario(
 }
 
 describe('main preflight preserves acceptance while skipping superseded work', () => {
+  it.each([
+    { expired: undefined },
+    { expired: null },
+    { workflow_run: { id: 40, repository_id: null, head_repository_id: null } },
+  ])('does not accept malformed exact-proof metadata %j', async (over) => {
+    const s = scenario({
+      head: original,
+      answer: (p) =>
+        p.includes('/actions/artifacts?')
+          ? {
+              total_count: 1,
+              artifacts: [
+                {
+                  id: 1,
+                  name: `tested-tree-${tree}`,
+                  expired: false,
+                  workflow_run: { id: 40, repository_id: 10, head_repository_id: 10 },
+                  ...over,
+                },
+              ],
+            }
+          : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false });
+  });
   it('takes an existing exact proof immediately, even for an older accepted commit', async () => {
     const s = scenario({ proof: true });
     expect(await s.route()).toMatchObject({ path: 'tested', skip: true });
@@ -263,12 +288,14 @@ describe('main preflight preserves acceptance while skipping superseded work', (
     expect(await s.route()).toMatchObject({ path: 'full' });
   });
 
-  it.each([
-    [],
-    [{ id: 60, run_id: run.id, name: 'routing summary', status: 'completed', conclusion: 'success' }],
-    [{ id: 60, run_id: run.id, name: 'gate', status: 'completed', conclusion: 'skipped' }],
-    [{ id: 60, run_id: run.id, run_attempt: 2, name: 'gate', status: 'completed', conclusion: 'success' }],
-  ])('requires actual acceptance in the same attempt, not successful routing (%j)', async (jobs) => {
+  it.each(
+    [
+      [],
+      [{ id: 60, run_id: run.id, name: 'routing summary', status: 'completed', conclusion: 'success' }],
+      [{ id: 60, run_id: run.id, name: 'gate', status: 'completed', conclusion: 'skipped' }],
+      [{ id: 60, run_id: run.id, run_attempt: 2, name: 'gate', status: 'completed', conclusion: 'success' }],
+    ].map((jobs) => ({ jobs })),
+  )('requires actual acceptance in the same attempt, not successful routing (%j)', async ({ jobs }) => {
     const s = scenario({
       run: { ...run, status: 'completed', conclusion: 'success' },
       answer: (p) => (p.includes('/jobs?') ? { total_count: jobs.length, jobs } : undefined),

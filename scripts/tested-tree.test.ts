@@ -73,9 +73,21 @@ describe('candidates', () => {
     expect(candidates([artifact({ name: `${ARTIFACT_PREFIX}${'a'.repeat(40)}` })], TREE)).toHaveLength(0);
     expect(candidates([artifact({ name: 'dist' })], TREE)).toHaveLength(0);
   });
+  it('requires explicit unexpired state and positive safe run/repository identities', () => {
+    for (const expired of [undefined, null, 0, 'false'])
+      expect(candidates([artifact({ expired })], TREE)).toEqual([]);
+    for (const id of [undefined, null, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(candidates([artifact({}, { id })], TREE)).toEqual([]);
+      expect(candidates([artifact({}, { repository_id: id, head_repository_id: id })], TREE)).toEqual([]);
+    }
+  });
 });
 
 describe('decide', () => {
+  it('binds the fetched run to the artifact run identity', async () => {
+    const { get } = api([artifact()], { [PR_RUN.id]: { ...PR_RUN, id: 7 } });
+    expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
+  });
   it('skips the suite when a green PR run of ci.yml recorded this tree', async () => {
     const { get, calls } = api([artifact()]);
     const d = await decide(TREE, { repo: REPO, api: get });

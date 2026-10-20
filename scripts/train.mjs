@@ -608,14 +608,14 @@ const TIER = /^suite \/ (static|unit|sim|browser)\b/;
  * - .github/: a train runs main's workflow files, never the PR's;
  * - the unit project's test files (vitest.config.ts: src/, scripts/ and tools/ *.test.ts; the sim
  *   project is tests/sim/), which nothing imports;
- * - scripts/train.mjs and scripts/tested-tree.mjs: run by the workflows' own steps (route, plan,
- *   assemble from main's checkout, the gate), never by a test tier.
+ * - the train, tested-tree, main-preflight and main-acceptance scripts: CI-only routing and
+ *   acceptance, never imported by sim or browser jobs.
  * scripts/train.test.ts checks these against the Vitest config and every tracked source file.
  */
 const NOT_SIM_OR_BROWSER = [
   /^\.github\//,
   /^(?:src|scripts|tools)\/.+\.test\.ts$/,
-  /^scripts\/(?:train|tested-tree)\.mjs$/,
+  /^scripts\/(?:train|tested-tree|main-preflight|main-acceptance)\.mjs$/,
 ];
 
 /**
