@@ -8,13 +8,13 @@ const root = path.resolve(import.meta.dirname, '..');
 const workflow = readFileSync(path.join(root, '.github', 'workflows', 'suite.yml'), 'utf8');
 const coverageScript = workflow
   .match(/\n {10}node <<'NODE'\n([\s\S]*?)\n {10}NODE/)?.[1]
-  .replace(/^ {10}/gm, '');
+  ?.replace(/^ {10}/gm, '');
 
 type Selection = {
   static: boolean;
-  unit: number[];
-  sim: number[];
-  browser: number[];
+  unit: readonly number[];
+  sim: readonly number[];
+  browser: readonly number[];
   totals: { unit: number; sim: number; browser: number };
 };
 
@@ -185,6 +185,7 @@ describe('diagnostic control workflow contract', () => {
           );
         expect(browser.perf(totals.browser)).toBe(true);
       } else {
+        const selected: Selection = selection;
         expect(unit.runs).toBe(selection.unit.length > 0);
         expect(sim.runs).toBe(selection.sim.length > 0);
         expect(browser.runs).toBe(selection.browser.length > 0);
@@ -193,7 +194,7 @@ describe('diagnostic control workflow contract', () => {
         expect(browser.denominator).toBe(selection.totals.browser);
         expect(browser.perf(selection.totals.browser)).toBe(true);
         expect(browser.perf(selection.browser[0] ?? 0)).toBe(
-          selection.browser.includes(selection.totals.browser),
+          selected.browser.includes(selection.totals.browser),
         );
       }
     },

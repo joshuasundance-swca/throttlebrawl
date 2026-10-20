@@ -47,8 +47,8 @@ describe('selectControlJobs', () => {
 
   it('selects failed first-suite rows in canonical order despite shuffled rows and irrelevant work', () => {
     const input = makeInput();
-    input.jobs[1].conclusion = 'failure';
-    input.jobs[4].conclusion = 'failure';
+    input.jobs[1]!.conclusion = 'failure';
+    input.jobs[4]!.conclusion = 'failure';
     input.jobs.push({
       id: 99,
       run_id: 42,
@@ -62,7 +62,7 @@ describe('selectControlJobs', () => {
     expect(result).toMatchObject({ scope: 'targeted', jobs: [expectedNames[1], expectedNames[4]] });
   });
 
-  it.each<[string, (input: SelectionInput) => SelectionInput]>([
+  it.each<[string, (input: SelectionInput) => unknown]>([
     ['zero failures', (input) => input],
     [
       'all failures',
@@ -73,7 +73,7 @@ describe('selectControlJobs', () => {
     expect(choose(mutate(makeInput()))).not.toHaveProperty('jobs');
   });
 
-  it.each<[string, (input: SelectionInput) => SelectionInput]>([
+  it.each<[string, (input: SelectionInput) => unknown]>([
     [
       'missing suite row',
       (input) => ({ ...input, jobs: input.jobs.slice(1), totalCount: input.jobs.length - 1 }),
@@ -107,7 +107,7 @@ describe('selectControlJobs', () => {
     expect(choose(mutate(makeInput()))).toMatchObject({ scope: 'full' });
   });
 
-  it.each<[string, (input: SelectionInput) => SelectionInput]>([
+  it.each<[string, (input: SelectionInput) => unknown]>([
     ['bad total', (input) => ({ ...input, totalCount: input.totalCount + 1 })],
     [
       'zero id',
@@ -169,7 +169,7 @@ describe('selectControlJobs', () => {
 
   it('preserves the input object and arrays', () => {
     const input = makeInput();
-    input.jobs[1].conclusion = 'failure';
+    input.jobs[1]!.conclusion = 'failure';
     const before = structuredClone(input);
     expect(choose(input)).toMatchObject({ scope: 'targeted' });
     expect(input).toEqual(before);
@@ -177,8 +177,8 @@ describe('selectControlJobs', () => {
 
   it('rejects an irrelevant row from a foreign attempt too', () => {
     const input = makeInput();
-    input.jobs[1].conclusion = 'failure';
-    input.jobs.push({ ...input.jobs[0], id: 99, name: 'route', run_attempt: 2 });
+    input.jobs[1]!.conclusion = 'failure';
+    input.jobs.push({ ...input.jobs[0]!, id: 99, name: 'route', run_attempt: 2 });
     input.totalCount = input.jobs.length;
     expect(choose(input)).toMatchObject({ scope: 'full' });
   });
