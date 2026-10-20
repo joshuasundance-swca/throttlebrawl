@@ -13,7 +13,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { examined, git, refExists, repoRoot, splitZ } from './lib.mjs';
-import { planPush } from './push-plan.mjs';
+import { planPushFromRevisions } from './push-plan.mjs';
 
 const dryRun = process.argv.includes('--dry-run');
 const base = process.env.PREPUSH_BASE ?? 'origin/main';
@@ -24,7 +24,13 @@ if (refExists(base)) {
   const mergeBase = git(['merge-base', base, head]).trim();
   // Deleted files name no test to run; a deleted config file is still a config change.
   const changed = splitZ(git(['diff', '--name-only', '-z', '--no-renames', mergeBase, head]));
-  plan = planPush(changed, (f) => existsSync(path.join(repoRoot, f)));
+  plan = planPushFromRevisions(
+    changed,
+    (f) => existsSync(path.join(repoRoot, f)),
+    mergeBase,
+    head,
+    (ref, file) => git(['show', `${ref}:${file}`]),
+  );
   plan.reason += ` since ${base} (${mergeBase.slice(0, 7)})`;
 } else {
   plan = { mode: 'full', tests: [], reason: `cannot find ${base}, so every unit test` };

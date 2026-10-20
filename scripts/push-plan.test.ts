@@ -4,7 +4,7 @@
 // changed test files and tests named after changed source files, plus bounded contact and road
 // content contracts for their shared inputs. CI runs every test on the PR.
 import { describe, expect, it } from 'vitest';
-import { planPush } from './push-plan.mjs';
+import { planPush, planPushFromRevisions } from './push-plan.mjs';
 
 /** A fake tree: the test files that exist. */
 const tree = (...files: string[]) => {
@@ -66,18 +66,88 @@ describe('planPush', () => {
     expect(plan.tests).toEqual([]);
   });
 
-  it('keeps dependency changes out of the local unit selection while retaining named source tests', () => {
+  it('keeps lockfile and valid dependency-map changes out of local unit selection while retaining named source tests', () => {
     const source = 'src/render/verge.ts';
     const namedTest = 'src/render/verge.test.ts';
     const exists = tree(namedTest);
-    for (const dependency of ['package.json', 'package-lock.json']) {
-      expect(planPush([dependency], exists)).toMatchObject({ mode: 'files', tests: [] });
-      expect(planPush([dependency, source], exists)).toMatchObject({
+    const before = JSON.stringify({ name: 'game', scripts: { test: 'vitest' } });
+    for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      const after = JSON.stringify({
+        scripts: { test: 'vitest' },
+        name: 'game',
+        [key]: { example: '1.0.0' },
+      });
+      const plan = planPushFromRevisions(
+        ['package.json'],
+        exists,
+        'base-revision',
+        'head-revision',
+        (ref: string) => (ref === 'base-revision' ? before : after),
+      );
+      expect(plan, key).toMatchObject({ mode: 'files', tests: [] });
+      expect(planPush(['package.json', source], exists, { before, after }), key).toMatchObject({
         mode: 'files',
         tests: [namedTest],
       });
     }
+    expect(planPush(['package-lock.json'], exists)).toMatchObject({ mode: 'files', tests: [] });
+    expect(planPush(['package-lock.json', source], exists)).toMatchObject({
+      mode: 'files',
+      tests: [namedTest],
+    });
     expect(planPush([source], exists)).toMatchObject({ mode: 'files', tests: [namedTest] });
+  });
+
+  it('runs the full local unit tier when manifest configuration changes, even alongside dependencies', () => {
+    const before = JSON.stringify({
+      name: 'game',
+      scripts: { test: 'vitest' },
+      dependencies: { example: '1.0.0' },
+    });
+    for (const changed of [
+      { scripts: { test: 'other' } },
+      { type: 'module' },
+      { engines: { node: '>=22' } },
+      { 'simple-git-hooks': { 'pre-push': 'node scripts/pre-push.mjs' } },
+    ]) {
+      const after = JSON.stringify({ ...JSON.parse(before), dependencies: { example: '2.0.0' }, ...changed });
+      expect(planPush(['package.json'], tree(), { before, after }).mode, Object.keys(changed)[0]).toBe(
+        'full',
+      );
+    }
+  });
+
+  it('defaults new, deleted, malformed and unreadable manifests to the full tier', () => {
+    const valid = JSON.stringify({ name: 'game', dependencies: { example: '1.0.0' } });
+    for (const manifests of [
+      undefined,
+      { before: '', after: valid },
+      { before: valid, after: '' },
+      { before: '{oops', after: valid },
+      { before: valid, after: '[]' },
+    ]) {
+      expect(planPush(['package.json'], tree(), manifests).mode).toBe('full');
+    }
+    const reads: string[] = [];
+    const plan = planPushFromRevisions(
+      ['package.json'],
+      tree(),
+      'actual-base',
+      'actual-head',
+      (ref: string, file: string) => {
+        reads.push(`${ref}:${file}`);
+        if (ref === 'actual-head') throw new Error('unreadable blob');
+        return valid;
+      },
+    );
+    expect(reads).toEqual(['actual-base:package.json', 'actual-head:package.json']);
+    expect(plan.mode).toBe('full');
+  });
+
+  it('accepts manifest formatting and key order changes without treating them as configuration changes', () => {
+    const before = '{"name":"game","scripts":{"test":"vitest"},"dependencies":{"a":"1"}}';
+    const after = '{\n  "dependencies": {"a": "2"}, "scripts": {"test": "vitest"}, "name": "game"\n}';
+    expect(planPush(['package.json'], tree(), { before, after }).mode).toBe('files');
   });
 
   it('runs the whole unit tier when a global test or type config file changed', () => {
