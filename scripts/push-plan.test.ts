@@ -1,8 +1,8 @@
 // What the pre-push hook tests (scripts/push-plan.mjs, docs/engineering.md "Pre-commit hooks and
-// leak scan"): nothing for a docs-only push, the whole unit tier when a dependency or config file
-// changed, and otherwise only the unit test files the push names: the test files it changed and the
-// tests named after the source files it changed, plus bounded contact and road-content contracts
-// for their shared inputs. CI runs every test on the PR.
+// leak scan"): nothing for a docs-only or dependency-only push, the whole unit tier when a global
+// test or type configuration file changed, and otherwise only the unit test files the push names:
+// changed test files and tests named after changed source files, plus bounded contact and road
+// content contracts for their shared inputs. CI runs every test on the PR.
 import { describe, expect, it } from 'vitest';
 import { planPush } from './push-plan.mjs';
 
@@ -66,17 +66,32 @@ describe('planPush', () => {
     expect(plan.tests).toEqual([]);
   });
 
-  it('runs the whole unit tier when a dependency or config file changed', () => {
+  it('keeps dependency changes out of the local unit selection while retaining named source tests', () => {
+    const source = 'src/render/verge.ts';
+    const namedTest = 'src/render/verge.test.ts';
+    const exists = tree(namedTest);
+    for (const dependency of ['package.json', 'package-lock.json']) {
+      expect(planPush([dependency], exists)).toMatchObject({ mode: 'files', tests: [] });
+      expect(planPush([dependency, source], exists)).toMatchObject({
+        mode: 'files',
+        tests: [namedTest],
+      });
+    }
+    expect(planPush([source], exists)).toMatchObject({ mode: 'files', tests: [namedTest] });
+  });
+
+  it('runs the whole unit tier when a global test or type config file changed', () => {
     for (const f of [
-      'package.json',
-      'package-lock.json',
       'vitest.config.ts',
       'vite.config.ts',
       'tsconfig.json',
       'tsconfig.sim.json',
       'tests/setup/base-roads.ts',
     ]) {
-      const plan = planPush(['src/render/verge.ts', f], tree('src/render/verge.test.ts'));
+      const plan = planPush(
+        ['package-lock.json', 'src/render/verge.ts', f],
+        tree('src/render/verge.test.ts'),
+      );
       expect(plan.mode, f).toBe('full');
       expect(plan.reason, f).toContain(f);
     }

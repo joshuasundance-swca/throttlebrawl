@@ -3,8 +3,9 @@
 //
 // The hook is a backstop, not the gate: CI runs every test on the PR. So it runs
 //   - no tests for a push of docs, notes and Markdown only;
-//   - the whole unit tier when a dependency or config file changed, since a config change can break
-//     any test and is named by no test file;
+//   - no local unit tests for a root package or lockfile-only push; typecheck still runs;
+//   - the whole unit tier when global test or type config changed, since it can break any test
+//     and is named by no test file;
 //   - otherwise only the unit test files the push names: the test files it changed, plus the test
 //     named after each source file it changed (`foo.ts` -> `foo.test.ts`; a folder's `index.ts` ->
 //     `<folder>.test.ts`). Vitest's import-graph selection (`--changed`, `related`) picked 142 of the
@@ -18,7 +19,6 @@
 
 /** Changing any of these runs the whole unit tier. */
 const FULL = [
-  /^package(-lock)?\.json$/,
   /^vite(st)?\.config\.ts$/,
   /^tsconfig[^/]*\.json$/,
   /^tests\/setup\//,
@@ -66,7 +66,7 @@ export function planPush(changed, exists) {
   const files = changed.map((f) => f.replaceAll('\\', '/'));
   const config = files.filter((f) => FULL.some((re) => re.test(f)));
   if (config.length) {
-    return { mode: 'full', tests: [], reason: `config or dependency change: ${config.join(', ')}` };
+    return { mode: 'full', tests: [], reason: `global test or type config change: ${config.join(', ')}` };
   }
   if (!files.length) return { mode: 'skip', tests: [], reason: 'no changed files' };
   if (files.every((f) => DOCS.some((re) => re.test(f)))) {
