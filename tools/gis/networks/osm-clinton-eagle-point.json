@@ -152,11 +152,11 @@
       "name": "Eagle Point: Serpentine Drive",
       "line": "park",
       "startRoad": "osm-clinton-eagle-entry",
-      "startS": 40,
+      "startS": 48,
       "finishRoad": "osm-clinton-eagle-central-loop",
       "finishS": -30,
       "startGrid": {
-        "rows": 5,
+        "rows": 6,
         "perRow": 1,
         "rowGapM": 8
       },

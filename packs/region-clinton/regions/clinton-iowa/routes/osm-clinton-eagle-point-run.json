@@ -5,7 +5,7 @@
   "network": "osm-clinton-eagle-point",
   "start": {
     "road": "osm-clinton-eagle-entry",
-    "s": 40.0,
+    "s": 48.0,
     "dir": 1
   },
   "finish": {
@@ -26,7 +26,7 @@
   ],
   "closed": false,
   "startGrid": {
-    "rows": 5,
+    "rows": 6,
     "perRow": 1,
     "rowGapM": 8.0
   },
