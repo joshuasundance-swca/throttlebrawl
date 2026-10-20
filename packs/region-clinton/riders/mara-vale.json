@@ -1,0 +1,34 @@
+{
+  "type": "rider",
+  "id": "mara-vale",
+  "name": "Mara Vale",
+  "role": "rival",
+  "roster": "local",
+  "region": "clinton-iowa",
+  "tags": ["road-surveyor", "precise", "iowa"],
+  "blurb": "A fictional county road surveyor who knows where the pavement changes. Holds her line until the opening is real.",
+  "bike": "base:rustbucket-400",
+  "stats": { "massKg": 68, "healthMax": 95, "skill": 0.78, "toughness": 0.9, "power": 0.9 },
+  "personality": {
+    "style": "racer",
+    "aggression": 0.25,
+    "dirtiness": 0.2,
+    "courage": 0.55,
+    "riskTaking": 0.3,
+    "chatter": 0.55,
+    "weave": 0.08,
+    "targetPreference": ["leader", "nearest", "player"],
+    "preferredSide": "right"
+  },
+  "look": {
+    "riderModel": "juniper-moss",
+    "bikeModel": "dirt-bike",
+    "palette": ["#d7ab35", "#263740", "#e6e1c5", "#b26035"],
+    "description": "Reuses Juniper Moss's existing helmet and rain-shell rider model on the existing dirt bike, with ochre and slate bike paint. No new rider art."
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Original fictional Iowa regular for Rural Rush. A precise, low-weave racer who mostly stays out of fights; the existing rider body is a stand-in, not a newly modeled costume.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-20" }
+  }
+}
