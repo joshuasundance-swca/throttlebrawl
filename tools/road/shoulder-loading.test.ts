@@ -71,4 +71,82 @@ describe('shoulder physics uses the already-awaited race-world loading boundary'
     expect(actual.hash()).toBe(again.hash());
     expect(world.query()).toBe(0);
   });
+
+  it('a retained early sim matches a newly prepared sim on distinct equivalent shoulder plans', async () => {
+    const early = await cold();
+    const [api, creation, fixture, network, route, testing, riders] = await Promise.all([
+      import('../../src/sim/api'),
+      import('../../src/sim/create'),
+      import('../../src/road/fixture'),
+      import('../../src/road/network'),
+      import('../../src/road/route'),
+      import('../../src/sim/riders/testing'),
+      import('../../src/sim/riders'),
+    ]);
+    const edges = [{ id: 'plain', lengthM: 100, kappa: 0 }];
+    const bundle = fixture.fixtureNetwork(edges);
+    const preparedRoad = network.createRoadNetwork({
+      ...bundle,
+      network: { ...bundle.network, terrain: { patches: [] } },
+    });
+    expect(preparedRoad).not.toBe(early.road);
+    const configFor = (road: typeof early.road) => ({
+      ...testing.testConfig({ edges, tuning: { 'ground.offRoad': 1, 'riders.courseEdges': 1 } }),
+      road,
+      route: route.createRouteProgress(road, {
+        id: 'r',
+        network: 'fixture',
+        start: { road: 'plain', s: 40, dir: 1 },
+        finish: { road: 'plain', s: 80 },
+        mainPath: ['plain'],
+        allowedRoads: ['plain'],
+        closed: false,
+      }),
+    });
+    const retained = creation.createSimWithWorld(configFor(early.road));
+    expect(early.query()).toBeNull();
+    // Never step this retained world while unprepared: a rejected step can already mutate it.
+    await api.loadSimSteps();
+    const prepared = creation.createSimWithWorld(configFor(preparedRoad));
+    const box = api.hitboxOf(retained.sim.config.riders[0]!.hitbox);
+    const d = early.outer - box.widthM / 2 + 0.005;
+    for (const race of [retained, prepared]) {
+      const me = race.world.movers.find((m) => m.kind === 'rider')!;
+      me.pos = { edge: 0, s: 40, d, dir: 1 };
+      me.speed = 6;
+      me.yaw = 0;
+      riders.riderState(race.world).yAbs[me.id] = 0;
+    }
+    expect(d + box.widthM / 2).toBeGreaterThan(early.outer);
+    const initialHash = retained.sim.hash();
+    expect(initialHash).toBe(prepared.sim.hash());
+    for (let tick = 0; tick < 90; tick++) {
+      const command = tick < 60 ? testing.input(0.6) : testing.input(0, 0.2);
+      retained.sim.step([command]);
+      prepared.sim.step([command]);
+      expect(retained.sim.hash()).toBe(prepared.sim.hash());
+      expect(retained.sim.events()).toEqual(prepared.sim.events());
+      const snapshot = retained.sim.snapshot();
+      expect(snapshot).toEqual(prepared.sim.snapshot());
+      const me = snapshot.entities.find((m) => m.kind === 'rider')!;
+      expect(me.mode).toBe('Road');
+      expect(me.road.yaw).toBe(0);
+      expect(me.road.d).toBe(d);
+      // The sim reads the centre; these explicit body-corner reads exercise the added mesh lap.
+      // The prepared road's prewarm cannot populate the retained road's WeakMap entry.
+      const support = (road: typeof early.road) =>
+        [-box.lengthM / 2, box.lengthM / 2].flatMap((along) =>
+          [-box.widthM / 2, box.widthM / 2].map((across) =>
+            early.course.roadBandHeight(road, 0, me.road.s + along, me.road.d + across),
+          ),
+        );
+      expect(support(early.road)).toEqual([0, 0, 0, 0]);
+      expect(support(preparedRoad)).toEqual(support(early.road));
+      for (const road of [early.road, preparedRoad])
+        expect(early.course.roadBandHeight(road, 0, me.road.s, early.outer + 0.1)).toBeNull();
+    }
+    expect(retained.sim.tick).toBe(90);
+    expect(retained.sim.hash()).not.toBe(initialHash);
+    expect(retained.sim.snapshot().entities[0]!.road.s).toBeGreaterThan(40);
+  });
 });
