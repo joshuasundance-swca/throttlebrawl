@@ -124,22 +124,25 @@ jobs:
           FULL: ${{ inputs.full }}
         run: |
           node <<'NODE'
+          const { appendFileSync } = require('node:fs');
           const raw = process.env.CONTROL_SELECTION;
           const diagnostic = process.env.DIAGNOSTIC_CONTROL === 'true';
+          let value;
           if (raw === '') {
-            console.log(`value=${diagnostic ? 'diagnostic' : (process.env.FULL === 'true' ? 'full' : 'quick')}`);
-            process.exit(0);
+            value = diagnostic ? 'diagnostic' : (process.env.FULL === 'true' ? 'full' : 'quick');
+          } else {
+            if (!diagnostic) throw new Error('control-selection requires diagnostic-control=true');
+            let selection;
+            try { selection = JSON.parse(raw); } catch { throw new Error('control-selection is not valid JSON'); }
+            const tiers = ['unit', 'sim', 'browser'];
+            if (!selection || typeof selection !== 'object' || typeof selection.static !== 'boolean' || !selection.totals) throw new Error('control-selection has the wrong shape');
+            for (const tier of tiers) {
+              if (!Array.isArray(selection[tier]) || !Number.isSafeInteger(selection.totals[tier]) || selection.totals[tier] < 1) throw new Error(`control-selection has an invalid ${tier} tier`);
+              if (new Set(selection[tier]).size !== selection[tier].length || selection[tier].some((shard) => !Number.isSafeInteger(shard) || shard < 1 || shard > selection.totals[tier])) throw new Error(`control-selection has invalid ${tier} shard numbers`);
+            }
+            value = 'diagnostic';
           }
-          if (!diagnostic) throw new Error('control-selection requires diagnostic-control=true');
-          let selection;
-          try { selection = JSON.parse(raw); } catch { throw new Error('control-selection is not valid JSON'); }
-          const tiers = ['unit', 'sim', 'browser'];
-          if (!selection || typeof selection !== 'object' || typeof selection.static !== 'boolean' || !selection.totals) throw new Error('control-selection has the wrong shape');
-          for (const tier of tiers) {
-            if (!Array.isArray(selection[tier]) || !Number.isSafeInteger(selection.totals[tier]) || selection.totals[tier] < 1) throw new Error(`control-selection has an invalid ${tier} tier`);
-            if (new Set(selection[tier]).size !== selection[tier].length || selection[tier].some((shard) => !Number.isSafeInteger(shard) || shard < 1 || shard > selection.totals[tier])) throw new Error(`control-selection has invalid ${tier} shard numbers`);
-          }
-          console.log('value=diagnostic');
+          appendFileSync(process.env.GITHUB_OUTPUT, `value=${value}\n`);
           NODE
       - uses: actions/checkout@v7
         with:
@@ -196,6 +199,7 @@ jobs:
   # out. They run in the quick check too. [default]
   unit:
     name: unit (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }})
+    if: ${{ inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).unit, '') != '' }}
     runs-on: ubuntu-latest
     # The refreshed table puts three slices at 227 s of job (2026-10-07), about 47% of this timeout.
     # Two slices have a 331 s worker-time lower bound, beyond the unchanged 320 s planning line.
@@ -264,7 +268,7 @@ jobs:
   # 408 s, the 408 being traffic-cart-live.test.ts alone (389 s), the floor.
   sim:
     name: sim (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }})
-    if: inputs.full
+    if: ${{ inputs.full && (inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).sim, '') != '') }}
     runs-on: ubuntu-latest
     # The refreshed plan puts the batch readers at 319 s of job and the other slices at 396 s
     # (2026-10-07 table, 20 s of job setup included), up to 44% of this timeout. 15 minutes since
@@ -338,7 +342,7 @@ jobs:
   # not measured job duration. Tests, worker policy, timeout and last-slice behavior are unchanged.
   browser:
     name: browser (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }})
-    if: inputs.full
+    if: ${{ inputs.full && (inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).browser, '') != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -440,7 +444,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Keep the tested build for the deploy
-        if: inputs.upload-dist && !inputs.diagnostic-control && matrix.shard == (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
+        if: inputs.upload-dist && inputs.control-selection == '' && !inputs.diagnostic-control && matrix.shard == (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
         uses: actions/upload-artifact@v7
         with:
           name: dist
