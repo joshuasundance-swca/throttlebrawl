@@ -90,7 +90,11 @@ installErrorCapture();
 // Fetched at once; tried once more after a moment if that fails (a dropped connection on the phone).
 const content = loadBootContent().catch(
   () =>
-    new Promise<void>((resolve, reject) => setTimeout(() => loadBootContent().then(resolve, reject), 1500)),
+    new Promise<void>((resolve, reject) =>
+      setTimeout(() => {
+        void loadBootContent().then(resolve, reject);
+      }, 1500),
+    ),
 );
 if (testFlagSet()) {
   const pending = createPendingHandle();
