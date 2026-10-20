@@ -1220,6 +1220,33 @@ This matches [the architecture doc's races-as-routes model](./architecture.md#ra
   - **The traffic.** `region-pnw:semi` (16 by 2.6 m, 25 m/s, `big`, the shared semi model, no words on it) runs only in a new traffic area, `interstate`, beside cars, pickups, wagons and the odd camper; the byway's cyclists, hay trucks and espresso stands in tow are not in it. It is as long as the log truck (16 m), the longest vehicle the region already had, because the rival AI sizes every vehicle by the largest type of the race (`vehicleSize`, `src/sim/ai/sense.ts`), and `src/app/interstate-traffic.test.ts` holds that.
   - **Not built.** `[decided]` (the maintainer, 2026-10-06, kept as built when asked which defaults to veto: "Keep all of these (Recommended)", the I-5 median barrier left unbuilt) A median barrier: the median is a gap the sim lets a rider ride across (the road's own surface stands in for it), so a concrete barrier drawn there would be an invisible one, and a physical one is a sim change (riders' limits by side, the oncoming lanes' hazard) for the maintainer to call; the seam is ready for it (`median.kind` `barrier` is already in the road format). Also not built: rumble strips (paint in `road-mesh.ts`), overhead gantries, the weigh station itself (sheet I4) and Lake Samish (sheet I3).
 
+#### Authored natural terrain
+
+`[default]` A network may supply `terrain: { patches: [...] }`. Each patch has a ground
+`surface` (or `water`), world-space `vertices: [[x,y,z], ...]` and upward
+`triangles: [[i,j,k], ...]`. Rendering and physical queries restore the same Float32
+coordinates. Water is horizontal within each patch; separate patches may have different
+levels. The validator rejects nonfinite coordinates, bad indices and faces that collapse
+or face downward at that precision. Omission preserves the existing roadside ground.
+
+Supplied coverage replaces the network's synthetic natural land and water. Holes and the
+bounded coverage edge remain real holes and edges; the reference road plane does not fill
+them. Road decks and structures retain their own support. Land supports riding, landing,
+crash bodies and grounded rider presentation; source water supplies the splash height.
+The authored road band stops at the drawn shoulder rather than extending a wide flat verge.
+Shadows and touchdown marks use bounded footprint samples, not exact polygon clipping.
+
+Eagle Point is the first enabled network. Its coarse USGS elevation and OSM river geometry
+are preserved with the offline [terrain recipe](../tools/gis/terrain/README.md). The road
+collar is an authored blend below the road, and river height is a DEM proxy, not a surveyed
+shore or current river stage. No rails are added merely because grass changes shade.
+The narrow rural verges remain; legacy vignette placement has no land reach on this network.
+Render-only land scatter is omitted, including trees, because authored land is playable and
+these solids have no contacts. Water props retain source-height and coverage checks.
+Enabling other scenery cohorts requires checking their ground support and contacts first:
+pedestrians, ground-based landmarks, planned furniture and smashables do not automatically
+inherit the new source. Do not enable terrain on another route without that consumer check.
+
 #### Provenance and licence of road data
 
 Tag: `[decided]` that the maintainer finds the licences of these data sources "all basically fine"; `[default]` for the fields and for the compliance approach below.

@@ -19,6 +19,7 @@ import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../
 import {
   against,
   DownIndex,
+  LAND_SURFACES,
   look,
   onBridge,
   print,
@@ -35,6 +36,7 @@ const LAND = new Set<ScenerySpot['kind']>([
   'shack',
   'pole',
   'conifer',
+  'deciduous',
   'house',
   'apartment',
   'sawmill',
@@ -91,7 +93,7 @@ export function badSpots(t: Track, spots: readonly ScenerySpot[], ground: DownIn
       examined.boats++;
       // Seen from above (a bridge's deck may pass over it): never land above the sea where it floats.
       const hit = ground.at(s.p.x, s.p.z, s.p.y + 30);
-      if (hit?.name.startsWith('road-land') && hit.y > -0.05) water.push(`${key}: a boat on ${hit.name}`);
+      if (hit && LAND_SURFACES.test(hit.name) && hit.y > -0.05) water.push(`${key}: a boat on ${hit.name}`);
       continue;
     }
     if (!LAND.has(s.kind)) continue;
@@ -106,7 +108,7 @@ export function badSpots(t: Track, spots: readonly ScenerySpot[], ground: DownIn
       examined.points++;
       const hit = ground.at(p.x, p.z, s.p.y + 30);
       anchor ??= hit ?? { y: -Infinity, name: 'nothing' };
-      if (!hit?.name.startsWith('road-land')) {
+      if (!hit || !LAND_SURFACES.test(hit.name)) {
         off = hit?.name ?? 'nothing';
         break;
       }
@@ -162,7 +164,7 @@ export function badProps(
     for (const p of pts) {
       examined.points++;
       const hit = ground.at(p.x, p.z, p.y + 40);
-      if (!hit?.name.startsWith('road-land')) {
+      if (!hit || !LAND_SURFACES.test(hit.name)) {
         water.push(`${key}: over ${hit?.name ?? 'nothing'}`);
         break;
       }

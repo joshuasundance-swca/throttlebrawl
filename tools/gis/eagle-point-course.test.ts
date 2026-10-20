@@ -7,6 +7,7 @@ import { hitboxOf } from '../../src/core';
 import {
   createRoadNetwork,
   courseAt,
+  terrainAt,
   lintRoadNetwork,
   type BakedNetwork,
   type BakedRoad,
@@ -117,44 +118,61 @@ describe('Eagle Point: one pass through the South and Central loops', () => {
     expect(missing.slice(0, 10)).toEqual([]);
   }, 90_000);
 
-  it('the rideable grass past the shade seam has drawn ground under the whole bike', () => {
-    const { network, roads } = course();
-    const road = createRoadNetwork({ network, roads });
-    const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
-    const built = buildRoadScene(road, createFlatLook(), dressing, { seed: 1 });
-    const ground = new GroundTris(built.group);
-    const plan = { items: [], cellM: 32, cells: new Map() };
-    let supported = 0;
-    let unavailable = 0;
-    try {
-      for (const edge of road.edges)
-        for (let s = 5; s < edge.length - 5; s += 10)
-          for (const side of [-1, 1] as const) {
-            const d = road.vergeAt(edge.index, s, side < 0 ? 'left' : 'right').dOuter + side * 1;
-            const p = road.toWorld(edge.index, s, d, 0);
-            const spot = courseAt(road, plan, { edge: edge.index, s, d }, p.y + 0.3);
-            if (spot.kind !== 'road') {
-              unavailable++;
-              continue;
-            }
-            for (const along of [-0.8, 0.8])
-              for (const across of [-0.45, 0.45]) {
-                const q = road.toWorld(edge.index, s + along, d + across, 0);
-                expect(
-                  ground.allAt(q.x, q.z, q.y + 0.4).some((hit) => Math.abs(hit.y - q.y) < 0.35),
-                  `${edge.id} s=${s} d=${d}`,
-                ).toBe(true);
+  it.each([false, true])(
+    'the rideable grass has drawn ground under the whole bike (authored %s)',
+    (authored) => {
+      const { network, roads } = course();
+      const { terrain, ...legacy } = network;
+      expect(terrain).toBeDefined();
+      const road = createRoadNetwork({ network: authored ? network : legacy, roads });
+      const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
+      const built = buildRoadScene(road, createFlatLook(), dressing, { seed: 1 });
+      const ground = new GroundTris(built.group);
+      const plan = { items: [], cellM: 32, cells: new Map() };
+      let supported = 0;
+      let unavailable = 0;
+      try {
+        for (const edge of road.edges)
+          for (let s = 5; s < edge.length - 5; s += 10)
+            for (const side of [-1, 1] as const) {
+              const d = road.vergeAt(edge.index, s, side < 0 ? 'left' : 'right').dOuter + side * 1;
+              const p = road.toWorld(edge.index, s, d, 0);
+              const source = terrainAt(road.terrain, p.x, p.z);
+              const spot = courseAt(road, plan, { edge: edge.index, s, d }, (source?.y ?? p.y) + 0.3);
+              if (spot.kind !== 'road' && spot.kind !== 'terrain') {
+                unavailable++;
+                continue;
               }
-            supported++;
-          }
-      expect(supported).toBeGreaterThan(0);
-      process.stdout.write(
-        `[runoff mesh] ${supported} accepted grass positions, four body-corner rays each; ${unavailable} positions outside supported course\n`,
-      );
-    } finally {
-      built.dispose();
-    }
-  }, 90_000);
+              for (const along of [-0.8, 0.8])
+                for (const across of [-0.45, 0.45]) {
+                  const q = road.toWorld(edge.index, s + along, d + across, 0);
+                  const corner = terrainAt(road.terrain, q.x, q.z);
+                  if (authored) expect(corner?.surface, 'land under each body corner').toBe('grass');
+                  const y = corner?.y ?? q.y;
+                  expect(
+                    ground.allAt(q.x, q.z, y + 0.4).some((hit) => Math.abs(hit.y - y) < 0.35),
+                    `${edge.id} s=${s} d=${d}`,
+                  ).toBe(true);
+                }
+              supported++;
+            }
+        expect(supported).toBeGreaterThan(0);
+        if (authored) {
+          const vertices = terrain!.patches.flatMap((patch) => patch.vertices);
+          const x = Math.max(...vertices.map((v) => v[0])) + 20;
+          const z = Math.max(...vertices.map((v) => v[2])) + 20;
+          expect(terrainAt(road.terrain, x, z)).toBeNull();
+          expect(ground.allAt(x, z)).toEqual([]);
+        }
+        process.stdout.write(
+          `[runoff mesh] ${supported} accepted grass positions, four body-corner rays each; ${unavailable} positions outside supported course\n`,
+        );
+      } finally {
+        built.dispose();
+      }
+    },
+    90_000,
+  );
 
   it('fits the largest available racing crew and every reserve cop on supported nonoverlapping pavement', () => {
     const registry = registryFromGlob(

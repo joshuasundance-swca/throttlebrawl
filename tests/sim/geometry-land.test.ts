@@ -27,14 +27,18 @@ import { describe, expect, it } from 'vitest';
 import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
 import { buildRoadScene, BURIED_M, networkTags, type RoadScene } from '../../src/render/road-mesh';
 import { VergeLayer } from '../../src/render/verge';
+import type { ScenerySpot } from '../../src/render/scenery';
+import { badSpots } from './geometry-scenery';
 import {
   against,
   DownIndex,
+  LAND_SURFACES,
   look,
   print,
   routeNetworks,
   SURFACES,
   track,
+  WATER_SURFACES,
   type KnownViolation,
   type RouteNetwork,
   type Track,
@@ -77,11 +81,15 @@ const GAP_BACK_M = 1;
  * ground far below, seen through one is.
  */
 const VISIBLE =
-  /^(road-(land|water|road|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)|verge-band)/;
+  /^(road-(land|water|terrain-land|terrain-water|road|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)|verge-band)/;
 const SEAM_STEP_M = 0.02;
 const ROW_M = 2;
 
-/** Walks across the land strip's outer edge on every road side, reading the drawn land straight down. */
+/**
+ * Walks across the legacy land strip's outer edge, reading every drawn surface straight down.
+ * Authored terrain has bounded, possibly disconnected coverage rather than a continuous strip;
+ * its landReach is zero, so this walk has no strip seam to inspect there.
+ */
 export function seamHoles(t: Track, scene: RoadScene, land: DownIndex): { walks: number; holes: string[] } {
   let walks = 0;
   const holes: string[] = [];
@@ -196,7 +204,7 @@ export function wetPeds(
             points++;
             const p = t.road.toWorld(e.index, s, side * d, 0);
             const hit = ground.at(p.x, p.z, p.y + 20);
-            if (!hit || hit.name === 'road-water' || hit.y < p.y - PED_SINK_M) {
+            if (!hit || WATER_SURFACES.test(hit.name) || hit.y < p.y - PED_SINK_M) {
               wet.push(
                 `${t.id} peds ${e.id} s ${f.s0.toFixed(0)}: at s ${s.toFixed(0)} d ${(side * d).toFixed(1)} ${hit?.name ?? 'nothing'} at ${hit ? (hit.y - p.y).toFixed(2) : '-'} m`,
               );
@@ -260,7 +268,7 @@ describe("geometry invariants: the land on every route's network", () => {
       const visible = new DownIndex([scene.group, vergeOf(t)], VISIBLE);
       const seam = seamHoles(t, scene, visible);
       const peds = wetPeds(t, net, visible);
-      const roof = roofs(t, new DownIndex(scene.group, /^road-land/));
+      const roof = roofs(t, new DownIndex(scene.group, LAND_SURFACES));
       const found = [...ends.open.map((o) => fmtEnd(t.id, o)), ...seam.holes, ...peds.wet, ...roof.roofed];
       const { fresh, seen, stale } = against(found.map(keyOf), KNOWN);
       print(
@@ -324,10 +332,47 @@ function carve(group: Object3D, x: number, z: number, r: number): number {
 }
 
 describe('the land probes', () => {
+  it.each(['road-land', 'road-water', 'road-terrain-land', 'road-terrain-water'])(
+    'reads %s as visible ground and keeps dry land separate from water',
+    (name) => {
+      const plane = new Mesh(
+        new PlaneGeometry(6, 6).rotateX(-Math.PI / 2),
+        new MeshBasicMaterial({ side: DoubleSide }),
+      );
+      plane.name = name;
+      plane.position.y = 2;
+      const dry = name === 'road-land' || name === 'road-terrain-land';
+      expect(new DownIndex(plane).at(0, 0)?.name).toBe(name);
+      expect(new DownIndex(plane, VISIBLE).at(0, 0)?.name).toBe(name);
+      expect(new DownIndex(plane, LAND_SURFACES).at(0, 0)?.name ?? null).toBe(dry ? name : null);
+      expect(new DownIndex(plane, WATER_SURFACES).at(0, 0)?.name ?? null).toBe(dry ? null : name);
+      const t = track(NETWORKS.find((n) => n.id === 'sf-hills')!);
+      const spot: ScenerySpot = {
+        kind: 'deciduous',
+        variant: 0,
+        p: { x: 0, y: 2, z: 0 },
+        turn: 0,
+        size: 1,
+        phase: 0,
+        edge: 0,
+        s: 0,
+        d: 0,
+      };
+      const ground = new DownIndex(plane);
+      const tree = badSpots(t, [spot], ground);
+      expect(tree.examined.land).toBe(1);
+      expect(tree.water.length).toBe(dry ? 0 : 1);
+      expect(tree.land).toEqual([]);
+      expect(badSpots(t, [{ ...spot, kind: 'boat' }], ground).water.length).toBe(dry ? 1 : 0);
+      plane.geometry.dispose();
+      plane.material.dispose();
+    },
+  );
+
   it('read the same ground: the sweep index agrees with land-probe.test-util.ts', () => {
     const t = track(NETWORKS.find((n) => n.id === 'sf-hills')!);
     const scene = sceneOf(t);
-    for (const keep of [SURFACES, /^road-land/]) {
+    for (const keep of [SURFACES, LAND_SURFACES]) {
       const slow = new GroundTris(scene.group, keep);
       const fast = new DownIndex(scene.group, keep);
       let x = 12345;
@@ -423,18 +468,24 @@ describe('the land probes', () => {
     slab.name = 'road-land';
     const q = t.road.toWorld(f.index, f.length / 2, 0, 0);
     slab.position.set(q.x, q.y + 3, q.z);
-    const roofed = roofs(t, new DownIndex([scene.group, slab], /^road-land/)).roofed.filter((l) =>
+    const roofed = roofs(t, new DownIndex([scene.group, slab], LAND_SURFACES)).roofed.filter((l) =>
+      l.includes(` ${f.id} `),
+    );
+    // The same buried road must be caught when the slab is an authored terrain face.
+    slab.name = 'road-terrain-land';
+    const authoredRoofed = roofs(t, new DownIndex([scene.group, slab], LAND_SURFACES)).roofed.filter((l) =>
       l.includes(` ${f.id} `),
     );
     print(
       `[negative control] junction land cut (${cut} triangles) at the end of ${e.id}: ${here.length} open there; ` +
         `a sliver at the strip edge of ${f.id}: ${holes.length} found; a zone on ${zoned.id} moved to sea: ${wet.length} wet; ` +
-        `a slab 3 m over ${f.id}: ${roofed.length} found`,
+        `a slab 3 m over ${f.id}: ${roofed.length} legacy and ${authoredRoofed.length} authored found`,
     );
     expect(cut).toBeGreaterThan(0);
     expect(here.length).toBeGreaterThan(0);
     expect(holes.length).toBeGreaterThan(0);
     expect(wet.length).toBeGreaterThan(0);
     expect(roofed.length).toBeGreaterThan(0);
+    expect(authoredRoofed.length).toBeGreaterThan(0);
   });
 });

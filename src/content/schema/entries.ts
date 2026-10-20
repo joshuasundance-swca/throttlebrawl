@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import {
   BARRIER_LOOKS,
+  GROUND_SURFACES,
   GRUDGE_RULE_IDS,
   MAX_HEIGHT_M,
   MAX_SEASON,
@@ -364,10 +365,63 @@ const laneSectionSchema = z.looseObject({
   verges: z.looseObject({ left: vergeSchema.optional(), right: vergeSchema.optional() }).optional(),
 });
 
+// Both physical queries and rendering use Float32-rounded world-metre vertices. Check faces in
+// that same representation, so a valid double-precision triangle cannot collapse when drawn.
+const terrainCoordinate = z.number().refine((n) => Number.isFinite(Math.fround(n)), {
+  message: 'must remain finite after Float32 rounding',
+});
+const terrainVertex = z.tuple([terrainCoordinate, terrainCoordinate, terrainCoordinate]);
+const terrainIndex = z.number().int().nonnegative();
+const terrainPatchSchema = z
+  .looseObject({
+    surface: z.enum([...GROUND_SURFACES, 'water']),
+    vertices: z.array(terrainVertex).min(3),
+    triangles: z.array(z.tuple([terrainIndex, terrainIndex, terrainIndex])).min(1),
+  })
+  .superRefine((patch, ctx) => {
+    const vertices = patch.vertices.map(
+      ([x, y, z]) => [Math.fround(x), Math.fround(y), Math.fround(z)] as const,
+    );
+    if (patch.surface === 'water') {
+      const level = vertices[0]?.[1];
+      for (const [i, vertex] of vertices.entries()) {
+        if (vertex[1] !== level)
+          ctx.addIssue({
+            code: 'custom',
+            path: ['vertices', i, 1],
+            message: 'water must be horizontal after Float32 rounding',
+          });
+      }
+    }
+    for (const [i, [a, b, c]] of patch.triangles.entries()) {
+      const va = vertices[a];
+      const vb = vertices[b];
+      const vc = vertices[c];
+      if (a === b || b === c || c === a || !va || !vb || !vc) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['triangles', i],
+          message: 'indices must be distinct and below the vertex count',
+        });
+        continue;
+      }
+      const ny = (vb[2] - va[2]) * (vc[0] - va[0]) - (vb[0] - va[0]) * (vc[2] - va[2]);
+      if (!(ny > 0))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['triangles', i],
+          message: 'face must have strictly upward nonzero XZ area after Float32 rounding',
+        });
+    }
+  });
+
+const terrainSchema = z.looseObject({ patches: z.array(terrainPatchSchema).min(1) });
+
 export const roadNetworkSchema = entry('road-network', {
   region: idSchema,
   crs: z.looseObject({ kind: z.literal('tmerc'), originLatDeg: z.number(), originLonDeg: z.number() }),
   roads: z.array(idSchema).min(1),
+  terrain: terrainSchema.optional(),
   junctions: z.array(
     z.looseObject({
       id: idSchema,

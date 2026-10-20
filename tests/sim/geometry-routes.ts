@@ -147,7 +147,11 @@ export const SPREAD_SEEDS: readonly number[] = Array.from(
 
 /** Every mesh a rider could see as the ground or the sea, as road-mesh.ts names them. */
 export const SURFACES =
-  /^road-(land|water|road|median|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)/;
+  /^road-(land|water|terrain-land|terrain-water|road|median|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)/;
+
+/** Dry ground only: authored water must never satisfy a land-support or road-burial probe. */
+export const LAND_SURFACES = /^road-(land|terrain-land)/;
+export const WATER_SURFACES = /^road-(water|terrain-water)/;
 
 const CELL_M = 8;
 const cellKey = (cx: number, cz: number) => (cx + 0x8000) * 0x10000 + (cz + 0x8000);

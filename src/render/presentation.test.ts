@@ -151,6 +151,7 @@ function asyncScene(nestedFamily?: string) {
         return [];
       }
       setFronts() {}
+      setRoad() {}
       setStructures(plan: unknown) {
         this.structures.push(plan);
       }
