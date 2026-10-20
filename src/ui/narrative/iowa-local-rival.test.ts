@@ -36,11 +36,21 @@ describe('Iowa local bark selection', () => {
     narrative.onEvents([{ tick: 0, type: 'raceStart', actor: -1, data: {} }], context);
     narrative.onEvents([{ tick: 600, type: 'overtake', actor: 1, target: 0, data: {} }], context);
 
+    const localLines = Object.entries(all.barkSets)
+      .filter(([, set]) => set.defaults?.speaker === 'mara-vale')
+      .flatMap(([key, set]) =>
+        set.lines.map((line) => ({
+          trigger: line.trigger,
+          ref: `${key.split(':')[0]}:bark-set/${set.id}#${line.id}`,
+        })),
+      );
     expect(shown).toHaveLength(2);
-    expect(shown.map((bark) => bark.contentRef)).toEqual([
-      expect.stringMatching(/^region-clinton:bark-set\/mara-vale-core#mara-start-/),
-      expect.stringMatching(/^region-clinton:bark-set\/mara-vale-core#mara-pass-/),
-    ]);
+    expect(localLines.filter((line) => line.trigger === 'race-start').map((line) => line.ref)).toContain(
+      shown[0]?.contentRef,
+    );
+    expect(localLines.filter((line) => line.trigger === 'overtake').map((line) => line.ref)).toContain(
+      shown[1]?.contentRef,
+    );
     expect(
       shown.every((bark) => bark.speakerName === all.riders[localId]!.name && bark.text.length > 0),
     ).toBe(true);

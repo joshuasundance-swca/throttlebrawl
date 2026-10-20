@@ -6,7 +6,7 @@
   "roster": "local",
   "region": "clinton-iowa",
   "tags": ["road-surveyor", "precise", "iowa"],
-  "blurb": "A fictional county road surveyor who knows where the pavement changes. Holds her line until the opening is real.",
+  "blurb": "A county road surveyor who knows where the pavement changes. Holds her line until the opening is real.",
   "bike": "base:rustbucket-400",
   "stats": { "massKg": 68, "healthMax": 95, "skill": 0.78, "toughness": 0.9, "power": 0.9 },
   "personality": {

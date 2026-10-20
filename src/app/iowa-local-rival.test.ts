@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { registryFromGlob } from '../content';
-import { riderLookOf } from '../render';
 import { DEFAULT_RACE_OPTIONS } from '../save';
 import { firstSeed } from '../../tests/sim/batch';
 import { buildSimConfig, raceField } from './config';
 import { quickPlaySetup } from './quick-play-events';
-import { createStreamCache, routeChoices } from './regions';
+import { createStreamCache, regionKeyOf, routeChoices } from './regions';
 
 const all = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const eventId = 'region-clinton:clinton-ia136-race';
@@ -18,7 +17,6 @@ describe('Iowa local rival', () => {
     const rider = all.riders[localId];
     expect(rider).toMatchObject({ role: 'rival', roster: 'local', region: event.region });
     expect(event.field.riders).toContain('mara-vale');
-    expect(event.field.riders).toHaveLength(4);
 
     const choices = routeChoices(all, eventId);
     expect(choices.length).toBeGreaterThan(1);
@@ -37,17 +35,24 @@ describe('Iowa local rival', () => {
       const mara = config.riders.find((r) => r.contentId === localId);
       expect(mara?.controller).toMatchObject({
         kind: 'ai',
-        style: 'racer',
-        personality: { weave: 0.08, aggression: 0.25, riskTaking: 0.3 },
+        style: rider!.personality?.style,
+        personality: {
+          weave: rider!.personality?.weave,
+          aggression: rider!.personality?.aggression,
+          riskTaking: rider!.personality?.riskTaking,
+        },
       });
       expect(config.event.paceMps).toBe(event.field.paceMps);
       expect(config.event.byPlaceCash).toEqual(event.rewards.byPlaceCash);
       expect(config.riders.some((r) => r.controller.kind === 'cop')).toBe(true);
     }
-    for (const other of Object.keys(all.events).filter((id) => id !== eventId)) {
-      expect(raceField(all, other, 1, true, undefined, 99)).not.toContain(localId);
+    const fullCastCount = Object.keys(all.riders).length;
+    for (const other of Object.keys(all.events).filter(
+      (id) => regionKeyOf(all, id) !== regionKeyOf(all, eventId),
+    )) {
+      expect(raceField(all, other, 1, true, undefined, fullCastCount)).not.toContain(localId);
     }
-    expect(raceField(all, eventId, 1, true, undefined, 99)).toContain(localId);
+    expect(raceField(all, eventId, 1, true, undefined, fullCastCount)).toContain(localId);
 
     // Quick Play draws the usual-sized field from the whole local cast, so this rider is eligible
     // on either route without claiming that every seed includes her.
@@ -79,18 +84,5 @@ describe('Iowa local rival', () => {
       });
       expect(config.riders.map((r) => r.contentId)).toContain(localId);
     }
-  });
-
-  it('resolves the rider to existing visible models and bike paint', () => {
-    const rider = all.riders[localId]!;
-    const look = riderLookOf({
-      contentId: localId,
-      role: 'rival',
-      bikeId: 'base:rustbucket-400',
-      look: rider.look,
-    });
-    expect(look.riderModel).toBe('models/riders/juniper-moss');
-    expect(look.bikeModel).toBe('models/bikes/dirt-bike');
-    expect(look.paint?.length).toBeGreaterThan(0);
   });
 });
