@@ -12,6 +12,7 @@ import {
   raceSky,
   regionChoices,
   regionKeyOf,
+  routeChoices,
   routeKeyOf,
 } from './regions';
 
@@ -347,6 +348,45 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     expect(r.region).toBe('base:florida-keys');
     expect(onDial(ALL, 'base:florida-keys').length).toBeGreaterThanOrEqual(2);
     expect([...dial(r)].sort()).toEqual(onDial(ALL, 'base:florida-keys'));
+  });
+
+  it('offers Iowa stations on either selectable route, retaining global stations without Keys fallback', () => {
+    const eventId = 'region-clinton:clinton-ia136-race';
+    const region = regionKeyOf(ALL, eventId);
+    const own = Object.entries(ALL.stations)
+      .filter(
+        ([key, station]) =>
+          key.startsWith('region-clinton:') &&
+          station.regions.includes('clinton-iowa') &&
+          !station.pirate &&
+          !station.rider,
+      )
+      .map(([key]) => key)
+      .sort();
+    const global = Object.entries(ALL.stations)
+      .filter(([, station]) => station.regions.length === 0 && !station.pirate && !station.rider)
+      .map(([key]) => key)
+      .sort();
+    expect(own.length).toBeGreaterThanOrEqual(2);
+    const choices = routeChoices(ALL, eventId);
+    expect(choices.length).toBeGreaterThan(1);
+    for (const choice of choices) {
+      expect(routeKeyOf(ALL, eventId, undefined, choice.id)).toBe(choice.id ?? routeKeyOf(ALL, eventId));
+      const selected = raceRadio(ALL, region);
+      expect(selected.region).toBe(region);
+      expect(dial(selected)).toEqual([...own, ...global]);
+      expect(dial(selected).some((key) => key.startsWith('base:'))).toBe(false);
+    }
+    const sample = ALL.stations[own[0]!]!;
+    const withGlobal = {
+      ...ALL,
+      stations: {
+        ...ALL.stations,
+        'region-clinton:all-road': { ...sample, id: 'all-road', regions: [] },
+      },
+    } as typeof ALL;
+    expect(dial(raceRadio(withGlobal, region))).toContain('region-clinton:all-road');
+    expect(dial(raceRadio(withGlobal, region)).some((key) => key.startsWith('base:'))).toBe(false);
   });
 
   it('the Pacific Northwest and San Francisco play their own stations, and only those', () => {
