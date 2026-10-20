@@ -102,7 +102,7 @@
       "id": "longview-authored-civic-horizon",
       "kind": "skyline",
       "frame": "local",
-      "centre": [3300, -500],
+      "centre": [1700, 1600],
       "radiusM": 400,
       "count": 0,
       "heightM": [12, 42],
@@ -112,7 +112,7 @@
       "keepOutM": 800,
       "towers": [
         {
-          "at": [3140, -500],
+          "at": [1540, 1600],
           "heightM": 16,
           "widthM": 140,
           "depthM": 55,
@@ -120,7 +120,7 @@
           "crown": "slant"
         },
         {
-          "at": [3290, -520],
+          "at": [1690, 1580],
           "heightM": 20,
           "widthM": 150,
           "depthM": 60,
@@ -128,7 +128,7 @@
           "crown": "slant"
         },
         {
-          "at": [3290, -520],
+          "at": [1690, 1580],
           "heightM": 42,
           "widthM": 32,
           "depthM": 32,
@@ -136,7 +136,7 @@
           "crown": "pyramid"
         },
         {
-          "at": [3470, -500],
+          "at": [1870, 1600],
           "heightM": 18,
           "widthM": 150,
           "depthM": 55,
@@ -144,7 +144,7 @@
           "crown": "slant"
         },
         {
-          "at": [3630, -590],
+          "at": [2030, 1510],
           "heightM": 30,
           "widthM": 55,
           "depthM": 40,

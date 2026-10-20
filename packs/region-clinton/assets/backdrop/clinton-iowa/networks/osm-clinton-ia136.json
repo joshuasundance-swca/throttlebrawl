@@ -2,5 +2,138 @@
   "formatVersion": 1,
   "network": "osm-clinton-ia136",
   "originLatDeg": 41.9,
-  "originLonDeg": -90.28
+  "originLonDeg": -90.28,
+  "pieces": [
+    {
+      "id": "county-west-field-and-woodlot-horizon",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-ia136"],
+      "path": [
+        [-5600, -6500, 345],
+        [-5700, -4100, 355],
+        [-5400, -1500, 335],
+        [-5200, 1700, 315]
+      ],
+      "heightM": [295, 355],
+      "profile": "rolling",
+      "colour": "#75824c",
+      "keepOutM": 800
+    },
+    {
+      "id": "county-northern-shelterbelts",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-ia136"],
+      "path": [
+        [-5600, -6200, 335],
+        [-3200, -6300, 340],
+        [-800, -5600, 315],
+        [1800, -5100, 300]
+      ],
+      "heightM": [275, 340],
+      "profile": "rolling",
+      "colour": "#657348",
+      "keepOutM": 800
+    },
+    {
+      "id": "county-eastern-lowland-horizon",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-ia136"],
+      "path": [
+        [2600, -5100, 285],
+        [2700, -2600, 290],
+        [2800, -200, 280],
+        [2600, 2200, 270]
+      ],
+      "heightM": [250, 290],
+      "profile": "rolling",
+      "colour": "#8a9264",
+      "keepOutM": 800
+    },
+    {
+      "id": "county-town-approach-woodlot",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-ia136"],
+      "path": [
+        [-4700, -5600, 270],
+        [-4500, -4200, 270],
+        [-4500, -2200, 260],
+        [-4600, -1000, 260]
+      ],
+      "heightM": [253, 270],
+      "profile": "rolling",
+      "colour": "#6f7d4e",
+      "keepOutM": 800
+    },
+    {
+      "id": "county-northwest-town-roofs",
+      "kind": "blocks",
+      "frame": "local",
+      "networks": ["osm-clinton-ia136"],
+      "area": [
+        [-5700, -4700],
+        [-5000, -4600],
+        [-5100, -3500],
+        [-5900, -3300]
+      ],
+      "count": 20,
+      "heightM": [12, 35],
+      "sizeM": [45, 95],
+      "baseM": 245,
+      "colours": ["#a29b83", "#8e8875", "#b4ad96", "#817e6e"],
+      "keepOutM": 800
+    },
+    {
+      "id": "county-western-farm-roofline",
+      "kind": "skyline",
+      "frame": "local",
+      "networks": ["osm-clinton-ia136"],
+      "centre": [-5200, -2900],
+      "radiusM": 1,
+      "count": 0,
+      "heightM": [15, 48],
+      "widthM": [20, 90],
+      "baseM": 240,
+      "gridDeg": 0,
+      "colours": ["#aaa38b"],
+      "towers": [
+        {
+          "at": [-5300, -2900],
+          "heightM": 24,
+          "widthM": 95,
+          "depthM": 45,
+          "colour": "#977c68",
+          "crown": "slant"
+        },
+        {
+          "at": [-5100, -3000],
+          "heightM": 48,
+          "widthM": 25,
+          "depthM": 25,
+          "colour": "#b4b09c",
+          "crown": "flat"
+        },
+        {
+          "at": [-5060, -3000],
+          "heightM": 43,
+          "widthM": 25,
+          "depthM": 25,
+          "colour": "#a8a793",
+          "crown": "flat"
+        },
+        {
+          "at": [-5200, -2400],
+          "heightM": 25,
+          "widthM": 90,
+          "depthM": 40,
+          "colour": "#9d9680",
+          "crown": "slant"
+        }
+      ],
+      "keepOutM": 800
+    }
+  ]
 }

@@ -436,8 +436,9 @@ The report then waits up to 10 minutes for the passed PRs to merge. One that has
 
 **Red.** A red bundle of n PRs drops each of them to cap ceil(n/2). The next train takes the smallest cap first, oldest first, so the older half rides alone on the then-current main and lands if green; the rest ride next, on top of what landed. A PR alone (cap 1) that fails on main gets `gate` = failure, with the failing test names (read from the job logs), the run link and a PR comment. When the assembled train and PR head have different full Git trees, a second suite (`control`) then runs on the PR's own branch, after the first:
 
-- if that passes, the comment calls it a composition failure with what landed on main since the branch, and lists those PRs;
-- if it fails too, the failure is the PR's own.
+- When a complete, settled current-attempt job inventory identifies a proper subset of failed jobs, the control repeats those original shards only. Original shard denominators and perf placement remain unchanged. A bounded read-only collector checks the run identity before and after paginating all jobs; ambiguity, missing rows, cancelled siblings or observation failure retain full controls. This adds a short planning job only after a qualifying failure, not to green trains. `[default]`
+- A targeted control reports only those shards' diagnostic result. The full branch outcome remains unknown; it does not establish an own-branch or composition failure. A full control can still classify the branch result: a pass indicates disagreement with the assembled run; a failure reproduces a failure on the branch. Different runner conditions and build stamps mean disagreement alone does not prove a causal source change.
+- The reusable suite explicitly reports full, quick or diagnostic coverage. A diagnostic call cannot upload a deployable build, issue acceptance or record a tested tree. Missing coverage also fails closed. CI accepts quick coverage only on its quick/docs routes; train acceptance and full-tree records require full coverage.
 
 When those two full Git trees are exactly equal, the first suite already ran the PR's exact source
 content and composition is excluded. The train does not repeat all 23 jobs: `gate` remains failure,

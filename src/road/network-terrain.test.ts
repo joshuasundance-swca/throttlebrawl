@@ -34,6 +34,20 @@ describe('road network terrain exposure', () => {
     expect(courseAt(road, plan, { edge: 0, s: 50, d: 0 }, 0).kind).toBe('out');
   });
 
+  it('supports a plain drawn shoulder lap but leaves traffic fills and empty ground exact', () => {
+    for (const traffic of [false, true]) {
+      const bundle = fixtureNetwork([{ id: 'road', lengthM: 100, kappa: 0 }]);
+      const road = createRoadNetwork({ ...bundle, network: { ...bundle.network, terrain: { patches: [] } } });
+      const edge = road.edges[0]!;
+      edge.isTrafficOnly = traffic;
+      for (const side of [-1, 1] as const) {
+        const outer = side < 0 ? edge.dMin - DRAWN_VERGE_M : edge.dMax + DRAWN_VERGE_M;
+        expect(roadBandHeight(road, 0, 30, outer + side * 0.005) !== null).toBe(!traffic);
+        expect(roadBandHeight(road, 0, 30, outer + side * 0.1)).toBeNull();
+      }
+    }
+  });
+
   it('retains exact readonly authored data without independently rounding or copying it', () => {
     const bundle = fixtureNetwork([{ id: 'road', lengthM: 100, kappa: 0 }]);
     const terrain: BakedTerrain = {

@@ -7,6 +7,7 @@ export { terrainAt } from './terrain';
 export { waterAt } from './water';
 export type { TerrainSample } from './terrain';
 export { grassMedianSpan } from './median';
+export { prewarmPlainShoulderSupport, ROAD_SURFACE_SIMPLIFY, SHOULDER_LAP_M } from './surface-sampling';
 export {
   LAND_COMMON_REACH_DELTA_M,
   clearGroundReach,

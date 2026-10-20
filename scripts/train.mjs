@@ -601,6 +601,11 @@ export function suiteResult(result, { failed, timedOut }) {
   return result;
 }
 
+/** A successful train can land only after the reusable suite declares full coverage. */
+export function coveredSuiteResult(result, coverage) {
+  return result === 'success' && coverage !== 'full' ? 'unverified' : result;
+}
+
 /** The test tier a suite job runs, from its name ("suite / browser (5/7)"). */
 const TIER = /^suite \/ (static|unit|sim|browser)\b/;
 /**
@@ -634,7 +639,15 @@ export function canReach(files, job) {
 }
 
 /** Describe only the reported control outcome; absence never proves that a run was skipped. */
-function sameTreeControl(/** @type {string | undefined} */ control) {
+function sameTreeControl(
+  /** @type {string | undefined} */ control,
+  /** @type {string | undefined} */ controlScope,
+  /** @type {string[]} */ controlJobs = [],
+) {
+  if (controlScope === 'targeted')
+    return `the branch control ran a selected failed-shard diagnostic (${controlJobs.join(', ') || 'shards not reported'}), result: ${control ?? 'missing'}; the full-branch outcome is untested`;
+  if (controlScope !== 'full')
+    return 'the branch control scope is missing, so its full-branch outcome is unverified';
   if (control === 'skipped')
     return 'the branch control did not repeat it, so persistence versus transience is unproven';
   if (control === 'success')
@@ -652,6 +665,8 @@ function sameTreeControl(/** @type {string | undefined} */ control) {
  * @param {object} o
  * @param {string} o.result the suite's result ('success', 'failure', 'cancelled', ...), as suiteResult judges it
  * @param {string} [o.control] a lone PR's own-branch suite result, when it ran
+ * @param {string} [o.controlScope] 'full' only when every branch suite shard ran; otherwise unknown
+ * @param {string[]} [o.controlJobs] selected diagnostic shard names
  * @param {boolean} [o.sameTree] the lone PR head and assembled train have the same full Git tree
  * @param {string[]} [o.timedOut] the suite's jobs that ran past their time limit
  * @param {string[]} [o.failed] the suite's jobs that failed (a timeout beside one is a plain failure)
@@ -667,6 +682,8 @@ function sameTreeControl(/** @type {string | undefined} */ control) {
 export function decide({
   result,
   control,
+  controlScope,
+  controlJobs = [],
   sameTree = false,
   timedOut = [],
   failed = [],
@@ -833,9 +850,9 @@ export function decide({
   }
   const kind = sameTree
     ? 'same-tree'
-    : control === 'success'
+    : controlScope === 'full' && control === 'success'
       ? 'composition'
-      : control === 'failure'
+      : controlScope === 'full' && control === 'failure'
         ? 'own'
         : 'unknown';
   const red = late ? 'timed out' : 'fails';
@@ -858,7 +875,7 @@ export function decide({
     dispatch: true,
     why:
       kind === 'same-tree'
-        ? `#${p.number}'s exact PR tree ${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''} on main ${b7}; composition excluded; ${sameTreeControl(control)}`
+        ? `#${p.number}'s exact PR tree ${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''} on main ${b7}; composition excluded; ${sameTreeControl(control, controlScope, controlJobs)}`
         : `#${p.number} ${late ? 'timed out' : 'failed'} alone on main ${b7} (${kind})`,
   };
 }
@@ -1055,7 +1072,7 @@ export const COMMENT_TAG = '<!-- bundle-train -->';
 /**
  * The comment on a PR that failed alone, or timed out alone (`timedOut` names the suite jobs that
  * ran past their time limit; `reached`, those of them its diff can reach and main's own run passed).
- * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, control?: string, timedOut?: string[], failed?: string[], reached?: string[] }} o
+ * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, control?: string, controlScope?: string, controlJobs?: string[], timedOut?: string[], failed?: string[], reached?: string[] }} o
  */
 export function blameComment({
   kind,
@@ -1067,10 +1084,13 @@ export function blameComment({
   lacks,
   mainCi,
   control,
+  controlScope,
+  controlJobs = [],
   timedOut = [],
   failed = [],
   reached = [],
 }) {
+  if (controlScope !== 'full' && (kind === 'own' || kind === 'composition')) kind = 'unknown';
   const late = timedOut.length > 0;
   const red = late ? 'timed out' : 'fails';
   const exactResult = `${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''}`;
@@ -1078,7 +1098,7 @@ export function blameComment({
     kind === 'same-tree'
       ? `**Bundle train ${run}: this PR's exact source tree ${exactResult} in the train.**`
       : kind === 'composition'
-        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
+        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** The runs disagree; different source, build stamps or runner conditions may explain the difference. A causal source-composition failure is unproven.`
         : `**Bundle train ${run}: this PR ${red} alone on main.**`;
   const lines = [
     COMMENT_TAG,
@@ -1096,14 +1116,18 @@ export function blameComment({
     );
   lines.push(
     kind === 'same-tree'
-      ? `- The assembled train and this PR head have the same full Git tree. ${late ? `The full suite did not finish${failed.length ? ' and also had failed jobs' : ''}` : `The full suite ${exactResult} on that exact source tree`}; ${sameTreeControl(control)}; a source-tree composition failure is excluded.`
+      ? `- The assembled train and this PR head have the same full Git tree. ${late ? `The full suite did not finish${failed.length ? ' and also had failed jobs' : ''}` : `The full suite ${exactResult} on that exact source tree`}; ${sameTreeControl(control, controlScope, controlJobs)}; a source-tree composition failure is excluded.`
       : kind === 'own'
-        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
+        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too; a failure was reproduced on the branch.`
         : kind === 'composition'
           ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) passes the full suite.`
-          : late
-            ? '- Its own branch was not tested (a timeout does not start that suite).'
-            : '- Its own branch was not tested (that suite did not finish).',
+          : controlScope === 'targeted'
+            ? `- Its own branch ran a selected failed-shard diagnostic (${controlJobs.join(', ') || 'shards not reported'}); result: ${control ?? 'missing'}; the full-branch outcome is untested.`
+            : controlScope !== 'full' && (control === 'success' || control === 'failure')
+              ? '- The branch control scope is missing, so its full-branch outcome is unverified.'
+              : late
+                ? '- Its own branch was not tested (a timeout does not start that suite).'
+                : '- Its own branch was not tested (that suite did not finish).',
     `- Main's own CI on \`${base.slice(0, 7)}\`: ${mainCi === 'success' ? 'green' : mainCi === 'pending' ? 'still running' : 'no finished run'}.`,
   );
   if (lacks.length) lines.push(`- Main has PRs your branch does not: ${prList(lacks, 400)}.`);
@@ -1896,6 +1920,21 @@ export async function cmdReport(cfg = loadConfig()) {
   const run = runNumber();
   const reported = env.TRAIN_RESULT ?? '';
   const control = env.TRAIN_CONTROL;
+  const controlScope = env.TRAIN_CONTROL_SCOPE;
+  let controlJobs = /** @type {string[]} */ ([]);
+  try {
+    const jobs = JSON.parse(env.TRAIN_CONTROL_JOBS ?? '[]');
+    if (
+      Array.isArray(jobs) &&
+      jobs.every(
+        (job) =>
+          typeof job === 'string' && /^suite \/ (?:static|unit|sim|browser)(?: \(\d+\/\d+\))?$/.test(job),
+      )
+    )
+      controlJobs = jobs;
+  } catch {
+    // A missing or invalid diagnostic list proves no full-branch result.
+  }
   const sameTree = env.TRAIN_SINGLE_SAME_TREE === 'true';
   const say = (/** @type {string} */ s) => {
     console.log(`report: ${s}`);
@@ -1926,10 +1965,15 @@ export async function cmdReport(cfg = loadConfig()) {
     }
   }
   const failedJobs = suiteJobs.filter((j) => j.conclusion === 'failure').map((j) => String(j.name));
-  const result = suiteResult(reported, { failed: failedJobs, timedOut });
+  const judged = suiteResult(reported, { failed: failedJobs, timedOut });
+  const result = coveredSuiteResult(judged, env.TRAIN_COVERAGE);
   if (timedOut.length) console.log(`report: past their time limit: ${timedOut.join(', ')}`);
-  if (result !== reported)
+  if (judged !== reported)
     console.log(`report: the suite reads ${reported}, but a job in it is red, so the bundle is red`);
+  if (result === 'unverified')
+    console.log(
+      `report: the suite reads success, but coverage is ${env.TRAIN_COVERAGE ?? 'missing'}, so no full-suite result is established`,
+    );
   /** @type {'success' | 'failure' | 'pending' | 'none'} */
   let mainCi = 'none';
   /** @type {Record<string, string>} */
@@ -1964,6 +2008,8 @@ export async function cmdReport(cfg = loadConfig()) {
   const d = decide({
     result,
     control,
+    controlScope,
+    controlJobs,
     sameTree,
     timedOut,
     failed: failedJobs,
@@ -2004,6 +2050,8 @@ export async function cmdReport(cfg = loadConfig()) {
       lacks,
       mainCi,
       control,
+      controlScope,
+      controlJobs,
       timedOut,
       failed: failedJobs,
       reached: timedOut.filter((j) => files !== null && canReach(files, j) && mainJobs[j] === 'success'),

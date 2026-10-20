@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   CONTEXT,
@@ -34,6 +35,7 @@ import {
   cmdAnnounce,
   cmdPlan,
   cmdReport,
+  coveredSuiteResult,
   conflictComment,
   cutShort,
   decide,
@@ -1232,7 +1234,15 @@ describe('the landing invariant (decide)', () => {
   const base = sha('0');
   const nowOf = (b: typeof bundle) =>
     new Map(b.map((p) => [p.number, { headSha: p.headSha, draft: false, autoMerge: true }]));
-  const input = { result: 'success', bundle, base, mainNow: base, now: nowOf(bundle), run: 42 };
+  const input = {
+    result: 'success',
+    bundle,
+    base,
+    mainNow: base,
+    now: nowOf(bundle),
+    run: 42,
+    controlScope: 'full',
+  };
 
   it('green on an unmoved main with every head unchanged: success on each, in order, and the next train', () => {
     const d = decide(input);
@@ -1300,13 +1310,33 @@ describe('the landing invariant (decide)', () => {
 
   it('a lone PR that fails on a green main is the culprit; the own-branch suite says which kind', () => {
     const one = [bundle[0]!];
-    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'success' as const };
+    const at = {
+      ...input,
+      result: 'failure',
+      bundle: one,
+      now: nowOf(one),
+      mainCi: 'success' as const,
+      controlScope: 'full',
+    };
     expect(decide({ ...at, control: 'failure' }).blame).toEqual({ number: 11, sha: sha('a'), kind: 'own' });
     const comp = decide({ ...at, control: 'success' });
     expect(comp.blame?.kind).toBe('composition');
     expect(comp.statuses[0]).toMatchObject({ state: 'failure' });
     expect(comp.statuses[0]!.description).toContain('passes on its branch, fails on main');
     expect(decide({ ...at, control: 'cancelled' }).blame?.kind).toBe('unknown');
+  });
+
+  it('a targeted or unscoped control cannot classify a full branch result', () => {
+    const one = [bundle[0]!];
+    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'success' as const };
+    for (const controlScope of [undefined, 'targeted']) {
+      for (const control of ['success', 'failure']) {
+        const d = decide({ ...at, control, controlScope });
+        expect(d.blame?.kind).toBe('unknown');
+        expect(d.statuses[0]?.description).toContain('fails alone on main');
+        expect(d.statuses[0]?.description).not.toContain('passes on its branch');
+      }
+    }
   });
 
   it('an identical lone tree stays red after one run, excludes composition, and proves no persistence', () => {
@@ -1359,6 +1389,7 @@ describe('the landing invariant (decide)', () => {
     expect(d.statuses[0]?.state).toBe('failure');
     const c = blameComment({
       kind: 'same-tree',
+      controlScope: 'full',
       sha: sha('a'),
       base,
       run: 42,
@@ -2058,11 +2089,39 @@ describe('the commands, against a fake GitHub', () => {
       TRAIN_BASE: base,
       TRAIN_RESULT: 'cancelled',
       TRAIN_CONTROL: 'skipped',
+      TRAIN_CONTROL_SCOPE: 'full',
     });
   const open = (bundle: ReturnType<typeof riders>): [RegExp, () => unknown] => [
     /^POST \/graphql$/,
     () => listing(...bundle.map((b) => node({ number: b.number, head: b.headSha, quick: [ok] }))),
   ];
+
+  it('report: successful suite cannot post success or land without full coverage', async () => {
+    const two = riders(2);
+    for (const coverage of [undefined, 'diagnostic', 'quick', 'full']) {
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'success');
+      vi.stubEnv('TRAIN_COVERAGE', coverage);
+      const { lines } = capture();
+      fakeGitHub([MAIN, open(two)]);
+      await cmdReport(CFG);
+      expect(
+        lines.some((line) => line.includes('would post gate=success')),
+        String(coverage),
+      ).toBe(coverage === 'full');
+      expect(
+        lines.some((line) => line.includes('**unfinished**')),
+        String(coverage),
+      ).toBe(coverage !== 'full');
+    }
+  });
+
+  it('classifies a successful suite as unverified unless coverage is full', () => {
+    for (const coverage of [undefined, 'quick', 'diagnostic'])
+      expect(coveredSuiteResult('success', coverage)).toBe('unverified');
+    expect(coveredSuiteResult('success', 'full')).toBe('success');
+    expect(coveredSuiteResult('failure', 'diagnostic')).toBe('failure');
+  });
 
   it('report: a bundle whose suite timed out splits, and says so; a cancel with no timeout concludes nothing', async () => {
     const two = riders(2);
@@ -2178,6 +2237,50 @@ describe('the commands, against a fake GitHub', () => {
         ),
       );
       expect(lines.some((l) => l.includes('would comment'))).toBe(true);
+    },
+  );
+
+  it.each(['success', 'failure'])(
+    'report: a targeted %s control reports selected shards and leaves the full branch unclassified',
+    async (control) => {
+      const one = lone(1);
+      reportEnv(one);
+      vi.stubEnv('TRAIN_RESULT', 'failure');
+      vi.stubEnv('TRAIN_CONTROL', control);
+      vi.stubEnv('TRAIN_CONTROL_SCOPE', 'targeted');
+      vi.stubEnv('TRAIN_CONTROL_JOBS', JSON.stringify(['suite / browser (5/7)']));
+      const { lines } = capture();
+      fakeGitHub([
+        MAIN,
+        open(one),
+        LOG,
+        mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
+        [
+          OWN_JOBS[0],
+          () => ({
+            total_count: 1,
+            jobs: [
+              { id: 112110821845, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'failure' },
+            ],
+          }),
+        ],
+        [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+      ]);
+      await cmdReport(CFG);
+      expect(lines).toContainEqual(expect.stringMatching(/^report: \*\*culprit\*\*: .*\(unknown\)/));
+      expect(lines).toContainEqual(
+        expect.stringContaining(
+          `selected failed-shard diagnostic (suite / browser (5/7)); result: ${control}`,
+        ),
+      );
+      expect(lines).toContainEqual(expect.stringContaining('full-branch outcome is untested'));
+      expect(
+        lines.some(
+          (line) => line.includes('passes on its branch') || line.includes('fails the full suite too'),
+        ),
+      ).toBe(false);
     },
   );
 
@@ -2490,6 +2593,7 @@ describe('what a red train says', () => {
   it('writes a comment that names the run, the failing tests and what to do', () => {
     const c = blameComment({
       kind: 'composition',
+      controlScope: 'full',
       sha: sha('a'),
       base: sha('b'),
       run: 9,
@@ -2499,7 +2603,8 @@ describe('what a red train says', () => {
       mainCi: 'success',
     });
     expect(c).toContain('<!-- bundle-train -->');
-    expect(c).toContain('composition failure');
+    expect(c).toContain('runs disagree');
+    expect(c).not.toContain('It is a composition failure');
     expect(c).toContain('https://github.com/o/g/actions/runs/5');
     expect(c).toContain('#303 #339');
     expect(c).toContain('```text\ntests/sim/x.test.ts > a\n```');
@@ -2507,6 +2612,7 @@ describe('what a red train says', () => {
     expect(
       blameComment({
         kind: 'own',
+        controlScope: 'full',
         sha: sha('a'),
         base: sha('b'),
         run: 9,
@@ -2518,6 +2624,7 @@ describe('what a red train says', () => {
     ).toContain('fails the full suite too');
     const same = blameComment({
       kind: 'same-tree',
+      controlScope: 'full',
       control: 'skipped',
       sha: sha('a'),
       base: sha('b'),
@@ -2536,6 +2643,45 @@ describe('what a red train says', () => {
     expect(conflictComment({ sha: sha('a'), base: sha('b'), run: 9, url: 'u' })).toContain(
       'merge origin/main',
     );
+  });
+
+  it('names selected diagnostic shards without claiming a full branch outcome', () => {
+    for (const control of ['success', 'failure']) {
+      const c = blameComment({
+        kind: 'unknown',
+        control,
+        controlScope: 'targeted',
+        controlJobs: ['sim', 'browser'],
+        sha: sha('a'),
+        base: sha('b'),
+        run: 9,
+        url: 'u',
+        failing: [],
+        lacks: [],
+        mainCi: 'success',
+      });
+      expect(c).toContain('selected failed-shard diagnostic (sim, browser)');
+      expect(c).toContain(`result: ${control}`);
+      expect(c).toContain('full-branch outcome is untested');
+      expect(c).not.toContain('passes the full suite');
+      expect(c).not.toContain('fails the full suite too');
+      const untrustedKind = blameComment({
+        kind: control === 'success' ? 'composition' : 'own',
+        control,
+        controlScope: 'targeted',
+        controlJobs: ['sim'],
+        sha: sha('a'),
+        base: sha('b'),
+        run: 9,
+        url: 'u',
+        failing: [],
+        lacks: [],
+        mainCi: 'success',
+      });
+      expect(untrustedKind).toContain('full-branch outcome is untested');
+      expect(untrustedKind).not.toContain('passes on its own branch');
+      expect(untrustedKind).not.toContain('fails the full suite too');
+    }
   });
 
   it('says when a job timed out, names it, and says what to do about it', () => {
@@ -2832,7 +2978,7 @@ describe('the workflows', () => {
   // The landing invariant and the off switch also hang on these call sites: with `full: false`, or
   // with no heads to assemble, a gate or a train would go green on less than the whole suite on
   // exactly the bundle.
-  it('the full path, main, every train and its control run the whole suite, on what the plan assembled', () => {
+  it('full acceptance uses the assembled tree, while branch controls are explicitly diagnostic', () => {
     expect(jobs(ci).get('suite')).toContain(
       "\n      full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}\n",
     );
@@ -2848,14 +2994,17 @@ describe('the workflows', () => {
       expect(ride, line).toContain(`\n      ${line}\n`);
     const control = t.get('control') ?? '';
     expect(control).toMatch(
-      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
+      /^ {4}needs: \[plan, suite, control-plan\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
     );
     expect(control).toContain('\n      full: true\n');
+    expect(control).toContain('\n      diagnostic-control: true\n');
     expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
     expect(control).not.toMatch(/^ {6}heads:/m);
     // Every suite job checks out base, then rebuilds the planned tree before anything installs.
     for (const [id, block] of jobs(suite)) {
-      const steps = block.split(/\n {6}- /);
+      const steps = block
+        .split(/\n {6}- /)
+        .filter((step) => !step.startsWith('name: Validate control selection and set coverage'));
       expect(steps[1], id).toMatch(
         /^uses: actions\/checkout@\S+\n {8}with:\n {10}ref: \$\{\{ inputs\.base \}\}\n/,
       );
@@ -2869,7 +3018,7 @@ describe('the workflows', () => {
   it("the report runs after every departed train, red or green, and reads the suite's own result", () => {
     const report = jobs(train).get('report') ?? '';
     expect(report).toMatch(
-      /^ {4}needs: \[plan, suite, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
+      /^ {4}needs: \[plan, suite, control-plan, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
     );
     expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
     expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
@@ -2880,12 +3029,18 @@ describe('the workflows', () => {
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
   });
 
-  it('the quick check is static (with the build and size budget) plus the unit slices, at most 4 jobs', () => {
+  it('the ordinary quick check runs static with budget and unit, excluding the heavy tiers', () => {
     const j = jobs(suite);
-    for (const id of ['sim', 'browser']) expect(j.get(id), id).toMatch(/^ {4}if: inputs\.full$/m);
-    for (const id of ['static', 'unit']) expect(j.get(id), id).not.toMatch(/^ {4}if:/m);
-    const unitSlices = /shard: \[([^\]]*)\]/.exec(j.get('unit') ?? '')?.[1]?.split(',') ?? [];
-    expect(1 + unitSlices.length).toBeLessThanOrEqual(4);
+    for (const [id, text] of j) {
+      const raw = /^ {4}if: (.+)$/m.exec(text)?.[1] ?? 'true';
+      const condition = raw.replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\.([a-z]+-[a-z-]+)/g, "['$1']");
+      expect(
+        runInNewContext(condition, {
+          inputs: { full: false, 'control-selection': '', 'diagnostic-control': false },
+        }),
+        id,
+      ).toBe(['static', 'unit'].includes(id));
+    }
     const stat = j.get('static') ?? '';
     expect(stat).toMatch(/if: \$\{\{ !inputs\.full \}\}\n {8}run: npm run check -- --tier static,budget\n/);
     expect(stat).toMatch(/if: inputs\.full\n {8}run: npm run check -- --tier static\n/);
