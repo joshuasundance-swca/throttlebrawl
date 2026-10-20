@@ -85,6 +85,10 @@ on:
         description: validated JSON selection with shard arrays and canonical totals
         type: string
         default: ''
+    outputs:
+      coverage:
+        description: full, quick, or diagnostic coverage completed by this suite
+        value: ${{ jobs.static.outputs.coverage }}
 
 env:
   BUILD_ID: ${{ inputs.build-id }}

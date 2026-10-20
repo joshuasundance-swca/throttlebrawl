@@ -11,6 +11,7 @@ describe('diagnostic control workflow contract', () => {
     expect(workflow).toContain('diagnostic-control:');
     expect(workflow).toContain('control-selection:');
     expect(workflow).toContain('coverage: ${{ steps.coverage.outputs.value }}');
+    expect(workflow).toContain('value: ${{ jobs.static.outputs.coverage }}');
   });
 
   it('uses selected matrices while preserving the canonical shard denominators', () => {
