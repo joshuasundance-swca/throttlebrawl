@@ -137,6 +137,17 @@
       "pool": "billboards"
     },
     {
+      "kind": "rampTruck",
+      "id": "samish-i5-shore-jump",
+      "s0": 2650.0,
+      "s1": 2670.0,
+      "d0": 11.5,
+      "d1": 14.2,
+      "params": {
+        "lipHeightM": 2.2
+      }
+    },
+    {
       "kind": "boostPad",
       "id": "pad-i5-late",
       "s0": 3300.0000000000005,
