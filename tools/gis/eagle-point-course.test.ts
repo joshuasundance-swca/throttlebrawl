@@ -16,6 +16,7 @@ import {
 import { GroundTris } from '../../src/render/land-probe.test-util';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene, type RoadDressing } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 
 const ROOT = 'packs/region-clinton/regions/clinton-iowa';
 const read = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
@@ -90,7 +91,10 @@ describe('Eagle Point: one pass through the South and Central loops', () => {
     const { network, roads } = course();
     const road = createRoadNetwork({ network, roads });
     const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
-    const built = buildRoadScene(road, createFlatLook(), dressing, { seed: 1 });
+    const built = buildRoadScene(road, createFlatLook(), dressing, {
+      seed: 1,
+      terrainChunks: buildTerrainChunks,
+    });
     const ground = new GroundTris(built.group);
     let probes = 0;
     const missing: string[] = [];
@@ -126,7 +130,10 @@ describe('Eagle Point: one pass through the South and Central loops', () => {
       expect(terrain).toBeDefined();
       const road = createRoadNetwork({ network: authored ? network : legacy, roads });
       const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
-      const built = buildRoadScene(road, createFlatLook(), dressing, { seed: 1 });
+      const built = buildRoadScene(road, createFlatLook(), dressing, {
+        seed: 1,
+        terrainChunks: buildTerrainChunks,
+      });
       const ground = new GroundTris(built.group);
       const plan = { items: [], cellM: 32, cells: new Map() };
       let supported = 0;
@@ -190,7 +197,10 @@ describe('Eagle Point: one pass through the South and Central loops', () => {
     );
     const { roads } = course();
     const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
-    const built = buildRoadScene(config.road, createFlatLook(), dressing, { seed: 1 });
+    const built = buildRoadScene(config.road, createFlatLook(), dressing, {
+      seed: 1,
+      terrainChunks: buildTerrainChunks,
+    });
     const ground = new GroundTris(built.group);
     const riders = sim.snapshot().entities.filter((m) => m.kind === 'rider');
     process.stdout.write(

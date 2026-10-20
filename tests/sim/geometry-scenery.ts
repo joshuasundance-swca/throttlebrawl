@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import type { RoadNetwork } from '../../src/road';
 import { modelKindsFor } from '../../src/render/models';
 import { buildRoadScene, networkTags } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 import { KITS, scatterRoadside, type RoadsideItem, type RoadsideKit } from '../../src/render/roadside';
 import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 import {
@@ -203,7 +204,10 @@ export function scenerySweep(label: string, seeds: readonly number[]): void {
         const kit = kitOf(t);
         // The land is the same for every seed (only the scatter on it is seeded; measured the same on
         // all 14 networks, 2026-10-03), so the ground is read once; the land metres check it per seed.
-        const first = buildRoadScene(t.road, look, t.dressing, { seed: seeds[0] ?? 1 });
+        const first = buildRoadScene(t.road, look, t.dressing, {
+          seed: seeds[0] ?? 1,
+          terrainChunks: buildTerrainChunks,
+        });
         const ground = new DownIndex(first.group);
         const landM = first.stats.landM;
         first.dispose();
@@ -215,7 +219,7 @@ export function scenerySweep(label: string, seeds: readonly number[]): void {
         let props = 0;
         let propPoints = 0;
         for (const seed of seeds) {
-          const built = buildRoadScene(t.road, look, t.dressing, { seed });
+          const built = buildRoadScene(t.road, look, t.dressing, { seed, terrainChunks: buildTerrainChunks });
           expect(built.stats.landM, `seed ${seed}: the land`).toBe(landM);
           const r = badSpots(t, built.spots, ground);
           const found = [...r.water, ...r.land];

@@ -5,6 +5,7 @@
 // resumes; a change to the sim changes it. Each case is a real production build, in memory.
 import { describe, expect, it } from 'vitest';
 import { build, type Plugin, type Rolldown } from 'vite';
+import { firstLoadScripts } from './first-load.mjs';
 import {
   ROAD_LAZY_CHUNK_NAME,
   ROAD_LAZY_TEST,
@@ -30,6 +31,7 @@ function tweak(file: RegExp, marker: string): Plugin {
 interface Built {
   hash: string;
   chunks: Rolldown.OutputChunk[];
+  first: Set<string>;
 }
 
 async function buildOnce(extra: Plugin[] = []): Promise<Built> {
@@ -45,10 +47,60 @@ async function buildOnce(extra: Plugin[] = []): Promise<Built> {
   );
   const sim = chunks.find((c) => c.name === SIM_CHUNK_NAME);
   if (!sim) throw new Error(`no ${SIM_CHUNK_NAME} chunk in ${chunks.map((c) => c.fileName).join(', ')}`);
-  return { hash: simCodeHashOfChunks(sim, chunks), chunks };
+  const html = outputs
+    .flatMap((o) => o.output)
+    .find((a) => a.type === 'asset' && a.fileName === 'index.html');
+  if (!html || html.type !== 'asset') throw new Error('no emitted index.html');
+  const first = firstLoadScripts(
+    typeof html.source === 'string' ? html.source : Buffer.from(html.source).toString(),
+    (file) => {
+      const chunk = chunks.find((c) => c.fileName === file);
+      if (!chunk) throw new Error(`missing first-load chunk ${file}`);
+      return chunk.code;
+    },
+  );
+  return { hash: simCodeHashOfChunks(sim, chunks), chunks, first };
 }
 
 describe('the sim chunk and simCodeHash', { timeout: 120_000 }, () => {
+  it('keeps physical-tree rules lazy and covered by the replay code hash', async () => {
+    const built = await buildOnce();
+    const sim = built.chunks.find((c) => c.name === SIM_CHUNK_NAME)!;
+    const steps = built.chunks.find((c) => c.name === SIM_STEPS_CHUNK_NAME)!;
+    const planners = built.chunks.find((c) => c.name === ROAD_LAZY_CHUNK_NAME)!;
+    // Use the budget's exact HTML/modulepreload/static closure, including render's entry path.
+    expect(built.first.has(sim.fileName)).toBe(true);
+    expect(built.first.has(steps.fileName)).toBe(false);
+    expect(built.first.has(planners.fileName)).toBe(false);
+    for (const file of ['terrain-trees.ts', 'terrain-mesh.ts']) {
+      const chunk = built.chunks.find((c) =>
+        c.moduleIds.some((id) => id.replace(/\\/g, '/').endsWith(`/src/render/${file}`)),
+      );
+      expect(chunk, `${file} must be present in the real build`).toBeDefined();
+      expect(built.first.has(chunk!.fileName), `${file} must remain outside static first load`).toBe(false);
+    }
+    for (const file of ['riders/terrain-trees.ts', 'tumble/tree-contacts.ts']) {
+      const contains = (c: Rolldown.OutputChunk) =>
+        c.moduleIds.some((id) => id.replace(/\\/g, '/').endsWith(`/src/sim/${file}`));
+      expect(contains(steps), `${file} belongs to the awaited simulation steps`).toBe(true);
+      expect(contains(sim), `${file} must not load with the menu`).toBe(false);
+    }
+    expect(
+      planners.moduleIds.some((id) => id.replace(/\\/g, '/').endsWith('/road/structures/terrain-trees.ts')),
+    ).toBe(true);
+    expect(sim.imports).not.toContain(steps.fileName);
+    expect(sim.imports).not.toContain(planners.fileName);
+    for (const rules of [steps, planners]) {
+      expect(
+        simCodeHashOfChunks(
+          sim,
+          built.chunks.map((c) =>
+            c === rules ? { ...c, code: `${c.code}\n;globalThis.__treeRuleControl=1;` } : c,
+          ),
+        ),
+      ).not.toBe(built.hash);
+    }
+  });
   it('keeps the hash when only src/ui changes, changes it when src/sim does, and injects it', async () => {
     const base = await buildOnce();
     const uiOnly = await buildOnce([tweak(/\/src\/ui\/index\.ts$/, '__uiTweak')]);

@@ -73,7 +73,7 @@ import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
 import { deciduousGeometry } from './deciduous';
 import { SeaBands, seaPlanFor } from './sea-bands';
-import { buildTerrainChunks } from './terrain-mesh';
+import type { buildTerrainChunks } from './terrain-mesh';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
@@ -801,6 +801,8 @@ interface Clip {
 }
 
 export interface RoadSceneOptions {
+  /** Authored-face assembly loads with race-parts. Explicit null means a held, not-yet-ready scene. */
+  terrainChunks?: typeof buildTerrainChunks | null;
   /** Roadside scenery density: 1 = the default spacing, 0 = none (`render.roadsideDensity`). */
   roadsideDensity?: number;
   /** The race's seed: the scenery scatter derives from it (playtest 1c item 2). Default 1. */
@@ -1107,6 +1109,10 @@ export function buildRoadScene(
   opts: RoadSceneOptions = {},
 ): RoadScene {
   const authoredTerrain = road.terrain;
+  if (authoredTerrain && opts.terrainChunks === undefined)
+    throw new Error(
+      'Authored terrain requires its drawing builder (or explicit null while the race is held)',
+    );
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
@@ -3308,7 +3314,7 @@ export function buildRoadScene(
     }
   }
   if (authoredTerrain) {
-    for (const { key, surface, geometry } of buildTerrainChunks(authoredTerrain, chunkKey)) {
+    for (const { key, surface, geometry } of opts.terrainChunks?.(authoredTerrain, chunkKey) ?? []) {
       const mesh = new Mesh(geometry, look.material(surface === 'water' ? 'water' : 'land'));
       mesh.name = surface === 'water' ? 'road-terrain-water' : 'road-terrain-land';
       triangles += trisOf(geometry);

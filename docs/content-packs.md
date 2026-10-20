@@ -1241,8 +1241,22 @@ are preserved with the offline [terrain recipe](../tools/gis/terrain/README.md).
 collar is an authored blend below the road, and river height is a DEM proxy, not a surveyed
 shore or current river stage. No rails are added merely because grass changes shade.
 The narrow rural verges remain; legacy vignette placement has no land reach on this network.
-Render-only land scatter is omitted, including trees, because authored land is playable and
-these solids have no contacts. Water props retain source-height and coverage checks.
+Render-only land scatter remains omitted because authored land is playable. `[default]`
+Rural spans instead share a seeded broadleaf-tree plan (`road/structures/terrain-trees.ts`)
+between rendering and simulation. Roots require dry source coverage at the centre and eight
+rim samples, reject steep root footprints, and keep the whole crown plus an 8 m recovery strip
+clear of nearby lanes and shoulders. These are bounded placement samples, not exact polygon
+coverage or a survey of real trees. The generic original procedural broadleaf is reused;
+central tapered trunks are solid, with up to 6 cm of radial allowance around their faceted
+drawing, while crowns and branch tips remain forgiving. Grounded and airborne riders use the
+existing upright capsule and heavy-object impact rule; crashed rider and bike particles meet
+the same absolute trunk heights. This does not add full rotated-body collision.
+
+The tree drawing is part of the existing lazy race-parts chunk. Authored-terrain races hold
+simulation and countdown until that current drawing path is available; low scenery settings
+retain nearby physical trees. Missing chunks use the existing next-race retry boundary.
+No pack/save field or new external asset is introduced. Other themes and omitted terrain retain
+their current scenery policy. Water props retain source-height and coverage checks.
 Enabling other scenery cohorts requires checking their ground support and contacts first:
 pedestrians, ground-based landmarks, planned furniture and smashables do not automatically
 inherit the new source. Do not enable terrain on another route without that consumer check.

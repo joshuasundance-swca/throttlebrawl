@@ -27,6 +27,7 @@ import { Mesh, Raycaster, Vector3, type Object3D } from 'three';
 import type { BackdropNetworkFile } from '../../src/render/backdrop/data';
 import { waterAtOf, waterFloors } from '../../src/render/backdrop/water';
 import { buildRoadScene } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 import {
   courseEdgeTopAt,
   edgeTopAt,
@@ -114,7 +115,11 @@ function netOf(id: string): Net {
   )?.[1];
   const floors = backdrop ? waterFloors(backdrop) : [];
   const waterAt = floors.length ? waterAtOf(floors) : undefined;
-  const scene = buildRoadScene(t.road, look, t.dressing, { seed: 1, ...(waterAt ? { waterAt } : {}) });
+  const scene = buildRoadScene(t.road, look, t.dressing, {
+    seed: 1,
+    terrainChunks: buildTerrainChunks,
+    ...(waterAt ? { waterAt } : {}),
+  });
   const index = new DownIndex(scene.group, SURFACES);
   scene.dispose();
   const drawnAt = (x: number, z: number, top: number): Drawn => {

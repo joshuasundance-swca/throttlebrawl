@@ -37,6 +37,8 @@ import {
   type RoadPos,
 } from '../../road';
 import { BODY_RADIUS_M, wallBand, type TumbleBody } from './body';
+import type { TerrainTreePlan } from '../../road/structures/terrain-trees';
+import { constrainTrees, treeVelocity, type TreeContact } from './tree-contacts';
 
 const GRAVITY = 9.81;
 
@@ -297,15 +299,19 @@ export function stepCluster(
   offRoad = false,
   tops?: TopUnder,
   honest = false,
+  trees?: TerrainTreePlan,
 ): ClusterContact {
+  if (dt === 0) return overboardContact(road, c, false, false);
   if (c.splashed) return overboardContact(road, c, false, false);
+  const previous =
+    road.terrain && trees?.items.length ? c.p.map((q) => ({ x: q.x, y: q.y, z: q.z })) : undefined;
   for (const q of c.p) {
     q.vy -= GRAVITY * dt;
     q.x += q.vx * dt;
     q.y += q.vy * dt;
     q.z += q.vz * dt;
   }
-  if (road.terrain) return stepTerrainCluster(road, c, dt, mu, offRoad, tops);
+  if (road.terrain) return stepTerrainCluster(road, c, dt, mu, offRoad, tops, trees, previous);
   if (c.overboard) {
     relax(c);
     return fallToWater(road, c, false, honest);
@@ -376,6 +382,8 @@ function stepTerrainCluster(
   mu: number,
   offRoad: boolean,
   tops?: TopUnder,
+  trees?: TerrainTreePlan,
+  previousPoints?: readonly { x: number; y: number; z: number }[],
 ): ClusterContact {
   const previous = centre(c.p);
   previous.x -= previous.vx * dt;
@@ -401,8 +409,14 @@ function stepTerrainCluster(
     return sample;
   };
   const hit = c.p.map((q, i) => q.y < support(q, i).y);
-  for (let it = 0; it < ITERATIONS; it++) {
+  const treeContacts: TreeContact[] = [];
+  if (trees && previousPoints) constrainTrees(c.p, trees, previousPoints, treeContacts);
+  // A slender trunk can pin an axle while the other points move past it: converge those links
+  // with the contact, without changing ordinary no-contact trajectories.
+  for (let it = 0; it < (treeContacts.length ? ITERATIONS * 3 : ITERATIONS); it++) {
+    const before = previousPoints ? c.p.map((q) => ({ x: q.x, y: q.y, z: q.z })) : undefined;
     linkPositions(c);
+    if (trees && before) constrainTrees(c.p, trees, before, treeContacts);
     c.p.forEach((q, i) => {
       // Constraints move a particle across a sloping face: sample again at its own corrected XYZ.
       q.y = Math.max(q.y, support(q, i).y);
@@ -429,6 +443,7 @@ function stepTerrainCluster(
     q.vz = outgoing * n.z + tz * k;
   });
   for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
+  for (const contact of treeContacts) treeVelocity(contact);
   let at = centre(c.p);
   let p = road.project(at.x, at.z, at.edge);
   const band = wallBand(road, p.edge, p.s, offRoad);

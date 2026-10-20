@@ -34,6 +34,7 @@ import {
 import { createFlatLook } from '../../src/render/look';
 import { terrainAt } from '../../src/road/terrain';
 import { buildRoadScene, ROAD_CHUNK_M, type RoadDressing } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 import { DEPTH_M, halfAlongOf, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 
 // The real roads landed in the region packs as routes (the maintainer, 2026-10-01: "Yes, add as
@@ -424,7 +425,7 @@ function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) 
   const farBad: string[] = [];
   let gridSeeds = 0;
   for (const seed of seeds) {
-    const built = buildRoadScene(road, look, dressing, { seed });
+    const built = buildRoadScene(road, look, dressing, { seed, terrainChunks: buildTerrainChunks });
     const land = built.spots.filter((s) => LAND.has(s.kind));
     // Each seed's own grid: the meshes a ray may meet are seeded too (Samish, the Gorge, Russian
     // Hill and Key West each draw 4 different sets of them over these 10 seeds), so none is shared.
@@ -509,7 +510,10 @@ function landScene(id: string) {
   const road = createRoadNetwork({ network, roads });
   const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
   // The land is the same for every seed (only the scatter on it is seeded).
-  return { road, built: buildRoadScene(road, look, dressing, { seed: 1 }) };
+  return {
+    road,
+    built: buildRoadScene(road, look, dressing, { seed: 1, terrainChunks: buildTerrainChunks }),
+  };
 }
 
 const fmtEnd = (o: OpenLandEnd) =>
