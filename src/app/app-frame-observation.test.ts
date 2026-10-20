@@ -49,6 +49,9 @@ const boundary = vi.hoisted(() => ({
   roadWait: null as Promise<void> | null,
   chunkWait: null as Promise<void> | null,
   chunkMissing: false,
+  runtimeWait: null as Promise<void> | null,
+  runtimeMissing: false,
+  chunkRequests: [] as string[],
 }));
 
 vi.mock('../sim/api', async (original) => {
@@ -114,8 +117,13 @@ vi.mock('../content', async (original) => {
   return {
     ...module,
     loadChunk: async <T>(name: string, load: () => Promise<T>, env?: import('../content').ChunkEnv) => {
+      boundary.chunkRequests.push(name);
+      if (name === 'measurement runtime') {
+        await boundary.runtimeWait;
+        if (boundary.runtimeMissing) return null;
+      }
       await boundary.chunkWait;
-      return boundary.chunkMissing ? null : module.loadChunk(name, load, env);
+      return boundary.chunkMissing && name === 'measurement scene' ? null : module.loadChunk(name, load, env);
     },
     createPackLibrary: (options: Parameters<typeof module.createPackLibrary>[0]) => {
       const library = module.createPackLibrary(options);
@@ -349,6 +357,10 @@ describe('AppHandle actual render wiring', () => {
     boundary.roadWait = null;
     boundary.chunkWait = null;
     boundary.chunkMissing = false;
+    boundary.runtimeWait = null;
+    boundary.runtimeMissing = false;
+    boundary.chunkRequests = [];
+    boundary.wakeLoss = null;
     boundary.render.mockReset();
     boundary.audioFrame.mockReset();
     boundary.countdownBeat.mockReset();
@@ -1203,6 +1215,81 @@ describe('AppHandle actual render wiring', () => {
     expect(app.snapshot()).toBe(current);
     expect(boundary.receipt.mock.calls.length).toBe(receipts);
     expect(app.state()).toBe('race');
+  });
+  it('a held runtime import keeps one entry owner, and abort settles without waiting for the import', async () => {
+    app.tap();
+    let release!: () => void;
+    boundary.runtimeWait = new Promise<void>((done) => {
+      release = done;
+    });
+    const controller = new AbortController();
+    const first = app.beginMeasurement({ signal: controller.signal, driverForRepeat: () => vi.fn() });
+    expect(boundary.chunkRequests).toContain('measurement runtime');
+    expect(boundary.chunkRequests).not.toContain('measurement scene');
+    const second = await begin();
+    expect(second).toMatchObject({ reason: 'owner-busy' });
+    expect(Object.isFrozen(second)).toBe(true);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    controller.abort();
+    expect(await first).toMatchObject({ reason: 'aborted' });
+    expect(boundary.wakeLoss).toBeNull();
+    release();
+    await vi.dynamicImportSettled();
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    expect(boundary.driver).not.toHaveBeenCalled();
+  });
+  it('ordinary navigation supersedes a held runtime import and stale fulfillment leaves the race alone', async () => {
+    app.tap();
+    let release!: () => void;
+    boundary.runtimeWait = new Promise<void>((done) => {
+      release = done;
+    });
+    const first = begin();
+    expect(boundary.chunkRequests).toContain('measurement runtime');
+    expect(boundary.chunkRequests).not.toContain('measurement scene');
+    app.startRace();
+    expect(await first).toMatchObject({ reason: 'superseded-before-start' });
+    const current = app.snapshot();
+    const receipts = boundary.receipt.mock.calls.length;
+    release();
+    await vi.dynamicImportSettled();
+    expect(app.state()).toBe('race');
+    expect(app.snapshot()).toBe(current);
+    expect(boundary.receipt.mock.calls.length).toBe(receipts);
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    expect(boundary.wakeLoss).toBeNull();
+    expect(boundary.driver).not.toHaveBeenCalled();
+  });
+  it.each(['hidden', 'lost-context'] as const)(
+    'a %s hold retires a held runtime entry before its import resolves',
+    async (holdKind) => {
+      app.tap();
+      let release!: () => void;
+      boundary.runtimeWait = new Promise<void>((done) => {
+        release = done;
+      });
+      const pending = begin();
+      if (holdKind === 'hidden') boundary.lifecycle!.onHidden('visibility');
+      else context(true);
+      expect(await pending).toMatchObject({ reason: 'superseded-before-start' });
+      release();
+      await vi.dynamicImportSettled();
+      expect(boundary.audioAcquire).not.toHaveBeenCalled();
+      expect(boundary.wakeLoss).toBeNull();
+    },
+  );
+  it('an unavailable runtime import reports preparation failure and permits retry', async () => {
+    app.tap();
+    boundary.runtimeMissing = true;
+    await expect(begin()).rejects.toThrow('Measurement runtime code unavailable');
+    expect(boundary.audioAcquire).not.toHaveBeenCalled();
+    boundary.runtimeMissing = false;
+    const next = await begin();
+    expect(next.kind).toBe('started');
+    if (next.kind === 'started') {
+      next.session.stop('collector-target');
+      await next.session.ended;
+    }
   });
   it('unavailable diagnostic code releases ownership and permits a subsequent measurement', async () => {
     app.tap();
