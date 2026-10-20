@@ -56,6 +56,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, stripVTControlCharacters } from 'node:util';
 import { hitTimeout } from './rerun-main.mjs';
+import { hasSuccessfulMainGate } from './main-acceptance.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1327,8 +1328,9 @@ async function mainCiRun(/** @type {string} */ sha) {
 }
 
 /**
- * Main's own ci run as the train reads it: 'success', 'failure' (red), 'pending' (not finished) or
- * 'none' (no run, or no verdict). A job that hits its timeout-minutes ends `cancelled`, and the run
+ * Main's own ci run as the train reads it: 'success' requires its completed successful gate in the
+ * complete latest-attempt jobs. Otherwise it is 'failure' (red), 'pending' (not finished) or 'none'
+ * (no run, or no accepted verdict). A job that hits its timeout-minutes ends `cancelled`, and the run
  * then concludes `cancelled`, not `failure` (main run 37423758824, 2026-10-06), so a cancelled run is
  * red when its jobs say a timeout cancelled it, by the same rule rerun-main.yml re-runs it by: at
  * least one cancelled job, and every cancelled job timed out. A run a person cancelled (a job ended
@@ -1336,14 +1338,14 @@ async function mainCiRun(/** @type {string} */ sha) {
  * jobs), is no verdict, as before; rerun-main.yml leaves those alone too, so a wait for its re-run
  * would wait for nothing.
  * @param {{ status: string, conclusion: string } | null} r the run as it is now
- * @param {{ conclusion: string, timedOut: boolean }[]} [jobs] its latest attempt's jobs, each with
- *   whether its annotations say it timed out (read only for a cancelled run: mainCiState)
+ * @param {{ name?: string, status?: string, conclusion: string | null, timedOut?: boolean }[]} [jobs]
+ *   complete jobs of its latest attempt for success, or annotation-backed timeouts for a cancel
  * @returns {'success' | 'failure' | 'pending' | 'none'}
  */
 export function ciState(r, jobs = []) {
   if (!r) return 'none';
   if (r.status !== 'completed') return 'pending';
-  if (r.conclusion === 'success') return 'success';
+  if (r.conclusion === 'success') return hasSuccessfulMainGate(jobs) ? 'success' : 'none';
   if (RED.has(r.conclusion)) return 'failure';
   if (r.conclusion !== 'cancelled') return 'none';
   const cancelled = jobs.filter((j) => j.conclusion === 'cancelled');
@@ -1351,15 +1353,113 @@ export function ciState(r, jobs = []) {
 }
 
 /**
- * ciState of main's own run, reading a cancelled run's latest attempt's jobs and, for each cancelled
- * one, its check run's annotations: the runner's "has exceeded the maximum execution time" tells a
- * timeout from a cancel (hitTimeout, rerun-main.mjs). Needs `checks: read`; any other run asks
- * nothing more.
+ * The same API-backed classification used by readMain, including a completed successful gate.
+ * Cancelled jobs still use check-run annotations to distinguish timeouts from a person's cancel.
  * @param {Awaited<ReturnType<typeof mainCiRun>>} r
  */
 export async function mainCiState(r) {
-  if (!r || r.status !== 'completed' || r.conclusion !== 'cancelled') return ciState(r);
-  return ciState(r, await cancelledRunJobs(r));
+  return (await readMainRun(r)).state;
+}
+
+/** @typedef {{ id: number, name: string, status: string, conclusion: string | null }} MainJob */
+
+/** Read the current attempt instead of trusting a potentially stale workflow listing. */
+async function refreshMainRun(/** @type {NonNullable<Awaited<ReturnType<typeof mainCiRun>>>} */ run) {
+  /** @type {any} */
+  const detail = await api('GET', `/repos/${repo()}/actions/runs/${run.id}`);
+  if (
+    detail?.id !== run.id ||
+    !Number.isSafeInteger(detail.run_attempt) ||
+    detail.run_attempt < 1 ||
+    detail.run_attempt < run.attempt ||
+    typeof detail.status !== 'string' ||
+    (detail.conclusion !== null && typeof detail.conclusion !== 'string')
+  )
+    throw new Error('main run detail is incomplete or mismatched');
+  return {
+    id: run.id,
+    status: detail.status,
+    conclusion: String(detail.conclusion ?? ''),
+    attempt: Number(detail.run_attempt),
+  };
+}
+
+/** A gate can establish acceptance only in a complete, unambiguous list of one attempt's jobs. */
+async function completeMainJobs(/** @type {NonNullable<Awaited<ReturnType<typeof mainCiRun>>>} */ run) {
+  /** @type {MainJob[]} */
+  const jobs = [];
+  const ids = new Set();
+  let total;
+  for (let page = 1; page <= 100; page++) {
+    /** @type {any} */
+    const res = await api(
+      'GET',
+      `/repos/${repo()}/actions/runs/${run.id}/attempts/${run.attempt}/jobs?per_page=100${page === 1 ? '' : `&page=${page}`}`,
+    );
+    if (
+      !Number.isSafeInteger(res?.total_count) ||
+      res.total_count < 0 ||
+      !Array.isArray(res.jobs) ||
+      res.jobs.length > 100
+    )
+      throw new Error('main jobs response is incomplete');
+    if (total !== undefined && total !== res.total_count)
+      throw new Error('main jobs count changed while reading');
+    total = res.total_count;
+    for (const job of res.jobs) {
+      if (
+        !job ||
+        !Number.isSafeInteger(job.id) ||
+        ids.has(job.id) ||
+        typeof job.name !== 'string' ||
+        typeof job.status !== 'string' ||
+        (job.conclusion !== null && typeof job.conclusion !== 'string') ||
+        (job.run_id !== undefined && job.run_id !== run.id) ||
+        (job.run_attempt !== undefined && job.run_attempt !== run.attempt)
+      )
+        throw new Error('main jobs contain malformed, duplicate or mismatched rows');
+      ids.add(job.id);
+      jobs.push(job);
+    }
+    if (jobs.length === total) return jobs;
+    if (jobs.length > total || res.jobs.length < 100) throw new Error('main jobs response is truncated');
+  }
+  throw new Error('main jobs exceed the readable page limit');
+}
+
+/** One reader for plan, report and mainCiState; job rows are usable only with an accepted gate. */
+async function readMainRun(/** @type {Awaited<ReturnType<typeof mainCiRun>>} */ run) {
+  if (run?.status === 'completed' && run.conclusion === 'success') {
+    try {
+      run = await refreshMainRun(run);
+      if (run.status === 'completed' && run.conclusion === 'success') {
+        const jobs = await completeMainJobs(run);
+        const final = await refreshMainRun(run);
+        if (
+          final.attempt === run.attempt &&
+          final.status === run.status &&
+          final.conclusion === run.conclusion
+        ) {
+          const state = ciState(run, jobs);
+          return { run, state, timedOut: [], jobs: state === 'success' ? jobs : [] };
+        }
+        run = final;
+        if (run.status === 'completed' && run.conclusion === 'success')
+          throw new Error('main attempt changed while reading its jobs');
+      }
+    } catch (err) {
+      console.log(`main: no accepted gate: ${err instanceof Error ? err.message : err}`);
+      return { run, state: /** @type {const} */ ('none'), timedOut: [], jobs: [] };
+    }
+  }
+  const jobs =
+    run?.status === 'completed' && run.conclusion === 'cancelled' ? await cancelledRunJobs(run) : [];
+  return {
+    run,
+    state: ciState(run, jobs),
+    timedOut: jobs.filter((j) => j.timedOut).map((j) => j.name),
+    jobs: [],
+  };
 }
 
 /**
@@ -1388,18 +1488,11 @@ async function cancelledRunJobs(r) {
 }
 
 /**
- * Main's own newest ci run on a commit and how the train reads it (plan's gate, report's blame), with
- * the names of its jobs that ran past their time limit (read only for a cancelled run).
+ * Main's own newest ci run on a commit and how the train reads it (plan's gate, report's blame),
+ * accepted job rows for timeout controls, and the names of jobs that timed out on a cancelled run.
  */
 export async function readMain(/** @type {string} */ sha) {
-  const run = await mainCiRun(sha);
-  const jobs =
-    run && run.status === 'completed' && run.conclusion === 'cancelled' ? await cancelledRunJobs(run) : [];
-  return {
-    run,
-    state: ciState(run, jobs),
-    timedOut: jobs.filter((j) => j.timedOut).map((j) => j.name),
-  };
+  return readMainRun(await mainCiRun(sha));
 }
 
 export async function postStatus(
@@ -1854,21 +1947,11 @@ export async function cmdReport(cfg = loadConfig()) {
       read = await readMain(base);
     }
     mainCi = read.state;
-    const mainRun = read.run;
     // A pure timeout at cap 1 is blamed only if the PR's diff can reach the job and main's own run
     // of that job passed (decide): read both. Either one unread means nobody is blamed.
     if (timedOut.length && !failedJobs.length && lone.cap === 1 && mainCi !== 'failure') {
-      try {
-        if (mainRun)
-          mainJobs = Object.fromEntries(
-            (await jobsOf(mainRun.id, mainRun.attempt)).map((j) => [
-              String(j.name),
-              String(j.conclusion ?? ''),
-            ]),
-          );
-      } catch (err) {
-        console.log(`report: could not read main's own jobs: ${err instanceof Error ? err.message : err}`);
-      }
+      if (mainCi === 'success')
+        mainJobs = Object.fromEntries(read.jobs.map((j) => [j.name, String(j.conclusion ?? '')]));
       try {
         files = await prFiles(lone.number);
       } catch (err) {
