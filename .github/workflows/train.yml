@@ -172,14 +172,43 @@ jobs:
   # suite read `cancelled` (report finds it by the job's annotation and counts it red), so a lone PR
   # that timed out is judged with its own branch untested: blamed only at cap 1, when its diff can
   # reach the job and main's own run of that job passed (scripts/train.mjs decide).
-  control:
+  # Only diagnostic reruns are narrowed. The original full suite remains the acceptance oracle.
+  # Read main's own scripts with a read token; incomplete API observations retain full controls.
+  control-plan:
     needs: [plan, suite]
+    if: always() && !cancelled() && needs.plan.outputs.single != '' && needs.plan.outputs.single_same_tree != 'true' && needs.suite.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      scope: ${{ steps.select.outputs.scope }}
+      selection: ${{ steps.select.outputs.selection }}
+      jobs: ${{ steps.select.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: |
+            scripts
+            .github/workflows
+      - name: Complete failed-shard inventory or full diagnostic fallback
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/control-plan.mjs
+
+  control:
+    needs: [plan, suite, control-plan]
     if: always() && !cancelled() && needs.plan.outputs.single != '' && needs.plan.outputs.single_same_tree != 'true' && needs.suite.result == 'failure'
     permissions:
       contents: read
     uses: ./.github/workflows/suite.yml
     with:
       full: true
+      diagnostic-control: true
+      control-selection: ${{ needs.control-plan.result == 'success' && needs.control-plan.outputs.selection || '' }}
       base: ${{ needs.plan.outputs.single }}
       save-caches: false
       build-id: ${{ needs.plan.outputs.single }}
@@ -190,7 +219,7 @@ jobs:
 
   report:
     name: report
-    needs: [plan, suite, control]
+    needs: [plan, suite, control-plan, control]
     if: always() && needs.plan.outputs.depart == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -210,7 +239,7 @@ jobs:
       # This job checks out main's scripts, never the assembled PR code, with its write token.
       - name: Record the tree this train tested
         id: tested
-        if: needs.suite.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        if: needs.suite.result == 'success' && needs.suite.outputs.coverage == 'full' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
           TRAIN_TREE: ${{ needs.plan.outputs.tree }}
         run: |
@@ -236,7 +265,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TRAIN_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           TRAIN_RESULT: ${{ needs.suite.result }}
+          TRAIN_COVERAGE: ${{ needs.suite.outputs.coverage }}
           TRAIN_CONTROL: ${{ needs.control.result }}
+          TRAIN_CONTROL_SCOPE: ${{ needs.control-plan.result == 'success' && needs.control-plan.outputs.scope || 'full' }}
+          TRAIN_CONTROL_JOBS: ${{ needs.control-plan.outputs.jobs }}
           TRAIN_SINGLE_SAME_TREE: ${{ needs.plan.outputs.single_same_tree }}
           TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}
           TRAIN_BASE: ${{ needs.plan.outputs.base }}

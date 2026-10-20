@@ -1098,7 +1098,7 @@ export function blameComment({
     kind === 'same-tree'
       ? `**Bundle train ${run}: this PR's exact source tree ${exactResult} in the train.**`
       : kind === 'composition'
-        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
+        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** The runs disagree; different source, build stamps or runner conditions may explain the difference. A causal source-composition failure is unproven.`
         : `**Bundle train ${run}: this PR ${red} alone on main.**`;
   const lines = [
     COMMENT_TAG,
@@ -1118,7 +1118,7 @@ export function blameComment({
     kind === 'same-tree'
       ? `- The assembled train and this PR head have the same full Git tree. ${late ? `The full suite did not finish${failed.length ? ' and also had failed jobs' : ''}` : `The full suite ${exactResult} on that exact source tree`}; ${sameTreeControl(control, controlScope, controlJobs)}; a source-tree composition failure is excluded.`
       : kind === 'own'
-        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
+        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too; a failure was reproduced on the branch.`
         : kind === 'composition'
           ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) passes the full suite.`
           : controlScope === 'targeted'

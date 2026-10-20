@@ -18,17 +18,52 @@ type Selection = {
   totals: { unit: number; sim: number; browser: number };
 };
 
-const defaults = {
-  unit: [1, 2, 3],
-  sim: [1, 2, 3, 4, 5, 6, 7, 8],
-  browser: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-};
+const inventory = suiteJobs(workflow);
+const totals = { unit: inventory.unit.slices, sim: inventory.sim.slices, browser: inventory.e2e.slices };
+const jobBlock = (tier: string) => workflow.split(`\n  ${tier}:\n`)[1]?.split(/\n {2}[\w-]+:\n/)[0] ?? '';
+const field = (text: string, key: string) => text.match(new RegExp(`^ +${key}: (.+)$`, 'm'))?.[1] ?? '';
 
-function evaluateControl(selection: Selection | null, diagnostic: boolean, tier: keyof typeof defaults) {
-  const shards = selection === null ? defaults[tier] : selection[tier];
-  const runs = selection === null || !diagnostic || shards.length > 0;
-  const denominator = selection === null ? defaults[tier].length : selection.totals[tier];
-  return { shards, runs, denominator, perf: (shard: number) => shard === denominator };
+// Execute the actual checked-in expressions, rather than a copy of the intended selection rule.
+function evaluateControl(selection: Selection | null, diagnostic: boolean, tier: keyof typeof totals) {
+  const text = jobBlock(tier);
+  const context = {
+    inputs: {
+      'control-selection': selection === null ? '' : JSON.stringify(selection),
+      'diagnostic-control': diagnostic,
+      full: true,
+      'upload-dist': true,
+    },
+    matrix: { shard: 0 },
+    strategy: { 'job-total': 0 },
+    fromJSON: JSON.parse,
+    join: (values: unknown[], separator: string) => values.join(separator),
+  };
+  const evaluate = (raw: string): unknown =>
+    runInNewContext(
+      raw.replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\.([a-z]+-[a-z-]+)/g, "['$1']"),
+      context,
+    );
+  const runs = evaluate(field(text, 'if'));
+  const shards = evaluate(field(text, 'shard')) as number[];
+  context.strategy['job-total'] = shards.length;
+  context.matrix.shard = shards[0] ?? 0;
+  const name = field(text, 'name').replace(/\$\{\{(.+?)\}\}/g, (_all, expression: string) =>
+    String(evaluate(expression)),
+  );
+  const denominator = Number(name.match(/\/(\d+)\)/)?.[1]);
+  const last =
+    jobBlock('browser')
+      .split('- name: Build, browser tests (the last slice), then perf on the same build')[1]
+      ?.split('- name: Screenshots')[0] ?? '';
+  return {
+    shards,
+    runs,
+    denominator,
+    perf: (shard: number) => {
+      context.matrix.shard = shard;
+      return evaluate(field(last, 'if'));
+    },
+  };
 }
 
 function executeCoverage(env: { diagnostic: string; selection: string; full: string }) {
@@ -56,13 +91,46 @@ describe('diagnostic control workflow contract', () => {
     expect(workflow).toContain('diagnostic-control:');
     expect(workflow).toContain('control-selection:');
     expect(workflow).toContain('coverage: ${{ steps.coverage.outputs.value }}');
-    expect(workflow).toContain('value: ${{ jobs.static.outputs.coverage }}');
+    expect(workflow).toContain('jobs.static.outputs.coverage');
     expect(workflow).toContain('appendFileSync(process.env.GITHUB_OUTPUT');
+  });
+
+  it('exports diagnostic coverage when the static job is excluded', () => {
+    const output =
+      workflow.match(
+        /description: full, quick, or diagnostic coverage completed by this suite\n +value: (.+)/,
+      )?.[1] ?? 'false';
+    const inputs = {
+      'diagnostic-control': true,
+      'control-selection': JSON.stringify({
+        static: false,
+        unit: [],
+        sim: [totals.sim],
+        browser: [],
+        totals,
+      }),
+      full: true,
+    };
+    const evaluate = (raw: string, staticCoverage: string): unknown =>
+      runInNewContext(raw.replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\.([a-z]+-[a-z-]+)/g, "['$1']"), {
+        inputs,
+        fromJSON: JSON.parse,
+        jobs: { static: { outputs: { coverage: staticCoverage } } },
+      });
+    expect(evaluate(field(jobBlock('static'), 'if'), '')).toBe(false);
+    expect(evaluate(output, '')).toBe('diagnostic');
+    expect(evaluate(output, 'full')).toBe('diagnostic');
   });
 
   it('writes the actual reusable-workflow output for normal and diagnostic calls', () => {
     expect(executeCoverage({ diagnostic: 'false', selection: '', full: 'true' })).toEqual([
       { path: 'controlled-output', value: 'value=full\n' },
+    ]);
+    expect(executeCoverage({ diagnostic: 'false', selection: '', full: 'false' })).toEqual([
+      { path: 'controlled-output', value: 'value=quick\n' },
+    ]);
+    expect(executeCoverage({ diagnostic: 'true', selection: '', full: 'true' })).toEqual([
+      { path: 'controlled-output', value: 'value=diagnostic\n' },
     ]);
     const selection = JSON.stringify({
       static: false,
@@ -74,6 +142,9 @@ describe('diagnostic control workflow contract', () => {
     expect(executeCoverage({ diagnostic: 'true', selection, full: 'true' })).toEqual([
       { path: 'controlled-output', value: 'value=diagnostic\n' },
     ]);
+    expect(() => executeCoverage({ diagnostic: 'false', selection, full: 'true' })).toThrow(
+      'requires diagnostic-control=true',
+    );
   });
 
   it('uses selected matrices while preserving the canonical shard denominators', () => {
@@ -95,14 +166,10 @@ describe('diagnostic control workflow contract', () => {
 
   it.each([
     ['normal full', null, false],
-    [
-      'empty diagnostic tier',
-      { static: false, unit: [], sim: [2], browser: [], totals: { unit: 3, sim: 8, browser: 11 } },
-      true,
-    ],
+    ['empty diagnostic tier', { static: false, unit: [], sim: [totals.sim], browser: [], totals }, true],
     [
       'selected diagnostic tier',
-      { static: false, unit: [2], sim: [], browser: [], totals: { unit: 3, sim: 8, browser: 11 } },
+      { static: false, unit: [totals.unit], sim: [], browser: [totals.browser], totals },
       true,
     ],
   ] as const)(
@@ -112,10 +179,11 @@ describe('diagnostic control workflow contract', () => {
       const sim = evaluateControl(selection, diagnostic, 'sim');
       const browser = evaluateControl(selection, diagnostic, 'browser');
       if (selection === null) {
-        expect(unit.shards).toEqual(defaults.unit);
-        expect(sim.shards).toEqual(defaults.sim);
-        expect(browser.shards).toEqual(defaults.browser);
-        expect(browser.perf(11)).toBe(true);
+        for (const tier of ['unit', 'sim', 'browser'] as const)
+          expect(evaluateControl(null, false, tier).shards).toEqual(
+            Array.from({ length: totals[tier] }, (_, i) => i + 1),
+          );
+        expect(browser.perf(totals.browser)).toBe(true);
       } else {
         expect(unit.runs).toBe(selection.unit.length > 0);
         expect(sim.runs).toBe(selection.sim.length > 0);

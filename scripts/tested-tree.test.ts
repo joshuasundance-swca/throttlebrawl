@@ -185,7 +185,7 @@ describe('train tree evidence precedes landing', () => {
     const evaluate = (result: string, dry = false) =>
       Boolean(
         runInNewContext(condition ?? 'false', {
-          needs: { suite: { result } },
+          needs: { suite: { result, outputs: { coverage: 'full' } } },
           github: { event_name: 'workflow_dispatch' },
           inputs: { dry_run: dry },
         }),
@@ -494,6 +494,8 @@ describe('ci.yml wiring', () => {
   it('only a full-path PR run records the tree it tested: the quick check never vouches for main', () => {
     const rec = /- name: Record the tree this PR run tested\n(?: {8}.*\n)*? {8}if: (.+)\n/.exec(ci);
     expect(rec, 'the record step').not.toBeNull();
-    expect(rec?.[1]).toBe("github.event_name == 'pull_request' && needs.route.outputs.path == 'full'");
+    expect(rec?.[1]).toBe(
+      "github.event_name == 'pull_request' && needs.route.outputs.path == 'full' && needs.suite.outputs.coverage == 'full'",
+    );
   });
 });

@@ -46,7 +46,8 @@ export function selectControlJobs(input) {
       job.name.trim() === '' ||
       !positiveSafeInteger(job.run_id) ||
       job.run_id !== runId ||
-      !positiveSafeInteger(job.run_attempt)
+      !positiveSafeInteger(job.run_attempt) ||
+      job.run_attempt !== attempt
     ) {
       return full('job identity fields are malformed');
     }

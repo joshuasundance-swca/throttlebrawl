@@ -88,7 +88,7 @@ on:
     outputs:
       coverage:
         description: full, quick, or diagnostic coverage completed by this suite
-        value: ${{ jobs.static.outputs.coverage }}
+        value: ${{ (inputs.diagnostic-control || inputs.control-selection != '') && 'diagnostic' || jobs.static.outputs.coverage }}
 
 env:
   BUILD_ID: ${{ inputs.build-id }}
@@ -200,6 +200,9 @@ jobs:
   unit:
     name: unit (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }})
     if: ${{ inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).unit, '') != '' }}
+    env:
+      SHARD: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }}
     runs-on: ubuntu-latest
     # The refreshed table puts three slices at 227 s of job (2026-10-07), about 47% of this timeout.
     # Two slices have a 331 s worker-time lower bound, beyond the unchanged 320 s planning line.
@@ -239,7 +242,7 @@ jobs:
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
       - name: Unit tests, one slice
-        run: npm run check -- --tier unit --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }}
+        run: npm run check -- --tier unit --shard "$SHARD/$SHARD_TOTAL"
       # Fail fast on a PR, as in static above.
       - name: Fail fast, cancel the rest of this PR run
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
@@ -269,6 +272,9 @@ jobs:
   sim:
     name: sim (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }})
     if: ${{ inputs.full && (inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).sim, '') != '') }}
+    env:
+      SHARD: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }}
     runs-on: ubuntu-latest
     # The refreshed plan puts the batch readers at 319 s of job and the other slices at 396 s
     # (2026-10-07 table, 20 s of job setup included), up to 44% of this timeout. 15 minutes since
@@ -312,7 +318,7 @@ jobs:
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
       - name: Seeded sim batch, one slice
-        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }}
+        run: npm run check -- --tier sim --shard "$SHARD/$SHARD_TOTAL"
       # Fail fast on a PR, as in static above.
       - name: Fail fast, cancel the rest of this PR run
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
@@ -343,6 +349,9 @@ jobs:
   browser:
     name: browser (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }})
     if: ${{ inputs.full && (inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).browser, '') != '') }}
+    env:
+      SHARD: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -431,10 +440,10 @@ jobs:
           key: ${{ steps.install.outputs.key }}
       - name: Build, browser tests (one slice)
         if: matrix.shard != (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
-        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }}
+        run: npm run check -- --tier browser --shard "$SHARD/$SHARD_TOTAL"
       - name: Build, browser tests (the last slice), then perf on the same build
         if: matrix.shard == (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
-        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }}
+        run: npm run check -- --tier browser,perf --shard "$SHARD/$SHARD_TOTAL"
       - name: Screenshots
         if: always()
         uses: actions/upload-artifact@v7

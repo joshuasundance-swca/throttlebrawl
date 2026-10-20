@@ -174,4 +174,12 @@ describe('selectControlJobs', () => {
     expect(choose(input)).toMatchObject({ scope: 'targeted' });
     expect(input).toEqual(before);
   });
+
+  it('rejects an irrelevant row from a foreign attempt too', () => {
+    const input = makeInput();
+    input.jobs[1].conclusion = 'failure';
+    input.jobs.push({ ...input.jobs[0], id: 99, name: 'route', run_attempt: 2 });
+    input.totalCount = input.jobs.length;
+    expect(choose(input)).toMatchObject({ scope: 'full' });
+  });
 });

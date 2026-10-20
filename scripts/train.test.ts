@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   CONTEXT,
@@ -2602,7 +2603,8 @@ describe('what a red train says', () => {
       mainCi: 'success',
     });
     expect(c).toContain('<!-- bundle-train -->');
-    expect(c).toContain('composition failure');
+    expect(c).toContain('runs disagree');
+    expect(c).not.toContain('It is a composition failure');
     expect(c).toContain('https://github.com/o/g/actions/runs/5');
     expect(c).toContain('#303 #339');
     expect(c).toContain('```text\ntests/sim/x.test.ts > a\n```');
@@ -2976,7 +2978,7 @@ describe('the workflows', () => {
   // The landing invariant and the off switch also hang on these call sites: with `full: false`, or
   // with no heads to assemble, a gate or a train would go green on less than the whole suite on
   // exactly the bundle.
-  it('the full path, main, every train and its control run the whole suite, on what the plan assembled', () => {
+  it('full acceptance uses the assembled tree, while branch controls are explicitly diagnostic', () => {
     expect(jobs(ci).get('suite')).toContain(
       "\n      full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}\n",
     );
@@ -2992,14 +2994,17 @@ describe('the workflows', () => {
       expect(ride, line).toContain(`\n      ${line}\n`);
     const control = t.get('control') ?? '';
     expect(control).toMatch(
-      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
+      /^ {4}needs: \[plan, suite, control-plan\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
     );
     expect(control).toContain('\n      full: true\n');
+    expect(control).toContain('\n      diagnostic-control: true\n');
     expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
     expect(control).not.toMatch(/^ {6}heads:/m);
     // Every suite job checks out base, then rebuilds the planned tree before anything installs.
     for (const [id, block] of jobs(suite)) {
-      const steps = block.split(/\n {6}- /);
+      const steps = block
+        .split(/\n {6}- /)
+        .filter((step) => !step.startsWith('name: Validate control selection and set coverage'));
       expect(steps[1], id).toMatch(
         /^uses: actions\/checkout@\S+\n {8}with:\n {10}ref: \$\{\{ inputs\.base \}\}\n/,
       );
@@ -3013,7 +3018,7 @@ describe('the workflows', () => {
   it("the report runs after every departed train, red or green, and reads the suite's own result", () => {
     const report = jobs(train).get('report') ?? '';
     expect(report).toMatch(
-      /^ {4}needs: \[plan, suite, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
+      /^ {4}needs: \[plan, suite, control-plan, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
     );
     expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
     expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
@@ -3024,12 +3029,18 @@ describe('the workflows', () => {
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
   });
 
-  it('the quick check is static (with the build and size budget) plus the unit slices, at most 4 jobs', () => {
+  it('the ordinary quick check runs static with budget and unit, excluding the heavy tiers', () => {
     const j = jobs(suite);
-    for (const id of ['sim', 'browser']) expect(j.get(id), id).toMatch(/^ {4}if: inputs\.full$/m);
-    for (const id of ['static', 'unit']) expect(j.get(id), id).not.toMatch(/^ {4}if:/m);
-    const unitSlices = /shard: \[([^\]]*)\]/.exec(j.get('unit') ?? '')?.[1]?.split(',') ?? [];
-    expect(1 + unitSlices.length).toBeLessThanOrEqual(4);
+    for (const [id, text] of j) {
+      const raw = /^ {4}if: (.+)$/m.exec(text)?.[1] ?? 'true';
+      const condition = raw.replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\.([a-z]+-[a-z-]+)/g, "['$1']");
+      expect(
+        runInNewContext(condition, {
+          inputs: { full: false, 'control-selection': '', 'diagnostic-control': false },
+        }),
+        id,
+      ).toBe(['static', 'unit'].includes(id));
+    }
     const stat = j.get('static') ?? '';
     expect(stat).toMatch(/if: \$\{\{ !inputs\.full \}\}\n {8}run: npm run check -- --tier static,budget\n/);
     expect(stat).toMatch(/if: inputs\.full\n {8}run: npm run check -- --tier static\n/);
