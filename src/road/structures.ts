@@ -24,6 +24,7 @@
 // (sim/riders/structures.ts: walls to the roofline, roofs a rider lands on and rides).
 import { cos, sin } from '../core';
 import type { RoadNetwork } from './network';
+import { preparePlainShoulderSupport, prewarmPlainShoulderSupport } from './surface-sampling';
 
 /** What a structure is (the events and the docs name it; the physics is one rule for all of them). */
 export type StructureClass = 'building' | 'landmark' | 'wall' | 'pier' | 'shed' | 'bridge';
@@ -432,7 +433,10 @@ async function loadPlanner(spec: StructureLayerSpec): Promise<StructurePlanner> 
 export async function loadStructurePlanners(
   layers: Readonly<Record<string, StructureLayerSpec>> = STRUCTURE_LAYERS,
 ): Promise<void> {
-  await Promise.all(Object.keys(layers).map((name) => loadPlanner(layers[name] as StructureLayerSpec)));
+  await Promise.all([
+    preparePlainShoulderSupport(),
+    ...Object.keys(layers).map((name) => loadPlanner(layers[name] as StructureLayerSpec)),
+  ]);
 }
 
 /** Loads the planners a network needs (lazy chunks) and plans it: what the app awaits before a race starts. */
@@ -441,6 +445,8 @@ export async function ensureStructures(
   seed: number,
   layers: Readonly<Record<string, StructureLayerSpec>> = STRUCTURE_LAYERS,
 ): Promise<StructurePlan> {
+  await preparePlainShoulderSupport();
+  prewarmPlainShoulderSupport(road);
   const known = structuresOf(road, seed);
   if (known) return known;
   const needed = structureLayersFor(road, layers);

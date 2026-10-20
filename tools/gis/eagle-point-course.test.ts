@@ -9,6 +9,7 @@ import {
   courseAt,
   terrainAt,
   roadBandHeight,
+  prewarmPlainShoulderSupport,
   DRAWN_VERGE_M,
   ROAD_SURFACE_SIMPLIFY,
   lintRoadNetwork,
@@ -59,6 +60,18 @@ describe('Eagle Point: one pass through the South and Central loops', () => {
       expect(supported).toBe(1000);
       process.stdout.write(
         `[shoulder query cost] cold course query ${coldMs.toFixed(2)} ms; 1000 cached band queries ${warmMs.toFixed(2)} ms on dev-machine Node, not renderer/phone timing\n`,
+      );
+      const prepared = createRoadNetwork({ network, roads });
+      const prepareStart = performance.now();
+      prewarmPlainShoulderSupport(prepared);
+      const prepareMs = performance.now() - prepareStart;
+      const preparedStart = performance.now();
+      expect(roadBandHeight(prepared, pos.edge, pos.s, pos.d)).toBe(
+        roadBandHeight(road, pos.edge, pos.s, pos.d),
+      );
+      const preparedMs = performance.now() - preparedStart;
+      process.stdout.write(
+        `[shoulder preparation cost] all-road cache setup ${prepareMs.toFixed(2)} ms before race snapshots; prepared first query ${preparedMs.toFixed(3)} ms on dev-machine Node, not renderer/phone timing\n`,
       );
     } finally {
       built.dispose();
