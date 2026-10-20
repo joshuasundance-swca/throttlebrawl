@@ -19,6 +19,7 @@ describe('physical terrain trees in the actual cost scene', () => {
     );
     const chosen = found.result;
     expect(chosen?.tree).toBeDefined();
+    if (found.seed === null) throw new Error(found.summary);
     const tree = chosen!.tree!;
     const { scene } = await stillSceneOf(chosen!.road.id, found.seed);
     const camera = new PerspectiveCamera(62, 915 / 412, 0.3, 200);

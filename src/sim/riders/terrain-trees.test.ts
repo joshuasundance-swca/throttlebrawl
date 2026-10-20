@@ -118,8 +118,11 @@ describe('source-rooted rural trunks met by riders', () => {
     ]);
     bundle.roads[0]!.tags = [{ s0: 0, s1: 600, side: 'both', tag: 'rural' }];
     const columns = bundle.roads[1]!.samples.data;
-    columns['x'] = columns['x']!.map((x) => x + 100);
-    columns['z'] = columns['z']!.map((z) => z + 600);
+    bundle.roads[1]!.samples.data = {
+      ...columns,
+      x: columns['x']!.map((x) => x + 100),
+      z: columns['z']!.map((z) => z + 600),
+    };
     const road = createRoadNetwork({
       ...bundle,
       network: { ...bundle.network, terrain: config.road.terrain },

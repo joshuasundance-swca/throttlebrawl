@@ -106,8 +106,11 @@ describe('physical trees on authored rural land', () => {
     ]);
     bundle.roads[0]!.tags = [{ s0: 0, s1: 600, side: 'both', tag: 'rural' }];
     const columns = bundle.roads[1]!.samples.data;
-    columns['x'] = columns['x']!.map((x) => x + 65);
-    columns['z'] = columns['z']!.map((z) => z + 600);
+    bundle.roads[1]!.samples.data = {
+      ...columns,
+      x: columns['x']!.map((x) => x + 65),
+      z: columns['z']!.map((z) => z + 600),
+    };
     const network = createRoadNetwork({
       ...bundle,
       network: { ...bundle.network, terrain: { patches: [ground(0)] } },
