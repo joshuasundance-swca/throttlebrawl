@@ -17,9 +17,10 @@
 # One source of `gate` per head commit: this workflow's aggregate job, or the train's status. The
 # train's notes on a waiting PR (why it waits) use their own context, `train`, which no rule requires.
 #
-# On a push to main: the full suite, then (green) deploy to the game Space and the release notes:
-# the backstop after every landing. A push whose tree a green full-path PR run already tested skips
-# that suite: `plan` finds the PR run's record, `prod-build` runs the push-only identity leak scan,
+# On a push to main: bounded preflight selects full, tested or superseded. Full is the backstop;
+# tested reuses an exact full PR/train tree proof. An unrecorded older push can be superseded only
+# by last-observed eligible descendant main CI, and stays UNACCEPTED (no gate, build or publication).
+# On tested, `prod-build` runs the push-only identity leak scan,
 # builds with the prod stamp and boots that build, and the aggregate accepts the skipped suite on
 # that path only (scripts/tested-tree.mjs).
 # No `paths:` filter: a required check behind one never reports on some PRs. Path awareness is the
@@ -53,13 +54,11 @@ env:
   NOTES_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
 
 jobs:
-  # Push to main only: was this exact tree already tested by a green PR run? Every such run's gate
-  # recorded the tree of the merge commit it tested (below); the squash commit has the same tree
-  # whenever main did not move between that run and the merge. Any doubt, an API error included,
-  # says skip=false, and the whole suite runs as before. On a PR this job is skipped, and the suite
-  # starts at once. [default]
+  # Push only. Exact trusted proof wins immediately, including for an older accepted commit.
+  # Otherwise a bounded main/train observation can avoid redundant work on an unaccepted old tree.
+  # Any uncertainty falls back full. skip=true means tested ONLY, never superseded. [default]
   plan:
-    name: tree already tested?
+    name: main preflight
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -68,15 +67,16 @@ jobs:
       contents: read
     outputs:
       skip: ${{ steps.decide.outputs.skip }}
+      path: ${{ steps.decide.outputs.path }}
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts
-      - name: Look up a green PR run that tested this tree
+      - name: Exact proof or eligible descendant (bounded; otherwise full)
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/tested-tree.mjs decide
+        run: node scripts/main-preflight.mjs
 
   # Pull request only: which path this PR takes (train, docs or full), from what it changes (its
   # merge commit against main) and who opened it. The PR's title and body reach the script through
@@ -113,7 +113,7 @@ jobs:
   # (contents: read restated: job permissions replace the workflow's). No other job gets it.
   suite:
     needs: [plan, route]
-    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) && (needs.route.result == 'skipped' || needs.route.result == 'success') }}
+    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.path == 'full')) && (needs.route.result == 'skipped' || needs.route.result == 'success') }}
     permissions:
       actions: write
       contents: read
@@ -145,7 +145,7 @@ jobs:
   prod-build:
     name: prod build (tree already tested)
     needs: [plan]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.skip == 'true' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.path == 'tested' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -200,7 +200,19 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # The aggregate: named `gate` (the one required check) on main and on a PR's docs and full paths,
+  # Routing-only completion is visibly distinct from acceptance. No successful gate means the
+  # train cannot use this run as accepted main or as a passed timeout control.
+  superseded:
+    name: superseded main (not accepted)
+    needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.path == 'superseded' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Explain the unaccepted route
+        run: echo 'An eligible descendant main CI run was last observed. This tree remains unaccepted.' >> "$GITHUB_STEP_SUMMARY"
+
+  # The aggregate: named `gate` (the one required check) on accepted main and on a PR's docs and full paths,
   # and `quick` on the train path, where the train posts `gate`. Its job id is not `gate`, so no
   # placeholder name can ever read as one. Green on exactly two shapes (scripts/tested-tree.mjs
   # gateVerdict): the suite path, where the suite succeeded; or the skip path, only when `plan`
@@ -217,7 +229,7 @@ jobs:
   aggregate:
     name: ${{ needs.route.outputs.path == 'train' && 'quick' || 'gate' }}
     needs: [plan, route, suite, prod-build]
-    if: always()
+    if: ${{ always() && !(needs.plan.result == 'success' && needs.plan.outputs.path == 'superseded') }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:

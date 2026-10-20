@@ -330,7 +330,9 @@ describe('ci.yml wiring', () => {
     );
     for (const job of list.filter((j) => j.needs)) {
       expect(job.cond, `${job.name} has an if:`).toBeDefined();
-      expect(job.cond, job.name).toMatch(/^(?:\$\{\{ )?(?:!cancelled\(\) && |always\(\)(?: \}\})?$)/);
+      expect(job.cond, job.name).toMatch(
+        /^(?:\$\{\{ )?(?:!cancelled\(\) && |always\(\)(?: && |(?: \}\})?$))/,
+      );
     }
   });
 
@@ -348,6 +350,22 @@ describe('ci.yml wiring', () => {
     new RegExp(`\\n {2}${job}:\\n((?:(?: {4}.*)?\\n)*)`).exec(text)?.[1] ?? '';
   const jobBlock = (job: string) => blockIn(ci, job);
   const SUITE_JOBS = ['static', 'unit', 'sim', 'browser'];
+
+  it('keeps supersession separate from accepted main and publication', () => {
+    expect(jobBlock('plan')).toContain('node scripts/main-preflight.mjs');
+    expect(jobBlock('plan')).toContain('path: ${{ steps.decide.outputs.path }}');
+    expect(jobBlock('suite')).toContain("needs.plan.outputs.path == 'full'");
+    expect(jobBlock('prod-build')).toContain("needs.plan.outputs.path == 'tested'");
+    expect(jobBlock('aggregate')).toContain(
+      "!(needs.plan.result == 'success' && needs.plan.outputs.path == 'superseded')",
+    );
+    const routing = jobBlock('superseded');
+    expect(routing).toContain("needs.plan.outputs.path == 'superseded'");
+    expect(routing).toContain('name: superseded main (not accepted)');
+    expect(routing).not.toMatch(/tested-tree|upload-artifact|deploy/);
+    expect(jobBlock('deploy-prod')).toContain("needs.aggregate.result == 'success'");
+    expect(jobBlock('release')).toContain("needs.deploy-prod.result == 'success'");
+  });
 
   it('on a PR, a red suite job cancels the rest of its run, as its last step', () => {
     for (const job of SUITE_JOBS) {

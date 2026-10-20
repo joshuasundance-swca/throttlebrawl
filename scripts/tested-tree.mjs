@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Main skips its suite when the pushed tree was already tested (docs/engineering.md, "CI on GitHub
-// Actions"). Two steps of ci.yml use this file:
+// Actions"). Main's bounded preflight imports decide; ci.yml's acceptance gate uses this CLI:
 //
-//   node scripts/tested-tree.mjs decide [--tree <tree sha>]   (the `plan` job, push to main only)
+//   node scripts/tested-tree.mjs decide [--tree <tree sha>]   (standalone exact-proof lookup)
 //   node scripts/tested-tree.mjs gate                          (the `gate` job; reads NEEDS)
 //
 // A green full PR gate, or a train after its full suite passes and before it posts merge-enabling
