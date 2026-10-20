@@ -1,4 +1,4 @@
-import { openMainMenu, openQuickPlay } from './menu-navigation';
+import { openQuickPlay } from './menu-navigation';
 import { expect, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { PROMPTS } from '../../src/career/onboarding.ts';
@@ -1118,21 +1118,25 @@ const CAREER_SEED = 4;
 
 async function startRace(page: Page, opts: { mirror?: boolean; classic?: boolean; career?: boolean } = {}) {
   await installLayoutProbe(page);
-  if (opts.classic) {
+  if (opts.classic || opts.mirror) {
     // The laptop is the biggest screen here, and software WebGL takes about half a second a frame
     // there in the default ink look's offscreen pass (W-P's busier roads tipped it over in CI three
     // times running). The layout does not depend on the look, so this case races in the Classic
     // look, chosen through the saved record as a player would (as tests/perf/perf.spec.ts does).
-    await page.addInitScript(() => {
-      const record = {
-        format: 'settings',
-        version: 1,
-        build: 'e2e',
-        savedAt: '2026-10-02T00:00:00.000Z',
-        data: { look: 'classic' },
-      };
-      localStorage.setItem('mbrawl:settings', JSON.stringify(record));
-    });
+    // The mirror layout likewise loads from the saved record before the first menu and race draw.
+    await page.addInitScript(
+      ({ classic, mirror }) => {
+        const record = {
+          format: 'settings',
+          version: 1,
+          build: 'e2e',
+          savedAt: '2026-10-02T00:00:00.000Z',
+          data: { ...(classic ? { look: 'classic' } : {}), ...(mirror ? { mirror: true } : {}) },
+        };
+        localStorage.setItem('mbrawl:settings', JSON.stringify(record));
+      },
+      { classic: opts.classic ?? false, mirror: opts.mirror ?? false },
+    );
   }
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
@@ -1152,14 +1156,6 @@ async function startRace(page: Page, opts: { mirror?: boolean; classic?: boolean
   } else {
     await page.locator('#start-screen').click();
     await expect(page.locator('#menu-quick-play')).toBeVisible();
-    if (opts.mirror) {
-      await openMainMenu(page);
-      await page.locator('#menu-settings').click();
-      await page.locator('#settings-tab-controls').click();
-      await page.locator('#settings-mirror').check();
-      await page.keyboard.press('Escape');
-      await expect(page.locator('#menu-quick-play')).toBeVisible();
-    }
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
     await openQuickPlay(page);
     await page.locator('#menu-race').click();
@@ -1167,6 +1163,19 @@ async function startRace(page: Page, opts: { mirror?: boolean; classic?: boolean
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 20);
   // The race's first bark is on the strip: the real pipeline (events, narrative, ticker) is live.
   await expect(page.locator('#hud-ticker[data-cls="bark"]')).toBeVisible({ timeout: 10_000 });
+  if (opts.mirror) {
+    const mirrored = await page.evaluate(() => {
+      const attack = document.getElementById('touch-attack')?.getBoundingClientRect();
+      const health = document.getElementById('hud-health')?.getBoundingClientRect();
+      const middle = window.innerWidth / 2;
+      return {
+        attack: !!attack && attack.width > 0 && attack.right < middle,
+        health: !!health && health.width > 0 && health.left > middle,
+      };
+    });
+    expect(mirrored.attack, 'the attack button is painted on the mirrored left').toBe(true);
+    expect(mirrored.health, 'the player health bar is painted on the mirrored right').toBe(true);
+  }
 }
 
 interface MeasureOpts {

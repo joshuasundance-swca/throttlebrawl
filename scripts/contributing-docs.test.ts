@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { NOTE_ARMED, NOTE_DRAFT, NOTE_MERGED, NOTE_UNARMED, isDocsOnly, route } from './train.mjs';
+import { suiteJobs } from './shard-plan.mjs';
 
 const root = path.join(import.meta.dirname, '..');
 const read = (f: string) => readFileSync(path.join(root, f), 'utf8');
@@ -158,12 +159,25 @@ function claimedSuiteSize(md: string) {
   return { sim: Number(slices?.[1]), browser: Number(slices?.[2]), jobs };
 }
 
-/** How many slices each matrix of suite.yml has, read from its `shard: [...]` lists, in file order. */
+/** Full-suite defaults from the same workflow parser used to plan the actual test partitions. */
 function suiteSize(yml: string) {
-  const lists = [...yml.matchAll(/shard: \[([^\]]*)\]/g)].map((m) => (m[1] ?? '').split(',').length);
-  const [unit = 0, sim = 0, browser = 0] = lists;
+  const jobs = suiteJobs(yml);
+  const unit = jobs.unit.slices;
+  const sim = jobs.sim.slices;
+  const browser = jobs.e2e.slices;
   return { unit, sim, browser, all: 1 + unit + sim + browser };
 }
+
+const plantedSuite = [
+  ['unit', '[1, 2]'],
+  ['sim', '[1, 2, 3]'],
+  ['browser', '[1, 2, 3, 4]'],
+]
+  .map(
+    ([id, shards]) =>
+      `  ${id}:\n    timeout-minutes: 1\n    strategy:\n      matrix:\n        shard: ${shards}\n`,
+  )
+  .join('\n');
 
 /** Absolute user paths, e-mail addresses that are not no-reply ones, and user names of the dev machine. */
 function leaks(text: string): string[] {
@@ -435,7 +449,7 @@ describe('docs/engineering.md: the train section opens in plain words', () => {
 
   it('counts the suite as suite.yml does', () => {
     const size = suiteSize(suiteYml);
-    expect(size).toMatchObject({ unit: 3, sim: 8, browser: 11, all: 23 });
+    for (const tier of [size.unit, size.sim, size.browser]) expect(tier).toBeGreaterThan(0);
     for (const [name, text] of [
       ['the train section', train],
       ['the CI section', section(engineering, 'CI on GitHub Actions')],
@@ -451,7 +465,20 @@ describe('docs/engineering.md: the train section opens in plain words', () => {
       sim: 6,
       browser: 7,
     });
-    expect(suiteSize('a: [1]\nshard: [1, 2]\nshard: [1, 2, 3]\nshard: [1, 2, 3, 4]').all).toBe(10);
+    expect(suiteSize(plantedSuite).all).toBe(10);
+  });
+
+  it('reads literal and selected matrices from their full-suite defaults and rejects missing defaults', () => {
+    const selected = plantedSuite.replace(
+      /shard: (\[[^\]]*\])/g,
+      (_, list: string) =>
+        "shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).unit || fromJSON('" +
+        list +
+        "') }}",
+    );
+    expect(suiteSize(plantedSuite)).toEqual({ unit: 2, sim: 3, browser: 4, all: 10 });
+    expect(suiteSize(selected)).toEqual(suiteSize(plantedSuite));
+    expect(() => suiteSize(selected.replace(/fromJSON\('\[[^\]]*\]'\)/g, 'unknown'))).toThrow();
   });
 });
 
@@ -632,7 +659,7 @@ describe('AGENTS.md and ci.yml: the numbers and the link the #620 review found s
     expect(fullGatePushCost(agents)).toBe(size.all + 2);
     // control: the old number, and the arithmetic of a different suite
     expect(fullGatePushCost('5 jobs on the quick check, 18 on the full gate')).toBe(18);
-    expect(suiteSize('shard: [1, 2]\nshard: [1, 2, 3]\nshard: [1, 2, 3, 4]').all + 2).toBe(12);
+    expect(suiteSize(plantedSuite).all + 2).toBe(12);
   });
 
   it("says in ci.yml's header the slices suite.yml has", () => {

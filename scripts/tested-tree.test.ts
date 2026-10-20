@@ -185,7 +185,7 @@ describe('train tree evidence precedes landing', () => {
     const evaluate = (result: string, dry = false) =>
       Boolean(
         runInNewContext(condition ?? 'false', {
-          needs: { suite: { result } },
+          needs: { suite: { result, outputs: { coverage: 'full' } } },
           github: { event_name: 'workflow_dispatch' },
           inputs: { dry_run: dry },
         }),
@@ -220,7 +220,7 @@ const suite = (result: string): Needs => Object.fromEntries(SUITE.map((job) => [
 const suitePath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'false' } },
   route: { result: 'skipped' },
-  ...suite('success'),
+  suite: { result: 'success', outputs: { coverage: 'full' } },
   'prod-build': { result: 'skipped' },
   ...over,
 });
@@ -235,7 +235,10 @@ const skipPath = (over: Needs = {}): Needs => ({
 describe('gateVerdict', () => {
   it('is green on a PR: plan skipped, route green, the suite green', () => {
     const v = gateVerdict(
-      suitePath({ plan: { result: 'skipped', outputs: {} }, route: { result: 'success' } }),
+      suitePath({
+        plan: { result: 'skipped', outputs: {} },
+        route: { result: 'success', outputs: { path: 'full' } },
+      }),
     );
     expect(v).toMatchObject({ ok: true, path: 'suite' });
   });
@@ -250,6 +253,33 @@ describe('gateVerdict', () => {
 
   it('is green on a main push that ran the suite', () => {
     expect(gateVerdict(suitePath())).toMatchObject({ ok: true, path: 'suite' });
+  });
+
+  it.each(['train', 'docs'])('accepts %s only with quick coverage', (path) => {
+    const needs = suitePath({
+      plan: { result: 'skipped', outputs: {} },
+      route: { result: 'success', outputs: { path } },
+      suite: { result: 'success', outputs: { coverage: 'quick' } },
+    });
+    expect(gateVerdict(needs).ok).toBe(true);
+    expect(gateVerdict({ ...needs, suite: { result: 'success', outputs: { coverage: 'full' } } }).ok).toBe(
+      false,
+    );
+  });
+
+  it('rejects missing, diagnostic, or wrong coverage on a successful suite', () => {
+    for (const coverage of [undefined, 'diagnostic', 'quick', 'FULL']) {
+      const v = gateVerdict(
+        suitePath({ suite: { result: 'success', outputs: coverage ? { coverage } : {} } }),
+      );
+      expect(v.ok, String(coverage)).toBe(false);
+      expect(v.problems.join(' ')).toContain('coverage');
+    }
+    expect(gateVerdict(suitePath({ route: { result: 'success' } })).ok).toBe(false);
+    expect(gateVerdict(suitePath({ plan: { result: 'skipped' } })).ok).toBe(false);
+    expect(gateVerdict(suitePath({ route: { result: 'success', outputs: { path: 'full' } } })).ok).toBe(
+      false,
+    );
   });
 
   it('is green on the skip path: plan said skip, suite skipped, prod-build green', () => {
@@ -464,6 +494,8 @@ describe('ci.yml wiring', () => {
   it('only a full-path PR run records the tree it tested: the quick check never vouches for main', () => {
     const rec = /- name: Record the tree this PR run tested\n(?: {8}.*\n)*? {8}if: (.+)\n/.exec(ci);
     expect(rec, 'the record step').not.toBeNull();
-    expect(rec?.[1]).toBe("github.event_name == 'pull_request' && needs.route.outputs.path == 'full'");
+    expect(rec?.[1]).toBe(
+      "github.event_name == 'pull_request' && needs.route.outputs.path == 'full' && needs.suite.outputs.coverage == 'full'",
+    );
   });
 });

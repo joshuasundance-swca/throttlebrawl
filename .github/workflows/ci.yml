@@ -260,7 +260,7 @@ jobs:
       # The checkout is the commit this run tested: on a PR, GitHub's merge of the head into main.
       - name: Record the tree this PR run tested
         id: record
-        if: github.event_name == 'pull_request' && needs.route.outputs.path == 'full'
+        if: github.event_name == 'pull_request' && needs.route.outputs.path == 'full' && needs.suite.outputs.coverage == 'full'
         continue-on-error: true
         env:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
