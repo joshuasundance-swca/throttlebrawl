@@ -55,6 +55,8 @@ describe('firstLoadScripts', () => {
 
 /** Source modules that must load lazily, never with the first screen. */
 const LAZY_MODULES = [
+  // The optional frame-measurement tool loads this only when the tool begins.
+  /[\\/]src[\\/]app[\\/]measurement-runtime\.ts$/,
   /[\\/]src[\\/]render[\\/]looks[\\/]post\.ts$/,
   /[\\/]src[\\/]render[\\/]models\.ts$/,
   /[\\/]src[\\/]render[\\/]glb\.ts$/,
