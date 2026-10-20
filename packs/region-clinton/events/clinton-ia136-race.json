@@ -8,7 +8,7 @@
   "weather": "dry",
   "lengths": [{ "id": "standard", "route": "osm-clinton-ia136-run", "laps": 1 }],
   "field": {
-    "riders": ["base:deacon-vane", "base:dial-up", "base:chad-speedwell", "base:kevin-from-accounting"],
+    "riders": ["base:deacon-vane", "base:dial-up", "base:chad-speedwell", "mara-vale"],
     "paceMps": 36.5
   },
   "traffic": { "densityScale": 0.8 },

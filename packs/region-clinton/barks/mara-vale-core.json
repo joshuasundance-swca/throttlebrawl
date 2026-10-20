@@ -1,0 +1,41 @@
+{
+  "type": "bark-set",
+  "id": "mara-vale-core",
+  "name": "Mara Vale: core lines",
+  "tags": ["rival", "iowa"],
+  "defaults": { "speaker": "mara-vale", "cooldownS": 90, "weight": 1 },
+  "lines": [
+    {
+      "id": "mara-start-shoulder",
+      "trigger": "race-start",
+      "text": "That shoulder runs out before the bend."
+    },
+    { "id": "mara-start-markers", "trigger": "race-start", "text": "I marked the bad pavement. Keep up." },
+    { "id": "mara-pass-line", "trigger": "overtake", "text": "You left a whole lane open." },
+    { "id": "mara-pass-county", "trigger": "overtake", "text": "County road's smoother on this side." },
+    { "id": "mara-hit-gap", "trigger": "hit-landed", "text": "You closed the gap. I didn't." },
+    { "id": "mara-hit-hands", "trigger": "hit-landed", "text": "Keep your hands on your own bars." },
+    { "id": "mara-taken-report", "trigger": "hit-taken", "text": "I'll add that to the road report." },
+    { "id": "mara-taken-rough", "trigger": "hit-taken", "text": "Rough patch. That was you." },
+    { "id": "mara-near-miss", "trigger": "near-miss", "text": "That mirror was closer than it looked." },
+    { "id": "mara-crash", "trigger": "crash-self", "text": "Should've trusted the survey." },
+    {
+      "id": "mara-down",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "text": "I know where the ditch ends."
+    },
+    {
+      "id": "mara-grudge",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 1 }],
+      "text": "Same ditch. I remember."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Original text-only lines for the fictional Iowa local. No voice assets or recorded performance.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-20" }
+  }
+}
