@@ -2,7 +2,13 @@
 // horizons. These are contextual shapes, not mapped properties. Build the actual pack pieces on the
 // actual baked roads; the coordinator's chase-camera check owns the final visual acceptance.
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../../road';
+import {
+  createRoadNetwork,
+  readConnector,
+  type BakedNetwork,
+  type BakedRoad,
+  type BakedRoute,
+} from '../../road';
 import { buildSoup, roadIndex, roadPointsOf } from './builder';
 import {
   backdropProblems,
@@ -24,6 +30,12 @@ const roads = Object.values(
     eager: true,
     import: 'default',
   }),
+);
+const routes = Object.values(
+  import.meta.glob<BakedRoute>(
+    '../../../packs/region-pnw/regions/pacific-northwest/routes/osm-longview-*.json',
+    { eager: true, import: 'default' },
+  ),
 );
 const backdrops = Object.values(
   import.meta.glob<BackdropNetworkFile>(
@@ -88,6 +100,66 @@ describe.each(networks)("Longview's inland backdrop on $id", (network) => {
   const pieces = (backdrop.pieces ?? []).filter((p) => p.kind !== 'floor');
   const build = (selected: readonly Piece[] = pieces) =>
     buildSoup({ ...region, pieces: [] }, { ...backdrop, pieces: selected }, points, 7);
+
+  const route = routes.find((r) => r.network === network.id)!;
+  if (route.branches?.length)
+    it('frames distinct civic and mill groups at the approach and shared rejoin, with woods behind the choices', () => {
+      const branchRoads = route.branches!.flatMap((b) => b.roads);
+      const connectors = network.junctions
+        .flatMap((j) => j.connectors.map(readConnector))
+        .filter((c) => c !== null && !c.trafficOnly);
+      const rejoin = connectors.find(
+        (c) => branchRoads.includes(c.from.road) && route.mainPath.includes(c.to.road),
+      )!;
+      const split = connectors.find(
+        (c) => c.splitZone && route.mainPath.includes(c.from.road) && branchRoads.includes(c.to.road),
+      )!;
+      const connectorRoads = new Set(connectors.map((c) => c.road));
+      const inner = route.mainPath[route.mainPath.indexOf(split.from.road) + 1]!;
+      const outer = branchRoads.find((id) => !connectorRoads.has(id))!;
+      const views = [
+        // These are the two authored viewing scenarios, not a rule that an alternate enters industry:
+        // the diamond faces north into civic roofs; the triangle approaches the southern mill forms.
+        {
+          stage: 'approach',
+          id: route.start.road,
+          s: route.start.s,
+          group: network.id === 'osm-pnw-longview-diamond' ? 'civic' : 'mill',
+          minimumDeg: 0.7,
+        },
+        { stage: 'inner choice', id: inner, group: 'woods', minimumDeg: 2 },
+        { stage: 'outer choice', id: outer, group: 'woods', minimumDeg: 2 },
+        { stage: 'rejoin', id: rejoin.to.road, s: 40, group: 'civic', minimumDeg: 0.7 },
+        { stage: 'rejoin', id: rejoin.to.road, s: 40, group: 'mill', minimumDeg: 0.7 },
+      ];
+      const span = (selected: readonly Piece[], view: (typeof views)[number]) => {
+        const edge = road.edges.find((e) => e.id === view.id)!;
+        const s = Math.min(view.s ?? edge.length / 2, edge.length);
+        const cam = road.toWorld(edge.index, s, 0, 3.2);
+        const f = road.frameAt(edge.index, s);
+        const heading = Math.atan2(f.tx, -f.tz);
+        const azimuths = standing(build(selected).soup).flatMap((v) => {
+          const dx = v.x - cam.x;
+          const dz = v.z - cam.z;
+          const raw = Math.atan2(dx, -dz) - heading;
+          const a = (Math.atan2(Math.sin(raw), Math.cos(raw)) * 180) / Math.PI;
+          const elevation = (Math.atan2(v.y - cam.y, Math.hypot(dx, dz)) * 180) / Math.PI;
+          return Math.abs(a) < 35 && elevation > view.minimumDeg ? [a] : [];
+        });
+        return azimuths.length ? Math.max(...azimuths) - Math.min(...azimuths) : 0;
+      };
+      for (const view of views) {
+        const selected = pieces.filter((p) =>
+          view.group === 'woods' ? p.kind === 'ridge' : p.kind === 'skyline' && p.id.includes(view.group),
+        );
+        const visibleSpan = span(selected, view);
+        stdout.write(
+          `[examined] ${network.id} ${view.stage} ${view.id}: ${view.group} spans ${visibleSpan.toFixed(2)} degrees above ${view.minimumDeg} degrees; removed-group ${span([], view)}\n`,
+        );
+        expect(visibleSpan, `${view.stage}: ${view.group}`).toBeGreaterThan(0.5);
+        expect(span([], view), `${view.stage}: removed ${view.group}`).toBe(0);
+      }
+    });
 
   it('adds network-local, schema-valid human and wooded silhouettes in the baked origin', () => {
     expect(backdropProblems(backdrop, 'network')).toEqual([]);
