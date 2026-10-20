@@ -116,6 +116,11 @@ describe('which first attempts it re-runs', () => {
     for (const c of ['success', 'skipped', 'neutral', 'startup_failure', 'action_required'])
       expect(rerunDecision({ run: run(c), mainHead: SHA, jobs: timeoutJobs }).rerun, c).toBe(false);
   });
+
+  it('does not rerun a routing-only successful workflow with no accepted main gate', () => {
+    const d = rerunDecision({ run: run('success'), mainHead: SHA, jobs: [ok('route')] });
+    expect(d.rerun).toBe(false);
+  });
 });
 
 describe('rerun-main.yml wiring', () => {
