@@ -77,6 +77,14 @@ on:
         description: a red job cancels the rest of the caller's run (a pull request run only)
         type: boolean
         default: false
+      diagnostic-control:
+        description: run only the strictly selected diagnostic shards
+        type: boolean
+        default: false
+      control-selection:
+        description: validated JSON selection with shard arrays and canonical totals
+        type: string
+        default: ''
 
 env:
   BUILD_ID: ${{ inputs.build-id }}
@@ -98,9 +106,37 @@ jobs:
   # [default]
   static:
     name: static
+    if: ${{ inputs.control-selection == '' || !inputs.diagnostic-control || fromJSON(inputs.control-selection).static }}
+    outputs:
+      coverage: ${{ steps.coverage.outputs.value }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.full && 4 || 5 }}
     steps:
+      - name: Validate control selection and set coverage
+        id: coverage
+        env:
+          DIAGNOSTIC_CONTROL: ${{ inputs.diagnostic-control }}
+          CONTROL_SELECTION: ${{ inputs.control-selection }}
+          FULL: ${{ inputs.full }}
+        run: |
+          node <<'NODE'
+          const raw = process.env.CONTROL_SELECTION;
+          const diagnostic = process.env.DIAGNOSTIC_CONTROL === 'true';
+          if (raw === '') {
+            console.log(`value=${diagnostic ? 'diagnostic' : (process.env.FULL === 'true' ? 'full' : 'quick')}`);
+            process.exit(0);
+          }
+          if (!diagnostic) throw new Error('control-selection requires diagnostic-control=true');
+          let selection;
+          try { selection = JSON.parse(raw); } catch { throw new Error('control-selection is not valid JSON'); }
+          const tiers = ['unit', 'sim', 'browser'];
+          if (!selection || typeof selection !== 'object' || typeof selection.static !== 'boolean' || !selection.totals) throw new Error('control-selection has the wrong shape');
+          for (const tier of tiers) {
+            if (!Array.isArray(selection[tier]) || !Number.isSafeInteger(selection.totals[tier]) || selection.totals[tier] < 1) throw new Error(`control-selection has an invalid ${tier} tier`);
+            if (new Set(selection[tier]).size !== selection[tier].length || selection[tier].some((shard) => !Number.isSafeInteger(shard) || shard < 1 || shard > selection.totals[tier])) throw new Error(`control-selection has invalid ${tier} shard numbers`);
+          }
+          console.log('value=diagnostic');
+          NODE
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.base }}
@@ -155,7 +191,7 @@ jobs:
   # plan adds about 0.8 s per file for that setup and import, which Vitest's per-file times leave
   # out. They run in the quick check too. [default]
   unit:
-    name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: unit (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }})
     runs-on: ubuntu-latest
     # The refreshed table puts three slices at 227 s of job (2026-10-07), about 47% of this timeout.
     # Two slices have a 331 s worker-time lower bound, beyond the unchanged 320 s planning line.
@@ -163,7 +199,7 @@ jobs:
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3]
+        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).unit || fromJSON('[1, 2, 3]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -195,13 +231,13 @@ jobs:
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
       - name: Unit tests, one slice
-        run: npm run check -- --tier unit --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: npm run check -- --tier unit --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }}
       # Fail fast on a PR, as in static above.
       - name: Fail fast, cancel the rest of this PR run
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          RED_JOB: unit (${{ matrix.shard }}/${{ strategy.job-total }})
+          RED_JOB: unit (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.unit || strategy.job-total }})
         run: |
           echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
@@ -223,7 +259,7 @@ jobs:
   # and main run 37581242850), seven slices plan at 423 s, past the 420 s line; eight plan at 374 to
   # 408 s, the 408 being traffic-cart-live.test.ts alone (389 s), the floor.
   sim:
-    name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: sim (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }})
     if: inputs.full
     runs-on: ubuntu-latest
     # The refreshed plan puts the batch readers at 319 s of job and the other slices at 396 s
@@ -236,7 +272,7 @@ jobs:
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).sim || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -268,13 +304,13 @@ jobs:
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
       - name: Seeded sim batch, one slice
-        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }}
       # Fail fast on a PR, as in static above.
       - name: Fail fast, cancel the rest of this PR run
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          RED_JOB: sim (${{ matrix.shard }}/${{ strategy.job-total }})
+          RED_JOB: sim (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }})
         run: |
           echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
@@ -297,14 +333,14 @@ jobs:
   # eleven predict 370-376 s under the same 400 s line. These are planning predictions,
   # not measured job duration. Tests, worker policy, timeout and last-slice behavior are unchanged.
   browser:
-    name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: browser (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }})
     if: inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).browser || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -386,11 +422,11 @@ jobs:
           path: ~/.cache/playwright-debs
           key: ${{ steps.install.outputs.key }}
       - name: Build, browser tests (one slice)
-        if: matrix.shard != strategy.job-total
-        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        if: matrix.shard != (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
+        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }}
       - name: Build, browser tests (the last slice), then perf on the same build
-        if: matrix.shard == strategy.job-total
-        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        if: matrix.shard == (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
+        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }}
       - name: Screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -400,7 +436,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Keep the tested build for the deploy
-        if: inputs.upload-dist && matrix.shard == strategy.job-total
+        if: inputs.upload-dist && !inputs.diagnostic-control && matrix.shard == (inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total)
         uses: actions/upload-artifact@v7
         with:
           name: dist
@@ -412,7 +448,7 @@ jobs:
         if: failure() && inputs.fail-fast && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          RED_JOB: browser (${{ matrix.shard }}/${{ strategy.job-total }})
+          RED_JOB: browser (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }})
         run: |
           echo "::error title=fail-fast::$RED_JOB failed, so it cancels the rest of this PR run; it shows as cancelled too. The gate's log names its failing tests."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || echo "::notice title=fail-fast::could not cancel run $GITHUB_RUN_ID (a fork's read-only token?); the other jobs run on"
