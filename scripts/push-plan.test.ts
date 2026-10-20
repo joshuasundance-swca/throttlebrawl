@@ -144,6 +144,21 @@ describe('planPush', () => {
     expect(plan.mode).toBe('full');
   });
 
+  it('rejects invalid dependency-map values in either compared revision', () => {
+    const valid = JSON.stringify({ name: 'game', dependencies: { example: '1.0.0' } });
+    for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const value of [null, [], { example: 1 }]) {
+        const invalid = JSON.stringify({ name: 'game', [key]: value });
+        for (const manifests of [
+          { before: valid, after: invalid },
+          { before: invalid, after: valid },
+        ]) {
+          expect(planPush(['package.json'], tree(), manifests).mode, key).toBe('full');
+        }
+      }
+    }
+  });
+
   it('accepts manifest formatting and key order changes without treating them as configuration changes', () => {
     const before = '{"name":"game","scripts":{"test":"vitest"},"dependencies":{"a":"1"}}';
     const after = '{\n  "dependencies": {"a": "2"}, "scripts": {"test": "vitest"}, "name": "game"\n}';
