@@ -107,7 +107,7 @@ describe.each(networks)("Longview's inland backdrop on $id", (network) => {
       const branchRoads = route.branches!.flatMap((b) => b.roads);
       const connectors = network.junctions
         .flatMap((j) => j.connectors.map(readConnector))
-        .filter((c) => c !== null && !c.trafficOnly);
+        .filter((c): c is NonNullable<ReturnType<typeof readConnector>> => c !== null && !c.trafficOnly);
       const rejoin = connectors.find(
         (c) => branchRoads.includes(c.from.road) && route.mainPath.includes(c.to.road),
       )!;
