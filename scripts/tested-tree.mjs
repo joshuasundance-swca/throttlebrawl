@@ -125,7 +125,7 @@ export const PROD_BUILD = 'prod-build';
 /**
  * The aggregate's verdict from `toJSON(needs)`. Two green shapes, nothing else:
  * - the suite path: plan succeeded or was skipped (a PR), route succeeded or was skipped (a push),
- *   the suite succeeded, and prod-build was skipped;
+ *   the suite succeeded with coverage matching its route, and prod-build was skipped;
  * - the skip path, only when plan ran and said skip=true: the suite was skipped, and prod-build
  *   succeeded.
  * A failed, cancelled or missing job fails the gate on either path.
@@ -143,6 +143,23 @@ export function gateVerdict(needs) {
   want('route', ['success', 'skipped']);
   for (const job of SUITE) want(job, skip ? ['skipped'] : ['success']);
   want(PROD_BUILD, skip ? ['success'] : ['skipped']);
+  if (!skip && needs.suite?.result === 'success') {
+    const route = needs.route;
+    const expected =
+      route?.result === 'skipped' && needs.plan?.result === 'success'
+        ? 'full' // a main push
+        : route?.result === 'success' && needs.plan?.result === 'skipped'
+          ? route.outputs?.path === 'full'
+            ? 'full'
+            : ['train', 'docs'].includes(route.outputs?.path ?? '')
+              ? 'quick'
+              : null
+          : null;
+    if (!expected)
+      problems.push(`route path is ${route?.outputs?.path ?? 'missing'}, cannot establish suite coverage`);
+    else if (needs.suite.outputs?.coverage !== expected)
+      problems.push(`suite coverage is ${needs.suite.outputs?.coverage ?? 'missing'}, needs ${expected}`);
+  }
   return { ok: problems.length === 0, path: skip ? 'skip' : 'suite', problems };
 }
 
