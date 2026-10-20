@@ -2,5 +2,115 @@
   "formatVersion": 1,
   "network": "osm-clinton-eagle-point",
   "originLatDeg": 41.897,
-  "originLonDeg": -90.177
+  "originLonDeg": -90.177,
+  "pieces": [
+    {
+      "id": "eagle-inland-wooded-rise",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-eagle-point"],
+      "path": [
+        [-2400, -2600, 310],
+        [-2300, -700, 325],
+        [-2400, 1500, 310],
+        [-2800, 3700, 295]
+      ],
+      "heightM": [280, 325],
+      "profile": "rolling",
+      "colour": "#586c42",
+      "keepOutM": 800
+    },
+    {
+      "id": "eagle-distant-floodplain-tree-line",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-eagle-point"],
+      "path": [
+        [3700, -3200, 225],
+        [3400, -1200, 238],
+        [3600, 1200, 228],
+        [4000, 3600, 215]
+      ],
+      "heightM": [200, 238],
+      "profile": "rolling",
+      "colour": "#73855d",
+      "haze": 0.08,
+      "keepOutM": 800
+    },
+    {
+      "id": "eagle-southern-tree-belt",
+      "kind": "ridge",
+      "frame": "local",
+      "networks": ["osm-clinton-eagle-point"],
+      "path": [
+        [-1900, 2100, 217],
+        [-500, 1950, 220],
+        [800, 2000, 216],
+        [1700, 2400, 208]
+      ],
+      "heightM": [205, 220],
+      "profile": "rolling",
+      "colour": "#667a4c",
+      "keepOutM": 800
+    },
+    {
+      "id": "eagle-southern-river-town-roofs",
+      "kind": "blocks",
+      "frame": "local",
+      "networks": ["osm-clinton-eagle-point"],
+      "area": [
+        [-1100, 2500],
+        [500, 2300],
+        [1000, 3200],
+        [-900, 3400]
+      ],
+      "count": 24,
+      "heightM": [15, 42],
+      "sizeM": [55, 115],
+      "baseM": 205,
+      "colours": ["#8c8271", "#9c927f", "#777b70", "#a6a493"],
+      "keepOutM": 800
+    },
+    {
+      "id": "eagle-southern-roofline-accents",
+      "kind": "skyline",
+      "frame": "local",
+      "networks": ["osm-clinton-eagle-point"],
+      "centre": [-100, 2900],
+      "radiusM": 1,
+      "count": 0,
+      "heightM": [20, 48],
+      "widthM": [30, 90],
+      "baseM": 205,
+      "gridDeg": 5,
+      "colours": ["#a49c87"],
+      "towers": [
+        {
+          "at": [-780, 2700],
+          "heightM": 43,
+          "widthM": 100,
+          "depthM": 45,
+          "colour": "#9e927b",
+          "crown": "slant"
+        },
+        {
+          "at": [-280, 2850],
+          "heightM": 48,
+          "widthM": 45,
+          "depthM": 45,
+          "colour": "#b0ab97",
+          "crown": "flat"
+        },
+        {
+          "at": [360, 2600],
+          "heightM": 38,
+          "widthM": 110,
+          "depthM": 55,
+          "colour": "#8b8070",
+          "crown": "slant"
+        }
+      ],
+      "keepOutM": 800
+    }
+  ]
 }
