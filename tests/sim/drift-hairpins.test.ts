@@ -121,7 +121,7 @@ describe('drift on Lombard (the critic C5)', () => {
     expect(lowered.clean).toBeGreaterThanOrEqual(1);
     expect(loweredOff.drifts).toBe(0);
     expect(lowered.blockS).toBeLessThan(loweredOff.blockS);
-    console.log(`[examined] Lombard, the drift bot alone:\\n${line}`);
+    console.log(`[examined] Lombard, the drift bot alone:\n${line}`);
   };
 
   it('the drift bot compares default, lowered and drift-off floors for base:rustbucket-400', () => {

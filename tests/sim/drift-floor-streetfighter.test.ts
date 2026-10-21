@@ -43,7 +43,7 @@ it('prints floors 6/3 for base:streetfighter-750', () => {
   cases.get(pairs[5]!);
 }, 600_000);
 it('prints all six floors that work for base:streetfighter-750: the bot per floor pair at $1 a drift second', () => {
-  const lines = cases.complete().map((row) => row.line);
+  const lines = cases.results().map((row) => row.line);
   console.log(
     `[T2.6] Lombard Street (osm-sf-lombard-run), ${BIKE}, drift bot, banked drift cash at perDriftSecondCash 1:\n${lines.join('\n')}`,
   );
