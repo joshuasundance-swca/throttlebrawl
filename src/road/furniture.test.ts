@@ -142,10 +142,22 @@ function lanePoints(road: RoadNetwork) {
 }
 
 /** Where a footprint on `edge` stands on a lane: the road and s, or null. */
-function onLanes(road: RoadNetwork, at: ReturnType<typeof lanePoints>, edge: number, shape: FurnitureShape) {
+function onLanes(
+  road: RoadNetwork,
+  at: ReturnType<typeof lanePoints>,
+  edge: number,
+  shape: FurnitureShape,
+  atS = shape.s,
+  atD = shape.d,
+) {
+  const origin = road.toWorld(edge, atS, atD, 0);
+  const frame = road.frameAt(edge, atS);
   for (const q of rimOf(shape)) {
-    const p = road.toWorld(edge, q.s, q.d, 0);
-    const hit = at(p.x, p.y, p.z);
+    const ds = q.s - atS,
+      dd = q.d - atD;
+    const x = origin.x + ds * frame.tx - dd * frame.tz;
+    const z = origin.z + ds * frame.tz + dd * frame.tx;
+    const hit = at(x, origin.y, z);
     if (hit) return hit;
   }
   return null;
@@ -169,7 +181,7 @@ describe("the street furniture keeps off every road's lanes (2026-10-06: honest 
       const at = lanePoints(road);
       for (const p of plan.items) {
         pieces++;
-        const hit = onLanes(road, at, p.edge, p.shape);
+        const hit = onLanes(road, at, p.edge, p.shape, p.s, p.d);
         if (hit)
           bad.push(`${id}: ${p.kind} (${p.rule}) of ${road.edges[p.edge]?.id} s ${p.s.toFixed(0)} on ${hit}`);
       }

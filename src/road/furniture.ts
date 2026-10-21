@@ -523,11 +523,25 @@ export function rimOf(shape: FurnitureShape): { s: number; d: number }[] {
 }
 
 /** The road whose lanes (FURNITURE_LANES_CLEAR_M wider) a footprint on `edge` stands on, or -1. */
-export function lanesUnderPiece(road: RoadNetwork, edge: number, shape: FurnitureShape): number {
+export function lanesUnderPiece(
+  road: RoadNetwork,
+  edge: number,
+  shape: FurnitureShape,
+  atS: number,
+  atD: number,
+): number {
   const finder = lanesUnderOf(road);
+  const s = Math.max(0, Math.min(road.edges[edge]?.length ?? 0, atS));
+  const origin = road.toWorld(edge, s, atD, 0);
+  const frame = road.frameAt(edge, s);
   for (const q of rimOf(shape)) {
-    const p = road.toWorld(edge, Math.max(0, Math.min(road.edges[edge]?.length ?? 0, q.s)), q.d, 0);
-    const hit = finder.at(p.x, p.y, p.z, FURNITURE_LANES_CLEAR_M);
+    // The drawn model stays rigid in its placement frame. Re-evaluating each end in the road's
+    // curved frame can move a long battery away from a lane that its visible end cuts through.
+    const ds = q.s - atS,
+      dd = q.d - atD;
+    const x = origin.x + ds * frame.tx - dd * frame.tz;
+    const z = origin.z + ds * frame.tz + dd * frame.tx;
+    const hit = finder.at(x, origin.y, z, FURNITURE_LANES_CLEAR_M);
     if (hit) return hit.edge;
   }
   return -1;
@@ -557,7 +571,7 @@ class Collector {
     const spec: FurnitureSpec = FURNITURE[kind];
     const shape = shapeOf(road, kind, variant, edge, s, d, yaw, size);
     // Never on a lane of any road (its own, a branch's, a shortcut's through a plaza).
-    if (lanesUnderPiece(road, edge, shape) >= 0) return;
+    if (lanesUnderPiece(road, edge, shape, s, d) >= 0) return;
     this.items.push({
       id: this.items.length,
       kind,

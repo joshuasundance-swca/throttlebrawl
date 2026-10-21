@@ -18,6 +18,7 @@ import { firstSeed, seedRange } from '../../tests/sim/batch';
 import {
   createRoadNetwork,
   lanesUnderPiece,
+  lanesUnderOf,
   planSfScenery,
   planStreetFurniture,
   roadBandHeight,
@@ -98,7 +99,10 @@ it('every planned SF natural footprint clears every lane in each loaded network'
     for (const seed of SEEDS)
       for (const p of planStreetFurniture(t.road, seed).items.filter((item) => item.layer === 'scenery')) {
         checked++;
-        expect(lanesUnderPiece(t.road, p.edge, p.shape), `${id} seed ${seed} ${p.kind} at ${p.s}`).toBe(-1);
+        expect(
+          lanesUnderPiece(t.road, p.edge, p.shape, p.s, p.d),
+          `${id} seed ${seed} ${p.kind} at ${p.s}`,
+        ).toBe(-1);
       }
   }
   expect(checked).toBeGreaterThan(0);
@@ -132,13 +136,67 @@ it('a seeded battery beside an added lane is neither drawn nor collidable when i
     (p) => p.kind === 'battery' && p.edge === battery!.edge && p.s === battery!.s && p.d === battery!.d,
   );
   expect(candidate, 'the drawing candidate remains on its land strip').toBeDefined();
-  expect(lanesUnderPiece(beside, battery!.edge, battery!.shape)).toBe(battery!.edge);
+  expect(lanesUnderPiece(beside, battery!.edge, battery!.shape, battery!.s, battery!.d)).toBe(battery!.edge);
   const accepted = planStreetFurniture(beside, seed).items.filter((p) => p.layer === 'scenery');
   expect(accepted.some((p) => p.kind === 'battery' && p.s === battery!.s && p.d === battery!.d)).toBe(false);
   const scene = buildRoadScene(beside, look, t.dressing, { seed });
   expect(scene.spots.some((p) => p.kind === 'battery' && p.s === battery!.s && p.d === battery!.d)).toBe(
     false,
   );
+  scene.dispose();
+});
+
+it('a long battery on the real curved road is absent from both drawing and contacts when its rigid end enters a lane', async () => {
+  const t = track('osm-sf-golden-gate');
+  const model = await bakeRepoModel('sfHeadlands');
+  const geometry = model.variants[0]!;
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox!;
+  const lanes = lanesUnderOf(t.road);
+  const endInLane = (spot: Pick<ScenerySpot, 'turn' | 'size' | 'p'>) => {
+    const cy = Math.cos(spot.turn),
+      sy = Math.sin(spot.turn);
+    for (const x of [box.min.x, box.max.x])
+      for (const z of [box.min.z, box.max.z]) {
+        const atX = spot.p.x + spot.size * (x * cy + z * sy);
+        const atZ = spot.p.z + spot.size * (-x * sy + z * cy);
+        if (lanes.at(atX, spot.p.y, atZ, 0.25)) return true;
+      }
+    return false;
+  };
+  const found = firstSeed(
+    'Golden Gate curved-lane battery',
+    seedRange(1, 8),
+    (seed) => planSfScenery(t.road, seed).find((p) => p.kind === 'battery' && endInLane(p)) ?? null,
+    (spot) => spot !== null,
+  );
+  const intruding = found.result;
+  expect(intruding, 'the actual model footprint reaches a road lane').not.toBeNull();
+  const accepted = planStreetFurniture(t.road, found.seed!).items;
+  expect(
+    accepted.some((p) => p.kind === 'battery'),
+    'clear batteries still stand nearby',
+  ).toBe(true);
+  expect(
+    accepted.some(
+      (p) =>
+        p.kind === 'battery' && p.edge === intruding!.edge && p.s === intruding!.s && p.d === intruding!.d,
+    ),
+  ).toBe(false);
+  const scene = buildRoadScene(t.road, look, t.dressing, {
+    seed: found.seed!,
+    models: { sfHeadlands: model },
+  });
+  expect(
+    scene.spots.some((p) => p.kind === 'battery'),
+    'clear batteries remain drawn',
+  ).toBe(true);
+  expect(
+    scene.spots.some(
+      (p) =>
+        p.kind === 'battery' && p.edge === intruding!.edge && p.s === intruding!.s && p.d === intruding!.d,
+    ),
+  ).toBe(false);
   scene.dispose();
 });
 
@@ -163,9 +221,10 @@ it('SF natural scenery has one matching seeded physical contact for every render
     for (let i = 0; i < spots.length; i++) {
       const p = planned[i]!;
       const s = spots[i]!;
-      expect(lanesUnderPiece(t.road, p.edge, p.shape), `${id} #${i}: full shape off every road lane`).toBe(
-        -1,
-      );
+      expect(
+        lanesUnderPiece(t.road, p.edge, p.shape, p.s, p.d),
+        `${id} #${i}: full shape off every road lane`,
+      ).toBe(-1);
       expect([p.rule, p.edge, p.s, p.d, p.variant, p.size], `${id} #${i}`).toEqual([
         s.kind,
         s.edge,
