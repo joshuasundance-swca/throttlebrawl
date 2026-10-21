@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { collectControlPlan, controlInventory } from './control-plan.mjs';
 
 const repo = 'owner/game';
@@ -36,6 +38,20 @@ function fixture(options: { page?: (page: number) => unknown; after?: object; er
 }
 const input = { repo, sha, runId: 42, attempt: 1, shape };
 describe('branch control planning', () => {
+  it('explains full diagnostics in the actual CLI log when observation is unavailable', () => {
+    const env = { ...process.env };
+    delete env.GH_TOKEN;
+    delete env.GITHUB_OUTPUT;
+    const log = execFileSync(
+      process.execPath,
+      [fileURLToPath(new URL('./control-plan.mjs', import.meta.url))],
+      {
+        env,
+        encoding: 'utf8',
+      },
+    );
+    expect(log).toContain('branch control: full (observation unavailable)');
+  });
   it('selects the failed original shard without renumbering it or selecting perf', async () => {
     const f = fixture();
     const plan = await collectControlPlan({ ...input, api: f.api });
