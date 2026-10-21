@@ -121,7 +121,7 @@ async function main() {
       /* Unreadable canonical workflow retains full diagnostics. */
     }
   }
-  console.log(`branch control: ${result.scope}`);
+  console.log(`branch control: ${result.scope} (${result.reason})`);
   if (process.env.GITHUB_OUTPUT)
     appendFileSync(
       process.env.GITHUB_OUTPUT,
