@@ -3,11 +3,11 @@ import { expect, it } from 'vitest';
 import { InstancedMesh, Mesh, Raycaster, Vector3, type Object3D } from 'three';
 import { buildSimConfig, createStreamCache, realRoutes } from '../../src/app';
 import { streamSeed } from '../../src/core';
-import { lookup, registryFromGlob } from '../../src/content';
+import { lookup, registryFromGlob, type ContentRegistry } from '../../src/content';
 import { createFlatLook } from '../../src/render';
 import { buildRoadScene } from '../../src/render/road-mesh';
 import { createSimWithWorld } from '../../src/sim/create';
-import { sectionGroundOf, type BakedFeature } from '../../src/road';
+import { sectionGroundOf } from '../../src/road';
 import { PED_PHASE, pedsState } from '../../src/sim/peds';
 import { pedsStep } from '../../src/sim/peds/step';
 import { riderState } from '../../src/sim/riders';
@@ -18,7 +18,7 @@ const sourceRegistry = registryFromGlob(
   import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }),
 );
 const roadId = 'region-clinton:osm-clinton-county-180th';
-const candidate: BakedFeature = {
+const candidate: NonNullable<ContentRegistry['roads'][string]['features']>[number] = {
   kind: 'roadsideZone',
   id: 'county-loading-stroll',
   s0: 640,
