@@ -155,6 +155,11 @@ const ONCOMING_IN_LINE_M = 1.8;
  */
 export const STUCK_TICKS = 120;
 const FILTER_MPS = 6;
+/** A local yield creeps, rather than starting a pass through the distant queue, m/s and m. */
+const LOCAL_YIELD_MPS = 2;
+const LOCAL_YIELD_ADVANCE_M = 2;
+/** Conservative body-centre reach for local yielding; snapshots do not carry vehicle lengths. */
+const LOCAL_YIELD_REACH_M = 10;
 /**
  * A vehicle that reads as stopped but moves back toward the bot faster than this (m/s, measured from
  * one tick's snapshot to the next) is being shoved down the road: the runaway cable car rolling back
@@ -277,6 +282,7 @@ export function createBot(): BotController {
   /** Ticks in a row the bot has been riding under 1 m/s, and whether it is filtering (STUCK_TICKS). */
   let stillTicks = 0;
   let filtering = false;
+  let localYield: { edge: number; dir: 1 | -1; d: number; stopS: number } | null = null;
   /** Each vehicle's place on the last tick the bot saw it (BACKING_MPS). */
   const lastSeen = new Map<number, { tick: number; edge: number; s: number }>();
   /** The vehicles moving back along the bot's way this tick while reading as stopped. */
@@ -360,6 +366,75 @@ export function createBot(): BotController {
         (!zone || (d >= Math.min(zone.d0, zone.d1) + 0.6 && d <= Math.max(zone.d0, zone.d1) - 0.6)) &&
         shoulderClear(snap, me, d),
     );
+  }
+
+  /**
+   * A stopped oncoming driver can be waiting for us too, on overlapping roads or a wide single
+   * lane. Yield sideways within our own lane, without demanding a clear distant passing corridor.
+   * Keep the established conservative width envelope; cap forward movement before another body's
+   * conservative centre reach. This is a place to wait, never permission to pass a moving car.
+   */
+  function yieldLocally(
+    snap: SimSnapshot,
+    me: EntitySnapshot,
+    lanes: readonly LaneInfo[],
+    targetD: number,
+  ): { d: number; throttle: number; brake: number } | null {
+    const lead = blockerAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M);
+    if (!lead || lead.o.road.dir === me.road.dir) {
+      localYield = null;
+      return null;
+    }
+    if (localYield && (localYield.edge !== me.road.edge || localYield.dir !== me.road.dir)) localYield = null;
+    const nearby = snap.entities.flatMap((o) => {
+      const rel = o.kind === 'vehicle' ? relative(me, o) : null;
+      return rel ? [{ o, ...rel }] : [];
+    });
+    const clear = (d: number) =>
+      nearby.every(({ o, ds }) => {
+        if (Math.abs(ds) > LOCAL_YIELD_REACH_M) return true;
+        const before = me.road.d - o.road.d;
+        const after = d - o.road.d;
+        // A body already close may be yielded away from, but never crossed on the way to the edge.
+        return (
+          Math.abs(after) >= ONCOMING_IN_LINE_M &&
+          before * after >= 0 &&
+          (Math.abs(before) >= ONCOMING_IN_LINE_M || Math.abs(after) > Math.abs(before))
+        );
+      });
+    if (!localYield) {
+      if (stillTicks < STUCK_TICKS || lead.o.speed >= 0.5) return null;
+      const candidates = lanes
+        .filter((l) => rideable(l, me.road.dir) && Math.abs(me.road.d - l.dCenterM) <= l.widthM / 2)
+        .flatMap((l) => [l.dCenterM - l.widthM / 2 + 0.6, l.dCenterM + l.widthM / 2 - 0.6])
+        .sort((a, b) => Math.abs(a - me.road.d) - Math.abs(b - me.road.d));
+      const d = candidates.find(clear);
+      if (d === undefined || Math.abs(d - me.road.d) < 0.1) return null;
+      let advance = LOCAL_YIELD_ADVANCE_M;
+      for (const other of nearby) {
+        const crosses =
+          other.o.road.d > Math.min(me.road.d, d) - ONCOMING_IN_LINE_M &&
+          other.o.road.d < Math.max(me.road.d, d) + ONCOMING_IN_LINE_M;
+        if (other.ds <= LOCAL_YIELD_REACH_M || !crosses) continue;
+        advance = Math.min(advance, other.ds - LOCAL_YIELD_REACH_M);
+      }
+      if (advance <= 0.3) return null;
+      localYield = { edge: me.road.edge, dir: me.road.dir, d, stopS: me.road.s + me.road.dir * advance };
+    }
+    const legal = lanes.some(
+      (l) => rideable(l, me.road.dir) && Math.abs(localYield!.d - l.dCenterM) <= l.widthM / 2 - 0.6,
+    );
+    if (!legal || !clear(localYield.d)) {
+      localYield = null;
+      return null;
+    }
+    const remaining = (localYield.stopS - me.road.s) * me.road.dir;
+    const creep = lead.o.speed < 0.5 && Math.abs(localYield.d - me.road.d) > 0.1 && remaining > 0.3;
+    return {
+      d: localYield.d,
+      throttle: creep && me.speed < LOCAL_YIELD_MPS ? 1 : 0,
+      brake: me.speed > (creep ? LOCAL_YIELD_MPS + 0.5 : 0.1) ? 0.5 : 0,
+    };
   }
 
   /**
@@ -524,6 +599,7 @@ export function createBot(): BotController {
         wasDown = true;
         stillTicks = 0;
         filtering = false;
+        localYield = null;
         return;
       }
       if (wasDown) {
@@ -558,6 +634,7 @@ export function createBot(): BotController {
       let targetD = homeLine(me, lanes);
       let throttle = 1;
       let brake = 0;
+      let yieldingNow = false;
 
       // road-2's ramp shortcut: a split zone ahead on this edge, not yet taken. Not while a vehicle
       // coming the other way is in the zone's line (Bridge City's cut leaves across the oncoming
@@ -644,6 +721,7 @@ export function createBot(): BotController {
       }
 
       // Traffic in the bot's line: another own-direction lane, a pass in the oncoming lane, or follow.
+      if (zone || fighting) localYield = null;
       targetD = clamp(targetD, bounds.lo, bounds.hi);
       if (zone) {
         // Committed to the zone: follow a car going its way rather than swerve out of it. A car
@@ -682,26 +760,36 @@ export function createBot(): BotController {
         if (free) filtering = false;
         const shoulder = free ? undefined : filterLine(snap, me, lanes, targetD);
         if (free) {
+          localYield = null;
           if (!dodging) stats.trafficDodges++;
           dodging = true;
           targetD = free.d;
         } else if (shoulder !== undefined) {
+          localYield = null;
           targetD = shoulder;
           throttle = me.speed < FILTER_MPS ? 1 : 0;
           brake = me.speed > FILTER_MPS + 1 ? 0.5 : 0;
         } else {
           // Nowhere to go: follow at the blocker's pace.
           ({ throttle, brake } = follow(snap, me, targetD));
+          const yielding = fighting ? null : yieldLocally(snap, me, lanes, targetD);
+          if (yielding) {
+            yieldingNow = true;
+            targetD = yielding.d;
+            throttle = yielding.throttle;
+            brake = yielding.brake;
+          }
         }
       } else {
         dodging = false;
         filtering = false;
+        localYield = null;
       }
 
       // Steer toward the target line, with the road's curvature fed forward.
       const lateral = (targetD - d) * dir;
       const kappa = route.kappaAt(edge, s) * dir;
-      const gain = fighting ? FIGHT_STEER_GAIN : 0.35;
+      const gain = yieldingNow ? 0.7 : fighting ? FIGHT_STEER_GAIN : 0.35;
       const steer = gain * lateral - 2.5 * yaw + (kappa * v * v) / 22;
       a.throttle = throttle;
       a.brake = brake;
