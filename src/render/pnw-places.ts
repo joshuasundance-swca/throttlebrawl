@@ -23,8 +23,13 @@
 // (scenery-merge.ts): a few draw calls a view, built as the camera comes near. The solid hazards draw
 // out to at least MIN_THREAT_DRAW_M whatever the scenery slider says. Presentation only; a lazy chunk.
 import { BufferGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group } from 'three';
-import { FERRY_DIM, type BakedFeature, type PnwPlacesLayout, type RoadNetwork } from '../road';
-import type { PnwSolidDef } from '../road/structures/pnw-places';
+import {
+  FERRY_DIM,
+  type BakedFeature,
+  type PnwPlacesLayout,
+  type PnwSolidDef,
+  type RoadNetwork,
+} from '../road';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import { keepSceneryOpen, MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';

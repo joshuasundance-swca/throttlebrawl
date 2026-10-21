@@ -1,7 +1,7 @@
 // The physical layout supplies every box. No generic scenery stand-in may close a shelter's
 // open sides or make its posts disappear. One textured, vertex-coloured mesh per facility.
-import { CanvasTexture, Group, Mesh, SRGBColorSpace } from 'three';
-import type { IowaParkLayout } from '../road/structures/iowa-park';
+import { CanvasTexture, Group, Mesh, Raycaster, SRGBColorSpace, Vector2, type Camera } from 'three';
+import type { IowaParkLayout } from '../road';
 import { paintCopy, type VisibleContent } from './boards';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import type { SceneDef } from './scenes/data';
@@ -19,6 +19,8 @@ export class IowaParkLayer {
   private readonly textures: CanvasTexture[] = [];
   private readonly blank = new Map<string, () => void>();
   private readonly hidden = new Set<string>();
+  private readonly ray = new Raycaster();
+  private readonly pointer = new Vector2();
   private last: IowaParkCounts;
 
   constructor(look: LookStyle, opts: { layout: IowaParkLayout }) {
@@ -91,6 +93,12 @@ export class IowaParkLayer {
     return this.views
       .filter((v) => v.mesh.visible && !this.hidden.has(v.ref))
       .map((v) => ({ ref: v.ref, kind: 'sign', label: v.label }));
+  }
+  pick(nx: number, ny: number, camera: Camera): string | null {
+    this.ray.setFromCamera(this.pointer.set(nx, ny), camera);
+    const meshes = this.views.filter((v) => v.mesh.visible && !this.hidden.has(v.ref)).map((v) => v.mesh);
+    const hit = this.ray.intersectObjects(meshes, false)[0];
+    return hit ? String(hit.object.userData['contentRef']) : null;
   }
   /** All physical detail remains at every distance; cull only beyond the threat draw distance. */
   update(cameraX: number, cameraZ: number, drawM: number): number {

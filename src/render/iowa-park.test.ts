@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { Vector3 } from 'three';
+import { PerspectiveCamera, Vector3 } from 'three';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -156,9 +156,16 @@ describe('physical Eagle Point park facilities', () => {
       expect(view.mesh.geometry.drawRange.count).toBe(Infinity);
       expect(view.mesh.geometry.getAttribute('position').count).toBe(full);
       expect(layer.visibleContent().some((v) => v.ref === view.ref)).toBe(true);
+      const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
+      camera.position.set(shelter.x, shelter.y + 10, shelter.z + 20);
+      camera.lookAt(shelter.x, shelter.y + 3.05, shelter.z);
+      camera.updateMatrixWorld(true);
+      layer.group.updateMatrixWorld(true);
+      expect(layer.pick(0, 0, camera), 'the visible physical facility is selectable').toBe(view.ref);
       layer.hide([view.ref]);
       expect(view.mesh.visible, 'veto keeps the physical shell visible').toBe(true);
       expect(layer.visibleContent().some((v) => v.ref === view.ref)).toBe(false);
+      expect(layer.pick(0, 0, camera), 'blanked words cannot be selected again').not.toBe(view.ref);
     } finally {
       layer.dispose();
     }
