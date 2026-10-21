@@ -6,6 +6,8 @@ import type { RoadNetwork, RoadNeighbour } from '../../road';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { roadsideClass } from '../roadside';
 import { vehicleInfo } from '../traffic';
+import { riderState } from '../riders';
+import { supportedPedMove } from './ground';
 import { GRAZE_M, trafficContactCrashes } from '../traffic/contact-rule';
 import { type Mover, type World, riderHitbox, emit, vehicleHeightM } from '../world';
 import {
@@ -54,6 +56,8 @@ const NEIGHBOUR_RANGE_M = 150;
  */
 interface Near {
   m: Mover;
+  /** Physical world height, independent of the mover's road reference plane. */
+  y: number;
   vehicle: boolean;
   /** W-P: a kerb rider (a bicycle or scooter on the shoulder): people on the verge hop, not dive. */
   kerb: boolean;
@@ -71,6 +75,10 @@ function nearThreats(world: World, config: SimConfig): Near[] {
     if (isThreatRider(m)) {
       out.push({
         m,
+        y:
+          m.mode === 'Tumble'
+            ? config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h).y
+            : (riderState(world).yAbs[m.id] ?? config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h).y),
         vehicle: false,
         kerb: false,
         lengthM: riderHitbox(config, m.riderIndex).lengthM,
@@ -82,6 +90,7 @@ function nearThreats(world: World, config: SimConfig): Near[] {
       if (info)
         out.push({
           m,
+          y: config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h).y,
           vehicle: true,
           kerb: info.kerb,
           lengthM: info.lengthM,
@@ -130,6 +139,26 @@ function chases(t: SimTrafficTypeDef | undefined): boolean {
   return t?.category === 'animal' && t.behaviour?.chases === true && (t.cruiseMps ?? 0) > 0;
 }
 
+function heightNear(near: Near, p: Mover, t: SimTrafficTypeDef, groundY: number): boolean {
+  const y = groundY + p.h;
+  return near.y - y < vehicleHeightM(t) && y - near.y < PEDS.maxContactH;
+}
+
+function moveGround(
+  config: SimConfig,
+  st: PedsState,
+  k: number,
+  p: Mover,
+  t: SimTrafficTypeDef,
+  s: number,
+  d: number,
+): void {
+  const at = supportedPedMove(config.road, p.pos, { s, d }, st.groundY[k]!, t);
+  p.pos.s = at.s;
+  p.pos.d = at.d;
+  st.groundY[k] = at.y;
+}
+
 /** Starts a dive for slot k, away from the riders and cars near it, preferring to land off the road. */
 function startDive(
   world: World,
@@ -152,6 +181,7 @@ function startDive(
   // a rider's line as it arrives scores badly even when the landing spot is clear.
   const near: { d: number; halfW: number; t0: number; t1: number; vehicle: boolean }[] = [];
   for (const r of threats) {
+    if (!heightNear(r, p, t, st.groundY[k]!)) continue;
     const rel = relate(r, p, pedThreatRangeM(r.m.speed) + 10);
     if (!rel) continue;
     const pass = (r.lengthM + t.lengthM) / 2 + 0.3;
@@ -162,11 +192,18 @@ function startDive(
     near.push({ d: rel.riderD, halfW: r.widthM / 2, t0, t1, vehicle: r.vehicle });
   }
   let best = 1;
+  let bestTo = p.pos.d;
   let bestScore = -Infinity;
   let bestClearsRiders = false;
   const from = p.pos.d;
   for (const side of [1, -1] as const) {
-    const to = from + side * PEDS.diveDistM;
+    const to = supportedPedMove(
+      config.road,
+      p.pos,
+      { s: p.pos.s, d: from + side * PEDS.diveDistM },
+      st.groundY[k]!,
+      t,
+    ).d;
     const at = (time: number) => from + (to - from) * Math.min(1, time / PEDS.diveS);
     let score = Infinity;
     let riderScore = Infinity;
@@ -190,6 +227,7 @@ function startDive(
     if (clearsRiders !== bestClearsRiders ? clearsRiders : score > bestScore) {
       bestScore = score;
       best = side;
+      bestTo = to;
       bestClearsRiders = clearsRiders;
     }
   }
@@ -198,7 +236,7 @@ function startDive(
   st.gated[k] = 0;
   st.hurry[k] = 0;
   st.fromD[k] = p.pos.d;
-  st.toD[k] = p.pos.d + best * PEDS.diveDistM;
+  st.toD[k] = bestTo;
   st.dives++;
   st.chasing[k] = 0;
   st.reactKind[k] = 0;
@@ -221,8 +259,8 @@ function startDive(
 }
 
 /** Whether a rider's (or car's) box is within `pad` of a pedestrian at d. */
-function boxNear(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number): boolean {
-  const gap = sideGap(r, p, t, d, pad);
+function boxNear(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number, groundY: number): boolean {
+  const gap = sideGap(r, p, t, d, pad, groundY);
   return gap !== null && gap < pad;
 }
 
@@ -230,11 +268,19 @@ function boxNear(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number
  * Side-to-side clearance, box edge to box edge, between a rider's (or car's) box and a pedestrian
  * at d, when their boxes overlap along the road within `pad`; null when they don't.
  */
-function sideGap(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number): number | null {
+function sideGap(
+  r: Near,
+  p: Mover,
+  t: SimTrafficTypeDef,
+  d: number,
+  pad: number,
+  groundY: number,
+): number | null {
   const rel = relate(r, p, 10);
   if (!rel) return null;
   if (Math.abs(rel.ahead) >= (r.lengthM + t.lengthM) / 2 + pad) return null;
-  if (r.m.h - p.h >= vehicleHeightM(t) || p.h - r.m.h >= PEDS.maxContactH) return null;
+  const height = groundY + p.h;
+  if (r.y - height >= vehicleHeightM(t) || height - r.y >= PEDS.maxContactH) return null;
   const dd = rel.dd + rel.sign * (d - p.pos.d);
   return Math.abs(dd) - (r.widthM + t.widthM) / 2;
 }
@@ -258,10 +304,17 @@ function pedClosingMps(near: Near, p: Mover, t: SimTrafficTypeDef): number {
 }
 
 /** Whether a rider is coming at p from just beyond its threat range (the worst-moment gag). */
-function riderComing(config: SimConfig, p: Mover, threats: readonly Near[]): boolean {
+function riderComing(
+  config: SimConfig,
+  p: Mover,
+  t: SimTrafficTypeDef,
+  threats: readonly Near[],
+  groundY: number,
+): boolean {
   for (const near of threats) {
     // The gag plays for the players only: rivals and the cop are not lured into swerving.
     if (near.vehicle || near.m.speed < PEDS.threatMinMps) continue;
+    if (!heightNear(near, p, t, groundY)) continue;
     if (config.riders[near.m.riderIndex]?.controller.kind !== 'player') continue;
     const range = pedThreatRangeM(near.m.speed);
     const rel = relate(near, p, range + PEDS.lureLeadMaxM);
@@ -308,8 +361,9 @@ function riderArrivalS(
   threats: readonly Near[],
   dLo: number,
   dHi: number,
+  groundY: number,
 ): number {
-  return pressingRider(p, t, threats, dLo, dHi).arrival;
+  return pressingRider(p, t, threats, dLo, dHi, groundY).arrival;
 }
 
 /** riderArrivalS, and the pressing rider's d in the pedestrian's frame (NaN when there is none). */
@@ -319,13 +373,14 @@ function pressingRider(
   threats: readonly Near[],
   dLo: number,
   dHi: number,
+  groundY: number,
 ): { arrival: number; d: number } {
   let best = Infinity;
   let d = NaN;
   for (const near of threats) {
     if (near.vehicle) continue;
     const r = near.m;
-    if (r.speed < PEDS.threatMinMps || r.h - p.h >= vehicleHeightM(t)) continue;
+    if (r.speed < PEDS.threatMinMps || !heightNear(near, p, t, groundY)) continue;
     const rel = relate(near, p, PEDS.gapLookM);
     if (!rel) continue;
     const half = (near.lengthM + t.lengthM) / 2;
@@ -355,10 +410,11 @@ function gapClear(
   threats: readonly Near[],
   from: number,
   to: number,
+  groundY: number,
 ): boolean {
   const end = firstStageEnd(config.road, p, from, to);
   const time = Math.abs(end - from) / t.cruiseMps + PEDS.gapMarginS;
-  return riderArrivalS(p, t, threats, Math.min(from, end), Math.max(from, end)) >= time;
+  return riderArrivalS(p, t, threats, Math.min(from, end), Math.max(from, end), groundY) >= time;
 }
 
 /**
@@ -383,7 +439,7 @@ function gatedTarget(
   if (crosses && Math.abs(p.pos.d - mid) < 1e-6) {
     // At the refuge: the next stage must be clear before it leaves.
     st.hurry[k] = 0;
-    return gapClear(config, p, t, threats, mid, final) ? final : null;
+    return gapClear(config, p, t, threats, mid, final, st.groundY[k]!) ? final : null;
   }
   const before = crosses && Math.sign(p.pos.d - mid) === Math.sign(from - mid);
   const end = before ? mid : final;
@@ -395,6 +451,7 @@ function gatedTarget(
       threats,
       Math.min(p.pos.d, end),
       Math.max(p.pos.d, end),
+      st.groundY[k]!,
     );
     if (arrival < left / t.cruiseMps) {
       st.hurry[k] = 1;
@@ -446,9 +503,10 @@ function fakeOut(
 ): void {
   const target = st.targetD[k] ?? p.pos.d;
   const step = clamp(target - p.pos.d, -t.cruiseMps * dt, t.cruiseMps * dt);
-  p.pos.d += step;
+  const beforeD = p.pos.d;
+  moveGround(config, st, k, p, t, p.pos.s, p.pos.d + step);
   if (Math.abs(target - p.pos.d) > 1e-6) {
-    p.speed = Math.abs(step) / Math.max(dt, 1e-9);
+    p.speed = Math.abs(p.pos.d - beforeD) / Math.max(dt, 1e-9);
     p.yaw = (step >= 0 ? 1 : -1) * HALF_PI;
     return;
   }
@@ -456,7 +514,7 @@ function fakeOut(
   p.speed = 0;
   p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
   const { lo, hi } = roadEdges(config.road, p.pos.edge, p.pos.s);
-  if ((st.timer[k] ?? 0) <= 0 || riderArrivalS(p, t, threats, lo, hi) === Infinity) {
+  if ((st.timer[k] ?? 0) <= 0 || riderArrivalS(p, t, threats, lo, hi, st.groundY[k]!) === Infinity) {
     resume(world, st, k, t);
   }
 }
@@ -541,7 +599,13 @@ function startHop(world: World, config: SimConfig, st: PedsState, k: number, rid
   st.phase[k] = PED_PHASE.hop;
   st.timer[k] = PEDS.hopS;
   st.fromD[k] = p.pos.d;
-  st.toD[k] = p.pos.d + out * PEDS.hopDistM;
+  st.toD[k] = supportedPedMove(
+    config.road,
+    p.pos,
+    { s: p.pos.s, d: p.pos.d + out * PEDS.hopDistM },
+    st.groundY[k]!,
+    typeOf(config, st, k),
+  ).d;
   st.scaredBy[k] = riderId;
   st.chasing[k] = 0;
   p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
@@ -594,10 +658,11 @@ function walkAlong(
   const next = p.pos.s + step;
   const blocked = t.category === 'animal' && onBridgeWalkway(road, p.pos.edge, next);
   if (!blocked && step !== 0) {
-    p.pos.s = next;
     const side = p.pos.d < 0 ? -1 : 1;
-    p.pos.d = offRoadD(road, p.pos.edge, next, side, t.widthM / 2, st.homeD[k] ?? p.pos.d);
-    p.speed = Math.abs(step) / Math.max(dt, 1e-9);
+    const home = offRoadD(road, p.pos.edge, next, side, t.widthM / 2, st.homeD[k] ?? p.pos.d);
+    const oldS = p.pos.s;
+    moveGround(config, st, k, p, t, next, p.pos.d + clamp(home - p.pos.d, -pace * dt, pace * dt));
+    p.speed = Math.abs(p.pos.s - oldS) / Math.max(dt, 1e-9);
     p.yaw = step > 0 ? 0 : PI;
   }
   if (!blocked && Math.abs(target - p.pos.s) > 1e-6) return;
@@ -655,7 +720,7 @@ function closePass(
     const r = near.m;
     if (near.vehicle && !near.kerb) continue;
     const minMps = near.kerb ? PEDS.threatMinMps : dog ? PEDS.chaseMinMps : PEDS.reactMinMps;
-    if (r.speed < minMps || r.h - p.h >= vehicleHeightM(t)) continue;
+    if (r.speed < minMps || !heightNear(near, p, t, st.groundY[k]!)) continue;
     const rel = relate(near, p, 30);
     if (!rel) continue;
     // Beside it now: their boxes overlap along the road (plus a metre).
@@ -705,9 +770,9 @@ function move(
     const u = clamp(1 - (st.timer[k] ?? 0) / PEDS.diveS, 0, 1);
     const from = st.fromD[k] ?? p.pos.d;
     const to = st.toD[k] ?? p.pos.d;
-    p.pos.d = from + (to - from) * u;
+    moveGround(config, st, k, p, t, p.pos.s, from + (to - from) * u);
     p.h = 4 * PEDS.diveHeightM * u * (1 - u);
-    p.speed = dt > 0 ? PEDS.diveDistM / PEDS.diveS : 0;
+    p.speed = dt > 0 ? Math.abs(to - from) / PEDS.diveS : 0;
     if (u >= 1) {
       p.h = 0;
       p.speed = 0;
@@ -734,7 +799,7 @@ function move(
     const u = clamp(1 - (st.timer[k] ?? 0) / PEDS.hopS, 0, 1);
     const from = st.fromD[k] ?? p.pos.d;
     const to = st.toD[k] ?? p.pos.d;
-    p.pos.d = from + (to - from) * u;
+    moveGround(config, st, k, p, t, p.pos.s, from + (to - from) * u);
     p.h = 4 * PEDS.hopHeightM * u * (1 - u);
     p.speed = dt > 0 ? Math.abs(to - from) / PEDS.hopS : 0;
     if (u >= 1) {
@@ -765,17 +830,26 @@ function move(
     if (st.crosses[k] !== 1) return;
     const gap = gapAcceptOn(world);
     // T4.2: the worst-moment gag is a fake-out at the kerb, never a step onto the road.
-    if (gap && st.lure[k] === 1 && !onRoad(config.road, p, half) && riderComing(config, p, threats)) {
+    if (
+      gap &&
+      st.lure[k] === 1 &&
+      !onRoad(config.road, p, half) &&
+      riderComing(config, p, t, threats, st.groundY[k]!)
+    ) {
       startFakeOut(config, st, k, p, t);
       return;
     }
-    if ((st.timer[k] ?? 0) > 0 && (gap || !(st.lure[k] === 1 && riderComing(config, p, threats)))) return;
+    if (
+      (st.timer[k] ?? 0) > 0 &&
+      (gap || !(st.lure[k] === 1 && riderComing(config, p, t, threats, st.groundY[k]!)))
+    )
+      return;
     const home = st.homeD[k] ?? p.pos.d;
     const far = st.farD[k] ?? p.pos.d;
     const goal = Math.abs(p.pos.d - home) < Math.abs(p.pos.d - far) ? far : home;
     if (gap) {
       // T4.2: wait for a gap in the first stage (from the refuge, the same).
-      if (!gapClear(config, p, t, threats, p.pos.d, goal)) return;
+      if (!gapClear(config, p, t, threats, p.pos.d, goal, st.groundY[k]!)) return;
       st.gated[k] = 1;
       st.hurry[k] = 0;
       st.fromD[k] = p.pos.d;
@@ -802,16 +876,17 @@ function move(
   // pins them, because stepping away is always allowed.
   let blocked = false;
   for (const r of threats) {
-    const after = sideGap(r, p, t, next, PEDS.walkClearM);
+    const after = sideGap(r, p, t, next, PEDS.walkClearM, st.groundY[k]!);
     if (after === null || after >= PEDS.walkClearM) continue;
-    const now = sideGap(r, p, t, p.pos.d, PEDS.walkClearM);
+    const now = sideGap(r, p, t, p.pos.d, PEDS.walkClearM, st.groundY[k]!);
     if (now === null || after < now) {
       blocked = true;
       break;
     }
   }
-  p.speed = blocked ? 0 : Math.abs(step) / Math.max(dt, 1e-9);
-  if (!blocked) p.pos.d = next;
+  const beforeD = p.pos.d;
+  if (!blocked) moveGround(config, st, k, p, t, p.pos.s, next);
+  p.speed = Math.abs(p.pos.d - beforeD) / Math.max(dt, 1e-9);
   p.yaw = (step >= 0 ? 1 : -1) * HALF_PI;
   if (Math.abs(target - p.pos.d) < 1e-6) {
     p.pos.d = target;
@@ -850,7 +925,7 @@ function react(
   // Contacts: counted once per toucher, and never expected.
   let touching: Near | null = null;
   for (const r of threats) {
-    if (boxNear(r, p, t, p.pos.d, 0)) {
+    if (boxNear(r, p, t, p.pos.d, 0, st.groundY[k]!)) {
       touching = r;
       break;
     }
@@ -887,7 +962,7 @@ function react(
   for (const near of threats) {
     const r = near.m;
     if (near.kerb && verge) continue;
-    if (r.speed < PEDS.threatMinMps || r.h - p.h >= vehicleHeightM(t)) continue;
+    if (r.speed < PEDS.threatMinMps || !heightNear(near, p, t, st.groundY[k]!)) continue;
     const rel = relate(near, p, kindThreatRangeM(world, t, r.speed));
     const band = (near.widthM + t.widthM) / 2 + PEDS.lateralM;
     // A crash can throw a tumbling body backward along the road, against its travel direction (a

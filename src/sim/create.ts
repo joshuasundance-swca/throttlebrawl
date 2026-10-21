@@ -8,7 +8,7 @@ import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
 import { pursuitTargetOf } from './cops/pursuit';
 import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
-import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
+import { pedGroundY, pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
 import {
   driftOf,
@@ -114,6 +114,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
   const entities: EntitySnapshot[] = world.movers.map((m) => {
     const def = config.riders[m.riderIndex];
     const p = road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
+    if (m.kind === 'ped') p.y = (pedGroundY(world, m.id) ?? p.y - m.h) + m.h;
     const f = road.frameAt(m.pos.edge, m.pos.s);
     // Forward: the road tangent in the travel direction, turned by yaw toward the rider's right.
     const tx = f.tx * m.pos.dir;

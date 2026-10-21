@@ -67,6 +67,7 @@ import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { roadsideClass } from '../roadside';
 import { addMover, systemState, type SimSystem, type World } from '../world';
 import { lateSteps } from '../late';
+import { initialPedGround } from './ground';
 
 export const PEDS_TUNING: readonly TuningParamDecl[] = [
   {
@@ -242,6 +243,8 @@ export function kindThreatRangeM(world: World, t: SimTrafficTypeDef, speed: numb
 /** Pedestrians' plain state, indexed by pedestrian slot. The mover holds the road position. */
 export interface PedsState {
   id: number[];
+  /** World height of the connected supporting floor; mover.h remains the intentional arc. */
+  groundY: number[];
   /** Index into config.trafficTypes. */
   type: number[];
   phase: number[];
@@ -293,6 +296,7 @@ export interface PedsState {
 export function pedsState(world: World): PedsState {
   return systemState<PedsState>(world, 'peds', () => ({
     id: [],
+    groundY: [],
     type: [],
     phase: [],
     timer: [],
@@ -352,6 +356,13 @@ export function pedInfo(
     widthM: t.widthM,
     hazard: t.hazard,
   };
+}
+
+/** Snapshot projection uses the same floor as reaction/contact logic. */
+export function pedGroundY(world: World, entityId: number): number | null {
+  const st = pedsState(world);
+  const k = st.id.indexOf(entityId);
+  return k < 0 ? null : (st.groundY[k] ?? null);
 }
 
 /**
@@ -424,9 +435,12 @@ export function placePed(
   const edgeLength = config.road.edges[spec.edge]?.length ?? spec.s;
   const half = (t?.widthM ?? 0.5) / 2;
   const side = spec.d < 0 ? -1 : 1;
+  const groundY = initialPedGround(config.road, { edge: spec.edge, s: spec.s, d: spec.d });
+  if (groundY === null) throw new Error('peds: placement has no dry supporting ground');
   const mover = addMover(world, 'ped', { edge: spec.edge, s: spec.s, d: spec.d, dir: 1 });
   mover.yaw = -side * HALF_PI;
   st.id.push(mover.id);
+  st.groundY.push(groundY);
   st.type.push(spec.type);
   st.phase.push(PED_PHASE.loiter);
   st.timer.push(spec.timer ?? 0);
