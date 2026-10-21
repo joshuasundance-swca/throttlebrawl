@@ -25,7 +25,7 @@ const D = 3.4;
 function config(features: BakedFeature[] = [TRUCK], wideRoad = false): SimConfig {
   const base = testConfig();
   const bundle = fixtureNetwork([
-    { id: 'a', lengthM: 3000, kappa: 0, lanes: wideRoad ? highwayLanes(2) : undefined },
+    { id: 'a', lengthM: 3000, kappa: 0, ...(wideRoad ? { lanes: highwayLanes(2) } : {}) },
   ]);
   const road0 = bundle.roads[0];
   if (!road0) throw new Error('no road');

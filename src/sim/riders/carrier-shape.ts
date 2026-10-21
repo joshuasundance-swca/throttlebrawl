@@ -58,7 +58,9 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
       shape: box(a, b, x0, x1),
       maxTop: top * hs,
       topAt: (s, d) => hs * (profile ? profile(((s - foot) * facing) / ls, (d - middle) / ws) : top),
-      bottomAt: bottom ? (s, d) => hs * bottom(((s - foot) * facing) / ls, (d - middle) / ws) : undefined,
+      ...(bottom
+        ? { bottomAt: (s: number, d: number) => hs * bottom(((s - foot) * facing) / ls, (d - middle) / ws) }
+        : {}),
       support: support ?? null,
     });
   };
@@ -98,7 +100,7 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
         [4.6, 8.1],
         [8.3, 11.2],
         [11.4, 13.9],
-      ]) {
+      ] as const) {
         const za = 0.8;
         const zb = Math.min(rampTop(fb), 2.8) - 0.35;
         // Source polygon corners: (fa,za), (fa+.22,za), (fb,zb), (fb-.22,zb).
