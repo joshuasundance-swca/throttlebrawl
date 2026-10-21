@@ -44,6 +44,7 @@ TAGS = {
     "longview-port-yard",
     "iowa-farm-traffic",
     "iowa-park",
+    "iowa-county-farmstead",
     "piers",
     "gardens",
     "fog",

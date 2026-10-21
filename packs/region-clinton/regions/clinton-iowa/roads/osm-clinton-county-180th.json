@@ -63,6 +63,18 @@
       "s1": 2278.0079,
       "side": "both",
       "tag": "rural"
+    },
+    {
+      "s0": 655.0,
+      "s1": 665.0,
+      "side": "right",
+      "tag": "iowa-county-farmstead"
+    },
+    {
+      "s0": 1935.0,
+      "s1": 1945.0,
+      "side": "right",
+      "tag": "iowa-county-farmstead"
     }
   ],
   "features": [],

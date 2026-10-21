@@ -224,7 +224,11 @@
         {
           "id": "osm-clinton-county-180th",
           "name": "180th Street",
-          "tags": ["rural"]
+          "tags": ["rural"],
+          "sideRuns": [
+            { "tag": "iowa-county-farmstead", "side": "right", "s0": 655, "s1": 665 },
+            { "tag": "iowa-county-farmstead", "side": "right", "s0": 1935, "s1": 1945 }
+          ]
         }
       ],
       "roadSurface": {
