@@ -35,7 +35,8 @@ describe('Iowa county farmstead', () => {
       const delta =
         sectionGroundOf(road)(facility.edge, facility.s, facility.d)! -
         sectionGroundOf(control)(facility.edge, facility.s, facility.d)!;
-      expect(delta).toBeCloseTo(0.05, 5);
+      // Existing zone ground is road-0.06m; the rural strip below is road-0.09m.
+      expect(delta).toBeCloseTo(0.03, 5);
       expect(roadBandHeight(control, facility.edge, facility.s, facility.d)).not.toBeNull();
     }
     const moved = roads.map((r) => ({
