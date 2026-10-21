@@ -118,8 +118,9 @@ describe('diagnostic control workflow contract', () => {
   });
 
   it('keeps nontrain diagnostic concurrency and canonical totals independent of the train cap', () => {
-    // A larger synthetic selection catches fallback limits copied from today's browser matrix.
-    const browser = Array.from({ length: 32 }, (_, i) => i + 1);
+    // GitHub's documented matrix ceiling exercises the entire valid range, rather than today's
+    // project shard count, so any smaller nontrain fallback fails this synthetic selection.
+    const browser = Array.from({ length: 256 }, (_, i) => i + 1);
     const selection: Selection = {
       static: false,
       unit: [],
