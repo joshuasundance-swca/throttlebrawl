@@ -796,9 +796,15 @@ function streetSiteParts(kind: string, solids: readonly PnwSolidDef[], side: 1 |
     const word = 'REPAIRS',
       cell = 0.18;
     parts.push(
-      ...wordAlong(word, cell, 5 - (side * wordWidth(word, cell)) / 2, side, -face, 4.3, '#e6dfca').map(
-        (p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const }),
-      ),
+      ...wordAlong(
+        word,
+        cell,
+        5 + (side * wordWidth(word, cell)) / 2,
+        side === 1 ? -1 : 1,
+        -face,
+        4.3,
+        '#e6dfca',
+      ).map((p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const })),
     );
   } else {
     // Pale and green canopy stripes, with the sale's name on its road-facing fascia.
@@ -807,9 +813,15 @@ function streetSiteParts(kind: string, solids: readonly PnwSolidDef[], side: 1 |
     const word = 'PLANT SALE',
       cell = 0.12;
     parts.push(
-      ...wordAlong(word, cell, (-side * wordWidth(word, cell)) / 2, side, -side * 4.007, 2.4, '#efe7c9').map(
-        (p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const }),
-      ),
+      ...wordAlong(
+        word,
+        cell,
+        (side * wordWidth(word, cell)) / 2,
+        side === 1 ? -1 : 1,
+        -side * 4.007,
+        2.4,
+        '#efe7c9',
+      ).map((p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const })),
     );
   }
   return parts;

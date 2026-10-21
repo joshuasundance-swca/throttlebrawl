@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Color, DoubleSide, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
 import {
   createRoadNetwork,
   footContains,
@@ -26,6 +27,37 @@ const { pnwPlacesLayout } = await loadPnwPlacesLayout();
 const isSite = (kind: string) => kind === 'civic-frontage' || kind === 'plant-market';
 
 describe('Street Diamond has distinct, physically grounded local life on its arms', () => {
+  it('reads the service frontage from the road with an upright R first and S last', () => {
+    const road = createRoadNetwork({ network, roads });
+    const item = placeItems(road, 1, pnwPlacesLayout(road, 1)).find((i) => i.kind === 'civic-frontage')!;
+    const material = new MeshBasicMaterial({ side: DoubleSide });
+    const mesh = new Mesh(item.geometry, material);
+    const ray = new Raycaster();
+    const ink = new Color('#e6dfca');
+    const colours = item.geometry.getAttribute('color');
+    // View the road-facing facade from +X. Screen-right runs toward -Z.
+    const cell = 0.18,
+      width = (7 * 4 - 1) * cell;
+    const read = (letter: number) =>
+      Array.from({ length: 5 }, (_, row) =>
+        Array.from({ length: 3 }, (_, column) => {
+          const z = 5 + width / 2 - (letter * 4 + column + 0.5) * cell;
+          ray.set(new Vector3(5, 4.3 + (4 - row + 0.5) * cell, z), new Vector3(-1, 0, 0));
+          const hit = ray.intersectObject(mesh)[0];
+          if (!hit?.face) return '0';
+          const colour = new Color().fromBufferAttribute(colours, hit.face.a);
+          return Math.abs(colour.r - ink.r) + Math.abs(colour.g - ink.g) + Math.abs(colour.b - ink.b) < 0.01
+            ? '1'
+            : '0';
+        }).join(''),
+      );
+    try {
+      expect(read(0)).toEqual(['110', '101', '110', '101', '101']);
+      expect(read(6)).toEqual(['011', '100', '010', '001', '110']);
+    } finally {
+      material.dispose();
+    }
+  });
   it('loads authored civic frontage and plant-market forms only on their selected streets', () => {
     const road = createRoadNetwork({ network, roads });
     expect(structureLayersFor(road)).toContain('pnw-places');
