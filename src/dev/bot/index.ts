@@ -155,6 +155,9 @@ const ONCOMING_IN_LINE_M = 1.8;
  */
 export const STUCK_TICKS = 120;
 const FILTER_MPS = 6;
+/** A local yield creeps, rather than starting a pass through the distant queue, m/s and m. */
+const LOCAL_YIELD_MPS = 2;
+const LOCAL_YIELD_ADVANCE_M = 2;
 /**
  * A vehicle that reads as stopped but moves back toward the bot faster than this (m/s, measured from
  * one tick's snapshot to the next) is being shoved down the road: the runaway cable car rolling back
@@ -249,6 +252,61 @@ function relative(me: EntitySnapshot, o: EntitySnapshot): { ds: number; dd: numb
   return { ds: (o.road.s - me.road.s) * dir, dd: (o.road.d - me.road.d) * dir };
 }
 
+type FootprintEntity = EntitySnapshot & { footprintLengthM: number; footprintWidthM: number };
+type Axis = readonly [number, number];
+const bodyAxes = (h: number): readonly [Axis, Axis] => [
+  [Math.cos(h), -Math.sin(h)],
+  [-Math.sin(h), -Math.cos(h)],
+];
+function knownFootprint(e: EntitySnapshot): e is FootprintEntity {
+  return (
+    typeof e.footprintLengthM === 'number' &&
+    Number.isFinite(e.footprintLengthM) &&
+    e.footprintLengthM > 0 &&
+    typeof e.footprintWidthM === 'number' &&
+    Number.isFinite(e.footprintWidthM) &&
+    e.footprintWidthM > 0 &&
+    Number.isFinite(e.heading) &&
+    Number.isFinite(e.x) &&
+    Number.isFinite(e.z)
+  );
+}
+
+/** Separating axes of two rigid footprints and the swept translation, with 10 cm clearance. */
+function yieldSweepClear(me: FootprintEntity, other: FootprintEntity, mx: number, mz: number): boolean {
+  const half = (e: FootprintEntity, axis: Axis) => {
+    const [right, forward] = bodyAxes(e.heading);
+    return (
+      (e.footprintWidthM / 2) * Math.abs(right[0] * axis[0] + right[1] * axis[1]) +
+      (e.footprintLengthM / 2) * Math.abs(forward[0] * axis[0] + forward[1] * axis[1])
+    );
+  };
+  const axes: Axis[] = [...bodyAxes(me.heading), ...bodyAxes(other.heading)];
+  const footprintAxisCount = axes.length;
+  const distance = Math.hypot(mx, mz);
+  if (distance > 0) axes.push([-mz / distance, mx / distance]);
+  let inside = true,
+    separate = false,
+    escape = false;
+  let minimumDepth = Infinity;
+  for (const [i, axis] of axes.entries()) {
+    const start = (me.x - other.x) * axis[0] + (me.z - other.z) * axis[1];
+    const end = start + mx * axis[0] + mz * axis[1];
+    const reach = half(me, axis) + half(other, axis) + 0.1;
+    inside &&= Math.abs(start) <= reach;
+    separate ||= Math.min(start, end) > reach || Math.max(start, end) < -reach;
+    // Already touching: escape along the initially least-penetrated footprint axis.
+    // Escaping through a different side could first push deeper into the body. The sweep's
+    // extra axis only tests separation; it cannot choose the initial contact's escape side.
+    const depth = reach - Math.abs(start);
+    if (i < footprintAxisCount && depth < minimumDepth) {
+      minimumDepth = depth;
+      escape = start * end >= 0 && Math.abs(end) > reach && Math.abs(end) > Math.abs(start);
+    }
+  }
+  return separate || (inside && escape);
+}
+
 export function createBot(): BotController {
   const stats: BotStats = {
     attackPresses: 0,
@@ -277,6 +335,7 @@ export function createBot(): BotController {
   /** Ticks in a row the bot has been riding under 1 m/s, and whether it is filtering (STUCK_TICKS). */
   let stillTicks = 0;
   let filtering = false;
+  let localYield: { edge: number; dir: 1 | -1; d: number; stopS: number } | null = null;
   /** Each vehicle's place on the last tick the bot saw it (BACKING_MPS). */
   const lastSeen = new Map<number, { tick: number; edge: number; s: number }>();
   /** The vehicles moving back along the bot's way this tick while reading as stopped. */
@@ -360,6 +419,81 @@ export function createBot(): BotController {
         (!zone || (d >= Math.min(zone.d0, zone.d1) + 0.6 && d <= Math.max(zone.d0, zone.d1) - 0.6)) &&
         shoulderClear(snap, me, d),
     );
+  }
+
+  /**
+   * A stopped oncoming driver can be waiting for us too, on overlapping roads or a wide single
+   * lane. Yield sideways within our own lane, without demanding a clear distant passing corridor.
+   * Read actual own-heading footprints, including their world orientation across projected roads.
+   * This is a place to wait, never permission to pass a moving car. Unknown geometry stays stopped.
+   */
+  function yieldLocally(
+    snap: SimSnapshot,
+    me: EntitySnapshot,
+    lanes: readonly LaneInfo[],
+    targetD: number,
+  ): { d: number; throttle: number; brake: number } | null {
+    const lead = blockerAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M);
+    if (!lead || lead.o.road.dir === me.road.dir) {
+      localYield = null;
+      return null;
+    }
+    if (localYield && (localYield.edge !== me.road.edge || localYield.dir !== me.road.dir)) localYield = null;
+    if (!localYield && (stillTicks < STUCK_TICKS || lead.o.speed >= 0.5)) return null;
+    const bodies = snap.entities.filter((o) => o.kind === 'vehicle' && relative(me, o) !== null);
+    if (!knownFootprint(me) || bodies.some((o) => !knownFootprint(o))) {
+      localYield = null;
+      return null;
+    }
+    const [right, forward] = bodyAxes(me.heading + me.road.yaw);
+    const inset =
+      (me.footprintWidthM * Math.abs(Math.cos(me.road.yaw)) +
+        me.footprintLengthM * Math.abs(Math.sin(me.road.yaw))) /
+        2 +
+      0.1;
+    const clear = (d: number, advance = 0) => {
+      const lateral = (d - me.road.d) * me.road.dir;
+      const mx = right[0] * lateral + forward[0] * advance;
+      const mz = right[1] * lateral + forward[1] * advance;
+      return bodies.every((o) => knownFootprint(o) && yieldSweepClear(me, o, mx, mz));
+    };
+    const advanceTo = (d: number, maximum: number) => {
+      if (clear(d, maximum)) return maximum;
+      let lo = 0,
+        hi = maximum;
+      for (let i = 0; i < 10; i++) {
+        const middle = (lo + hi) / 2;
+        if (clear(d, middle)) lo = middle;
+        else hi = middle;
+      }
+      return lo;
+    };
+    if (!localYield) {
+      const candidates = lanes
+        .filter((l) => rideable(l, me.road.dir) && Math.abs(me.road.d - l.dCenterM) <= l.widthM / 2)
+        .flatMap((l) => [l.dCenterM - l.widthM / 2 + inset, l.dCenterM + l.widthM / 2 - inset])
+        .sort((a, b) => Math.abs(a - me.road.d) - Math.abs(b - me.road.d));
+      const d = candidates.find((d) => clear(d));
+      if (d === undefined || Math.abs(d - me.road.d) < 0.1) return null;
+      const advance = advanceTo(d, LOCAL_YIELD_ADVANCE_M);
+      if (advance <= 0.3) return null;
+      localYield = { edge: me.road.edge, dir: me.road.dir, d, stopS: me.road.s + me.road.dir * advance };
+    }
+    const legal = lanes.some(
+      (l) => rideable(l, me.road.dir) && Math.abs(localYield!.d - l.dCenterM) <= l.widthM / 2 - inset,
+    );
+    if (!legal || !clear(localYield.d)) {
+      localYield = null;
+      return null;
+    }
+    const remaining = advanceTo(localYield.d, Math.max(0, (localYield.stopS - me.road.s) * me.road.dir));
+    localYield.stopS = me.road.s + me.road.dir * remaining;
+    const creep = lead.o.speed < 0.5 && Math.abs(localYield.d - me.road.d) > 0.1 && remaining > 0.3;
+    return {
+      d: localYield.d,
+      throttle: creep && me.speed < LOCAL_YIELD_MPS ? 1 : 0,
+      brake: me.speed > (creep ? LOCAL_YIELD_MPS + 0.5 : 0.1) ? 0.5 : 0,
+    };
   }
 
   /**
@@ -524,6 +658,7 @@ export function createBot(): BotController {
         wasDown = true;
         stillTicks = 0;
         filtering = false;
+        localYield = null;
         return;
       }
       if (wasDown) {
@@ -558,6 +693,7 @@ export function createBot(): BotController {
       let targetD = homeLine(me, lanes);
       let throttle = 1;
       let brake = 0;
+      let yieldingNow = false;
 
       // road-2's ramp shortcut: a split zone ahead on this edge, not yet taken. Not while a vehicle
       // coming the other way is in the zone's line (Bridge City's cut leaves across the oncoming
@@ -644,6 +780,7 @@ export function createBot(): BotController {
       }
 
       // Traffic in the bot's line: another own-direction lane, a pass in the oncoming lane, or follow.
+      if (zone || fighting) localYield = null;
       targetD = clamp(targetD, bounds.lo, bounds.hi);
       if (zone) {
         // Committed to the zone: follow a car going its way rather than swerve out of it. A car
@@ -682,26 +819,36 @@ export function createBot(): BotController {
         if (free) filtering = false;
         const shoulder = free ? undefined : filterLine(snap, me, lanes, targetD);
         if (free) {
+          localYield = null;
           if (!dodging) stats.trafficDodges++;
           dodging = true;
           targetD = free.d;
         } else if (shoulder !== undefined) {
+          localYield = null;
           targetD = shoulder;
           throttle = me.speed < FILTER_MPS ? 1 : 0;
           brake = me.speed > FILTER_MPS + 1 ? 0.5 : 0;
         } else {
           // Nowhere to go: follow at the blocker's pace.
           ({ throttle, brake } = follow(snap, me, targetD));
+          const yielding = fighting ? null : yieldLocally(snap, me, lanes, targetD);
+          if (yielding) {
+            yieldingNow = true;
+            targetD = yielding.d;
+            throttle = yielding.throttle;
+            brake = yielding.brake;
+          }
         }
       } else {
         dodging = false;
         filtering = false;
+        localYield = null;
       }
 
       // Steer toward the target line, with the road's curvature fed forward.
       const lateral = (targetD - d) * dir;
       const kappa = route.kappaAt(edge, s) * dir;
-      const gain = fighting ? FIGHT_STEER_GAIN : 0.35;
+      const gain = yieldingNow ? 0.7 : fighting ? FIGHT_STEER_GAIN : 0.35;
       const steer = gain * lateral - 2.5 * yaw + (kappa * v * v) / 22;
       a.throttle = throttle;
       a.brake = brake;

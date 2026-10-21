@@ -25,7 +25,7 @@ const CABLE = 'region-sf:cable-car';
 interface RoadFile {
   id: string;
   lengthM: number;
-  tags: { s0: number; s1: number; tag: string }[];
+  tags: readonly { s0: number; s1: number; tag: string }[];
 }
 const roadFiles = Object.entries(REG.roads).map(([id, r]) => ({ ...(r as unknown as RoadFile), id }));
 const sfRoads = roadFiles.filter((r) => r.id.startsWith('region-sf:'));
@@ -33,6 +33,21 @@ const sfRoads = roadFiles.filter((r) => r.id.startsWith('region-sf:'));
 type Config = ReturnType<typeof buildSimConfig>;
 const configOf = (event: string, seed: number): Config =>
   buildSimConfig(REG, STREAMS.forEvent(REG, event), { seed, eventId: event });
+
+function onCableStreet(tags: RoadFile['tags'], s: number): boolean {
+  const route = tags.filter((t) => t.tag === 'cable-route');
+  if (route.some((t) => s >= t.s0 && s <= t.s1)) return true;
+  // The bake cuts surface tags around structural decks. Crossing an internal deck on Hyde
+  // still follows the cable street; this never admits a bridge onto an unmarked street.
+  return tags.some(
+    (deck) =>
+      deck.tag === 'bridge' &&
+      s >= deck.s0 &&
+      s <= deck.s1 &&
+      route.some((t) => t.s1 === deck.s0) &&
+      route.some((t) => t.s0 === deck.s1),
+  );
+}
 
 /** Steps a race with the bot for `seconds` and returns every place a cable car stood: its edge and s. */
 function cableCarsSeen(
@@ -59,6 +74,26 @@ function cableCarsSeen(
 }
 
 describe('the cable car runs on the cable-route streets and nowhere else', () => {
+  it('recognizes an internal structural deck without admitting unmarked streets or other gaps', () => {
+    const tags = [
+      { tag: 'cable-route', s0: 0, s1: 10 },
+      { tag: 'bridge', s0: 10, s1: 20 },
+      { tag: 'cable-route', s0: 20, s1: 30 },
+    ];
+    expect(onCableStreet(tags, 15), 'the deck connects the same cable street').toBe(true);
+    expect(onCableStreet(tags, 31), 'beyond the cable street').toBe(false);
+    expect(
+      onCableStreet(
+        tags.filter((t) => t.tag !== 'bridge'),
+        15,
+      ),
+      'an unmarked gap',
+    ).toBe(false);
+    expect(onCableStreet(tags.slice(0, 2), 15), 'a bridge leaving the cable street').toBe(false);
+    expect(onCableStreet(tags.slice(1), 15), 'a bridge entering from another street').toBe(false);
+    expect(onCableStreet([{ tag: 'bridge', s0: 10, s1: 20 }], 15), 'an unrelated bridge').toBe(false);
+  });
+
   it('is in no region-wide mix, and in the cable-route area alone', () => {
     const config = configOf(HILLS_EVENT, 1);
     const type = config.trafficTypes.find((t) => t.contentId === CABLE);
@@ -88,7 +123,7 @@ describe('the cable car runs on the cable-route streets and nowhere else', () =>
     const config = configOf(HILLS_EVENT, 1);
     const onRoute = (edge: number, s: number): boolean => {
       const tags = config.road.edges[edge]?.tags ?? [];
-      return tags.some((t) => t.tag === 'cable-route' && s >= t.s0 && s <= t.s1);
+      return onCableStreet(tags, s);
     };
     let total = 0;
     const cars = new Set<string>();

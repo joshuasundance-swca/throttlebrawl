@@ -25,6 +25,7 @@
 // Pure + - * / and Math.min/max/abs/floor/round/ceil (no trig), like the rest of road/.
 import type { BakedBarrier } from './types';
 import type { Edge, RoadNetwork } from './network';
+import { nearbySamples } from './nearby-samples';
 import {
   clearGroundReach,
   landIntervalPlan,
@@ -39,6 +40,12 @@ import { themeAt, type LandTheme, type SideTheme } from './themes';
 import { lakeWaterAt } from './water';
 import { terrainAt } from './terrain';
 import { DRAWN_VERGE_M } from './furniture-constants';
+import {
+  prepareGroundTriangle,
+  groundTriangleHit,
+  groundTriangleS,
+  type PreparedTriangle,
+} from './ground-triangle';
 
 /** The drawn verge past the shoulder, m (render/road-mesh.ts VERGE_M). */
 const VERGE_M = DRAWN_VERGE_M;
@@ -673,7 +680,7 @@ export type GroundUnder = (
   own?: { edge: number; s: number },
 ) => number | null;
 
-const groundKept = new WeakMap<RoadNetwork, GroundUnder>();
+const groundKept = new WeakMap<RoadNetwork, { cached: GroundUnder; uncached: GroundUnder }>();
 
 interface LakeBanks {
   at: (edge: number, side: -1 | 1, row: number) => { plateau: number; drop: number } | null;
@@ -764,7 +771,7 @@ const terrainKept = new WeakMap<RoadNetwork, { banks: LakeBanks; under: TerrainU
 function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
   const known = terrainKept.get(road);
   if (known?.banks === banks) return known.under;
-  const perEdge = new Map<number, Map<string, GroundTriangle[]>>();
+  const perEdge = new Map<number, Map<string, PreparedTriangle[]>>();
   const cellM = 16;
   const cell = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
   const rowsOf = landOf(road).rows;
@@ -873,12 +880,12 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
     return join.triangles;
   };
   const make = (edge: number) => {
-    const grid = new Map<string, GroundTriangle[]>();
+    const grid = new Map<string, PreparedTriangle[]>();
     const ed = road.edges[edge];
     const rows = rowsOf(edge);
     if (!ed || !rows) return grid;
     const tri = (a: GroundPoint, b: GroundPoint, c: GroundPoint) => {
-      const t: GroundTriangle = [a, b, c];
+      const t = prepareGroundTriangle([a, b, c]);
       for (
         let x = Math.floor(Math.min(a.x, b.x, c.x) / cellM);
         x <= Math.floor(Math.max(a.x, b.x, c.x) / cellM);
@@ -1046,19 +1053,21 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
       grid = make(edge);
       perEdge.set(edge, grid);
     }
-    let best: { y: number; s: number } | null = null;
-    for (const [a, b, c] of grid.get(cell(x, z)) ?? []) {
-      const det = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
-      if (Math.abs(det) < 1e-9) continue;
-      const u = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / det;
-      const v = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
-      if (u < -1e-8 || v < -1e-8 || u + v > 1 + 1e-8) continue;
-      const y = u * a.y + v * b.y + (1 - u - v) * c.y;
-      if (best === null || y > best.y) {
-        best = { y, s: u * a.s + v * b.s + (1 - u - v) * c.s };
+    let best: PreparedTriangle | null = null,
+      bestY = 0,
+      bestU = 0,
+      bestV = 0;
+    const hit = { u: 0, v: 0, y: 0 };
+    for (const triangle of grid.get(cell(x, z)) ?? []) {
+      if (!groundTriangleHit(triangle, x, z, hit)) continue;
+      if (best === null || hit.y > bestY) {
+        best = triangle;
+        bestY = hit.y;
+        bestU = hit.u;
+        bestV = hit.v;
       }
     }
-    return best;
+    return best === null ? null : { y: bestY, s: groundTriangleS(best, bestU, bestV) };
   };
   terrainKept.set(road, { banks, under });
   return under;
@@ -1076,21 +1085,7 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
  */
 export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null): GroundUnder {
   const known = groundKept.get(road);
-  if (known) return known;
-  const key = (cx: number, cz: number) => (cx + 0x8000) * 0x10000 + (cz + 0x8000);
-  let cells: Map<number, number[]> | null = null;
-  const build = () => {
-    const m = new Map<number, number[]>();
-    for (const e of road.edges) {
-      for (let i = 0; i < e.count; i++) {
-        const k = key(Math.floor((e.x[i] ?? 0) / NEAR_CELL_M), Math.floor((e.z[i] ?? 0) / NEAR_CELL_M));
-        const list = m.get(k);
-        if (list) list.push(e.index, i);
-        else m.set(k, [e.index, i]);
-      }
-    }
-    return m;
-  };
+  if (known) return known.cached;
   const fullSection = sectionGroundOf(road, lakeLevel);
   // Keep road candidates separate: an authored face above `top` must not hide a lower road.
   const section = road.terrain ? roadSectionKept.get(road)! : fullSection;
@@ -1102,40 +1097,17 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
   const painted = splitPaintOf(road);
   const skirts = skirtOf(road);
   const span = Math.ceil(NEAR_REACH_M / NEAR_CELL_M);
-  /** Every edge's ground under a point: edge, s, y, and whether it is a world-space triangle. */
-  const found = new Map<string, number[]>();
-  const groundsAt = (x: number, z: number): number[] => {
-    const id = `${x},${z}`;
-    const had = found.get(id);
-    if (had) return had;
-    cells ??= build();
-    const cx = Math.floor(x / NEAR_CELL_M);
-    const cz = Math.floor(z / NEAR_CELL_M);
-    // The nearest sample of each edge about the point.
-    const nearest = new Map<number, { i: number; d2: number }>();
-    for (let a = -span; a <= span; a++) {
-      for (let b = -span; b <= span; b++) {
-        const list = cells.get(key(cx + a, cz + b));
-        if (!list) continue;
-        for (let j = 0; j < list.length; j += 2) {
-          const e = list[j] ?? -1;
-          const i = list[j + 1] ?? 0;
-          const ed = road.edges[e];
-          if (!ed) continue;
-          const ox = x - (ed.x[i] ?? 0);
-          const oz = z - (ed.z[i] ?? 0);
-          const d2 = ox * ox + oz * oz;
-          const prev = nearest.get(e);
-          if (!prev || d2 < prev.d2 || (d2 === prev.d2 && i < prev.i)) nearest.set(e, { i, d2 });
-        }
-      }
-    }
-    const out: number[] = [];
-    for (const e of [...nearest.keys()].sort((p, q) => p - q)) {
+  const nearestSamples = nearbySamples(road.edges, NEAR_CELL_M, span);
+  // Both query paths choose exactly one section/triangle winner per edge, in the same order.
+  const visitGrounds = (
+    x: number,
+    z: number,
+    emit: (edge: number, s: number, y: number, triangle: number) => void,
+  ): void => {
+    nearestSamples.visit(x, z, (e, i, d2) => {
       const ed = road.edges[e];
-      const near = nearest.get(e);
-      if (!ed || !near || near.d2 > NEAR_REACH_M * NEAR_REACH_M) continue;
-      let s = near.i * ed.spacing;
+      if (!ed || d2 > NEAR_REACH_M * NEAR_REACH_M) return;
+      let s = i * ed.spacing;
       let d = 0;
       for (let iter = 0; iter < 3; iter++) {
         const clamped = Math.min(ed.length, Math.max(0, s));
@@ -1161,9 +1133,18 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
           : null;
       const face = terrain(e, x, z);
       const y = typeof sectionY === 'number' ? sectionY : null;
-      if (face !== null && (y === null || face.y > y)) out.push(e, face.s, face.y, 1);
-      else if (y !== null) out.push(e, s, y, 0);
-    }
+      if (face !== null && (y === null || face.y > y)) emit(e, face.s, face.y, 1);
+      else if (y !== null) emit(e, s, y, 0);
+    });
+  };
+  /** Every edge's ground under a point: edge, s, y, and whether it is a world-space triangle. */
+  const found = new Map<string, number[]>();
+  const groundsAt = (x: number, z: number): number[] => {
+    const id = `${x},${z}`;
+    const had = found.get(id);
+    if (had) return had;
+    const out: number[] = [];
+    visitGrounds(x, z, (edge, s, y, triangle) => out.push(edge, s, y, triangle));
     if (found.size >= GROUND_KEPT) found.clear();
     found.set(id, out);
     return out;
@@ -1186,8 +1167,29 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
     }
     return best;
   };
-  groundKept.set(road, under);
+  const uncached: GroundUnder = (x, z, top, own) => {
+    let roadBest: number | null = null;
+    visitGrounds(x, z, (edge, s, y, triangle) => {
+      if (own && !triangle && edge === own.edge && Math.abs(s - own.s) <= OWN_SECTION_M) return;
+      if (y <= top && (roadBest === null || y > roadBest)) roadBest = y;
+    });
+    // Like the cached path, finish road evaluation before querying source terrain. Source wins
+    // equal heights (including signed zero); a source NaN retains the original comparison rule.
+    const sourceBest = terrainAt(road.terrain, x, z, top, 'land')?.y ?? null;
+    return sourceBest === null
+      ? roadBest
+      : roadBest !== null && roadBest > sourceBest
+        ? roadBest
+        : sourceBest;
+  };
+  groundKept.set(road, { cached: under, uncached });
   return under;
+}
+
+/** The same physical query without storing results for changing world coordinates. */
+export function uncachedGroundUnderOf(road: RoadNetwork, lakeLevel: number | null = null): GroundUnder {
+  groundUnderOf(road, lakeLevel);
+  return groundKept.get(road)!.uncached;
 }
 
 /**

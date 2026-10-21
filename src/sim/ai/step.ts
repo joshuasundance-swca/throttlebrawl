@@ -6,6 +6,7 @@ import type { RoadNetwork, RouteShortcut, RouteBranch } from '../../road';
 import { inReachHeight, combatView, behaviourOf, STOWED_H, pickupWeapon } from '../combat';
 import { riderState, maxYawAt } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
+import { vehicleInfo } from '../traffic';
 import { type SimConfig, type SimInput, InputFlag } from '../types';
 import type { Mover, World } from '../world';
 import {
@@ -567,7 +568,17 @@ function driveRider(
         other.kind === 'vehicle'
           ? seeVehicle(road, m, other, SEE_TRAFFIC_M)
           : see(road, m, other, SEE_TRAFFIC_M);
-      if (s) obstacles.push({ s, size: other.kind === 'vehicle' ? vSize : PED_SIZE });
+      if (s) {
+        // Registered traffic keeps its own body, as in the cops' avoidance. Synthetic movers
+        // without a traffic slot keep the conservative catalogue fallback.
+        const info = other.kind === 'vehicle' ? vehicleInfo(world, config, other.id) : null;
+        const size = info
+          ? { halfLength: info.lengthM / 2, halfWidth: info.widthM / 2 }
+          : other.kind === 'vehicle'
+            ? vSize
+            : PED_SIZE;
+        obstacles.push({ s, size });
+      }
     }
   }
   // The solid street furniture in reach (the live check of #619: rivals rode into Russian Hill's street

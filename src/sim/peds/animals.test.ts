@@ -19,7 +19,7 @@ import {
   type BakedFeature,
   type FixtureEdgeSpec,
 } from '../../road';
-import { SIM_TUNING } from '../create';
+import { createSimWithWorld, SIM_TUNING } from '../create';
 import { ridersSystem } from '../riders';
 import type { SimConfig, SimEvent, SimInput, SimRiderDef, SimTrafficTypeDef } from '../types';
 import { addMover, createWorld, stepWorld, type SimSystem, type World } from '../world';
@@ -268,6 +268,60 @@ describe('traffic-4: no animal on a bridge walkway', () => {
 });
 
 describe('traffic-4: how animals behave', () => {
+  it('a stationary animal keeps its world position and grounded feet on source terrain for a minute', () => {
+    const bundle = fixtureNetwork(EDGES);
+    const config = {
+      ...makeConfig({ features: {}, types: [LAWN_CHAIR] }),
+      road: createRoadNetwork({
+        ...bundle,
+        network: {
+          ...bundle.network,
+          terrain: {
+            patches: [
+              {
+                surface: 'grass' as const,
+                vertices: [
+                  [6, 3, -600],
+                  [6, 3, 0],
+                  [20, 3, -600],
+                  [20, 3, 0],
+                ],
+                triangles: [
+                  [0, 1, 2],
+                  [2, 1, 3],
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    };
+    const { sim, world } = createSimWithWorld(config);
+    const id = placePed(world, config, { type: 0, edge: 0, s: 300, d: 10 });
+    const before = sim.snapshot().entities.find((e) => e.id === id)!;
+    expect(config.road.toWorld(0, 300, 10, 0).y).toBe(0);
+    expect(before.y).toBe(3);
+    const position = { ...world.movers[id]!.pos };
+    let maxDrift = 0;
+    let grounded = true;
+    for (let tick = 0; tick < 3600; tick++) {
+      sim.step([coast]);
+      const at = sim.snapshot().entities.find((e) => e.id === id)!;
+      maxDrift = Math.max(
+        maxDrift,
+        Math.abs(at.x - before.x),
+        Math.abs(at.y - before.y),
+        Math.abs(at.z - before.z),
+        Math.abs(at.road.h),
+      );
+      grounded &&= at.grounded;
+    }
+    expect(world.tick).toBe(3600);
+    expect(world.movers[id]!.pos).toEqual(position);
+    expect(maxDrift).toBe(0);
+    expect(grounded).toBe(true);
+  });
+
   it('a kind with no walking speed never crosses, and a big kind is never lured', () => {
     let chairs = 0;
     let gators = 0;

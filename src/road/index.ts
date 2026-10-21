@@ -2,7 +2,7 @@
 // and deterministic, like the sim. The road lane (road-1, road-2) owns this folder after app-1.
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
-export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
+export { groundUnderOf, uncachedGroundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
 export { planSfScenery } from './sf-scenery';
 export { terrainAt } from './terrain';
 export { waterAt } from './water';

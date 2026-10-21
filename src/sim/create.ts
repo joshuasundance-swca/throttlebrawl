@@ -8,7 +8,7 @@ import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
 import { pursuitTargetOf } from './cops/pursuit';
 import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
-import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
+import { pedGroundY, pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
 import {
   driftOf,
@@ -35,7 +35,16 @@ import type {
   TumbleBodySnapshot,
   TumbleSnapshot,
 } from './types';
-import { addMover, createWorld, orderSystems, stepWorld, worldHash, type Mover, type World } from './world';
+import {
+  addMover,
+  createWorld,
+  orderSystems,
+  riderHitbox,
+  stepWorld,
+  worldHash,
+  type Mover,
+  type World,
+} from './world';
 
 /**
  * Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. The difficulty
@@ -94,8 +103,8 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
   const parkedOf = (id: number): ParkedBikeSnapshot | null => {
     const at = parkedBike(world, id);
     if (!at) return null;
-    const p = road.toWorld(at.edge, at.s, at.d, 0);
     const f = road.frameAt(at.edge, at.s);
+    const p = { x: f.x - f.tz * at.d, y: f.y - at.d * f.bank + 0, z: f.z + f.tx * at.d };
     return { x: p.x, y: p.y, z: p.z, heading: atan2(-f.tx * at.dir, -f.tz * at.dir) };
   };
   /** A tumbling rider's two crash bodies, as the tumble system steps them; else null. */
@@ -113,8 +122,12 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
   };
   const entities: EntitySnapshot[] = world.movers.map((m) => {
     const def = config.riders[m.riderIndex];
-    const p = road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
+    const vehicle = m.kind === 'vehicle' ? vehicleInfo(world, config, m.id) : null;
+    const footprint = m.kind === 'rider' ? riderHitbox(config, m.riderIndex) : vehicle;
     const f = road.frameAt(m.pos.edge, m.pos.s);
+    // Exactly toWorld's arithmetic, reusing the frame also needed for heading and vehicle pitch.
+    const p = { x: f.x - f.tz * m.pos.d, y: f.y - m.pos.d * f.bank + m.h, z: f.z + f.tx * m.pos.d };
+    if (m.kind === 'ped') p.y = (pedGroundY(world, m.id) ?? p.y - m.h) + m.h;
     // Forward: the road tangent in the travel direction, turned by yaw toward the rider's right.
     const tx = f.tx * m.pos.dir;
     const tz = f.tz * m.pos.dir;
@@ -122,7 +135,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
     const s = sin(m.yaw);
     const fx = c * tx - s * tz;
     const fz = c * tz + s * tx;
-    return {
+    const entity: EntitySnapshot = {
       id: m.id,
       kind: m.kind,
       mode: m.mode,
@@ -138,7 +151,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       contentId:
         def?.contentId ??
         (m.kind === 'vehicle'
-          ? (vehicleInfo(world, config, m.id)?.contentId ?? '')
+          ? (vehicle?.contentId ?? '')
           : m.kind === 'ped'
             ? (pedInfo(world, config, m.id)?.contentId ?? '')
             : m.kind === 'pickup'
@@ -190,6 +203,11 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       // Playtest 4: back on the bike, riding through traffic for a moment.
       ghost: m.kind === 'rider' && trafficGhost(world, m.id),
     };
+    if (footprint) {
+      entity.footprintLengthM = footprint.lengthM;
+      entity.footprintWidthM = footprint.widthM;
+    }
+    return entity;
   });
   return {
     tick: world.tick,

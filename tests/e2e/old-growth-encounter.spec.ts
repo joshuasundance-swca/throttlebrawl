@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SignaturePhase } from '../../src/sim/api';
+import { SIM_HZ } from '../../src/sim/types';
 import { diskCareers, diskEvents, diskRegions, qualifyIn, type DiskCareer } from './packs-on-disk';
 import { enterReloadedMenu } from './menu-navigation';
 
@@ -157,7 +158,8 @@ const SEARCH_SEEDS = 8;
 const SEARCH_TICKS = 3 * 60 * 60;
 
 // Evaluated in the browser: sample eligibility, current health and rendered DOM in one task.
-// Slow lockstep allows rendering to continue; rechecks never assume that a phase is frozen.
+// Slow lockstep keeps advancing during capture. Only one eligible occurrence may supply
+// each accepted screenshot; an expired occurrence is another bounded search miss.
 function warningViewAt({ phase, rivalKey }: { phase: SignaturePhase; rivalKey: string }) {
   const g = window.__game!;
   const s = g.snapshot();
@@ -191,12 +193,21 @@ function warningViewAt({ phase, rivalKey }: { phase: SignaturePhase; rivalKey: s
   const nb = name.getBoundingClientRect();
   return {
     tick: s!.tick,
+    rivalId: r.id,
+    targetId: r.signature.targetId,
+    seconds: r.signature.seconds,
     name: r.name,
     health: r.health,
     max: r.healthMax,
     gap: r.progress - me.progress,
     text: name.textContent,
     title: name.title,
+    visible:
+      box.width > 0 &&
+      box.height > 0 &&
+      getComputedStyle(widget).visibility !== 'hidden' &&
+      getComputedStyle(widget).visibility !== 'collapse' &&
+      getComputedStyle(widget).display !== 'none',
     onScreen:
       box.left >= -0.5 && box.top >= -0.5 && box.right <= innerWidth + 0.5 && box.bottom <= innerHeight + 0.5,
     fits:
@@ -302,32 +313,33 @@ for (const textSize of ['normal', 'large', 'largest']) {
           )
           .toBe(true);
         const at = await page.evaluate(warningViewAt, { phase, rivalKey });
-        if (!at) break;
-        expect(at.name).toBe(rival.name);
-        const widget = page.locator('#hud-target');
-        const name = widget.locator('.hud-name');
-        await expect(widget).toBeVisible();
-        await expect(name).toHaveText(`${label} ${rival.name}`);
-        await expect(name).toHaveAttribute('title', `${label} ${rival.name}`);
-        const measured = await page.evaluate(warningViewAt, { phase, rivalKey });
-        expect(measured, 'player-targeted nearby phase remains eligible during measurement').not.toBeNull();
-        expect(measured).toMatchObject({
-          name: rival.name,
-          text: `${label} ${rival.name}`,
-          title: `${label} ${rival.name}`,
-          onScreen: true,
-          fits: true,
-          font: '12px',
-          width: 150,
-          fill: `${Math.round(Math.max(0, Math.min(1, measured!.health / measured!.max)) * 1000) / 10}%`,
-        });
+        if (!at) continue;
+        const assertWarning = (view: NonNullable<ReturnType<typeof warningViewAt>>) =>
+          expect(view).toMatchObject({
+            name: rival.name,
+            text: `${label} ${rival.name}`,
+            title: `${label} ${rival.name}`,
+            visible: true,
+            onScreen: true,
+            fits: true,
+            font: '12px',
+            width: 150,
+            fill: `${Math.round(Math.max(0, Math.min(1, view.health / view.max)) * 1000) / 10}%`,
+          });
+        assertWarning(at);
+        const image = await page.screenshot();
+        const after = await page.evaluate(warningViewAt, { phase, rivalKey });
+        if (!after) continue;
+        // A real DOM mismatch still fails immediately, even if a later occurrence is now eligible.
+        assertWarning(after);
+        const since = (view: NonNullable<ReturnType<typeof warningViewAt>>) =>
+          view.tick - Math.round(view.seconds * SIM_HZ);
+        if (after.rivalId !== at.rivalId || after.targetId !== at.targetId || since(after) !== since(at))
+          continue;
         await test.info().attach(`timber-warning-${textSize}-${seed}-${phase}`, {
-          body: await page.screenshot(),
+          body: image,
           contentType: 'image/png',
         });
-        const after = await page.evaluate(warningViewAt, { phase, rivalKey });
-        expect(after, 'captured warning remains in the eligible player-targeted phase').not.toBeNull();
-        expect(after).toMatchObject({ text: `${label} ${rival.name}`, title: `${label} ${rival.name}` });
         console.log(
           `[timber-warning] ${textSize} seed ${seed} ${phase}: tick ${at.tick}, gap ${at.gap.toFixed(2)} m, full name/phase fits`,
         );

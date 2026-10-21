@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { careerDefs, eventPlan, startCareer } from '../../src/career';
 import { DEFAULT_PROFILE } from '../../src/save';
 import { createSim, quantizeInput, type EntitySnapshot, type SimInput } from '../../src/sim/api';
+import * as simApi from '../../src/sim/api';
 import { firstSeed, ISOLATED, seedRange } from './batch';
 import { careerRace, onTierBike, REG, tierBike } from './career-harness';
 
@@ -19,6 +20,7 @@ if (!rivalKey || REG.riders[rivalKey]?.personality?.signature !== 'ram')
   throw new Error('Missing authored ram rival');
 const profile = onTierBike(REG, def, node, startCareer(defs, { ...DEFAULT_PROFILE }));
 const LIMIT = 4800;
+const replayedSeeds: number[] = [];
 
 function probe(seed: number) {
   const built = careerRace(def!, node!, profile, seed, { tuning: ISOLATED });
@@ -154,8 +156,6 @@ function probe(seed: number) {
             ['hit', 'kick', 'takedown', 'tumble', 'bump'].includes(e.type),
         ).length;
   }
-  const replay = createSim(config);
-  for (const input of inputs) replay.step([input]);
   return {
     built,
     initial,
@@ -178,11 +178,48 @@ function probe(seed: number) {
     offRoad,
     ticks: sim.tick,
     hash: sim.hash(),
-    replayHash: replay.hash(),
+    // Failed search candidates do not assert replay equality; replay only the selected encounter.
+    replayHash: () => {
+      replayedSeeds.push(seed);
+      const replay = createSim(config);
+      for (const input of inputs) replay.step([input]);
+      return replay.hash();
+    },
   };
 }
 
 describe('the authored Mother Rust Drawbridge encounter', () => {
+  it('replays only the selected probe after searching rejected candidates', () => {
+    const create = vi.spyOn(simApi, 'createSim').mockImplementation(
+      () =>
+        ({
+          tick: 0,
+          snapshot: () => ({ entities: [] }),
+          isOver: () => true,
+          hash: () => 42,
+          step: vi.fn(),
+        }) as unknown as ReturnType<typeof createSim>,
+    );
+    try {
+      const found = firstSeed(
+        'Mother Rust replay selection control',
+        seedRange(1, 2),
+        probe,
+        (_result, seed) => seed === 2,
+      );
+      // Each search candidate constructs its forward sim, and none constructs a replay.
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(replayedSeeds).toEqual([]);
+      expect(found.result).not.toBeNull();
+      if (!found.result) throw new Error(found.summary);
+      expect(found.result.replayHash()).toBe(42);
+      expect(create).toHaveBeenCalledTimes(3);
+      expect(replayedSeeds).toEqual([found.seed]);
+    } finally {
+      create.mockRestore();
+      replayedSeeds.length = 0;
+    }
+  });
   it('resolves the canonical content, route and effective career bike ladder', () => {
     const { config, length, level } = careerRace(def, node, profile, 1, { tuning: ISOLATED });
     expect(config.event.contentId).toBe(node.event);
@@ -224,6 +261,7 @@ describe('the authored Mother Rust Drawbridge encounter', () => {
     expect(found.result, found.summary).not.toBeNull();
     if (!found.result) throw new Error(found.summary);
     const r = found.result;
+    expect(replayedSeeds).toEqual([]);
     process.stdout.write(`[mother-rust-grid] ${JSON.stringify(r.initial)}\n`);
     process.stdout.write(
       `[mother-rust-content] ${JSON.stringify({ event: node.event, route: r.built.length.route, playerBike: profile.bikes.current, pace: r.built.config.event.paceMps, gapScale: r.built.level?.signatureGapScale })}\n`,
@@ -233,6 +271,11 @@ describe('the authored Mother Rust Drawbridge encounter', () => {
     expect(r.open - r.act).toBeLessThanOrEqual(36);
     expect(r.ended - r.open).toBe(90);
     expect(r.attacks).toBe(0);
-    expect(r.hash).toBe(r.replayHash);
+    const replayHash = r.replayHash();
+    expect(r.hash).toBe(replayHash);
+    expect(replayedSeeds).toEqual([found.seed]);
+    process.stdout.write(
+      `[mother-rust-replay] ${JSON.stringify({ seed: found.seed, ticks: r.ticks, hash: r.hash, replayHash })}\n`,
+    );
   });
 });
