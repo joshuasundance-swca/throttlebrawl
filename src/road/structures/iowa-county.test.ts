@@ -7,7 +7,7 @@ import { courseAt, roadBandHeight, roadsideGroundHeight } from '../course';
 import { planStructures, structuresAt, topAt, type StructureSpec } from '../structures';
 import { ensureStructures, raceStructures, structureLayersFor } from '../structures';
 import { loadIowaCountyLayout } from '../index';
-import { landEdgeOf, sectionGroundOf } from '../drawn-ground';
+import { landEdgeOf, sectionGroundOf, zoneReachOf } from '../drawn-ground';
 
 const root = 'packs/region-clinton/regions/clinton-iowa';
 const read = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
@@ -38,6 +38,22 @@ describe('Iowa county farmstead', () => {
       // Existing zone ground is road-0.06m; the rural strip below is road-0.09m.
       expect(delta).toBeCloseTo(0.03, 5);
       expect(roadBandHeight(control, facility.edge, facility.s, facility.d)).not.toBeNull();
+      // The pre-existing zone renderer adds a shallow strip on both sides. Its entire reach
+      // must fit the land already there; the anchor must not manufacture a new ground island.
+      for (let ds = -30; ds <= 30; ds += 0.5)
+        for (const side of [-1, 1] as const) {
+          const atS = facility.s + ds;
+          const reach = zoneReachOf(road)(facility.edge, side, atS);
+          const edge = control.edges[facility.edge]!;
+          const outer =
+            (side < 0 ? -edge.dMin : edge.dMax) + 0.6 + landEdgeOf(control)(facility.edge, side, atS);
+          expect(reach).toBeLessThanOrEqual(outer - 0.5);
+          for (let d = 8.25; d <= reach; d += 0.5)
+            expect(
+              roadBandHeight(control, facility.edge, atS, side * d),
+              'zone stays within pre-existing connected land',
+            ).not.toBeNull();
+        }
     }
     const moved = roads.map((r) => ({
       ...r,
