@@ -63,9 +63,27 @@
       "s1": 95.229,
       "side": "both",
       "tag": "town"
+    },
+    {
+      "s0": 0.0,
+      "s1": 95.229,
+      "side": "both",
+      "tag": "longview-street-life"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "hudson-dispatch-court",
+      "s0": 40.0,
+      "s1": 56.0,
+      "d0": 11.25,
+      "d1": 19.25,
+      "params": {
+        "place": "dispatch-court"
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

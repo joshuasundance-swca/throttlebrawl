@@ -21,6 +21,85 @@ function make(id: string) {
 }
 
 describe('Street Diamond sites explicitly join the course with open physical aprons', () => {
+  it('opts the Hudson dispatch court into a continuous open riding apron, with removal and relocation controls', async () => {
+    const road = make('osm-pnw-longview-civic');
+    const court = pnwPlacesLayout(road, 1).streetSites.find((s) => String(s.kind) === 'dispatch-court');
+    expect(court, 'authored Hudson dispatch court').toBeDefined();
+    if (!court) return;
+    expect(road.edges[court.edge]?.id).toBe('osm-longview-civic-hudson');
+    const plan = await ensureStructures(road, 1);
+    const apron = court.specs.find((s) => s.rule.endsWith(':apron'))!;
+    const controlRoad = make('osm-pnw-longview-civic');
+    const noApron = planStructures(
+      controlRoad,
+      1,
+      {
+        control: {
+          plan: (_r, _s, out) => {
+            for (const st of plan.items) if (st.rule !== apron.rule) out.add(st);
+          },
+        },
+      },
+      { control: { tags: ['longview-street-life'], load: () => Promise.reject(new Error('unused')) } },
+    );
+    // A bike-width corridor crosses the whole court, including both connections to the verge.
+    for (let s = court.s - 6; s <= court.s + 6; s += 0.5)
+      for (let d = 10.8; d <= 16.2; d += 0.2) {
+        const pos = { edge: court.edge, s, d };
+        const y = road.surfaceHeight(pos.edge, s, d) + 0.15;
+        expect(courseAt(road, plan, pos, y).kind, `supported ${s}/${d}`).not.toBe('out');
+      }
+    const gap = { edge: court.edge, s: court.s - 5, d: 13 };
+    expect(
+      courseAt(controlRoad, noApron, gap, controlRoad.surfaceHeight(gap.edge, gap.s, gap.d) + 0.15).kind,
+    ).toBe('out');
+    const network = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const original = Object.values(files).filter((r) => network.roads.includes(r.id));
+    for (const remove of ['zone', 'tag'] as const) {
+      const control = createRoadNetwork({
+        network,
+        roads: original.map((r) => ({
+          ...r,
+          features:
+            remove === 'zone'
+              ? r.features?.filter((f) => f.params?.['place'] !== 'dispatch-court')
+              : r.features,
+          tags: remove === 'tag' ? r.tags?.filter((t) => t.tag !== 'longview-street-life') : r.tags,
+        })),
+      });
+      expect(
+        pnwPlacesLayout(control, 1).streetSites.filter((s) => String(s.kind) === 'dispatch-court'),
+      ).toEqual([]);
+      expect(
+        (await ensureStructures(control, 1)).items.some((st) =>
+          st.rule.startsWith(apron.rule.split(':')[0]!),
+        ),
+      ).toBe(false);
+    }
+    const moved = createRoadNetwork({
+      network,
+      roads: original.map((r) => ({
+        ...r,
+        features: r.features?.map((f) =>
+          f.params?.['place'] === 'dispatch-court' ? { ...f, s0: f.s0 - 16, s1: f.s1 - 16 } : f,
+        ),
+      })),
+    });
+    const movedCourt = pnwPlacesLayout(moved, 1).streetSites.find(
+      (s) => String(s.kind) === 'dispatch-court',
+    )!;
+    expect(movedCourt.s).toBe(court.s - 16);
+    const movedApron = movedCourt.specs.find((st) => st.rule.endsWith(':apron'))!;
+    expect(Math.hypot(movedApron.foot.x - apron.foot.x, movedApron.foot.z - apron.foot.z)).toBeGreaterThan(
+      10,
+    );
+    expect(movedCourt.solids).toEqual(court.solids);
+    for (const edge of road.edges.filter((e) => e.isConnector)) {
+      expect(pnwPlacesLayout(road, 1).streetSites.some((site) => site.edge === edge.index)).toBe(false);
+      expect(edge.features.some((f) => f.params?.['place'] === 'dispatch-court')).toBe(false);
+    }
+    expect(pnwPlacesLayout(road, 2).streetSites).toEqual(pnwPlacesLayout(road, 1).streetSites);
+  });
   it('provides continuous low support from the existing verge to the open site, preserving other networks', async () => {
     const road = make('osm-pnw-longview-diamond'),
       layout = pnwPlacesLayout(road, 1);
@@ -59,8 +138,13 @@ describe('Street Diamond sites explicitly join the course with open physical apr
       ).toBe('out');
     }
     expect(pnwPlacesLayout(road, 2).streetSites).toEqual(sites);
-    for (const id of ['osm-pnw-longview', 'osm-pnw-longview-civic', 'pnw-c1'])
+    for (const id of ['osm-pnw-longview', 'pnw-c1'])
       expect(pnwPlacesLayout(make(id), 1).streetSites, id).toEqual([]);
+    expect(
+      pnwPlacesLayout(make('osm-pnw-longview-civic'), 1).streetSites.some(
+        (s) => s.kind === 'civic-frontage' || s.kind === 'plant-market',
+      ),
+    ).toBe(false);
   });
   it('keeps a plant canopy open under its roof, with physical counter and posts', async () => {
     const road = make('osm-pnw-longview-diamond'),

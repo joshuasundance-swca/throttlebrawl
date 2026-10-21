@@ -292,13 +292,40 @@ export interface PnwStreetSite {
   edge: number;
   s: number;
   d: number;
-  kind: 'civic-frontage' | 'plant-market';
+  kind: 'civic-frontage' | 'plant-market' | 'dispatch-court';
   solids: readonly PnwSolidDef[];
   specs: readonly StructureSpec[];
 }
 
 /** Two distinct street settings. The front is open; solids are only the drawn bodies, posts and surfaces. */
 function streetSolids(kind: PnwStreetSite['kind'], side: number): PnwSolidDef[] {
+  if (kind === 'dispatch-court') {
+    // A parked work pickup uses the existing PNW model's boxes, at the back of the court.
+    // The entrance and return stay open; all dressing frames the outer edge of a broad riding sweep.
+    const out = pickupSolids(1.9, 5.3).map((st) => ({
+      ...st,
+      box: {
+        x0: st.box.x0 - side * 2.6,
+        x1: st.box.x1 - side * 2.6,
+        y0: st.box.y0 + 0.04,
+        y1: st.box.y1 + 0.04,
+        z0: st.box.z0 - 3.3,
+        z1: st.box.z1 - 3.3,
+      },
+    }));
+    out.push({ name: 'noticeboard', cls: 'wall', box: box(-side * 3.4, 0.12, 1.2, 2.5, 3.5, 1.8) });
+    for (const z of [2, 5])
+      out.push({ name: 'board-post', cls: 'wall', box: box(-side * 3.4, 0.09, 0.04, 1.2, z, 0.09) });
+    for (const y of [0.79, 1.14])
+      out.push({
+        name: 'barricade',
+        cls: 'wall',
+        box: box(-side * 2.5, 0.8, y - 0.09, y + 0.09, 6.5, 0.025),
+      });
+    for (const x of [-side * 1.9, -side * 3.1])
+      out.push({ name: 'barricade-leg', cls: 'wall', box: box(x, 0.04, 0.04, 1.24, 6.5, 0.25) });
+    return out;
+  }
   if (kind === 'civic-frontage')
     return [
       { name: 'body', cls: 'building', box: box(-side, 3, 0, 5.8, 5, 5) },
@@ -325,6 +352,25 @@ function streetSolids(kind: PnwStreetSite['kind'], side: number): PnwSolidDef[] 
     out.push({ name: 'pot', cls: 'wall', box: box(-side * 2.5, 0.32, 1.15, 1.5, z, 0.32) });
     out.push({ name: 'plant', cls: 'wall', box: box(-side * 2.5, 0.42, 1.5, 2.1, z, 0.42) });
   }
+  return out;
+}
+
+/** The original PNW pickup's body, cab, bed and wheels; shared by the prop and the court's physical plan. */
+export function pickupSolids(w: number, len: number): PnwSolidDef[] {
+  const half = len / 2;
+  const out: PnwSolidDef[] = [
+    { name: 'pickup-body', cls: 'building', box: box(0, w / 2, 0.475, 1.225, 0, (len - 0.2) / 2) },
+    { name: 'pickup-cab', cls: 'building', box: box(0, w * 0.47, 1.225, 1.875, half * 0.22, len * 0.18) },
+    { name: 'pickup-glass', cls: 'building', box: box(0, w * 0.48, 1.39, 1.81, half * 0.22, len * 0.15) },
+    { name: 'pickup-bed', cls: 'building', box: box(0, w * 0.43, 1.21, 1.27, -half * 0.5, len * 0.21) },
+  ];
+  for (const sd of [-1, 1])
+    for (const sa of [-1, 1])
+      out.push({
+        name: 'pickup-tyre',
+        cls: 'wall',
+        box: box(-sd * (w / 2 - 0.12), 0.16, 0, 0.72, sa * (half - 1), 0.36),
+      });
   return out;
 }
 
@@ -386,7 +432,11 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
   for (const e of road.edges) {
     for (const f of e.features) {
       const kind = f.params?.['place'];
-      if (f.kind !== 'roadsideZone' || (kind !== 'civic-frontage' && kind !== 'plant-market')) continue;
+      if (
+        f.kind !== 'roadsideZone' ||
+        (kind !== 'civic-frontage' && kind !== 'plant-market' && kind !== 'dispatch-court')
+      )
+        continue;
       if (!e.tags.some((t) => t.tag === 'longview-street-life' && t.s0 <= f.s0 && t.s1 >= f.s1)) continue;
       const s = (f.s0 + f.s1) / 2,
         d = (f.d0 + f.d1) / 2,
@@ -398,7 +448,14 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
       solids.push({
         name: 'apron',
         cls: 'building',
-        box: box(d - (inner + outer) / 2, Math.abs(outer - inner) / 2, -0.12, 0.02, 0, (f.s1 - f.s0) / 2),
+        box: box(
+          d - (inner + outer) / 2,
+          Math.abs(outer - inner) / 2,
+          -0.12,
+          kind === 'dispatch-court' ? 0.04 : 0.02,
+          0,
+          (f.s1 - f.s0) / 2,
+        ),
       });
       streetSites.push({
         edge: e.index,

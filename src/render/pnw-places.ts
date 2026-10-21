@@ -34,6 +34,7 @@ import { mergeBoxes, type BoxPart } from './geometry';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import { keepSceneryOpen, MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
 import { LAND_TOP_M, scatterHash, type ScenerySpot } from './scenery';
+import { pickupSolids } from '../road/structures/pnw-places';
 
 /** The tags this layer draws. */
 export const PLACE_TAGS = [
@@ -153,6 +154,7 @@ const GLYPHS: Readonly<Record<string, readonly string[]>> = {
   C: ['011', '100', '100', '100', '011'],
   D: ['110', '101', '101', '101', '110'],
   E: ['111', '100', '110', '100', '111'],
+  H: ['101', '101', '111', '101', '101'],
   I: ['111', '010', '010', '010', '111'],
   L: ['100', '100', '100', '100', '111'],
   M: ['101', '111', '111', '101', '101'],
@@ -367,18 +369,20 @@ function ferryName(name: string): BufferGeometry {
 
 // ---- deck, clear-cut and festival props (each sized to its hazard's box) -------------------
 function pickup(w: number, len: number, paint: string): BufferGeometry {
-  const half = len / 2;
-  const parts: BoxPart[] = [
-    B([w, 0.75, len - 0.2], [0, 0.85, 0], paint),
-    B([w * 0.94, 0.65, len * 0.36], [0, 1.55, half * 0.22], paint),
-    B([w * 0.96, 0.42, len * 0.3], [0, 1.6, half * 0.22], C.glass),
-    // the bed's floor, darker
-    B([w * 0.86, 0.06, len * 0.42], [0, 1.24, -half * 0.5], '#3a3d40'),
-  ];
-  for (const sd of [-1, 1] as const)
-    for (const sa of [-1, 1] as const)
-      parts.push(B([0.32, 0.72, 0.72], [sd * (w / 2 - 0.12), 0.36, sa * (half - 1.0)], C.tyre));
-  return model(parts);
+  return model(
+    pickupSolids(w, len).map(({ box: b, name }): BoxPart => ({
+      size: [b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0],
+      at: [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2],
+      color:
+        name === 'pickup-glass'
+          ? C.glass
+          : name === 'pickup-bed'
+            ? '#3a3d40'
+            : name === 'pickup-tyre'
+              ? C.tyre
+              : paint,
+    })),
+  );
 }
 
 function coffeeCart(w: number, len: number): BufferGeometry {
@@ -770,6 +774,13 @@ export function workyardParts(kind: string, solids: readonly PnwSolidDef[]): Box
 /** Street solids plus paint-thin facade detail, sharing the contact plan. */
 function streetSiteParts(kind: string, solids: readonly PnwSolidDef[], side: 1 | -1): BoxPart[] {
   const colour = (name: string) => {
+    if (name === 'pickup-glass') return C.glass;
+    if (name === 'pickup-tyre') return C.tyre;
+    if (name === 'pickup-bed') return '#3a3d40';
+    if (name.startsWith('pickup-')) return '#d8c9a3';
+    if (name === 'barricade') return C.barricadeA;
+    if (name === 'barricade-leg') return '#9a9a9a';
+    if (name === 'noticeboard') return '#386b51';
     if (name === 'apron') return '#8c9185';
     if (name === 'plant') return '#4f8246';
     if (name === 'pot') return '#ae7050';
@@ -806,6 +817,26 @@ function streetSiteParts(kind: string, solids: readonly PnwSolidDef[], side: 1 |
         '#e6dfca',
       ).map((p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const })),
     );
+  } else if (kind === 'dispatch-court') {
+    // Plain dispatch notice, read from the road. All lettering is paint-thin on the board face.
+    const word = 'DISPATCH',
+      cell = 0.09,
+      face = -side * 3.274;
+    parts.push(
+      ...wordAlong(
+        word,
+        cell,
+        3.5 + (side * wordWidth(word, cell)) / 2,
+        side === 1 ? -1 : 1,
+        -face,
+        1.75,
+        '#efe7c9',
+      ).map((p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const })),
+    );
+    for (const z of [2.5, 3.5, 4.5])
+      parts.push({ size: [0.01, 0.25, 0.5], at: [face, 1.45, z], color: '#d8d1b7' });
+    for (const z of [-3, -1, 1, 3])
+      parts.push({ size: [0.15, 0.006, 1], at: [-side * 1.25, 0.043, z], color: '#e1c879' });
   } else {
     // Pale and green canopy stripes, with the sale's name on its road-facing fascia.
     for (const z of [-6, -3, 0, 3, 6])

@@ -4,6 +4,7 @@ import {
   createRoadNetwork,
   footContains,
   loadPnwPlacesLayout,
+  lanesNear,
   structureLayersFor,
   type BakedNetwork,
   type BakedRoad,
@@ -27,6 +28,155 @@ const { pnwPlacesLayout } = await loadPnwPlacesLayout();
 const isSite = (kind: string) => kind === 'civic-frontage' || kind === 'plant-market';
 
 describe('Street Diamond has distinct, physically grounded local life on its arms', () => {
+  it('grounds the Hudson court and actual prop feet on existing land, with open body clearance and authored drawing controls', () => {
+    const civic = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const civicRoads = Object.values(files).filter((r) => civic.roads.includes(r.id));
+    const road = createRoadNetwork({ network: civic, roads: civicRoads });
+    const site = pnwPlacesLayout(road, 1).streetSites.find((s) => String(s.kind) === 'dispatch-court');
+    expect(site).toBeDefined();
+    if (!site) return;
+    const withoutZone = civicRoads.map((r) => ({
+      ...r,
+      features: r.features?.filter((f) => f.params?.['place'] !== 'dispatch-court'),
+    }));
+    const control = createRoadNetwork({ network: civic, roads: withoutZone });
+    const scene = buildRoadScene(
+      control,
+      createFlatLook(),
+      Object.fromEntries(withoutZone.map((r) => [r.id, r])),
+      { seed: 1 },
+    );
+    const ground = new GroundTris(scene.group, /^road-(land|shoulder)/);
+    const item = placeItems(road, 1, pnwPlacesLayout(road, 1)).find((i) => i.kind === 'dispatch-court')!;
+    const spot = spotAt(road, item),
+      c = Math.cos(spot.turn),
+      s = Math.sin(spot.turn);
+    const world = (x: number, z: number) => ({ x: spot.p.x + x * c + z * s, z: spot.p.z - x * s + z * c });
+    try {
+      const pos = item.geometry.getAttribute('position');
+      const matches = (shift: number) =>
+        Array.from({ length: pos.count }, (_, i) => {
+          const p = world(pos.getX(i) + shift, pos.getZ(i)),
+            y = spot.p.y + pos.getY(i);
+          return site.specs.some(
+            (st) =>
+              footContains({ ...st.foot, hu: st.foot.hu + 0.025, hv: st.foot.hv + 0.025 }, p.x, p.z) &&
+              y >= st.baseY - 0.025 &&
+              y <= st.baseY + (st.roof.kind === 'flat' ? st.roof.topM : 0) + 0.025,
+          );
+        }).every(Boolean);
+      expect(pos.count).toBeGreaterThan(0);
+      expect(matches(0), 'drawing matches physical boxes').toBe(true);
+      expect(matches(1), 'displaced drawing negative').toBe(false);
+      let probes = 0;
+      const apron = site.specs.find((st) => st.rule.endsWith(':apron'))!;
+      let minGround = Infinity,
+        maxGround = -Infinity;
+      for (const st of site.specs) {
+        const f = st.foot,
+          nx = Math.max(1, Math.ceil((2 * f.hu) / 0.5)),
+          nz = Math.max(1, Math.ceil((2 * f.hv) / 0.5));
+        for (let i = 0; i <= nx; i++)
+          for (let j = 0; j <= nz; j++) {
+            const u = (2 * i) / nx - 1,
+              v = (2 * j) / nz - 1;
+            const x = f.x + u * f.hu * f.ux - v * f.hv * f.uz,
+              z = f.z + u * f.hu * f.uz + v * f.hv * f.ux;
+            const hit = ground.heightAt(x, z, spot.p.y + 1);
+            expect(hit, `${st.rule} preexisting land`).not.toBeNull();
+            expect(hit?.up ?? 0).toBeGreaterThan(0.9);
+            minGround = Math.min(minGround, hit!.y);
+            maxGround = Math.max(maxGround, hit!.y);
+            expect(Math.abs((hit?.y ?? Infinity) - spot.p.y)).toBeLessThan(0.25);
+            const floor = apron.baseY + (apron.roof.kind === 'flat' ? apron.roof.topM : 0);
+            expect(floor - (hit?.y ?? Infinity), 'apron visible above existing ground').toBeGreaterThan(0);
+            expect(floor - (hit?.y ?? -Infinity)).toBeLessThan(0.15);
+            expect(lanesNear(road, x, z, site.edge, 0.4), `${st.rule} other-road lanes`).toBe(false);
+            const own = road.project(x, z, site.edge);
+            expect(own.d, 'clear of Hudson lanes').toBeGreaterThan(road.edges[site.edge]!.dMax + 0.4);
+            if (st !== apron) {
+              const at = road.project(x, z, site.edge),
+                verge = road.vergeAt(site.edge, at.s, 'right');
+              expect(at.d, 'ordinary recovery margin').toBeGreaterThan(verge.dOuter + 0.4);
+            }
+            probes++;
+          }
+      }
+      // Every front-edge station overlaps the actual curved verge: no inviting strip of unridable town grass.
+      for (let z = -apron.foot.hv; z <= apron.foot.hv; z += 0.25) {
+        const p = world(site.solids.find((st) => st.name === 'apron')!.box.x1, z);
+        const at = road.project(p.x, p.z, site.edge),
+          verge = road.vergeAt(site.edge, at.s, 'right');
+        expect(at.d, 'continuous apron/verge connection').toBeLessThanOrEqual(verge.dOuter);
+      }
+      // A broad open sweep admits several bike-width lines; dressing never forms a timed slalom.
+      const points = [
+        [-6, 13],
+        [-2, 14],
+        [2, 14],
+        [6, 13],
+      ];
+      let clearanceProbes = 0;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1]!,
+          b = points[i]!,
+          n = Math.ceil(Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!) / 0.2);
+        const yaw = Math.atan2(b[1]! - a[1]!, b[0]! - a[0]!);
+        for (let j = 0; j <= n; j++)
+          for (const across of [-0.6, 0, 0.6])
+            for (const along of [-1.2, 0, 1.2]) {
+              const localS =
+                  a[0]! + ((b[0]! - a[0]!) * j) / n + along * Math.cos(yaw) - across * Math.sin(yaw),
+                d = a[1]! + ((b[1]! - a[1]!) * j) / n + across * Math.cos(yaw) + along * Math.sin(yaw);
+              const p = world(site.d - d, localS);
+              expect(footContains(apron.foot, p.x, p.z), 'entire bike supported').toBe(true);
+              expect(
+                site.specs.filter(
+                  (st) =>
+                    st !== apron &&
+                    footContains({ ...st.foot, hu: st.foot.hu + 0.05, hv: st.foot.hv + 0.05 }, p.x, p.z),
+                ),
+                'no solid in riding envelope',
+              ).toEqual([]);
+              clearanceProbes++;
+            }
+      }
+      // Removing the authoring removes the drawing; moving it moves drawing and its contact frame together.
+      expect(
+        placeItems(control, 1, pnwPlacesLayout(control, 1)).some((i) => i.kind === 'dispatch-court'),
+      ).toBe(false);
+      const moved = createRoadNetwork({
+        network: civic,
+        roads: civicRoads.map((r) => ({
+          ...r,
+          features: r.features?.map((f) =>
+            f.params?.['place'] === 'dispatch-court' ? { ...f, s0: f.s0 - 16, s1: f.s1 - 16 } : f,
+          ),
+        })),
+      });
+      const movedSite = pnwPlacesLayout(moved, 1).streetSites.find(
+        (s) => String(s.kind) === 'dispatch-court',
+      )!;
+      const movedItem = placeItems(moved, 1, pnwPlacesLayout(moved, 1)).find(
+        (i) => i.kind === 'dispatch-court',
+      )!;
+      expect(movedItem.s).toBe(movedSite.s);
+      expect(
+        Math.hypot(spotAt(moved, movedItem).p.x - spot.p.x, spotAt(moved, movedItem).p.z - spot.p.z),
+      ).toBeGreaterThan(10);
+      const otherEdge = road.edges.find((e) => e.id === 'osm-longview-civic-20th')!;
+      const positive = road.toWorld(otherEdge.index, otherEdge.length / 2, 0, 0);
+      expect(lanesNear(road, positive.x, positive.z, site.edge, 0.4)).toBe(true);
+      expect(ground.heightAt(1e6, 1e6)).toBeNull();
+      process.stdout.write(
+        `[examined] Hudson ${probes} complete-footprint preexisting-land probes, ${clearanceProbes} bike-envelope probes, preexisting height span=${maxGround - minGround}m\n`,
+      );
+      movedItem.geometry.dispose();
+    } finally {
+      item.geometry.dispose();
+      scene.dispose();
+    }
+  });
   it('reads the service frontage from the road with an upright R first and S last', () => {
     const road = createRoadNetwork({ network, roads });
     const item = placeItems(road, 1, pnwPlacesLayout(road, 1)).find((i) => i.kind === 'civic-frontage')!;
