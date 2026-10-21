@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { Group } from 'three';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../road';
 import { IowaFacilitiesLayer, prepareIowaFacilities, iowaFacilitiesReady } from './iowa-facilities';
 import { createFlatLook } from './look';
+import { createChunkGate } from './chunk-gate';
 
 const root = 'packs/region-clinton/regions/clinton-iowa';
 const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -23,7 +24,8 @@ it.each([
   async (id, tag, kind) => {
     const road = roadOf(id),
       tags = new Set([tag]);
-    await prepareIowaFacilities(tags);
+    const gate = createChunkGate();
+    await prepareIowaFacilities(tags, gate.chunk.bind(gate));
     expect(iowaFacilitiesReady(tags)).toBe(true);
     const layer = new IowaFacilitiesLayer(createFlatLook(), { road, seed: 1, tags });
     const parent = new Group();
@@ -49,3 +51,27 @@ it.each([
     unrelated.dispose();
   },
 );
+
+it('keeps a failed layout unavailable and prepares it on a later race without refetching a successful sibling', async () => {
+  vi.resetModules();
+  const fresh = await import('./iowa-facilities');
+  const tags = new Set(['iowa-park', 'iowa-county-farmstead']);
+  const attempts: string[] = [];
+  let countyUnavailable = true;
+  const gate = createChunkGate(async (name, load) => {
+    attempts.push(name);
+    return name === 'Iowa county layout' && countyUnavailable ? null : load();
+  });
+  expect(await fresh.prepareIowaFacilities(tags, gate.chunk.bind(gate))).toBe(false);
+  expect(fresh.iowaFacilitiesReady(tags)).toBe(false);
+  expect(fresh.iowaFacilitiesReady(new Set(['iowa-park']))).toBe(true);
+  expect(
+    () =>
+      new fresh.IowaFacilitiesLayer(createFlatLook(), { road: roadOf('osm-clinton-ia136'), seed: 1, tags }),
+  ).toThrow('not prepared');
+  countyUnavailable = false;
+  gate.raceStart();
+  expect(await fresh.prepareIowaFacilities(tags, gate.chunk.bind(gate))).toBe(true);
+  expect(attempts.filter((name) => name === 'Iowa park layout')).toHaveLength(1);
+  expect(attempts.filter((name) => name === 'Iowa county layout')).toHaveLength(2);
+});

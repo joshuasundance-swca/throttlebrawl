@@ -5,6 +5,7 @@ import type { VisibleContent } from './boards';
 import { IowaCountyLayer } from './iowa-county';
 import { IowaParkLayer } from './iowa-park';
 import type { LookStyle } from './look';
+import type { ChunkLoader } from './chunk-gate';
 
 let parkPlan: Awaited<ReturnType<typeof loadIowaParkLayout>> | null = null;
 let countyPlan: Awaited<ReturnType<typeof loadIowaCountyLayout>> | null = null;
@@ -13,19 +14,20 @@ export const iowaFacilitiesReady = (tags: ReadonlySet<string>): boolean =>
   (!tags.has('iowa-park') || parkPlan !== null) &&
   (!tags.has('iowa-county-farmstead') || countyPlan !== null);
 
-export async function prepareIowaFacilities(tags: ReadonlySet<string>): Promise<void> {
+export async function prepareIowaFacilities(tags: ReadonlySet<string>, chunk: ChunkLoader): Promise<boolean> {
   await Promise.all([
     tags.has('iowa-park') && !parkPlan
-      ? loadIowaParkLayout().then((m) => {
-          parkPlan = m;
+      ? chunk('Iowa park layout', loadIowaParkLayout).then((m) => {
+          if (m) parkPlan = m;
         })
       : null,
     tags.has('iowa-county-farmstead') && !countyPlan
-      ? loadIowaCountyLayout().then((m) => {
-          countyPlan = m;
+      ? chunk('Iowa county layout', loadIowaCountyLayout).then((m) => {
+          if (m) countyPlan = m;
         })
       : null,
   ]);
+  return iowaFacilitiesReady(tags);
 }
 
 export class IowaFacilitiesLayer {

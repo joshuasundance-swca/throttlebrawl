@@ -1023,13 +1023,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!tags.has('iowa-park') && !tags.has('iowa-county-farmstead')) return;
     if (iowaModule?.iowaFacilitiesReady(tags)) return;
     const current = scope.capture();
-    void chunk('Iowa facilities', async () => {
-      const m = await import('./iowa-facilities');
-      await m.prepareIowaFacilities(tags);
-      return m;
-    }).then((m) => {
+    void chunk('Iowa facilities', () => import('./iowa-facilities')).then(async (m) => {
       if (!current()) return;
       if (!m) return gate.later(requestIowaFacilities);
+      const ready = await m.prepareIowaFacilities(tags, chunk);
+      if (!current()) return;
+      if (!ready) return gate.later(requestIowaFacilities);
       iowaModule = m;
       buildIowaFacilities();
     });
