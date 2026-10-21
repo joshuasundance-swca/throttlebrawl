@@ -32,10 +32,17 @@ import type { RoadNetwork } from '../network';
 import { modelFoot, type StructureClass, type StructurePlanner, type StructureSpec } from '../structures';
 import { scatterHash } from '../themes';
 import type { BakedFeature } from '../types';
+import { dispatchCourts } from '../dispatch-court';
 
 /** The layer's name in `STRUCTURE_LAYERS`, and the tags that ask for it (the clear-cut's dressing has no solids). */
 export const PNW_PLACES_LAYER = 'pnw-places';
-export const PNW_PLACES_TAGS = ['ferry', 'festival', 'longview-port-yard', 'longview-street-life'] as const;
+export const PNW_PLACES_TAGS = [
+  'ferry',
+  'festival',
+  'longview-port-yard',
+  'longview-street-life',
+  'dispatch-court',
+] as const;
 
 /** Where the layer's land stands over the road's surface (render/scenery.ts LAND_TOP_M), m. */
 export const LAND_TOP_M = -0.09;
@@ -429,14 +436,23 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
   const streetSites: PnwStreetSite[] = [];
   const made = (spot: Spot, defs: readonly PnwSolidDef[]) => defs.map((def) => specOf(spot, def));
 
+  for (const court of dispatchCourts(road)) {
+    const solids = streetSolids('dispatch-court', court.side);
+    solids.push({
+      name: 'apron',
+      cls: 'building',
+      box: box(0, court.foot.hu, -0.12, 0.04, 0, court.foot.hv),
+    });
+    const specs = made(spotAt(road, court.rule, court.edge, court.s, court.d, LAND_TOP_M), solids).map(
+      (st) => (st.rule.endsWith(':apron') ? { ...st, foot: court.foot } : st),
+    );
+    streetSites.push({ edge: court.edge, s: court.s, d: court.d, kind: 'dispatch-court', solids, specs });
+  }
+
   for (const e of road.edges) {
     for (const f of e.features) {
       const kind = f.params?.['place'];
-      if (
-        f.kind !== 'roadsideZone' ||
-        (kind !== 'civic-frontage' && kind !== 'plant-market' && kind !== 'dispatch-court')
-      )
-        continue;
+      if (f.kind !== 'roadsideZone' || (kind !== 'civic-frontage' && kind !== 'plant-market')) continue;
       if (!e.tags.some((t) => t.tag === 'longview-street-life' && t.s0 <= f.s0 && t.s1 >= f.s1)) continue;
       const s = (f.s0 + f.s1) / 2,
         d = (f.d0 + f.d1) / 2,
@@ -448,14 +464,7 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
       solids.push({
         name: 'apron',
         cls: 'building',
-        box: box(
-          d - (inner + outer) / 2,
-          Math.abs(outer - inner) / 2,
-          -0.12,
-          kind === 'dispatch-court' ? 0.04 : 0.02,
-          0,
-          (f.s1 - f.s0) / 2,
-        ),
+        box: box(d - (inner + outer) / 2, Math.abs(outer - inner) / 2, -0.12, 0.02, 0, (f.s1 - f.s0) / 2),
       });
       streetSites.push({
         edge: e.index,

@@ -4,6 +4,7 @@ import { createRoadNetwork } from '../network';
 import { ensureStructures, planStructures, structuresAt, topAt } from '../structures';
 import type { BakedNetwork, BakedRoad } from '../types';
 import { pnwPlacesLayout } from './pnw-places';
+import { dispatchCourts } from '../dispatch-court';
 const networks = import.meta.glob<BakedNetwork>('/packs/region-pnw/regions/*/networks/*.json', {
   eager: true,
   import: 'default',
@@ -21,6 +22,32 @@ function make(id: string) {
 }
 
 describe('Street Diamond sites explicitly join the course with open physical aprons', () => {
+  it('requires a bounded one-side kit span, supports either side and does not duplicate repeated authoring', () => {
+    const network = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const raw = Object.values(files).filter((r) => network.roads.includes(r.id));
+    const host = raw.find((r) => r.tags?.some((t) => t.tag === 'dispatch-court'))!;
+    const tag = host.tags!.find((t) => t.tag === 'dispatch-court')!;
+    const changed = (tags: typeof host.tags) =>
+      createRoadNetwork({ network, roads: raw.map((r) => (r.id === host.id ? { ...r, tags } : r)) });
+    for (const bad of [
+      { ...tag, side: 'both' as const },
+      { ...tag, s0: 0, s1: host.lengthM },
+      { ...tag, s1: tag.s0 + 8 },
+    ]) {
+      const road = changed([...(host.tags?.filter((t) => t !== tag) ?? []), bad]);
+      expect(dispatchCourts(road)).toEqual([]);
+      expect(pnwPlacesLayout(road, 1).streetSites.filter((s) => String(s.kind) === 'dispatch-court')).toEqual(
+        [],
+      );
+    }
+    const left = changed(host.tags?.map((t) => (t === tag ? { ...t, side: 'left' as const } : t)));
+    expect(dispatchCourts(left)[0]?.d).toBeLessThan(0);
+    expect(pnwPlacesLayout(left, 1).streetSites.find((s) => String(s.kind) === 'dispatch-court')?.d).toBe(
+      dispatchCourts(left)[0]?.d,
+    );
+    const repeated = changed([...(host.tags ?? []), tag]);
+    expect(dispatchCourts(repeated)).toHaveLength(1);
+  });
   it('opts the Hudson dispatch court into a continuous open riding apron, with removal and relocation controls', async () => {
     const road = make('osm-pnw-longview-civic');
     const court = pnwPlacesLayout(road, 1).streetSites.find((s) => String(s.kind) === 'dispatch-court');
@@ -40,7 +67,7 @@ describe('Street Diamond sites explicitly join the course with open physical apr
           },
         },
       },
-      { control: { tags: ['longview-street-life'], load: () => Promise.reject(new Error('unused')) } },
+      { control: { tags: ['dispatch-court'], load: () => Promise.reject(new Error('unused')) } },
     );
     // A bike-width corridor crosses the whole court, including both connections to the verge.
     for (let s = court.s - 6; s <= court.s + 6; s += 0.5)
@@ -55,16 +82,12 @@ describe('Street Diamond sites explicitly join the course with open physical apr
     ).toBe('out');
     const network = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
     const original = Object.values(files).filter((r) => network.roads.includes(r.id));
-    for (const remove of ['zone', 'tag'] as const) {
+    {
       const control = createRoadNetwork({
         network,
         roads: original.map((r) => ({
           ...r,
-          features:
-            remove === 'zone'
-              ? r.features?.filter((f) => f.params?.['place'] !== 'dispatch-court')
-              : r.features,
-          tags: remove === 'tag' ? r.tags?.filter((t) => t.tag !== 'longview-street-life') : r.tags,
+          tags: r.tags?.filter((t) => t.tag !== 'dispatch-court'),
         })),
       });
       expect(
@@ -80,9 +103,7 @@ describe('Street Diamond sites explicitly join the course with open physical apr
       network,
       roads: original.map((r) => ({
         ...r,
-        features: r.features?.map((f) =>
-          f.params?.['place'] === 'dispatch-court' ? { ...f, s0: f.s0 - 16, s1: f.s1 - 16 } : f,
-        ),
+        tags: r.tags?.map((t) => (t.tag === 'dispatch-court' ? { ...t, s0: t.s0 - 16, s1: t.s1 - 16 } : t)),
       })),
     });
     const movedCourt = pnwPlacesLayout(moved, 1).streetSites.find(
@@ -108,6 +129,7 @@ describe('Street Diamond sites explicitly join the course with open physical apr
     for (const edge of road.edges.filter((e) => e.isConnector)) {
       expect(pnwPlacesLayout(road, 1).streetSites.some((site) => site.edge === edge.index)).toBe(false);
       expect(edge.features.some((f) => f.params?.['place'] === 'dispatch-court')).toBe(false);
+      expect(edge.tags.some((t) => t.tag === 'dispatch-court')).toBe(false);
     }
     expect(pnwPlacesLayout(road, 2).streetSites).toEqual(pnwPlacesLayout(road, 1).streetSites);
   });
@@ -151,6 +173,9 @@ describe('Street Diamond sites explicitly join the course with open physical apr
     expect(pnwPlacesLayout(road, 2).streetSites).toEqual(sites);
     for (const id of ['osm-pnw-longview', 'pnw-c1'])
       expect(pnwPlacesLayout(make(id), 1).streetSites, id).toEqual([]);
+    const yards = pnwPlacesLayout(make('osm-pnw-longview'), 1).workyards;
+    expect(yards.length, 'legacy feature-driven freight sites remain present').toBeGreaterThan(0);
+    for (const yard of yards) expect(yard.specs.some((st) => st.rule.endsWith(':apron'))).toBe(true);
     expect(
       pnwPlacesLayout(make('osm-pnw-longview-civic'), 1).streetSites.some(
         (s) => s.kind === 'civic-frontage' || s.kind === 'plant-market',

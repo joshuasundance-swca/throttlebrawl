@@ -3,7 +3,18 @@ import { buildSimConfig, createStreamCache } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import { raceStructures } from '../../src/road';
+import {
+  createRoadNetwork,
+  createRouteProgress,
+  dispatchCourts,
+  raceStructures,
+  type BakedNetwork,
+  type BakedRoad,
+  type BakedRoute,
+} from '../../src/road';
+import civicNetwork from '../../packs/region-pnw/regions/pacific-northwest/networks/osm-pnw-longview-civic.json';
+import civicRoute from '../../packs/region-pnw/regions/pacific-northwest/routes/osm-longview-civic-triangle.json';
+import { pedsState } from '../../src/sim/peds';
 import { createSimWithWorld } from '../../src/sim/create';
 import { raceState } from '../../src/sim/race';
 import { input, riderHarness } from '../../src/sim/riders/testing';
@@ -26,6 +37,51 @@ function config(seed: number) {
 }
 
 describe('Hudson dispatch court is an optional broad riding sweep', () => {
+  it('leaves complete-route pedestrian initialization and its random stream unchanged, with a real spawning-zone control', () => {
+    const files = import.meta.glob<BakedRoad>('/packs/region-pnw/regions/*/roads/*.json', {
+      eager: true,
+      import: 'default',
+    });
+    const raw = Object.values(files).filter((r) => civicNetwork.roads.includes(r.id));
+    function initialized(mode: 'authored' | 'absent' | 'zone') {
+      const roads = raw.map((r) => ({
+        ...r,
+        tags: mode === 'authored' ? r.tags : r.tags?.filter((t) => t.tag !== 'dispatch-court'),
+        features:
+          mode === 'authored'
+            ? r.features
+            : r.features?.filter((f) => f.params?.['place'] !== 'dispatch-court'),
+      }));
+      if (mode === 'zone') {
+        const host = roads.find((r) => r.id === 'osm-longview-civic-hudson')!;
+        host.features = [
+          ...(host.features ?? []),
+          { kind: 'roadsideZone', id: 'pedestrian-control', s0: 40, s1: 56, d0: 11.25, d1: 19.25 },
+        ];
+      }
+      const road = createRoadNetwork({ network: civicNetwork as BakedNetwork, roads });
+      const c = { ...config(1), road, route: createRouteProgress(road, civicRoute as BakedRoute) };
+      const { world } = createSimWithWorld(c);
+      const movers = world.movers.filter((m) => m.kind === 'ped');
+      return {
+        count: movers.length,
+        stream: world.rng.peds,
+        serialized: JSON.stringify({
+          stream: world.rng.peds,
+          state: pedsState(world),
+          movers,
+        }),
+      };
+    }
+    const absent = initialized('absent'),
+      zone = initialized('zone'),
+      authored = initialized('authored');
+    process.stdout.write(
+      `[examined] pedestrian A/B movers=${authored.count}/${absent.count}, stream=${JSON.stringify(authored.stream)}/${JSON.stringify(absent.stream)}; zone movers=${zone.count}, stream=${JSON.stringify(zone.stream)}\n`,
+    );
+    expect(zone, 'actual roadsideZone changes population and random stream').not.toEqual(absent);
+    expect(authored, 'pure court authoring has no ambient spawn or RNG effect').toEqual(absent);
+  });
   it.each([false, true])(
     'finishes the populated grid route, optional court=%s, and replays every input',
     (takeCourt) => {
@@ -35,11 +91,10 @@ describe('Hudson dispatch court is an optional broad riding sweep', () => {
           road = c.road;
         const playerId = world.movers.find((m) => m.kind === 'rider')!.id;
         const me = () => sim.snapshot().entities.find((m) => m.id === playerId)!;
-        const hudson = road.edges.find((e) =>
-          e.features.some((f) => f.params?.['place'] === 'dispatch-court'),
-        )!;
+        const court = dispatchCourts(road)[0]!;
+        const hudson = road.edges[court.edge]!;
         expect(hudson, 'authored court fixture').toBeDefined();
-        const feature = hudson.features.find((f) => f.params?.['place'] === 'dispatch-court')!;
+        const feature = { s0: court.s - court.foot.hv, s1: court.s + court.foot.hv };
         expect(c.riders[0]?.bike.contentId).toBe('base:rustbucket-400');
         const bot = createBot(),
           commands: SimInput[] = [],
@@ -192,8 +247,9 @@ describe('Hudson dispatch court is an optional broad riding sweep', () => {
   it('deliberately meets the visible parked pickup; a separate road line can take or miss the unchanged exit pad', () => {
     const c = config(1),
       road = c.road;
-    const hudson = road.edges.find((e) => e.features.some((f) => f.params?.['place'] === 'dispatch-court'))!;
-    const f = hudson.features.find((f) => f.params?.['place'] === 'dispatch-court')!;
+    const court = dispatchCourts(road)[0]!,
+      hudson = road.edges[court.edge]!;
+    const f = { s0: court.s - court.foot.hv, s1: court.s + court.foot.hv, id: court.rule };
     // A separate contact fixture starts on the already-supported apron, pointed into the parked pickup.
     // The full-race test above proves the road-to-court entry without moving the rider into the site.
     const contact = riderHarness(c, {

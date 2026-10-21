@@ -42,6 +42,9 @@ import {
   ROAD_SURFACE_SIMPLIFY,
   SHOULDER_LAP_M,
   terrainAt,
+  dispatchCourts,
+  dispatchCourtClear,
+  type StructureFoot,
   type Edge,
   type RoadNetwork,
 } from '../road';
@@ -800,6 +803,8 @@ interface Clip {
 }
 
 export interface RoadSceneOptions {
+  /** Exact authored-site footprints, shared with physical planning; they reserve scenery only. */
+  reservedFootprints?: readonly StructureFoot[];
   /** Authored-face assembly loads with race-parts. Explicit null means a held, not-yet-ready scene. */
   terrainChunks?: typeof buildTerrainChunks | null;
   /** Roadside scenery density: 1 = the default spacing, 0 = none (`render.roadsideDensity`). */
@@ -1109,6 +1114,12 @@ export function buildRoadScene(
   dressing?: RoadDressing,
   opts: RoadSceneOptions = {},
 ): RoadScene {
+  const reservedFootprints = opts.reservedFootprints ?? dispatchCourts(road).map((c) => c.foot);
+  const reservedClear = (edge: number, s: number, d: number, radius: number) => {
+    if (reservedFootprints.length === 0) return true;
+    const p = road.toWorld(edge, s, d, 0);
+    return dispatchCourtClear(reservedFootprints, p.x, p.z, radius);
+  };
   const authoredTerrain = road.terrain;
   if (authoredTerrain && opts.terrainChunks === undefined)
     throw new Error(
@@ -2579,6 +2590,7 @@ export function buildRoadScene(
           return Math.min(reachOf[side][i] ?? 0, reachOf[side][j] ?? 0);
         },
         clear: (s, d, radius, zones = true) =>
+          reservedClear(e.index, s, d, radius) &&
           !zonesHere.some(
             (z) =>
               s >= Math.min(z.s0, z.s1) - radius &&

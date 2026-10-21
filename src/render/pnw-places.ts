@@ -43,6 +43,7 @@ export const PLACE_TAGS = [
   'festival',
   'longview-port-yard',
   'longview-street-life',
+  'dispatch-court',
 ] as const;
 
 /** Whether a network carries any of them (the renderer loads this chunk only then). */

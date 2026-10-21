@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { Color, DoubleSide, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
+import { createHash } from 'node:crypto';
+import { Color, DoubleSide, Mesh, MeshBasicMaterial, Raycaster, Vector3, type BufferGeometry } from 'three';
 import {
   createRoadNetwork,
   footContains,
   loadPnwPlacesLayout,
   lanesNear,
+  dispatchCourts,
+  dispatchCourtClear,
+  fixtureNetwork,
+  planStreetFurniture,
   structureLayersFor,
   type BakedNetwork,
   type BakedRoad,
@@ -13,6 +18,8 @@ import { GroundTris } from './land-probe.test-util';
 import { createFlatLook } from './look';
 import { hasPnwPlaces, placeItems, spotAt } from './pnw-places';
 import { buildRoadScene } from './road-mesh';
+import { PNW_KIT, scatterRoadside } from './roadside';
+import { SCENERY_RADIUS_M } from './scenery';
 
 const networks = import.meta.glob<BakedNetwork>('/packs/region-pnw/regions/*/networks/*.json', {
   eager: true,
@@ -28,6 +35,169 @@ const { pnwPlacesLayout } = await loadPnwPlacesLayout();
 const isSite = (kind: string) => kind === 'civic-frontage' || kind === 'plant-market';
 
 describe('Street Diamond has distinct, physically grounded local life on its arms', () => {
+  it('reserves the exact court footprint from real scenery and physical furniture, with removed/displaced controls', () => {
+    const civic = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const roads = Object.values(files).filter((r) => civic.roads.includes(r.id));
+    const road = createRoadNetwork({ network: civic, roads }),
+      dressing = Object.fromEntries(roads.map((r) => [r.id, r]));
+    const feet = dispatchCourts(road).map((c) => c.foot);
+    expect(feet.length).toBeGreaterThan(0);
+    const bare = buildRoadScene(road, createFlatLook(), dressing, { seed: 1, reservedFootprints: [] });
+    const scenes = [bare];
+    try {
+      const candidate = bare.spots.find((p) => dispatchCourtClear(feet, p.p.x, p.p.z, 20));
+      expect(candidate, 'real built-in scenery candidate').toBeDefined();
+      if (!candidate) return;
+      const moved = [{ ...feet[0]!, x: candidate.p.x, z: candidate.p.z }];
+      const shifted = buildRoadScene(road, createFlatLook(), dressing, {
+        seed: 1,
+        reservedFootprints: moved,
+      });
+      const actual = buildRoadScene(road, createFlatLook(), dressing, { seed: 1, reservedFootprints: feet });
+      scenes.push(shifted, actual);
+      expect(
+        shifted.spots.some((p) => p.edge === candidate.edge && p.s === candidate.s && p.d === candidate.d),
+      ).toBe(false);
+      expect(
+        bare.spots.some((p) => p === candidate),
+        'removal restores actual candidate',
+      ).toBe(true);
+      expect(
+        actual.spots.every((p) => dispatchCourtClear(feet, p.p.x, p.p.z, SCENERY_RADIUS_M[p.kind] * p.size)),
+      ).toBe(true);
+      const input = {
+        road,
+        dressing,
+        seed: 1,
+        density: 1,
+        kit: PNW_KIT,
+        spots: [],
+        landReach: (e: number, side: -1 | 1, s: number) => bare.landReach(e, side, s),
+      };
+      const loose = scatterRoadside({ ...input, reservedFootprints: [] });
+      const looseCandidate = loose.find(
+        (p) =>
+          !PNW_KIT.rules.find((r) => r.id === p.rule)?.discBack && dispatchCourtClear(feet, p.p.x, p.p.z, 20),
+      );
+      expect(looseCandidate, 'real roadside-kit candidate').toBeDefined();
+      if (!looseCandidate) return;
+      const displaced = [{ ...feet[0]!, x: looseCandidate.p.x, z: looseCandidate.p.z }];
+      const kept = scatterRoadside({ ...input, reservedFootprints: displaced });
+      expect(
+        kept.some(
+          (p) => p.rule === looseCandidate.rule && p.s === looseCandidate.s && p.d === looseCandidate.d,
+        ),
+      ).toBe(false);
+      const ordinary = road.toWorld(dispatchCourts(road)[0]!.edge, dispatchCourts(road)[0]!.s, 2, 0);
+      expect(dispatchCourtClear(feet, ordinary.x, ordinary.z, 1), 'ordinary lane is not reserved').toBe(true);
+      const fitted = scatterRoadside({ ...input, reservedFootprints: feet });
+      expect(
+        fitted.every((p) => {
+          const rule = PNW_KIT.rules.find((r) => r.id === p.rule)!;
+          const c = road.toWorld(p.edge, p.s, p.d + Math.sign(p.d) * (rule.discBack ?? 0), 0);
+          return dispatchCourtClear(feet, c.x, c.z, rule.r * (rule.run ? 1 : (rule.size?.[1] ?? 1)));
+        }),
+      ).toBe(true);
+
+      // Actual physical-planner candidate on a controlled paved plaza, using the same generic kit tag.
+      const bundle = fixtureNetwork([{ id: 'plaza', lengthM: 180, kappa: 0 }]);
+      const plaza: BakedRoad = {
+        ...bundle.roads[0]!,
+        tags: [{ tag: 'plaza', side: 'both', s0: 0, s1: 180 }],
+        laneSections: bundle.roads[0]!.laneSections.map((section) => ({
+          ...section,
+          verges: {
+            left: { widthM: 1, surface: 'concrete', edge: 'soft' },
+            right: { widthM: 1, surface: 'concrete', edge: 'soft' },
+          },
+        })),
+      };
+      const plain = createRoadNetwork({ network: bundle.network, roads: [plaza] });
+      const before = planStreetFurniture(plain, 1).items;
+      const target = before.find(
+        (p) =>
+          p.d > plain.vergeAt(p.edge, p.s, 'right').dOuter + 1 &&
+          p.d < plain.vergeAt(p.edge, p.s, 'right').dOuter + 7 &&
+          p.s > 8 &&
+          p.s < 124,
+      )!;
+      expect(target, 'actual physical furniture candidate').toBeDefined();
+      const placed = (at: number) =>
+        createRoadNetwork({
+          network: bundle.network,
+          roads: [
+            {
+              ...plaza,
+              tags: [...plaza.tags!, { tag: 'dispatch-court', side: 'right', s0: at - 8, s1: at + 8 }],
+            },
+          ],
+        });
+      const occupied = placed(target.s),
+        movedRoad = placed(target.s + 48);
+      const after = planStreetFurniture(occupied, 1).items;
+      const same = (p: typeof target) => p.rule === target.rule && p.s === target.s && p.d === target.d;
+      expect(after.some(same), 'physical candidate removed').toBe(false);
+      expect(
+        planStreetFurniture(movedRoad, 1).items.some(same),
+        'displaced tag restores original physical candidate',
+      ).toBe(true);
+      expect(before.some(same), 'removed tag restores physical candidate').toBe(true);
+      const geometry = (items: typeof before) => items.filter((p) => p.d < 0).map(({ id: _id, ...p }) => p);
+      expect(geometry(after), 'ordinary opposite-side placement unchanged').toEqual(geometry(before));
+      process.stdout.write(
+        `[examined] scenery ${bare.spots.length}/${actual.spots.length}, roadside ${loose.length}/${fitted.length}, physical furniture ${before.length}/${after.length}; removal and displacement controls effective\n`,
+      );
+    } finally {
+      for (const scene of scenes) scene.dispose();
+    }
+  });
+  it('does not add or reshape any road land on either side, with actual zone-land positive control', () => {
+    const civic = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const raw = Object.values(files).filter((r) => civic.roads.includes(r.id));
+    function groundHash(mode: 'authored' | 'absent' | 'zone') {
+      const roads = raw.map((r) => ({
+        ...r,
+        tags: mode === 'authored' ? r.tags : r.tags?.filter((t) => t.tag !== 'dispatch-court'),
+        features:
+          mode === 'authored'
+            ? r.features
+            : r.features?.filter((f) => f.params?.['place'] !== 'dispatch-court'),
+      }));
+      if (mode === 'zone') {
+        const host = roads.find((r) => r.id === 'osm-longview-civic-hudson')!;
+        host.features = [
+          ...(host.features ?? []),
+          { kind: 'roadsideZone', id: 'ground-control', s0: 40, s1: 56, d0: 11.25, d1: 19.25 },
+        ];
+      }
+      const road = createRoadNetwork({ network: civic, roads });
+      const scene = buildRoadScene(road, createFlatLook(), Object.fromEntries(roads.map((r) => [r.id, r])), {
+        seed: 1,
+      });
+      const hash = createHash('sha256');
+      let examined = 0;
+      try {
+        scene.group.updateMatrixWorld(true);
+        scene.group.traverse((o) => {
+          if (!(o instanceof Mesh) || !/^road-(land|shoulder)/.test(o.name)) return;
+          hash.update(o.name);
+          hash.update(JSON.stringify(o.matrixWorld.elements));
+          const geometry = o.geometry as BufferGeometry;
+          const p = geometry.getAttribute('position');
+          for (let i = 0; i < p.count; i++) hash.update(`${p.getX(i)},${p.getY(i)},${p.getZ(i)};`);
+          if (geometry.index) hash.update(JSON.stringify(Array.from(geometry.index.array)));
+          examined += p.count;
+        });
+        expect(examined).toBeGreaterThan(0);
+        return hash.digest('hex');
+      } finally {
+        scene.dispose();
+      }
+    }
+    const absent = groundHash('absent');
+    expect(groundHash('zone'), 'zone adds real land outside the explicit site').not.toBe(absent);
+    expect(groundHash('authored'), 'pure tag leaves all underlying road ground identical').toBe(absent);
+  });
   it('grounds the Hudson court and actual prop feet on existing land, with open body clearance and authored drawing controls', () => {
     const civic = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
     const civicRoads = Object.values(files).filter((r) => civic.roads.includes(r.id));
@@ -37,7 +207,7 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
     if (!site) return;
     const withoutZone = civicRoads.map((r) => ({
       ...r,
-      features: r.features?.filter((f) => f.params?.['place'] !== 'dispatch-court'),
+      tags: r.tags?.filter((t) => t.tag !== 'dispatch-court'),
     }));
     const control = createRoadNetwork({ network: civic, roads: withoutZone });
     const scene = buildRoadScene(
@@ -149,9 +319,7 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
         network: civic,
         roads: civicRoads.map((r) => ({
           ...r,
-          features: r.features?.map((f) =>
-            f.params?.['place'] === 'dispatch-court' ? { ...f, s0: f.s0 - 16, s1: f.s1 - 16 } : f,
-          ),
+          tags: r.tags?.map((t) => (t.tag === 'dispatch-court' ? { ...t, s0: t.s0 - 16, s1: t.s1 - 16 } : t)),
         })),
       });
       const movedSite = pnwPlacesLayout(moved, 1).streetSites.find(
