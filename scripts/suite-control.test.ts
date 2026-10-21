@@ -24,7 +24,12 @@ const jobBlock = (tier: string) => workflow.split(`\n  ${tier}:\n`)[1]?.split(/\
 const field = (text: string, key: string) => text.match(new RegExp(`^ +${key}: (.+)$`, 'm'))?.[1] ?? '';
 
 // Execute the actual checked-in expressions, rather than a copy of the intended selection rule.
-function evaluateControl(selection: Selection | null, diagnostic: boolean, tier: keyof typeof totals) {
+function evaluateControl(
+  selection: Selection | null,
+  diagnostic: boolean,
+  tier: keyof typeof totals,
+  heads = '',
+) {
   const text = jobBlock(tier);
   const context = {
     inputs: {
@@ -32,6 +37,7 @@ function evaluateControl(selection: Selection | null, diagnostic: boolean, tier:
       'diagnostic-control': diagnostic,
       full: true,
       'upload-dist': true,
+      heads,
     },
     matrix: { shard: 0 },
     strategy: { 'job-total': 0 },
@@ -45,6 +51,8 @@ function evaluateControl(selection: Selection | null, diagnostic: boolean, tier:
     );
   const runs = evaluate(field(text, 'if'));
   const shards = evaluate(field(text, 'shard')) as number[];
+  const parallel = field(text, 'max-parallel');
+  const maxParallel = parallel ? Number(evaluate(parallel)) : Infinity;
   context.strategy['job-total'] = shards.length;
   context.matrix.shard = shards[0] ?? 0;
   const name = field(text, 'name').replace(/\$\{\{(.+?)\}\}/g, (_all, expression: string) =>
@@ -55,13 +63,19 @@ function evaluateControl(selection: Selection | null, diagnostic: boolean, tier:
     jobBlock('browser')
       .split('- name: Build, browser tests (the last slice), then perf on the same build')[1]
       ?.split('- name: Screenshots')[0] ?? '';
+  const upload = jobBlock('browser').split('- name: Keep the tested build for the deploy')[1] ?? '';
   return {
     shards,
     runs,
     denominator,
+    maxParallel,
     perf: (shard: number) => {
       context.matrix.shard = shard;
       return evaluate(field(last, 'if'));
+    },
+    upload: (shard: number) => {
+      context.matrix.shard = shard;
+      return evaluate(field(upload, 'if'));
     },
   };
 }
@@ -87,6 +101,42 @@ function executeCoverage(env: { diagnostic: string; selection: string; full: str
 }
 
 describe('diagnostic control workflow contract', () => {
+  it('limits only train browser occupancy while retaining every shard and final-slice duty', () => {
+    const ordinary = evaluateControl(null, false, 'browser');
+    const train = evaluateControl(null, false, 'browser', 'pr-head-a pr-head-b');
+    expect(train.maxParallel).toBe(6);
+    expect(ordinary.maxParallel).toBeGreaterThanOrEqual(ordinary.shards.length);
+    expect(train.runs).toBe(true);
+    expect(train.shards).toEqual(ordinary.shards);
+    expect(train.denominator).toBe(ordinary.denominator);
+    for (const result of [ordinary, train]) {
+      expect(result.shards.filter((shard) => result.perf(shard))).toEqual([totals.browser]);
+      expect(result.shards.filter((shard) => result.upload(shard))).toEqual([totals.browser]);
+    }
+    for (const tier of ['unit', 'sim'] as const)
+      expect(evaluateControl(null, false, tier, 'pr-head-a').maxParallel).toBe(Infinity);
+  });
+
+  it('keeps nontrain diagnostic concurrency and canonical totals independent of the train cap', () => {
+    // GitHub's documented matrix ceiling exercises the entire valid range, rather than today's
+    // project shard count, so any smaller nontrain fallback fails this synthetic selection.
+    const browser = Array.from({ length: 256 }, (_, i) => i + 1);
+    const selection: Selection = {
+      static: false,
+      unit: [],
+      sim: [],
+      browser,
+      totals: { ...totals, browser: browser.length },
+    };
+    const control = evaluateControl(selection, true, 'browser');
+    expect(control.maxParallel).toBeGreaterThanOrEqual(browser.length);
+    expect(control.runs).toBe(true);
+    expect(control.shards).toEqual(browser);
+    expect(control.denominator).toBe(selection.totals.browser);
+    expect(control.shards.filter((shard) => control.perf(shard))).toEqual([selection.totals.browser]);
+    expect(control.shards.filter((shard) => control.upload(shard))).toEqual([]);
+  });
+
   it('declares optional control inputs and exposes coverage from static', () => {
     expect(workflow).toContain('diagnostic-control:');
     expect(workflow).toContain('control-selection:');
