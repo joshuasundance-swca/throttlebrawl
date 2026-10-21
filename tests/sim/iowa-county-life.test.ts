@@ -57,17 +57,15 @@ function makeConfig(seed = 1, quiet = false) {
 
 it('initializes every shipped event length and offered route with a content-derived seed cohort', () => {
   const streams = createStreamCache();
-  const cases = Object.entries(sourceRegistry.events)
+  const cases: { eventId: string; length?: string; route?: string }[] = Object.entries(sourceRegistry.events)
     .sort(([a], [b]) => a.localeCompare(b))
     .flatMap(([eventId, event]) => [
       ...event.lengths.map((length) => ({
         eventId,
         length: length.id,
-        route: undefined as string | undefined,
       })),
       ...realRoutes(sourceRegistry, eventId).map((route) => ({
         eventId,
-        length: undefined as string | undefined,
         route,
       })),
     ]);
