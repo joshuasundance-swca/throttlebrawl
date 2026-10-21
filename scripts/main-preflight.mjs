@@ -196,7 +196,7 @@ export async function routeMain(o) {
           (await head()) !== successor ||
           !unchanged(await get(`${base}/actions/runs/${chosen.id}`))
         )
-          return fallback('successor-changed');
+          return fallback('successor-revalidation-unproven');
         return {
           ...full,
           path: 'superseded',

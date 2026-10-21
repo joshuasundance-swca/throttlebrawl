@@ -254,6 +254,15 @@ describe('main preflight preserves acceptance while skipping superseded work', (
     ).toMatchObject({ path: 'full' });
   });
 
+  it('reports unproven revalidation for malformed successor metadata', async () => {
+    const s = scenario({ detailAt: (read) => (read > 1 ? {} : run) });
+    expect(await s.route()).toMatchObject({
+      path: 'full',
+      skip: false,
+      reason: 'successor-revalidation-unproven',
+    });
+  });
+
   it('ends a stalled-train delay at the original deadline or request cap', async () => {
     const s = scenario({ head: original, activeTrain: true });
     expect(await s.route()).toMatchObject({ path: 'full' });
