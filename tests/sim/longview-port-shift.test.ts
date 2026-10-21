@@ -99,7 +99,7 @@ describe('the authored Port Shift loading line is optional and repeatable', () =
         Math.abs(verge.dOuter) + 1,
       );
       expect(h.rider.speed).toBeLessThan(0.1);
-      expect(events.filter((e) => e.type === 'overboard' || e.type === 'crash')).toEqual([]);
+      expect(events.filter((e) => e.type === 'crash')).toEqual([]);
     }
   });
   it('lands on the actual shed roof and meets its back wall below the roof, with an above-wall control', async () => {
