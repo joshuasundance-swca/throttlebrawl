@@ -29,7 +29,14 @@ import {
   Vector3,
   type Texture,
 } from 'three';
-import { planStreetFurniture, type RoadNetwork, type StreetFurniture } from '../road';
+import {
+  dispatchCourts,
+  dispatchCourtClear,
+  planStreetFurniture,
+  type RoadNetwork,
+  type StreetFurniture,
+  type StructureFoot,
+} from '../road';
 // Old Town's street fronts, the structure plan's (a lazy chunk, road/structures/: imported directly, as the
 // module map lets a lazy render layer, so it stays out of the first load).
 import { OLDTOWN_RULES, planOldTown, type FrontageRule, type OldTownFront } from '../road/structures/oldtown';
@@ -856,6 +863,8 @@ export interface RoadsideInput {
   spots: readonly ScenerySpot[];
   /** Ground already taken by the staged roadside scenes (run W-T): discs, world m. */
   reserved?: readonly { x: number; z: number; r: number }[];
+  /** Exact authored site ground, matching physical furniture and built-in scenery clearance. */
+  reservedFootprints?: readonly StructureFoot[];
   /**
    * The loaded models by kind, for rules that draw from a model other than the kit's (`model`:
    * Old Town's Duval kit). A rule whose model is missing places nothing.
@@ -1039,11 +1048,13 @@ export class RoadsideScatter {
   private readonly zones = new Map<number, { s0: number; s1: number; lo: number; hi: number }[]>();
   /** The planned pieces (road/furniture.ts) by edge, rule and side (`edge:rule:side`). */
   private readonly planned = new Map<string, StreetFurniture[]>();
+  private readonly reservedFootprints: readonly StructureFoot[];
   /** The structure plan's street fronts (road/structures/oldtown.ts) by edge, rule and side. */
   private readonly fronts = new Map<string, OldTownFront[]>();
 
   constructor(private readonly input: RoadsideInput) {
     const { road } = input;
+    this.reservedFootprints = input.reservedFootprints ?? dispatchCourts(road).map((c) => c.foot);
     this.density = Math.max(0, input.density);
     this.order = input.kit.rules
       .map((_, i) => i)
@@ -1303,7 +1314,10 @@ export class RoadsideScatter {
           !zoneClear(s, Math.min(nearD, farD), Math.max(nearD, farD), Math.max(r, along * sizeMax))
         )
           break;
-        if (taken.hits(c.x, c.z, r, !!rule.understory || !!rule.low)) {
+        if (
+          !dispatchCourtClear(this.reservedFootprints, c.x, c.z, r) ||
+          taken.hits(c.x, c.z, r, !!rule.understory || !!rule.low)
+        ) {
           if (rule.run) break;
           continue;
         }

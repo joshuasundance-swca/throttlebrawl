@@ -5,7 +5,7 @@
 // The maintainer, 2026-10-05: "in first person helmet view it seems easy to clip through cars for
 // some reason? I was screensharing when I realized." Was it drawn or real? The bot rides the shared
 // batch's races (base event, traffic both ways) with the helmet camera following the player each
-// sim tick, and every tick on the road each vehicle is checked two ways:
+// sim tick, and every tick on the road each vehicle is checked two ways while the rider is solid:
 // 1. Real: the rider's contact box (sim/traffic TRAFFIC.riderLengthM x riderWidthM) never sits
 //    inside a vehicle's box past a 5 cm tolerance: the sim never lets the bike through traffic.
 // 2. Drawn: the helmet camera's eye never sits over a vehicle's footprint (its type's widthM by
@@ -17,6 +17,10 @@
 // side and 1.24 m up, through the door of a car the 0.8 m wide rider box had not touched. So it was
 // visual. The eye's sideways swing is now held to `camera.helmetReachM` (0.2 m, inside the box);
 // the same races with the old reach are the negative control and must still find frames.
+// A remounted rider's public `ghost` flag deliberately permits passage through traffic (the physical
+// contract is covered by sim/traffic/contact-rule.test.ts), carrying the camera with it. Measure those frames
+// separately, rather than treating the intended passage as a physics or camera failure. The solid
+// rider's box and eye guarantees, tolerance, cohort and old-reach negative control stay the same.
 import { describe, expect, it } from 'vitest';
 import { CAMERA_TUNING, createFollowCamera, type CameraPose, type FollowCamera } from '../../src/camera';
 import { createBot } from '../../src/dev';
@@ -53,15 +57,19 @@ function helmetCam(road: Parameters<typeof createFollowCamera>[0], reach?: numbe
 }
 
 describe('the helmet camera and traffic (2026-10-05)', () => {
-  it('the sim keeps the bike out of every vehicle, and the eye never sits inside one', () => {
+  it('while solid, the bike and helmet eye stay out of every vehicle', () => {
     const reach = CAMERA_TUNING.find((p) => p.id === 'camera.helmetReachM')?.default ?? NaN;
     expect(reach).toBeLessThanOrEqual(TRAFFIC.riderWidthM / 2);
-    let frames = 0;
-    let passes = 0;
-    let boxOverlaps = 0;
-    let eyeInside = 0;
-    let oldEyeInside = 0;
-    let closestEye = Infinity;
+    const counts = () => ({
+      frames: 0,
+      passes: 0,
+      boxOverlaps: 0,
+      eyeInside: 0,
+      oldEyeInside: 0,
+      closestEye: Infinity,
+    });
+    const solid = counts();
+    const ghost = counts();
     const found: string[] = [];
     for (const seed of SEEDS) {
       const { sim, config, playerId } = createBatchRace(seed);
@@ -89,7 +97,8 @@ describe('the helmet camera and traffic (2026-10-05)', () => {
         }
         const [pose, oldPose] = poses as [CameraPose, CameraPose];
         if (me.mode !== 'Road' || me.road.h > TRAFFIC.maxContactH) continue;
-        frames++;
+        const measured = me.ghost ? ghost : solid;
+        measured.frames++;
         for (const e of snap.entities) {
           if (e.kind !== 'vehicle') continue;
           const t = dims.get(e.contentId);
@@ -97,13 +106,13 @@ describe('the helmet camera and traffic (2026-10-05)', () => {
           const rider = local(e, me.x, me.z);
           const alongside = Math.abs(rider.along) < (t.lengthM + TRAFFIC.riderLengthM) / 2;
           const sideGap = Math.abs(rider.across) - (t.widthM + TRAFFIC.riderWidthM) / 2;
-          if (alongside && sideGap < 1) passes++;
+          if (alongside && sideGap < 1) measured.passes++;
           if (
             alongside &&
             Math.abs(rider.along) < (t.lengthM + TRAFFIC.riderLengthM) / 2 - BOX_TOLERANCE_M &&
             sideGap < -BOX_TOLERANCE_M
           )
-            boxOverlaps++;
+            measured.boxOverlaps++;
           const inside = (p: CameraPose): { inside: boolean; gap: number } => {
             const q = local(e, p.x, p.z);
             const gx = Math.abs(q.across) - t.widthM / 2;
@@ -111,25 +120,28 @@ describe('the helmet camera and traffic (2026-10-05)', () => {
             return { inside: gx < 0 && gz < 0, gap: Math.max(gx, gz) };
           };
           const now = inside(pose);
-          closestEye = Math.min(closestEye, now.gap);
+          measured.closestEye = Math.min(measured.closestEye, now.gap);
           if (now.inside) {
-            eyeInside++;
-            if (found.length < 5)
+            measured.eyeInside++;
+            if (!me.ghost && found.length < 5)
               found.push(`seed ${seed} tick ${sim.tick} ${e.contentId} lean ${me.lean.toFixed(2)}`);
           }
-          if (inside(oldPose).inside) oldEyeInside++;
+          if (inside(oldPose).inside) measured.oldEyeInside++;
         }
       }
     }
     const line =
-      `[examined] ${SEEDS.length} races, ${frames} frames on the road, ${passes} vehicle-frames within 1 m ` +
-      `alongside: rider box inside a vehicle ${boxOverlaps}; eye inside a vehicle ${eyeInside} ` +
-      `(closest ${closestEye.toFixed(2)} m outside), with the old reach ${oldEyeInside}\n`;
+      `[examined] ${SEEDS.length} races, solid: ${solid.frames} frames on the road, ${solid.passes} vehicle-frames within 1 m ` +
+      `alongside: rider box inside a vehicle ${solid.boxOverlaps}; eye inside a vehicle ${solid.eyeInside} ` +
+      `(closest ${solid.closestEye.toFixed(2)} m outside), with the old reach ${solid.oldEyeInside}; ` +
+      `ghost: ${ghost.frames} road frames, ${ghost.passes} nearby vehicle-frames, ` +
+      `${ghost.boxOverlaps} permitted box overlaps, ${ghost.eyeInside} eye-inside frames ` +
+      `(${ghost.oldEyeInside} with the old reach)\n`;
     process.stdout.write(line + (found.length ? `  ${found.join('\n  ')}\n` : ''));
-    // The control: with the old reach these races do put the eye inside traffic, so the check can
-    // find it. If content or the bot change so that it no longer does, pick seeds that do.
-    expect(oldEyeInside, 'the negative control finds the old clipping').toBeGreaterThan(0);
-    expect(boxOverlaps, 'the sim let the bike into a vehicle').toBe(0);
-    expect(eyeInside, 'the helmet eye sat inside a vehicle').toBe(0);
+    // The control: the old reach still puts a solid rider's eye inside traffic in these same races,
+    // so permitted ghost passage cannot supply the evidence that this check finds camera clipping.
+    expect(solid.oldEyeInside, 'the negative control finds the old clipping while solid').toBeGreaterThan(0);
+    expect(solid.boxOverlaps, 'the sim let the solid bike into a vehicle').toBe(0);
+    expect(solid.eyeInside, 'the solid helmet eye sat inside a vehicle').toBe(0);
   }, 300_000);
 });
