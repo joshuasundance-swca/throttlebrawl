@@ -13,7 +13,7 @@
       "kind": "set-piece",
       "piece": "hay-spill",
       "needsTag": "iowa-farm-traffic",
-      "signText": "FARM TRUCK AHEAD. LOOSE BALES.",
+      "signText": "HAY TRUCK AHEAD. LOOSE BALES.",
       "vehicle": "iowa-hay-truck",
       "theme": "iowa"
     }
