@@ -62,20 +62,14 @@ describe('the street furniture plan', () => {
     );
   });
 
-  it('stands kerb pieces on sidewalks and represents every kind in its actual network cohort', () => {
+  it('stands kerb pieces on sidewalks and represents every kind in the loaded networks', () => {
     let pieces = 0;
     const kinds = new Set<string>();
-    // The natural pieces live on headlands/Presidio ground, and the waterfront pieces on the
-    // waterfront; the urban and Keys networks alone cannot represent those kinds.
-    const cohorts = [
-      downtown,
-      duval,
-      hills,
-      network('sf-waterfront'),
-      network('osm-sf-golden-gate'),
-      network('osm-sf-twin-peaks'),
-    ];
-    for (const road of cohorts) {
+    // A new kind can belong to any authored region; its real network must place it before this
+    // positive control claims coverage. The separate check below probes every lane footprint.
+    const ids = allNetworks();
+    for (const id of ids) {
+      const road = network(id);
       for (const p of planStreetFurniture(road, 7).items) {
         pieces++;
         kinds.add(p.kind);
@@ -84,7 +78,7 @@ describe('the street furniture plan', () => {
         if (p.layer === 'kit') expect(onRidableBand(road, p), `${p.rule} at ${p.edge}:${p.s}`).toBe(true);
       }
     }
-    stdout.write(`[examined] ${pieces} pieces of ${kinds.size} kinds over ${cohorts.length} networks\n`);
+    stdout.write(`[examined] ${pieces} pieces of ${kinds.size} kinds over ${ids.length} networks\n`);
     expect(pieces).toBeGreaterThan(1500);
     for (const k of FURNITURE_KINDS) expect(kinds.has(k), k).toBe(true);
   });
