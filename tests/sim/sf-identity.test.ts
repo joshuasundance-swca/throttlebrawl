@@ -25,7 +25,7 @@ const CABLE = 'region-sf:cable-car';
 interface RoadFile {
   id: string;
   lengthM: number;
-  tags: { s0: number; s1: number; tag: string }[];
+  tags: readonly { s0: number; s1: number; tag: string }[];
 }
 const roadFiles = Object.entries(REG.roads).map(([id, r]) => ({ ...(r as unknown as RoadFile), id }));
 const sfRoads = roadFiles.filter((r) => r.id.startsWith('region-sf:'));
