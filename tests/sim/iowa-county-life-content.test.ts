@@ -1,0 +1,413 @@
+/// <reference types="vite/client" />
+import { expect, it } from 'vitest';
+import { InstancedMesh, Mesh, Raycaster, Vector3, type Object3D } from 'three';
+import { buildSimConfig, createStreamCache } from '../../src/app';
+import { lookup, registryFromGlob } from '../../src/content';
+import { createFlatLook } from '../../src/render';
+import { buildRoadScene } from '../../src/render/road-mesh';
+import { createSimWithWorld } from '../../src/sim/create';
+import { sectionGroundOf, type BakedFeature, type StructureSpec } from '../../src/road';
+import { supportedPedMove } from '../../src/sim/peds/ground';
+import { iowaCountyLayout } from '../../src/road/structures/iowa-county';
+import { mergeBoxes } from '../../src/render/geometry';
+import { TRAFFIC_FIGURE_PARTS } from '../../src/render/traffic-figures';
+import { SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
+import { PED_PHASE, pedsState } from '../../src/sim/peds';
+import { pedsStep } from '../../src/sim/peds/step';
+import { riderState } from '../../src/sim/riders';
+import { ISOLATED } from './batch';
+import { quantizeInput, type SimInput } from '../../src/sim/api';
+
+const sourceRegistry = registryFromGlob(
+  import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }),
+);
+const roadId = 'region-clinton:osm-clinton-county-180th';
+const candidate: BakedFeature = {
+  kind: 'roadsideZone',
+  id: 'county-loading-stroll',
+  s0: 640,
+  s1: 650,
+  d0: 18,
+  d1: 19,
+  params: { kinds: ['base:dog-walker'], maxPeds: 1 },
+};
+// Observe the production zone; the control removes only this encounter with a fresh stream.
+const registry = sourceRegistry;
+const sourceRoad = registry.roads[roadId]!;
+const quietRegistry = {
+  ...registry,
+  roads: {
+    ...registry.roads,
+    [roadId]: {
+      ...sourceRoad,
+      features: (sourceRoad.features ?? []).filter((f) => f.id !== candidate.id),
+    },
+  },
+};
+function makeConfig(seed = 1, quiet = false) {
+  const reg = quiet ? quietRegistry : registry;
+  const base = buildSimConfig(reg, createStreamCache().forEvent(reg, 'region-clinton:clinton-ia136-race'), {
+    seed,
+    eventId: 'region-clinton:clinton-ia136-race',
+    playerBike: 'base:rustbucket-400',
+    eventPatch: { riders: [] },
+    tuning: {
+      ...ISOLATED,
+      'ground.offRoad': 1,
+      'riders.courseEdges': 1,
+      'riders.structures': 1,
+      'riders.supports': 1,
+    },
+  });
+  return { ...base, riders: base.riders.filter((r) => r.role === 'player') };
+}
+
+it('the county loading context has one local strolling person', () => {
+  const { sim } = createSimWithWorld(makeConfig());
+  const people = sim.snapshot().entities.filter((e) => e.kind === 'ped');
+  expect(people).toHaveLength(1);
+  expect(people[0]!.contentId).toBe('base:dog-walker');
+  const zone = sourceRoad.features?.find((f) => f.id === candidate.id);
+  expect(zone?.params?.['maxPeds']).toBe(1);
+  expect(zone?.params?.['kinds']).toEqual(['base:dog-walker']);
+});
+
+it('removed-zone control is quiet, while normal strolling stays on dry drawn support', () => {
+  expect(
+    createSimWithWorld(makeConfig(1, true))
+      .sim.snapshot()
+      .entities.filter((e) => e.kind === 'ped'),
+  ).toEqual([]);
+  const config = makeConfig();
+  const { sim, world } = createSimWithWorld(config);
+  const st = pedsState(world);
+  expect(st.crosses).toEqual([0]);
+  const ground = sectionGroundOf(config.road);
+  const seen = new Set<number>();
+  for (let tick = 0; tick < 1200; tick++) {
+    sim.step([{ steer: 0, throttle: 0, brake: 255, flags: 0 }]);
+    const p = world.movers[st.id[0]!]!;
+    seen.add(Math.round(p.pos.s * 4));
+    const y = ground(p.pos.edge, p.pos.s, p.pos.d);
+    expect(y).not.toBeNull();
+    expect(Math.abs(y! - config.road.surfaceHeight(p.pos.edge, p.pos.s, p.pos.d))).toBeLessThan(0.25);
+  }
+  expect(seen.size).toBeGreaterThan(25);
+  expect(st.dives).toBe(0);
+  expect(st.contacts).toBe(0);
+  process.stdout.write(
+    `[county quiet/stroll control] ${JSON.stringify({ quietPeds: 0, quarterMetreStations: seen.size, crosses: st.crosses, dives: st.dives, contacts: st.contacts })}\n`,
+  );
+});
+
+it('the entire repeated reaction envelope retains grounded support', () => {
+  const config = makeConfig();
+  const { sim, world } = createSimWithWorld(config);
+  const st = pedsState(world);
+  const p = world.movers[st.id[0]!]!;
+  const me = world.movers[0]!;
+  const ground = sectionGroundOf(config.road);
+  const trace: unknown[] = [];
+  const errors: unknown[] = [];
+  // Each stimulus is another close approach to the same real zone-spawned person. The
+  // pedestrian is never teleported or put into a forced phase. Peds' public state and step
+  // expose the whole reaction envelope independently of a particular rider controller.
+  for (let pass = 0; pass < 12; pass++) {
+    me.pos = { edge: p.pos.edge, s: p.pos.s - 2, d: p.pos.d - 1.2, dir: 1 };
+    me.speed = 4;
+    me.h = 0;
+    riderState(world).yAbs[me.id] = config.road.surfaceHeight(me.pos.edge, me.pos.s, me.pos.d);
+    const riderGround = ground(me.pos.edge, me.pos.s, me.pos.d);
+    trace.push({ pass, riderD: me.pos.d, riderGround, fromD: p.pos.d });
+    expect(riderGround).not.toBeNull();
+    expect(Math.abs(riderGround! - config.road.surfaceHeight(me.pos.edge, me.pos.s, me.pos.d))).toBeLessThan(
+      0.25,
+    );
+    for (let tick = 0; tick < 32; tick++) {
+      world.events = [];
+      pedsStep(world, config);
+      world.tick++;
+      if (st.phase[0] === PED_PHASE.dive) me.speed = 0;
+      if (p.h > 0) continue; // An intended airborne arc is not a grounded-foot error.
+      const y = ground(p.pos.edge, p.pos.s, p.pos.d);
+      const foot = sim.snapshot().entities.find((e) => e.id === p.id)!.y;
+      // Section samples and exact mesh vertices differ at Float32 precision.
+      if (y === null || Math.abs(y - foot) > 1e-4)
+        errors.push({ pass, tick, d: p.pos.d, phase: st.phase[0], h: p.h, foot, drawnY: y });
+    }
+  }
+  const dressing = Object.fromEntries(
+    config.road.edges.map((e) => [e.id, lookup(registry.roads, e.id, 'region-clinton')]),
+  );
+  const { group } = buildRoadScene(config.road, createFlatLook(), dressing);
+  group.updateMatrixWorld(true);
+  const meshes: Object3D[] = [];
+  group.traverse((o) => {
+    if (o instanceof Mesh && !(o instanceof InstancedMesh)) meshes.push(o);
+  });
+  const spot = sim.snapshot().entities.find((e) => e.kind === 'ped')!;
+  const ray = new Raycaster(new Vector3(spot.x, spot.y + 20, spot.z), new Vector3(0, -1, 0));
+  const hit = ray.intersectObjects(meshes, false)[0];
+  process.stdout.write(
+    `[county rendered support] ${JSON.stringify({ footY: spot.y, h: spot.road.h, hitName: hit?.object.name, hitY: hit?.point.y, gap: hit ? spot.y - hit.point.y : null })}\n`,
+  );
+  process.stdout.write(
+    `[county reaction envelope] ${JSON.stringify({ trace, errors, dives: st.dives, snapshot: sim.snapshot().entities.filter((e) => e.kind === 'ped') })}\n`,
+  );
+  expect(st.dives).toBeGreaterThan(1);
+  expect(errors).toEqual([]);
+  expect(hit?.object.name).toBe('road-land');
+  expect(Math.abs(spot.y - hit!.point.y)).toBeLessThan(1e-6);
+  // With threats gone, recover at walking pace rather than snapping to homeD.
+  me.speed = 0;
+  let largestRecoveryStep = 0;
+  for (let tick = 0; tick < 1200; tick++) {
+    const previous = { s: p.pos.s, d: p.pos.d };
+    pedsStep(world, config);
+    world.tick++;
+    largestRecoveryStep = Math.max(
+      largestRecoveryStep,
+      Math.hypot(p.pos.s - previous.s, p.pos.d - previous.d),
+    );
+  }
+  expect(largestRecoveryStep).toBeLessThan(0.03);
+  expect(p.pos.d).toBeCloseTo(st.homeD[0]!, 8);
+});
+
+it('ordinary main/shoulder riding stays clear; a deliberate county approach reacts and exactly replays', () => {
+  function run(seed: number, take: boolean, shoulder = false, replay?: SimInput[]) {
+    const config = makeConfig(seed),
+      { sim, world } = createSimWithWorld(config);
+    const edge = config.road.edgeIndex('osm-clinton-county-180th');
+    const me = world.movers[0]!;
+    me.pos = {
+      edge,
+      s: candidate.s0 - 90,
+      d: shoulder ? 4.25 : 1.75,
+      dir: 1,
+    };
+    me.speed = 12;
+    riderState(world).yAbs[me.id] = config.road.surfaceHeight(edge, me.pos.s, me.pos.d);
+    const inputs: SimInput[] = [],
+      events = [];
+    let nearest:
+      { ahead: number; dd: number; riderY: number; pedY: number; d: number; s: number } | undefined;
+    while (sim.tick < 2400 && me.pos.edge === edge && me.pos.s < candidate.s1 + 65) {
+      const target = take && me.pos.s < candidate.s1 - 3 ? candidate.d0 - 1.2 : shoulder ? 4.25 : 1.75;
+      const desired = Math.atan((target - me.pos.d) / 6);
+      const command =
+        replay?.[sim.tick] ??
+        quantizeInput({
+          throttle: me.speed < 12 ? 0.5 : 0,
+          brake: me.speed > 13 ? 0.3 : 0,
+          steer: Math.max(-1, Math.min(1, 1.8 * (desired - me.yaw))),
+          flags: 0,
+        });
+      inputs.push(command);
+      sim.step([command]);
+      events.push(...sim.events());
+      const st = pedsState(world),
+        ped = world.movers[st.id[0] ?? -1];
+      if (ped && (!nearest || Math.abs(ped.pos.s - me.pos.s) < Math.abs(nearest.ahead)))
+        nearest = {
+          ahead: ped.pos.s - me.pos.s,
+          dd: ped.pos.d - me.pos.d,
+          riderY: riderState(world).yAbs[me.id]!,
+          pedY: st.groundY[0]!,
+          d: me.pos.d,
+          s: me.pos.s,
+        };
+    }
+    if (take)
+      process.stdout.write(
+        `[county approach trace] ${JSON.stringify({ seed, s: me.pos.s, d: me.pos.d, mode: me.mode, ticks: sim.tick, peds: pedsState(world).id.length, nearest, dives: pedsState(world).dives, contacts: pedsState(world).contacts, events: events.filter((e) => ['crash', 'respawn', 'pedDive', 'pedReact'].includes(e.type)) })}\n`,
+      );
+    return {
+      hash: sim.hash(),
+      inputs,
+      events,
+      dives: pedsState(world).dives,
+      contacts: pedsState(world).contacts,
+      s: me.pos.s,
+      mode: me.mode,
+      d: me.pos.d,
+    };
+  }
+  for (const shoulder of [false, true]) {
+    const ordinary = run(1, false, shoulder);
+    expect(ordinary.s).toBeGreaterThanOrEqual(candidate.s1 + 65);
+    expect(ordinary.events.filter((e) => e.type === 'crash' || e.type === 'respawn')).toEqual([]);
+    expect(ordinary.dives).toBe(0);
+    expect(ordinary.contacts).toBe(0);
+  }
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const ridden = run(seed, true);
+    expect(ridden.dives).toBeGreaterThan(0);
+    expect(ridden.contacts).toBe(0);
+    expect(ridden.mode).toBe('Road');
+    expect(Math.abs(ridden.d)).toBeLessThan(3.5);
+    expect(ridden.events.filter((e) => e.type === 'crash' || e.type === 'respawn')).toEqual([]);
+    expect(ridden.s).toBeGreaterThanOrEqual(candidate.s1 + 65);
+    const replay = run(seed, true, false, ridden.inputs);
+    expect(replay.hash).toBe(ridden.hash);
+    expect(replay.events).toEqual(ridden.events);
+  }
+});
+
+function facilityGap(q: { x: number; z: number }, spec: StructureSpec, radius: number) {
+  const dx = q.x - spec.foot.x,
+    dz = q.z - spec.foot.z;
+  const u = dx * spec.foot.ux + dz * spec.foot.uz,
+    v = -dx * spec.foot.uz + dz * spec.foot.ux;
+  return (
+    Math.hypot(Math.max(0, Math.abs(u) - spec.foot.hu), Math.max(0, Math.abs(v) - spec.foot.hv)) - radius
+  );
+}
+function sceneryGap(q: { x: number; z: number }, spot: ScenerySpot, radius: number) {
+  return (
+    Math.hypot(q.x - spot.p.x, q.z - spot.p.z) - SCENERY_RADIUS_M[spot.kind] * Math.max(1, spot.size) - radius
+  );
+}
+
+it('every supported lateral reaction corridor clears actual facilities and seeded scenery', () => {
+  // A sphere centred at the feet encloses all rendered corners under arbitrary heading/roll.
+  // Sim hop/dive arc and the render's event lift are vertical and cannot enlarge its horizontal reach.
+  let figureRadius = 0;
+  for (const key of ['dogWalker', 'personFist', 'personPhone'] as const) {
+    const geometry = mergeBoxes(TRAFFIC_FIGURE_PARTS[key]);
+    const positions = geometry.getAttribute('position');
+    for (let i = 0; i < positions.count; i++)
+      figureRadius = Math.max(
+        figureRadius,
+        Math.hypot(positions.getX(i), positions.getY(i), positions.getZ(i)),
+      );
+    geometry.dispose();
+  }
+  // One metre expands each <=0.5 m grid sample beyond its cell and the <=0.25 m support stop.
+  const clearance = figureRadius + 1;
+  const results: unknown[] = [];
+  const errors: unknown[] = [];
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const config = makeConfig(seed);
+    const { world } = createSimWithWorld(config);
+    const st = pedsState(world),
+      p = world.movers[st.id[0]!]!;
+    const type = config.trafficTypes[st.type[0]!]!;
+    const dressing = Object.fromEntries(
+      config.road.edges.map((e) => [e.id, lookup(registry.roads, e.id, 'region-clinton')]),
+    );
+    const scene = buildRoadScene(config.road, createFlatLook(), dressing, { seed });
+    const facilities = iowaCountyLayout(config.road, seed).facilities;
+    // Counterfactual overlap controls prove both clearance observers reject an obstacle at the probe.
+    const shed = facilities.find((f) => f.id === 'county-loading-shed')!;
+    expect(facilityGap(shed.specs[0]!.foot, shed.specs[0]!, clearance)).toBeLessThan(0);
+    const tree = scene.spots.find((spot) => spot.kind === 'deciduous')!;
+    expect(sceneryGap(tree.p, tree, clearance)).toBeLessThan(0);
+    let nearest = Infinity;
+    let minD = Infinity,
+      maxD = -Infinity;
+    for (let s = candidate.s0; s <= candidate.s1; s += 0.5) {
+      const from = { edge: p.pos.edge, s, d: st.homeD[0]! };
+      const floor = sectionGroundOf(config.road)(p.pos.edge, s, from.d)!;
+      const lo = supportedPedMove(config.road, from, { s, d: -100 }, floor, type);
+      const hi = supportedPedMove(config.road, from, { s, d: 100 }, floor, type);
+      minD = Math.min(minD, lo.d);
+      maxD = Math.max(maxD, hi.d);
+      for (let d = lo.d; d <= hi.d + 0.5; d += 0.5) {
+        const q = config.road.toWorld(p.pos.edge, s, d, 0);
+        for (const facility of facilities)
+          for (const spec of facility.specs) {
+            const gap = facilityGap(q, spec, clearance);
+            nearest = Math.min(nearest, gap);
+            if (gap <= 0) errors.push({ seed, s, d, obstacle: spec.rule, gap });
+          }
+        for (const other of config.road.edges) {
+          if (other.index === p.pos.edge) continue;
+          for (let k = 1; k < other.count; k++) {
+            const ax = other.x[k - 1]!,
+              az = other.z[k - 1]!;
+            const dx = other.x[k]! - ax,
+              dz = other.z[k]! - az;
+            const length = dx * dx + dz * dz;
+            const u = length ? Math.max(0, Math.min(1, ((q.x - ax) * dx + (q.z - az) * dz) / length)) : 0;
+            const gap =
+              Math.hypot(q.x - ax - u * dx, q.z - az - u * dz) -
+              Math.max(-other.dMin, other.dMax) -
+              clearance;
+            if (gap <= 0) errors.push({ seed, s, d, obstacle: other.id, gap });
+          }
+        }
+        for (const spot of scene.spots) {
+          const gap = sceneryGap(q, spot, clearance);
+          nearest = Math.min(nearest, gap);
+          if (gap <= 0)
+            errors.push({
+              seed,
+              s,
+              d,
+              obstacle: spot.kind,
+              spotS: spot.s,
+              spotD: spot.d,
+              spotY: spot.p.y,
+              floor,
+              gap,
+            });
+        }
+      }
+    }
+    expect(facilities.some((f) => f.id === 'county-loading-shed')).toBe(true);
+    expect(facilities.some((f) => f.id === 'county-corn-crib')).toBe(true);
+    expect(scene.spots.some((spot) => spot.kind === 'deciduous')).toBe(true);
+    results.push({ seed, facilities: facilities.length, scenery: scene.spots.length, nearest, minD, maxD });
+    scene.dispose();
+  }
+  process.stdout.write(
+    `[county corridor geometry] ${JSON.stringify({ figureRadius, clearance, results, errors: errors.slice(0, 30), errorCount: errors.length })}\n`,
+  );
+  expect(errors).toEqual([]);
+});
+
+it('a supported close pass produces a hop and returns the actual stroller home', () => {
+  const config = makeConfig(),
+    { sim, world } = createSimWithWorld(config);
+  const st = pedsState(world),
+    p = world.movers[st.id[0]!]!,
+    me = world.movers[0]!;
+  // This is a pedestrian-system stimulus, separate from the full input-driven ride above.
+  me.pos = { edge: p.pos.edge, s: p.pos.s, d: p.pos.d - 3, dir: 1 };
+  me.speed = 12;
+  riderState(world).yAbs[me.id] = sectionGroundOf(config.road)(me.pos.edge, me.pos.s, me.pos.d)!;
+  const events = [];
+  let hopped = false,
+    largestRecoveryStep = 0;
+  for (let tick = 0; tick < 900; tick++) {
+    const previous = { s: p.pos.s, d: p.pos.d };
+    world.events = [];
+    pedsStep(world, config);
+    world.tick++;
+    events.push(...world.events);
+    if (st.phase[0] === PED_PHASE.hop) {
+      hopped = true;
+      me.speed = 0;
+    }
+    if (p.h === 0) {
+      const foot = sim.snapshot().entities.find((e) => e.id === p.id)!.y;
+      const drawn = sectionGroundOf(config.road)(p.pos.edge, p.pos.s, p.pos.d);
+      expect(drawn).not.toBeNull();
+      expect(Math.abs(foot - drawn!)).toBeLessThan(1e-4);
+      largestRecoveryStep = Math.max(
+        largestRecoveryStep,
+        Math.hypot(p.pos.s - previous.s, p.pos.d - previous.d),
+      );
+    }
+  }
+  expect(hopped).toBe(true);
+  expect(events.some((e) => e.type === 'pedReact' && e.data['kind'] === 'jumpBack')).toBe(true);
+  expect(st.contacts).toBe(0);
+  expect(st.dives).toBe(0);
+  expect(p.pos.d).toBeCloseTo(st.homeD[0]!, 8);
+  expect(largestRecoveryStep).toBeLessThan(0.05);
+  process.stdout.write(
+    `[county hop/recovery] ${JSON.stringify({ hopped, contacts: st.contacts, dives: st.dives, largestRecoveryStep, homeD: st.homeD[0], finalD: p.pos.d })}\n`,
+  );
+});

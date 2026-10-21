@@ -232,6 +232,15 @@
           "features": [
             {
               "kind": "roadsideZone",
+              "id": "county-loading-stroll",
+              "s0": 640,
+              "s1": 650,
+              "d0": 18,
+              "d1": 19,
+              "params": { "kinds": ["base:dog-walker"], "maxPeds": 1 }
+            },
+            {
+              "kind": "roadsideZone",
               "id": "county-loading-shed",
               "s0": 655,
               "s1": 665,
