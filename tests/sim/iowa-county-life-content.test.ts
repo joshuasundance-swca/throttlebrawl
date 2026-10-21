@@ -2,11 +2,11 @@
 import { expect, it } from 'vitest';
 import { InstancedMesh, Mesh, Raycaster, Vector3, type Object3D } from 'three';
 import { buildSimConfig, createStreamCache } from '../../src/app';
-import { lookup, registryFromGlob } from '../../src/content';
+import { lookup, registryFromGlob, type ContentRegistry } from '../../src/content';
 import { createFlatLook } from '../../src/render';
 import { buildRoadScene } from '../../src/render/road-mesh';
 import { createSimWithWorld } from '../../src/sim/create';
-import { sectionGroundOf, type BakedFeature, type StructureSpec } from '../../src/road';
+import { sectionGroundOf, type StructureSpec } from '../../src/road';
 import { supportedPedMove } from '../../src/sim/peds/ground';
 import { iowaCountyLayout } from '../../src/road/structures/iowa-county';
 import { mergeBoxes } from '../../src/render/geometry';
@@ -14,15 +14,16 @@ import { TRAFFIC_FIGURE_PARTS } from '../../src/render/traffic-figures';
 import { SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 import { PED_PHASE, pedsState } from '../../src/sim/peds';
 import { pedsStep } from '../../src/sim/peds/step';
+import type { World } from '../../src/sim/world';
 import { riderState } from '../../src/sim/riders';
 import { ISOLATED } from './batch';
-import { quantizeInput, type SimInput } from '../../src/sim/api';
+import { quantizeInput, type SimInput, type SimConfig, type SimEvent } from '../../src/sim/api';
 
 const sourceRegistry = registryFromGlob(
   import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }),
 );
 const roadId = 'region-clinton:osm-clinton-county-180th';
-const candidate: BakedFeature = {
+const candidate: NonNullable<ContentRegistry['roads'][string]['features']>[number] = {
   kind: 'roadsideZone',
   id: 'county-loading-stroll',
   s0: 640,
@@ -62,49 +63,84 @@ function makeConfig(seed = 1, quiet = false) {
   return { ...base, riders: base.riders.filter((r) => r.role === 'player') };
 }
 
+function localSlots(world: World, config: SimConfig): number[] {
+  const st = pedsState(world);
+  const edge = config.road.edgeIndex('osm-clinton-county-180th');
+  return st.id.flatMap((id, k) => {
+    const p = world.movers[id];
+    return p?.pos.edge === edge &&
+      config.trafficTypes[st.type[k] ?? -1]?.contentId === 'base:dog-walker' &&
+      st.zoneS0[k] === candidate.s0 &&
+      st.zoneS1[k] === candidate.s1 &&
+      st.homeD[k]! >= candidate.d0 &&
+      st.homeD[k]! <= candidate.d1
+      ? [k]
+      : [];
+  });
+}
+
+function localPed(world: World, config: SimConfig) {
+  const slots = localSlots(world, config);
+  expect(slots).toHaveLength(1);
+  const k = slots[0]!,
+    st = pedsState(world),
+    p = world.movers[st.id[k]!]!;
+  let previousTouch = -1;
+  const observed = {
+    dives: 0,
+    contacts: 0,
+    read(events: readonly SimEvent[] = world.events) {
+      observed.dives += events.filter((e) => e.type === 'pedDive' && e.actor === p.id).length;
+      const touching = st.touching[k] ?? -1;
+      if (touching >= 0 && touching !== previousTouch) observed.contacts++;
+      previousTouch = touching;
+    },
+  };
+  return { st, k, p, observed };
+}
+
 it('the county loading context has one local strolling person', () => {
-  const { sim } = createSimWithWorld(makeConfig());
-  const people = sim.snapshot().entities.filter((e) => e.kind === 'ped');
-  expect(people).toHaveLength(1);
-  expect(people[0]!.contentId).toBe('base:dog-walker');
-  const zone = sourceRoad.features?.find((f) => f.id === candidate.id);
+  const config = makeConfig(),
+    { world } = createSimWithWorld(config);
+  const { st, k, p } = localPed(world, config);
+  expect(config.trafficTypes[st.type[k]!]!.contentId).toBe('base:dog-walker');
+  expect(p.pos.s).toBeGreaterThanOrEqual(candidate.s0);
+  expect(p.pos.s).toBeLessThanOrEqual(candidate.s1);
+  const zone = registry.roads[roadId]!.features?.find((f) => f.id === candidate.id);
   expect(zone?.params?.['maxPeds']).toBe(1);
   expect(zone?.params?.['kinds']).toEqual(['base:dog-walker']);
 });
 
 it('removed-zone control is quiet, while normal strolling stays on dry drawn support', () => {
-  expect(
-    createSimWithWorld(makeConfig(1, true))
-      .sim.snapshot()
-      .entities.filter((e) => e.kind === 'ped'),
-  ).toEqual([]);
+  const quiet = makeConfig(1, true),
+    quietWorld = createSimWithWorld(quiet).world;
+  expect(localSlots(quietWorld, quiet)).toEqual([]);
   const config = makeConfig();
   const { sim, world } = createSimWithWorld(config);
-  const st = pedsState(world);
-  expect(st.crosses).toEqual([0]);
+  const { st, k, p, observed } = localPed(world, config);
+  expect(st.crosses[k]).toBe(0);
   const ground = sectionGroundOf(config.road);
   const seen = new Set<number>();
   for (let tick = 0; tick < 1200; tick++) {
     sim.step([{ steer: 0, throttle: 0, brake: 255, flags: 0 }]);
-    const p = world.movers[st.id[0]!]!;
+    observed.read(sim.events());
     seen.add(Math.round(p.pos.s * 4));
     const y = ground(p.pos.edge, p.pos.s, p.pos.d);
     expect(y).not.toBeNull();
     expect(Math.abs(y! - config.road.surfaceHeight(p.pos.edge, p.pos.s, p.pos.d))).toBeLessThan(0.25);
   }
   expect(seen.size).toBeGreaterThan(25);
-  expect(st.dives).toBe(0);
-  expect(st.contacts).toBe(0);
+  expect(observed.dives).toBe(0);
+  expect(observed.contacts).toBe(0);
   process.stdout.write(
-    `[county quiet/stroll control] ${JSON.stringify({ quietPeds: 0, quarterMetreStations: seen.size, crosses: st.crosses, dives: st.dives, contacts: st.contacts })}\n`,
+    `[county quiet/stroll control] ${JSON.stringify({ quietPeds: 0, quarterMetreStations: seen.size, crosses: st.crosses[k], dives: observed.dives, contacts: observed.contacts })}\n`,
   );
 });
 
 it('the entire repeated reaction envelope retains grounded support', () => {
   const config = makeConfig();
   const { sim, world } = createSimWithWorld(config);
-  const st = pedsState(world);
-  const p = world.movers[st.id[0]!]!;
+  const { st, k, p, observed } = localPed(world, config);
   const me = world.movers[0]!;
   const ground = sectionGroundOf(config.road);
   const trace: unknown[] = [];
@@ -126,38 +162,41 @@ it('the entire repeated reaction envelope retains grounded support', () => {
     for (let tick = 0; tick < 32; tick++) {
       world.events = [];
       pedsStep(world, config);
+      observed.read();
       world.tick++;
-      if (st.phase[0] === PED_PHASE.dive) me.speed = 0;
+      if (st.phase[k] === PED_PHASE.dive) me.speed = 0;
       if (p.h > 0) continue; // An intended airborne arc is not a grounded-foot error.
       const y = ground(p.pos.edge, p.pos.s, p.pos.d);
       const foot = sim.snapshot().entities.find((e) => e.id === p.id)!.y;
       // Section samples and exact mesh vertices differ at Float32 precision.
       if (y === null || Math.abs(y - foot) > 1e-4)
-        errors.push({ pass, tick, d: p.pos.d, phase: st.phase[0], h: p.h, foot, drawnY: y });
+        errors.push({ pass, tick, d: p.pos.d, phase: st.phase[k], h: p.h, foot, drawnY: y });
     }
   }
   const dressing = Object.fromEntries(
     config.road.edges.map((e) => [e.id, lookup(registry.roads, e.id, 'region-clinton')]),
   );
-  const { group } = buildRoadScene(config.road, createFlatLook(), dressing);
+  const scene = buildRoadScene(config.road, createFlatLook(), dressing);
+  const { group } = scene;
   group.updateMatrixWorld(true);
   const meshes: Object3D[] = [];
   group.traverse((o) => {
     if (o instanceof Mesh && !(o instanceof InstancedMesh)) meshes.push(o);
   });
-  const spot = sim.snapshot().entities.find((e) => e.kind === 'ped')!;
+  const spot = sim.snapshot().entities.find((e) => e.id === p.id)!;
   const ray = new Raycaster(new Vector3(spot.x, spot.y + 20, spot.z), new Vector3(0, -1, 0));
   const hit = ray.intersectObjects(meshes, false)[0];
   process.stdout.write(
     `[county rendered support] ${JSON.stringify({ footY: spot.y, h: spot.road.h, hitName: hit?.object.name, hitY: hit?.point.y, gap: hit ? spot.y - hit.point.y : null })}\n`,
   );
   process.stdout.write(
-    `[county reaction envelope] ${JSON.stringify({ trace, errors, dives: st.dives, snapshot: sim.snapshot().entities.filter((e) => e.kind === 'ped') })}\n`,
+    `[county reaction envelope] ${JSON.stringify({ trace, errors, dives: observed.dives, snapshot: sim.snapshot().entities.filter((e) => e.id === p.id) })}\n`,
   );
-  expect(st.dives).toBeGreaterThan(1);
+  expect(observed.dives).toBeGreaterThan(1);
   expect(errors).toEqual([]);
   expect(hit?.object.name).toBe('road-land');
   expect(Math.abs(spot.y - hit!.point.y)).toBeLessThan(1e-6);
+  scene.dispose();
   // With threats gone, recover at walking pace rather than snapping to homeD.
   me.speed = 0;
   let largestRecoveryStep = 0;
@@ -171,7 +210,7 @@ it('the entire repeated reaction envelope retains grounded support', () => {
     );
   }
   expect(largestRecoveryStep).toBeLessThan(0.03);
-  expect(p.pos.d).toBeCloseTo(st.homeD[0]!, 8);
+  expect(p.pos.d).toBeCloseTo(st.homeD[k]!, 8);
 });
 
 it('ordinary main/shoulder riding stays clear; a deliberate county approach reacts and exactly replays', () => {
@@ -179,6 +218,7 @@ it('ordinary main/shoulder riding stays clear; a deliberate county approach reac
     const config = makeConfig(seed),
       { sim, world } = createSimWithWorld(config);
     const edge = config.road.edgeIndex('osm-clinton-county-180th');
+    const { st, k, p: ped, observed } = localPed(world, config);
     const me = world.movers[0]!;
     me.pos = {
       edge,
@@ -205,29 +245,28 @@ it('ordinary main/shoulder riding stays clear; a deliberate county approach reac
         });
       inputs.push(command);
       sim.step([command]);
+      observed.read(sim.events());
       events.push(...sim.events());
-      const st = pedsState(world),
-        ped = world.movers[st.id[0] ?? -1];
       if (ped && (!nearest || Math.abs(ped.pos.s - me.pos.s) < Math.abs(nearest.ahead)))
         nearest = {
           ahead: ped.pos.s - me.pos.s,
           dd: ped.pos.d - me.pos.d,
           riderY: riderState(world).yAbs[me.id]!,
-          pedY: st.groundY[0]!,
+          pedY: st.groundY[k]!,
           d: me.pos.d,
           s: me.pos.s,
         };
     }
     if (take)
       process.stdout.write(
-        `[county approach trace] ${JSON.stringify({ seed, s: me.pos.s, d: me.pos.d, mode: me.mode, ticks: sim.tick, peds: pedsState(world).id.length, nearest, dives: pedsState(world).dives, contacts: pedsState(world).contacts, events: events.filter((e) => ['crash', 'respawn', 'pedDive', 'pedReact'].includes(e.type)) })}\n`,
+        `[county approach trace] ${JSON.stringify({ seed, s: me.pos.s, d: me.pos.d, mode: me.mode, ticks: sim.tick, peds: localSlots(world, config).length, nearest, dives: observed.dives, contacts: observed.contacts, events: events.filter((e) => ['crash', 'respawn', 'pedDive', 'pedReact'].includes(e.type)) })}\n`,
       );
     return {
       hash: sim.hash(),
       inputs,
       events,
-      dives: pedsState(world).dives,
-      contacts: pedsState(world).contacts,
+      dives: observed.dives,
+      contacts: observed.contacts,
       s: me.pos.s,
       mode: me.mode,
       d: me.pos.d,
@@ -290,9 +329,8 @@ it('every supported lateral reaction corridor clears actual facilities and seede
   for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const config = makeConfig(seed);
     const { world } = createSimWithWorld(config);
-    const st = pedsState(world),
-      p = world.movers[st.id[0]!]!;
-    const type = config.trafficTypes[st.type[0]!]!;
+    const { st, k, p } = localPed(world, config);
+    const type = config.trafficTypes[st.type[k]!]!;
     const dressing = Object.fromEntries(
       config.road.edges.map((e) => [e.id, lookup(registry.roads, e.id, 'region-clinton')]),
     );
@@ -307,7 +345,7 @@ it('every supported lateral reaction corridor clears actual facilities and seede
     let minD = Infinity,
       maxD = -Infinity;
     for (let s = candidate.s0; s <= candidate.s1; s += 0.5) {
-      const from = { edge: p.pos.edge, s, d: st.homeD[0]! };
+      const from = { edge: p.pos.edge, s, d: st.homeD[k]! };
       const floor = sectionGroundOf(config.road)(p.pos.edge, s, from.d)!;
       const lo = supportedPedMove(config.road, from, { s, d: -100 }, floor, type);
       const hi = supportedPedMove(config.road, from, { s, d: 100 }, floor, type);
@@ -370,9 +408,8 @@ it('every supported lateral reaction corridor clears actual facilities and seede
 it('a supported close pass produces a hop and returns the actual stroller home', () => {
   const config = makeConfig(),
     { sim, world } = createSimWithWorld(config);
-  const st = pedsState(world),
-    p = world.movers[st.id[0]!]!,
-    me = world.movers[0]!;
+  const { st, k, p, observed } = localPed(world, config);
+  const me = world.movers[0]!;
   // This is a pedestrian-system stimulus, separate from the full input-driven ride above.
   me.pos = { edge: p.pos.edge, s: p.pos.s, d: p.pos.d - 3, dir: 1 };
   me.speed = 12;
@@ -384,9 +421,10 @@ it('a supported close pass produces a hop and returns the actual stroller home',
     const previous = { s: p.pos.s, d: p.pos.d };
     world.events = [];
     pedsStep(world, config);
+    observed.read();
     world.tick++;
     events.push(...world.events);
-    if (st.phase[0] === PED_PHASE.hop) {
+    if (st.phase[k] === PED_PHASE.hop) {
       hopped = true;
       me.speed = 0;
     }
@@ -403,11 +441,11 @@ it('a supported close pass produces a hop and returns the actual stroller home',
   }
   expect(hopped).toBe(true);
   expect(events.some((e) => e.type === 'pedReact' && e.data['kind'] === 'jumpBack')).toBe(true);
-  expect(st.contacts).toBe(0);
-  expect(st.dives).toBe(0);
-  expect(p.pos.d).toBeCloseTo(st.homeD[0]!, 8);
+  expect(observed.contacts).toBe(0);
+  expect(observed.dives).toBe(0);
+  expect(p.pos.d).toBeCloseTo(st.homeD[k]!, 8);
   expect(largestRecoveryStep).toBeLessThan(0.05);
   process.stdout.write(
-    `[county hop/recovery] ${JSON.stringify({ hopped, contacts: st.contacts, dives: st.dives, largestRecoveryStep, homeD: st.homeD[0], finalD: p.pos.d })}\n`,
+    `[county hop/recovery] ${JSON.stringify({ hopped, contacts: observed.contacts, dives: observed.dives, largestRecoveryStep, homeD: st.homeD[k], finalD: p.pos.d })}\n`,
   );
 });
