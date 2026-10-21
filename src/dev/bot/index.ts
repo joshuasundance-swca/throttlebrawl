@@ -282,19 +282,27 @@ function yieldSweepClear(me: FootprintEntity, other: FootprintEntity, mx: number
     );
   };
   const axes: Axis[] = [...bodyAxes(me.heading), ...bodyAxes(other.heading)];
+  const footprintAxisCount = axes.length;
   const distance = Math.hypot(mx, mz);
   if (distance > 0) axes.push([-mz / distance, mx / distance]);
   let inside = true,
     separate = false,
     escape = false;
-  for (const axis of axes) {
+  let minimumDepth = Infinity;
+  for (const [i, axis] of axes.entries()) {
     const start = (me.x - other.x) * axis[0] + (me.z - other.z) * axis[1];
     const end = start + mx * axis[0] + mz * axis[1];
     const reach = half(me, axis) + half(other, axis) + 0.1;
     inside &&= Math.abs(start) <= reach;
     separate ||= Math.min(start, end) > reach || Math.max(start, end) < -reach;
-    // Already touching: allow a monotonic escape along a separating axis, never a crossing.
-    escape ||= start * end >= 0 && Math.abs(end) > reach && Math.abs(end) > Math.abs(start);
+    // Already touching: escape along the initially least-penetrated footprint axis.
+    // Escaping through a different side could first push deeper into the body. The sweep's
+    // extra axis only tests separation; it cannot choose the initial contact's escape side.
+    const depth = reach - Math.abs(start);
+    if (i < footprintAxisCount && depth < minimumDepth) {
+      minimumDepth = depth;
+      escape = start * end >= 0 && Math.abs(end) > reach && Math.abs(end) > Math.abs(start);
+    }
   }
   return separate || (inside && escape);
 }

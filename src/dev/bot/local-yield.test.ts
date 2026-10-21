@@ -107,6 +107,31 @@ describe('a local yield to opposing stationary traffic', () => {
     expect(actions.throttle).toBe(0);
   });
 
+  it('does not deepen a shallow rotated overlap before escaping through another side', () => {
+    const { snap, me, drive } = scene(1, 6);
+    me.x = 0;
+    me.road.d = 0;
+    me.footprintLengthM = 2.2;
+    const touching = snap.entities[1]!;
+    touching.x = -0.6;
+    touching.z = -102.2;
+    touching.road.s = 102.2;
+    touching.road.d = -0.6;
+    touching.heading = Math.PI / 6;
+    touching.footprintLengthM = 2;
+    touching.footprintWidthM = 2.6;
+    // The right edge is occupied. Reaching the clear left edge would first push the bike
+    // farther through the rotated body: a clear endpoint alone is not a safe escape.
+    const right = snap.entities[2]!;
+    right.x = 2;
+    right.z = -101;
+    right.road.s = 101;
+    right.road.d = 2;
+    let actions = blankActions();
+    for (let tick = 1; tick <= STUCK_TICKS + 1; tick++) actions = drive(tick);
+    expect(actions.throttle).toBe(0);
+  });
+
   it.each(['missing vehicle', 'invalid vehicle', 'missing rider'] as const)(
     'refuses unknown geometry: %s',
     (which) => {
