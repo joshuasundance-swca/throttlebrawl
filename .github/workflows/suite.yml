@@ -1,13 +1,13 @@
 # The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
 # they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
 # it on a train's bundle (docs/engineering.md, "The bundle train"). static, unit (three slices), sim
-# (eight slices) and browser (eleven slices, the last also running perf) run in parallel, each
+# (ten slices) and browser (eleven slices, the last also running perf) run in parallel, each
 # running its tiers of `npm run check`. Every slice is planned as its whole job (setup, build and
 # tests; scripts/shard-plan.mjs) at no more than two thirds of its timeout-minutes, which
 # scripts/shard-plan.test.ts checks against tests/timings.json and these matrices; the rest is room
 # for a slow runner. The timeout is a guard against a hang rather than a budget.
 #
-# - full: true runs every tier: the full gate, 23 jobs. full: false is the quick check, 4 jobs:
+# - full: true runs every tier: the full gate, 25 jobs. full: false is the quick check, 4 jobs:
 #   static (plus the build and its size budget, `--tier static,budget`) and the three unit slices.
 # - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
 #   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
@@ -276,17 +276,16 @@ jobs:
       SHARD: ${{ matrix.shard }}
       SHARD_TOTAL: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.sim || strategy.job-total }}
     runs-on: ubuntu-latest
-    # The refreshed plan puts the batch readers at 319 s of job and the other slices at 396 s
-    # (2026-10-07 table, 20 s of job setup included), up to 44% of this timeout. 15 minutes since
-    # 2026-10-07: the first train on eight slices (run 37593974876) ran sim (4/8) to 617 s on a
-    # 408 s plan (its files ran 0.89 to 1.79 times the fresh table; one of them was broken by that bundle),
-    # so 10 minutes left no room. The line is JOB_SHARE of this timeout, so sim's line is 600 s:
-    # a slice may plan up to a 10-minute job before the plan test asks for a ninth slice.
-    timeout-minutes: 15
+    # 2026-10-21: completed PASS whole-file observations from train39640500462 put an
+    # indivisible aggregate file plus setup at 910 s. More slices cannot lower that floor.
+    # A 24-minute hang guard preserves the unchanged two-thirds rule (960 s planning line).
+    # Ten slices add ordinary-work capacity; partial observations are not a speed guarantee.
+    # Gameplay/perf budgets, workers, test inventory and acceptance remain unchanged.
+    timeout-minutes: 24
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
-        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).sim || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8]') }}
+        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).sim || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]') }}
     steps:
       - uses: actions/checkout@v7
         with:
