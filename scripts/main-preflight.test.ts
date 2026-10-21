@@ -147,6 +147,33 @@ function scenario(
 }
 
 describe('main preflight preserves acceptance while skipping superseded work', () => {
+  it('distinguishes request allowance, polling deadline and lookup failure without raw errors', async () => {
+    const capped = scenario({ head: original, activeTrain: true });
+    expect(await capped.route()).toMatchObject({ path: 'full', skip: false, reason: 'request-cap' });
+    expect(capped.calls).toHaveLength(REQUEST_CAP);
+    const deadline = scenario({ before: () => deadline.advance(PREFLIGHT_MS) });
+    expect(await deadline.route()).toMatchObject({ path: 'full', reason: 'deadline' });
+    const polling = scenario({
+      head: original,
+      activeTrain: true,
+      before: (_, calls) => {
+        if (calls.length === 7) polling.advance(80_000);
+      },
+    });
+    expect(await polling.route()).toMatchObject({ path: 'full', reason: 'poll-deadline' });
+    expect(polling.sleeps).toEqual([]);
+    const failed = scenario({
+      before: () => {
+        throw new Error('private API response');
+      },
+    });
+    expect(await failed.route()).toMatchObject({ path: 'full', reason: 'lookup-failed' });
+    expect(await scenario({ head: original }).route()).toMatchObject({ reason: 'no-eligible-active-train' });
+    expect(await scenario({ run: { ...run, event: 'pull_request' } }).route()).toMatchObject({
+      path: 'full',
+      reason: 'successor-eligibility-unproven',
+    });
+  });
   it.each([
     { expired: undefined },
     { expired: null },
@@ -227,6 +254,15 @@ describe('main preflight preserves acceptance while skipping superseded work', (
     ).toMatchObject({ path: 'full' });
   });
 
+  it('reports unproven revalidation for malformed successor metadata', async () => {
+    const s = scenario({ detailAt: (read) => (read > 1 ? {} : run) });
+    expect(await s.route()).toMatchObject({
+      path: 'full',
+      skip: false,
+      reason: 'successor-revalidation-unproven',
+    });
+  });
+
   it('ends a stalled-train delay at the original deadline or request cap', async () => {
     const s = scenario({ head: original, activeTrain: true });
     expect(await s.route()).toMatchObject({ path: 'full' });
@@ -261,7 +297,7 @@ describe('main preflight preserves acceptance while skipping superseded work', (
         },
       });
       await vi.runAllTimersAsync();
-      expect(await result).toMatchObject({ path: 'full' });
+      expect(await result).toMatchObject({ path: 'full', reason: 'request-deadline' });
       expect(signal?.aborted).toBe(true);
     } finally {
       vi.useRealTimers();
@@ -414,6 +450,31 @@ describe('main preflight preserves acceptance while skipping superseded work', (
         },
       },
     );
-    expect(out.trim()).toBe('main preflight: full');
+    expect(out.trim()).toBe('main preflight: full\nmain preflight reason: missing-token');
+  });
+
+  it('CLI exposes a fixed lookup reason without thrown API text', () => {
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const script = new URL('./main-preflight.mjs', import.meta.url);
+    const out = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `globalThis.fetch = () => { throw new Error('private API response'); }; process.argv[1] = ${JSON.stringify(script.pathname.replace(/^\/(\w:)/, '$1'))}; await import(${JSON.stringify(script.href)});`,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 5000,
+        env: {
+          ...process.env,
+          GH_TOKEN: 'test-placeholder',
+          GITHUB_SHA: sha,
+          GITHUB_REPOSITORY: repo,
+          GITHUB_OUTPUT: '',
+        },
+      },
+    );
+    expect(out.trim()).toBe('main preflight: full\nmain preflight reason: lookup-failed');
   });
 });
