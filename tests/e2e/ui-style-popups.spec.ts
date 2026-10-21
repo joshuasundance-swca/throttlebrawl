@@ -34,6 +34,9 @@ test('the known layout list only shrinks', () => {
 test('phone landscape, left-handed mirror: the ticker stays clear with the rival bar beside it', async ({
   page,
 }) => {
+  // Three rendered layout moments plus screenshots can exceed the default 30 s on shared CI
+  // even after every layout finding is clear. This is a harness deadline; game perf stays separate.
+  test.setTimeout(60_000);
   const problems = watchErrors(page);
   await startRace(page, { mirror: true });
   // The rival's bar is shown beside the ticker: sideways they share the top row.

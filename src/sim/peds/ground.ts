@@ -9,33 +9,39 @@ const PROBE_M = 0.25;
 type Position = { edge: number; s: number; d: number };
 type Body = { lengthM: number; widthM: number };
 
-function dry(road: RoadNetwork, pos: Position, y: number): boolean {
-  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
-  const face = terrainAt(road.terrain, p.x, p.z);
+function dry(road: RoadNetwork, x: number, z: number, y: number): boolean {
+  const face = terrainAt(road.terrain, x, z);
   return face?.surface !== 'water' || face.y < y - 1e-6;
 }
 
 /** The authored spot's own road/zone/source support, never another road above or below it. */
 export function initialPedGround(road: RoadNetwork, pos: Position): number | null {
   const y = roadBandHeight(road, pos.edge, pos.s, pos.d) ?? sectionGroundOf(road)(pos.edge, pos.s, pos.d);
-  return y !== null && dry(road, pos, y) ? y : null;
+  if (y === null) return null;
+  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  return dry(road, p.x, p.z, y) ? y : null;
 }
 
 /** One connected step: reject missing ground, water, a drop or an unrelated deck. */
-function support(road: RoadNetwork, pos: Position, previous: number): number | null {
-  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
-  const y = groundUnderOf(road)(p.x, p.z, previous + STEP_M);
-  return y !== null && previous - y <= STEP_M && dry(road, pos, y) ? y : null;
+function support(road: RoadNetwork, x: number, z: number, previous: number): number | null {
+  const y = groundUnderOf(road)(x, z, previous + STEP_M);
+  return y !== null && previous - y <= STEP_M && dry(road, x, z, y) ? y : null;
 }
 
 /** Longitudinal/lateral footprint, not just the happy centre point. */
 function bodySupport(road: RoadNetwork, pos: Position, previous: number, body: Body): number | null {
-  const y = support(road, pos, previous);
+  const centre = road.frameAt(pos.edge, pos.s);
+  // Exactly toWorld's x/z arithmetic; a lateral footprint row shares one longitudinal frame.
+  const y = support(road, centre.x - centre.tz * pos.d, centre.z + centre.tx * pos.d, previous);
   if (y === null) return null;
-  for (const ds of [-body.lengthM / 2, 0, body.lengthM / 2])
+  for (const ds of [-body.lengthM / 2, 0, body.lengthM / 2]) {
+    const frame = ds === 0 ? centre : road.frameAt(pos.edge, pos.s + ds);
     for (const dd of [-body.widthM / 2, 0, body.widthM / 2])
-      if (ds !== 0 || dd !== 0)
-        if (support(road, { edge: pos.edge, s: pos.s + ds, d: pos.d + dd }, y) === null) return null;
+      if (ds !== 0 || dd !== 0) {
+        const d = pos.d + dd;
+        if (support(road, frame.x - frame.tz * d, frame.z + frame.tx * d, y) === null) return null;
+      }
+  }
   return y;
 }
 
