@@ -45,6 +45,7 @@ TAGS = {
     "longview-street-life",
     "iowa-farm-traffic",
     "iowa-park",
+    "iowa-county-farmstead",
     "piers",
     "gardens",
     "fog",

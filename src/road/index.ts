@@ -213,6 +213,8 @@ export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';
 export const loadWaterfrontLayout = () => import('./structures/waterfront');
 export const loadPnwPlacesLayout = () => import('./structures/pnw-places');
 export const loadIowaParkLayout = () => import('./structures/iowa-park');
+export const loadIowaCountyLayout = () => import('./structures/iowa-county');
+export type { IowaCountyLayout, IowaCountyFacility, IowaCountyPart } from './structures/iowa-county';
 export type { IowaParkLayout, IowaParkFacility, IowaParkPart, IowaParkSign } from './structures/iowa-park';
 export type {
   BlockKind,

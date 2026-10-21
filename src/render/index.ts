@@ -47,6 +47,7 @@ import {
   loadPnwPlacesLayout,
   loadWaterfrontLayout,
   loadIowaParkLayout,
+  loadIowaCountyLayout,
   structuresOf,
   type StructurePlan,
 } from '../road';
@@ -82,6 +83,7 @@ import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PartyLights, PartyLightsCounts } from './party-lights';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import type { IowaParkCounts, IowaParkLayer } from './iowa-park';
+import type { IowaCountyCounts, IowaCountyLayer } from './iowa-county';
 import type { Rain } from './rain';
 import { easeHaze, hazeFarAt, thinHazeSpans, type ThinHazeSpans } from './haze';
 import { roofCover, roofSpans, type RoofSpan } from './roofs';
@@ -349,6 +351,7 @@ export interface SceneryStatus {
   /** The Pacific Northwest's ferry, clear-cut and the Stump Social (run W-U), or null on a road without them. */
   places?: PnwPlacesCounts | null;
   iowaPark?: IowaParkCounts | null;
+  iowaCounty?: IowaCountyCounts | null;
   /** A party street's string lights (playtest 4, P4-16), or null by day, on a road without one, or while their chunk loads. */
   partyLights?: PartyLightsCounts | null;
 }
@@ -553,6 +556,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     ...(boards?.visibleContent(camera) ?? []),
     ...(textSurfaces?.visibleContent(camera) ?? []),
     ...(iowaPark?.visibleContent() ?? []),
+    ...(iowaCounty?.visibleContent() ?? []),
   ];
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
@@ -1037,6 +1041,36 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       buildIowaPark();
     });
   };
+  // County facilities share their lazy physical layout with the simulation.
+  let iowaCountyModule: typeof import('./iowa-county') | null = null;
+  let iowaCountyPlan: Awaited<ReturnType<typeof loadIowaCountyLayout>> | null = null;
+  let iowaCounty: IowaCountyLayer | null = null;
+  const buildIowaCounty = () => {
+    iowaCounty?.dispose();
+    iowaCounty = null;
+    if (!iowaCountyModule || !iowaCountyPlan || !roadArgs) return;
+    if (!iowaCountyModule.hasIowaCounty(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
+    iowaCounty = new iowaCountyModule.IowaCountyLayer(look, {
+      layout: iowaCountyPlan.iowaCountyLayout(roadArgs.road, sceneSeed),
+    });
+    iowaCounty.hide(hiddenRefs);
+    scene.add(iowaCounty.group);
+  };
+  const requestIowaCounty = () => {
+    if ((iowaCountyModule && iowaCountyPlan) || !roadArgs) return;
+    if (!networkTags(roadArgs.road, roadArgs.dressing).tags.has('iowa-county-farmstead')) return;
+    const current = scope.capture();
+    void Promise.all([
+      chunk('Iowa county facilities', () => import('./iowa-county')),
+      chunk('Iowa county layout', loadIowaCountyLayout),
+    ]).then(([m, plan]) => {
+      if (!current()) return;
+      if (!m || !plan) return gate.later(requestIowaCounty);
+      iowaCountyModule = m;
+      iowaCountyPlan = plan;
+      buildIowaCounty();
+    });
+  };
   // Playtest 4 (P4-16): a party street's string lights (party-lights.ts), a lazy chunk loaded only for a road
   // with a party zone, and hung only at dusk and after. Built with the road scene, whose land it stands on.
   // The crowd on its balconies (run A's check, item 7) is there by day too, once the street fronts are placed.
@@ -1090,6 +1124,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildWaterfront();
     buildPlaces();
     buildIowaPark();
+    buildIowaCounty();
     buildBlocks();
     buildMission();
     buildParty();
@@ -1307,6 +1342,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     }
     requestPlaces();
     requestIowaPark();
+    requestIowaCounty();
     backdrop.applyPresentation(road, sceneSeed);
     requestLandmarks(road);
     requestScenes(road);
@@ -1425,6 +1461,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
       if (iowaPark) sceneryVisible += iowaPark.update(pose.x, pose.z, reach.drawM);
+      if (iowaCounty) sceneryVisible += iowaCounty.update(pose.x, pose.z, reach.drawM);
       boards?.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
       if (downtown) {
@@ -1529,6 +1566,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         boards?.pick(ndc.x, ndc.y, camera) ??
         textSurfaces?.pick(ndc.x, ndc.y, camera) ??
         iowaPark?.pick(ndc.x, ndc.y, camera) ??
+        iowaCounty?.pick(ndc.x, ndc.y, camera) ??
         null
       );
     },
@@ -1541,6 +1579,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
       iowaPark?.hide(list);
+      iowaCounty?.hide(list);
       textSurfaces?.hide(list);
     },
     feelCounts: () => race?.effects.counts() ?? noFeel,
@@ -1595,6 +1634,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       airboats: airboats?.counts() ?? null,
       places: places?.counts() ?? null,
       iowaPark: iowaPark?.counts() ?? null,
+      iowaCounty: iowaCounty?.counts() ?? null,
       partyLights: party?.counts() ?? null,
     }),
   };

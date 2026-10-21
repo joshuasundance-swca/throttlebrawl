@@ -144,6 +144,10 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
     tags: ['iowa-park'],
     load: async () => (await import('./structures/iowa-park')).iowaParkPlanner,
   },
+  'iowa-county-farmstead': {
+    tags: ['iowa-county-farmstead'],
+    load: async () => (await import('./structures/iowa-county')).iowaCountyPlanner,
+  },
 };
 
 /** The plan: every structure, numbered, and a grid of the world for finding them. */
