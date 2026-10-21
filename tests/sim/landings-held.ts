@@ -13,6 +13,7 @@ import { lookup, registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput, type ActionState } from '../../src/input';
 import { createSim } from '../../src/sim/api';
+import { memoCases } from './case-results';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -133,25 +134,43 @@ function race(c: Case, pattern: Pattern): Held {
   return out;
 }
 
-/** Each check's own time limit, ms. */
+/** One route's command race plus its conditional no-command control, ms. */
 export const HELD_TIMEOUT_MS = 600_000;
+/** Standalone aggregate fallback, formerly 600000ms for every route together. */
+export const HELD_AGGREGATE_TIMEOUT_MS = 1_200_000;
 
-/** One air command's check over every route: no held jump goes down. */
-export function checkHeld(name: keyof typeof PATTERNS): void {
+/** One air command's complete source-derived inventory, memoized only within its test file. */
+export function heldCheck(name: keyof typeof PATTERNS) {
   const pattern = PATTERNS[name];
+  const required = cases();
+  const results = memoCases(required, (c) => {
+    const r = race(c, pattern);
+    const down: string[] = [];
+    const road: string[] = [];
+    if (r.down.length > 0) {
+      // A down that the control race (the same take-over, no command) also has, at the same tick
+      // for the same cause, is the road's, not the air command's: run W-U's Chinatown route meets
+      // an oncoming rental sedan 16 ticks after a clean landing whether or not anything is held.
+      // Run only when a race has a down, so a green run costs nothing extra.
+      const control = new Set(race(c, NO_COMMAND).down);
+      for (const d of r.down) (control.has(d) ? road : down).push(d);
+    }
+    return { held: r.held, down, road };
+  });
+  return { cases: required, run: results.get, complete: results.complete };
+}
+
+/** One air command's pooled check over every route: no held jump goes down. */
+export function checkHeld(name: keyof typeof PATTERNS, check = heldCheck(name)): void {
   let held = 0;
   const down: string[] = [];
   const road: string[] = [];
-  for (const c of cases()) {
-    const r = race(c, pattern);
+  // Completes every missing route even when this aggregate is selected alone. A failed or
+  // missing case cannot contribute partial success; errors remain cached and are rethrown.
+  for (const r of check.complete()) {
     held += r.held;
-    if (r.down.length === 0) continue;
-    // A down that the control race (the same take-over, no command) also has, at the same tick
-    // for the same cause, is the road's, not the air command's: run W-U's Chinatown route meets
-    // an oncoming rental sedan 16 ticks after a clean landing whether or not anything is held.
-    // Run only when a race has a down, so a green run costs nothing extra.
-    const control = new Set(race(c, NO_COMMAND).down);
-    for (const d of r.down) (control.has(d) ? road : down).push(d);
+    down.push(...r.down);
+    road.push(...r.road);
   }
   print(`[landings-held] ${name}: ${down.length} of ${held} held jumps down, seed ${SEED}`);
   if (road.length > 0) print(`[landings-held] ${name}: also down without the command: ${road.join('; ')}`);
