@@ -226,8 +226,28 @@
           "name": "180th Street",
           "tags": ["rural"],
           "sideRuns": [
-            { "tag": "iowa-county-farmstead", "side": "right", "s0": 655, "s1": 665 },
-            { "tag": "iowa-county-farmstead", "side": "right", "s0": 1935, "s1": 1945 }
+            { "tag": "iowa-county-farmstead", "side": "right", "s0": 650, "s1": 670 },
+            { "tag": "iowa-county-farmstead", "side": "right", "s0": 1930, "s1": 1950 }
+          ],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "county-loading-shed",
+              "s0": 655,
+              "s1": 665,
+              "d0": 14.5,
+              "d1": 21.5,
+              "params": { "place": "county-loading-shed" }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "county-corn-crib",
+              "s0": 1935,
+              "s1": 1945,
+              "d0": 14.5,
+              "d1": 21.5,
+              "params": { "place": "county-corn-crib" }
+            }
           ]
         }
       ],

@@ -7,6 +7,7 @@ import { courseAt, roadBandHeight, roadsideGroundHeight } from '../course';
 import { planStructures, structuresAt, topAt, type StructureSpec } from '../structures';
 import { ensureStructures, raceStructures, structureLayersFor } from '../structures';
 import { loadIowaCountyLayout } from '../index';
+import { landEdgeOf, sectionGroundOf } from '../drawn-ground';
 
 const root = 'packs/region-clinton/regions/clinton-iowa';
 const read = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
@@ -15,6 +16,53 @@ const roads = network.roads.map((id) => read<BakedRoad>(`${root}/roads/${id}.jso
 const road = createRoadNetwork({ network, roads });
 
 describe('Iowa county farmstead', () => {
+  it('takes placement and site kind from authored features, including move and removal controls', () => {
+    const withoutFeatures = roads.map((r) => ({
+      ...r,
+      features: r.features?.filter(
+        (f) => !['county-loading-shed', 'county-corn-crib'].includes(String(f.params?.['place'])),
+      ),
+    }));
+    expect(iowaCountyLayout(createRoadNetwork({ network, roads: withoutFeatures }), 1).facilities).toEqual(
+      [],
+    );
+    const original = iowaCountyLayout(road, 1).facilities.find((f) => f.id === 'county-loading-shed')!;
+    const control = createRoadNetwork({ network, roads: withoutFeatures });
+    for (const facility of iowaCountyLayout(road, 1).facilities) {
+      expect(landEdgeOf(road)(facility.edge, 1, facility.s)).toBe(
+        landEdgeOf(control)(facility.edge, 1, facility.s),
+      );
+      const delta =
+        sectionGroundOf(road)(facility.edge, facility.s, facility.d)! -
+        sectionGroundOf(control)(facility.edge, facility.s, facility.d)!;
+      expect(delta).toBeCloseTo(0.05, 5);
+      expect(roadBandHeight(control, facility.edge, facility.s, facility.d)).not.toBeNull();
+    }
+    const moved = roads.map((r) => ({
+      ...r,
+      features: r.features?.map((f) =>
+        f.params?.['place'] === 'county-loading-shed' ? { ...f, s0: f.s0 + 1, s1: f.s1 + 1 } : f,
+      ),
+    }));
+    const shifted = iowaCountyLayout(createRoadNetwork({ network, roads: moved }), 1).facilities.find(
+      (f) => f.id === 'county-loading-shed',
+    )!;
+    expect(shifted).toBeDefined();
+    expect(shifted.s).toBe(original.s + 1);
+    const changedKind = roads.map((r) => ({
+      ...r,
+      features: r.features?.map((f) =>
+        f.params?.['place'] === 'county-loading-shed'
+          ? { ...f, params: { ...f.params, place: 'county-corn-crib' } }
+          : f,
+      ),
+    }));
+    const changed = iowaCountyLayout(createRoadNetwork({ network, roads: changedKind }), 1).facilities.find(
+      (f) => f.id === original.id,
+    )!;
+    expect(changed.parts.some((p) => p.name === 'crib-roof')).toBe(true);
+    expect(changed.parts.some((p) => p.name === 'shed-roof')).toBe(false);
+  });
   it('loads the registered lazy physical layer through the public race path', async () => {
     const fresh = createRoadNetwork({ network, roads });
     expect(structureLayersFor(fresh)).toContain(IOWA_COUNTY_TAG);
