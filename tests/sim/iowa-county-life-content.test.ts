@@ -107,8 +107,8 @@ it('the county loading context has one local strolling person', () => {
   expect(p.pos.s).toBeGreaterThanOrEqual(candidate.s0);
   expect(p.pos.s).toBeLessThanOrEqual(candidate.s1);
   const zone = registry.roads[roadId]!.features?.find((f) => f.id === candidate.id);
-  expect(zone?.params?.['maxPeds']).toBe(1);
-  expect(zone?.params?.['kinds']).toEqual(['base:dog-walker']);
+  expect(zone?.params).toHaveProperty('maxPeds', 1);
+  expect(zone?.params).toHaveProperty('kinds', ['base:dog-walker']);
 });
 
 it('removed-zone control is quiet, while normal strolling stays on dry drawn support', () => {

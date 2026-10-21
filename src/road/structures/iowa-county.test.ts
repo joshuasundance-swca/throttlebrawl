@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 import { createRoadNetwork } from '../network';
 import type { BakedNetwork, BakedRoad } from '../types';
 import { iowaCountyLayout, iowaCountyPlanner, IOWA_COUNTY_TAG } from './iowa-county';
@@ -296,6 +296,8 @@ describe('Iowa county farmstead', () => {
     // A source-shaped neighbouring road is shifted into the proposed field, even high overhead.
     const e = road.edges[road.edgeIndex(county.id)]!,
       offset = road.frameAt(e.index, (tag.s0 + tag.s1) / 2);
+    const { x, y, z } = county.samples.data;
+    assert(x && y && z, 'county fixture has explicit coordinate arrays');
     const overlap: BakedRoad = {
       ...county,
       id: 'crop-overlap-control',
@@ -305,9 +307,9 @@ describe('Iowa county farmstead', () => {
         ...county.samples,
         data: {
           ...county.samples.data,
-          x: county.samples.data.x.map((x) => x - offset.tz * 19),
-          y: county.samples.data.y.map((y) => y + 30),
-          z: county.samples.data.z.map((z) => z + offset.tx * 19),
+          x: x.map((x) => x - offset.tz * 19),
+          y: y.map((y) => y + 30),
+          z: z.map((z) => z + offset.tx * 19),
         },
       },
     };
