@@ -158,8 +158,6 @@ const FILTER_MPS = 6;
 /** A local yield creeps, rather than starting a pass through the distant queue, m/s and m. */
 const LOCAL_YIELD_MPS = 2;
 const LOCAL_YIELD_ADVANCE_M = 2;
-/** Conservative body-centre reach for local yielding; snapshots do not carry vehicle lengths. */
-const LOCAL_YIELD_REACH_M = 10;
 /**
  * A vehicle that reads as stopped but moves back toward the bot faster than this (m/s, measured from
  * one tick's snapshot to the next) is being shoved down the road: the runaway cable car rolling back
@@ -252,6 +250,53 @@ function relative(me: EntitySnapshot, o: EntitySnapshot): { ds: number; dd: numb
   if (o.road.edge !== me.road.edge) return null;
   const dir = me.road.dir;
   return { ds: (o.road.s - me.road.s) * dir, dd: (o.road.d - me.road.d) * dir };
+}
+
+type FootprintEntity = EntitySnapshot & { footprintLengthM: number; footprintWidthM: number };
+type Axis = readonly [number, number];
+const bodyAxes = (h: number): readonly [Axis, Axis] => [
+  [Math.cos(h), -Math.sin(h)],
+  [-Math.sin(h), -Math.cos(h)],
+];
+function knownFootprint(e: EntitySnapshot): e is FootprintEntity {
+  return (
+    typeof e.footprintLengthM === 'number' &&
+    Number.isFinite(e.footprintLengthM) &&
+    e.footprintLengthM > 0 &&
+    typeof e.footprintWidthM === 'number' &&
+    Number.isFinite(e.footprintWidthM) &&
+    e.footprintWidthM > 0 &&
+    Number.isFinite(e.heading) &&
+    Number.isFinite(e.x) &&
+    Number.isFinite(e.z)
+  );
+}
+
+/** Separating axes of two rigid footprints and the swept translation, with 10 cm clearance. */
+function yieldSweepClear(me: FootprintEntity, other: FootprintEntity, mx: number, mz: number): boolean {
+  const half = (e: FootprintEntity, axis: Axis) => {
+    const [right, forward] = bodyAxes(e.heading);
+    return (
+      (e.footprintWidthM / 2) * Math.abs(right[0] * axis[0] + right[1] * axis[1]) +
+      (e.footprintLengthM / 2) * Math.abs(forward[0] * axis[0] + forward[1] * axis[1])
+    );
+  };
+  const axes: Axis[] = [...bodyAxes(me.heading), ...bodyAxes(other.heading)];
+  const distance = Math.hypot(mx, mz);
+  if (distance > 0) axes.push([-mz / distance, mx / distance]);
+  let inside = true,
+    separate = false,
+    escape = false;
+  for (const axis of axes) {
+    const start = (me.x - other.x) * axis[0] + (me.z - other.z) * axis[1];
+    const end = start + mx * axis[0] + mz * axis[1];
+    const reach = half(me, axis) + half(other, axis) + 0.1;
+    inside &&= Math.abs(start) <= reach;
+    separate ||= Math.min(start, end) > reach || Math.max(start, end) < -reach;
+    // Already touching: allow a monotonic escape along a separating axis, never a crossing.
+    escape ||= start * end >= 0 && Math.abs(end) > reach && Math.abs(end) > Math.abs(start);
+  }
+  return separate || (inside && escape);
 }
 
 export function createBot(): BotController {
@@ -371,8 +416,8 @@ export function createBot(): BotController {
   /**
    * A stopped oncoming driver can be waiting for us too, on overlapping roads or a wide single
    * lane. Yield sideways within our own lane, without demanding a clear distant passing corridor.
-   * Keep the established conservative width envelope; cap forward movement before another body's
-   * conservative centre reach. This is a place to wait, never permission to pass a moving car.
+   * Read actual own-heading footprints, including their world orientation across projected roads.
+   * This is a place to wait, never permission to pass a moving car. Unknown geometry stays stopped.
    */
   function yieldLocally(
     snap: SimSnapshot,
@@ -386,49 +431,55 @@ export function createBot(): BotController {
       return null;
     }
     if (localYield && (localYield.edge !== me.road.edge || localYield.dir !== me.road.dir)) localYield = null;
-    const nearby = snap.entities.flatMap((o) => {
-      const rel = o.kind === 'vehicle' ? relative(me, o) : null;
-      return rel ? [{ o, ...rel }] : [];
-    });
-    const clear = (d: number) =>
-      nearby.every(({ o, ds }) => {
-        if (Math.abs(ds) > LOCAL_YIELD_REACH_M) return true;
-        const before = me.road.d - o.road.d;
-        const after = d - o.road.d;
-        // A body already close may be yielded away from, but never crossed on the way to the edge.
-        return (
-          Math.abs(after) >= ONCOMING_IN_LINE_M &&
-          before * after >= 0 &&
-          (Math.abs(before) >= ONCOMING_IN_LINE_M || Math.abs(after) > Math.abs(before))
-        );
-      });
+    if (!localYield && (stillTicks < STUCK_TICKS || lead.o.speed >= 0.5)) return null;
+    const bodies = snap.entities.filter((o) => o.kind === 'vehicle' && relative(me, o) !== null);
+    if (!knownFootprint(me) || bodies.some((o) => !knownFootprint(o))) {
+      localYield = null;
+      return null;
+    }
+    const [right, forward] = bodyAxes(me.heading + me.road.yaw);
+    const inset =
+      (me.footprintWidthM * Math.abs(Math.cos(me.road.yaw)) +
+        me.footprintLengthM * Math.abs(Math.sin(me.road.yaw))) /
+        2 +
+      0.1;
+    const clear = (d: number, advance = 0) => {
+      const lateral = (d - me.road.d) * me.road.dir;
+      const mx = right[0] * lateral + forward[0] * advance;
+      const mz = right[1] * lateral + forward[1] * advance;
+      return bodies.every((o) => knownFootprint(o) && yieldSweepClear(me, o, mx, mz));
+    };
+    const advanceTo = (d: number, maximum: number) => {
+      if (clear(d, maximum)) return maximum;
+      let lo = 0,
+        hi = maximum;
+      for (let i = 0; i < 10; i++) {
+        const middle = (lo + hi) / 2;
+        if (clear(d, middle)) lo = middle;
+        else hi = middle;
+      }
+      return lo;
+    };
     if (!localYield) {
-      if (stillTicks < STUCK_TICKS || lead.o.speed >= 0.5) return null;
       const candidates = lanes
         .filter((l) => rideable(l, me.road.dir) && Math.abs(me.road.d - l.dCenterM) <= l.widthM / 2)
-        .flatMap((l) => [l.dCenterM - l.widthM / 2 + 0.6, l.dCenterM + l.widthM / 2 - 0.6])
+        .flatMap((l) => [l.dCenterM - l.widthM / 2 + inset, l.dCenterM + l.widthM / 2 - inset])
         .sort((a, b) => Math.abs(a - me.road.d) - Math.abs(b - me.road.d));
-      const d = candidates.find(clear);
+      const d = candidates.find((d) => clear(d));
       if (d === undefined || Math.abs(d - me.road.d) < 0.1) return null;
-      let advance = LOCAL_YIELD_ADVANCE_M;
-      for (const other of nearby) {
-        const crosses =
-          other.o.road.d > Math.min(me.road.d, d) - ONCOMING_IN_LINE_M &&
-          other.o.road.d < Math.max(me.road.d, d) + ONCOMING_IN_LINE_M;
-        if (other.ds <= LOCAL_YIELD_REACH_M || !crosses) continue;
-        advance = Math.min(advance, other.ds - LOCAL_YIELD_REACH_M);
-      }
+      const advance = advanceTo(d, LOCAL_YIELD_ADVANCE_M);
       if (advance <= 0.3) return null;
       localYield = { edge: me.road.edge, dir: me.road.dir, d, stopS: me.road.s + me.road.dir * advance };
     }
     const legal = lanes.some(
-      (l) => rideable(l, me.road.dir) && Math.abs(localYield!.d - l.dCenterM) <= l.widthM / 2 - 0.6,
+      (l) => rideable(l, me.road.dir) && Math.abs(localYield!.d - l.dCenterM) <= l.widthM / 2 - inset,
     );
     if (!legal || !clear(localYield.d)) {
       localYield = null;
       return null;
     }
-    const remaining = (localYield.stopS - me.road.s) * me.road.dir;
+    const remaining = advanceTo(localYield.d, Math.max(0, (localYield.stopS - me.road.s) * me.road.dir));
+    localYield.stopS = me.road.s + me.road.dir * remaining;
     const creep = lead.o.speed < 0.5 && Math.abs(localYield.d - me.road.d) > 0.1 && remaining > 0.3;
     return {
       d: localYield.d,
