@@ -18,10 +18,24 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkHeld, HELD_TIMEOUT_MS, PATTERNS } from './landings-held';
+import { checkHeld, heldCheck, HELD_AGGREGATE_TIMEOUT_MS, HELD_TIMEOUT_MS, PATTERNS } from './landings-held';
 
 describe('forgiving landings: the brake or the kick held in the air on every route (W-Q0 verifier)', () => {
-  it('brake held to the ground: 0 jumps down', () => checkHeld('brake held to the ground'), HELD_TIMEOUT_MS);
+  const check = heldCheck('brake held to the ground');
+  for (const c of check.cases) {
+    it(
+      `brake held to the ground: ${c.event} ${c.route ?? ''}`,
+      () => {
+        expect(check.run(c).down).toEqual([]);
+      },
+      HELD_TIMEOUT_MS,
+    );
+  }
+  it(
+    'brake held to the ground: 0 jumps down',
+    () => checkHeld('brake held to the ground', check),
+    HELD_AGGREGATE_TIMEOUT_MS,
+  );
 
   // One test file per air command (so CI can run them on different runners), which means a new key in
   // PATTERNS runs nowhere until someone adds its file. This fails until they do.
@@ -29,7 +43,7 @@ describe('forgiving landings: the brake or the kick held in the air on every rou
     const dir = dirname(fileURLToPath(import.meta.url));
     const run = new Set<string>();
     for (const f of readdirSync(dir).filter((n) => /^riders-landings-held.*\.test\.ts$/.test(n))) {
-      for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/checkHeld\('([^']+)'\)/g)) {
+      for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/checkHeld\('([^']+)'(?:,|\))/g)) {
         if (m[1]) run.add(m[1]);
       }
     }
