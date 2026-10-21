@@ -25,6 +25,7 @@
 // Pure + - * / and Math.min/max/abs/floor/round/ceil (no trig), like the rest of road/.
 import type { BakedBarrier } from './types';
 import type { Edge, RoadNetwork } from './network';
+import { nearbySamples } from './nearby-samples';
 import {
   clearGroundReach,
   landIntervalPlan,
@@ -1077,20 +1078,6 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
 export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null): GroundUnder {
   const known = groundKept.get(road);
   if (known) return known;
-  const key = (cx: number, cz: number) => (cx + 0x8000) * 0x10000 + (cz + 0x8000);
-  let cells: Map<number, number[]> | null = null;
-  const build = () => {
-    const m = new Map<number, number[]>();
-    for (const e of road.edges) {
-      for (let i = 0; i < e.count; i++) {
-        const k = key(Math.floor((e.x[i] ?? 0) / NEAR_CELL_M), Math.floor((e.z[i] ?? 0) / NEAR_CELL_M));
-        const list = m.get(k);
-        if (list) list.push(e.index, i);
-        else m.set(k, [e.index, i]);
-      }
-    }
-    return m;
-  };
   const fullSection = sectionGroundOf(road, lakeLevel);
   // Keep road candidates separate: an authored face above `top` must not hide a lower road.
   const section = road.terrain ? roadSectionKept.get(road)! : fullSection;
@@ -1102,34 +1089,14 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
   const painted = splitPaintOf(road);
   const skirts = skirtOf(road);
   const span = Math.ceil(NEAR_REACH_M / NEAR_CELL_M);
+  const nearestSamples = nearbySamples(road.edges, NEAR_CELL_M, span);
   /** Every edge's ground under a point: edge, s, y, and whether it is a world-space triangle. */
   const found = new Map<string, number[]>();
   const groundsAt = (x: number, z: number): number[] => {
     const id = `${x},${z}`;
     const had = found.get(id);
     if (had) return had;
-    cells ??= build();
-    const cx = Math.floor(x / NEAR_CELL_M);
-    const cz = Math.floor(z / NEAR_CELL_M);
-    // The nearest sample of each edge about the point.
-    const nearest = new Map<number, { i: number; d2: number }>();
-    for (let a = -span; a <= span; a++) {
-      for (let b = -span; b <= span; b++) {
-        const list = cells.get(key(cx + a, cz + b));
-        if (!list) continue;
-        for (let j = 0; j < list.length; j += 2) {
-          const e = list[j] ?? -1;
-          const i = list[j + 1] ?? 0;
-          const ed = road.edges[e];
-          if (!ed) continue;
-          const ox = x - (ed.x[i] ?? 0);
-          const oz = z - (ed.z[i] ?? 0);
-          const d2 = ox * ox + oz * oz;
-          const prev = nearest.get(e);
-          if (!prev || d2 < prev.d2 || (d2 === prev.d2 && i < prev.i)) nearest.set(e, { i, d2 });
-        }
-      }
-    }
+    const nearest = nearestSamples(x, z);
     const out: number[] = [];
     for (const e of [...nearest.keys()].sort((p, q) => p - q)) {
       const ed = road.edges[e];
