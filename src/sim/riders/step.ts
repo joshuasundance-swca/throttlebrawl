@@ -780,10 +780,11 @@ function carrierContact(
     if (height + clearance >= other.maxTop) continue;
     const c = other.shape;
     const top = other.topAt(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv));
-    const bottom =
-      other.bottomAt?.(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv)) ?? 0;
-    if (height + RIDER_BODY_HEIGHT_M >= bottom && height + clearance < top)
-      keepOff(c, pos, m.yaw, axis.ns, axis.nd);
+    const clearsBottom =
+      !other.bottomAt ||
+      height + RIDER_BODY_HEIGHT_M >=
+        other.bottomAt(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv));
+    if (clearsBottom && height + clearance < top) keepOff(c, pos, m.yaw, axis.ns, axis.nd);
   }
   if (!vertical) {
     const normal = vs * axis.ns + vd * axis.nd;

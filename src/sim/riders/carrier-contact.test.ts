@@ -8,6 +8,7 @@ import {
 } from '../../road';
 import type { SimConfig, SimEvent } from '../types';
 import { riderState } from './index';
+import { RIDER_CONTACT_HALF_WIDTH_M } from './contact';
 import { supportKeyOf } from './supports';
 import { input, riderHarness, testConfig } from './testing';
 
@@ -51,6 +52,23 @@ function air(s: number, h: number, speed: number, vy = 0) {
   return run;
 }
 describe('carrier contacts obey actual surfaces and the vehicle closing-speed rule', () => {
+  it('a rider below road height still clears the parked cab mirror after its overlapping roof', () => {
+    const h = riderHarness(config([TRUCK], true), {
+      s: TRUCK.s0 + 18.78,
+      d: D + 1.3,
+      speed: 0,
+    });
+    h.rider.mode = 'Airborne';
+    h.rider.h = -2;
+    const st = riderState(h.world);
+    st.yAbs[h.rider.id] = h.config.road.surfaceHeight(0, h.rider.pos.s, h.rider.pos.d) - 2;
+    st.vy[h.rider.id] = 0;
+    h.step(input(0));
+    expect(
+      h.rider.pos.d,
+      'the mirror outside the roof remains solid below road height',
+    ).toBeGreaterThanOrEqual(D + 1.4 + RIDER_CONTACT_HALF_WIDTH_M - 0.02);
+  });
   it('meets a wide trailer side sill before the bike enters the drawn rail', () => {
     const wide: BakedFeature = { ...TRUCK, id: 'wide-side-sill', d0: -3, d1: 3 };
     const h = riderHarness(config([wide], true), { s: wide.s0 + 8.2, d: 4.8, speed: 8, yaw: -1.2 });
