@@ -12,7 +12,7 @@ import {
   encodeReplay,
   HASH_EVERY_TICKS,
 } from '../../src/replay';
-import { neutralInput, quantizeInput } from '../../src/sim/api';
+import { neutralInput, quantizeInput, type RouteProgress } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
 import { placeRoadVehicle } from '../../src/sim/traffic/path-view';
 import { trafficState } from '../../src/sim/traffic';
@@ -150,6 +150,7 @@ describe('Samish I-5 to shore jump', () => {
     const shoreEdge = config.road.edgeIndex(shore);
     const ramp = config.road.edges[edge]!.features.find((f) => f.id === featureId)!;
     const bot = createBot();
+    const mainlineBotRoute: RouteProgress = { ...config.route, shortcuts: [] };
     const recorder = createInputRecorder();
     recorder.beginRace(sim, 'samish-jump-code+content');
     let jumped = false;
@@ -162,7 +163,7 @@ describe('Samish I-5 to shore jump', () => {
     const marks: unknown[] = [];
     while (!sim.isOver() && sim.tick < 60 * 240) {
       const actions = emptyActions();
-      bot.drive(sim.snapshot(), player.id, { ...config.route, shortcuts: [] }, actions);
+      bot.drive(sim.snapshot(), player.id, mainlineBotRoute, actions);
       if (player.pos.edge === edge && player.pos.s >= ramp.s0 - 150 && !jumped) {
         const target = (ramp.d0 + ramp.d1) / 2;
         const kappa = config.road.kappaAt(edge, player.pos.s);
