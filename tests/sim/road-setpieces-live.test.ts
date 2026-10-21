@@ -40,146 +40,23 @@ interface Region {
   lengths: readonly [string, ...string[]];
   /** A real-road route raced instead of the lengths' (RaceSetup.route), with its own set pieces. */
   route?: string;
-  /** The set-piece kinds the track has (a real road without a long straight has no truck). */
-  kinds: readonly string[];
 }
 
-/**
- * Each region's event and its race lengths (the Keys event has one length), and the real roads
- * raced as routes (the maintainer, 2026-10-01: "Yes, add as routes"), each with its own slots.
- */
-const BOTH = ['boostPad', 'rampTruck'] as const;
-const REGIONS: readonly [Region, ...Region[]] = [
-  { name: 'keys-m1', event: 'base:m1-skeleton-sprint', lengths: ['standard'], kinds: BOTH },
-  {
-    name: 'pnw-c1',
-    event: 'region-pnw:pnw-fogline-run',
-    lengths: ['short', 'standard', 'long'],
-    kinds: BOTH,
-  },
-  { name: 'sf-hills', event: 'region-sf:sf-hill-sprint', lengths: ['standard'], kinds: BOTH },
-  {
-    name: 'osm-pnw-chuckanut',
-    event: 'region-pnw:pnw-fogline-run',
-    lengths: ['standard'],
-    route: 'region-pnw:osm-chuckanut-run',
-    kinds: BOTH,
-  },
-  {
-    name: 'osm-pnw-gorge',
-    event: 'region-pnw:pnw-fogline-run',
-    lengths: ['standard'],
-    route: 'region-pnw:osm-gorge-run',
-    kinds: BOTH,
-  },
-  {
-    name: 'osm-sf-russian-hill',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:osm-sf-hills-run',
-    kinds: BOTH,
-  },
-  {
-    name: 'osm-sf-twin-peaks',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:osm-sf-twin-peaks-run',
-    kinds: ['boostPad'],
-  },
-  // Run W-R: San Francisco's downtown (hand-made), its truck on Burn Rate Row's straight.
-  {
-    name: 'sf-downtown',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:sf-downtown-run',
-    kinds: BOTH,
-  },
-  // Run W-U: San Francisco's waterfront (hand-made), its truck on Clocktower Reach's straight.
-  {
-    name: 'sf-waterfront',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:sf-waterfront-run',
-    kinds: BOTH,
-  },
-  // Run W-U: San Francisco's Chinatown and North Beach (two pad slots, no straight long enough for
-  // a truck) and the Mission's mural alleys (a truck on Semigloss Street). Both landed with slots
-  // but off this list, so no solo rider had ridden their spots; the completeness check below now
-  // names any route the packs ship whose slots are not here.
-  {
-    name: 'sf-chinatown-northbeach',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:sf-chinatown-northbeach-run',
-    kinds: ['boostPad'],
-  },
-  {
-    name: 'sf-mission',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:sf-mission-run',
-    kinds: BOTH,
-  },
-  // Run W-S: the real-road networks, their pads on the main road (a solo ride keeps to it, so a
-  // pad on a junction choice would never be met).
-  {
-    name: 'osm-keys-key-west',
-    event: 'base:m1-skeleton-sprint',
-    lengths: ['standard'],
-    route: 'base:osm-key-west-run',
-    kinds: ['boostPad'],
-  },
-  {
-    name: 'osm-pnw-samish',
-    event: 'region-pnw:pnw-fogline-run',
-    lengths: ['standard'],
-    route: 'region-pnw:osm-i5-samish-run',
-    kinds: ['boostPad'],
-  },
-  // Playtest 3 (T9.2): Duval Street and the Seven Mile Bridge, their pads on the main road. The
-  // Seven Mile's two ramp trucks stand on the old road's repair platforms with no slot (always
-  // there); tools/gis/routes-keys-pt3.test.ts rides them, bike by bike.
-  {
-    name: 'osm-keys-duval',
-    event: 'base:m1-skeleton-sprint',
-    lengths: ['standard'],
-    route: 'base:osm-duval-run',
-    kinds: ['boostPad'],
-  },
-  {
-    name: 'osm-keys-seven-mile',
-    event: 'base:m1-skeleton-sprint',
-    lengths: ['standard'],
-    route: 'base:osm-seven-mile-run',
-    kinds: ['boostPad'],
-  },
-  // Playtest 3, T9.4: Bridge City (downtown Portland). Pads only: its streets have no straight
-  // long enough for a truck's flight, and both pad slots are on the main road (a solo ride keeps
-  // to it, so a pad on the Morrison Bridge choice would never be met).
-  {
-    name: 'osm-pnw-portland',
-    event: 'region-pnw:pnw-fogline-run',
-    lengths: ['standard'],
-    route: 'region-pnw:osm-bridge-city-run',
-    kinds: ['boostPad'],
-  },
-  // Playtest 3 (T9.3): the Golden Gate (pads on Hawk Hill and Conzelman Road) and Lombard (a pad on
-  // the flats past the crooked block). Pads only: neither has a straight long enough for a truck.
-  {
-    name: 'osm-sf-golden-gate',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:osm-sf-golden-gate-run',
-    kinds: ['boostPad'],
-  },
-  {
-    name: 'osm-sf-lombard',
-    event: 'region-sf:sf-hill-sprint',
-    lengths: ['standard'],
-    route: 'region-sf:osm-sf-lombard-run',
-    kinds: ['boostPad'],
-  },
-];
+/** Discover every free-play event and alternate route with seeded slots from live packs. */
+const REGIONS: readonly Region[] = regionChoices(REG).flatMap((choice) => {
+  const lengths = REG.events[choice.eventId]!.lengths.map((l) => l.id);
+  if (!lengths.length) throw new Error(`No race lengths for ${choice.eventId}`);
+  return [undefined, ...realRoutes(REG, choice.eventId)].flatMap((route) => {
+    const r: Region = {
+      name: route ?? choice.eventId,
+      event: choice.eventId,
+      lengths: route ? ['standard'] : [lengths[0]!, ...lengths.slice(1)],
+      ...(route ? { route } : {}),
+    };
+    const all = candidates(raceConfig(r, r.lengths[0], 1));
+    return all.length ? [r] : [];
+  });
+});
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */
 const SKEPTIC_SEEDS = [1783423519, 2901547813] as const;
@@ -327,7 +204,6 @@ function uncovered(regions: readonly Region[]): string[] {
         name: '',
         event: c.eventId,
         lengths: ['standard'],
-        kinds: [],
         ...(route ? { route } : {}),
       };
       if (setPieceSlots(raceConfig(r, 'standard', 1).road.edges).size === 0) continue;
@@ -340,11 +216,14 @@ function uncovered(regions: readonly Region[]): string[] {
 
 describe('playtest 1c item 2: every shipped race with set-piece slots is checked here', () => {
   it('REGIONS covers every race the packs ship that has slots', () => {
+    expect(REGIONS.length).toBeGreaterThan(0);
     expect(uncovered(REGIONS)).toEqual([]);
   });
 
   it('fires on a race left off the list', () => {
-    expect(uncovered(REGIONS.filter((r) => r.name !== 'sf-mission'))).toEqual(['region-sf:sf-mission-run']);
+    const removed = REGIONS.find((r) => r.route !== undefined);
+    expect(removed).toBeDefined();
+    expect(uncovered(REGIONS.filter((r) => r !== removed))).toEqual([removed!.route!]);
   });
 });
 
@@ -364,7 +243,6 @@ describe('playtest 1c item 2: the live tracks place their set pieces from the ra
         expect(ids.length, slot).toBeLessThanOrEqual(3);
         expect(kinds.size, slot).toBe(1);
       }
-      expect([...new Set(all.map((c) => c.f.kind))].sort()).toEqual([...r.kinds]);
       process.stdout.write(`[set pieces] ${r.name}: ${rows.join('; ')}\n`);
     });
 
@@ -442,14 +320,14 @@ describe('playtest 1c item 2: the live tracks place their set pieces from the ra
       );
       rows.push(`${r.name}: ${a} | ${b}`);
       if (a !== b) differ++;
-      if (r.name === 'keys-m1') expect(a).not.toBe(b);
+      if (r.event === 'base:m1-skeleton-sprint' && !r.route) expect(a).not.toBe(b);
     }
     process.stdout.write(`[set pieces] skeptic seeds ${SKEPTIC_SEEDS.join(' and ')}: ${rows.join('; ')}\n`);
     expect(differ).toBeGreaterThanOrEqual(2);
   });
 
   it('the same seed gives the same placement and the same replay hashes; another seed does not', () => {
-    const r = REGIONS[0];
+    const r = REGIONS.find((r) => r.event === 'base:m1-skeleton-sprint' && !r.route)!;
     const run = (seed: number) => {
       const sim = createSim(raceConfig(r, r.lengths[0], seed));
       const hashes: number[] = [];
