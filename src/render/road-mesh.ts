@@ -37,6 +37,8 @@ import {
   terrainEndProfile,
   landJoinTriangles,
   DRAWN_VERGE_M,
+  planStreetFurniture,
+  planSfScenery,
   ROAD_SURFACE_SIMPLIFY,
   SHOULDER_LAP_M,
   terrainAt,
@@ -967,7 +969,7 @@ const CABLE_COVER_EVERY_M = 12;
 export const SCENERY_CHUNK_M = 256;
 
 /** Code-made stand-ins, drawn until a model loads (or if it fails). No mounds: they stand on land. */
-function standIn(kind: SceneryKind): BufferGeometry {
+export function standIn(kind: SceneryKind, variant = 0): BufferGeometry {
   if (kind === 'deciduous') return deciduousGeometry();
   const parts: Record<Exclude<SceneryKind, 'deciduous'>, BoxPart[]> = {
     palm: [
@@ -1021,7 +1023,9 @@ function standIn(kind: SceneryKind): BufferGeometry {
     arch: [],
     // a coastal tree: a trunk and a broad dark crown, until the San Francisco kit loads
     coastTree: [
-      { size: [0.6, 5, 0.6], at: [0, 2.5, 0], color: '#5b4a3a' },
+      variant === 0
+        ? { size: [1.42, 5, 1.18], at: [0.09, 2.5, 0.06], color: '#5b4a3a' }
+        : { size: [0.7, 5, 0.7], at: [0, 2.5, 0], color: '#5b4a3a' },
       { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
     ],
     // an apartment block of two plots, taller than a row house (playtest 4, R3)
@@ -1030,9 +1034,9 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [13.4, 0.6, 0.6], at: [0, 16.8, 0.1], color: '#f4efe4' },
     ],
     // the headlands' own, until the kit loads: a long low concrete block, a dark shrub, a red rock
-    battery: [{ size: [30, 3.7, 11.5], at: [0, 1.85, -0.25], color: '#a1a497' }],
-    brush: [{ size: [2, 1.2, 1.9], at: [0, 0.6, 0], color: '#505f3c' }],
-    outcrop: [{ size: [5, 2.6, 2.4], at: [0, 1.3, 0], color: '#a45440' }],
+    battery: [{ size: [30, 3.7, 14.44], at: [0, 1.85, -1.68], color: '#a1a497' }],
+    brush: [{ size: [2.58, 1.2, 1.7], at: [-0.02, 0.6, 0.09], color: '#505f3c' }],
+    outcrop: [{ size: [5.34, 2.6, 2.8], at: [0.01, 1.3, 0.54], color: '#a45440' }],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -1311,6 +1315,8 @@ export function buildRoadScene(
   let sceneryLandM = 0;
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   const seed = opts.seed ?? 1;
+  // Physical SF scenery is always drawn, including at the lowest visual-density setting.
+  const sfPlaces = planSfScenery(road, seed);
   const tropical = isTropical(road.edges.map((e) => dressingOf(e, dressing).tags));
   // Preserve the region's road-attached kit policy. Authored faces replace its natural ground.
   const terrain = !tropical;
@@ -2558,6 +2564,7 @@ export function buildRoadScene(
         length: e.length,
         density: e.isTrafficOnly ? 0 : density,
         tropical,
+        plannedSf: true,
         outer: outerOf,
         theme,
         band: (side, s) => ridableBandPast(road, e.index, side, s, outerOf(side)),
@@ -3441,6 +3448,22 @@ export function buildRoadScene(
     }
   }
 
+  const sfContacts = planStreetFurniture(road, seed).items.filter((it) => it.layer === 'scenery');
+  if (sfContacts.length !== sfPlaces.length)
+    throw new Error('SF scenery contact plan differs from the drawn placements');
+  for (let i = 0; i < sfPlaces.length; i++) {
+    const spot = sfPlaces[i]!;
+    const contact = sfContacts[i]!;
+    if (
+      spot.kind !== contact.kind ||
+      spot.edge !== contact.edge ||
+      spot.s !== contact.s ||
+      spot.d !== contact.d
+    )
+      throw new Error('SF scenery contact plan differs from the drawn placements');
+    spots.push({ ...spot, phase: 0, ...(spot.kind === 'battery' ? { reachM: 24 } : {}) });
+  }
+
   // Scenery (playtest 1c). The still props merge per block, a square of the world (scenery-merge.ts,
   // run W-S): one mesh per block, built near the camera, drawn as far stand-ins past the
   // level-of-detail distance. The boats bob and the fog banks are unlit, so those stay one InstancedMesh per model
@@ -3463,7 +3486,11 @@ export function buildRoadScene(
     const model = modelKind ? opts.models?.[modelKind] : undefined;
     if (model) fromModels.push(kind);
     if (!mine.length) continue;
-    const geos = model ? model.variants : [standIn(kind)];
+    const geos = model
+      ? model.variants
+      : kind === 'coastTree'
+        ? [standIn(kind, 0), standIn(kind, 1)]
+        : [standIn(kind)];
     if (model) for (const g of geos) shared.add(g);
     else for (const g of geos) ownedGeometries.add(g);
     // Fog banks are unlit, in the region's fog-bank colour, so they melt into the haze.

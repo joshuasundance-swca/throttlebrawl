@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
   deriveVerge,
+  roadBandHeight,
   type BakedNetwork,
   type BakedRoad,
   type BakedTag,
@@ -24,7 +25,7 @@ import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type SceneryModels } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
-import { ridableBandPast, themeAt } from './scenery';
+import { themeAt } from './scenery';
 
 const look = createFlatLook();
 const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
@@ -145,9 +146,11 @@ describe("the Golden Gate's toll plaza is the Presidio's cypress and eucalyptus"
         variants.add(s.variant);
         const side = s.d < 0 ? -1 : 1;
         const outer = side < 0 ? -edge.dMin + 0.6 : edge.dMax + 0.6;
-        const band = ridableBandPast(t.road, edge.index, side, s.s, outer);
-        // Its trunk stands past the ridable grass, on land the scene drew there.
-        expect(Math.abs(s.d) - outer, `seed ${seed} s ${s.s.toFixed(0)}`).toBeGreaterThanOrEqual(band);
+        // Its trunk is in the seeded contact plan on grass the scene drew there.
+        expect(
+          roadBandHeight(t.road, edge.index, s.s, s.d),
+          `seed ${seed} s ${s.s.toFixed(0)}`,
+        ).not.toBeNull();
         expect(scene.landReach(edge.index, side, s.s), `seed ${seed} s ${s.s.toFixed(0)}`).toBeGreaterThan(
           Math.abs(s.d) - outer,
         );

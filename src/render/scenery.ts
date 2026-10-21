@@ -607,6 +607,8 @@ export interface ScatterEdge {
   density: number;
   /** Tropical networks grow palms and mangroves; elsewhere only the buildings and poles stand. */
   tropical: boolean;
+  /** SF natural props come from the shared seeded road contact plan in a live road scene. */
+  plannedSf?: boolean;
   /** The verge's outer edge, as a distance from the centre line on that side (positive), m. */
   outer(side: -1 | 1): number;
   theme(side: -1 | 1, s: number): SideTheme;
@@ -858,6 +860,11 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
     /** This side's row houses by plot (the k of their spacing), for the terrace's taller buildings. */
     const houses = new Map<number, ScenerySpot>();
     for (const kind of [...LAND_KINDS, 'pole' as const]) {
+      if (
+        e.plannedSf &&
+        (kind === 'battery' || kind === 'brush' || kind === 'outcrop' || kind === 'coastTree')
+      )
+        continue;
       if (kind === 'pole' && side !== poleSide) continue;
       const ki = SCENERY_KINDS.indexOf(kind);
       const spacing = SCATTER_SPACING_M[kind] / e.density;
