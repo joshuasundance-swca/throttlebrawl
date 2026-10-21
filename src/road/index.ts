@@ -3,6 +3,7 @@
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
 export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
+export { planSfScenery } from './sf-scenery';
 export { terrainAt } from './terrain';
 export { waterAt } from './water';
 export type { TerrainSample } from './terrain';

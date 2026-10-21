@@ -69,7 +69,7 @@ import { bakeRepoModel } from '../src/render/model-files.test-util';
 import { solidHazardModel } from '../src/render/pnw-places';
 import { riderLookOf } from '../src/render/rider-looks';
 import { bakePart, RIDER_BOX_M } from '../src/render/riders/bake';
-import { BARRIER_OUT_M } from '../src/render/road-mesh';
+import { BARRIER_OUT_M, standIn } from '../src/render/road-mesh';
 import { smashableParts } from '../src/render/smashables';
 import {
   ANIMAL_HEIGHT_M,
@@ -771,7 +771,55 @@ const FURNITURE_DRAWN: Readonly<
   'wf-lamp': 'lamp',
   'wf-bench': 'bench',
   'parked-car': { model: 'sfRoadside', variants: [0, 1, 2] },
+  battery: { model: 'sfHeadlands', variants: [0] },
+  brush: { model: 'sfHeadlands', variants: [1] },
+  outcrop: { model: 'sfHeadlands', variants: [2] },
+  coastTree: { model: 'sfIdentity', variants: [0, 1] },
 };
+
+it('SF physical scenery fallbacks match the same contact footprints as their loaded models', () => {
+  for (const kind of ['battery', 'brush', 'outcrop', 'coastTree'] as const)
+    for (const variant of kind === 'coastTree' ? [0, 1] : [0]) {
+      const spec = FURNITURE[kind];
+      const foot: FurnitureFoot = spec.foot[Math.min(variant, spec.foot.length - 1)]!;
+      const geometry = standIn(kind, variant);
+      const f = sliceFoot(geometry, sliceHeights(spec.heightM));
+      geometry.dispose();
+      const hx = foot.r ?? foot.hx ?? 0;
+      const hz = foot.r ?? foot.hz ?? 0;
+      const mismatch = worst({
+        simL: 2 * hz,
+        simW: 2 * hx,
+        drawn: {
+          z0: f.z0 - (foot.cz ?? 0),
+          z1: f.z1 - (foot.cz ?? 0),
+          x0: f.x0 - (foot.cx ?? 0),
+          x1: f.x1 - (foot.cx ?? 0),
+        },
+      });
+      expect(mismatch, `${kind} fallback variant ${variant}`).toBeLessThanOrEqual(TOLERANCE_M);
+    }
+});
+
+it('SF fallbacks visibly fill the contact height', () => {
+  for (const kind of ['brush', 'outcrop'] as const) {
+    const geometry = standIn(kind);
+    expect(geometryTop(geometry), kind).toBeCloseTo(FURNITURE[kind].heightM, 2);
+    geometry.dispose();
+  }
+  for (const variant of [0, 1]) {
+    const geometry = standIn('coastTree', variant);
+    const pos = geometry.getAttribute('position');
+    const trunkTop = Array.from({ length: pos.count }, (_, i) => i).some(
+      (i) =>
+        Math.abs(pos.getY(i) - FURNITURE.coastTree.heightM) < 0.01 &&
+        Math.abs(pos.getX(i)) < 1 &&
+        Math.abs(pos.getZ(i)) < 1,
+    );
+    expect(trunkTop, `coastTree fallback variant ${variant} has a trunk through contact height`).toBe(true);
+    geometry.dispose();
+  }
+});
 
 /**
  * Street furniture (playtest 4, "solid but forgiving"; road/furniture.ts): each kind's sim footprint (a

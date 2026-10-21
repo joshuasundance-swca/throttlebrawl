@@ -310,18 +310,16 @@ interface Block {
 }
 
 /**
- * The scatter's kinds a quality tier may thin (quality.ts `treeShare`): the trees and brush, which
- * stand in groves and woods that still read as such with fewer of them. Never a building (a terrace
- * with gaps reads as a different street), a landmark-like prop (a gun battery, an outcrop), a bridge
- * bay or anything else a place is known by. [default]
+ * The scatter's decorative kinds a quality tier may thin (quality.ts `treeShare`): trees in groves
+ * and woods that still read as such with fewer of them. SF coast trees and brush have planned
+ * physical contacts, so every one stays visible at every tier. Buildings, landmarks and bridge
+ * bays also stay visible. [default]
  */
 export const THINNABLE_KINDS: ReadonlySet<ScenerySpot['kind']> = new Set([
   'palm',
   'mangrove',
   'conifer',
-  'coastTree',
   'deciduous',
-  'brush',
 ]);
 
 /**

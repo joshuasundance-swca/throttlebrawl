@@ -133,14 +133,16 @@ describe('the course: what a rider would come down on', () => {
   });
 });
 
-it('extends only rural soft grass, leaving other scenery cohorts outside their existing verge', () => {
-  for (const tag of ['rural', 'palms', 'forest', 'beach', 'lake']) {
+it('extends connected rural and SF natural grass, leaving other scenery cohorts outside their existing verge', () => {
+  for (const tag of ['rural', 'headlands', 'presidio', 'palms', 'forest', 'beach', 'lake']) {
     const bundle = fixtureNetwork([{ id: 'a', lengthM: 300, kappa: 0 }]);
     bundle.roads[0]!.tags = [{ s0: 0, s1: 300, side: 'both', tag }];
     const road = createRoadNetwork(bundle);
     for (const side of [-1, 1] as const) {
       const d = road.vergeAt(0, 150, side < 0 ? 'left' : 'right').dOuter + side * 2;
-      expect(roadsideGroundHeight(road, 0, 150, d) !== null, `${tag}/${side}`).toBe(tag === 'rural');
+      expect(roadsideGroundHeight(road, 0, 150, d) !== null, `${tag}/${side}`).toBe(
+        tag === 'rural' || tag === 'headlands' || tag === 'presidio',
+      );
     }
   }
 });

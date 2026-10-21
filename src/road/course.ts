@@ -48,7 +48,7 @@ export type CourseSpot =
 const OUT: CourseSpot = { kind: 'out' };
 
 /**
- * Connected rural grass beside a soft verge is rideable, including across a change in grass
+ * Connected rural and SF headlands/Presidio grass beside a soft verge is rideable, including across a change in grass
  * colour (playtest, 2026-10-15). Use the scene's existing land strip, never extend the road plane
  * into empty space. The strip stops before the terrain skirt; riding its downhill height field
  * needs a separate terrain model. Lake banks have their own plateau/shore geometry, not this strip.
@@ -61,9 +61,11 @@ export function roadsideGroundHeight(road: RoadNetwork, edge: number, s: number,
   const name = side < 0 ? 'left' : 'right';
   const verge = road.vergeAt(edge, s, name);
   if (verge.edge !== 'soft' || road.barrierAt(edge, s, name)) return null;
-  // Only rural grass opts in: its render-only solids are placed beyond this strip.
+  // The SF natural scenery is in the same seeded physical contact plan the renderer uses.
   // Other scenery cohorts retain their verge limit until their contacts are implemented.
-  if (verge.surface !== 'grass' || themeAt(e.tags, name, s) !== 'rural') return null;
+  const theme = themeAt(e.tags, name, s);
+  if (verge.surface !== 'grass' || (theme !== 'rural' && theme !== 'headlands' && theme !== 'presidio'))
+    return null;
   const from = side * verge.dOuter;
   const across = side * d;
   if (across <= from) return null;

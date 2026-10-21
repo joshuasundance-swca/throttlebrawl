@@ -14,13 +14,23 @@
 // - all of them stand past the ridable band, on drawn land, and no network of San Francisco draws a
 //   conifer (src/render/sf-land.test.ts holds that for every network of the pack).
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import { firstSeed, seedRange } from '../../tests/sim/batch';
+import {
+  createRoadNetwork,
+  lanesUnderPiece,
+  lanesUnderOf,
+  planSfScenery,
+  planStreetFurniture,
+  roadBandHeight,
+  type BakedNetwork,
+  type BakedRoad,
+  type RoadNetwork,
+} from '../road';
 import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type SceneryModels } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import {
-  ridableBandPast,
   scatterEdge,
   SUMMIT_REACH_M,
   themeAt,
@@ -74,6 +84,160 @@ const SEEDS = [1, 2, 3, 7, 11];
 const KINDS = ['battery', 'brush', 'outcrop'] as const;
 const headlandsKinds = (spots: readonly ScenerySpot[]) =>
   spots.filter((s) => (KINDS as readonly string[]).includes(s.kind));
+
+it('every planned SF natural footprint clears every lane in each loaded network', () => {
+  let checked = 0;
+  let plain = 0;
+  for (const id of SF) {
+    const t = track(id);
+    if (
+      !t.roads.some((r) => (r.tags ?? []).some((tag) => tag.tag === 'headlands' || tag.tag === 'presidio'))
+    ) {
+      plain++;
+      expect(planSfScenery(t.road, 7), `${id}: no SF natural tags`).toEqual([]);
+    }
+    for (const seed of SEEDS)
+      for (const p of planStreetFurniture(t.road, seed).items.filter((item) => item.layer === 'scenery')) {
+        checked++;
+        expect(
+          lanesUnderPiece(t.road, p.edge, p.shape, p.s, p.d),
+          `${id} seed ${seed} ${p.kind} at ${p.s}`,
+        ).toBe(-1);
+      }
+  }
+  expect(checked).toBeGreaterThan(0);
+  expect(plain).toBeGreaterThan(0);
+});
+
+it('a seeded battery beside an added lane is neither drawn nor collidable when its rim touches the lane', () => {
+  const t = track('osm-sf-golden-gate');
+  const found = firstSeed(
+    'Golden Gate battery beside a synthetic lane',
+    seedRange(1, 8),
+    (seed) => planStreetFurniture(t.road, seed).items.find((p) => p.kind === 'battery') ?? null,
+    (item) => item !== null,
+  );
+  const seed = found.seed!;
+  const battery = found.result;
+  expect(battery).not.toBeNull();
+  const side = battery!.d < 0 ? -1 : 1;
+  const laneD = battery!.shape.d - side * (battery!.shape.reachD - 0.2);
+  expect(Math.abs(battery!.shape.d - laneD) - 0.4, 'centre clears the old battery radius').toBeGreaterThan(9);
+  const oldLanesAt = t.road.lanesAt.bind(t.road);
+  const beside: RoadNetwork = {
+    ...t.road,
+    lanesAt(edge, s) {
+      const lanes = oldLanesAt(edge, s);
+      if (edge !== battery!.edge || Math.abs(s - battery!.s) > battery!.shape.reachS + 2) return lanes;
+      return [...lanes, { id: 'adjacent-lane', dCenterM: laneD, widthM: 0.8, direction: 1, kind: 'drive' }];
+    },
+  };
+  const candidate = planSfScenery(beside, seed).find(
+    (p) => p.kind === 'battery' && p.edge === battery!.edge && p.s === battery!.s && p.d === battery!.d,
+  );
+  expect(candidate, 'the drawing candidate remains on its land strip').toBeDefined();
+  expect(lanesUnderPiece(beside, battery!.edge, battery!.shape, battery!.s, battery!.d)).toBe(battery!.edge);
+  const accepted = planStreetFurniture(beside, seed).items.filter((p) => p.layer === 'scenery');
+  expect(accepted.some((p) => p.kind === 'battery' && p.s === battery!.s && p.d === battery!.d)).toBe(false);
+  const scene = buildRoadScene(beside, look, t.dressing, { seed });
+  expect(scene.spots.some((p) => p.kind === 'battery' && p.s === battery!.s && p.d === battery!.d)).toBe(
+    false,
+  );
+  scene.dispose();
+});
+
+it('a long battery on the real curved road is absent from both drawing and contacts when its rigid end enters a lane', async () => {
+  const t = track('osm-sf-golden-gate');
+  const model = await bakeRepoModel('sfHeadlands');
+  const geometry = model.variants[0]!;
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox!;
+  const lanes = lanesUnderOf(t.road);
+  const endInLane = (spot: Pick<ScenerySpot, 'turn' | 'size' | 'p'>) => {
+    const cy = Math.cos(spot.turn),
+      sy = Math.sin(spot.turn);
+    for (const x of [box.min.x, box.max.x])
+      for (const z of [box.min.z, box.max.z]) {
+        const atX = spot.p.x + spot.size * (x * cy + z * sy);
+        const atZ = spot.p.z + spot.size * (-x * sy + z * cy);
+        if (lanes.at(atX, spot.p.y, atZ, 0.25)) return true;
+      }
+    return false;
+  };
+  const found = firstSeed(
+    'Golden Gate curved-lane battery',
+    seedRange(1, 8),
+    (seed) => planSfScenery(t.road, seed).find((p) => p.kind === 'battery' && endInLane(p)) ?? null,
+    (spot) => spot !== null,
+  );
+  const intruding = found.result;
+  expect(intruding, 'the actual model footprint reaches a road lane').not.toBeNull();
+  const accepted = planStreetFurniture(t.road, found.seed!).items;
+  expect(
+    accepted.some((p) => p.kind === 'battery'),
+    'clear batteries still stand nearby',
+  ).toBe(true);
+  expect(
+    accepted.some(
+      (p) =>
+        p.kind === 'battery' && p.edge === intruding!.edge && p.s === intruding!.s && p.d === intruding!.d,
+    ),
+  ).toBe(false);
+  const scene = buildRoadScene(t.road, look, t.dressing, {
+    seed: found.seed!,
+    models: { sfHeadlands: model },
+  });
+  expect(
+    scene.spots.some((p) => p.kind === 'battery'),
+    'clear batteries remain drawn',
+  ).toBe(true);
+  expect(
+    scene.spots.some(
+      (p) =>
+        p.kind === 'battery' && p.edge === intruding!.edge && p.s === intruding!.s && p.d === intruding!.d,
+    ),
+  ).toBe(false);
+  scene.dispose();
+});
+
+it('SF natural scenery has one matching seeded physical contact for every rendered spot', () => {
+  for (const id of ['osm-sf-golden-gate', 'osm-sf-twin-peaks']) {
+    const t = track(id);
+    const scene = buildRoadScene(t.road, look, t.dressing, { seed: 7 });
+    const sparse = buildRoadScene(t.road, look, t.dressing, { seed: 7, roadsideDensity: 0 });
+    const kinds = new Set(['battery', 'brush', 'outcrop', 'coastTree']);
+    const spots = scene.spots.filter((s) => kinds.has(s.kind));
+    const atZeroDensity = sparse.spots.filter((s) => kinds.has(s.kind));
+    const planned = planStreetFurniture(t.road, 7).items.filter((p) => p.layer === 'scenery');
+    expect(spots.length, id).toBeGreaterThan(0);
+    expect(atZeroDensity, `${id}: physical props are visible even at zero density`).toEqual(spots);
+    const allDrawn = sparse.update(0, 0, 0, 1_000_000, 1_000_000, 10_000, { treeShare: 1 });
+    const lowTierDrawn = sparse.update(0, 0, 0, 1_000_000, 1_000_000, 10_000, { treeShare: 0 });
+    expect(lowTierDrawn, `${id}: the tier draws the planned pieces`).toBeGreaterThanOrEqual(
+      atZeroDensity.length,
+    );
+    expect(lowTierDrawn, `${id}: physical props survive the lowest tree-share tier`).toBe(allDrawn);
+    expect(planned.length, id).toBe(spots.length);
+    for (let i = 0; i < spots.length; i++) {
+      const p = planned[i]!;
+      const s = spots[i]!;
+      expect(
+        lanesUnderPiece(t.road, p.edge, p.shape, p.s, p.d),
+        `${id} #${i}: full shape off every road lane`,
+      ).toBe(-1);
+      expect([p.rule, p.edge, p.s, p.d, p.variant, p.size], `${id} #${i}`).toEqual([
+        s.kind,
+        s.edge,
+        s.s,
+        s.d,
+        s.variant,
+        s.size,
+      ]);
+    }
+    sparse.dispose();
+    scene.dispose();
+  }
+});
 
 /** The model variants the three kinds draw: the file's roots in order (models.ts `ROOTS`). */
 const VARIANT = { battery: 0, brush: 1, outcrop: 2 } as const;
@@ -206,7 +370,7 @@ describe('the Golden Gate: batteries on the Gate side, brush on both, no pine', 
     expect(water.n).toBeGreaterThan(100);
   });
 
-  it('stands batteries on headlands land, on the side that faces the Gate, off the band, and brush on both sides', async () => {
+  it('stands physical batteries on headlands land on the side that faces the Gate, and brush on both sides', async () => {
     const models = await modelsOf(t);
     let batteries = 0;
     let brushL = 0;
@@ -223,8 +387,7 @@ describe('the Golden Gate: batteries on the Gate side, brush on both, no pine', 
         expect(s.kind, where).not.toBe('outcrop');
         const edge = t.road.edges[s.edge]!;
         const outer = side < 0 ? -edge.dMin + 0.6 : edge.dMax + 0.6;
-        const band = ridableBandPast(t.road, s.edge, side, s.s, outer);
-        expect(Math.abs(s.d) - outer, where).toBeGreaterThanOrEqual(band);
+        expect(roadBandHeight(t.road, s.edge, s.s, s.d), where).not.toBeNull();
         expect(scene.landReach(s.edge, side, s.s), where).toBeGreaterThan(Math.abs(s.d) - outer);
         if (s.kind === 'battery') {
           batteries++;
@@ -292,7 +455,7 @@ describe('the Twin Peaks summit: chert outcrops within reach of the climb end, o
     expect(climb.nextLinks).toHaveLength(0);
   });
 
-  it('stands outcrops only in the last stretch of the climb, past the band, with brush all along it', async () => {
+  it('stands physical outcrops only in the last stretch of the climb, with brush all along it', async () => {
     const models = await modelsOf(t);
     let outcrops = 0;
     let brushOutside = 0;
@@ -310,9 +473,7 @@ describe('the Twin Peaks summit: chert outcrops within reach of the climb end, o
         expect(s.variant, where).toBe(VARIANT.outcrop);
         const side = s.d < 0 ? -1 : 1;
         const outer = side < 0 ? -climb.dMin + 0.6 : climb.dMax + 0.6;
-        expect(Math.abs(s.d) - outer, where).toBeGreaterThanOrEqual(
-          ridableBandPast(t.road, s.edge, side, s.s, outer),
-        );
+        expect(roadBandHeight(t.road, s.edge, s.s, s.d), where).not.toBeNull();
         expect(scene.landReach(s.edge, side, s.s), where).toBeGreaterThan(Math.abs(s.d) - outer);
       }
       expect(scene.stats.scenery.conifer).toBe(0);

@@ -38,7 +38,7 @@ import {
 import { themeAt, type LandTheme, type SideTheme } from './themes';
 import { lakeWaterAt } from './water';
 import { terrainAt } from './terrain';
-import { DRAWN_VERGE_M } from './furniture';
+import { DRAWN_VERGE_M } from './furniture-constants';
 
 /** The drawn verge past the shoulder, m (render/road-mesh.ts VERGE_M). */
 const VERGE_M = DRAWN_VERGE_M;
