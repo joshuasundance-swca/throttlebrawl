@@ -16,7 +16,12 @@ interface Bounds {
   maxZ: number;
 }
 type Node = Bounds & ({ samples: number[] } | { left: Node; right: Node });
-type Forest = { edge: number; root: Node }[];
+type ForestRow = { edge: number; root: Node };
+interface Forest {
+  rows: ForestRow[];
+  sorted: ForestRow[];
+}
+type Visitor = (edge: number, i: number, d2: number) => void;
 
 function tree(edge: SampleEdge, samples: number[]): Node {
   const box: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
@@ -85,13 +90,14 @@ export function nearbySamples(edges: readonly SampleEdge[], cellM: number, span:
       }
     return grid;
   };
-  return (x: number, z: number): Map<number, Nearest> => {
+  const select = (x: number, z: number, visitor?: Visitor): Map<number, Nearest> | undefined => {
     cells ??= build();
     const cx = Math.floor(x / cellM),
       cz = Math.floor(z / cellM);
-    const out = new Map<number, Nearest>();
+    let out = visitor ? undefined : new Map<number, Nearest>();
     // Preserve the old scan's order-dependent NaN behavior for direct synthetic inputs.
     if (!finite || !Number.isFinite(x) || !Number.isFinite(z)) {
+      out ??= new Map<number, Nearest>();
       for (let a = -span; a <= span; a++)
         for (let b = -span; b <= span; b++) {
           const list = cells.get(key(cx + a, cz + b));
@@ -107,6 +113,11 @@ export function nearbySamples(edges: readonly SampleEdge[], cellM: number, span:
               prev = out.get(e);
             if (!prev || d2 < prev.d2 || (d2 === prev.d2 && i < prev.i)) out.set(e, { i, d2 });
           }
+        }
+      if (visitor)
+        for (const e of [...out.keys()].sort((a, b) => a - b)) {
+          const near = out.get(e)!;
+          visitor(e, near.i, near.d2);
         }
       return out;
     }
@@ -130,15 +141,31 @@ export function nearbySamples(edges: readonly SampleEdge[], cellM: number, span:
             samples.add(i);
           }
         }
-      forest = [...candidates].map(([edge, samples]) => ({ edge, root: tree(edges[edge]!, [...samples]) }));
+      const rows = [...candidates].map(([edge, samples]) => ({
+        edge,
+        root: tree(edges[edge]!, [...samples]),
+      }));
+      forest = { rows, sorted: [...rows].sort((a, b) => a.edge - b.edge) };
       if (forests.size >= 64) forests.delete(forests.keys().next().value!);
     } else forests.delete(id);
     forests.set(id, forest);
-    for (const { edge, root } of forest) {
-      const best = { i: -1, d2: Infinity };
+    // Per-call scratch is never exposed: nested visitor queries cannot change an outer result.
+    const best = { i: -1, d2: Infinity };
+    for (const { edge, root } of visitor ? forest.sorted : forest.rows) {
+      best.i = -1;
+      best.d2 = Infinity;
       search(root, edges[edge]!, x, z, best);
-      if (best.i >= 0) out.set(edge, best);
+      if (best.i >= 0) {
+        if (visitor) visitor(edge, best.i, best.d2);
+        else out!.set(edge, { i: best.i, d2: best.d2 });
+      }
     }
     return out;
   };
+  const query = (x: number, z: number) => select(x, z)!;
+  return Object.assign(query, {
+    visit(x: number, z: number, visitor: Visitor) {
+      select(x, z, visitor);
+    },
+  });
 }

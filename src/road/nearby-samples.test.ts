@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { nearbySamples, type SampleEdge } from './nearby-samples';
 
 // The previous ground query's exhaustive grid scan is the numerical oracle. Keep
@@ -37,9 +37,58 @@ function edge(index: number, points: readonly (readonly [number, number])[]): Sa
 }
 function check(edges: readonly SampleEdge[], points: readonly (readonly [number, number])[]) {
   const query = nearbySamples(edges, 64, 5);
-  for (const [x, z] of [...points, ...[...points].reverse(), ...points])
+  for (const [x, z] of [...points, ...[...points].reverse(), ...points]) {
     expect([...query(x, z)].sort(([a], [b]) => a - b)).toEqual(reference(edges, x, z));
+    const visited: [number, { i: number; d2: number }][] = [];
+    query.visit(x, z, (e, i, d2) => visited.push([e, { i, d2 }]));
+    expect(visited).toEqual(reference(edges, x, z));
+  }
 }
+
+it('visits exact ordered candidates without allocating a result Map, including nested queries', () => {
+  const edges = [
+    edge(0, [
+      [0, 0],
+      [4, 0],
+    ]),
+    edge(1, [
+      [0, 2],
+      [4, 2],
+    ]),
+  ];
+  const query = nearbySamples(edges, 64, 5);
+  query(1, 1);
+  const expected = reference(edges, 1, 1);
+  let maps = 0;
+  const OriginalMap = Map;
+  class CountedMap<K, V> extends OriginalMap<K, V> {
+    constructor() {
+      super();
+      maps++;
+    }
+  }
+  vi.stubGlobal('Map', CountedMap);
+  const visited: [number, { i: number; d2: number }][] = [];
+  try {
+    query(1, 1);
+    expect(maps).toBeGreaterThan(0); // The unchanged Map API is the observer's positive control.
+    maps = 0;
+    query.visit(1, 1, (e, i, d2) => {
+      visited.push([e, { i, d2 }]);
+      if (e === 0) query.visit(2, 2, () => {});
+    });
+    expect(maps).toBe(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  expect(visited).toEqual(expected);
+  const exposed = query(1, 1);
+  exposed.get(0)!.i = 999;
+  exposed.clear();
+  const again: [number, { i: number; d2: number }][] = [];
+  query.visit(1, 1, (e, i, d2) => again.push([e, { i, d2 }]));
+  expect(again).toEqual(expected);
+});
 
 it('matches exhaustive nearest samples across curves, overlapping edges, cells and exact ties', () => {
   const edges = [

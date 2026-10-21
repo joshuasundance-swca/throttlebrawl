@@ -40,6 +40,12 @@ import { themeAt, type LandTheme, type SideTheme } from './themes';
 import { lakeWaterAt } from './water';
 import { terrainAt } from './terrain';
 import { DRAWN_VERGE_M } from './furniture-constants';
+import {
+  prepareGroundTriangle,
+  groundTriangleHit,
+  groundTriangleS,
+  type PreparedTriangle,
+} from './ground-triangle';
 
 /** The drawn verge past the shoulder, m (render/road-mesh.ts VERGE_M). */
 const VERGE_M = DRAWN_VERGE_M;
@@ -765,7 +771,7 @@ const terrainKept = new WeakMap<RoadNetwork, { banks: LakeBanks; under: TerrainU
 function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
   const known = terrainKept.get(road);
   if (known?.banks === banks) return known.under;
-  const perEdge = new Map<number, Map<string, GroundTriangle[]>>();
+  const perEdge = new Map<number, Map<string, PreparedTriangle[]>>();
   const cellM = 16;
   const cell = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
   const rowsOf = landOf(road).rows;
@@ -874,12 +880,12 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
     return join.triangles;
   };
   const make = (edge: number) => {
-    const grid = new Map<string, GroundTriangle[]>();
+    const grid = new Map<string, PreparedTriangle[]>();
     const ed = road.edges[edge];
     const rows = rowsOf(edge);
     if (!ed || !rows) return grid;
     const tri = (a: GroundPoint, b: GroundPoint, c: GroundPoint) => {
-      const t: GroundTriangle = [a, b, c];
+      const t = prepareGroundTriangle([a, b, c]);
       for (
         let x = Math.floor(Math.min(a.x, b.x, c.x) / cellM);
         x <= Math.floor(Math.max(a.x, b.x, c.x) / cellM);
@@ -1047,19 +1053,21 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
       grid = make(edge);
       perEdge.set(edge, grid);
     }
-    let best: { y: number; s: number } | null = null;
-    for (const [a, b, c] of grid.get(cell(x, z)) ?? []) {
-      const det = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
-      if (Math.abs(det) < 1e-9) continue;
-      const u = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / det;
-      const v = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / det;
-      if (u < -1e-8 || v < -1e-8 || u + v > 1 + 1e-8) continue;
-      const y = u * a.y + v * b.y + (1 - u - v) * c.y;
-      if (best === null || y > best.y) {
-        best = { y, s: u * a.s + v * b.s + (1 - u - v) * c.s };
+    let best: PreparedTriangle | null = null,
+      bestY = 0,
+      bestU = 0,
+      bestV = 0;
+    const hit = { u: 0, v: 0, y: 0 };
+    for (const triangle of grid.get(cell(x, z)) ?? []) {
+      if (!groundTriangleHit(triangle, x, z, hit)) continue;
+      if (best === null || hit.y > bestY) {
+        best = triangle;
+        bestY = hit.y;
+        bestU = hit.u;
+        bestV = hit.v;
       }
     }
-    return best;
+    return best === null ? null : { y: bestY, s: groundTriangleS(best, bestU, bestV) };
   };
   terrainKept.set(road, { banks, under });
   return under;
@@ -1096,13 +1104,11 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
     const id = `${x},${z}`;
     const had = found.get(id);
     if (had) return had;
-    const nearest = nearestSamples(x, z);
     const out: number[] = [];
-    for (const e of [...nearest.keys()].sort((p, q) => p - q)) {
+    nearestSamples.visit(x, z, (e, i, d2) => {
       const ed = road.edges[e];
-      const near = nearest.get(e);
-      if (!ed || !near || near.d2 > NEAR_REACH_M * NEAR_REACH_M) continue;
-      let s = near.i * ed.spacing;
+      if (!ed || d2 > NEAR_REACH_M * NEAR_REACH_M) return;
+      let s = i * ed.spacing;
       let d = 0;
       for (let iter = 0; iter < 3; iter++) {
         const clamped = Math.min(ed.length, Math.max(0, s));
@@ -1130,7 +1136,7 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
       const y = typeof sectionY === 'number' ? sectionY : null;
       if (face !== null && (y === null || face.y > y)) out.push(e, face.s, face.y, 1);
       else if (y !== null) out.push(e, s, y, 0);
-    }
+    });
     if (found.size >= GROUND_KEPT) found.clear();
     found.set(id, out);
     return out;
