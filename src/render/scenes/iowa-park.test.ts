@@ -102,7 +102,14 @@ describe('Iowa roadside scenes distinguish the park from the farm highway', () =
   });
 
   it('applies required/excluded road tags to the complete footprint, with working positive controls', () => {
-    const plain = { ...file, scenes: file.scenes.map((s) => ({ ...s, excludesTag: undefined })) };
+    const plain = {
+      ...file,
+      scenes: file.scenes.map((s) => {
+        const copy = { ...s };
+        delete copy.excludesTag;
+        return copy;
+      }),
+    };
     const required = { ...plain, scenes: plain.scenes.map((s) => ({ ...s, needsTag: 'rural' })) };
     const missing = { ...plain, scenes: plain.scenes.map((s) => ({ ...s, needsTag: 'iowa-park' })) };
     const excluded = { ...plain, scenes: plain.scenes.map((s) => ({ ...s, excludesTag: 'rural' })) };

@@ -145,9 +145,11 @@ describe('physical Eagle Point park facilities', () => {
       expect(shelter).toBeDefined();
       const floor = courseAt(road, plan, { edge: shelter.edge, s: shelter.s, d: shelter.d }, shelter.y + 0.1);
       expect(floor.kind).toBe('top');
+      if (floor.kind !== 'top') throw new Error('shelter floor is not a supported top');
       expect(floor.y).toBeCloseTo(shelter.y, 4);
       const roof = courseAt(road, plan, { edge: shelter.edge, s: shelter.s, d: shelter.d }, shelter.y + 3.5);
       expect(roof.kind).toBe('top');
+      if (roof.kind !== 'top') throw new Error('shelter roof is not a supported top');
       expect(roof.y).toBeCloseTo(shelter.y + 3.16, 3);
       const view = layer.views.find((v) => v.mesh.name === shelter.id)!;
       const full = view.mesh.geometry.getAttribute('position').count;

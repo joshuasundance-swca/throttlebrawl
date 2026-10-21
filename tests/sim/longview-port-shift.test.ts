@@ -82,6 +82,7 @@ describe('the authored Port Shift loading line is optional and repeatable', () =
       const yard = yards.find((y) => Math.sign(y.d) === side)!;
       function fly(height: number, speed: number, yaw: number, ticks: number) {
         const h = riderHarness(config, { edge: yard.edge, s: yard.s - 5, d: yard.d, speed, yaw });
+        const mode = () => h.rider.mode;
         h.rider.mode = 'Airborne';
         const st = riderState(h.world);
         st.yAbs[h.rider.id] = config.road.surfaceHeight(yard.edge, yard.s - 5, yard.d) + height;
@@ -92,7 +93,7 @@ describe('the authored Port Shift loading line is optional and repeatable', () =
         let supported = 0;
         for (let tick = 0; tick < ticks; tick++) {
           events.push(...h.step(input(0, 0, yaw === 0 ? 0 : Math.sign(yaw) * 0.7)));
-          if (supportKindOf(h.world, h.rider.id) === 'structure' && h.rider.mode === 'Road') {
+          if (supportKindOf(h.world, h.rider.id) === 'structure' && mode() === 'Road') {
             supported++;
             expect(h.rider.h).toBeGreaterThan(6);
           }

@@ -14,7 +14,7 @@ describe('Eagle Point facilities through the public race structure path', () => 
     expect(roadApi.structureLayersFor(road)).toContain('iowa-park');
     const control = roadApi.createRoadNetwork({
       network,
-      roads: roads.map((r) => ({ ...r, tags: r.tags.filter((t) => t.tag !== 'iowa-park') })),
+      roads: roads.map((r) => ({ ...r, tags: r.tags?.filter((t) => t.tag !== 'iowa-park') ?? [] })),
     });
     expect(roadApi.structureLayersFor(control)).not.toContain('iowa-park');
   });
