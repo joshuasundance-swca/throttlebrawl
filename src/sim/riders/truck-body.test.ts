@@ -23,6 +23,7 @@ import {
   truckClearMps,
 } from './features';
 import { riderState } from './index';
+import { RIDER_CONTACT_HALF_WIDTH_M } from './contact';
 import { input, riderHarness, testConfig } from './testing';
 
 const TRUCK: BakedFeature = {
@@ -139,11 +140,24 @@ describe("the ramp truck's body (skeptic F2)", () => {
   });
 
   it('riding alongside, the bike meets the truck with its side, not its middle (playtest 4 hitbox audit)', () => {
-    // The bike's side 0.1 m into the drawn truck: held off by its reach, a scrape against the body.
-    const h = riderHarness(withTruck(), { s: TRUCK.s0 + 15, d: TRUCK.d0 - 0.3, speed: 10 });
-    const events = h.step(input(0.3));
-    expect(events.some((e) => e.data?.['object'] === 'rampTruck')).toBe(true);
-    expect(h.rider.pos.d).toBeLessThanOrEqual(TRUCK.d0 - HAZARD_REACH_D_M);
+    const station = TRUCK.s0 + 15;
+    // The committed tow-truck model's side rail is at x=1.39 outside the 2.5 m ramp plate;
+    // rampTruckMatrix scales that x by this fixture's authored plate width.
+    const railOutside = (TRUCK.d0 + TRUCK.d1) / 2 - (1.39 * (TRUCK.d1 - TRUCK.d0)) / 2.5;
+    expect(railOutside, 'the modelled side rail extends beyond the rideable plate').toBeLessThan(TRUCK.d0);
+    // Begin clear of the visible rail, then steer into it. A put-down already overlapping its
+    // side is held off without a new impact event, so that pose cannot test an actual side hit.
+    const h = riderHarness(withTruck(), { s: station, d: TRUCK.d0 - 0.55, speed: 10 });
+    expect(h.rider.pos.d + RIDER_CONTACT_HALF_WIDTH_M).toBeLessThan(railOutside);
+    let sideHit: SimEvent | undefined;
+    for (let t = 0; t < 6 && !sideHit; t++)
+      sideHit = h.step(input(0.3, 0, 1)).find((event) => event.data['object'] === 'rampTruck');
+    expect(sideHit?.type).toBe('wobble');
+    expect(sideHit?.data['hit']).toBe('side');
+    // keepOff leaves 0.005 m of separation; the 0.01 m bound includes that solver offset.
+    expect(h.rider.pos.d, 'the whole bike stays outside the physical rail').toBeLessThanOrEqual(
+      railOutside - RIDER_CONTACT_HALF_WIDTH_M + 0.01,
+    );
     // The control: a bike whose side is clear of the truck rides by untouched.
     const clear = riderHarness(withTruck(), { s: TRUCK.s0 + 15, d: TRUCK.d0 - 0.6, speed: 10 });
     expect(clear.step(input(0.3)).filter((e) => e.data?.['object'] === 'rampTruck')).toEqual([]);

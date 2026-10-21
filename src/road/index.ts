@@ -3,7 +3,12 @@
 export { createRoadNetwork, curvedRoadRates, sRateFactor } from './network';
 export { projectRoadPosition } from './project-position';
 export { groundUnderOf, landEdgeOf, sectionGroundOf, skirtOf } from './drawn-ground';
+export { planSfScenery } from './sf-scenery';
+export { terrainAt } from './terrain';
+export { waterAt } from './water';
+export type { TerrainSample } from './terrain';
 export { grassMedianSpan } from './median';
+export { prewarmPlainShoulderSupport, ROAD_SURFACE_SIMPLIFY, SHOULDER_LAP_M } from './surface-sampling';
 export {
   LAND_COMMON_REACH_DELTA_M,
   clearGroundReach,
@@ -128,6 +133,8 @@ export type {
   BakedSamples,
   BakedSplitZone,
   BakedTag,
+  BakedTerrain,
+  BakedTerrainPatch,
   BakedVerge,
   FeatureKind,
   GapParams,
@@ -196,7 +203,7 @@ export type {
   StructureSink,
   StructureSpec,
 } from './structures';
-export { COURSE_STEP_M, courseAt, lanesNear, roadsideGroundHeight } from './course';
+export { COURSE_STEP_M, courseAt, lanesNear, roadsideGroundHeight, roadBandHeight } from './course';
 export type { CourseSpot } from './course';
 // The car ferry's numbers (small: render's roofs and the places both read them, and so does its planner).
 export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';

@@ -62,10 +62,14 @@ describe('the street furniture plan', () => {
     );
   });
 
-  it('stands every kerb piece on its sidewalk, and every piece of every kind has its class and footprint', () => {
+  it('stands kerb pieces on sidewalks and represents every kind in the loaded networks', () => {
     let pieces = 0;
     const kinds = new Set<string>();
-    for (const road of [downtown, duval, hills]) {
+    // A new kind can belong to any authored region; its real network must place it before this
+    // positive control claims coverage. The separate check below probes every lane footprint.
+    const ids = allNetworks();
+    for (const id of ids) {
+      const road = network(id);
       for (const p of planStreetFurniture(road, 7).items) {
         pieces++;
         kinds.add(p.kind);
@@ -74,11 +78,9 @@ describe('the street furniture plan', () => {
         if (p.layer === 'kit') expect(onRidableBand(road, p), `${p.rule} at ${p.edge}:${p.s}`).toBe(true);
       }
     }
-    stdout.write(`[examined] ${pieces} pieces of ${kinds.size} kinds over 3 networks\n`);
+    stdout.write(`[examined] ${pieces} pieces of ${kinds.size} kinds over ${ids.length} networks\n`);
     expect(pieces).toBeGreaterThan(1500);
-    // The waterfront's kinds are its own network's; the rest are here.
-    for (const k of FURNITURE_KINDS.filter((x) => !['palm', 'wf-lamp', 'wf-bench', 'parked-car'].includes(x)))
-      expect(kinds.has(k), k).toBe(true);
+    for (const k of FURNITURE_KINDS) expect(kinds.has(k), k).toBe(true);
   });
 
   it("turns a piece's footprint with it: a bench facing the road lies along it", () => {
@@ -140,10 +142,22 @@ function lanePoints(road: RoadNetwork) {
 }
 
 /** Where a footprint on `edge` stands on a lane: the road and s, or null. */
-function onLanes(road: RoadNetwork, at: ReturnType<typeof lanePoints>, edge: number, shape: FurnitureShape) {
+function onLanes(
+  road: RoadNetwork,
+  at: ReturnType<typeof lanePoints>,
+  edge: number,
+  shape: FurnitureShape,
+  atS = shape.s,
+  atD = shape.d,
+) {
+  const origin = road.toWorld(edge, atS, atD, 0);
+  const frame = road.frameAt(edge, atS);
   for (const q of rimOf(shape)) {
-    const p = road.toWorld(edge, q.s, q.d, 0);
-    const hit = at(p.x, p.y, p.z);
+    const ds = q.s - atS,
+      dd = q.d - atD;
+    const x = origin.x + ds * frame.tx - dd * frame.tz;
+    const z = origin.z + ds * frame.tz + dd * frame.tx;
+    const hit = at(x, origin.y, z);
     if (hit) return hit;
   }
   return null;
@@ -167,7 +181,7 @@ describe("the street furniture keeps off every road's lanes (2026-10-06: honest 
       const at = lanePoints(road);
       for (const p of plan.items) {
         pieces++;
-        const hit = onLanes(road, at, p.edge, p.shape);
+        const hit = onLanes(road, at, p.edge, p.shape, p.s, p.d);
         if (hit)
           bad.push(`${id}: ${p.kind} (${p.rule}) of ${road.edges[p.edge]?.id} s ${p.s.toFixed(0)} on ${hit}`);
       }

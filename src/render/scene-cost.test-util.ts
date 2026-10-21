@@ -47,6 +47,8 @@ import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { PartyLights } from './party-lights';
 import { QUALITY_TIERS, sceneryReach, type QualityTier } from './quality';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
+import { TerrainTrees } from './terrain-trees';
 import { KITS, kitFor, RoadsideLayer } from './roadside';
 import { SCENERY_LOD_M } from './scenery-merge';
 import { ScenesLayer } from './scenes/layer';
@@ -515,6 +517,7 @@ export async function stillSceneOf(
   const waterAt = floors.length > 0 ? waterAtOf(floors) : null;
   const trafficClearanceM = trafficClearanceOf(networkId);
   const rs = buildRoadScene(road, look, dressing, {
+    terrainChunks: buildTerrainChunks,
     seed,
     models,
     roadsideDensity: 1,
@@ -522,6 +525,7 @@ export async function stillSceneOf(
     ...(waterAt ? { waterAt } : {}),
   });
   const { tropical, tags } = networkTags(road, dressing);
+  const terrainTrees = new TerrainTrees(look, road, seed);
   const needed = modelKindsFor({ tropical, tags, palette: new Set(), traffic: [] });
   const kind = kitFor(needed, models) as ModelKind | null;
   const kitModel = kind ? models[kind] : undefined;
@@ -649,6 +653,7 @@ export async function stillSceneOf(
   );
   const groups = (): (Object3D | null | undefined)[] => [
     rs.group,
+    terrainTrees.root,
     roadside?.group,
     verge.group,
     dt?.group,
@@ -665,6 +670,7 @@ export async function stillSceneOf(
   const scene: StillScene = {
     update(x, z, ax, az) {
       rs.update(x, z, 0, drawM, lodM, Infinity, { treeShare, propDetail });
+      terrainTrees.update(x, z, drawM);
       if (roadside) for (let i = 0; i < 12; i++) roadside.update(x, z, drawM, propDetail);
       verge.update(x, z, null, 0, ax, az);
       // The renderer builds one stretch a frame; a ride to here has had a frame for each.

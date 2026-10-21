@@ -56,6 +56,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, stripVTControlCharacters } from 'node:util';
 import { hitTimeout } from './rerun-main.mjs';
+import { hasSuccessfulMainGate } from './main-acceptance.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -600,6 +601,11 @@ export function suiteResult(result, { failed, timedOut }) {
   return result;
 }
 
+/** A successful train can land only after the reusable suite declares full coverage. */
+export function coveredSuiteResult(result, coverage) {
+  return result === 'success' && coverage !== 'full' ? 'unverified' : result;
+}
+
 /** The test tier a suite job runs, from its name ("suite / browser (5/7)"). */
 const TIER = /^suite \/ (static|unit|sim|browser)\b/;
 /**
@@ -607,14 +613,14 @@ const TIER = /^suite \/ (static|unit|sim|browser)\b/;
  * - .github/: a train runs main's workflow files, never the PR's;
  * - the unit project's test files (vitest.config.ts: src/, scripts/ and tools/ *.test.ts; the sim
  *   project is tests/sim/), which nothing imports;
- * - scripts/train.mjs and scripts/tested-tree.mjs: run by the workflows' own steps (route, plan,
- *   assemble from main's checkout, the gate), never by a test tier.
+ * - the train, tested-tree, main-preflight and main-acceptance scripts: CI-only routing and
+ *   acceptance, never imported by sim or browser jobs.
  * scripts/train.test.ts checks these against the Vitest config and every tracked source file.
  */
 const NOT_SIM_OR_BROWSER = [
   /^\.github\//,
   /^(?:src|scripts|tools)\/.+\.test\.ts$/,
-  /^scripts\/(?:train|tested-tree)\.mjs$/,
+  /^scripts\/(?:train|tested-tree|main-preflight|main-acceptance)\.mjs$/,
 ];
 
 /**
@@ -633,7 +639,15 @@ export function canReach(files, job) {
 }
 
 /** Describe only the reported control outcome; absence never proves that a run was skipped. */
-function sameTreeControl(/** @type {string | undefined} */ control) {
+function sameTreeControl(
+  /** @type {string | undefined} */ control,
+  /** @type {string | undefined} */ controlScope,
+  /** @type {string[]} */ controlJobs = [],
+) {
+  if (controlScope === 'targeted')
+    return `the branch control ran a selected failed-shard diagnostic (${controlJobs.join(', ') || 'shards not reported'}), result: ${control ?? 'missing'}; the full-branch outcome is untested`;
+  if (controlScope !== 'full')
+    return 'the branch control scope is missing, so its full-branch outcome is unverified';
   if (control === 'skipped')
     return 'the branch control did not repeat it, so persistence versus transience is unproven';
   if (control === 'success')
@@ -651,6 +665,8 @@ function sameTreeControl(/** @type {string | undefined} */ control) {
  * @param {object} o
  * @param {string} o.result the suite's result ('success', 'failure', 'cancelled', ...), as suiteResult judges it
  * @param {string} [o.control] a lone PR's own-branch suite result, when it ran
+ * @param {string} [o.controlScope] 'full' only when every branch suite shard ran; otherwise unknown
+ * @param {string[]} [o.controlJobs] selected diagnostic shard names
  * @param {boolean} [o.sameTree] the lone PR head and assembled train have the same full Git tree
  * @param {string[]} [o.timedOut] the suite's jobs that ran past their time limit
  * @param {string[]} [o.failed] the suite's jobs that failed (a timeout beside one is a plain failure)
@@ -666,6 +682,8 @@ function sameTreeControl(/** @type {string | undefined} */ control) {
 export function decide({
   result,
   control,
+  controlScope,
+  controlJobs = [],
   sameTree = false,
   timedOut = [],
   failed = [],
@@ -832,9 +850,9 @@ export function decide({
   }
   const kind = sameTree
     ? 'same-tree'
-    : control === 'success'
+    : controlScope === 'full' && control === 'success'
       ? 'composition'
-      : control === 'failure'
+      : controlScope === 'full' && control === 'failure'
         ? 'own'
         : 'unknown';
   const red = late ? 'timed out' : 'fails';
@@ -857,7 +875,7 @@ export function decide({
     dispatch: true,
     why:
       kind === 'same-tree'
-        ? `#${p.number}'s exact PR tree ${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''} on main ${b7}; composition excluded; ${sameTreeControl(control)}`
+        ? `#${p.number}'s exact PR tree ${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''} on main ${b7}; composition excluded; ${sameTreeControl(control, controlScope, controlJobs)}`
         : `#${p.number} ${late ? 'timed out' : 'failed'} alone on main ${b7} (${kind})`,
   };
 }
@@ -1054,7 +1072,7 @@ export const COMMENT_TAG = '<!-- bundle-train -->';
 /**
  * The comment on a PR that failed alone, or timed out alone (`timedOut` names the suite jobs that
  * ran past their time limit; `reached`, those of them its diff can reach and main's own run passed).
- * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, control?: string, timedOut?: string[], failed?: string[], reached?: string[] }} o
+ * @param {{ kind: 'own' | 'composition' | 'unknown' | 'same-tree', sha: string, base: string, run: number, url: string, failing: string[], lacks: number[], mainCi: string, control?: string, controlScope?: string, controlJobs?: string[], timedOut?: string[], failed?: string[], reached?: string[] }} o
  */
 export function blameComment({
   kind,
@@ -1066,10 +1084,13 @@ export function blameComment({
   lacks,
   mainCi,
   control,
+  controlScope,
+  controlJobs = [],
   timedOut = [],
   failed = [],
   reached = [],
 }) {
+  if (controlScope !== 'full' && (kind === 'own' || kind === 'composition')) kind = 'unknown';
   const late = timedOut.length > 0;
   const red = late ? 'timed out' : 'fails';
   const exactResult = `${late ? 'timed out' : 'failed'}${control === 'skipped' ? ' once' : ''}`;
@@ -1077,7 +1098,7 @@ export function blameComment({
     kind === 'same-tree'
       ? `**Bundle train ${run}: this PR's exact source tree ${exactResult} in the train.**`
       : kind === 'composition'
-        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** It is a composition failure with what landed on main since your branch.`
+        ? `**Bundle train ${run}: this PR passes on its own branch but ${red} on top of main.** The runs disagree; different source, build stamps or runner conditions may explain the difference. A causal source-composition failure is unproven.`
         : `**Bundle train ${run}: this PR ${red} alone on main.**`;
   const lines = [
     COMMENT_TAG,
@@ -1095,14 +1116,18 @@ export function blameComment({
     );
   lines.push(
     kind === 'same-tree'
-      ? `- The assembled train and this PR head have the same full Git tree. ${late ? `The full suite did not finish${failed.length ? ' and also had failed jobs' : ''}` : `The full suite ${exactResult} on that exact source tree`}; ${sameTreeControl(control)}; a source-tree composition failure is excluded.`
+      ? `- The assembled train and this PR head have the same full Git tree. ${late ? `The full suite did not finish${failed.length ? ' and also had failed jobs' : ''}` : `The full suite ${exactResult} on that exact source tree`}; ${sameTreeControl(control, controlScope, controlJobs)}; a source-tree composition failure is excluded.`
       : kind === 'own'
-        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too, so the failure is in this PR.`
+        ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) fails the full suite too; a failure was reproduced on the branch.`
         : kind === 'composition'
           ? `- Its own branch (\`${sha.slice(0, 7)}\`, without the newer main) passes the full suite.`
-          : late
-            ? '- Its own branch was not tested (a timeout does not start that suite).'
-            : '- Its own branch was not tested (that suite did not finish).',
+          : controlScope === 'targeted'
+            ? `- Its own branch ran a selected failed-shard diagnostic (${controlJobs.join(', ') || 'shards not reported'}); result: ${control ?? 'missing'}; the full-branch outcome is untested.`
+            : controlScope !== 'full' && (control === 'success' || control === 'failure')
+              ? '- The branch control scope is missing, so its full-branch outcome is unverified.'
+              : late
+                ? '- Its own branch was not tested (a timeout does not start that suite).'
+                : '- Its own branch was not tested (that suite did not finish).',
     `- Main's own CI on \`${base.slice(0, 7)}\`: ${mainCi === 'success' ? 'green' : mainCi === 'pending' ? 'still running' : 'no finished run'}.`,
   );
   if (lacks.length) lines.push(`- Main has PRs your branch does not: ${prList(lacks, 400)}.`);
@@ -1327,8 +1352,9 @@ async function mainCiRun(/** @type {string} */ sha) {
 }
 
 /**
- * Main's own ci run as the train reads it: 'success', 'failure' (red), 'pending' (not finished) or
- * 'none' (no run, or no verdict). A job that hits its timeout-minutes ends `cancelled`, and the run
+ * Main's own ci run as the train reads it: 'success' requires its completed successful gate in the
+ * complete latest-attempt jobs. Otherwise it is 'failure' (red), 'pending' (not finished) or 'none'
+ * (no run, or no accepted verdict). A job that hits its timeout-minutes ends `cancelled`, and the run
  * then concludes `cancelled`, not `failure` (main run 37423758824, 2026-10-06), so a cancelled run is
  * red when its jobs say a timeout cancelled it, by the same rule rerun-main.yml re-runs it by: at
  * least one cancelled job, and every cancelled job timed out. A run a person cancelled (a job ended
@@ -1336,14 +1362,14 @@ async function mainCiRun(/** @type {string} */ sha) {
  * jobs), is no verdict, as before; rerun-main.yml leaves those alone too, so a wait for its re-run
  * would wait for nothing.
  * @param {{ status: string, conclusion: string } | null} r the run as it is now
- * @param {{ conclusion: string, timedOut: boolean }[]} [jobs] its latest attempt's jobs, each with
- *   whether its annotations say it timed out (read only for a cancelled run: mainCiState)
+ * @param {{ name?: string, status?: string, conclusion: string | null, timedOut?: boolean }[]} [jobs]
+ *   complete jobs of its latest attempt for success, or annotation-backed timeouts for a cancel
  * @returns {'success' | 'failure' | 'pending' | 'none'}
  */
 export function ciState(r, jobs = []) {
   if (!r) return 'none';
   if (r.status !== 'completed') return 'pending';
-  if (r.conclusion === 'success') return 'success';
+  if (r.conclusion === 'success') return hasSuccessfulMainGate(jobs) ? 'success' : 'none';
   if (RED.has(r.conclusion)) return 'failure';
   if (r.conclusion !== 'cancelled') return 'none';
   const cancelled = jobs.filter((j) => j.conclusion === 'cancelled');
@@ -1351,15 +1377,113 @@ export function ciState(r, jobs = []) {
 }
 
 /**
- * ciState of main's own run, reading a cancelled run's latest attempt's jobs and, for each cancelled
- * one, its check run's annotations: the runner's "has exceeded the maximum execution time" tells a
- * timeout from a cancel (hitTimeout, rerun-main.mjs). Needs `checks: read`; any other run asks
- * nothing more.
+ * The same API-backed classification used by readMain, including a completed successful gate.
+ * Cancelled jobs still use check-run annotations to distinguish timeouts from a person's cancel.
  * @param {Awaited<ReturnType<typeof mainCiRun>>} r
  */
 export async function mainCiState(r) {
-  if (!r || r.status !== 'completed' || r.conclusion !== 'cancelled') return ciState(r);
-  return ciState(r, await cancelledRunJobs(r));
+  return (await readMainRun(r)).state;
+}
+
+/** @typedef {{ id: number, name: string, status: string, conclusion: string | null }} MainJob */
+
+/** Read the current attempt instead of trusting a potentially stale workflow listing. */
+async function refreshMainRun(/** @type {NonNullable<Awaited<ReturnType<typeof mainCiRun>>>} */ run) {
+  /** @type {any} */
+  const detail = await api('GET', `/repos/${repo()}/actions/runs/${run.id}`);
+  if (
+    detail?.id !== run.id ||
+    !Number.isSafeInteger(detail.run_attempt) ||
+    detail.run_attempt < 1 ||
+    detail.run_attempt < run.attempt ||
+    typeof detail.status !== 'string' ||
+    (detail.conclusion !== null && typeof detail.conclusion !== 'string')
+  )
+    throw new Error('main run detail is incomplete or mismatched');
+  return {
+    id: run.id,
+    status: detail.status,
+    conclusion: String(detail.conclusion ?? ''),
+    attempt: Number(detail.run_attempt),
+  };
+}
+
+/** A gate can establish acceptance only in a complete, unambiguous list of one attempt's jobs. */
+async function completeMainJobs(/** @type {NonNullable<Awaited<ReturnType<typeof mainCiRun>>>} */ run) {
+  /** @type {MainJob[]} */
+  const jobs = [];
+  const ids = new Set();
+  let total;
+  for (let page = 1; page <= 100; page++) {
+    /** @type {any} */
+    const res = await api(
+      'GET',
+      `/repos/${repo()}/actions/runs/${run.id}/attempts/${run.attempt}/jobs?per_page=100${page === 1 ? '' : `&page=${page}`}`,
+    );
+    if (
+      !Number.isSafeInteger(res?.total_count) ||
+      res.total_count < 0 ||
+      !Array.isArray(res.jobs) ||
+      res.jobs.length > 100
+    )
+      throw new Error('main jobs response is incomplete');
+    if (total !== undefined && total !== res.total_count)
+      throw new Error('main jobs count changed while reading');
+    total = res.total_count;
+    for (const job of res.jobs) {
+      if (
+        !job ||
+        !Number.isSafeInteger(job.id) ||
+        ids.has(job.id) ||
+        typeof job.name !== 'string' ||
+        typeof job.status !== 'string' ||
+        (job.conclusion !== null && typeof job.conclusion !== 'string') ||
+        (job.run_id !== undefined && job.run_id !== run.id) ||
+        (job.run_attempt !== undefined && job.run_attempt !== run.attempt)
+      )
+        throw new Error('main jobs contain malformed, duplicate or mismatched rows');
+      ids.add(job.id);
+      jobs.push(job);
+    }
+    if (jobs.length === total) return jobs;
+    if (jobs.length > total || res.jobs.length < 100) throw new Error('main jobs response is truncated');
+  }
+  throw new Error('main jobs exceed the readable page limit');
+}
+
+/** One reader for plan, report and mainCiState; job rows are usable only with an accepted gate. */
+async function readMainRun(/** @type {Awaited<ReturnType<typeof mainCiRun>>} */ run) {
+  if (run?.status === 'completed' && run.conclusion === 'success') {
+    try {
+      run = await refreshMainRun(run);
+      if (run.status === 'completed' && run.conclusion === 'success') {
+        const jobs = await completeMainJobs(run);
+        const final = await refreshMainRun(run);
+        if (
+          final.attempt === run.attempt &&
+          final.status === run.status &&
+          final.conclusion === run.conclusion
+        ) {
+          const state = ciState(run, jobs);
+          return { run, state, timedOut: [], jobs: state === 'success' ? jobs : [] };
+        }
+        run = final;
+        if (run.status === 'completed' && run.conclusion === 'success')
+          throw new Error('main attempt changed while reading its jobs');
+      }
+    } catch (err) {
+      console.log(`main: no accepted gate: ${err instanceof Error ? err.message : err}`);
+      return { run, state: /** @type {const} */ ('none'), timedOut: [], jobs: [] };
+    }
+  }
+  const jobs =
+    run?.status === 'completed' && run.conclusion === 'cancelled' ? await cancelledRunJobs(run) : [];
+  return {
+    run,
+    state: ciState(run, jobs),
+    timedOut: jobs.filter((j) => j.timedOut).map((j) => j.name),
+    jobs: [],
+  };
 }
 
 /**
@@ -1388,18 +1512,11 @@ async function cancelledRunJobs(r) {
 }
 
 /**
- * Main's own newest ci run on a commit and how the train reads it (plan's gate, report's blame), with
- * the names of its jobs that ran past their time limit (read only for a cancelled run).
+ * Main's own newest ci run on a commit and how the train reads it (plan's gate, report's blame),
+ * accepted job rows for timeout controls, and the names of jobs that timed out on a cancelled run.
  */
 export async function readMain(/** @type {string} */ sha) {
-  const run = await mainCiRun(sha);
-  const jobs =
-    run && run.status === 'completed' && run.conclusion === 'cancelled' ? await cancelledRunJobs(run) : [];
-  return {
-    run,
-    state: ciState(run, jobs),
-    timedOut: jobs.filter((j) => j.timedOut).map((j) => j.name),
-  };
+  return readMainRun(await mainCiRun(sha));
 }
 
 export async function postStatus(
@@ -1803,6 +1920,21 @@ export async function cmdReport(cfg = loadConfig()) {
   const run = runNumber();
   const reported = env.TRAIN_RESULT ?? '';
   const control = env.TRAIN_CONTROL;
+  const controlScope = env.TRAIN_CONTROL_SCOPE;
+  let controlJobs = /** @type {string[]} */ ([]);
+  try {
+    const jobs = JSON.parse(env.TRAIN_CONTROL_JOBS ?? '[]');
+    if (
+      Array.isArray(jobs) &&
+      jobs.every(
+        (job) =>
+          typeof job === 'string' && /^suite \/ (?:static|unit|sim|browser)(?: \(\d+\/\d+\))?$/.test(job),
+      )
+    )
+      controlJobs = jobs;
+  } catch {
+    // A missing or invalid diagnostic list proves no full-branch result.
+  }
   const sameTree = env.TRAIN_SINGLE_SAME_TREE === 'true';
   const say = (/** @type {string} */ s) => {
     console.log(`report: ${s}`);
@@ -1833,10 +1965,15 @@ export async function cmdReport(cfg = loadConfig()) {
     }
   }
   const failedJobs = suiteJobs.filter((j) => j.conclusion === 'failure').map((j) => String(j.name));
-  const result = suiteResult(reported, { failed: failedJobs, timedOut });
+  const judged = suiteResult(reported, { failed: failedJobs, timedOut });
+  const result = coveredSuiteResult(judged, env.TRAIN_COVERAGE);
   if (timedOut.length) console.log(`report: past their time limit: ${timedOut.join(', ')}`);
-  if (result !== reported)
+  if (judged !== reported)
     console.log(`report: the suite reads ${reported}, but a job in it is red, so the bundle is red`);
+  if (result === 'unverified')
+    console.log(
+      `report: the suite reads success, but coverage is ${env.TRAIN_COVERAGE ?? 'missing'}, so no full-suite result is established`,
+    );
   /** @type {'success' | 'failure' | 'pending' | 'none'} */
   let mainCi = 'none';
   /** @type {Record<string, string>} */
@@ -1854,21 +1991,11 @@ export async function cmdReport(cfg = loadConfig()) {
       read = await readMain(base);
     }
     mainCi = read.state;
-    const mainRun = read.run;
     // A pure timeout at cap 1 is blamed only if the PR's diff can reach the job and main's own run
     // of that job passed (decide): read both. Either one unread means nobody is blamed.
     if (timedOut.length && !failedJobs.length && lone.cap === 1 && mainCi !== 'failure') {
-      try {
-        if (mainRun)
-          mainJobs = Object.fromEntries(
-            (await jobsOf(mainRun.id, mainRun.attempt)).map((j) => [
-              String(j.name),
-              String(j.conclusion ?? ''),
-            ]),
-          );
-      } catch (err) {
-        console.log(`report: could not read main's own jobs: ${err instanceof Error ? err.message : err}`);
-      }
+      if (mainCi === 'success')
+        mainJobs = Object.fromEntries(read.jobs.map((j) => [j.name, String(j.conclusion ?? '')]));
       try {
         files = await prFiles(lone.number);
       } catch (err) {
@@ -1881,6 +2008,8 @@ export async function cmdReport(cfg = loadConfig()) {
   const d = decide({
     result,
     control,
+    controlScope,
+    controlJobs,
     sameTree,
     timedOut,
     failed: failedJobs,
@@ -1921,6 +2050,8 @@ export async function cmdReport(cfg = loadConfig()) {
       lacks,
       mainCi,
       control,
+      controlScope,
+      controlJobs,
       timedOut,
       failed: failedJobs,
       reached: timedOut.filter((j) => files !== null && canReach(files, j) && mainJobs[j] === 'success'),

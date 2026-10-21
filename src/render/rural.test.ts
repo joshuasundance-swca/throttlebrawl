@@ -15,6 +15,7 @@ import {
 import { deciduousGeometry } from './deciduous';
 import { createFlatLook } from './look';
 import { buildRoadScene } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
 import { isTropical, sceneryOffCourse, themeAt } from './scenery';
 
 const LENGTH = 1200;
@@ -65,7 +66,7 @@ describe('opt-in temperate rural roadside', () => {
           road,
           createFlatLook(),
           Object.fromEntries(roads.map((r) => [r.id, r])),
-          { seed },
+          { seed, terrainChunks: buildTerrainChunks },
         );
         const plan = planStructures(road, seed, {}, {});
         try {

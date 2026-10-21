@@ -93,7 +93,10 @@ export function suiteJobs(text) {
   const job = (/** @type {string} */ id) => {
     const b = blocks.get(id) ?? '';
     const minutes = /\n {4}timeout-minutes: (\d+)\n/.exec(b)?.[1];
-    const shards = /\n {8}shard: \[([\d, ]+)\]\n/.exec(b)?.[1];
+    const shardLine = /\n {8}shard: ([^\n]+)\n/.exec(b)?.[1]?.trim();
+    const literal = shardLine?.match(/^\[([\d, ]+)\]$/)?.[1];
+    const defaultJson = shardLine?.match(/fromJSON\(['"](\[[\d, ]+\])['"]\)/)?.[1];
+    const shards = literal ?? (defaultJson ? JSON.parse(defaultJson).join(', ') : undefined);
     if (!minutes || !shards) throw new Error(`suiteJobs: no timeout-minutes or shard list for the ${id} job`);
     return { slices: shards.split(',').length, timeout: Number(minutes) * 60 };
   };

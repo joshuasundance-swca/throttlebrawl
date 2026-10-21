@@ -2,11 +2,11 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { fastForwardDone } from './lockstep';
 import { openQuickPlay } from './menu-navigation';
 
-// A lazy chunk whose import failed is fetched again (polish batch K's check, mustFix 1). Chromium keeps
-// a failed `import()` under its URL: on the live game, after a dropped or 404 first request, the 2nd and
-// 3rd imports of the chunk threw at once with 1 request in all, so `loadChunk`'s retry and render/'s ask
-// at the next road never reached the network, and the part stayed missing until a reload. The retry now
-// imports the chunk's own URL with a `retry` query (src/content/lazy-chunk.ts).
+// A lazy chunk whose import failed is fetched again (polish batch K's check, mustFix 1). Chromium's
+// module map keeps a module parse failure under its URL: importing that URL again throws without a new
+// request, while a `retry` query fetches it afresh. Chromium 156 does fetch again after a dropped or 404
+// request; the application tests below still cover those failures. `loadChunk` retries through the
+// chunk's own URL with a `retry` query (src/content/lazy-chunk.ts).
 //
 // The chunk here is render/'s race parts (src/render/race-parts.ts: the race's effects, speed lines, rain
 // and road-event props), which the renderer asks for as it starts and again at each road and each race
@@ -61,9 +61,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('the control: a failed import is kept, so importing the same URL again sends nothing; a retry query loads', async ({
-  page,
-}) => {
+test('the control: a module parse failure is kept under its URL; a retry query loads', async ({ page }) => {
   // The old retry imported the same URL again. The heat badge's chunk is one the menu never loads.
   const worker = await (await page.request.get('sw.js')).text();
   const rel = /assets\/heat-badge-[\w-]+\.js/.exec(worker)?.[0];
@@ -73,7 +71,9 @@ test('the control: a failed import is kept, so importing the same URL again send
     (url) => url.pathname.endsWith(`/${rel}`),
     (route: Route) => {
       hits.push(route.request().url());
-      return hits.length === 1 ? route.abort('failed') : route.continue();
+      return hits.length === 1
+        ? route.fulfill({ status: 200, contentType: 'text/javascript', body: 'export const = ;' })
+        : route.continue();
     },
   );
   await toMenu(page);
@@ -98,7 +98,7 @@ test('the control: a failed import is kept, so importing the same URL again send
   expect(out.second).toMatch(/^threw/);
   expect(out.third).toMatch(/^threw/);
   expect(out.retried).toBe('ok');
-  // One request for three imports of the plain URL; the retry query's import reached the host.
+  // One request for three imports of the invalid module; the retry query fetched valid code.
   expect(hits.filter((u) => !isRetry(u))).toHaveLength(1);
   expect(hits.filter(isRetry)).toHaveLength(1);
 });

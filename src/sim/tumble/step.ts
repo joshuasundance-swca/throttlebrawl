@@ -12,6 +12,7 @@ import {
   gapFarSide,
 } from '../../road';
 import { offRoadOn } from '../ground';
+import { planTerrainTrees } from '../../road/structures/terrain-trees';
 import { highDrop, riderState } from '../riders';
 import { courseEdgesOn } from '../riders/course';
 import { RIDER_HALF_LENGTH_M, RIDER_CONTACT_HALF_WIDTH_M } from '../riders/contact';
@@ -501,8 +502,9 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
     const tops = bodyTopsOf(world, config);
     // With the course's honest edges, both bodies meet the ground drawn past the barrier.
     const honest = courseEdgesOn(world.params);
-    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad, tops, honest);
-    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad, tops, honest);
+    const trees = road.terrain ? planTerrainTrees(road, config.seed) : undefined;
+    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad, tops, honest, trees);
+    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad, tops, honest, trees);
     contacts(world, config, m, r, r.riderRig, on);
     contacts(world, config, m, r, r.bikeRig, bikeAt);
     railEvents(world, config, m, r, r.riderRig, on);
@@ -512,12 +514,13 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
     const band = wallBand(road, on.edge, on.s, offRoad);
     m.pos.edge = on.edge;
     m.pos.s = on.s;
-    m.pos.d = on.d < band.lo ? band.lo : on.d > band.hi ? band.hi : on.d;
+    m.pos.d = road.terrain ? on.d : on.d < band.lo ? band.lo : on.d > band.hi ? band.hi : on.d;
     m.pos.dir = dirAlong(config, on.edge, on.s, r.travelX, r.travelZ);
-    m.h = Math.max(0, r.rider.y - on.ground);
+    const aboveGround = r.rider.y - on.ground;
+    m.h = road.terrain ? r.rider.y - road.surfaceHeight(on.edge, on.s, m.pos.d) : Math.max(0, aboveGround);
     m.speed = Math.sqrt(r.rider.vx * r.rider.vx + r.rider.vy * r.rider.vy + r.rider.vz * r.rider.vz);
     m.yaw = wrapAngle(m.yaw + r.spin * dt);
-    if (m.h <= 0.05) r.spin *= Math.max(0, 1 - 1.5 * dt);
+    if ((road.terrain ? aboveGround : m.h) <= 0.05) r.spin *= Math.max(0, 1 - 1.5 * dt);
   }
   r.elapsed += ts;
   if (r.overboard >= 0) {

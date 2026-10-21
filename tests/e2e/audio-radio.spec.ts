@@ -169,6 +169,9 @@ for (const [pack, id] of [
   ['base', 'keys-ultramar'],
   ['region-pnw', 'pnw-sunbreak'],
   ['region-sf', 'sf-hella-latency'],
+  // Iowa's two local audition stations use the existing folk and garage bands.
+  ['region-clinton', 'iowa-bluffline'],
+  ['region-clinton', 'iowa-third-shift'],
 ] as const) {
   test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
     const file = new URL(`../../packs/${pack}/stations/${id}.json`, import.meta.url);

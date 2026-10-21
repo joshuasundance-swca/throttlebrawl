@@ -151,6 +151,7 @@ function asyncScene(nestedFamily?: string) {
         return [];
       }
       setFronts() {}
+      setRoad() {}
       setStructures(plan: unknown) {
         this.structures.push(plan);
       }
@@ -203,6 +204,11 @@ function asyncScene(nestedFamily?: string) {
       }
     };
   const kit = { variants: [], roles: [] };
+  const modelKinds = ['sfDowntown', 'sfRoadside'];
+  const atlasHeld: string[] = [];
+  const modelFallbacks: string[] = [];
+  const modelLoads: string[][] = [];
+  const modelPaints: (Readonly<Record<string, string>> | undefined)[] = [];
   const modules: Record<string, unknown> = {
     'film pass': { LookPost: layer('film pass') },
     'race parts': {
@@ -213,6 +219,7 @@ function asyncScene(nestedFamily?: string) {
       EventProps: layer('events'),
       Smashables: layer('smashables'),
       AirPays: layer('air pays'),
+      TerrainTrees: layer('terrain trees'),
       rainColourOf: () => null,
     },
     'rider rigs': { RiderRigs: layer('rider rigs') },
@@ -240,15 +247,30 @@ function asyncScene(nestedFamily?: string) {
     },
     'text surfaces': { TextSurfaceLayer: layer('text surfaces') },
     models: {
-      modelKindsFor: () => ['sfDowntown', 'sfRoadside'],
-      retryableKinds: () => [],
+      modelKindsFor: () => [...modelKinds],
+      retryableKinds: (report: { atlasHeld: string[]; fellBack: { kind: string; retryable: boolean }[] }) => [
+        ...report.atlasHeld,
+        ...report.fellBack.filter((f) => f.retryable).map((f) => f.kind),
+      ],
       mergeModelReports: (_old: unknown, next: unknown) => next,
-      paintModel: (model: unknown) => model,
-      loadSceneryModels: () =>
-        result('models', {
-          models: { sfDowntown: kit, sfRoadside: kit },
-          report: { loaded: ['sfDowntown', 'sfRoadside'], fellBack: [] },
-        }),
+      paintModel: (model: unknown, palette: Readonly<Record<string, string>> | undefined) => {
+        modelPaints.push(palette);
+        return model;
+      },
+      loadSceneryModels: (_assets: unknown, kinds: string[]) => {
+        modelLoads.push([...kinds]);
+        const loaded = kinds.filter((kind) => !modelFallbacks.includes(kind));
+        return result('models', {
+          models: Object.fromEntries(loaded.map((kind) => [kind, kit])),
+          report: {
+            loaded,
+            fellBack: kinds
+              .filter((kind) => modelFallbacks.includes(kind))
+              .map((kind) => ({ kind, retryable: true })),
+            atlasHeld: loaded.filter((kind) => atlasHeld.includes(kind)),
+          },
+        });
+      },
     },
     roadside: { RoadsideLayer: layer('roadside'), kitFor: () => 'sfRoadside', KITS: { sfRoadside: {} } },
     downtown: { DowntownLayer: layer('downtown'), hasPortland: () => false, hasDowntown: () => true },
@@ -312,10 +334,76 @@ function asyncScene(nestedFamily?: string) {
     updates,
     layers,
     constructors,
+    modelKinds,
+    atlasHeld,
+    modelFallbacks,
+    modelLoads,
+    modelPaints,
   };
 }
 
 describe('presentation ownership at every top-level renderer chunk edge', () => {
+  it('reuses resolved same-road water in the next initial road scene without requesting it again', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const waterAt = () => 2;
+    const first = t.waters[0]!;
+    first.resolve(waterAt);
+    await first.promise;
+    await Promise.resolve();
+    const built = vi.mocked(roadModule.buildRoadScene).mock.calls.length;
+
+    t.renderer.applyPresentation({ ...t.pick, sceneSeed: 10 }, { reset: 'preserve' });
+    expect(t.waters).toHaveLength(1);
+    expect(vi.mocked(roadModule.buildRoadScene).mock.calls).toHaveLength(built + 1);
+    expect(vi.mocked(roadModule.buildRoadScene).mock.lastCall?.[3]).toMatchObject({ waterAt, seed: 10 });
+
+    const other = recipe().road;
+    t.renderer.applyPresentation({ ...t.pick, road: other }, { reset: 'preserve' });
+    expect(t.waters).toHaveLength(2);
+    expect(vi.mocked(roadModule.buildRoadScene).mock.lastCall?.[3]).not.toHaveProperty('waterAt');
+    const second = t.waters[1]!;
+    second.resolve(waterAt);
+    await second.promise;
+    await Promise.resolve();
+    expect(vi.mocked(roadModule.buildRoadScene).mock.lastCall?.[3]).toMatchObject({ waterAt });
+  });
+
+  it('reuses loaded models but still asks for atlas-held, fallback and new kinds', async () => {
+    const t = asyncScene();
+    t.atlasHeld.push('sfRoadside');
+    t.modelFallbacks.push('sfDowntown');
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    await t.settleCurrent(0);
+    expect(t.modelLoads).toEqual([['sfDowntown', 'sfRoadside']]);
+
+    t.modelFallbacks.length = 0;
+    t.atlasHeld.length = 0;
+    t.modelKinds.push('pdxDowntown');
+    const boundary = t.calls.length;
+    t.renderer.applyPresentation({ ...t.pick, sceneSeed: 10 }, { reset: 'preserve' });
+    await t.settleCurrent(boundary);
+    expect(t.modelLoads[1]).toEqual(['sfDowntown', 'sfRoadside', 'pdxDowntown']);
+
+    const next = t.calls.length;
+    const built = vi.mocked(roadModule.buildRoadScene).mock.calls.length;
+    const palette = { road: '#123456' };
+    t.renderer.applyPresentation(
+      { ...t.pick, sceneSeed: 11, look: 'classic', env: { timeOfDay: 'night', palette } },
+      { reset: 'preserve' },
+    );
+    await t.settleCurrent(next);
+    expect(t.modelLoads).toHaveLength(2);
+    expect(vi.mocked(roadModule.buildRoadScene).mock.calls).toHaveLength(built + 1);
+    expect(t.modelPaints.at(-1)).toEqual(palette);
+    expect(t.renderer.look).toBe('classic');
+    const options = vi.mocked(roadModule.buildRoadScene).mock.lastCall?.[3];
+    expect(options).toMatchObject({ seed: 11 });
+    expect(options?.models).toHaveProperty('sfDowntown');
+    expect(options?.models).toHaveProperty('sfRoadside');
+    expect(options?.models).toHaveProperty('pdxDowntown');
+  });
+
   it('rejects stale road-water completion on the same road and permits the current rebuild', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
@@ -408,6 +496,22 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('holds authored physical scenery until its current drawing chunk arrives, with a legacy control', async () => {
+    const t = asyncScene();
+    expect(t.renderer.physicalWorldReady!()).toBe(true);
+    const bundle = fixtureNetwork([{ id: 'terrain', lengthM: 80, kappa: 0 }]);
+    const road = createRoadNetwork({ ...bundle, network: { ...bundle.network, terrain: { patches: [] } } });
+    t.renderer.applyPresentation({ ...t.pick, road }, { reset: 'preserve' });
+    expect(t.renderer.physicalWorldReady!()).toBe(false);
+    const pending = t.calls.filter((call) => call.name === 'race parts').at(-1)!;
+    await t.resolve(pending, null);
+    expect(t.renderer.physicalWorldReady!()).toBe(false);
+    t.renderer.setRiderLooks([]); // the existing retry boundary
+    t.renderer.render(null, null, 0, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 62 });
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    expect(t.renderer.physicalWorldReady!()).toBe(true);
+    expect(t.installed).toContain('terrain trees');
+  });
   it('installs late boards for the current road and catalog with pending vetoes, then keeps their root across resets', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
