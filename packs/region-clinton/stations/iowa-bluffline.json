@@ -1,0 +1,38 @@
+{
+  "type": "station",
+  "id": "iowa-bluffline",
+  "name": "Bluffline Radio",
+  "genre": "folk",
+  "regions": ["clinton-iowa"],
+  "tracks": [
+    {
+      "id": "yard-lights",
+      "title": "Yard Lights",
+      "procedural": {
+        "preset": "folk-band",
+        "params": { "bpm": 124, "key": "G", "progression": "campfire" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "low-crossing",
+      "title": "Low Crossing",
+      "procedural": { "preset": "folk-band", "params": { "bpm": 136, "key": "D", "progression": "rain" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "first-bus-east",
+      "title": "First Bus East",
+      "procedural": { "preset": "folk-band", "params": { "bpm": 146, "key": "A", "progression": "lift" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Original seeded tracks for a local audition, using the existing folk-band composer and rig. No recording or new regional music grammar.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-20" }
+  }
+}

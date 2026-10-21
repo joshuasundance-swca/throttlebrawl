@@ -621,6 +621,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // the road is built again once it is in (playtest 4 run C, punch item 6: the lake's land is a bank down to the
   // shore, which needs the water's level), and its roadside with it, so the docks stand at the lake's level.
   const requestWater = (road: RoadNetwork) => {
+    // The synchronous installRoad build already drew this road with its resolved water.
+    if (water?.road === road) return;
     const current = scope.capture();
     water = null;
     void loadNetworkWater(road.id)
@@ -1098,9 +1100,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (!m) return gate.later(requestModels);
       modelsModule = m;
       const { tropical, tags } = networkTags(args.road, args.dressing);
-      const kinds = m
-        .modelKindsFor({ tropical, tags, palette: new Set(Object.keys(palette ?? {})), traffic: trafficIds })
-        .filter((k) => !requested.has(k));
+      const needed = m.modelKindsFor({
+        tropical,
+        tags,
+        palette: new Set(Object.keys(palette ?? {})),
+        traffic: trafficIds,
+      });
+      // A previous presentation may have retired the layer request after its model loaded.
+      if (needed.some((k) => loadedModels[k] && k.endsWith('Roadside'))) requestRoadside();
+      if (needed.some((k) => loadedModels[k] && (k === 'sfDowntown' || k === 'pdxDowntown')))
+        requestDowntown();
+      const kinds = needed.filter((k) => !requested.has(k));
       if (!kinds.length) return;
       for (const k of kinds) requested.add(k);
       const { models: loaded, report } = await m.loadSceneryModels(assets, kinds);
@@ -1153,6 +1163,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     waterfrontLoading = false;
     blocksLoading = false;
     requested.clear();
+    const retryable = modelsModule && modelReport ? new Set(modelsModule.retryableKinds(modelReport)) : null;
+    // Loaded models survive a presentation; only unfinished or retryable kinds need another answer.
+    for (const kind of Object.keys(loadedModels) as ModelKind[])
+      if (!retryable?.has(kind)) requested.add(kind);
     rigs?.invalidatePresentation();
     gate.newRoad();
     return presentation;
