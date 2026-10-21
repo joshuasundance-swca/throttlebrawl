@@ -362,13 +362,11 @@ for (const [where, width, height, finePointer] of [
       });
       await page.goto('./');
       await expect(page.locator('#start-screen')).toBeVisible();
-      // The stamp names the build wherever there is room. On the shortest screen its two corners
-      // can both cover startup instructions; hiding is allowed only when those words block both.
+      // The stamp names the build wherever there is room. Available space depends on the actual
+      // startup words and build label, not a particular viewport: hiding needs two blocked corners.
       await settleStamp(page);
       const start = await stampCover(page);
-      if (width !== 568 || height !== 320) {
-        expect(start.shown, `${where}: the stamp shows on the start screen`).toBe(true);
-      } else if (!start.shown) {
+      {
         const blockedCorners = await page.evaluate(() => {
           const stamp = document.getElementById('build-stamp')!;
           const oldClass = stamp.className;
@@ -403,10 +401,16 @@ for (const [where, width, height, finePointer] of [
             ),
           );
         });
-        expect(blockedCorners, `${where}: both stamp corners would cover actual startup words`).toEqual([
-          true,
-          true,
-        ]);
+        if (!start.shown)
+          expect(blockedCorners, `${where}: both stamp corners would cover actual startup words`).toEqual([
+            true,
+            true,
+          ]);
+        else
+          expect(
+            blockedCorners[start.at.includes('at-right') ? 1 : 0],
+            `${where}: the shown stamp stays clear of actual startup words`,
+          ).toBe(false);
       }
       expect(start.under, `${where}: startup controls stay clear`).toEqual([]);
 
