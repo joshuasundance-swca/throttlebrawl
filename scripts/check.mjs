@@ -145,7 +145,7 @@ const STEPS = [
   // sharded run it may only ride in the last slice, after that slice's e2e files, as in ci.yml; the
   // slice plan leaves that slice room for it.
   { tier: 'perf', name: 'perf', script: 'perf', count: fromExamined, lastSliceOnly: true },
-  // The size budget alone (first-load JavaScript and its pull-request floor, the whole first load,
+  // The size budget alone (first-load JavaScript and its headroom diagnostic, the whole first load,
   // per-region models), without the throttled probes: seconds, so the quick check catches a PR
   // that crosses it. perf checks the same budget, so in a run with perf this step stands down.
   {
