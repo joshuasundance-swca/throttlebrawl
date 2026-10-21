@@ -1,0 +1,27 @@
+{
+  "type": "event-modifier",
+  "id": "iowa-hay-truck",
+  "name": "County Hay Run",
+  "kind": "human",
+  "tags": ["set-piece", "hay-spill", "iowa"],
+  "rarityWeight": 1,
+  "eligibility": { "regions": ["clinton-iowa"], "eventKinds": ["classic-race"], "timeOfDay": [] },
+  "trigger": { "atProgress": [0.15, 0.8], "chance": 0.25 },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "hay-spill",
+      "needsTag": "iowa-farm-traffic",
+      "signText": "FARM TRUCK AHEAD. LOOSE BALES.",
+      "vehicle": "iowa-hay-truck",
+      "theme": "iowa"
+    }
+  ],
+  "announce": { "barkTrigger": "modifier-start", "sign": null },
+  "meta": {
+    "status": "live",
+    "notes": "Rare fictional farm haul on Rural Rush's open highway: follow the crawling flatbed or pass while judging oncoming traffic. The positive middle-bends tag is authored gameplay dressing, not mapped agricultural activity. Eagle Point has no matching tag. The warning precedes the spill, not necessarily the county fork. Reuses the existing hay-spill mechanics and hay props.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-21" }
+  }
+}

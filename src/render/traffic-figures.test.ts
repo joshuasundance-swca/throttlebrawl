@@ -13,6 +13,7 @@ import {
   Vector3,
 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { EntitySnapshot, SimEvent, SimSnapshot, SimTrafficTypeDef } from '../sim/api';
 import { mergeBoxes } from './geometry';
 import { createFlatLook } from './look';
@@ -97,6 +98,7 @@ const TYPES: SimTrafficTypeDef[] = [
   road('base:tourist-with-cooler', 'pedestrian', 0.5, 0.6),
   road('base:sedan-rental', 'car', 4.6, 1.8),
   road('base:box-truck', 'truck', 7.5, 2.4),
+  road('region-clinton:iowa-hay-truck', 'truck', 7.5, 2.4),
   // Playtest 3 (T4.3): the moving ramp truck, the real-world local life and the big animals.
   road('base:event-car-carrier', 'truck', 7.5, 2.4),
   road('base:pedicab', 'car', 2.6, 1.2),
@@ -114,6 +116,28 @@ const TYPES: SimTrafficTypeDef[] = [
 const def = (id: string) => TYPES.find((t) => t.contentId === id);
 
 describe('which regional figure draws each type', () => {
+  it('draws the Iowa encounter as its own flatbed without remapping another region', () => {
+    const figure = trafficFigureFor('region-clinton:iowa-hay-truck');
+    expect(figure).toBe('farmTruck');
+    if (!figure) throw new Error('no farm truck figure');
+    // A similarly named type in another pack must keep its existing selection.
+    expect(trafficFigureFor('region-pnw:iowa-hay-truck')).toBeNull();
+    expect(trafficFigureFor('region-pnw:pnw-hay-truck')).toBeNull();
+    const type = JSON.parse(readFileSync('packs/region-clinton/traffic/iowa-hay-truck.json', 'utf8')) as {
+      widthM: number;
+      lengthM: number;
+      heightM: number;
+    };
+    const views = new EntityViews(createFlatLook());
+    views.setTrafficTypes([road('region-clinton:iowa-hay-truck', 'truck', type.lengthM, type.widthM)]);
+    views.sync(null, snap([entity(70, 'vehicle', 'region-clinton:iowa-hay-truck')]), 1, 0);
+    expect(
+      views.root.children.some(
+        (m) => m instanceof InstancedMesh && m.name === 'views-farmTruck' && m.count > 0,
+      ),
+    ).toBe(true);
+  });
+
   it("maps each region's traffic by id, and leaves the older shapes alone", () => {
     expect(trafficFigureFor('base:golf-cart')).toBe('golfCart');
     expect(trafficFigureFor('base:rental-convertible')).toBe('convertible');
