@@ -20,6 +20,38 @@ const roadContracts = [
 ].sort();
 
 describe('planPush', () => {
+  it.each(['packs/future-pack/modifiers/harvest.json', 'packs\\future-pack\\modifiers\\harvest.json'])(
+    'checks warning copy and eligible road-event barks for modifier input %s',
+    (source) => {
+      const contracts = ['src/audio/road-event-barks.test.ts', 'src/render/event-signs.test.ts'];
+      expect(planPush([source], tree(...contracts))).toMatchObject({ mode: 'files', tests: contracts });
+    },
+  );
+
+  it.each(['packs/future-pack/events/county-race.json', 'packs/future-pack/barks/road-events-county.json'])(
+    'checks road-event bark coverage for its input %s without adding unrelated contracts',
+    (source) => {
+      const barks = 'src/audio/road-event-barks.test.ts';
+      expect(planPush([source], tree(barks, 'src/render/event-signs.test.ts')).tests).toEqual([barks]);
+    },
+  );
+
+  it('deduplicates content feedback checks, omits missing files and leaves unrelated content alone', () => {
+    const contracts = ['src/audio/road-event-barks.test.ts', 'src/render/event-signs.test.ts'];
+    const modifier = 'packs/future-pack/modifiers/harvest.json';
+    expect(planPush([modifier, ...contracts, modifier], tree(...contracts)).tests).toEqual(contracts);
+    expect(planPush([modifier], tree()).tests).toEqual([]);
+    expect(planPush([modifier], tree(contracts[0]!)).tests).toEqual([contracts[0]]);
+    for (const source of [
+      'packs/future-pack/barks/rival-core.json',
+      'packs/future-pack/traffic/truck.json',
+      'packs/future-pack/regions/county/roads/main.json',
+      'src/ui/menu.ts',
+      'docs/roadmap.md',
+    ]) {
+      expect(planPush([source], tree(...contracts)).tests, source).toEqual([]);
+    }
+  });
   it('selects the cheap patrol placement contract for pack JSON and keeps it deduplicated', () => {
     const patrol = 'tools/road/patrol-placement.test.ts';
     const source = 'packs/future-pack/regions/future-ridge/roads/serpentine.json';
