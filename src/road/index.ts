@@ -237,3 +237,10 @@ export type {
   PnwSideStreet,
   PnwSolidDef,
 } from './structures/pnw-places';
+export {
+  dispatchCourts,
+  dispatchCourtClear,
+  DISPATCH_COURT_TAG,
+  DISPATCH_COURT_DEPTH_M,
+  type DispatchCourt,
+} from './dispatch-court';

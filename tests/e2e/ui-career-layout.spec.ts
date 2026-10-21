@@ -233,63 +233,139 @@ async function expectWholeLayout(page: Page, start: Measured, where: string) {
 }
 
 async function offBikeCoverControl(page: Page) {
+  const crashFrom = await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    if (!g) throw new Error('race seam missing');
+    g.lockstep(1);
+    g.setBot(false);
+    return g.snapshot()?.tick ?? 0;
+  });
   const identity = await page.evaluate(() => (window as TestWindow).__playerIdentityControl?.());
   expect(identity?.planted, 'a real rival rig was planted at the followed player').toBe(true);
   expect(identity?.unchanged, 'nearby rival geometry never replaces followed-player geometry').toBe(true);
   expect(identity?.maskBound, 'actual mask assigns followed-player white and rival materials black').toBe(
     true,
   );
-  for (const mode of ['Tumble', 'OnFoot']) {
-    await page.evaluate((mode) => {
-      const g = (window as TestWindow).__game;
-      if (!g) throw new Error('race seam missing');
-      const from = g.snapshot()?.tick ?? 0;
+  // Bleed off the paid landing's surge before the overhold: launching the tumble at boosted
+  // racing speed can throw a body past the course edge, whose real recovery skips get-up.
+  await page.keyboard.down('KeyS');
+  const approach = await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    if (!g) throw new Error('race seam missing');
+    const from = g.snapshot()?.tick ?? 0;
+    const self = () =>
+      g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as
+        { mode: string; speed: number; boostS?: number } | undefined;
+    return new Promise<ReturnType<typeof self>>((resolve) => {
       g.fastForward(
-        (s) =>
-          s.tick > from + 1200 ||
-          (g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as { mode?: string } | undefined)
-            ?.mode === mode,
-        { then: 0 },
+        (s) => {
+          const me = self();
+          if (s.tick <= from + 1200 && me?.mode === 'Road' && (me.speed > 10 || (me.boostS ?? 0) > 0))
+            return false;
+          requestAnimationFrame(() => resolve(self()));
+          return true;
+        },
+        { then: 1 },
       );
-    }, mode);
-    await fastForwardDone(page, `off-bike cover control: ${mode}`);
-    const result = await page.evaluate(() => {
-      const w = window as TestWindow;
-      const self = w.__game?.snapshot()?.entities?.find((e) => e.id === w.__game?.playerId()) as
-        { mode?: string } | undefined;
-      const parts = w.__playerParts?.() ?? [];
-      const covers = ['bike', 'rider'].map((kind) => {
-        const part = parts
-          .filter((p) => p.kind === kind)
-          .sort(
-            (a, b) =>
-              (b.box.right - b.box.left) * (b.box.bottom - b.box.top) -
-              (a.box.right - a.box.left) * (a.box.bottom - a.box.top),
-          )[0];
-        if (!part) return null;
-        const d = document.createElement('div');
-        d.id = `planted-${kind}-cover`;
-        Object.assign(d.style, {
-          position: 'fixed',
-          left: `${part.box.left}px`,
-          top: `${part.box.top}px`,
-          width: `${part.box.right - part.box.left}px`,
-          height: `${part.box.bottom - part.box.top}px`,
-          background: '#f0f',
-          zIndex: '99',
-        });
-        document.getElementById('hud')?.append(d);
-        return d.id;
-      });
-      return {
-        mode: self?.mode,
-        kinds: [...new Set(parts.map((p) => p.kind))],
-        covers,
-        pieces: w.__layoutPieces?.() ?? [],
-        w: innerWidth,
-        h: innerHeight,
-      };
     });
+  });
+  await page.keyboard.up('KeyS');
+  expect(approach?.mode, 'braking keeps the real player on the road').toBe('Road');
+  // The wheelie pops at 6 m/s and settles below 3. At this pace the rider can coast through
+  // the overhold without gas, avoiding the high-speed cartwheel and the landing's surge.
+  expect(approach?.speed, 'the approach is fast enough for a wheelie').toBeGreaterThanOrEqual(6);
+  expect(approach?.speed, 'the approach is a slow coast into the overhold').toBeLessThanOrEqual(10);
+  expect(approach?.boostS ?? 0, 'the landing surge has ended before the overhold').toBe(0);
+  for (const mode of ['Tumble', 'OnFoot']) {
+    if (mode === 'Tumble') {
+      // A deliberately overheld wheelie causes a real crash. The bot's incidental next collision
+      // is not a layout contract: better riding must not make these physical controls disappear.
+      await page.keyboard.down('KeyH');
+    }
+    const result = await page.evaluate(
+      ({ mode, crashFrom }) => {
+        const w = window as TestWindow;
+        const g = w.__game;
+        if (!g) throw new Error('race seam missing');
+        const self = () =>
+          g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as { mode?: string } | undefined;
+        const measure = () => {
+          const parts = w.__playerParts?.() ?? [];
+          const covers = ['bike', 'rider'].map((kind) => {
+            const part = parts
+              .filter((p) => p.kind === kind)
+              .sort(
+                (a, b) =>
+                  (b.box.right - b.box.left) * (b.box.bottom - b.box.top) -
+                  (a.box.right - a.box.left) * (a.box.bottom - a.box.top),
+              )[0];
+            if (!part) return null;
+            const d = document.createElement('div');
+            d.id = `planted-${kind}-cover`;
+            Object.assign(d.style, {
+              position: 'fixed',
+              left: `${part.box.left}px`,
+              top: `${part.box.top}px`,
+              width: `${part.box.right - part.box.left}px`,
+              height: `${part.box.bottom - part.box.top}px`,
+              background: '#f0f',
+              zIndex: '99',
+            });
+            document.getElementById('hud')?.append(d);
+            return d.id;
+          });
+          return {
+            mode: self()?.mode,
+            tick: g.snapshot()?.tick,
+            recovery: g
+              .events()
+              .filter(
+                (e) =>
+                  e.actor === g.playerId() &&
+                  e.tick > crashFrom &&
+                  ['crash', 'railOver', 'splash', 'respawn', 'getUp'].includes(e.type),
+              ),
+            loopOut: g
+              .events()
+              .some(
+                (e) =>
+                  e.type === 'crash' &&
+                  e.actor === g.playerId() &&
+                  e.tick > crashFrom &&
+                  e.data?.['cause'] === 'wheelie' &&
+                  e.data?.['loopOut'] === true,
+              ),
+            kinds: [...new Set(parts.map((p) => p.kind))],
+            covers,
+            pieces: w.__layoutPieces?.() ?? [],
+            w: innerWidth,
+            h: innerHeight,
+          };
+        };
+        const from = g.snapshot()?.tick ?? 0;
+        return new Promise<ReturnType<typeof measure>>((resolve) => {
+          g.fastForward(
+            (s) => {
+              if (self()?.mode !== mode && s.tick <= from + 1200) return false;
+              // The loop draws this actual sim state after its step listeners, then schedules its
+              // next frame. This callback was queued first, so it measures that draw before another
+              // tick can remount a rider whose bike is already nearby. Zero lockstep means real time,
+              // not a freeze; use the valid one-tick hand-back and keep observation in this task.
+              requestAnimationFrame(() => resolve(measure()));
+              return true;
+            },
+            { then: 1 },
+          );
+        });
+      },
+      { mode, crashFrom },
+    );
+    console.log(`off-bike ${mode}: recovery events ${JSON.stringify(result.recovery)}`);
+    await fastForwardDone(page, `off-bike cover control: ${mode} measured at tick ${result.tick}`);
+    if (mode === 'Tumble') {
+      await page.keyboard.up('KeyH');
+      expect(result.loopOut, 'the held wheelie caused the real player crash').toBe(true);
+    }
     expect(result.mode, 'the real race reached the detached state').toBe(mode);
     expect(result.kinds.sort(), `${mode}: both actual bodies measured`).toEqual(['bike', 'rider']);
     const found = layoutFindings(result.pieces, result.w, result.h);

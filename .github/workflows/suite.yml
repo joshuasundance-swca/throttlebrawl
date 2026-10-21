@@ -103,18 +103,19 @@ env:
   NOTES_PR_AUTHOR: ${{ inputs.notes-pr-author }}
 
 jobs:
-  # The static checks: types, lint, format, packs, leak scan, size and notes. About 2 minutes, so
-  # its own job; with the unit tests after them in one job (until 2026-10-05) it took up to 564 s.
-  # The timeout is 1.5x its 122 s mean, rounded up. In the quick check the same job then builds and
-  # checks the size budget (`--tier static,budget`, about 30 s more), so it gets a minute more.
-  # [default]
+  # The static checks: types, lint, format, packs, leak scan, size and notes. Five successful
+  # jobs on 2026-10-21 averaged 194 s; a cancelled 244 s job had passed all seven checks.
+  # Including that elapsed observation gives 202.3 s; four quick jobs averaged 214.25 s.
+  # Each mean needs six whole minutes with the documented 1.5x planning allowance.
+  # The cancelled job is timing evidence, not acceptance or a tail bound. The quick check
+  # still runs the build and size budget too; no check or routing changes. [default]
   static:
     name: static
     if: ${{ inputs.control-selection == '' || !inputs.diagnostic-control || fromJSON(inputs.control-selection).static }}
     outputs:
       coverage: ${{ steps.coverage.outputs.value }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.full && 4 || 5 }}
+    timeout-minutes: 6
     steps:
       - name: Validate control selection and set coverage
         id: coverage

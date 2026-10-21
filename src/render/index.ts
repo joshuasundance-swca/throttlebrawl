@@ -43,7 +43,14 @@ import {
 } from '../sim/api';
 import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
-import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
+import {
+  dispatchCourts,
+  loadPnwPlacesLayout,
+  loadWaterfrontLayout,
+  structuresOf,
+  type StructureFoot,
+  type StructurePlan,
+} from '../road';
 import type { AirPays } from './air-pays';
 import type { TerrainTrees } from './terrain-trees';
 import type { Boards, BoardCatalog, BoardSlot, VisibleContent } from './boards';
@@ -489,6 +496,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   for (const o of persistent) scene.add(o);
   loadRace();
   let roadScene: RoadScene | null = null;
+  let courtFootprints: readonly StructureFoot[] = [];
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
   /** Tallest body in the active traffic catalog; absent until a catalog is supplied. */
@@ -615,6 +623,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         ...(scenes?.reserved() ?? []),
         ...(landmarksModule ? landmarksModule.landmarkFootprints(roadArgs.road) : []),
       ],
+      reservedFootprints: courtFootprints,
       // Playtest 3 (T12.1): rules that draw from another kit (Key West's Old Town, the Duval kit,
       // with its region atlas loaded alongside it in models.ts).
       models,
@@ -987,8 +996,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (placesModule || !roadArgs) return;
     const tags = networkTags(roadArgs.road, roadArgs.dressing).tags;
     if (
-      !['ferry', 'clearcut', 'festival', 'longview-port-yard', 'longview-street-life'].some((t) =>
-        tags.has(t),
+      !['ferry', 'clearcut', 'festival', 'longview-port-yard', 'longview-street-life', 'dispatch-court'].some(
+        (t) => tags.has(t),
       )
     )
       return;
@@ -1065,6 +1074,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   };
   const buildRoad = () => {
     if (!roadArgs) return;
+    courtFootprints = dispatchCourts(roadArgs.road).map((c) => c.foot);
     race?.terrainTrees.setRoad(roadArgs.road, sceneSeed);
     if (roadScene) {
       scene.remove(roadScene.group);
@@ -1075,6 +1085,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       roadsideDensity: roadArgs.density,
       seed: sceneSeed,
       models,
+      reservedFootprints: courtFootprints,
       palette,
       ...(trafficClearanceM === undefined ? {} : { trafficClearanceM }),
       ...(water && water.road === roadArgs.road ? { waterAt: water.at } : {}),

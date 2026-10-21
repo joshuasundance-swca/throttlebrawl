@@ -10,6 +10,10 @@ export const POLL_MS = 10_000;
 export const REQUEST_CAP = 24;
 export const OUTPUT_RESERVE_MS = 1_000;
 
+// After reading main: compare, runs, detail, optional jobs, and three final revalidation reads.
+// Larger collections still have to finish within the same hard cap or fall back to the full suite.
+const SUCCESSOR_REQUESTS = 7;
+
 const SHA = /^[0-9a-f]{40}$/;
 const positive = (n) => Number.isSafeInteger(n) && n > 0;
 
@@ -134,13 +138,13 @@ export async function routeMain(o) {
       r.head_sha === sha &&
       sameRepo(r.repository) &&
       sameRepo(r.head_repository);
-    const pending = (r) => ['queued', 'in_progress'].includes(r.status) && r.conclusion === null;
+    const pending = (r) => ['queued', 'pending', 'in_progress'].includes(r.status) && r.conclusion === null;
     const head = async () => {
       const branch = await get(`${base}/branches/main`);
       if (branch?.name !== 'main' || !SHA.test(branch.commit?.sha)) throw new Error('invalid main head');
       return branch.commit.sha;
     };
-    let train;
+    let activeTrain;
     for (;;) {
       const successor = await head();
       if (successor !== o.sha) {
@@ -205,33 +209,38 @@ export async function routeMain(o) {
           run: chosen.id,
         };
       }
-      // An active main train grants time for merges/proof publication, never acceptance itself.
-      train ??= await get(`${base}/actions/workflows/train.yml`);
-      if (!positive(train?.id) || train.path !== '.github/workflows/train.yml' || train.state !== 'active')
-        return fallback('ineligible-train-workflow');
-      let active = false;
-      for (const status of ['queued', 'in_progress']) {
-        const runs = await collection(
-          `${base}/actions/workflows/${train.id}/runs?branch=main&status=${status}`,
-          'workflow_runs',
-        );
-        if (
-          runs.some(
-            (r) =>
-              validRun(r, r.head_sha, train, r.event) &&
-              SHA.test(r.head_sha) &&
-              ['workflow_run', 'workflow_dispatch'].includes(r.event) &&
-              pending(r),
+      // One observed active train grants this original bounded wait, never acceptance. Repeating
+      // the train/proof lookups on every poll starves the descendant's final safety checks.
+      if (activeTrain === undefined) {
+        const train = await get(`${base}/actions/workflows/train.yml`);
+        if (!positive(train?.id) || train.path !== '.github/workflows/train.yml' || train.state !== 'active')
+          return fallback('ineligible-train-workflow');
+        activeTrain = false;
+        for (const status of ['queued', 'in_progress']) {
+          const runs = await collection(
+            `${base}/actions/workflows/${train.id}/runs?branch=main&status=${status}`,
+            'workflow_runs',
+          );
+          if (
+            runs.some(
+              (r) =>
+                validRun(r, r.head_sha, train, r.event) &&
+                SHA.test(r.head_sha) &&
+                ['workflow_run', 'workflow_dispatch'].includes(r.event) &&
+                pending(r),
+            )
           )
-        )
-          active = true;
+            activeTrain = true;
+        }
       }
-      if (!active || requests >= REQUEST_CAP || remaining() <= POLL_MS)
-        return fallback(
-          !active ? 'no-eligible-active-train' : requests >= REQUEST_CAP ? 'request-cap' : 'poll-deadline',
-        );
+      if (!activeTrain) return fallback('no-eligible-active-train');
+      // Read head first after every sleep and preserve enough requests for a complete one-page
+      // descendant decision. If main never moves, refresh its exact proof once before ending.
+      if (remaining() <= POLL_MS || REQUEST_CAP - requests < 1 + SUCCESSOR_REQUESTS) {
+        if (await proof()) return { ...full, path: 'tested', skip: true, reason: 'exact tested-tree proof' };
+        return fallback(remaining() <= POLL_MS ? 'poll-deadline' : 'request-cap');
+      }
       await sleep(POLL_MS);
-      if (await proof()) return { ...full, path: 'tested', skip: true, reason: 'exact tested-tree proof' };
     }
   } catch {
     return fallback(failureReason);

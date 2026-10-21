@@ -147,8 +147,151 @@ function scenario(
 }
 
 describe('main preflight preserves acceptance while skipping superseded work', () => {
+  it.each(['queued', 'pending'])(
+    'fully revalidates a late %s descendant within the existing request cap',
+    async (status) => {
+      const s = scenario({
+        activeTrain: true,
+        run: { ...run, status },
+        headAt: () => (s.now() < 40_000 ? original : successor),
+      });
+      expect(await s.route()).toEqual({
+        path: 'superseded',
+        skip: false,
+        successor,
+        run: run.id,
+        tree,
+        reason: 'last-observed eligible descendant CI',
+      });
+      expect(s.calls.filter((p) => p.endsWith(`/actions/runs/${run.id}`))).toHaveLength(3);
+      expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+      expect(s.now()).toBe(40_000);
+    },
+  );
+
+  it('reserves the complete successful-descendant gate lookup at the last poll', async () => {
+    const s = scenario({
+      activeTrain: true,
+      run: { ...run, status: 'completed', conclusion: 'success' },
+      headAt: () => (s.now() < 80_000 ? original : successor),
+    });
+    expect(await s.route()).toMatchObject({ path: 'superseded', skip: false });
+    expect(s.calls.some((p) => p.includes('/attempts/1/jobs?'))).toBe(true);
+    expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+    expect(s.now()).toBe(80_000);
+  });
+
+  it('can validate complete second-page descendant and gate records at the last poll', async () => {
+    const complete = { ...run, status: 'completed', conclusion: 'success' };
+    const s = scenario({
+      activeTrain: true,
+      run: complete,
+      headAt: () => (s.now() < 80_000 ? original : successor),
+      answer: (p) => {
+        if (p.includes(`/workflows/${ci.id}/runs?`))
+          return {
+            total_count: 101,
+            workflow_runs: p.endsWith('page=2')
+              ? [complete]
+              : Array.from({ length: 100 }, (_, i) => ({
+                  ...complete,
+                  id: i + 100,
+                  created_at: '2026-10-19T18:00:00Z',
+                })),
+          };
+        if (p.includes('/jobs?'))
+          return {
+            total_count: 101,
+            jobs: p.endsWith('page=2')
+              ? [
+                  {
+                    id: 60,
+                    run_id: run.id,
+                    run_attempt: 1,
+                    name: 'gate',
+                    status: 'completed',
+                    conclusion: 'success',
+                  },
+                ]
+              : Array.from({ length: 100 }, (_, i) => ({
+                  id: i + 100,
+                  run_id: run.id,
+                  run_attempt: 1,
+                  name: `routing ${i}`,
+                  status: 'completed',
+                  conclusion: 'success',
+                })),
+          };
+        return undefined;
+      },
+    });
+    expect(await s.route()).toMatchObject({ path: 'superseded', skip: false });
+    expect(s.calls).toHaveLength(REQUEST_CAP);
+    expect(s.calls.filter((p) => p.endsWith(`/actions/runs/${run.id}`))).toHaveLength(3);
+  });
+
+  it.each(['changed total', 'duplicate', 'request cap'])(
+    'fails closed on late successor pagination uncertainty: %s',
+    async (kind) => {
+      const s = scenario({
+        activeTrain: true,
+        headAt: () => (s.now() < 80_000 ? original : successor),
+        answer: (p) => {
+          if (!p.includes(`/workflows/${ci.id}/runs?`)) return undefined;
+          const page = Number(new URL(p, 'https://api.invalid').searchParams.get('page'));
+          return {
+            total_count: kind === 'request cap' ? 1001 : kind === 'changed total' && page === 2 ? 102 : 101,
+            workflow_runs:
+              page === 1 || kind === 'request cap'
+                ? Array.from({ length: 100 }, (_, i) => ({ ...run, id: page * 100 + i }))
+                : [{ ...run, id: 100 }],
+          };
+        },
+      });
+      expect(await s.route()).toMatchObject({
+        path: 'full',
+        skip: false,
+        reason: kind === 'request cap' ? 'request-cap' : 'lookup-failed',
+      });
+      expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+    },
+  );
+
+  it('still checks for an exact proof published while the observed train finishes', async () => {
+    const s = scenario({
+      head: original,
+      activeTrain: true,
+      answer: (p) =>
+        p.includes('/actions/artifacts?') && s.now() >= 40_000
+          ? {
+              total_count: 1,
+              artifacts: [
+                {
+                  id: 1,
+                  name: `tested-tree-${tree}`,
+                  expired: false,
+                  workflow_run: { id: 40, repository_id: 10, head_repository_id: 10 },
+                },
+              ],
+            }
+          : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'tested', skip: true });
+    expect(s.now()).toBeLessThanOrEqual(PREFLIGHT_MS - OUTPUT_RESERVE_MS);
+    expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+  });
+
   it('distinguishes request allowance, polling deadline and lookup failure without raw errors', async () => {
-    const capped = scenario({ head: original, activeTrain: true });
+    const capped = scenario({
+      answer: (p) => {
+        if (!p.includes('/actions/artifacts?')) return undefined;
+        const page = Number(new URL(p, 'https://api.invalid').searchParams.get('page'));
+        return {
+          total_count: REQUEST_CAP * 100 + 1,
+          artifacts: Array.from({ length: 100 }, (_, i) => ({ id: page * 100 + i, name: 'unrelated' })),
+        };
+      },
+    });
     expect(await capped.route()).toMatchObject({ path: 'full', skip: false, reason: 'request-cap' });
     expect(capped.calls).toHaveLength(REQUEST_CAP);
     const deadline = scenario({ before: () => deadline.advance(PREFLIGHT_MS) });
@@ -227,6 +370,10 @@ describe('main preflight preserves acceptance while skipping superseded work', (
     { repository: { ...identity, id: 999 } },
     { head_repository: { ...identity, id: 999 } },
     { status: 'completed', conclusion: 'cancelled' },
+    { status: 'completed', conclusion: 'failure' },
+    { status: 'pending', conclusion: 'success' },
+    { status: 'waiting' },
+    { status: 'requested' },
     { status: 'unknown' },
     { run_attempt: 0 },
   ])('does not trust mismatched or unsupported successor metadata %j', async (over) => {
@@ -252,6 +399,69 @@ describe('main preflight preserves acceptance while skipping superseded work', (
         detailAt: (read) => (read > 1 ? { ...run, status: 'completed', conclusion: 'cancelled' } : run),
       }).route(),
     ).toMatchObject({ path: 'full' });
+  });
+
+  it.each([
+    { status: 'completed', conclusion: 'cancelled' },
+    { status: 'completed', conclusion: 'failure' },
+    { run_attempt: 2 },
+    { workflow_id: 999 },
+    { head_repository: { ...identity, id: 999 } },
+  ])('fails closed when a late pending descendant changes during revalidation %j', async (over) => {
+    const pending = { ...run, status: 'pending' };
+    const s = scenario({
+      activeTrain: true,
+      run: pending,
+      headAt: () => (s.now() < 40_000 ? original : successor),
+      detailAt: (read) => (read > 1 ? { ...pending, ...over } : pending),
+    });
+    expect(await s.route()).toMatchObject({
+      path: 'full',
+      skip: false,
+      reason: 'successor-revalidation-unproven',
+    });
+    expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+  });
+
+  it('does not supersede when main changes again after the late descendant lookup', async () => {
+    const s = scenario({
+      activeTrain: true,
+      headAt: (read) => (s.now() < 40_000 ? original : read > 5 ? 'd'.repeat(40) : successor),
+    });
+    expect(await s.route()).toMatchObject({
+      path: 'full',
+      skip: false,
+      reason: 'successor-revalidation-unproven',
+    });
+  });
+
+  it('does not accept a stale train observation when it ends without a merge or exact proof', async () => {
+    const s = scenario({ head: original, activeTrain: true });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false, reason: 'poll-deadline' });
+    expect(s.now()).toBe(80_000);
+    expect(s.calls.filter((p) => p.includes(`/workflows/${train.id}/runs?`))).toHaveLength(2);
+    expect(s.calls.filter((p) => p.includes('/actions/artifacts?'))).toHaveLength(2);
+  });
+
+  it('fails closed on an API error during late descendant revalidation', async () => {
+    let details = 0;
+    const s = scenario({
+      activeTrain: true,
+      headAt: () => (s.now() < 40_000 ? original : successor),
+      before: (p) => {
+        if (p.endsWith(`/actions/runs/${run.id}`) && ++details === 2) throw new Error('API unavailable');
+      },
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false, reason: 'lookup-failed' });
+  });
+
+  it('requires an unchanged attempt between successor listing and its first detail read', async () => {
+    const s = scenario({ detailAt: () => ({ ...run, run_attempt: 2 }) });
+    expect(await s.route()).toMatchObject({
+      path: 'full',
+      skip: false,
+      reason: 'successor-metadata-mismatch',
+    });
   });
 
   it('reports unproven revalidation for malformed successor metadata', async () => {

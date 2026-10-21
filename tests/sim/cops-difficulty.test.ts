@@ -6,8 +6,10 @@
 // a player coming up the road): 12 seeds per preset, each race stopped at 100 s, past the second
 // patrol cop's window. The difficulty's cop frequency scales the lot cop's chance and timing as before
 // and how many patrol (Easy brings one, Hard two more often), so Hard brings more cops in all. A
-// patrol cop's siren sounds at least the siren lead before he pulls out (checked in every race),
+// patrol cop's siren sounds at least the siren lead before he pulls out (checked on actual pull-outs),
 // and before he arrives (checked in the races where he rides up to the bot).
+// A radar patrol may instead clock a lawful rider and stay parked: that explicit reading is a
+// patrol met, as in cops-patrol.test.ts, but owes no siren or pull-out (law personality, M4 cops-3).
 //
 // How many races he arrives in (rides within ARRIVAL_M of the bot within 100 s) follows how often the
 // bot is knocked down or slowed near him, so it moves whenever a merge reshuffles the seeded races:
@@ -62,6 +64,8 @@ interface PresetRun {
    * the player was already level with him or past him when it sounded (`late`).
    */
   sirens: { cop: number; tick: number; pullOut: number; arrival: number; late: boolean }[];
+  /** Explicit under-limit readings by a radar cop: a lawful pass owes no siren or chase. */
+  lawfulRadar: { cop: number; tick: number; mps: number; limitMps: number }[];
   /** Every cop who came out (any cause). */
   cops: number;
 }
@@ -77,6 +81,7 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
   );
   const bot = createBot();
   const sirens: PresetRun['sirens'] = [];
+  const lawfulRadar: PresetRun['lawfulRadar'] = [];
   let cops = 0;
   let snap = sim.snapshot();
   while (sim.tick < RUN_TICKS && !sim.isOver()) {
@@ -85,6 +90,24 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
     sim.step([toSimInput(a)]);
     snap = sim.snapshot();
     for (const e of sim.events()) {
+      const source = config.riders[e.actor];
+      const mps = e.data['mps'];
+      const limitMps = e.data['limitMps'];
+      if (
+        e.type === 'law' &&
+        e.data['kind'] === 'radar' &&
+        e.target === playerId &&
+        source?.faction === 'law' &&
+        source.law?.habit?.kind === 'radar' &&
+        e.data['over'] === false &&
+        typeof mps === 'number' &&
+        Number.isFinite(mps) &&
+        typeof limitMps === 'number' &&
+        Number.isFinite(limitMps) &&
+        mps >= 0 &&
+        mps <= limitMps
+      )
+        lawfulRadar.push({ cop: e.actor, tick: e.tick, mps, limitMps });
       if (e.type !== 'siren' || e.data['on'] !== true) continue;
       cops++;
       if (e.data['cause'] !== 'patrol') continue;
@@ -105,7 +128,7 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
       if (Math.hypot(cop.x - me.x, cop.z - me.z) <= ARRIVAL_M) s.arrival = sim.tick;
     }
   }
-  return { seed, sirens, cops };
+  return { seed, sirens, lawfulRadar, cops };
 }
 
 let easy: PresetRun[];
@@ -125,12 +148,15 @@ describe('cops-2: the cop follows the difficulty preset', () => {
   it('Hard fields more cops than Easy, and every race meets a patrol cop (printed)', () => {
     const count = (rs: PresetRun[]) => rs.reduce((n, r) => n + r.cops, 0);
     const patrols = (rs: PresetRun[]) => rs.reduce((n, r) => n + r.sirens.length, 0);
+    const lawful = (rs: PresetRun[]) => rs.reduce((n, r) => n + r.lawfulRadar.length, 0);
     print(
       `cops-2 difficulty: ${SEEDS.length} seeds per preset, the bot racing 100 s; ` +
-        `cops out: Hard ${count(hard)}, Easy ${count(easy)} (patrol cops lit up: Hard ${patrols(hard)}, Easy ${patrols(easy)})`,
+        `cops out: Hard ${count(hard)}, Easy ${count(easy)} (patrol cops lit up: Hard ${patrols(hard)}, Easy ${patrols(easy)}; ` +
+        `lawful radar passes: Hard ${lawful(hard)}, Easy ${lawful(easy)})`,
     );
     expect(count(hard)).toBeGreaterThan(count(easy));
-    for (const r of [...easy, ...hard]) expect(r.sirens.length, `seed ${r.seed}`).toBeGreaterThanOrEqual(1);
+    for (const r of [...easy, ...hard])
+      expect(r.sirens.length + r.lawfulRadar.length, `seed ${r.seed}: patrol met`).toBeGreaterThanOrEqual(1);
   });
 
   it("a patrol cop's siren leads his pull-out and his arrival by at least the full lead", () => {
@@ -153,11 +179,12 @@ describe('cops-2: the cop follows the difficulty preset', () => {
     );
     // A late siren is the exception (a freed place), never the rule.
     expect(late.length, 'late sirens').toBeLessThanOrEqual(Math.floor(sirens.length / 4));
-    // Every race's patrol cop pulls out, the full lead after his siren.
+    // Every race has a pull-out or an explicit lawful radar pass. The former universal pull-out
+    // premise contradicted the radar's under-limit rule; actual pull-outs still owe the full lead.
     for (const r of runs)
       expect(
-        r.sirens.filter((s) => s.pullOut >= 0).length,
-        `seed ${r.seed}: a patrol cop pulled out`,
+        r.sirens.filter((s) => s.pullOut >= 0).length + r.lawfulRadar.length,
+        `seed ${r.seed}: a patrol cop pulled out or clocked a lawful pass`,
       ).toBeGreaterThanOrEqual(1);
     for (const s of pulled) expect(s.pullOut - s.tick).toBeGreaterThanOrEqual(LEAD_TICKS);
     // And where he rides up to the bot, the siren led that too.

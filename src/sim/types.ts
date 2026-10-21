@@ -69,6 +69,13 @@ export interface EntitySnapshot {
   z: number;
   /** World heading about +y, radians; a model facing -z turns by exactly this (three.js rotation.y). */
   heading: number;
+  /**
+   * Physical footprint in this entity's own heading frame, m: length forward, width across.
+   * Derived from the rider's contact box or registered traffic type, not stored as sim state. Optional
+   * for hand-built snapshots and absent for kinds or synthetic vehicles without known geometry.
+   */
+  footprintLengthM?: number;
+  footprintWidthM?: number;
   speed: number;
   lean: number;
   // Rider fields (neutral values for other kinds).
