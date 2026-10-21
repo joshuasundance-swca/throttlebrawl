@@ -12,6 +12,7 @@ import {
   raceSky,
   regionChoices,
   regionKeyOf,
+  routeChoices,
   routeKeyOf,
 } from './regions';
 
@@ -347,6 +348,56 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     expect(r.region).toBe('base:florida-keys');
     expect(onDial(ALL, 'base:florida-keys').length).toBeGreaterThanOrEqual(2);
     expect([...dial(r)].sort()).toEqual(onDial(ALL, 'base:florida-keys'));
+  });
+
+  it('offers Iowa stations on either selectable route, retaining global stations without Keys fallback', () => {
+    const eventId = 'region-clinton:clinton-ia136-race';
+    const region = regionKeyOf(ALL, eventId);
+    const regional = Object.entries(ALL.stations)
+      .filter(([, station]) => station.regions.includes('clinton-iowa') && !station.pirate && !station.rider)
+      .map(([key]) => key)
+      .sort();
+    const own = regional.filter((key) => key.startsWith('region-clinton:'));
+    const global = Object.entries(ALL.stations)
+      .filter(([, station]) => station.regions.length === 0 && !station.pirate && !station.rider)
+      .map(([key]) => key)
+      .sort();
+    const ineligibleBase = Object.entries(ALL.stations)
+      .filter(
+        ([key, station]) =>
+          key.startsWith('base:') &&
+          station.regions.length > 0 &&
+          !station.regions.includes('clinton-iowa') &&
+          !station.pirate &&
+          !station.rider,
+      )
+      .map(([key]) => key);
+    expect(own.length).toBeGreaterThanOrEqual(2);
+    expect(ineligibleBase.length).toBeGreaterThan(0);
+    const choices = routeChoices(ALL, eventId);
+    expect(choices.length).toBeGreaterThan(1);
+    for (const choice of choices) {
+      expect(routeKeyOf(ALL, eventId, undefined, choice.id)).toBe(choice.id ?? routeKeyOf(ALL, eventId));
+      const selected = raceRadio(ALL, region);
+      expect(selected.region).toBe(region);
+      const offered = dial(selected);
+      expect(offered).toEqual([...regional, ...global]);
+      for (const key of own) expect(offered).toContain(key);
+      for (const key of ineligibleBase) expect(offered).not.toContain(key);
+    }
+    const sample = ALL.stations[own[0]!]!;
+    const withGlobal = {
+      ...ALL,
+      stations: {
+        ...ALL.stations,
+        'region-clinton:all-road': { ...sample, id: 'all-road', regions: [] },
+        'base:open-circuit': { ...sample, id: 'open-circuit', regions: [] },
+      },
+    } as typeof ALL;
+    const withGlobalOffered = dial(raceRadio(withGlobal, region));
+    expect(withGlobalOffered).toContain('region-clinton:all-road');
+    expect(withGlobalOffered).toContain('base:open-circuit');
+    for (const key of ineligibleBase) expect(withGlobalOffered).not.toContain(key);
   });
 
   it('the Pacific Northwest and San Francisco play their own stations, and only those', () => {

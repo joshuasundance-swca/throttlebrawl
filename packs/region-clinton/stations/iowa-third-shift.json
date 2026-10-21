@@ -1,0 +1,35 @@
+{
+  "type": "station",
+  "id": "iowa-third-shift",
+  "name": "Third Shift Radio",
+  "genre": "garage",
+  "regions": ["clinton-iowa"],
+  "tracks": [
+    {
+      "id": "shift-bell",
+      "title": "Shift Bell",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 152, "key": "E", "progression": "creep" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "dock-gate",
+      "title": "Dock Gate",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 170, "key": "A", "progression": "stomp" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "two-lanes-back",
+      "title": "Two Lanes Back",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 182, "key": "D", "progression": "dirt" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Original seeded tracks for a local audition, using the existing garage-band composer and rig. No recording or new regional music grammar.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-20" }
+  }
+}
