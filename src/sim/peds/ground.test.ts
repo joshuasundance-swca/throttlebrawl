@@ -16,21 +16,29 @@ import { pedsStep } from './step';
 
 const probes = vi.hoisted(() => {
   vi.resetModules();
-  return { trace: null as unknown[] | null };
+  return { trace: null as unknown[] | null, groundDepth: 0 };
 });
 // Observe public query inputs/results while keeping the real physical-ground implementation.
 vi.mock('../../road', async (original) => {
   const actual = await original<typeof import('../../road')>();
-  return {
-    ...actual,
-    groundUnderOf: (...args: Parameters<typeof actual.groundUnderOf>) => {
-      const under = actual.groundUnderOf(...args);
-      return (...query: Parameters<typeof under>) => {
+  const observed =
+    (under: ReturnType<typeof actual.groundUnderOf>) =>
+    (...query: Parameters<typeof under>) => {
+      probes.groundDepth++;
+      try {
         const y = under(...query);
         probes.trace?.push(['ground', ...query, y]);
         return y;
-      };
-    },
+      } finally {
+        probes.groundDepth--;
+      }
+    };
+  return {
+    ...actual,
+    groundUnderOf: (...args: Parameters<typeof actual.groundUnderOf>) =>
+      observed(actual.groundUnderOf(...args)),
+    uncachedGroundUnderOf: (...args: Parameters<typeof actual.uncachedGroundUnderOf>) =>
+      observed(actual.uncachedGroundUnderOf(...args)),
     terrainAt: (...args: Parameters<typeof actual.terrainAt>) => {
       const face = actual.terrainAt(...args);
       probes.trace?.push(['dry', args[1], args[2], face]);
@@ -40,6 +48,7 @@ vi.mock('../../road', async (original) => {
 });
 afterEach(() => {
   probes.trace = null;
+  probes.groundDepth = 0;
   vi.restoreAllMocks();
 });
 
@@ -221,23 +230,32 @@ describe('pedestrian footprint projection', () => {
     const c = config([patch(6, 20, 3)]),
       at = { edge: 0, s: 300, d: 10 },
       to = { s: 300.1, d: 10 };
-    // Warm physical ground at these exact points, isolating footprint transforms from ground-query setup.
+    // Observe footprint transforms outside the physical query. The moving query deliberately
+    // does real projection work even when the cached reference has seen these points before.
     const expected = publishedMove(c.road, at, to, 3, person);
-    const frames = vi.spyOn(c.road, 'frameAt'),
-      worlds = vi.spyOn(c.road, 'toWorld');
+    let transforms = 0;
+    const frame = c.road.frameAt.bind(c.road),
+      world = c.road.toWorld.bind(c.road);
+    vi.spyOn(c.road, 'frameAt').mockImplementation((...args) => {
+      if (probes.groundDepth === 0) transforms++;
+      return frame(...args);
+    });
+    vi.spyOn(c.road, 'toWorld').mockImplementation((...args) => {
+      if (probes.groundDepth === 0) transforms++;
+      return world(...args);
+    });
     probes.trace = [];
     expect(publishedMove(c.road, at, to, 3, person)).toEqual(expected);
-    const oldTransforms = frames.mock.calls.length + worlds.mock.calls.length;
+    const oldTransforms = transforms;
     const oldTrace = probes.trace;
     expect(oldTransforms).toBeGreaterThan(3);
     expect(oldTrace.filter((p) => (p as unknown[])[0] === 'ground')).toHaveLength(9);
     expect(oldTrace.filter((p) => (p as unknown[])[0] === 'dry')).toHaveLength(9);
-    frames.mockClear();
-    worlds.mockClear();
+    transforms = 0;
     probes.trace = [];
     expect(supportedPedMove(c.road, at, to, 3, person)).toEqual(expected);
     expect(probes.trace).toEqual(oldTrace);
-    const newTransforms = frames.mock.calls.length + worlds.mock.calls.length;
+    const newTransforms = transforms;
     expect(newTransforms).toBeLessThanOrEqual(3);
     console.log(
       `[examined] supported footprint: ${oldTransforms} to ${newTransforms} projections, same nine ground/water probes`,

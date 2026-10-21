@@ -1,7 +1,13 @@
 // Pedestrians keep a supporting floor separately from their intentional hop/dive arc.
 // The floor's previous height is necessary at bridges: the highest face at a world point
 // can be another deck. Plain groundY state carries that continuity and is world-hashed.
-import { groundUnderOf, roadBandHeight, sectionGroundOf, terrainAt, type RoadNetwork } from '../../road';
+import {
+  uncachedGroundUnderOf,
+  roadBandHeight,
+  sectionGroundOf,
+  terrainAt,
+  type RoadNetwork,
+} from '../../road';
 
 /** A person's maximum supported step, and the longest interval examined along a path, metres. */
 const STEP_M = 0.25;
@@ -24,7 +30,7 @@ export function initialPedGround(road: RoadNetwork, pos: Position): number | nul
 
 /** One connected step: reject missing ground, water, a drop or an unrelated deck. */
 function support(road: RoadNetwork, x: number, z: number, previous: number): number | null {
-  const y = groundUnderOf(road)(x, z, previous + STEP_M);
+  const y = uncachedGroundUnderOf(road)(x, z, previous + STEP_M);
   return y !== null && previous - y <= STEP_M && dry(road, x, z, y) ? y : null;
 }
 
@@ -48,7 +54,7 @@ function bodySupport(road: RoadNetwork, pos: Position, previous: number, body: B
 /**
  * Furthest continuously supported point toward a target. A dive is at most 3.5 m and
  * ordinary walking asks only for a tick's distance; this never scans a whole route.
- * All queries reuse the road module's spatial/ground caches.
+ * Queries reuse static spatial and surface plans without retaining moving world points.
  */
 export function supportedPedMove(
   road: RoadNetwork,
