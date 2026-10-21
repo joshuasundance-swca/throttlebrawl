@@ -237,9 +237,11 @@ describe('measured first-load size: a hard cap and diagnostic composition reserv
   });
 
   it('fails a missing or invalid current measurement, while a real below-cap measurement passes', () => {
-    for (const jsFiles of [undefined, 0, -1, Number.NaN])
+    expect(firstLoadProblem({ jsGzip: 495 * KB }, 500)).not.toBeNull();
+    expect(firstLoadProblem({ jsFiles: 2 }, 500)).not.toBeNull();
+    for (const jsFiles of [0, -1, Number.NaN])
       expect(firstLoadProblem({ jsGzip: 495 * KB, jsFiles }, 500)).not.toBeNull();
-    for (const jsGzip of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])
+    for (const jsGzip of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])
       expect(firstLoadProblem({ jsGzip, jsFiles: 2 }, 500)).not.toBeNull();
     expect(firstLoadProblem(measured(495 * KB), 500)).toBeNull();
   });
