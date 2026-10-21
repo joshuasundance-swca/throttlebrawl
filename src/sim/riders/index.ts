@@ -311,6 +311,8 @@ export interface RiderState extends AirState, UturnState, WheelieState, DriftSta
   vy: number[];
   /** Scaled ticks in the air in the current jump. */
   airTicks: number[];
+  /** Parked ramp actually ridden at takeoff, edge and feature id; null after landing or other flight. */
+  rampLaunch: (string | null)[];
   /** Tick of this rider's last riders step, so a rider put down by another system starts fresh. */
   lastTick: number[];
   /** Sideways shove from bumping another rider, m/s along +d (sim/riders/contact). */
@@ -395,6 +397,7 @@ export function riderState(world: World): RiderState {
     yAbs: [],
     vy: [],
     airTicks: [],
+    rampLaunch: [],
     lastTick: [],
     shove: [],
     contactTick: {},
@@ -748,6 +751,7 @@ export const ridersSystem: SimSystem = {
       st.yAbs[m.id] = config.road.surfaceHeight(m.pos.edge, m.pos.s, m.pos.d);
       st.vy[m.id] = 0;
       st.airTicks[m.id] = 0;
+      st.rampLaunch[m.id] = null;
       st.lastTick[m.id] = -2;
       st.shove[m.id] = 0;
       st.boost[m.id] = 0;
