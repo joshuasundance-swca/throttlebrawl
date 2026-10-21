@@ -33,7 +33,7 @@ const registry = {
   ...sourceRegistry,
   roads: {
     ...sourceRegistry.roads,
-    [roadId]: { ...sourceRoad, features: [...sourceRoad.features, candidate] },
+    [roadId]: { ...sourceRoad, features: [...(sourceRoad.features ?? []), candidate] },
   },
 };
 const quietRegistry = sourceRegistry;
