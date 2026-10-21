@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedFeature } from '../../road';
+import {
+  createRoadNetwork,
+  createRouteProgress,
+  fixtureNetwork,
+  highwayLanes,
+  type BakedFeature,
+} from '../../road';
 import type { SimConfig, SimEvent } from '../types';
 import { riderState } from './index';
 import { supportKeyOf } from './supports';
@@ -15,9 +21,11 @@ const TRUCK: BakedFeature = {
   params: { rampLengthM: 11.5, lipHeightM: 2.8 },
 };
 const D = 3.4;
-function config(features: BakedFeature[] = [TRUCK]): SimConfig {
+function config(features: BakedFeature[] = [TRUCK], wideRoad = false): SimConfig {
   const base = testConfig();
-  const bundle = fixtureNetwork([{ id: 'a', lengthM: 3000, kappa: 0 }]);
+  const bundle = fixtureNetwork([
+    { id: 'a', lengthM: 3000, kappa: 0, lanes: wideRoad ? highwayLanes(2) : undefined },
+  ]);
   const road0 = bundle.roads[0];
   if (!road0) throw new Error('no road');
   const road = createRoadNetwork({ ...bundle, roads: [{ ...road0, features }] });
@@ -43,6 +51,49 @@ function air(s: number, h: number, speed: number, vy = 0) {
   return run;
 }
 describe('carrier contacts obey actual surfaces and the vehicle closing-speed rule', () => {
+  it('meets a wide trailer side sill before the bike enters the drawn rail', () => {
+    const wide: BakedFeature = { ...TRUCK, id: 'wide-side-sill', d0: -3, d1: 3 };
+    const h = riderHarness(config([wide], true), { s: wide.s0 + 8.2, d: 4.8, speed: 8, yaw: -1.2 });
+    h.rider.mode = 'Airborne';
+    h.rider.h = 0.6;
+    const st = riderState(h.world);
+    st.yAbs[h.rider.id] = h.config.road.surfaceHeight(0, h.rider.pos.s, h.rider.pos.d) + h.rider.h;
+    st.vy[h.rider.id] = 0;
+    const contactAt = (1.39 * (wide.d1 - wide.d0)) / 2.5 + 0.4;
+    let met = false;
+    for (let t = 0; t < 20 && !met; t++) {
+      const events = h.step(input(0));
+      met = events.some((event) => event.data['object'] === 'rampTruck');
+      if (h.rider.pos.d < contactAt - 0.15) {
+        expect(
+          met,
+          `bike entered the drawn side sill at tick ${t}: d=${h.rider.pos.d.toFixed(3)}, h=${h.rider.h.toFixed(3)}, events=${events.map((event) => event.type).join(',')}`,
+        ).toBe(true);
+      }
+    }
+    expect(met).toBe(true);
+  });
+  it('keeps the open air below a raised rail while meeting the actual nearby post', () => {
+    const wide: BakedFeature = { ...TRUCK, id: 'wide-post-gap', d0: -3, d1: 3 };
+    const probe = (into: number) => {
+      const h = riderHarness(config([wide], true), { s: wide.s0 + into, d: 3.5, speed: 0 });
+      h.rider.mode = 'Airborne';
+      h.rider.h = 0.85;
+      const st = riderState(h.world);
+      st.yAbs[h.rider.id] = h.config.road.surfaceHeight(0, h.rider.pos.s, h.rider.pos.d) + h.rider.h;
+      st.vy[h.rider.id] = 0;
+      const events = h.step(input(0));
+      return { d: h.rider.pos.d, events };
+    };
+    const gap = probe(15.3);
+    expect(
+      gap.d,
+      `air between side sill and upper rail remains passable; events ${JSON.stringify(gap.events)}`,
+    ).toBeCloseTo(3.5, 3);
+    expect(gap.events.some((event) => event.data['object'] === 'rampTruck')).toBe(false);
+    const post = probe(14);
+    expect(post.d, 'the vertical post is physical in the same height band').toBeGreaterThan(3.7);
+  });
   it.each([0, 0.1, 0.2, 0.3].flatMap((offset) => ([1, -1] as const).map((facing) => ({ offset, facing }))))(
     'leaves a continuous ramp along its lip tangent at offset $offset m, facing $facing',
     ({ offset, facing }) => {

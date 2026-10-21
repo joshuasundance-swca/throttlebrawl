@@ -9,6 +9,8 @@ export interface CarrierPart {
   shape: FurnitureShape;
   maxTop: number;
   topAt(s: number, d: number): number;
+  /** Lowest occupied height for an elevated part; omitted for the original ground-reaching parts. */
+  bottomAt?: (s: number, d: number) => number;
   /** A continuous top large enough to hold a bike; a stack or lamp is only an obstacle. */
   support: FurnitureShape | null;
 }
@@ -49,12 +51,14 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
     top: number,
     profile?: (into: number, x: number) => number,
     support?: FurnitureShape,
+    bottom?: (into: number, x: number) => number,
   ) => {
     out.push({
       feature: f,
       shape: box(a, b, x0, x1),
       maxTop: top * hs,
       topAt: (s, d) => hs * (profile ? profile(((s - foot) * facing) / ls, (d - middle) / ws) : top),
+      bottomAt: bottom ? (s, d) => hs * bottom(((s - foot) * facing) / ls, (d - middle) / ws) : undefined,
       support: support ?? null,
     });
   };
@@ -68,6 +72,49 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
     add(7.38, 7.5, -1.15, 1.15, 0.7);
     add(6.525, 6.775, -0.4, 0.4, 2.56);
   } else {
+    // The parked model's trailer (tow_truck.py): a low side sill, posts, and a raised rail
+    // outside the rideable ramp plate. Keep the air under the raised rail open between braces.
+    const rampTop = (into: number) => (2.8 * into) / 11.5;
+    for (const side of [-1, 1]) {
+      const x0 = side < 0 ? -1.39 : 1.27;
+      const x1 = side < 0 ? -1.27 : 1.39;
+      add(4.3, 16.7, x0, x1, 0.8, undefined, undefined, () => 0.62);
+      add(
+        4.2,
+        11.5,
+        x0,
+        x1,
+        2.88,
+        (into) => rampTop(into) + 0.08,
+        undefined,
+        (into) => rampTop(into) - 0.34,
+      );
+      add(11.5, 16.8, x0, x1, 2.88, undefined, undefined, () => 2.46);
+      for (const fp of [4.5, 8.2, 11.3, 14, 16.6]) {
+        const postTop = Math.min(rampTop(fp), 2.8) - 0.3;
+        add(fp - 0.09, fp + 0.09, x0, x1, postTop, undefined, undefined, () => 0.62);
+      }
+      for (const [fa, fb] of [
+        [4.6, 8.1],
+        [8.3, 11.2],
+        [11.4, 13.9],
+      ]) {
+        const za = 0.8;
+        const zb = Math.min(rampTop(fb), 2.8) - 0.35;
+        // Source polygon corners: (fa,za), (fa+.22,za), (fb,zb), (fb-.22,zb).
+        const slope = (zb - za) / (fb - fa - 0.22);
+        add(
+          fa,
+          fb,
+          x0,
+          x1,
+          zb,
+          (into) => za + slope * clamp(into - fa, 0, fb - fa - 0.22),
+          undefined,
+          (into) => za + slope * clamp(into - fa - 0.22, 0, fb - fa - 0.22),
+        );
+      }
+    }
     // Roof cap: the 2.95 m cab with a tapered cap up to 3.15 m. The visor continues its top forward;
     // together they hold a 2 m bike, while neither an exhaust stack nor a marker light does.
     const roofSupport = box(17, 19.2, -1.1, 1.1);

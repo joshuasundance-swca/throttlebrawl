@@ -720,6 +720,15 @@ function carrierContact(
           ),
         );
       }
+      if (
+        part.bottomAt &&
+        h + RIDER_BODY_HEIGHT_M <
+          part.bottomAt(
+            clamp(s, shape.s - shape.hu, shape.s + shape.hu),
+            clamp(d, shape.d - shape.hv, shape.d + shape.hv),
+          )
+      )
+        continue;
       // A support's top is caught by supportAt; smaller tops are obstacles met at the fall speed.
       const fromAbove = hBefore !== undefined && hBefore >= top - 1e-6;
       if ((!fromAbove && h + clearance >= top) || height + clearance >= top || top <= 0) continue;
@@ -771,7 +780,10 @@ function carrierContact(
     if (height + clearance >= other.maxTop) continue;
     const c = other.shape;
     const top = other.topAt(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv));
-    if (height + clearance < top) keepOff(c, pos, m.yaw, axis.ns, axis.nd);
+    const bottom =
+      other.bottomAt?.(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv)) ?? 0;
+    if (height + RIDER_BODY_HEIGHT_M >= bottom && height + clearance < top)
+      keepOff(c, pos, m.yaw, axis.ns, axis.nd);
   }
   if (!vertical) {
     const normal = vs * axis.ns + vd * axis.nd;
