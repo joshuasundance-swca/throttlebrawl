@@ -210,12 +210,13 @@ function rgb(hex: string): [number, number, number] {
   return [lin((n >> 16) & 255), lin((n >> 8) & 255), lin(n & 255)];
 }
 
-/** One scene's geometry: the far stretch (outline parts and the sign) first, then the rest. */
+/** One scene's geometry, far outline first. Physical facilities keep box bottoms visible too. */
 export function sceneGeometry(
   def: SceneDef,
   rect: Rect,
   white: [number, number],
   water: boolean,
+  keepBottoms = false,
 ): { geometry: BufferGeometry; farVertices: number; triangles: number } {
   const t = new Tris(white);
   const rot = (p: { rotX?: number; rotY?: number; rotZ?: number }) => [p.rotX ?? 0, p.rotY ?? 0, p.rotZ ?? 0];
@@ -224,7 +225,7 @@ export function sceneGeometry(
   // The sign's board, then its printed face just in front of it.
   t.box([w, h, 0.08], sign.at, [0, 0, 0], sign.bg, false);
   t.face([sign.at[0], sign.at[1], sign.at[2] + 0.045], w * 0.96, h * 0.92, rect);
-  for (const p of def.parts) if (p.far) t.box(p.box, p.at, rot(p), p.colour);
+  for (const p of def.parts) if (p.far) t.box(p.box, p.at, rot(p), p.colour, !keepBottoms);
   const farVertices = t.vertices;
   // Its posts, down into the ground (or the bed under the water).
   const posts = sign.posts ?? (w > 1.6 ? 2 : 1);
@@ -240,7 +241,7 @@ export function sceneGeometry(
         sign.post ?? POST_COLOUR,
       );
     }
-  for (const p of def.parts) if (!p.far) t.box(p.box, p.at, rot(p), p.colour);
+  for (const p of def.parts) if (!p.far) t.box(p.box, p.at, rot(p), p.colour, !keepBottoms);
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(t.pos, 3));
   geometry.setAttribute('normal', new Float32BufferAttribute(t.nrm, 3));

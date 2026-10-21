@@ -137,12 +137,16 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
   },
   // The Pacific Northwest's places: the car ferry and the Stump Social's shops (road/structures/pnw-places.ts).
   'pnw-places': {
-    tags: ['ferry', 'festival', 'longview-port-yard'],
+    tags: ['ferry', 'festival', 'longview-port-yard', 'longview-street-life'],
     load: async () => (await import('./structures/pnw-places')).pnwPlacesPlanner,
   },
   'iowa-park': {
     tags: ['iowa-park'],
     load: async () => (await import('./structures/iowa-park')).iowaParkPlanner,
+  },
+  'iowa-county-farmstead': {
+    tags: ['iowa-county-farmstead'],
+    load: async () => (await import('./structures/iowa-county')).iowaCountyPlanner,
   },
 };
 

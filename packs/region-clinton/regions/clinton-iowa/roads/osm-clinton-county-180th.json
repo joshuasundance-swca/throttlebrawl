@@ -63,9 +63,44 @@
       "s1": 2278.0079,
       "side": "both",
       "tag": "rural"
+    },
+    {
+      "s0": 650.0,
+      "s1": 670.0,
+      "side": "right",
+      "tag": "iowa-county-farmstead"
+    },
+    {
+      "s0": 1930.0,
+      "s1": 1950.0,
+      "side": "right",
+      "tag": "iowa-county-farmstead"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "county-loading-shed",
+      "s0": 655.0,
+      "s1": 665.0,
+      "d0": 14.5,
+      "d1": 21.5,
+      "params": {
+        "place": "county-loading-shed"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "county-corn-crib",
+      "s0": 1935.0,
+      "s1": 1945.0,
+      "d0": 14.5,
+      "d1": 21.5,
+      "params": {
+        "place": "county-corn-crib"
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

@@ -24,6 +24,11 @@ interface Provenanced {
     sources: { name: string; spdx: string; sha256: string }[];
   };
 }
+interface SourceRoad {
+  id: string;
+  features?: BakedRoad['features'];
+  sideRuns?: { tag: string; side: string; s0: number; s1: number }[];
+}
 const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
 const bundle = () => {
   const network = read<BakedNetwork & Provenanced>(`${ROOT}/networks/osm-pnw-longview-diamond.json`);
@@ -143,7 +148,6 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
     }
     for (const r of roads) {
       expect(r.provenance).toEqual(network.provenance);
-      expect(r.features?.some((f) => f.kind === 'boostPad')).toBe(false);
       const heights = r.samples.data['y']!;
       expect(heights.every(Number.isFinite)).toBe(true);
       expect(Math.max(...heights)).toBeGreaterThan(0);
@@ -151,6 +155,52 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
     expect(route.branches).toHaveLength(1);
     expect(route.branches?.[0]?.sign).toMatch(/LONGER OUTER ROUTE/);
     expect(new Set(roads.flatMap((r) => r.samples.data['y']!)).size).toBeGreaterThan(1);
+  });
+
+  it('bakes only canonical local sites and a signposted optional grass boost clear of the walkers', () => {
+    const { roads } = bundle();
+    const recipe = read<{ lines: { roads: SourceRoad[] }[] }>(
+      'tools/gis/networks/osm-pnw-longview-diamond.json',
+    );
+    const source = new Map(recipe.lines.flatMap((l) => l.roads).map((r) => [r.id, r]));
+    const road = createRoadNetwork(bundle());
+    let sites = 0,
+      pads = 0;
+    for (const baked of roads) {
+      const authored = source.get(baked.id);
+      const features = baked.features ?? [];
+      expect(
+        features.filter((f) => f.kind === 'boostPad'),
+        baked.id,
+      ).toEqual(authored?.features?.filter((f) => f.kind === 'boostPad') ?? []);
+      for (const site of features.filter((f) => f.params?.['place'])) {
+        expect(authored?.features).toContainEqual(site);
+        expect(
+          authored?.sideRuns?.some(
+            (r) => r.tag === 'longview-street-life' && r.s0 <= site.s0 && r.s1 >= site.s1,
+          ),
+        ).toBe(true);
+        sites++;
+      }
+      for (const pad of features.filter((f) => f.kind === 'boostPad')) {
+        const edge = road.edgeIndex(baked.id);
+        for (const s of [pad.s0, pad.s1]) {
+          const verge = road.vergeAt(edge, s, 'right');
+          expect(verge.surface).toBe('grass');
+          expect(pad.d0).toBeGreaterThan(verge.dInner);
+          expect(pad.d1).toBeLessThan(verge.dOuter);
+        }
+        expect(
+          features.some((f) => f.kind === 'billboard' && f.s1 < pad.s0 && f.item === 'longview-market-boost'),
+        ).toBe(true);
+        for (const walkers of features.filter((f) => f.params?.['spawns'] === 'pedestrians'))
+          expect(walkers.d0 > pad.d1 || walkers.d1 < pad.d0).toBe(true);
+        expect(features.some((f) => f.kind === 'ramp' || f.kind === 'rampTruck')).toBe(false);
+        pads++;
+      }
+    }
+    expect(sites).toBeGreaterThan(0);
+    expect(pads).toBeGreaterThan(0);
   });
 
   it('places a true fork and rejoin between a usable start grid and separate finish', () => {

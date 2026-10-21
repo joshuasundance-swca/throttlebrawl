@@ -17,6 +17,7 @@ import {
   createRoadNetwork,
   loadPnwPlacesLayout,
   loadIowaParkLayout,
+  loadIowaCountyLayout,
   loadWaterfrontLayout,
   type BakedNetwork,
   type BakedRoad,
@@ -46,6 +47,7 @@ import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { apartmentSurfaces, TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { hasIowaPark, IowaParkLayer } from './iowa-park';
+import { hasIowaCounty, IowaCountyLayer } from './iowa-county';
 import { PartyLights } from './party-lights';
 import { QUALITY_TIERS, sceneryReach, type QualityTier } from './quality';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
@@ -638,6 +640,9 @@ export async function stillSceneOf(
         landReach: (e, side, s) => rs.landReach(e, side, s),
       })
     : null;
+  const iowaCounty = hasIowaCounty(tags)
+    ? new IowaCountyLayer(look, { layout: (await loadIowaCountyLayout()).iowaCountyLayout(road, seed) })
+    : null;
   const iowaPark = hasIowaPark(tags)
     ? new IowaParkLayer(look, { layout: (await loadIowaParkLayout()).iowaParkLayout(road, seed) })
     : null;
@@ -668,6 +673,7 @@ export async function stillSceneOf(
     wf?.group,
     places?.group,
     iowaPark?.group,
+    iowaCounty?.group,
     blocks?.group,
     mission?.group,
     scenes?.group,
@@ -688,6 +694,7 @@ export async function stillSceneOf(
       wf?.update(x, z, lodM, undefined, 1000);
       places?.update(x, z, drawM, lodM, Infinity);
       iowaPark?.update(x, z, drawM);
+      iowaCounty?.update(x, z, drawM);
       // The blocks build one mesh a frame: as many frames as a ride to here would have had.
       if (blocks) for (let i = 0; i < 30; i++) blocks.update(x, z, BLOCKS_NEAR_M * cityDetail);
       if (mission) for (let i = 0; i < 8; i++) mission.update(x, z, 0, 0.5);

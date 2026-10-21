@@ -65,6 +65,7 @@ export class IowaParkLayer {
         { u0: 0, u1: 1, v0: 1 - (128 + height) / H, v1: 1 - 128 / H },
         [64 / 512, 1 - 64 / H],
         false,
+        true,
       );
       const material = look.material(
         'prop',

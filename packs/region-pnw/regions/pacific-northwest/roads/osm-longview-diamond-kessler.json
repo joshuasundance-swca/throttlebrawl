@@ -63,9 +63,60 @@
       "s1": 1254.898,
       "side": "both",
       "tag": "town"
+    },
+    {
+      "s0": 858.0,
+      "s1": 886.0,
+      "side": "right",
+      "tag": "longview-street-life"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "street-plant-market",
+      "s0": 860.0,
+      "s1": 884.0,
+      "d0": 13.0,
+      "d1": 21.0,
+      "params": {
+        "place": "plant-market"
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "street-market-boost-sign",
+      "s0": 798.0,
+      "s1": 804.0,
+      "d0": 12.5,
+      "d1": 15.0,
+      "item": "longview-market-boost"
+    },
+    {
+      "kind": "boostPad",
+      "id": "street-market-boost",
+      "s0": 880.0,
+      "s1": 894.0,
+      "d0": 6.4,
+      "d1": 8.4,
+      "params": {
+        "boostMps": 6.0,
+        "holdS": 0.8
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "street-market-walkers",
+      "s0": 856.0,
+      "s1": 880.0,
+      "d0": 9.8,
+      "d1": 10.8,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["rain-shell-hiker", "trail-runner"]
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",
