@@ -9,6 +9,7 @@
       "status": "live",
       "note": "Original generic rural vignette, not a mapped property or actual business.",
       "on": ["rural"],
+      "excludesTag": "iowa-park",
       "acrossM": [6, 10],
       "radiusM": 2.8,
       "sign": {
@@ -33,6 +34,7 @@
       "status": "live",
       "note": "Original generic rural vignette, not a mapped property or actual business.",
       "on": ["rural"],
+      "excludesTag": "iowa-park",
       "acrossM": [6, 10],
       "radiusM": 2.8,
       "sign": {
@@ -56,6 +58,7 @@
       "status": "live",
       "note": "Original generic rural vignette, not a mapped property or actual business.",
       "on": ["rural"],
+      "excludesTag": "iowa-park",
       "acrossM": [6, 10],
       "radiusM": 2.8,
       "sign": {
