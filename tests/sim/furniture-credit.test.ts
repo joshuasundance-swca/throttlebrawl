@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SimEvent } from '../../src/sim/types';
+import type { SimEvent } from '../../src/sim/api';
 import { furnitureCredits } from './furniture-credit';
 
 const crash = (tick = 10, causeId: number | undefined = 41): SimEvent => ({

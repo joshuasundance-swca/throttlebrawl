@@ -1,4 +1,4 @@
-import type { SimEvent } from '../../src/sim/types';
+import type { SimEvent } from '../../src/sim/api';
 
 /** Furniture falls awaiting combat's delayed takedown credit. */
 export function furnitureCredits() {
