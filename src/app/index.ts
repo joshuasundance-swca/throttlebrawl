@@ -24,7 +24,6 @@ import { createAudio, radioKeyAction, type AudioSuspendLeaseResult, type EngineS
 import type { WakeLease, WakeLeaseResult } from '../platform';
 import type { QualitySetting, RendererPresentationRecipe, RendererPresentationToken } from '../render';
 import type { MeasurementSceneResult } from './measurement-scene';
-import { createMeasurementRuntime } from './measurement-runtime';
 import {
   createFollowCamera,
   nearestFocus,
@@ -628,12 +627,29 @@ export function createApp(opts: AppOptions): AppHandle {
   let normalContentGeneration = 0;
   let deliveryDepth = 0;
   let retireNormal = () => {};
-  let measurement: ReturnType<typeof createMeasurementRuntime> | null = null;
+  let measurement: ReturnType<typeof import('./measurement-runtime').createMeasurementRuntime> | null = null;
+  let pendingMeasurement: {
+    signal: AbortSignal;
+    abort: () => void;
+    generation: number;
+    resolve: (start: AppMeasurementStart) => void;
+    reject: (error: unknown) => void;
+  } | null = null;
+  const measurementRefusal = (reason: AppMeasurementRefusalReason): AppMeasurementRefusal =>
+    Object.freeze({ kind: 'refused', reason, sceneRefusal: null, wakeRefusal: null, audioRefusal: null });
+  const retireMeasurementEntry = (reason: AppMeasurementRefusalReason) => {
+    const pending = pendingMeasurement;
+    if (!pending) return;
+    pendingMeasurement = null;
+    pending.signal.removeEventListener('abort', pending.abort);
+    pending.resolve(measurementRefusal(reason));
+  };
   const actionGate = (action: import('./measurement-runtime').MeasurementAction, deliver: () => void) => {
     const prepareDelivery = () => {
       if (deliveryDepth === 0) {
         normalGeneration++;
         retireNormal();
+        retireMeasurementEntry('superseded-before-start');
       }
     };
     const once = () => {
@@ -648,6 +664,7 @@ export function createApp(opts: AppOptions): AppHandle {
     else {
       // Raw controls do not replace an ordinary navigation or pending race launch.
       if (action !== 'raw') prepareDelivery();
+      else retireMeasurementEntry('superseded-before-start');
       once();
     }
   };
@@ -1791,6 +1808,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // An app switch, a screen lock, a lost fullscreen or the rotate screen: mid-race the pause
     // screen opens, so the player comes back to it and resumes by choice.
     onHidden: (reason) => {
+      retireMeasurementEntry('superseded-before-start');
       if (measurement?.owned) measurement.fail(reason === 'visibility' ? 'hidden' : reason);
       flushAttempt();
       if (state === 'race') ui.pause();
@@ -1810,10 +1828,14 @@ export function createApp(opts: AppOptions): AppHandle {
   // Offline play (roadmap M5): a production build's worker caches the whole build once the page
   // has loaded, so a loaded game plays with the network off; and the watch for a build the host no
   // longer serves, which reloads to the current one when that loses nothing.
-  staleBuild = startOffline(build.id, () => !measurement?.owned && reloadLosesNothing(state));
+  staleBuild = startOffline(
+    build.id,
+    () => !pendingMeasurement && !measurement?.owned && reloadLosesNothing(state),
+  );
   staleBuild?.onWaiting(offerUpdate);
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => {
+    if (lost) retireMeasurementEntry('superseded-before-start');
     if (lost && measurement?.owned) measurement.fail('context-lost');
     hold('context', lost);
   });
@@ -2987,156 +3009,222 @@ export function createApp(opts: AppOptions): AppHandle {
     if (!current()) return;
     measurement.repeatStart();
   };
-  measurement = createMeasurementRuntime({
-    preflight: () => {
-      if (recoveryBusy || recoveryLocked || (attemptOwner?.terminal && !attemptOwner.settled))
-        return 'normal-launch-pending';
-      if (state !== 'menu') return 'not-menu';
-      if (ui.screen() !== 'menu') return 'wrong-ui-screen';
-      if (ui.paused) return 'ui-paused';
-      if (holds.size > 0 || document.visibilityState !== 'visible') return 'lifecycle-held';
-      if (renderer.contextLost) return 'renderer-context-lost';
-      if (loadingRoads || pendingLoad || normalLoads.size > 0) return 'normal-load-pending';
-      if (pendingLaunch) return 'normal-launch-pending';
-      if (loop.lockstep !== null) return 'lockstep-active';
-      return null;
-    },
-    async prepare(signal) {
-      normalGeneration++;
-      normalContentGeneration++;
-      const region = ui.region ?? regionKeyOf(registry, eventId);
-      preparationIntent = { generation: normalGeneration, region, route };
-      const selected = {
-        regionId: region,
-        routeId: route,
-        seed: (opts.measurementSeedSource ?? cryptoSeed)() >>> 0,
-        garage: { ...profile.bikes, owned: [...profile.bikes.owned] },
-        bike: settings.raceOptions.bike,
-        timeOfDay: settings.raceOptions.timeOfDay,
-        weather: settings.raceOptions.weather,
-      };
-      const classic = quickPlayEvent(registry, region, 'race');
-      const missing = classic
-        ? packClosure(registry, packOf(classic.eventId)).filter((id) => !library.hasRoads(id))
-        : [];
-      const [sceneCode] = await Promise.all([
-        loadChunk('measurement scene', () => import('./measurement-scene')),
-        ...missing.map((id) => library.loadRoads(id)),
-        loadPlanners(),
-      ]);
-      // Only immutable content caches were filled. Selection and normal registry stay parked.
-      if (signal.aborted) throw new Error('Measurement preparation retired');
-      if (!sceneCode) throw new Error('Measurement scene code unavailable');
-      return sceneCode.resolveMeasurementScene(library.registry(), selected);
-    },
-    acquireWake: acquireWakeLease,
-    acquireAudio: (options) => audio.acquireSuspendLease(options),
-    audioState: () => audio.state(),
-    current: () =>
-      preparationIntent !== null &&
-      preparationIntent.generation === normalGeneration &&
-      preparationIntent.region === ui.region &&
-      preparationIntent.route === route &&
-      state === 'menu' &&
-      ui.screen() === 'menu' &&
-      !ui.paused &&
-      holds.size === 0 &&
-      !renderer.contextLost &&
-      document.visibilityState === 'visible' &&
-      loop.lockstep === null,
-    invalidate: () => frames.invalidate(),
-    quality: () => ({
-      setting: settings.qualityTier,
-      ...(diagnostic?.governor.state ?? quality.state),
-      pixelRatio: renderer.stats().pixelRatio,
-    }),
-    commit(scene) {
-      if (!menuReceipt) throw new Error('Menu receipt missing');
-      const reg = library.registry();
-      const roadPack = packOf(scene.scene.route.networkId);
-      const dressing = Object.fromEntries(
-        scene.stream.road.edges.map((e) => [e.id, lookup(reg.roads, qualifyIn(roadPack, e.id))]),
-      );
-      const sky = scene.scene.weather.sky;
-      const governor = createQualityGovernor({ setting: settings.qualityTier, autoTier: quality.state.tier });
-      const token = renderer.applyPresentation(
-        {
-          road: scene.stream.road,
-          env: {
-            timeOfDay: scene.scene.light.actualId,
-            palette: sky.palette,
-            ...(sky.weather ? { weather: sky.weather } : {}),
+  const measurementPreflight = (): AppMeasurementRefusalReason | null => {
+    if (recoveryBusy || recoveryLocked || (attemptOwner?.terminal && !attemptOwner.settled))
+      return 'normal-launch-pending';
+    if (state !== 'menu') return 'not-menu';
+    if (ui.screen() !== 'menu') return 'wrong-ui-screen';
+    if (ui.paused) return 'ui-paused';
+    if (holds.size > 0 || document.visibilityState !== 'visible') return 'lifecycle-held';
+    if (renderer.contextLost) return 'renderer-context-lost';
+    if (loadingRoads || pendingLoad || normalLoads.size > 0) return 'normal-load-pending';
+    if (pendingLaunch) return 'normal-launch-pending';
+    if (loop.lockstep !== null) return 'lockstep-active';
+    return null;
+  };
+  const makeMeasurementRuntime = (
+    createRuntime: typeof import('./measurement-runtime').createMeasurementRuntime,
+  ) =>
+    createRuntime({
+      preflight: measurementPreflight,
+      async prepare(signal) {
+        normalGeneration++;
+        normalContentGeneration++;
+        const region = ui.region ?? regionKeyOf(registry, eventId);
+        preparationIntent = { generation: normalGeneration, region, route };
+        const selected = {
+          regionId: region,
+          routeId: route,
+          seed: (opts.measurementSeedSource ?? cryptoSeed)() >>> 0,
+          garage: { ...profile.bikes, owned: [...profile.bikes.owned] },
+          bike: settings.raceOptions.bike,
+          timeOfDay: settings.raceOptions.timeOfDay,
+          weather: settings.raceOptions.weather,
+        };
+        const classic = quickPlayEvent(registry, region, 'race');
+        const missing = classic
+          ? packClosure(registry, packOf(classic.eventId)).filter((id) => !library.hasRoads(id))
+          : [];
+        const [sceneCode] = await Promise.all([
+          loadChunk('measurement scene', () => import('./measurement-scene')),
+          ...missing.map((id) => library.loadRoads(id)),
+          loadPlanners(),
+        ]);
+        // Only immutable content caches were filled. Selection and normal registry stay parked.
+        if (signal.aborted) throw new Error('Measurement preparation retired');
+        if (!sceneCode) throw new Error('Measurement scene code unavailable');
+        return sceneCode.resolveMeasurementScene(library.registry(), selected);
+      },
+      acquireWake: acquireWakeLease,
+      acquireAudio: (options) => audio.acquireSuspendLease(options),
+      audioState: () => audio.state(),
+      current: () =>
+        preparationIntent !== null &&
+        preparationIntent.generation === normalGeneration &&
+        preparationIntent.region === ui.region &&
+        preparationIntent.route === route &&
+        state === 'menu' &&
+        ui.screen() === 'menu' &&
+        !ui.paused &&
+        holds.size === 0 &&
+        !renderer.contextLost &&
+        document.visibilityState === 'visible' &&
+        loop.lockstep === null,
+      invalidate: () => frames.invalidate(),
+      quality: () => ({
+        setting: settings.qualityTier,
+        ...(diagnostic?.governor.state ?? quality.state),
+        pixelRatio: renderer.stats().pixelRatio,
+      }),
+      commit(scene) {
+        if (!menuReceipt) throw new Error('Menu receipt missing');
+        const reg = library.registry();
+        const roadPack = packOf(scene.scene.route.networkId);
+        const dressing = Object.fromEntries(
+          scene.stream.road.edges.map((e) => [e.id, lookup(reg.roads, qualifyIn(roadPack, e.id))]),
+        );
+        const sky = scene.scene.weather.sky;
+        const governor = createQualityGovernor({
+          setting: settings.qualityTier,
+          autoTier: quality.state.tier,
+        });
+        const token = renderer.applyPresentation(
+          {
+            road: scene.stream.road,
+            env: {
+              timeOfDay: scene.scene.light.actualId,
+              palette: sky.palette,
+              ...(sky.weather ? { weather: sky.weather } : {}),
+            },
+            dressing,
+            boards: boardCatalog(
+              reg,
+              scene.scene.regionId,
+              new Set(settings.vetoes.map((v) => v.contentRef)),
+            ),
+            trafficTypes: scene.config.trafficTypes,
+            riderLooks: scene.config.riders.map((r) =>
+              riderLookOf({
+                contentId: r.contentId,
+                role: r.role,
+                bikeId: r.bike.contentId,
+                look: (reg.riders[r.contentId] as { look?: unknown } | undefined)?.look,
+              }),
+            ),
+            playerPaint: null,
+            sceneSeed: scene.scene.seed,
+            look: settings.look,
+            quality: { ...governor.state },
           },
-          dressing,
-          boards: boardCatalog(reg, scene.scene.regionId, new Set(settings.vetoes.map((v) => v.contentRef))),
-          trafficTypes: scene.config.trafficTypes,
-          riderLooks: scene.config.riders.map((r) =>
-            riderLookOf({
-              contentId: r.contentId,
-              role: r.role,
-              bikeId: r.bike.contentId,
-              look: (reg.riders[r.contentId] as { look?: unknown } | undefined)?.look,
-            }),
-          ),
-          playerPaint: null,
-          sceneSeed: scene.scene.seed,
-          look: settings.look,
-          quality: { ...governor.state },
-        },
-        { reset: 'preserve' },
-      );
-      const sim = createSim(scene.config);
-      if (typeof document.createElement === 'function') {
-        measurementShield = document.createElement('div');
-        measurementShield.id = 'measurement-input-shield';
-        measurementShield.style.cssText =
-          'position:absolute;inset:0;z-index:45;pointer-events:auto;touch-action:none';
-        for (const kind of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'])
-          measurementShield.addEventListener(kind, (event) => {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-          });
-        opts.host.append(measurementShield);
-      }
-      const diagnosticCamera = createFollowCamera({ road: scene.stream.road });
-      diagnosticCamera.setShakeAmount(shakeAmount);
-      diagnosticCamera.setMotionAmount(motionNow.camera);
-      diagnostic = {
-        scene,
-        sim,
-        prev: null,
-        curr: sim.snapshot(),
-        playerId: scene.config.riders.findIndex((r) => r.controller.kind === 'player'),
-        camera: diagnosticCamera,
-        countdown: createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT)),
-        governor,
-        token,
-        driver: null,
-        index: 0,
-        owner: {},
+          { reset: 'preserve' },
+        );
+        const sim = createSim(scene.config);
+        if (typeof document.createElement === 'function') {
+          measurementShield = document.createElement('div');
+          measurementShield.id = 'measurement-input-shield';
+          measurementShield.style.cssText =
+            'position:absolute;inset:0;z-index:45;pointer-events:auto;touch-action:none';
+          for (const kind of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'])
+            measurementShield.addEventListener(kind, (event) => {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+            });
+          opts.host.append(measurementShield);
+        }
+        const diagnosticCamera = createFollowCamera({ road: scene.stream.road });
+        diagnosticCamera.setShakeAmount(shakeAmount);
+        diagnosticCamera.setMotionAmount(motionNow.camera);
+        diagnostic = {
+          scene,
+          sim,
+          prev: null,
+          curr: sim.snapshot(),
+          playerId: scene.config.riders.findIndex((r) => r.controller.kind === 'player'),
+          camera: diagnosticCamera,
+          countdown: createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT)),
+          governor,
+          token,
+          driver: null,
+          index: 0,
+          owner: {},
+        };
+        startMeasurementRepeat(0);
+      },
+      restore() {
+        const d = diagnostic;
+        diagnostic = null;
+        measurementShield?.remove();
+        measurementShield = null;
+        preparationIntent = null;
+        if (d && driverOwner === d.owner) {
+          driverOwner = null;
+          input.setDriver(normalInputDriver);
+        }
+        const saved = menuReceipt;
+        if (!saved) return { logical: 'menu', visible: 'draw-failed' };
+        presentationRecipe = { ...saved.recipe, quality: { ...quality.state } };
+        presentationToken = renderer.applyPresentation(presentationRecipe, { reset: 'measurement-to-menu' });
+        renderer.setPresentationQuality(presentationToken, quality.state.tier, quality.state.scale);
+        if (renderer.contextLost) return { logical: 'menu', visible: 'blocked-context' };
+        renderer.render(saved.prev, saved.curr, 0, saved.pose);
+        return { logical: 'menu', visible: 'restored' };
+      },
+    });
+  const beginMeasurement = (request: AppMeasurementRequest): Promise<AppMeasurementStart> => {
+    if (request.signal.aborted) return Promise.resolve(measurementRefusal('aborted'));
+    if (pendingMeasurement) return Promise.resolve(measurementRefusal('owner-busy'));
+    if (measurement) return measurement.begin(request);
+    const reason = measurementPreflight();
+    if (reason) return Promise.resolve(measurementRefusal(reason));
+    return new Promise((resolve, reject) => {
+      const pending = {
+        signal: request.signal,
+        abort: () => retireMeasurementEntry('aborted'),
+        generation: normalGeneration,
+        resolve,
+        reject,
       };
-      startMeasurementRepeat(0);
-    },
-    restore() {
-      const d = diagnostic;
-      diagnostic = null;
-      measurementShield?.remove();
-      measurementShield = null;
-      preparationIntent = null;
-      if (d && driverOwner === d.owner) {
-        driverOwner = null;
-        input.setDriver(normalInputDriver);
+      pendingMeasurement = pending;
+      request.signal.addEventListener('abort', pending.abort, { once: true });
+      if (request.signal.aborted) {
+        pending.abort();
+        return;
       }
-      const saved = menuReceipt;
-      if (!saved) return { logical: 'menu', visible: 'draw-failed' };
-      presentationRecipe = { ...saved.recipe, quality: { ...quality.state } };
-      presentationToken = renderer.applyPresentation(presentationRecipe, { reset: 'measurement-to-menu' });
-      renderer.setPresentationQuality(presentationToken, quality.state.tier, quality.state.scale);
-      if (renderer.contextLost) return { logical: 'menu', visible: 'blocked-context' };
-      renderer.render(saved.prev, saved.curr, 0, saved.pose);
-      return { logical: 'menu', visible: 'restored' };
-    },
-  });
+      void loadChunk('measurement runtime', () => import('./measurement-runtime')).then(
+        (module) => {
+          if (pendingMeasurement !== pending) return;
+          if (pending.generation !== normalGeneration) {
+            retireMeasurementEntry('superseded-before-start');
+            return;
+          }
+          pendingMeasurement = null;
+          request.signal.removeEventListener('abort', pending.abort);
+          if (!module) {
+            reject(new Error('Measurement runtime code unavailable'));
+            return;
+          }
+          try {
+            measurement = makeMeasurementRuntime(module.createMeasurementRuntime);
+            void measurement.begin(request).then(resolve, reject);
+          } catch (error) {
+            reject(
+              error instanceof Error
+                ? error
+                : new Error('Measurement runtime setup failed', { cause: error }),
+            );
+          }
+        },
+        (error: unknown) => {
+          if (pendingMeasurement !== pending) return;
+          pendingMeasurement = null;
+          request.signal.removeEventListener('abort', pending.abort);
+          reject(
+            error instanceof Error ? error : new Error('Measurement runtime load failed', { cause: error }),
+          );
+        },
+      );
+    });
+  };
   const handle: AppHandle & {
     resumeInfo: () => {
       savedReplayKey: string | null;
@@ -3156,7 +3244,7 @@ export function createApp(opts: AppOptions): AppHandle {
       staleReplayKey,
       fastForward,
     }),
-    beginMeasurement: (request) => measurement.begin(request),
+    beginMeasurement,
     build,
     subscribeFrames: (onFrame, onError) => frames.subscribe(onFrame, onError),
     state: () => state,
@@ -3389,10 +3477,10 @@ export function createApp(opts: AppOptions): AppHandle {
         });
         return;
       }
-      if (!measurement?.intercepted) return;
+      if (!pendingMeasurement && !measurement?.intercepted) return;
       const pauseKey =
         event.code === 'Escape' || keyMapFromBindings(settings.keyBindings).pause.includes(event.code);
-      if (measurement.running || event.code === 'Backquote' || pauseKey) {
+      if (measurement?.running || event.code === 'Backquote' || pauseKey) {
         event.preventDefault();
         event.stopImmediatePropagation();
         actionGate(event.code === 'Escape' ? 'back' : pauseKey ? 'manual-pause' : 'raw', () => {
