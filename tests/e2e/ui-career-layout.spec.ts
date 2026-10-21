@@ -233,6 +233,13 @@ async function expectWholeLayout(page: Page, start: Measured, where: string) {
 }
 
 async function offBikeCoverControl(page: Page) {
+  const crashFrom = await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    if (!g) throw new Error('race seam missing');
+    g.lockstep(0);
+    g.setBot(false);
+    return g.snapshot()?.tick ?? 0;
+  });
   const identity = await page.evaluate(() => (window as TestWindow).__playerIdentityControl?.());
   expect(identity?.planted, 'a real rival rig was planted at the followed player').toBe(true);
   expect(identity?.unchanged, 'nearby rival geometry never replaces followed-player geometry').toBe(true);
@@ -240,6 +247,12 @@ async function offBikeCoverControl(page: Page) {
     true,
   );
   for (const mode of ['Tumble', 'OnFoot']) {
+    if (mode === 'Tumble') {
+      // A deliberately overheld wheelie causes a real crash. The bot's incidental next collision
+      // is not a layout contract: better riding must not make these physical controls disappear.
+      await page.keyboard.down('KeyW');
+      await page.keyboard.down('KeyH');
+    }
     await page.evaluate((mode) => {
       const g = (window as TestWindow).__game;
       if (!g) throw new Error('race seam missing');
@@ -253,6 +266,24 @@ async function offBikeCoverControl(page: Page) {
       );
     }, mode);
     await fastForwardDone(page, `off-bike cover control: ${mode}`);
+    if (mode === 'Tumble') {
+      await page.keyboard.up('KeyH');
+      await page.keyboard.up('KeyW');
+      const loopOut = await page.evaluate((from) => {
+        const g = (window as TestWindow).__game;
+        return g
+          ?.events()
+          .some(
+            (e) =>
+              e.type === 'crash' &&
+              e.actor === g.playerId() &&
+              e.tick > from &&
+              e.data?.['cause'] === 'wheelie' &&
+              e.data?.['loopOut'] === true,
+          );
+      }, crashFrom);
+      expect(loopOut, 'the held wheelie caused the real player crash').toBe(true);
+    }
     const result = await page.evaluate(() => {
       const w = window as TestWindow;
       const self = w.__game?.snapshot()?.entities?.find((e) => e.id === w.__game?.playerId()) as
