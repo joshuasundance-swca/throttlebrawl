@@ -24,11 +24,17 @@ export async function routeMain(o) {
   const sleep = o.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const end = o.deadline ?? now() + PREFLIGHT_MS - OUTPUT_RESERVE_MS;
   const full = { path: 'full', skip: false, reason: 'full acceptance required', tree: o.tree };
+  const fallback = (reason) => ({ ...full, reason });
+  let failureReason = 'lookup-failed';
   let requests = 0;
   let failed = false;
   const remaining = () => end - now();
   async function get(path) {
-    if (failed || requests >= REQUEST_CAP || remaining() <= 0) throw new Error('preflight budget');
+    if (failed) throw new Error('preflight budget');
+    if (requests >= REQUEST_CAP || remaining() <= 0) {
+      failureReason = requests >= REQUEST_CAP ? 'request-cap' : 'deadline';
+      throw new Error('preflight budget');
+    }
     requests++;
     const controller = new AbortController();
     let timer;
@@ -38,6 +44,7 @@ export async function routeMain(o) {
         new Promise((_, reject) => {
           timer = setTimeout(
             () => {
+              failureReason = remaining() <= 0 ? 'deadline' : 'request-deadline';
               controller.abort();
               reject(new Error('preflight request deadline'));
             },
@@ -45,7 +52,10 @@ export async function routeMain(o) {
           );
         }),
       ]);
-      if (remaining() <= 0) throw new Error('preflight deadline');
+      if (remaining() <= 0) {
+        failureReason = 'deadline';
+        throw new Error('preflight deadline');
+      }
       return result;
     } catch (error) {
       failed = true;
@@ -98,7 +108,8 @@ export async function routeMain(o) {
     return result.skip;
   }
   try {
-    if (!SHA.test(o.sha) || !SHA.test(o.tree) || !/^[\w.-]+\/[\w.-]+$/.test(o.repo)) return full;
+    if (!SHA.test(o.sha) || !SHA.test(o.tree) || !/^[\w.-]+\/[\w.-]+$/.test(o.repo))
+      return fallback('invalid-input');
     if (await proof()) return { ...full, path: 'tested', skip: true, reason: 'exact tested-tree proof' };
     const base = `/repos/${o.repo}`;
     const repository = await get(base);
@@ -110,7 +121,7 @@ export async function routeMain(o) {
       workflow.path !== '.github/workflows/ci.yml' ||
       workflow.state !== 'active'
     )
-      return full;
+      return fallback('ineligible-repository-or-workflow');
     const sameRepo = (r) => r?.id === repository.id && r.full_name === o.repo;
     const validRun = (r, sha, wf = workflow, event = 'push') =>
       positive(r?.id) &&
@@ -141,12 +152,13 @@ export async function routeMain(o) {
           compare.base_commit?.sha !== o.sha ||
           compare.merge_base_commit?.sha !== o.sha
         )
-          return full;
+          return fallback('unproven-forward-ancestry');
         const runs = await collection(
           `${base}/actions/workflows/${workflow.id}/runs?event=push&head_sha=${successor}`,
           'workflow_runs',
         );
-        if (!runs.length || runs.some((r) => !validRun(r, successor))) return full;
+        if (!runs.length || runs.some((r) => !validRun(r, successor)))
+          return fallback('successor-eligibility-unproven');
         runs.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id);
         const listed = runs[0];
         const chosen = await get(`${base}/actions/runs/${listed.id}`);
@@ -155,9 +167,10 @@ export async function routeMain(o) {
           chosen.id !== listed.id ||
           chosen.run_attempt !== listed.run_attempt
         )
-          return full;
+          return fallback('successor-metadata-mismatch');
         if (!pending(chosen)) {
-          if (chosen.status !== 'completed' || chosen.conclusion !== 'success') return full;
+          if (chosen.status !== 'completed' || chosen.conclusion !== 'success')
+            return fallback('successor-not-pending-or-successful');
           const jobs = await collection(
             `${base}/actions/runs/${chosen.id}/attempts/${chosen.run_attempt}/jobs?filter=all`,
             'jobs',
@@ -170,7 +183,7 @@ export async function routeMain(o) {
             ) ||
             !hasSuccessfulMainGate(jobs)
           )
-            return full;
+            return fallback('successor-gate-not-proven');
         }
         const unchanged = (r) =>
           validRun(r, successor) &&
@@ -183,7 +196,7 @@ export async function routeMain(o) {
           (await head()) !== successor ||
           !unchanged(await get(`${base}/actions/runs/${chosen.id}`))
         )
-          return full;
+          return fallback('successor-changed');
         return {
           ...full,
           path: 'superseded',
@@ -195,7 +208,7 @@ export async function routeMain(o) {
       // An active main train grants time for merges/proof publication, never acceptance itself.
       train ??= await get(`${base}/actions/workflows/train.yml`);
       if (!positive(train?.id) || train.path !== '.github/workflows/train.yml' || train.state !== 'active')
-        return full;
+        return fallback('ineligible-train-workflow');
       let active = false;
       for (const status of ['queued', 'in_progress']) {
         const runs = await collection(
@@ -213,21 +226,26 @@ export async function routeMain(o) {
         )
           active = true;
       }
-      if (!active || requests >= REQUEST_CAP || remaining() <= POLL_MS) return full;
+      if (!active || requests >= REQUEST_CAP || remaining() <= POLL_MS)
+        return fallback(
+          !active ? 'no-eligible-active-train' : requests >= REQUEST_CAP ? 'request-cap' : 'poll-deadline',
+        );
       await sleep(POLL_MS);
       if (await proof()) return { ...full, path: 'tested', skip: true, reason: 'exact tested-tree proof' };
     }
   } catch {
-    return full;
+    return fallback(failureReason);
   }
 }
 
 async function main() {
   const deadline = performance.now() + PREFLIGHT_MS - OUTPUT_RESERVE_MS;
   const sha = process.env.GITHUB_SHA;
-  let result = { path: 'full', skip: false, tree: '' };
+  let result = { path: 'full', skip: false, tree: '', reason: 'invalid-input' };
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) result.reason = 'missing-token';
   if (SHA.test(sha ?? '') && token) {
+    result.reason = 'local-tree-unavailable';
     const local = spawnSync('git', ['show', '-s', '--format=%H%n%T', 'HEAD'], {
       encoding: 'utf8',
       timeout: Math.max(1, Math.floor(deadline - performance.now())),
@@ -252,6 +270,7 @@ async function main() {
   }
   // Fixed strings and validated hashes only; API/error text never becomes a workflow command.
   console.log(`main preflight: ${result.path}`);
+  console.log(`main preflight reason: ${result.reason}`);
   if (process.env.GITHUB_OUTPUT)
     appendFileSync(
       process.env.GITHUB_OUTPUT,
