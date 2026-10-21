@@ -323,6 +323,18 @@
       "text": "LOADING LINE: RIGHT SHOULDER. WATCH FOR CARRIER. THROUGH TRAFFIC: STAY LEFT.",
       "tags": ["site"],
       "status": "live"
+    },
+    {
+      "id": "longview-service-counter",
+      "text": "SERVICE COUNTER. RAIN CHECKS ISSUED HERE.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
+      "id": "longview-market-boost",
+      "text": "GRASS BOOST: RIGHT. KESSLER PLANT SALE. REJOIN THE ROAD.",
+      "tags": ["site"],
+      "status": "live"
     }
   ],
   "billboards": [

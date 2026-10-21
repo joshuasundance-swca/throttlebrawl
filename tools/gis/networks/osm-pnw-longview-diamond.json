@@ -112,7 +112,37 @@
         {
           "id": "osm-longview-diamond-20th",
           "name": "20th Avenue",
-          "tags": ["town"]
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "street-civic-counter",
+              "s0": 212,
+              "s1": 236,
+              "d0": 13,
+              "d1": 21,
+              "params": {
+                "place": "civic-frontage"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "street-civic-sign",
+              "s0": 170,
+              "s1": 176,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "longview-service-counter"
+            }
+          ],
+          "sideRuns": [
+            {
+              "tag": "longview-street-life",
+              "side": "right",
+              "s0": 210,
+              "s1": 238
+            }
+          ]
         },
         {
           "id": "osm-longview-diamond-diagonal",
@@ -213,7 +243,61 @@
         {
           "id": "osm-longview-diamond-kessler",
           "name": "Kessler Boulevard",
-          "tags": ["town"]
+          "tags": ["town"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "street-plant-market",
+              "s0": 860,
+              "s1": 884,
+              "d0": 13,
+              "d1": 21,
+              "params": {
+                "place": "plant-market"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "street-market-boost-sign",
+              "s0": 798,
+              "s1": 804,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "longview-market-boost"
+            },
+            {
+              "kind": "boostPad",
+              "id": "street-market-boost",
+              "s0": 880,
+              "s1": 894,
+              "d0": 6.4,
+              "d1": 8.4,
+              "params": {
+                "boostMps": 6,
+                "holdS": 0.8
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "street-market-walkers",
+              "s0": 856,
+              "s1": 880,
+              "d0": 9.8,
+              "d1": 10.8,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["rain-shell-hiker", "trail-runner"]
+              }
+            }
+          ],
+          "sideRuns": [
+            {
+              "tag": "longview-street-life",
+              "side": "right",
+              "s0": 858,
+              "s1": 886
+            }
+          ]
         }
       ]
     }

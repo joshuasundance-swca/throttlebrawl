@@ -42,6 +42,7 @@ TAGS = {
     "painted-houses",
     "warehouses",
     "longview-port-yard",
+    "longview-street-life",
     "iowa-farm-traffic",
     "iowa-park",
     "piers",

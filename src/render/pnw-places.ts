@@ -36,7 +36,13 @@ import { keepSceneryOpen, MergedScenery, SCENERY_LOD_M, type MergeItem } from '.
 import { LAND_TOP_M, scatterHash, type ScenerySpot } from './scenery';
 
 /** The tags this layer draws. */
-export const PLACE_TAGS = ['ferry', 'clearcut', 'festival', 'longview-port-yard'] as const;
+export const PLACE_TAGS = [
+  'ferry',
+  'clearcut',
+  'festival',
+  'longview-port-yard',
+  'longview-street-life',
+] as const;
 
 /** Whether a network carries any of them (the renderer loads this chunk only then). */
 export function hasPnwPlaces(tags: ReadonlySet<string>): boolean {
@@ -761,6 +767,54 @@ export function workyardParts(kind: string, solids: readonly PnwSolidDef[]): Box
   return parts;
 }
 
+/** Street solids plus paint-thin facade detail, sharing the contact plan. */
+function streetSiteParts(kind: string, solids: readonly PnwSolidDef[], side: 1 | -1): BoxPart[] {
+  const colour = (name: string) => {
+    if (name === 'apron') return '#8c9185';
+    if (name === 'plant') return '#4f8246';
+    if (name === 'pot') return '#ae7050';
+    if (name === 'canopy') return kind === 'plant-market' ? '#e5dfb9' : '#3f706c';
+    if (name === 'body') return '#78584b';
+    if (name === 'roof') return '#515b5a';
+    if (name === 'sign-board') return '#386b51';
+    if (name === 'post') return '#ced0ba';
+    return '#8a654b';
+  };
+  const parts = solids.map(({ box: b, name }): BoxPart => ({
+    size: [b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0],
+    at: [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2],
+    color: colour(name),
+    solid: name,
+  }));
+  if (kind === 'civic-frontage') {
+    const face = side * 2.008;
+    for (const z of [3.5, 7.5]) parts.push({ size: [0.01, 1.5, 2.7], at: [face, 2, z], color: '#a5c8bf' });
+    parts.push({ size: [0.01, 2.2, 1.1], at: [face, 1.1, 1], color: '#334944' });
+    // Service-counter lettering and window dividers are paint-thin surface details.
+    for (const z of [2.2, 4.8, 6.2, 8.8])
+      parts.push({ size: [0.012, 1.5, 0.08], at: [face + side * 0.004, 2, z], color: '#e4dfcc' });
+    const word = 'REPAIRS',
+      cell = 0.18;
+    parts.push(
+      ...wordAlong(word, cell, 5 - (side * wordWidth(word, cell)) / 2, side, -face, 4.3, '#e6dfca').map(
+        (p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const }),
+      ),
+    );
+  } else {
+    // Pale and green canopy stripes, with the sale's name on its road-facing fascia.
+    for (const z of [-6, -3, 0, 3, 6])
+      parts.push({ size: [8, 0.01, 1.2], at: [0, 3.354, z], color: '#66825a' });
+    const word = 'PLANT SALE',
+      cell = 0.12;
+    parts.push(
+      ...wordAlong(word, cell, (-side * wordWidth(word, cell)) / 2, side, -side * 4.007, 2.4, '#efe7c9').map(
+        (p) => ({ ...p, size: [0.01, p.size[1], p.size[2]] as const }),
+      ),
+    );
+  }
+  return parts;
+}
+
 /** Every prop the places put on a network, in road terms (the layer merges them; tests read them). */
 export function placeItems(
   road: RoadNetwork,
@@ -779,6 +833,17 @@ export function placeItems(
     return g;
   };
   for (const e of road.edges) {
+    for (const site of layout.streetSites) {
+      if (site.edge !== e.index) continue;
+      items.push({
+        kind: site.kind,
+        edge: site.edge,
+        s: site.s,
+        d: site.d,
+        h: LAND_TOP_M,
+        geometry: model(streetSiteParts(site.kind, site.solids, site.d < 0 ? -1 : 1)),
+      });
+    }
     for (const yard of layout.workyards) {
       if (yard.edge !== e.index) continue;
       items.push({

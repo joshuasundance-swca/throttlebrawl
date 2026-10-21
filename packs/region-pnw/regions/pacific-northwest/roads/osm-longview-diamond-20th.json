@@ -63,9 +63,36 @@
       "s1": 674.9236,
       "side": "both",
       "tag": "town"
+    },
+    {
+      "s0": 210.0,
+      "s1": 238.0,
+      "side": "right",
+      "tag": "longview-street-life"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "street-civic-counter",
+      "s0": 212.0,
+      "s1": 236.0,
+      "d0": 13.0,
+      "d1": 21.0,
+      "params": {
+        "place": "civic-frontage"
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "street-civic-sign",
+      "s0": 170.0,
+      "s1": 176.0,
+      "d0": 12.5,
+      "d1": 15.0,
+      "item": "longview-service-counter"
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",
