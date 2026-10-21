@@ -183,4 +183,134 @@ describe('Iowa county farmstead', () => {
     expect(specs.some((p) => p.rule.endsWith(':shed-post'))).toBe(true);
     expect(specs.some((p) => p.rule.endsWith(':crib-slat'))).toBe(true);
   });
+
+  it('opts low crops into useful authored spans without adding support, solids or encounter population', () => {
+    const layout = iowaCountyLayout(road, 1),
+      fields = layout.crops ?? [];
+    expect(fields.length).toBeGreaterThan(0);
+    const removed = roads.map((r) => ({ ...r, tags: r.tags?.filter((t) => t.tag !== IOWA_COUNTY_TAG) }));
+    const control = createRoadNetwork({ network, roads: removed });
+    expect(iowaCountyLayout(control, 1).crops ?? []).toEqual([]);
+    const measurements: unknown[] = [];
+    for (const field of fields) {
+      const edge = road.edges[field.edge]!;
+      expect(edge.tags.some((t) => t.tag === IOWA_COUNTY_TAG && t.s0 <= field.s0 && t.s1 >= field.s1)).toBe(
+        true,
+      );
+      for (const s of [field.s0, (field.s0 + field.s1) / 2, field.s1])
+        for (const d of [-25, -14, 14, 25]) {
+          expect(sectionGroundOf(road)(field.edge, s, d)).toBe(sectionGroundOf(control)(field.edge, s, d));
+        }
+      for (const feature of edge.features) {
+        expect(field.s1 < feature.s0 - 20 || field.s0 > feature.s1 + 20).toBe(true);
+      }
+      let minS = Infinity,
+        maxS = -Infinity,
+        minD = Infinity,
+        maxD = -Infinity,
+        minRecovery = Infinity;
+      for (const p of field.vertices) {
+        let s = (field.s0 + field.s1) / 2;
+        for (let pass = 0; pass < 4; pass++) {
+          const f = road.frameAt(field.edge, s);
+          s = Math.max(0, Math.min(edge.length, s + (p[0] - f.x) * f.tx + (p[2] - f.z) * f.tz));
+        }
+        const f = road.frameAt(field.edge, s),
+          d = -(p[0] - f.x) * f.tz + (p[2] - f.z) * f.tx;
+        const verge = road.vergeAt(field.edge, s, d < 0 ? 'left' : 'right');
+        minS = Math.min(minS, s);
+        maxS = Math.max(maxS, s);
+        minD = Math.min(minD, d);
+        maxD = Math.max(maxD, d);
+        minRecovery = Math.min(minRecovery, Math.abs(d) - Math.abs(verge.dOuter));
+      }
+      expect(minRecovery).toBeGreaterThan(6);
+      measurements.push({
+        id: field.id,
+        triangles: field.vertices.length / 3,
+        minS,
+        maxS,
+        minD,
+        maxD,
+        minRecovery,
+      });
+    }
+    process.stdout.write(`[county crops supported extents] ${JSON.stringify(measurements)}\n`);
+    const specs: StructureSpec[] = [];
+    iowaCountyPlanner.plan(road, 1, { add: (s) => specs.push(s) - 1 });
+    expect(specs.every((s) => !s.rule.startsWith('county-crops'))).toBe(true);
+    // Fields use tags alone: the pre-existing source feature list and all spawn params stay intact.
+    for (const r of roads)
+      expect(control.edges[road.edgeIndex(r.id)]!.features).toEqual(
+        road.edges[road.edgeIndex(r.id)]!.features,
+      );
+  });
+
+  it('omits crop strips over hard edges, water, bridges, facility access and another road', () => {
+    const county = roads.find((r) => r.id === 'osm-clinton-county-180th')!;
+    const tag = county.tags!.find((t) => t.tag === IOWA_COUNTY_TAG && t.s1 - t.s0 >= 24)!;
+    const only = roads.map((r) => ({
+      ...r,
+      tags: r.tags?.filter((t) => t.tag !== IOWA_COUNTY_TAG).concat(r.id === county.id ? [tag] : []),
+    }));
+    const fields = (rs: typeof roads, n = network) =>
+      iowaCountyLayout(createRoadNetwork({ network: n, roads: rs }), 1).crops ?? [];
+    expect(fields(only).length).toBeGreaterThan(0);
+    const hard = only.map((r) => ({
+      ...r,
+      laneSections: r.laneSections.map((s) => ({
+        ...s,
+        verges: {
+          left: { widthM: 3, surface: 'grass' as const, edge: 'hard' as const },
+          right: { widthM: 3, surface: 'grass' as const, edge: 'hard' as const },
+        },
+      })),
+    }));
+    expect(fields(hard)).toEqual([]);
+    for (const bad of ['water-open', 'bridge']) {
+      const wet = only.map((r) => ({
+        ...r,
+        tags: r.id === county.id ? [...(r.tags ?? []), { ...tag, tag: bad }] : r.tags,
+      }));
+      expect(fields(wet)).toEqual([]);
+    }
+    const blocked = only.map((r) => ({
+      ...r,
+      features:
+        r.id === county.id
+          ? [
+              ...(r.features ?? []),
+              {
+                kind: 'roadsideZone' as const,
+                id: 'field-access-control',
+                s0: tag.s0 + 20,
+                s1: tag.s1 - 20,
+                d0: 14,
+                d1: 22,
+                params: { place: 'county-loading-shed' },
+              },
+            ]
+          : r.features,
+    }));
+    expect(fields(blocked)).toEqual([]);
+    // A source-shaped neighbouring road is shifted into the proposed field, even high overhead.
+    const e = road.edges[road.edgeIndex(county.id)]!,
+      offset = road.frameAt(e.index, (tag.s0 + tag.s1) / 2);
+    const overlap: BakedRoad = {
+      ...county,
+      id: 'crop-overlap-control',
+      tags: [],
+      features: [],
+      samples: {
+        ...county.samples,
+        data: {
+          ...county.samples.data,
+          x: county.samples.data.x.map((x) => x - offset.tz * 19),
+          y: county.samples.data.y.map((y) => y + 30),
+          z: county.samples.data.z.map((z) => z + offset.tx * 19),
+        },
+      },
+    };
+    expect(fields([...only, overlap], { ...network, roads: [...network.roads, overlap.id] })).toEqual([]);
+  });
 });

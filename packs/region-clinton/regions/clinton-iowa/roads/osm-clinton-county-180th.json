@@ -71,6 +71,18 @@
       "tag": "iowa-county-farmstead"
     },
     {
+      "s0": 900,
+      "s1": 1000,
+      "side": "right",
+      "tag": "iowa-county-farmstead"
+    },
+    {
+      "s0": 1400,
+      "s1": 1500,
+      "side": "left",
+      "tag": "iowa-county-farmstead"
+    },
+    {
       "s0": 1930.0,
       "s1": 1950.0,
       "side": "right",
