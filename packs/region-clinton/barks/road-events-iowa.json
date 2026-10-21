@@ -1,0 +1,26 @@
+{
+  "type": "bark-set",
+  "id": "road-events-iowa",
+  "name": "Iowa: road events",
+  "tags": ["road-events", "iowa"],
+  "defaults": { "speaker": "mara-vale", "cooldownS": 45, "weight": 1 },
+  "lines": [
+    {
+      "id": "mara-hay-road-report",
+      "trigger": "modifier-start",
+      "when": [{ "fact": "modifier.id", "op": "eq", "value": "region-clinton:iowa-hay-truck" }],
+      "text": "Loose hay. That's going in the road report."
+    },
+    {
+      "id": "mara-hay-county-delivery",
+      "trigger": "modifier-start",
+      "when": [{ "fact": "modifier.id", "op": "eq", "value": "region-clinton:iowa-hay-truck" }],
+      "text": "County delivery. One bale at a time."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Original text-only contextual reactions for the fictional local road surveyor. No voice generation.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-21" }
+  }
+}

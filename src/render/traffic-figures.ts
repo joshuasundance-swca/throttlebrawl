@@ -24,6 +24,7 @@ export const TRAFFIC_FIGURES = [
   'boatPickup',
   'rv',
   'logTruck',
+  'farmTruck',
   'wagon',
   'robotaxi',
   'shuttle',
@@ -68,6 +69,7 @@ const name = (contentId: string) => contentId.slice(contentId.lastIndexOf(':') +
 
 /** Which regional figure draws a road-vehicle type, by its id; null for the older shapes. */
 export function trafficFigureFor(contentId: string): TrafficFigure | null {
+  if (contentId === 'region-clinton:iowa-hay-truck') return 'farmTruck';
   const id = name(contentId);
   if (/golf-cart/.test(id)) return 'golfCart';
   if (/convertible/.test(id)) return 'convertible';
@@ -129,6 +131,7 @@ export const TRAFFIC_FIGURE_HEIGHT_M: Readonly<Record<TrafficFigure, number>> = 
   boatPickup: 2.3,
   rv: 3.3,
   logTruck: 3.6,
+  farmTruck: 3.15,
   wagon: 2.0,
   robotaxi: 1.95,
   shuttle: 3.0,
@@ -163,6 +166,7 @@ export const TRAFFIC_FIGURE_DIMS: Readonly<
   boatPickup: { widthM: 2.2, lengthM: 7.5 },
   rv: { widthM: 2.4, lengthM: 7.5 },
   logTruck: { widthM: 2.6, lengthM: 16 },
+  farmTruck: { widthM: 2.4, lengthM: 7.5 },
   wagon: { widthM: 1.8, lengthM: 4.8 },
   robotaxi: { widthM: 1.9, lengthM: 4.8 },
   shuttle: { widthM: 2.6, lengthM: 11 },
@@ -501,6 +505,32 @@ function fit(parts: readonly BoxPart[], w: number, h: number, l: number): BoxPar
     at: [p.at[0] / w, p.at[1] / h, p.at[2] / l],
   }));
 }
+
+// Iowa's event flatbed, in metres. The existing hayLoad occupies z -0.3..3.1 at y 1.32..3.02:
+// a low open deck supports it, and the cab ends ahead of it. Nothing draws a closed cargo box.
+const FARM_TRUCK: BoxPart[] = fit(
+  [
+    { size: [2.4, 0.22, 4.15], at: [0, 1.19, 1.675], color: '#75664d' },
+    { size: [1.7, 0.32, 7.4], at: [0, 0.7, 0], color: '#303431' },
+    { size: [2.3, 1.6, 1.8], at: [0, 1.55, -1.65], color: '#6b7955' },
+    { size: [2.1, 0.65, 0.04], at: [0, 1.95, -2.57], color: GLASS },
+    { size: [2.32, 0.55, 1.5], at: [0, 1.95, -1.65], color: GLASS },
+    { size: [2.3, 0.12, 1.85], at: [0, 2.41, -1.65], color: '#6b7955' },
+    { size: [2.3, 0.75, 1.2], at: [0, 1.025, -3.15], color: '#6b7955' },
+    { size: [2.4, 0.18, 0.12], at: [0, 0.65, -3.69], color: METAL },
+    ...[-2.9, 1.65, 2.8].flatMap((z): BoxPart[] => [
+      { size: [0.3, 0.9, 0.9], at: [-1.05, 0.45, z], color: DARK },
+      { size: [0.3, 0.9, 0.9], at: [1.05, 0.45, z], color: DARK },
+    ]),
+    ...[-0.8, 0.8].flatMap((x): BoxPart[] => [
+      { size: [0.25, 0.16, 0.03], at: [x, 1.1, -3.735], color: '#fff3c4' },
+      { size: [0.22, 0.12, 0.03], at: [x, 1.15, 3.735], color: '#a33d2d' },
+    ]),
+  ],
+  2.4,
+  3.15,
+  7.5,
+);
 
 /** Boxes in metres moved `dz` along the figure (+z: toward its tail). */
 function along(dz: number, parts: readonly BoxPart[]): BoxPart[] {
@@ -850,6 +880,7 @@ export const TRAFFIC_FIGURE_PARTS: Readonly<Record<TrafficFigure | PeopleFigure,
   boatPickup: BOAT_PICKUP,
   rv: RV,
   logTruck: LOG_TRUCK,
+  farmTruck: FARM_TRUCK,
   wagon: WAGON,
   robotaxi: ROBOTAXI,
   shuttle: SHUTTLE,
