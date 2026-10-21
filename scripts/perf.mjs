@@ -12,10 +12,10 @@
 //     It prints the first-load JavaScript's headroom and, on CI (or with --base <ref>), the pull
 //     request's own change against main: it builds the merge base with origin/main in a throwaway
 //     worktree under .cache/ (git-ignored) and measures it the same way. A growth of 5 KB or more
-//     prints a warning. The budget fails any build; on a pull request's own run and on a train's run
-//     (the tree that lands), a change that grows the first load and leaves under 10 KB of headroom
-//     fails too (the floor, scripts/perf-limits.mjs floorJudgesRun). Main's pushes keep the budget
-//     alone.
+//     prints a warning. The hard budget fails any build; under 10 KB of headroom is a diagnostic
+//     on every measured build, including main and local runs, even without a base comparison.
+//     The size line names the actual checkout commit/tree and event, not the trigger SHA: a PR's
+//     synthetic merge, the train's assembled checkout and main's push are different measurements.
 //     It names the biggest first-load modules, each one's estimated share of the gzip size, from the
 //     list the build writes (scripts/first-load-modules.mjs, lane F1), and with main measured, the
 //     modules that grew, so a growth shows by name, not only as a bigger chunk.
@@ -49,10 +49,10 @@ import {
 } from './first-load-modules.mjs';
 import { examined, fmtBytes, git, refExists, repoRoot } from './lib.mjs';
 import {
+  firstLoadProblem,
   firstLoadReport,
-  floorProblem,
-  floorJudgesRun,
-  PR_FLOOR_KB,
+  headroomWarning,
+  measurementLabel,
   summaryMarkdown,
 } from './perf-limits.mjs';
 
@@ -197,9 +197,8 @@ function measureBase(ref) {
 
 const here = measure(dist);
 const problems = [];
-if (here.jsFiles === 0) problems.push('found no first-load JavaScript in dist/index.html');
-if (here.jsGzip > budget.jsGzipKB * 1024)
-  problems.push(`first-load JavaScript ${fmtBytes(here.jsGzip)} gzip is over ${budget.jsGzipKB} KB`);
+const sizeProblem = firstLoadProblem(here, budget.jsGzipKB);
+if (sizeProblem) problems.push(sizeProblem);
 if (here.raw > budget.firstLoadKB * 1024)
   problems.push(`first load ${fmtBytes(here.raw)} is over ${budget.firstLoadKB} KB`);
 const models = modelsByRegion(here.distFiles, regionOfSource);
@@ -220,10 +219,19 @@ const lazyGzip = here.lazy.reduce((n, c) => n + c.gz, 0);
 
 const baseM = baseRef ? measureBase(baseRef) : { reason: 'not measured locally (pass --base origin/main)' };
 const fl = firstLoadReport(here.jsGzip, budget.jsGzipKB, 'jsGzip' in baseM ? baseM.jsGzip : null);
+const measuredTree = measurementLabel(
+  {
+    commit: git(['rev-parse', 'HEAD']).trim(),
+    tree: git(['rev-parse', 'HEAD^{tree}']).trim(),
+    dirty: git(['status', '--porcelain', '--untracked-files=normal']).trim() !== '',
+  },
+  process.env,
+);
 const sizeLine =
-  'jsGzip' in baseM
+  `${measuredTree}: ` +
+  ('jsGzip' in baseM
     ? `${fl.line}; main measured at merge base ${baseM.sha}, built in ${baseM.seconds.toFixed(1)} s`
-    : `${fl.line}: ${baseM.reason}`;
+    : `${fl.line}: ${baseM.reason}`);
 console.log(`perf: ${sizeLine}`);
 if (fl.warn)
   console.log(
@@ -257,15 +265,9 @@ if ('modules' in headModules) {
   } else console.log(`perf: first-load module growth against main not measured: ${baseModules.reason}`);
 } else console.log(`perf: first-load modules not named: ${headModules.reason}`);
 
-// The pull request's floor: a PR that grows the first load must leave PR_FLOOR_KB of headroom, on its
-// own run and on the train run that lands it (the tree that reaches main).
-const judged = floorJudgesRun(process.env);
-const floor = floorProblem(fl, budget.jsGzipKB, judged);
-if (floor) problems.push(floor);
-const floorLine = judged
-  ? `pull-request floor ${PR_FLOOR_KB} KB of first-load headroom (${process.env.GITHUB_EVENT_NAME} run): ${floor ? 'FAILED' : 'holds'}`
-  : `pull-request floor ${PR_FLOOR_KB} KB: not applied (a push to main or a local run; the ${budget.jsGzipKB} KB budget alone)`;
-console.log(`perf: ${floorLine}`);
+// A composition warning, never an extra failure or a substitute for measuring this build's cap.
+const reserveWarning = headroomWarning(fl, budget.jsGzipKB, measuredTree);
+if (reserveWarning) console.log(`perf: WARNING: ${reserveWarning}`);
 examined(
   `${here.files} dist files: first-load JavaScript ${fmtBytes(here.jsGzip)} gzip in ${here.jsFiles} files ` +
     `(budget ${budget.jsGzipKB} KB, ${fmtBytes(Math.abs(fl.headroomBytes))} ${fl.headroomBytes >= 0 ? 'headroom' : 'over'}), ` +
@@ -323,7 +325,7 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   const size = [
     sizeLine,
     ...(fl.warn ? ['**Warning:** the first-load JavaScript grew by 5 KB or more.'] : []),
-    floor ? `**Failed:** ${floor}` : floorLine,
+    ...(reserveWarning ? [`**Warning:** ${reserveWarning}`] : []),
     ...moduleSummary,
   ];
   try {

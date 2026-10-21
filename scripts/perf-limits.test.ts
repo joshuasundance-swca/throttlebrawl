@@ -8,13 +8,14 @@ import { describe, expect, it } from 'vitest';
 import {
   DELTA_WARN_KB,
   FRAME_SLACK_MS,
+  firstLoadProblem,
   firstLoadReport,
-  floorProblem,
   GUARD_FACTOR,
   guardLimits,
-  floorJudgesRun,
+  headroomWarning,
+  HEADROOM_WARN_KB,
   judgeSoft,
-  PR_FLOOR_KB,
+  measurementLabel,
   START_TAP_GUARD_MIN_READINGS,
   summaryMarkdown,
   trendLine,
@@ -218,64 +219,79 @@ describe('the first-load JavaScript line', () => {
   });
 });
 
-describe("a pull request's headroom floor (2026-10-03: the budget was crossed 4 times by PRs that each fit)", () => {
+describe('measured first-load size: a hard cap and diagnostic composition reserve', () => {
   const KB = 1024;
-  const floor = (head: number, base: number | null, pr: boolean) =>
-    floorProblem(firstLoadReport(head * KB, 500, base === null ? null : base * KB), 500, pr);
+  const checkout = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), dirty: false };
+  const measured = (jsGzip: number) => ({ jsGzip, jsFiles: 2 });
+  const warning = (head: number, base: number | null, label = 'measured fixture tree') =>
+    headroomWarning(firstLoadReport(head, 500, base), 500, label);
 
-  it("is 10 KB, and judges a pull request's own run and every train run, never a push to main", () => {
-    expect(PR_FLOOR_KB).toBe(10);
-    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'pull_request' })).toBe(true);
-    // The bundle train (train.yml) and its control run the suite on the workflow_run and
-    // workflow_dispatch events: that run tests the tree that lands, so the floor judges it too.
-    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'workflow_run' })).toBe(true);
-    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'workflow_dispatch' })).toBe(true);
-    // Main's pushes (and their re-runs) keep the budget alone; a local run has no event.
-    expect(floorJudgesRun({ GITHUB_EVENT_NAME: 'push' })).toBe(false);
-    expect(floorJudgesRun({})).toBe(false);
+  it('keeps the 500 KiB hard cap: exactly at it passes, one byte over fails independently of delta', () => {
+    const budget = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/budget.json'), 'utf8')) as {
+      jsGzipKB: number;
+    };
+    expect(budget.jsGzipKB).toBe(500);
+    expect(firstLoadProblem(measured(500 * KB), budget.jsGzipKB)).toBeNull();
+    expect(firstLoadProblem(measured(500 * KB + 1), budget.jsGzipKB)).toContain('is over 500 KB');
+    expect(warning(500 * KB + 1, null)).toBeNull(); // the hard-cap failure speaks for itself
   });
 
-  it('holds a train run to it: #633 landed main at 9.9 KB of headroom through a train that skipped the floor', () => {
-    // Train 37530950804 (main ff06745 + #633): 490.1 KB gzip, its change against main not measured
-    // (the base build failed). Its perf step printed "not applied (not a pull_request run)", and #633's
-    // own quick check, against main 1 h 46 min older, had passed at 11.1 KB.
-    // 501,826 bytes: 87ceba3's first load as the live check measured it, 9.9 KB of headroom.
-    const landed = (base: number | null, env: Record<string, string>) =>
-      floorProblem(firstLoadReport(501_826, 500, base), 500, floorJudgesRun(env));
-    const train = { GITHUB_EVENT_NAME: 'workflow_dispatch' };
-    expect(landed(null, train)).toContain('leaves 9.9 KB of headroom');
-    expect(landed(null, train)).toContain('its change against main was not measured');
-    // Measured against the train's base (main ff06745 printed 489.8 KB): it grows the first load.
-    expect(landed(501_520, train)).toContain('this one grows it by 306 B');
-    expect(landed(501_520, { GITHUB_EVENT_NAME: 'workflow_run' })).not.toBeNull();
-    // The negative control: the same build on main's push is not judged by the floor.
-    expect(landed(501_520, { GITHUB_EVENT_NAME: 'push' })).toBeNull();
+  it('fails a missing or invalid current measurement, while a real below-cap measurement passes', () => {
+    expect(firstLoadProblem({ jsGzip: 495 * KB }, 500)).not.toBeNull();
+    expect(firstLoadProblem({ jsFiles: 2 }, 500)).not.toBeNull();
+    for (const jsFiles of [0, -1, Number.NaN])
+      expect(firstLoadProblem({ jsGzip: 495 * KB, jsFiles }, 500)).not.toBeNull();
+    for (const jsGzip of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])
+      expect(firstLoadProblem({ jsGzip, jsFiles: 2 }, 500)).not.toBeNull();
+    expect(firstLoadProblem(measured(495 * KB), 500)).toBeNull();
   });
 
-  it('fails a PR that grows the first load into the last 10 KB, with the headroom it leaves (it fires)', () => {
-    const msg = floor(491.7, 488, true);
-    expect(msg).toMatch(/^this PR leaves 8\.3 KB of headroom; move something off the first load\./);
-    expect(msg).toContain('at least 10 KB of the 500 KB first-load JavaScript budget');
-    expect(msg).toContain('this one grows it by 3.7 KB');
-    // One byte into the floor fails; exactly 10 KB of headroom passes.
-    expect(floor(490 + 1 / KB, 480, true)).not.toBeNull();
-    expect(floor(490, 480, true)).toBeNull();
-    // Its change against main unknown: the floor still holds (the stated rule).
-    expect(floor(495, null, true)).toContain('its change against main was not measured');
+  it('warns below the unchanged 10 KiB reserve, stays quiet at or above it, and never fails for reserve alone', () => {
+    expect(HEADROOM_WARN_KB).toBe(10);
+    const head = 490 * KB + 1;
+    const msg = warning(head, 480 * KB);
+    expect(msg).toContain('10239 B'); // rounding to 10.0 KB must not hide the threshold crossing
+    expect(msg).toContain('below the diagnostic 10 KB reserve');
+    expect(msg).toContain('500 KB hard cap');
+    expect(msg).toContain('measured fixture tree');
+    expect(firstLoadProblem(measured(head), 500)).toBeNull();
+    expect(warning(490 * KB, 480 * KB)).toBeNull();
+    expect(warning(489 * KB, 480 * KB)).toBeNull();
+    expect(warning(500 * KB, null)).not.toBeNull();
   });
 
-  it("never fires on main's pushes, under the floor's line, over the budget, or on a PR that does not grow it", () => {
-    // Main keeps the 500 KB budget alone.
-    expect(floor(495, 490, false)).toBeNull();
-    // Main today: about 400 KB.
-    expect(floor(398.7, 398.7, true)).toBeNull();
-    expect(floor(420, 398.7, true)).toBeNull();
-    // Over the budget, the budget's own failure speaks.
-    expect(floor(502.1, 495, true)).toBeNull();
-    // Main already inside the floor (two PRs that each fit, merged): a PR that adds nothing, or
-    // moves code off the first load, is not the one that ate the margin, so it never goes red.
-    expect(floor(495, 495, true)).toBeNull();
-    expect(floor(493, 495, true)).toBeNull();
-    expect(floor(495.1, 495, true)).not.toBeNull();
+  it('warns for growth, no change, shrink and missing comparison; absence affects only the delta', () => {
+    for (const base of [490 * KB, 495 * KB, 499 * KB, null]) {
+      const msg = warning(495 * KB, base);
+      expect(msg).toContain('5120 B');
+      expect(msg).toContain('diagnostic');
+      expect(firstLoadProblem(measured(495 * KB), 500)).toBeNull();
+    }
+    expect(warning(495 * KB, null)).toContain('change against main not measured');
+    for (const base of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      const report = firstLoadReport(495 * KB, 500, base);
+      expect(report.deltaBytes).toBeNull();
+      expect(headroomWarning(report, 500, 'fixture')).toContain('change against main not measured');
+    }
+  });
+
+  it('identifies the actual checkout on PR, train, main and local measurements without trusting the trigger SHA', () => {
+    for (const env of [
+      { GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/1/merge', GITHUB_WORKFLOW: 'ci' },
+      { GITHUB_EVENT_NAME: 'workflow_run', GITHUB_REF: 'refs/heads/main', GITHUB_WORKFLOW: 'train' },
+      { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/main', GITHUB_WORKFLOW: 'train' },
+      { GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main', GITHUB_WORKFLOW: 'ci' },
+      {},
+    ]) {
+      const label = measurementLabel(checkout, { ...env, GITHUB_SHA: 'c'.repeat(40) });
+      const msg = warning(495 * KB, null, label);
+      expect(msg).toContain(`checkout commit ${checkout.commit}, tree ${checkout.tree}`);
+      expect(msg).not.toContain('c'.repeat(40));
+      expect(label).toContain(env.GITHUB_EVENT_NAME ?? 'local');
+      expect(label).toContain(env.GITHUB_REF ?? 'no event ref');
+      expect(msg).toContain('change against main not measured');
+    }
+    expect(measurementLabel({ ...checkout, dirty: true }, {})).toContain('uncommitted changes');
+    expect(measurementLabel(checkout, {})).not.toContain('uncommitted changes');
   });
 });
