@@ -303,7 +303,7 @@ flowchart LR
   P -->|tested exact tree| B
   P -->|verified obsolete intermediate| X[superseded main: unaccepted, no gate or publication]
   RT[route, pull request only: full, train or docs] --> SU
-  SU[suite, suite.yml: static; unit 1/3 to 3/3; on the full path and main also sim 1/8 to 8/8 and browser 1/11 to 11/11, 11/11 then running perf] --> G
+  SU[suite, suite.yml: static; unit slices; on the full path and main also sim and browser slices, the last browser slice then running perf] --> G
   B[prod-build, only when plan says the tree was tested: identity leak scan, prod build, boot it] --> G
   G[aggregate: named gate, or quick on the train path] -->|push to main only| D[deploy-prod]
   D --> R[release notes]
