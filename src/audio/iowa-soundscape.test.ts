@@ -134,6 +134,30 @@ describe('Iowa place director reads the shipped road tags', () => {
     expect(f.beds).toEqual(NO_BEDS);
     expect(f.events).toEqual([]);
   });
+
+  it('keeps old-region sequences after initial and interposed Iowa visits as after unknown regions', () => {
+    for (const region of ['keys', 'pnw', 'sf'] as const) {
+      const knownIowa = createDirector(3);
+      const unknownIowa = createDirector(3);
+      let heard = 0;
+      for (let tick = 0; tick <= 1000; tick++) {
+        const visiting = tick < 100 || (tick >= 500 && tick < 600);
+        const i = input({
+          t: tick / 10,
+          speedMps: 20,
+          s: tick * 2,
+          tags: new Set(['rural', 'iowa-park', 'marina', 'bridge', 'forest', 'fog', 'cable-line']),
+        });
+        const actual = knownIowa.step({ ...i, region: visiting ? 'iowa' : region });
+        const control = unknownIowa.step({ ...i, region: visiting ? null : region });
+        if (!visiting) {
+          expect(actual).toEqual(control);
+          heard += control.events.length;
+        }
+      }
+      expect(heard).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('Iowa synthesis reuses the lazy gust pair and one finite event source', () => {

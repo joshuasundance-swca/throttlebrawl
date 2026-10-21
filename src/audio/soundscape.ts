@@ -297,8 +297,15 @@ export function createDirector(seed = 0x5ca9e): Director {
     step(i) {
       const events: ScapeEvent[] = [];
       if (i.region !== region) {
+        const previousSharedRegion = region === 'iowa' ? null : region;
         region = i.region;
-        arm(i.t);
+        // Before Iowa was recognized it behaved as null. Preserve that exact shared-RNG
+        // transition history, including its existing draws when leaving an older region.
+        if ((region === 'iowa' ? null : region) !== previousSharedRegion) arm(i.t);
+        else {
+          nextBar = -1;
+          lastNear.clear();
+        }
         if (region === 'iowa') nextLeaf = i.t + leafBetween(2, 6);
         lastEdge = -1;
       }
