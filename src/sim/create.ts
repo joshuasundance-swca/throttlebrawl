@@ -35,7 +35,16 @@ import type {
   TumbleBodySnapshot,
   TumbleSnapshot,
 } from './types';
-import { addMover, createWorld, orderSystems, stepWorld, worldHash, type Mover, type World } from './world';
+import {
+  addMover,
+  createWorld,
+  orderSystems,
+  riderHitbox,
+  stepWorld,
+  worldHash,
+  type Mover,
+  type World,
+} from './world';
 
 /**
  * Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. The difficulty
@@ -113,6 +122,8 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
   };
   const entities: EntitySnapshot[] = world.movers.map((m) => {
     const def = config.riders[m.riderIndex];
+    const vehicle = m.kind === 'vehicle' ? vehicleInfo(world, config, m.id) : null;
+    const footprint = m.kind === 'rider' ? riderHitbox(config, m.riderIndex) : vehicle;
     const f = road.frameAt(m.pos.edge, m.pos.s);
     // Exactly toWorld's arithmetic, reusing the frame also needed for heading and vehicle pitch.
     const p = { x: f.x - f.tz * m.pos.d, y: f.y - m.pos.d * f.bank + m.h, z: f.z + f.tx * m.pos.d };
@@ -124,7 +135,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
     const s = sin(m.yaw);
     const fx = c * tx - s * tz;
     const fz = c * tz + s * tx;
-    return {
+    const entity: EntitySnapshot = {
       id: m.id,
       kind: m.kind,
       mode: m.mode,
@@ -140,7 +151,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       contentId:
         def?.contentId ??
         (m.kind === 'vehicle'
-          ? (vehicleInfo(world, config, m.id)?.contentId ?? '')
+          ? (vehicle?.contentId ?? '')
           : m.kind === 'ped'
             ? (pedInfo(world, config, m.id)?.contentId ?? '')
             : m.kind === 'pickup'
@@ -192,6 +203,11 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       // Playtest 4: back on the bike, riding through traffic for a moment.
       ghost: m.kind === 'rider' && trafficGhost(world, m.id),
     };
+    if (footprint) {
+      entity.footprintLengthM = footprint.lengthM;
+      entity.footprintWidthM = footprint.widthM;
+    }
+    return entity;
   });
   return {
     tick: world.tick,
