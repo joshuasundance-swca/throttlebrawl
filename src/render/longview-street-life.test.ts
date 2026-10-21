@@ -107,8 +107,8 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
         laneSections: bundle.roads[0]!.laneSections.map((section) => ({
           ...section,
           verges: {
-            left: { widthM: 1, surface: 'concrete', edge: 'soft' },
-            right: { widthM: 1, surface: 'concrete', edge: 'soft' },
+            left: { widthM: 1, surface: 'kerb', edge: 'soft' },
+            right: { widthM: 1, surface: 'kerb', edge: 'soft' },
           },
         })),
       };
