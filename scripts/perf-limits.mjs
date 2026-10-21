@@ -8,9 +8,8 @@
 //   maintainer, 2026-10-02: "Trend plus 3x guard"). On 2026-10-02 the same game code printed a
 //   classic frame p95 of 100.1 ms and then 150 ms on CI's software renderer, so a 2x limit
 //   flipped on noise.
-// - Download size: the first-load JavaScript stays a hard budget; this file words its headroom and
-//   a pull request's own change against main, warns on a big change, and holds a pull request that
-//   grows the first load to a floor of PR_FLOOR_KB headroom (main's pushes keep the budget alone).
+// - Download size: the first-load JavaScript stays a hard budget. Headroom under the composition
+//   reserve and big changes against main are diagnostics on the measured build, never extra caps.
 import { fmtBytes } from './lib.mjs';
 
 /** The soft tier fails only above this multiple of the baseline. */
@@ -28,13 +27,12 @@ export const FRAME_SLACK_MS = 1000 / 60 / 2;
 export const DELTA_WARN_KB = 5;
 
 /**
- * A pull request's floor: a PR that grows the first-load JavaScript must leave at least this much
- * headroom under the budget, or the perf check fails it, on the PR's own run and on the train run
- * that lands it (floorJudgesRun). Main's pushes keep the budget alone.
- * [default] (the coordinator, 2026-10-03: the 500 KB budget was crossed 4 times on 10-02 and 10-03
- * by PRs that each fit alone, so main went red; the floor turns the PR that eats the margin red.)
+ * Diagnostic composition reserve, in KiB (the scripts' historical KB unit is 1024 bytes).
+ * [default] The original PR floor responded to separately passing changes composing over budget.
+ * The train now measures its final assembled tree directly; retain this margin as a warning on
+ * every measured tree, while the unchanged hard cap judges the actual size.
  */
-export const PR_FLOOR_KB = 10;
+export const HEADROOM_WARN_KB = 10;
 
 /**
  * The start tap is a printed trend with no guard until its baseline rests on this many CI readings
@@ -148,14 +146,15 @@ export function trendLine(label, rows) {
  */
 export function firstLoadReport(headBytes, budgetKB, baseBytes) {
   const headroomBytes = budgetKB * 1024 - headBytes;
-  const deltaBytes = baseBytes === null ? null : headBytes - baseBytes;
+  const base = baseBytes !== null && Number.isFinite(baseBytes) && baseBytes > 0 ? baseBytes : null;
+  const deltaBytes = base === null ? null : headBytes - base;
   const warn = deltaBytes !== null && deltaBytes >= DELTA_WARN_KB * 1024;
   const room =
     headroomBytes >= 0 ? `${fmtBytes(headroomBytes)} headroom` : `${fmtBytes(-headroomBytes)} OVER`;
   const delta =
     deltaBytes === null
       ? 'change against main not measured'
-      : `${deltaBytes >= 0 ? '+' : '-'}${fmtBytes(Math.abs(deltaBytes))} against main (${fmtBytes(baseBytes ?? 0)})`;
+      : `${deltaBytes >= 0 ? '+' : '-'}${fmtBytes(Math.abs(deltaBytes))} against main (${fmtBytes(base ?? 0)})`;
   return {
     line: `first-load JavaScript ${fmtBytes(headBytes)} gzip of ${budgetKB} KB (${room}), ${delta}`,
     deltaBytes,
@@ -165,50 +164,59 @@ export function firstLoadReport(headBytes, budgetKB, baseBytes) {
 }
 
 /**
- * The events whose runs test a tree that is about to land, so the floor judges them: a pull
- * request's own run (`pull_request`), and the bundle train's suite and its lone-PR control
- * (train.yml runs suite.yml on `workflow_run` and `workflow_dispatch`). A push to main is `push`.
- * Until 2026-10-06 only `pull_request` was judged, and the train is how most PRs land: #633's own
- * quick check passed at 11.1 KB against a main 1 h 46 min older, its train (37530950804, main ff06745
- * plus #633) built 490.1 KB, 9.9 KB of headroom, and printed "not applied (not a pull_request run)".
+ * The current build must contain a real first-load measurement and fit the hard cap. Missing base
+ * comparison data cannot affect this verdict. Missing files/read errors already fail in measure().
+ * @param {{ jsFiles?: number, jsGzip?: number }} measured
+ * @param {number} budgetKB
+ * @returns {string | null}
  */
-const FLOOR_EVENTS = new Set(['pull_request', 'workflow_run', 'workflow_dispatch']);
-
-/**
- * Whether the floor judges this run: a pull request's own run or a train's (FLOOR_EVENTS); never a
- * push to main, which keeps the budget alone, nor a local run (no event).
- * @param {Record<string, string | undefined>} env
- */
-export function floorJudgesRun(env) {
-  return FLOOR_EVENTS.has(env.GITHUB_EVENT_NAME ?? '');
+export function firstLoadProblem({ jsFiles, jsGzip }, budgetKB) {
+  if (typeof jsFiles !== 'number' || !Number.isSafeInteger(jsFiles) || jsFiles <= 0)
+    return 'found no valid first-load JavaScript file count in dist/index.html';
+  if (typeof jsGzip !== 'number' || !Number.isSafeInteger(jsGzip) || jsGzip <= 0)
+    return 'first-load JavaScript gzip size is missing or invalid';
+  if (jsGzip > budgetKB * 1024)
+    return `first-load JavaScript ${fmtBytes(jsGzip)} gzip is over ${budgetKB} KB`;
+  return null;
 }
 
 /**
- * The floor's verdict on a pull request's build: a failure message when it leaves less than
- * `floorKB` of headroom, or null. Null on a run the floor does not judge (`pullRequest` false: a
- * push to main keeps the budget alone), and over the budget (the budget's own failure speaks). A PR whose measured change does
- * not grow the first load never fails it: when main itself has drifted inside the floor (two PRs
- * that each fit, merged), only the PR that adds to it goes red, never every PR or the one that
- * shrinks it. A change that was not measured is held to the floor.
+ * The measured dist folder's checkout identity, read from Git rather than the workflow's trigger
+ * SHA (a train's trigger is not its assembled checkout). This describes the source checkout; it
+ * does not certify that an arbitrary pre-existing dist folder was built from it.
+ * @param {{ commit: string, tree: string, dirty: boolean }} checkout
+ * @param {Record<string, string | undefined>} env
+ */
+export function measurementLabel({ commit, tree, dirty }, env) {
+  return (
+    `dist/ measured with checkout commit ${commit}, tree ${tree}` +
+    `${dirty ? ' (uncommitted changes)' : ''}; ` +
+    `workflow ${env.GITHUB_WORKFLOW ?? 'local'}, event ${env.GITHUB_EVENT_NAME ?? 'local'}, ` +
+    `ref ${env.GITHUB_REF ?? 'no event ref'}`
+  );
+}
+
+/**
+ * Warning on every measured build below the reserve, regardless of event or delta. Above the hard
+ * cap its own failure speaks. Exact bytes make a one-byte threshold crossing visible despite the
+ * rounded size display. The label and comparison status travel with the warning into CI's summary.
  * @param {{ headroomBytes: number, deltaBytes: number | null }} report firstLoadReport's numbers
  * @param {number} budgetKB
- * @param {boolean} pullRequest
- * @param {number} [floorKB]
+ * @param {string} measuredTree
  * @returns {string | null}
  */
-export function floorProblem(report, budgetKB, pullRequest, floorKB = PR_FLOOR_KB) {
+export function headroomWarning(report, budgetKB, measuredTree) {
   const { headroomBytes, deltaBytes } = report;
-  if (!pullRequest || headroomBytes < 0 || headroomBytes >= floorKB * 1024) return null;
-  if (deltaBytes !== null && deltaBytes <= 0) return null;
+  if (!Number.isFinite(headroomBytes) || headroomBytes < 0 || headroomBytes >= HEADROOM_WARN_KB * 1024)
+    return null;
   const change =
     deltaBytes === null
-      ? 'its change against main was not measured'
-      : `this one grows it by ${fmtBytes(deltaBytes)}`;
+      ? 'change against main not measured'
+      : `${deltaBytes >= 0 ? '+' : '-'}${fmtBytes(Math.abs(deltaBytes))} against main`;
   return (
-    `this PR leaves ${fmtBytes(headroomBytes)} of headroom; move something off the first load. ` +
-    `A pull request must leave at least ${floorKB} KB of the ${budgetKB} KB first-load JavaScript budget, ` +
-    `and ${change}: move code the first screen does not need into a lazy import() chunk ` +
-    '(docs/engineering.md, perf check)'
+    `${measuredTree}: ${fmtBytes(headroomBytes)} (${headroomBytes} B) of headroom, ` +
+    `below the diagnostic ${HEADROOM_WARN_KB} KB reserve under the ${budgetKB} KB hard cap; ` +
+    `${change}. Review composition risk and first-screen work (docs/engineering.md, perf check).`
   );
 }
 
