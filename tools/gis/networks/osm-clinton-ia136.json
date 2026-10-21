@@ -112,7 +112,7 @@
         {
           "id": "osm-clinton-ia136-middle-bends",
           "name": "Middle Bends",
-          "tags": ["rural"],
+          "tags": ["rural", "iowa-farm-traffic"],
           "features": [
             {
               "kind": "billboard",

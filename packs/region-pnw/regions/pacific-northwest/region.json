@@ -317,6 +317,12 @@
       "tags": ["site"],
       "status": "live",
       "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "port-loading-line",
+      "text": "LOADING LINE: RIGHT SHOULDER. WATCH FOR CARRIER. THROUGH TRAFFIC: STAY LEFT.",
+      "tags": ["site"],
+      "status": "live"
     }
   ],
   "billboards": [

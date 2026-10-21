@@ -43,7 +43,13 @@ import {
 } from '../sim/api';
 import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
-import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
+import {
+  loadPnwPlacesLayout,
+  loadWaterfrontLayout,
+  loadIowaParkLayout,
+  structuresOf,
+  type StructurePlan,
+} from '../road';
 import type { AirPays } from './air-pays';
 import type { TerrainTrees } from './terrain-trees';
 import type { Boards, BoardCatalog, BoardSlot, VisibleContent } from './boards';
@@ -75,6 +81,7 @@ import type { TextSurfaceCounts, TextSurfaceLayer } from './text-surfaces';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PartyLights, PartyLightsCounts } from './party-lights';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
+import type { IowaParkCounts, IowaParkLayer } from './iowa-park';
 import type { Rain } from './rain';
 import { easeHaze, hazeFarAt, thinHazeSpans, type ThinHazeSpans } from './haze';
 import { roofCover, roofSpans, type RoofSpan } from './roofs';
@@ -341,6 +348,7 @@ export interface SceneryStatus {
   airboats?: AirboatCounts | null;
   /** The Pacific Northwest's ferry, clear-cut and the Stump Social (run W-U), or null on a road without them. */
   places?: PnwPlacesCounts | null;
+  iowaPark?: IowaParkCounts | null;
   /** A party street's string lights (playtest 4, P4-16), or null by day, on a road without one, or while their chunk loads. */
   partyLights?: PartyLightsCounts | null;
 }
@@ -544,6 +552,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const visibleContent = (): VisibleContent[] => [
     ...(boards?.visibleContent(camera) ?? []),
     ...(textSurfaces?.visibleContent(camera) ?? []),
+    ...(iowaPark?.visibleContent() ?? []),
   ];
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
@@ -980,7 +989,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const requestPlaces = () => {
     if (placesModule || !roadArgs) return;
     const tags = networkTags(roadArgs.road, roadArgs.dressing).tags;
-    if (!['ferry', 'clearcut', 'festival'].some((t) => tags.has(t))) return;
+    if (!['ferry', 'clearcut', 'festival', 'longview-port-yard'].some((t) => tags.has(t))) return;
     const current = scope.capture();
     void Promise.all([
       chunk('Pacific Northwest places', () => import('./pnw-places')),
@@ -991,6 +1000,36 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       placesModule = m;
       placesPlan = plan;
       buildPlaces();
+    });
+  };
+  // Park facilities share their lazy physical layout with the simulation.
+  let iowaParkModule: typeof import('./iowa-park') | null = null;
+  let iowaParkPlan: Awaited<ReturnType<typeof loadIowaParkLayout>> | null = null;
+  let iowaPark: IowaParkLayer | null = null;
+  const buildIowaPark = () => {
+    iowaPark?.dispose();
+    iowaPark = null;
+    if (!iowaParkModule || !iowaParkPlan || !roadArgs) return;
+    if (!iowaParkModule.hasIowaPark(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
+    iowaPark = new iowaParkModule.IowaParkLayer(look, {
+      layout: iowaParkPlan.iowaParkLayout(roadArgs.road, sceneSeed),
+    });
+    iowaPark.hide(hiddenRefs);
+    scene.add(iowaPark.group);
+  };
+  const requestIowaPark = () => {
+    if ((iowaParkModule && iowaParkPlan) || !roadArgs) return;
+    if (!networkTags(roadArgs.road, roadArgs.dressing).tags.has('iowa-park')) return;
+    const current = scope.capture();
+    void Promise.all([
+      chunk('Iowa park facilities', () => import('./iowa-park')),
+      chunk('Iowa park layout', loadIowaParkLayout),
+    ]).then(([m, plan]) => {
+      if (!current()) return;
+      if (!m || !plan) return gate.later(requestIowaPark);
+      iowaParkModule = m;
+      iowaParkPlan = plan;
+      buildIowaPark();
     });
   };
   // Playtest 4 (P4-16): a party street's string lights (party-lights.ts), a lazy chunk loaded only for a road
@@ -1045,6 +1084,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildDowntown();
     buildWaterfront();
     buildPlaces();
+    buildIowaPark();
     buildBlocks();
     buildMission();
     buildParty();
@@ -1261,6 +1301,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       else requestParty();
     }
     requestPlaces();
+    requestIowaPark();
     backdrop.applyPresentation(road, sceneSeed);
     requestLandmarks(road);
     requestScenes(road);
@@ -1378,6 +1419,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
+      if (iowaPark) sceneryVisible += iowaPark.update(pose.x, pose.z, reach.drawM);
       boards?.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
       if (downtown) {
@@ -1478,7 +1520,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pickContentAt(clientX, clientY) {
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
-      return boards?.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
+      return (
+        boards?.pick(ndc.x, ndc.y, camera) ??
+        textSurfaces?.pick(ndc.x, ndc.y, camera) ??
+        iowaPark?.pick(ndc.x, ndc.y, camera) ??
+        null
+      );
     },
     structures: () => structurePlan,
     visibleContent: () => visibleContent(),
@@ -1488,6 +1535,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       boards?.hide(list);
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
+      iowaPark?.hide(list);
       textSurfaces?.hide(list);
     },
     feelCounts: () => race?.effects.counts() ?? noFeel,
@@ -1541,6 +1589,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       waterfront: waterfront?.counts() ?? null,
       airboats: airboats?.counts() ?? null,
       places: places?.counts() ?? null,
+      iowaPark: iowaPark?.counts() ?? null,
       partyLights: party?.counts() ?? null,
     }),
   };

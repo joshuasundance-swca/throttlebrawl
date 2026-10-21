@@ -156,6 +156,17 @@ export function placeScenes(input: SceneInput): PlacedScene[] {
     if (s - r < 0 || s + r > e.length) return null;
     const tags = e.tags as readonly SideTag[];
     const sideName = side < 0 ? 'left' : 'right';
+    const applies = (tag: SideTag) => tag.side === 'both' || tag.side === sideName;
+    if (
+      sc.needsTag &&
+      !tags.some((tag) => applies(tag) && tag.tag === sc.needsTag && tag.s0 <= s - r && tag.s1 >= s + r)
+    )
+      return null;
+    if (
+      sc.excludesTag &&
+      tags.some((tag) => applies(tag) && tag.tag === sc.excludesTag && tag.s0 <= s + r && tag.s1 >= s - r)
+    )
+      return null;
     const water = sc.on.includes('water');
     const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
     const band = water ? 0 : ridableBandPast(road, edge, side, s, outer);

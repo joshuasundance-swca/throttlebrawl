@@ -47,6 +47,10 @@ export interface SceneDef {
   note?: string;
   /** The side themes it may stand on (render/scenery.ts `SideTheme`: `water`, `forest`, `urban`...). */
   on: readonly string[];
+  /** Optional authored road tag required across the full footprint, on the scene's side. */
+  needsTag?: string;
+  /** Optional authored road tag that excludes any overlapping part of the footprint. */
+  excludesTag?: string;
   /** How far past the verge (and the ridable band) its middle stands, m: [near, far]. */
   acrossM: readonly [number, number];
   /** Its footprint round the middle, m: nothing else stands inside it. */
@@ -122,6 +126,11 @@ export function scenesProblems(json: unknown): string[] {
     if (!Array.isArray(on) || !on.length || on.some((t) => !THEMES.has(t as string)))
       out.push(`${at}: on must list side themes`);
     else if (on.includes('water') && on.length > 1) out.push(`${at}: a water scene stands on water only`);
+    for (const key of ['needsTag', 'excludesTag']) {
+      const tag = q[key];
+      if (tag !== undefined && (typeof tag !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag)))
+        out.push(`${at}: ${key} must be a kebab-case road tag`);
+    }
     const across = q['acrossM'];
     if (
       !isVec(across, 2) ||

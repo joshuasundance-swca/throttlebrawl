@@ -23,14 +23,20 @@
 // (scenery-merge.ts): a few draw calls a view, built as the camera comes near. The solid hazards draw
 // out to at least MIN_THREAT_DRAW_M whatever the scenery slider says. Presentation only; a lazy chunk.
 import { BufferGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group } from 'three';
-import { FERRY_DIM, type BakedFeature, type PnwPlacesLayout, type RoadNetwork } from '../road';
+import {
+  FERRY_DIM,
+  type BakedFeature,
+  type PnwPlacesLayout,
+  type PnwSolidDef,
+  type RoadNetwork,
+} from '../road';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import { keepSceneryOpen, MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
 import { LAND_TOP_M, scatterHash, type ScenerySpot } from './scenery';
 
 /** The tags this layer draws. */
-export const PLACE_TAGS = ['ferry', 'clearcut', 'festival'] as const;
+export const PLACE_TAGS = ['ferry', 'clearcut', 'festival', 'longview-port-yard'] as const;
 
 /** Whether a network carries any of them (the renderer loads this chunk only then). */
 export function hasPnwPlaces(tags: ReadonlySet<string>): boolean {
@@ -715,6 +721,46 @@ const VERGE_M = 0.6;
 /** Props on the verge band stand on it (verge.ts draws it just under the road, -0.045). */
 const BAND_TOP_M = -0.04;
 
+/** Draw each freight structure's exact contact boxes, with steel roof/post and timber colours. */
+export function workyardParts(kind: string, solids: readonly PnwSolidDef[]): BoxPart[] {
+  const parts = solids.map(({ box: b, name }): BoxPart => ({
+    size: [b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0],
+    at: [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2],
+    color:
+      name === 'apron'
+        ? '#8a8e88'
+        : name === 'roof'
+          ? '#7a8580'
+          : name === 'post'
+            ? '#d0a447'
+            : name === 'back'
+              ? '#42685f'
+              : '#97704b',
+    solid: name,
+  }));
+  // Timber end-grain bands and a shed's corrugated back: painted faces, no extra reachable volume.
+  const face = solids.find((s) => s.name === (kind === 'timber-deck' ? 'timber' : 'back'))?.box;
+  if (face) {
+    if (kind === 'timber-deck') {
+      for (let y = face.y0 + 0.22; y < face.y1; y += 0.35)
+        parts.push({
+          size: [face.x1 - face.x0, 0.04, 0.01],
+          at: [(face.x0 + face.x1) / 2, y, face.z0 - 0.006],
+          color: '#4f3929',
+        });
+    } else {
+      const x = Math.abs(face.x0) < Math.abs(face.x1) ? face.x0 - 0.006 : face.x1 + 0.006;
+      for (let z = face.z0 + 0.4; z < face.z1; z += 1.2)
+        parts.push({
+          size: [0.01, face.y1 - face.y0, 0.05],
+          at: [x, (face.y0 + face.y1) / 2, z],
+          color: '#68877b',
+        });
+    }
+  }
+  return parts;
+}
+
 /** Every prop the places put on a network, in road terms (the layer merges them; tests read them). */
 export function placeItems(
   road: RoadNetwork,
@@ -733,6 +779,17 @@ export function placeItems(
     return g;
   };
   for (const e of road.edges) {
+    for (const yard of layout.workyards) {
+      if (yard.edge !== e.index) continue;
+      items.push({
+        kind: yard.kind,
+        edge: yard.edge,
+        s: yard.s,
+        d: yard.d,
+        h: LAND_TOP_M,
+        geometry: model(workyardParts(yard.kind, yard.solids)),
+      });
+    }
     // The solid hazards: each drawn at its own box.
     for (const f of e.features) {
       if (f.kind !== 'hazard' || f.params?.['solid'] !== true) continue;

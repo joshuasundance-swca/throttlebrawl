@@ -41,8 +41,11 @@ describe('road-event barks', () => {
     .filter(({ m }) => ((m['meta'] as Rec | undefined)?.['status'] ?? 'live') === 'live');
 
   it('finds the packs, the modifiers and the bark sets', () => {
-    expect(modifiers.length).toBeGreaterThanOrEqual(20);
-    expect(Object.keys(BARKS)).toHaveLength(3);
+    expect(modifiers.length).toBeGreaterThan(0);
+    const modifierPacks = new Set(modifiers.map(({ pack }) => pack));
+    const barkPacks = new Set(Object.keys(BARKS).map(packOf));
+    for (const pack of modifierPacks)
+      expect(barkPacks.has(pack), `no road-event barks in ${pack}`).toBe(true);
   });
 
   it.each(modifiers.map(({ pack, m }) => [`${pack}:${String(m['id'])}`, pack]))(
