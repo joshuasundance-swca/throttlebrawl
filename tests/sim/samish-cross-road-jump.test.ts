@@ -14,6 +14,7 @@ import {
 } from '../../src/replay';
 import { neutralInput, quantizeInput, type RouteProgress } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
+import { carrierParts } from '../../src/sim/riders/carrier-shape';
 import { placeRoadVehicle } from '../../src/sim/traffic/path-view';
 import { trafficState } from '../../src/sim/traffic';
 import source from '../../tools/gis/networks/osm-pnw-samish.json';
@@ -119,6 +120,8 @@ describe('Samish I-5 to shore jump', () => {
     const config = race();
     const edge = config.road.edgeIndex(main);
     const ramp = config.road.edges[edge]!.features.find((f) => f.id === featureId)!;
+    const bodyLeft = Math.min(...carrierParts(ramp).map((part) => part.shape.d - part.shape.hv));
+    expect(bodyLeft).toBeLessThan(ramp.d0);
     const type = config.trafficTypes.findIndex((t) => t.category === 'car' && t.cruiseMps > 0);
     expect(type).toBeGreaterThanOrEqual(0);
     const { sim, world } = createSimWithWorld(config);
@@ -135,7 +138,7 @@ describe('Samish I-5 to shore jump', () => {
       const car = world.movers[id]!;
       if (car.pos.edge === edge && car.pos.s >= ramp.s0 && car.pos.s <= ramp.s1) {
         passing++;
-        expect(car.pos.d + config.trafficTypes[type]!.widthM / 2).toBeLessThan(ramp.d0);
+        expect(car.pos.d + config.trafficTypes[type]!.widthM / 2).toBeLessThan(bodyLeft);
       }
       if (car.pos.edge !== edge || car.pos.s > ramp.s1 + 10) break;
     }

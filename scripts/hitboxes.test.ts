@@ -979,7 +979,11 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
       params: { lipHeightM: 2.2 },
     };
     const rows = await rampTruckRows([{ road: 'control-road', f }]);
-    expect(rows).toHaveLength(2);
+    const name = `${f.id} (control-road)`;
+    const body = rows.find((row) => row.thing === name);
+    const rampPlate = rows.find((row) => row.thing === `${name} ramp plate`);
+    expect(body, 'whole truck and collidable body are checked').toBeDefined();
+    expect(rampPlate, 'rideable ramp plate is checked separately').toBeDefined();
     for (const row of rows) {
       expect(worst(row), row.thing).toBeLessThanOrEqual(TOLERANCE_M);
       const widerDrawing: Row = { ...row, drawn: { ...row.drawn, x1: row.drawn.x1 + 0.2 } };
@@ -987,10 +991,11 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
         TOLERANCE_M,
       );
     }
-    const body = rows[0]!;
-    expect(worst({ ...body, simL: body.simL - 0.5 }), 'a box short of the visible bumper').toBeGreaterThan(
-      TOLERANCE_M,
-    );
+    const bodyRow = body!;
+    expect(
+      worst({ ...bodyRow, simL: bodyRow.simL - 0.5 }),
+      'a box short of the visible bumper',
+    ).toBeGreaterThan(TOLERANCE_M);
   });
 
   it('every collidable thing is as tall as it is drawn, within the tolerance', async () => {
