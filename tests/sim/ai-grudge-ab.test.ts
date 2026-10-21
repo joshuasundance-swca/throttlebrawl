@@ -21,6 +21,7 @@ import { huntsByDefault, resolveProfile } from '../../src/sim/ai';
 import { createSimWithWorld } from '../../src/sim/create';
 import { noteGrudge } from '../../src/sim/world';
 import { createBatchRace } from './batch';
+import { qualifyingCases } from './case-results';
 
 /** The A/B's seeds, its window and "close" (a fight's distance), [default]. */
 /**
@@ -100,6 +101,27 @@ function grudgeRun(seed: number, grudge: boolean) {
 const print = (line: string) => process.stdout.write(line + '\n');
 
 describe('ai-2: a rival you knocked off comes after you (A/B)', () => {
+  const pairs = qualifyingCases(
+    AB_SEED_POOL,
+    AB_RACES,
+    (seed) => {
+      const off = grudgeRun(seed, false);
+      const on = grudgeRun(seed, true);
+      // Both runs are the same race until the grudge: the same moment and the same rival.
+      expect(on.t0, `seed ${seed}`).toBe(off.t0);
+      expect(on.holder, `seed ${seed}`).toBe(off.holder);
+      return { seed, off, on };
+    },
+    ({ off }) => off.t0 >= 0,
+  );
+
+  // These are sequential work slots, not independent seed selections. Each runs at most one
+  // complete off/on pair from the next required seed; unused slots do no simulation. Selecting a
+  // later slot by name still advances the earliest required seed instead of skipping the prefix.
+  for (let slot = 1; slot <= AB_SEED_POOL.length; slot++) {
+    it(`complete ordered A/B candidate slot ${slot}`, () => pairs.advance(), 300_000);
+  }
+
   it('a rival who holds a grudge against the player swings at them more, and rides closer (A/B)', () => {
     const rows: string[] = [];
     let swingsOff = 0;
@@ -107,14 +129,9 @@ describe('ai-2: a rival you knocked off comes after you (A/B)', () => {
     let closeOff = 0;
     let closeOn = 0;
     let examined = 0;
-    for (const seed of AB_SEED_POOL) {
-      if (examined >= AB_RACES) break;
-      const off = grudgeRun(seed, false);
-      const on = grudgeRun(seed, true);
-      // Both runs are the same race until the grudge: the same moment and the same rival.
-      expect(on.t0, `seed ${seed}`).toBe(off.t0);
-      expect(on.holder, `seed ${seed}`).toBe(off.holder);
-      if (off.t0 < 0) continue;
+    // Normally cached by the bounded pair cases above. A standalone named aggregate must still
+    // complete exactly the same ordered prefix, including every pair's holder/t0 assertions.
+    for (const { seed, off, on } of pairs.complete()) {
       examined++;
       swingsOff += off.swings;
       swingsOn += on.swings;
@@ -132,5 +149,7 @@ describe('ai-2: a rival you knocked off comes after you (A/B)', () => {
     expect(examined).toBe(AB_RACES);
     expect(swingsOn).toBeGreaterThan(swingsOff);
     expect(closeOn).toBeGreaterThan(closeOff);
-  }, 300_000);
+    // Aggregate-only fallback: 20 minutes instead of the former five-minute multi-race guard.
+    // Whole-file/job capacity remains separate; this is not a performance or gameplay budget.
+  }, 1_200_000);
 });
