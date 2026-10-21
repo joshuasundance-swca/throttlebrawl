@@ -356,6 +356,10 @@ jobs:
     timeout-minutes: 10
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
+      # Experiment: leave room alongside train browsers for other workflows. This does not reserve
+      # runner slots. Nontrain calls retain full matrix concurrency: 256 is the provider's matrix
+      # ceiling, not a project budget (https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstrategymatrix).
+      max-parallel: ${{ inputs.heads != '' && 6 || 256 }}
       matrix:
         shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).browser || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]') }}
     steps:
