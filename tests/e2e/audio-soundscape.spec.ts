@@ -45,6 +45,16 @@ interface Ride {
   seconds: number;
   /** Add a cable car 40 m away on edge 1. */
   car?: boolean;
+  /** Use the shipped tag intervals for place controls, with a stationary rider inside or outside. */
+  roadTags?: { s0: number; s1: number; tag: string }[];
+  startS?: number;
+  effects?: number;
+  music?: number;
+  master?: number;
+  mute?: boolean;
+  soundscape?: number;
+  /** Isolate the effects graph even when the music bus is open. */
+  radioOff?: boolean;
 }
 
 interface Heard {
@@ -82,7 +92,12 @@ async function render(page: Page, ride: Ride): Promise<Heard> {
       barkEvents: null,
       radioSeed: 11,
     });
-    audio.setVolumes({ master: 1, music: 0, effects: 1, voices: 1 }, false);
+    audio.setVolumes(
+      { master: ride.master ?? 1, music: ride.music ?? 0, effects: ride.effects ?? 1, voices: 1 },
+      ride.mute ?? false,
+    );
+    if (ride.radioOff) audio.setParam('audio.radio', 0);
+    if (ride.soundscape !== undefined) audio.setParam('audio.soundscape', ride.soundscape);
     audio.setParam('audio.engineGain', 0);
     audio.setParam('audio.windGain', 0);
     audio.setParam('audio.hornRangeM', 0);
@@ -90,7 +105,7 @@ async function render(page: Page, ride: Ride): Promise<Heard> {
     audio.setRoad({
       edges: [
         {
-          tags: [
+          tags: ride.roadTags ?? [
             { s0: 0, s1: 1e6, tag: ride.tags[0] ?? 'none' },
             ...ride.tags.slice(1).map((tag) => ({ s0: 0, s1: 1e6, tag })),
           ],
@@ -138,13 +153,14 @@ async function render(page: Page, ride: Ride): Promise<Heard> {
       return { tick: 1, timeScale: 1, entities, race: { over: false, routeLength: 1, finishOrder: [] } };
     };
     // Frames at 30 Hz through the render, as the app's loop would.
-    audio.frame(at(10), 0);
+    const startS = ride.startS ?? 10;
+    audio.frame(at(startS), 0);
     const pending: Promise<void>[] = [];
     const frames = Math.floor(ride.seconds * 30) - 1;
     for (let i = 1; i < frames; i++) {
       pending.push(
         ctx.suspend(i / 30).then(() => {
-          audio.frame(at(10 + (ride.speed * i) / 30), 0);
+          audio.frame(at(startS + (ride.speed * i) / 30), 0);
           return ctx.resume();
         }),
       );
@@ -276,4 +292,57 @@ test('San Francisco: the foghorn sounds, and the bell only on a cable line', asy
   expect(strayed.played).not.toContain('bell');
   expect(onLine.bell).toBeGreaterThan(0.0003);
   expect(strayed.bell).toBeLessThan(onLine.bell * 0.2);
+});
+
+test('Iowa: rendered rural and park breeze follows place tags and effects controls', async ({ page }) => {
+  const problems = await openHarness(page);
+  const shipped = (name: string) =>
+    JSON.parse(
+      readFileSync(
+        new URL(`../../packs/region-clinton/regions/clinton-iowa/roads/${name}.json`, import.meta.url),
+        'utf8',
+      ),
+    ) as {
+      lengthM: number;
+      tags: { s0: number; s1: number; tag: string }[];
+    };
+  const rural = shipped('osm-clinton-county-180th');
+  const park = shipped('osm-clinton-eagle-entry');
+  const interval = rural.tags.find((t) => t.tag === 'rural')!;
+  const ride: Ride = {
+    region: 'region-clinton:clinton-iowa',
+    tags: [],
+    roadTags: rural.tags,
+    startS: (interval.s0 + interval.s1) / 2,
+    speed: 0,
+    seconds: 1,
+    radioOff: true,
+  };
+  // Establish signal with the same PCM measurement used for every silence control.
+  const on = await render(page, ride);
+  expect(on.rms).toBeGreaterThan(0.000001);
+  const p = park.tags.find((t) => t.tag === 'iowa-park')!;
+  const parkRide = { ...ride, roadTags: park.tags, startS: (p.s0 + p.s1) / 2 };
+  const softer = await render(page, parkRide);
+  expect(softer.rms).toBeGreaterThan(0.000001);
+  expect(softer.rms).toBeLessThan(on.rms);
+  // Opening only the music bus cannot change this isolated effects signal.
+  const musicOpen = await render(page, { ...ride, music: 1 });
+  expect(musicOpen.rms).toBeCloseTo(on.rms, 7);
+  for (const control of [
+    { ...ride, soundscape: 0 },
+    { ...ride, effects: 0 },
+    { ...ride, master: 0 },
+    { ...ride, mute: true },
+    { ...ride, region: 'region-clinton:unknown' },
+    { ...ride, startS: rural.lengthM + 1 },
+  ]) {
+    const quiet = await render(page, control);
+    expect(quiet.rms).toBeLessThan(on.rms * 0.01);
+  }
+  // The longer park render also reaches the finite rustle; PCM must still reach the output.
+  const rustling = await render(page, { ...parkRide, seconds: 7 });
+  expect(rustling.played).toContain('leafRustle');
+  expect(rustling.rms).toBeGreaterThan(0.000001);
+  expect(problems).toEqual([]);
 });

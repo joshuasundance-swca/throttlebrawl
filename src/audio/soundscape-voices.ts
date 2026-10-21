@@ -722,6 +722,10 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
     play(e, t, gain) {
       if (stopped || gain <= 0.001 || active >= MAX_SCAPE_EVENTS) return false;
       switch (e.kind) {
+        case 'leafRustle':
+          // One finite, soft filtered-noise gesture; no extra continuous bed or recording.
+          track(noise('bandpass', 2200, 1200, 0.7, t, e.level * gain, 0.7, 0.1));
+          break;
         case 'joint':
           joint(e, t, gain);
           break;
