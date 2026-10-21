@@ -18,6 +18,7 @@
 //     backdrop and scenes asset JSON select their matching contract only. Missing tests are omitted.
 //   - the short career and patrol-placement configuration contracts for any pack JSON.
 //   - warning-sign and road-event bark contracts for their modifier, event and bark-set inputs.
+//   - contributor guidance against the CI matrix when suite.yml or ci.yml changes.
 
 import { isDeepStrictEqual } from 'node:util';
 
@@ -41,6 +42,8 @@ const ROAD_EVENT_BARK_CONTENT =
   /^packs\/[^/]+\/(?:(?:modifiers|events)\/[^/]+|barks\/road-events-[^/]+)\.json$/;
 const EVENT_SIGNS_TEST = 'src/render/event-signs.test.ts';
 const ROAD_EVENT_BARKS_TEST = 'src/audio/road-event-barks.test.ts';
+const CI_GUIDANCE_INPUT = /^\.github\/workflows\/(?:suite|ci)\.yml$/;
+const CI_GUIDANCE_TEST = 'scripts/contributing-docs.test.ts';
 const CONTACT_INPUT = [
   /^src\/(road|sim\/riders)\/.+\.ts$/,
   /^src\/sim\/modifiers\/moving\.ts$/,
@@ -138,6 +141,7 @@ export function planPush(changed, exists, manifests) {
   }
   const tests = new Set();
   for (const f of files) {
+    if (CI_GUIDANCE_INPUT.test(f) && exists(CI_GUIDANCE_TEST)) tests.add(CI_GUIDANCE_TEST);
     if (UNIT_TEST.test(f)) {
       if (exists(f)) tests.add(f);
       continue;
