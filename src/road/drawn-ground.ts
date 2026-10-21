@@ -680,7 +680,7 @@ export type GroundUnder = (
   own?: { edge: number; s: number },
 ) => number | null;
 
-const groundKept = new WeakMap<RoadNetwork, GroundUnder>();
+const groundKept = new WeakMap<RoadNetwork, { cached: GroundUnder; uncached: GroundUnder }>();
 
 interface LakeBanks {
   at: (edge: number, side: -1 | 1, row: number) => { plateau: number; drop: number } | null;
@@ -1085,7 +1085,7 @@ function terrainUnderOf(road: RoadNetwork, banks: LakeBanks): TerrainUnder {
  */
 export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null): GroundUnder {
   const known = groundKept.get(road);
-  if (known) return known;
+  if (known) return known.cached;
   const fullSection = sectionGroundOf(road, lakeLevel);
   // Keep road candidates separate: an authored face above `top` must not hide a lower road.
   const section = road.terrain ? roadSectionKept.get(road)! : fullSection;
@@ -1098,13 +1098,12 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
   const skirts = skirtOf(road);
   const span = Math.ceil(NEAR_REACH_M / NEAR_CELL_M);
   const nearestSamples = nearbySamples(road.edges, NEAR_CELL_M, span);
-  /** Every edge's ground under a point: edge, s, y, and whether it is a world-space triangle. */
-  const found = new Map<string, number[]>();
-  const groundsAt = (x: number, z: number): number[] => {
-    const id = `${x},${z}`;
-    const had = found.get(id);
-    if (had) return had;
-    const out: number[] = [];
+  // Both query paths choose exactly one section/triangle winner per edge, in the same order.
+  const visitGrounds = (
+    x: number,
+    z: number,
+    emit: (edge: number, s: number, y: number, triangle: number) => void,
+  ): void => {
     nearestSamples.visit(x, z, (e, i, d2) => {
       const ed = road.edges[e];
       if (!ed || d2 > NEAR_REACH_M * NEAR_REACH_M) return;
@@ -1134,9 +1133,18 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
           : null;
       const face = terrain(e, x, z);
       const y = typeof sectionY === 'number' ? sectionY : null;
-      if (face !== null && (y === null || face.y > y)) out.push(e, face.s, face.y, 1);
-      else if (y !== null) out.push(e, s, y, 0);
+      if (face !== null && (y === null || face.y > y)) emit(e, face.s, face.y, 1);
+      else if (y !== null) emit(e, s, y, 0);
     });
+  };
+  /** Every edge's ground under a point: edge, s, y, and whether it is a world-space triangle. */
+  const found = new Map<string, number[]>();
+  const groundsAt = (x: number, z: number): number[] => {
+    const id = `${x},${z}`;
+    const had = found.get(id);
+    if (had) return had;
+    const out: number[] = [];
+    visitGrounds(x, z, (edge, s, y, triangle) => out.push(edge, s, y, triangle));
     if (found.size >= GROUND_KEPT) found.clear();
     found.set(id, out);
     return out;
@@ -1159,8 +1167,29 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
     }
     return best;
   };
-  groundKept.set(road, under);
+  const uncached: GroundUnder = (x, z, top, own) => {
+    let roadBest: number | null = null;
+    visitGrounds(x, z, (edge, s, y, triangle) => {
+      if (own && !triangle && edge === own.edge && Math.abs(s - own.s) <= OWN_SECTION_M) return;
+      if (y <= top && (roadBest === null || y > roadBest)) roadBest = y;
+    });
+    // Like the cached path, finish road evaluation before querying source terrain. Source wins
+    // equal heights (including signed zero); a source NaN retains the original comparison rule.
+    const sourceBest = terrainAt(road.terrain, x, z, top, 'land')?.y ?? null;
+    return sourceBest === null
+      ? roadBest
+      : roadBest !== null && roadBest > sourceBest
+        ? roadBest
+        : sourceBest;
+  };
+  groundKept.set(road, { cached: under, uncached });
   return under;
+}
+
+/** The same physical query without storing results for changing world coordinates. */
+export function uncachedGroundUnderOf(road: RoadNetwork, lakeLevel: number | null = null): GroundUnder {
+  groundUnderOf(road, lakeLevel);
+  return groundKept.get(road)!.uncached;
 }
 
 /**
