@@ -346,3 +346,44 @@ test('Iowa: rendered rural and park breeze follows place tags and effects contro
   expect(rustling.rms).toBeGreaterThan(0.000001);
   expect(problems).toEqual([]);
 });
+
+test('Iowa: the isolated leaf voice renders PCM and ends, while zero gain stays silent', async ({ page }) => {
+  const problems = await openHarness(page);
+  const leaf = (gain: number) =>
+    page.evaluate(async (gain) => {
+      const url = '/__audio-scape/soundscape-voices.js';
+      const m = (await import(url)) as {
+        createScapeVoices(
+          ctx: BaseAudioContext,
+          out: AudioNode,
+        ): {
+          play(event: { kind: 'leafRustle'; level: number }, at: number, gain: number): boolean;
+        };
+      };
+      const rate = 44100;
+      const ctx = new OfflineAudioContext(1, Math.round(rate * 1.2), rate);
+      // No mixer, engine or bed: only this single finite event can produce samples.
+      const voices = m.createScapeVoices(ctx, ctx.destination);
+      voices.play({ kind: 'leafRustle', level: 0.15 }, 0, gain);
+      const buffer = await ctx.startRendering();
+      const samples = buffer.getChannelData(0);
+      let energy = 0;
+      let tailEnergy = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const square = samples[i]! * samples[i]!;
+        energy += square;
+        if (i >= rate) tailEnergy += square;
+      }
+      return {
+        rms: Math.sqrt(energy / samples.length),
+        tailRms: Math.sqrt(tailEnergy / (samples.length - rate)),
+      };
+    }, gain);
+  // The positive render is essential: breeze or played-event metadata cannot satisfy it.
+  const on = await leaf(1);
+  expect(on.rms).toBeGreaterThan(0.000001);
+  expect(on.tailRms).toBeLessThan(on.rms * 0.001);
+  const zero = await leaf(0);
+  expect(zero.rms).toBe(0);
+  expect(problems).toEqual([]);
+});
