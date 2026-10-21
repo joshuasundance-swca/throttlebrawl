@@ -9,7 +9,7 @@
       "id": "mara-hay-road-report",
       "trigger": "modifier-start",
       "when": [{ "fact": "modifier.id", "op": "eq", "value": "region-clinton:iowa-hay-truck" }],
-      "text": "Loose hay. That's going in the road report."
+      "text": "Loose hay. That's in the road report."
     },
     {
       "id": "mara-hay-county-delivery",
