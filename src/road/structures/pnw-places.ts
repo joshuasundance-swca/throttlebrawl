@@ -35,7 +35,7 @@ import type { BakedFeature } from '../types';
 
 /** The layer's name in `STRUCTURE_LAYERS`, and the tags that ask for it (the clear-cut's dressing has no solids). */
 export const PNW_PLACES_LAYER = 'pnw-places';
-export const PNW_PLACES_TAGS = ['ferry', 'festival'] as const;
+export const PNW_PLACES_TAGS = ['ferry', 'festival', 'longview-port-yard'] as const;
 
 /** Where the layer's land stands over the road's surface (render/scenery.ts LAND_TOP_M), m. */
 export const LAND_TOP_M = -0.09;
@@ -282,6 +282,38 @@ export interface PnwPlacesLayout {
   streets: readonly PnwSideStreet[];
   bunting: readonly PnwBunting[];
   banners: readonly PnwBanner[];
+  /** Authored freight-yard sites; the same rigid boxes are drawn and contacted. */
+  workyards: readonly PnwWorkyard[];
+}
+
+export interface PnwWorkyard {
+  edge: number;
+  s: number;
+  d: number;
+  kind: 'freight-shed' | 'timber-deck';
+  solids: readonly PnwSolidDef[];
+  specs: readonly StructureSpec[];
+}
+
+/** An open loading shed, or timber stacked on cross bunks. Local x is -d. */
+function workyardSolids(kind: PnwWorkyard['kind'], width: number, len: number, side: number): PnwSolidDef[] {
+  if (kind === 'timber-deck')
+    return [
+      { name: 'timber', cls: 'building', box: box(0, width / 2, 0.4, 2.2, 0, len / 2) },
+      ...[-len / 3, len / 3].map((at) => ({
+        name: 'bunk',
+        cls: 'building' as const,
+        box: box(0, width / 2, 0, 0.4, at, 0.4),
+      })),
+    ];
+  const out: PnwSolidDef[] = [
+    { name: 'roof', cls: 'building', box: box(0, width / 2, 6, 6.4, 0, len / 2) },
+    { name: 'back', cls: 'wall', box: box(-side * (width / 2 - 0.2), 0.2, 0, 6, 0, len / 2) },
+  ];
+  for (const x of [-width / 2 + 0.3, width / 2 - 0.3])
+    for (const z of [-len / 2 + 0.3, 0, len / 2 - 0.3])
+      out.push({ name: 'post', cls: 'wall', box: box(x, 0.3, 0, 6, z, 0.3) });
+  return out;
 }
 
 const objectOf = (f: BakedFeature) => (typeof f.params?.['object'] === 'string' ? f.params['object'] : '');
@@ -305,9 +337,21 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
   const streets: PnwSideStreet[] = [];
   const bunting: PnwBunting[] = [];
   const banners: PnwBanner[] = [];
+  const workyards: PnwWorkyard[] = [];
   const made = (spot: Spot, defs: readonly PnwSolidDef[]) => defs.map((def) => specOf(spot, def));
 
   for (const e of road.edges) {
+    // Authored Longview-only sites, independent of the old ferry/festival's hash stream.
+    for (const f of e.features) {
+      if (!e.tags.some((t) => t.tag === 'longview-port-yard' && t.s0 <= f.s0 && t.s1 >= f.s1)) continue;
+      const kind = f.params?.['place'];
+      if (f.kind !== 'roadsideZone' || (kind !== 'freight-shed' && kind !== 'timber-deck')) continue;
+      const s = (f.s0 + f.s1) / 2,
+        d = (f.d0 + f.d1) / 2;
+      const solids = workyardSolids(kind, f.d1 - f.d0, f.s1 - f.s0, Math.sign(d));
+      const spot = spotAt(road, f.id, e.index, s, d, LAND_TOP_M);
+      workyards.push({ edge: e.index, s, d, kind, solids, specs: made(spot, solids) });
+    }
     // The ferry.
     for (const t of e.tags) {
       if (t.tag !== 'ferry') continue;
@@ -462,7 +506,7 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
         });
     }
   }
-  return { ferry, shops, streets, bunting, banners };
+  return { ferry, shops, streets, bunting, banners, workyards };
 }
 
 /** The places' planner: every solid of its layout, for the structure registry (`STRUCTURE_LAYERS`). */
@@ -473,5 +517,6 @@ export const pnwPlacesPlanner: StructurePlanner = {
     for (const x of layout.shops) for (const spec of x.specs) out.add(spec);
     for (const x of layout.streets) for (const spec of x.specs) out.add(spec);
     for (const x of layout.banners) for (const spec of x.specs) out.add(spec);
+    for (const x of layout.workyards) for (const spec of x.specs) out.add(spec);
   },
 };

@@ -137,7 +137,7 @@ export const STRUCTURE_LAYERS: Readonly<Record<string, StructureLayerSpec>> = {
   },
   // The Pacific Northwest's places: the car ferry and the Stump Social's shops (road/structures/pnw-places.ts).
   'pnw-places': {
-    tags: ['ferry', 'festival'],
+    tags: ['ferry', 'festival', 'longview-port-yard'],
     load: async () => (await import('./structures/pnw-places')).pnwPlacesPlanner,
   },
 };

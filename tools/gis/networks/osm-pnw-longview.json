@@ -39,7 +39,7 @@
         {
           "id": "osm-longview-industrial",
           "name": "Industrial Way",
-          "tags": ["warehouses", "logging"],
+          "tags": ["warehouses", "logging", "longview-port-yard"],
           "features": [
             { "kind": "copSpawn", "id": "port-shift-patrol-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
             {
@@ -50,6 +50,118 @@
               "d0": -16,
               "d1": -7,
               "pool": "billboards"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "port-timber-shed",
+              "s0": 320,
+              "s1": 342,
+              "d0": 13,
+              "d1": 23,
+              "params": {
+                "place": "freight-shed"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "port-dispatch-shed",
+              "s0": 760,
+              "s1": 782,
+              "d0": -23,
+              "d1": -13,
+              "params": {
+                "place": "freight-shed"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "port-timber-deck",
+              "s0": 960,
+              "s1": 982,
+              "d0": -18,
+              "d1": -12,
+              "params": {
+                "place": "timber-deck"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "port-loading-shed",
+              "s0": 1450,
+              "s1": 1472,
+              "d0": 13,
+              "d1": 23,
+              "params": {
+                "place": "freight-shed"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "port-loading-sign-south",
+              "s0": 424,
+              "s1": 430,
+              "d0": 8,
+              "d1": 10,
+              "item": "port-loading-line"
+            },
+            {
+              "kind": "boostPad",
+              "id": "port-loading-pad-south",
+              "s0": 448,
+              "s1": 462,
+              "d0": 5.6,
+              "d1": 7.4,
+              "params": {
+                "boostMps": 8,
+                "holdS": 2
+              }
+            },
+            {
+              "kind": "rampTruck",
+              "id": "port-carrier-south",
+              "s0": 500,
+              "s1": 521.1,
+              "d0": 5.5,
+              "d1": 7.5,
+              "params": {
+                "rampLengthM": 11.5,
+                "lipHeightM": 2.8,
+                "slot": "longview-loading-line"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "port-loading-sign-north",
+              "s0": 1024,
+              "s1": 1030,
+              "d0": 8,
+              "d1": 10,
+              "item": "port-loading-line"
+            },
+            {
+              "kind": "boostPad",
+              "id": "port-loading-pad-north",
+              "s0": 1048,
+              "s1": 1062,
+              "d0": 5.6,
+              "d1": 7.4,
+              "params": {
+                "boostMps": 8,
+                "holdS": 2
+              }
+            },
+            {
+              "kind": "rampTruck",
+              "id": "port-carrier-north",
+              "s0": 1100,
+              "s1": 1121.1,
+              "d0": 5.5,
+              "d1": 7.5,
+              "params": {
+                "rampLengthM": 11.5,
+                "lipHeightM": 2.8,
+                "slot": "longview-loading-line"
+              }
             }
           ]
         },

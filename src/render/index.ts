@@ -980,7 +980,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const requestPlaces = () => {
     if (placesModule || !roadArgs) return;
     const tags = networkTags(roadArgs.road, roadArgs.dressing).tags;
-    if (!['ferry', 'clearcut', 'festival'].some((t) => tags.has(t))) return;
+    if (!['ferry', 'clearcut', 'festival', 'longview-port-yard'].some((t) => tags.has(t))) return;
     const current = scope.capture();
     void Promise.all([
       chunk('Pacific Northwest places', () => import('./pnw-places')),
