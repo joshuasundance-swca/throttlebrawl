@@ -351,16 +351,36 @@ describe('the packs name only sounds the voices can play, in the places they bel
   });
 
   it("Portland's busker plays at the square, where the plaza stands", () => {
-    // Other places may reuse this voice. Protect Portland's intended square and its plaza overlap.
-    const busker = zonesWith('music').filter(
-      (z) => z.value === 'busker' && z.road.id.startsWith('osm-pnw-pdx-'),
-    );
-    expect(busker).toHaveLength(1);
-    const { road, zone } = busker[0]!;
-    expect(road.id.startsWith('osm-pnw-pdx-')).toBe(true);
-    const plaza = (road.features ?? []).find((f) => f.kind === 'landmark' && f.id === 'square-plaza');
-    expect(plaza).toBeDefined();
-    expect(zone.s0 <= plaza!.s0 && zone.s1 >= plaza!.s1).toBe(true);
+    // Find the intended plazas first; additional music locations anywhere in Portland are welcome.
+    const squares = roads
+      .filter((r) => r.id.startsWith('osm-pnw-pdx-'))
+      .flatMap((road) =>
+        (road.features ?? [])
+          .filter((f) => f.kind === 'landmark' && f.id === 'square-plaza')
+          .map((plaza) => ({ road, plaza })),
+      );
+    expect(squares.length).toBeGreaterThan(0);
+    for (const { road, plaza } of squares) {
+      const features = road.features ?? [];
+      const covers = (fs: typeof features) =>
+        fs.some(
+          (zone) =>
+            zone.kind === 'roadsideZone' &&
+            zone.params?.['music'] === 'busker' &&
+            zone.s0 <= plaza.s0 &&
+            zone.s1 >= plaza.s1,
+        );
+      expect(covers(features), `${road.id}: music covers the square`).toBe(true);
+      const busker = (f: (typeof features)[number]) =>
+        f.kind === 'roadsideZone' && f.params?.['music'] === 'busker';
+      expect(covers(features.filter((f) => !busker(f)))).toBe(false);
+      expect(
+        covers(features.map((f) => (busker(f) ? { ...f, params: { ...f.params, music: 'karaoke' } } : f))),
+      ).toBe(false);
+      expect(
+        covers(features.map((f) => (busker(f) ? { ...f, s0: plaza.s1 + 1, s1: plaza.s1 + 2 } : f))),
+      ).toBe(false);
+    }
   });
 
   it('the Gate, the headlands and the city carry the tags their sounds read on the real roads', () => {
