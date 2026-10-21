@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { tuningDefaults } from '../../core';
+import { createRoadNetwork, createRouteProgress, fixtureBranchNetwork } from '../../road';
 import { SIM_TUNING } from '../create';
 import { testConfig } from '../riders/testing';
 import type { SimTrafficTypeDef } from '../types';
-import { addMover, createWorld, worldHash, type Mover } from '../world';
+import { addMover, createWorld, stepWorld, worldHash, type Mover } from '../world';
 import { capPerDirection, densityFor, IDM, TRAFFIC, trafficState, trafficSystem } from './index';
 import { populateNetwork } from './network-population';
 import { placeRoadVehicle } from './path-view';
+import { networkTrafficEnabled } from './vehicle-control';
 
 // A supported slow convoy configuration, rather than a claim about a shipped traffic type.
 const SLOW: SimTrafficTypeDef = {
@@ -34,7 +36,7 @@ function fixture(convoy = true, kappa = 0, lengthM = 3000) {
   return { config, world, st: trafficState(world) };
 }
 
-function closePairs(f: ReturnType<typeof fixture>) {
+function closePairs(f: ReturnType<typeof fixture>, toleranceM = 1e-6) {
   const { world, st } = f;
   const pairs: [number, number][] = [];
   for (let a = 0; a < st.id.length; a++)
@@ -42,8 +44,11 @@ function closePairs(f: ReturnType<typeof fixture>) {
       const ma = world.movers[st.id[a]!]!;
       const mb = world.movers[st.id[b]!]!;
       if (ma.pos.edge !== mb.pos.edge || ma.pos.dir !== mb.pos.dir || ma.pos.d !== mb.pos.d) continue;
-      const step = SLOW.lengthM + IDM.minGapM + st.v0[a]! * IDM.timeGapS + TRAFFIC.convoyExtraGapM;
-      if (Math.abs(Math.abs(ma.pos.s - mb.pos.s) - step) < 1e-6 && st.v0[a] === st.v0[b]) pairs.push([a, b]);
+      if (st.type[a] !== st.type[b]) continue;
+      const type = f.config.trafficTypes[st.type[a]!]!;
+      const step = type.lengthM + IDM.minGapM + st.v0[a]! * IDM.timeGapS + TRAFFIC.convoyExtraGapM;
+      if (Math.abs(Math.abs(ma.pos.s - mb.pos.s) - step) < toleranceM && st.v0[a] === st.v0[b])
+        pairs.push([a, b]);
     }
   return pairs;
 }
@@ -82,6 +87,68 @@ function firstGroup() {
 }
 
 describe('network population convoy clearance', () => {
+  it('groups the authored PNW motorhome through the network-enabled traffic system', () => {
+    const authored = Object.values(
+      import.meta.glob<Omit<SimTrafficTypeDef, 'contentId'> & { id: string }>(
+        '/packs/region-pnw/traffic/motorhome.json',
+        {
+          eager: true,
+          import: 'default',
+        },
+      ),
+    )[0]!;
+    expect(authored.behaviour?.convoy).toBeGreaterThan(1);
+    const run = (convoy: boolean) => {
+      const bundle = fixtureBranchNetwork();
+      const road = createRoadNetwork({
+        ...bundle,
+        roads: bundle.roads.map((r) => ({
+          ...r,
+          features: [],
+          laneSections: r.laneSections.map((section) => ({
+            ...section,
+            lanes: section.lanes.map((lane) =>
+              lane.kind === 'shortcut' ? { ...lane, kind: 'drive' as const } : lane,
+            ),
+          })),
+        })),
+      });
+      const config = testConfig();
+      config.road = road;
+      config.route = createRouteProgress(road, {
+        ...bundle.route,
+        branches: [{ id: 'cut', roads: ['c-in', 'cut', 'c-out'], traffic: 'road' }],
+      });
+      config.trafficTypes = [
+        {
+          ...authored,
+          contentId: `region-pnw:${authored.id}`,
+          behaviour: convoy ? authored.behaviour : { ...authored.behaviour, convoy: 1 },
+        },
+      ];
+      config.tuning = {
+        ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)),
+        'traffic.density': 2,
+        'traffic.densityOncoming': 0,
+      };
+      const world = createWorld(config);
+      addMover(world, 'rider', { edge: road.edgeIndex('cut'), s: 100, d: 8, dir: 1 }, 0);
+      expect(networkTrafficEnabled(config)).toBe(true);
+      trafficSystem.init(world, config);
+      const st = trafficState(world);
+      expect(st.spawns).toBe(0);
+      stepWorld(world, config, [trafficSystem], []);
+      expect(st.spawns).toBeGreaterThan(0);
+      expect(st.paths.every((path) => path !== undefined)).toBe(true);
+      // Population precedes one sim tick of motion. Equal initial group speeds can change
+      // relative separation only by the bounded acceleration/braking during that tick.
+      const toleranceM = (IDM.maxDecelMps2 + IDM.accelMps2) / (60 * 60) + 1e-6;
+      return closePairs({ config, world, st }, toleranceM);
+    };
+    expect(run(true).length).toBeGreaterThan(0);
+    expect(run(false)).toEqual([]);
+  });
+
   it('places slow same-lane followers at their safe authored group headway', () => {
     const f = fixture();
     populateNetwork(f.world, f.config, f.st, true);
