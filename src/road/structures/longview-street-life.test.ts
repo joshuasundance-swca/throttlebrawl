@@ -94,6 +94,17 @@ describe('Street Diamond sites explicitly join the course with open physical apr
       10,
     );
     expect(movedCourt.solids).toEqual(court.solids);
+    const movedPlan = await ensureStructures(moved, 1);
+    expect(
+      courseAt(moved, movedPlan, gap, moved.surfaceHeight(gap.edge, gap.s, gap.d) + 0.15).kind,
+      'relocation removes physical support from the old court',
+    ).toBe('out');
+    const movedGap = { ...gap, s: gap.s - 16 };
+    expect(
+      courseAt(moved, movedPlan, movedGap, moved.surfaceHeight(movedGap.edge, movedGap.s, movedGap.d) + 0.15)
+        .kind,
+      'relocation supplies physical support at the new court',
+    ).toBe('top');
     for (const edge of road.edges.filter((e) => e.isConnector)) {
       expect(pnwPlacesLayout(road, 1).streetSites.some((site) => site.edge === edge.index)).toBe(false);
       expect(edge.features.some((f) => f.params?.['place'] === 'dispatch-court')).toBe(false);

@@ -297,7 +297,7 @@ export interface PnwStreetSite {
   specs: readonly StructureSpec[];
 }
 
-/** Two distinct street settings. The front is open; solids are only the drawn bodies, posts and surfaces. */
+/** Authored street settings. The front is open; solids are only the drawn bodies, posts and surfaces. */
 function streetSolids(kind: PnwStreetSite['kind'], side: number): PnwSolidDef[] {
   if (kind === 'dispatch-court') {
     // A parked work pickup uses the existing PNW model's boxes, at the back of the court.
