@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 import { expect, it } from 'vitest';
 import { InstancedMesh, Mesh, Raycaster, Vector3, type Object3D } from 'three';
-import { buildSimConfig, createStreamCache } from '../../src/app';
+import { buildSimConfig, createStreamCache, realRoutes } from '../../src/app';
+import { streamSeed } from '../../src/core';
 import { lookup, registryFromGlob } from '../../src/content';
 import { createFlatLook } from '../../src/render';
 import { buildRoadScene } from '../../src/render/road-mesh';
@@ -53,6 +54,55 @@ function makeConfig(seed = 1, quiet = false) {
   });
   return { ...base, riders: base.riders.filter((r) => r.role === 'player') };
 }
+
+it('initializes every shipped event length and offered route with a content-derived seed cohort', () => {
+  const streams = createStreamCache();
+  const cases = Object.entries(sourceRegistry.events)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([eventId, event]) => [
+      ...event.lengths.map((length) => ({
+        eventId,
+        length: length.id,
+        route: undefined as string | undefined,
+      })),
+      ...realRoutes(sourceRegistry, eventId).map((route) => ({
+        eventId,
+        length: undefined as string | undefined,
+        route,
+      })),
+    ]);
+  const failures: { eventId: string; length?: string; route?: string; seed: number; error: string }[] = [];
+  let examined = 0,
+    populationEntities = 0;
+  for (const choice of cases)
+    for (let index = 0; index < 3; index++) {
+      const seed = streamSeed(
+        1,
+        `pedestrian-init:${choice.eventId}:${choice.length ?? choice.route}:${index}`,
+      );
+      try {
+        const config = buildSimConfig(
+          sourceRegistry,
+          streams.forEvent(sourceRegistry, choice.eventId, choice.length, choice.route),
+          { ...choice, seed },
+        );
+        const { sim } = createSimWithWorld(config);
+        const snap = sim.snapshot();
+        expect(snap.tick).toBe(0);
+        populationEntities += snap.entities.filter((e) => e.kind === 'ped').length;
+      } catch (error) {
+        failures.push({ ...choice, seed, error: error instanceof Error ? error.message : String(error) });
+      }
+      examined++;
+    }
+  process.stdout.write(
+    `[shipped pedestrian initialization] ${JSON.stringify({ events: Object.keys(sourceRegistry.events).length, configurations: cases.length, seedsPerConfiguration: 3, examined, populationEntities, failures })}\n`,
+  );
+  expect(cases.length).toBeGreaterThan(0);
+  expect(examined).toBe(cases.length * 3);
+  expect(populationEntities).toBeGreaterThan(0);
+  expect(failures).toEqual([]);
+});
 
 it('the county loading context has one local strolling person', () => {
   const { sim } = createSimWithWorld(makeConfig());
