@@ -11,7 +11,7 @@ import { placeRoadVehicle } from './path-view';
 import { networkTrafficEnabled } from './vehicle-control';
 
 // A supported slow convoy configuration, rather than a claim about a shipped traffic type.
-const SLOW: SimTrafficTypeDef = {
+const SLOW = {
   contentId: 'base:test-slow-convoy',
   category: 'rv',
   lengthM: 9,
@@ -19,11 +19,11 @@ const SLOW: SimTrafficTypeDef = {
   cruiseMps: 5,
   hazard: 'big',
   behaviour: { convoy: 4 },
-};
+} satisfies SimTrafficTypeDef;
 
 function fixture(convoy = true, kappa = 0, lengthM = 3000) {
   const config = testConfig({ edges: [{ id: 'a', lengthM, kappa }] });
-  config.trafficTypes = [{ ...SLOW, behaviour: { convoy: convoy ? SLOW.behaviour!.convoy : 1 } }];
+  config.trafficTypes = [{ ...SLOW, behaviour: { convoy: convoy ? SLOW.behaviour.convoy : 1 } }];
   config.tuning = {
     ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)),
     'traffic.density': 0,
@@ -123,7 +123,7 @@ describe('network population convoy clearance', () => {
         {
           ...authored,
           contentId: `region-pnw:${authored.id}`,
-          behaviour: convoy ? authored.behaviour : { ...authored.behaviour, convoy: 1 },
+          behaviour: convoy ? { ...authored.behaviour } : { ...authored.behaviour, convoy: 1 },
         },
       ];
       config.tuning = {
