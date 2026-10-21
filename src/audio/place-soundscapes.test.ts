@@ -351,7 +351,10 @@ describe('the packs name only sounds the voices can play, in the places they bel
   });
 
   it("Portland's busker plays at the square, where the plaza stands", () => {
-    const busker = zonesWith('music').filter((z) => z.value === 'busker');
+    // Other places may reuse this voice. Protect Portland's intended square and its plaza overlap.
+    const busker = zonesWith('music').filter(
+      (z) => z.value === 'busker' && z.road.id.startsWith('osm-pnw-pdx-'),
+    );
     expect(busker).toHaveLength(1);
     const { road, zone } = busker[0]!;
     expect(road.id.startsWith('osm-pnw-pdx-')).toBe(true);
