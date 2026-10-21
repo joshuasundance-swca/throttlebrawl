@@ -43,14 +43,7 @@ import {
 } from '../sim/api';
 import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
-import {
-  loadPnwPlacesLayout,
-  loadWaterfrontLayout,
-  loadIowaParkLayout,
-  loadIowaCountyLayout,
-  structuresOf,
-  type StructurePlan,
-} from '../road';
+import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
 import type { AirPays } from './air-pays';
 import type { TerrainTrees } from './terrain-trees';
 import type { Boards, BoardCatalog, BoardSlot, VisibleContent } from './boards';
@@ -82,8 +75,9 @@ import type { TextSurfaceCounts, TextSurfaceLayer } from './text-surfaces';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PartyLights, PartyLightsCounts } from './party-lights';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
-import type { IowaParkCounts, IowaParkLayer } from './iowa-park';
-import type { IowaCountyCounts, IowaCountyLayer } from './iowa-county';
+import type { IowaParkCounts } from './iowa-park';
+import type { IowaCountyCounts } from './iowa-county';
+import type { IowaFacilitiesLayer } from './iowa-facilities';
 import type { Rain } from './rain';
 import { easeHaze, hazeFarAt, thinHazeSpans, type ThinHazeSpans } from './haze';
 import { roofCover, roofSpans, type RoofSpan } from './roofs';
@@ -555,8 +549,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const visibleContent = (): VisibleContent[] => [
     ...(boards?.visibleContent(camera) ?? []),
     ...(textSurfaces?.visibleContent(camera) ?? []),
-    ...(iowaPark?.visibleContent() ?? []),
-    ...(iowaCounty?.visibleContent() ?? []),
+    ...(iowaFacilities?.visibleContent() ?? []),
   ];
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
@@ -1011,64 +1004,34 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       buildPlaces();
     });
   };
-  // Park facilities share their lazy physical layout with the simulation.
-  let iowaParkModule: typeof import('./iowa-park') | null = null;
-  let iowaParkPlan: Awaited<ReturnType<typeof loadIowaParkLayout>> | null = null;
-  let iowaPark: IowaParkLayer | null = null;
-  const buildIowaPark = () => {
-    iowaPark?.dispose();
-    iowaPark = null;
-    if (!iowaParkModule || !iowaParkPlan || !roadArgs) return;
-    if (!iowaParkModule.hasIowaPark(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
-    iowaPark = new iowaParkModule.IowaParkLayer(look, {
-      layout: iowaParkPlan.iowaParkLayout(roadArgs.road, sceneSeed),
-    });
-    iowaPark.hide(hiddenRefs);
-    scene.add(iowaPark.group);
+  // Both Iowa settings share a lazy lifecycle; only tagged physical layouts are prepared.
+  let iowaModule: typeof import('./iowa-facilities') | null = null;
+  let iowaFacilities: IowaFacilitiesLayer | null = null;
+  const buildIowaFacilities = () => {
+    iowaFacilities?.dispose();
+    iowaFacilities = null;
+    if (!iowaModule || !roadArgs) return;
+    const tags = networkTags(roadArgs.road, roadArgs.dressing).tags;
+    if (!iowaModule.iowaFacilitiesReady(tags)) return;
+    iowaFacilities = new iowaModule.IowaFacilitiesLayer(look, { road: roadArgs.road, seed: sceneSeed, tags });
+    iowaFacilities.hide(hiddenRefs);
+    scene.add(iowaFacilities.group);
   };
-  const requestIowaPark = () => {
-    if ((iowaParkModule && iowaParkPlan) || !roadArgs) return;
-    if (!networkTags(roadArgs.road, roadArgs.dressing).tags.has('iowa-park')) return;
+  const requestIowaFacilities = () => {
+    if (!roadArgs) return;
+    const tags = networkTags(roadArgs.road, roadArgs.dressing).tags;
+    if (!tags.has('iowa-park') && !tags.has('iowa-county-farmstead')) return;
+    if (iowaModule?.iowaFacilitiesReady(tags)) return;
     const current = scope.capture();
-    void Promise.all([
-      chunk('Iowa park facilities', () => import('./iowa-park')),
-      chunk('Iowa park layout', loadIowaParkLayout),
-    ]).then(([m, plan]) => {
+    void chunk('Iowa facilities', async () => {
+      const m = await import('./iowa-facilities');
+      await m.prepareIowaFacilities(tags);
+      return m;
+    }).then((m) => {
       if (!current()) return;
-      if (!m || !plan) return gate.later(requestIowaPark);
-      iowaParkModule = m;
-      iowaParkPlan = plan;
-      buildIowaPark();
-    });
-  };
-  // County facilities share their lazy physical layout with the simulation.
-  let iowaCountyModule: typeof import('./iowa-county') | null = null;
-  let iowaCountyPlan: Awaited<ReturnType<typeof loadIowaCountyLayout>> | null = null;
-  let iowaCounty: IowaCountyLayer | null = null;
-  const buildIowaCounty = () => {
-    iowaCounty?.dispose();
-    iowaCounty = null;
-    if (!iowaCountyModule || !iowaCountyPlan || !roadArgs) return;
-    if (!iowaCountyModule.hasIowaCounty(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
-    iowaCounty = new iowaCountyModule.IowaCountyLayer(look, {
-      layout: iowaCountyPlan.iowaCountyLayout(roadArgs.road, sceneSeed),
-    });
-    iowaCounty.hide(hiddenRefs);
-    scene.add(iowaCounty.group);
-  };
-  const requestIowaCounty = () => {
-    if ((iowaCountyModule && iowaCountyPlan) || !roadArgs) return;
-    if (!networkTags(roadArgs.road, roadArgs.dressing).tags.has('iowa-county-farmstead')) return;
-    const current = scope.capture();
-    void Promise.all([
-      chunk('Iowa county facilities', () => import('./iowa-county')),
-      chunk('Iowa county layout', loadIowaCountyLayout),
-    ]).then(([m, plan]) => {
-      if (!current()) return;
-      if (!m || !plan) return gate.later(requestIowaCounty);
-      iowaCountyModule = m;
-      iowaCountyPlan = plan;
-      buildIowaCounty();
+      if (!m) return gate.later(requestIowaFacilities);
+      iowaModule = m;
+      buildIowaFacilities();
     });
   };
   // Playtest 4 (P4-16): a party street's string lights (party-lights.ts), a lazy chunk loaded only for a road
@@ -1123,8 +1086,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildDowntown();
     buildWaterfront();
     buildPlaces();
-    buildIowaPark();
-    buildIowaCounty();
+    buildIowaFacilities();
     buildBlocks();
     buildMission();
     buildParty();
@@ -1341,8 +1303,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       else requestParty();
     }
     requestPlaces();
-    requestIowaPark();
-    requestIowaCounty();
+    requestIowaFacilities();
     backdrop.applyPresentation(road, sceneSeed);
     requestLandmarks(road);
     requestScenes(road);
@@ -1460,8 +1421,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, reach.drawM, reach.lodM);
-      if (iowaPark) sceneryVisible += iowaPark.update(pose.x, pose.z, reach.drawM);
-      if (iowaCounty) sceneryVisible += iowaCounty.update(pose.x, pose.z, reach.drawM);
+      if (iowaFacilities) sceneryVisible += iowaFacilities.update(pose.x, pose.z, reach.drawM);
       boards?.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, reach.drawM, reach.lodM);
       if (downtown) {
@@ -1565,8 +1525,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       return (
         boards?.pick(ndc.x, ndc.y, camera) ??
         textSurfaces?.pick(ndc.x, ndc.y, camera) ??
-        iowaPark?.pick(ndc.x, ndc.y, camera) ??
-        iowaCounty?.pick(ndc.x, ndc.y, camera) ??
+        iowaFacilities?.pick(ndc.x, ndc.y, camera) ??
         null
       );
     },
@@ -1578,8 +1537,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       boards?.hide(list);
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
-      iowaPark?.hide(list);
-      iowaCounty?.hide(list);
+      iowaFacilities?.hide(list);
       textSurfaces?.hide(list);
     },
     feelCounts: () => race?.effects.counts() ?? noFeel,
@@ -1633,8 +1591,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       waterfront: waterfront?.counts() ?? null,
       airboats: airboats?.counts() ?? null,
       places: places?.counts() ?? null,
-      iowaPark: iowaPark?.counts() ?? null,
-      iowaCounty: iowaCounty?.counts() ?? null,
+      iowaPark: iowaFacilities?.park?.counts() ?? null,
+      iowaCounty: iowaFacilities?.county?.counts() ?? null,
       partyLights: party?.counts() ?? null,
     }),
   };
