@@ -25,6 +25,7 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { createSim } from '../../src/sim/api';
 import { seedRange } from './batch';
+import { furnitureCredits } from './furniture-credit';
 
 const print = (line: string) => process.stdout.write(`[ai-furniture] ${line}\n`);
 
@@ -65,16 +66,31 @@ function race(into: Tally, eventId: string, seed: number, tuning: Record<string,
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const bot = createBot();
-  // A rival's furniture crash waiting for combat's takedown credit (it comes a tick or two later).
-  const pending = new Set<number>();
+  // Combat credits the same victim and crash causeId exactly one tick after the fall (M2 combat-4).
+  const pending = furnitureCredits();
+  const diagnostic = {
+    rawCrashes: 0,
+    firstFalls: 0,
+    bodyContacts: 0,
+    otherCrashEvents: 0,
+    furnitureCrashes: 0,
+    exactFurnitureCredits: 0,
+    causes: {} as Record<string, number>,
+    modes: {} as Record<string, number>,
+  };
   let snap = sim.snapshot();
   while (!sim.isOver() && sim.tick < MAX_TICKS) {
+    const before = snap;
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
     sim.step([toSimInput(a)]);
     snap = sim.snapshot();
+    const fallsThisTick = new Set<number>();
     for (const e of sim.events()) {
-      if (e.type === 'takedown' && e.target !== undefined && pending.delete(e.target)) into.rivalTakedowns++;
+      if (pending.take(e)) {
+        into.rivalTakedowns++;
+        diagnostic.exactFurnitureCredits++;
+      }
       if (e.actor === playerId) continue;
       const rider = config.riders[e.actor];
       if (!rider || rider.controller.kind === 'player') continue;
@@ -86,9 +102,26 @@ function race(into: Tally, eventId: string, seed: number, tuning: Record<string,
           if (onFurniture) into.copFurniture++;
         } else {
           into.rivalCrashes++;
+          diagnostic.rawCrashes++;
+          const was = before.entities[e.actor]?.mode;
+          const now = snap.entities[e.actor]?.mode;
+          const mode = `${was ?? 'missing'}->${now ?? 'missing'}`;
+          diagnostic.modes[mode] = (diagnostic.modes[mode] ?? 0) + 1;
+          const cause = String(e.data['cause'] ?? e.data['reason'] ?? 'unknown');
+          diagnostic.causes[cause] = (diagnostic.causes[cause] ?? 0) + 1;
+          if (e.data['contact'] === 'tumble') diagnostic.bodyContacts++;
+          else if (
+            (was === 'Road' || was === 'Airborne') &&
+            now === 'Tumble' &&
+            !fallsThisTick.has(e.actor)
+          ) {
+            diagnostic.firstFalls++;
+            fallsThisTick.add(e.actor);
+          } else diagnostic.otherCrashEvents++;
           if (onFurniture) {
             into.rivalFurniture++;
-            pending.add(e.actor);
+            diagnostic.furnitureCrashes++;
+            pending.crash(e);
           }
         }
       } else if (e.type === 'wobble' && onFurniture && !law && e.data['cause'] !== 'smash')
@@ -96,6 +129,10 @@ function race(into: Tally, eventId: string, seed: number, tuning: Record<string,
     }
   }
   into.races++;
+  // One bounded summary for each race already run; diagnostics never subtract from the raw guard.
+  print(
+    JSON.stringify({ eventId, seed, furniture: tuning['riders.furniture'], ticks: sim.tick, ...diagnostic }),
+  );
 }
 
 const line = (name: string, t: Tally) =>
