@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { PerspectiveCamera, Vector3 } from 'three';
+import { PerspectiveCamera, Raycaster, Vector3 } from 'three';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -29,6 +29,23 @@ const drawn = new GroundTris(built.group);
 afterAll(() => built.dispose());
 
 describe('physical Eagle Point park facilities', () => {
+  it('shows the physical shelter roof from beneath its open passage', () => {
+    const layout = iowaParkLayout(road, 1);
+    const layer = new IowaParkLayer(createFlatLook(), { layout });
+    try {
+      layer.group.updateMatrixWorld(true);
+      const facility = layout.facilities.find((f) => f.id === 'park-picnic-shelter')!;
+      const roof = facility.specs.find((s) => s.rule.endsWith(':shelter-roof'))!;
+      const mesh = layer.views.find((v) => v.mesh.name === facility.id)!.mesh;
+      const ray = new Raycaster(
+        new Vector3(roof.foot.x, roof.baseY - 0.5, roof.foot.z),
+        new Vector3(0, 1, 0),
+      );
+      expect(ray.intersectObject(mesh)[0]?.distance).toBeCloseTo(0.5, 3);
+    } finally {
+      layer.dispose();
+    }
+  });
   it('stands every pad on actual rendered land and clears every road and its recovery margin', () => {
     let facilities = 0;
     let supported = 0;
@@ -106,33 +123,31 @@ describe('physical Eagle Point park facilities', () => {
       expect(collected).toEqual(specs);
       for (const [index, facility] of layout.facilities.entries()) {
         const mesh = layer.views[index]!.mesh;
-        const position = mesh.geometry.getAttribute('position');
-        // sceneGeometry draws the full sign box (36 vertices), its thin printed face (6), then
-        // every physical part's five visible faces (30). Compare those actual vertices to physics.
-        const pieces = [facility.specs.at(-1)!, ...facility.specs.slice(0, -1)];
-        let offset = 0;
-        for (const [i, spec] of pieces.entries()) {
-          const count = i === 0 ? 36 : 30;
-          const local: Vector3[] = [];
-          for (let k = offset; k < offset + count; k++) {
-            const p = new Vector3().fromBufferAttribute(position, k).applyMatrix4(mesh.matrixWorld);
-            const dx = p.x - spec.foot.x;
-            const dz = p.z - spec.foot.z;
-            local.push(
-              new Vector3(dx * spec.foot.ux + dz * spec.foot.uz, p.y, -dx * spec.foot.uz + dz * spec.foot.ux),
+        // Probe actual face triangles from their outward side; no vertex order/count contract.
+        const ray = new Raycaster();
+        const facesPresent = () =>
+          facility.specs.every((spec) => {
+            const height = spec.roof.kind === 'flat' ? spec.roof.topM : 0;
+            const center = new Vector3(spec.foot.x, spec.baseY + height / 2, spec.foot.z);
+            const axes = [
+              { normal: new Vector3(spec.foot.ux, 0, spec.foot.uz), half: spec.foot.hu },
+              { normal: new Vector3(0, 1, 0), half: height / 2 },
+              { normal: new Vector3(-spec.foot.uz, 0, spec.foot.ux), half: spec.foot.hv },
+            ];
+            return axes.every(({ normal, half }) =>
+              [-1, 1].every((sign) => {
+                const outward = normal.clone().multiplyScalar(sign);
+                ray.set(center.clone().addScaledVector(outward, half + 0.02), outward.clone().negate());
+                return ray.intersectObject(mesh).some((hit) => Math.abs(hit.distance - 0.02) < 0.001);
+              }),
             );
-          }
-          expect(Math.min(...local.map((p) => p.x))).toBeCloseTo(-spec.foot.hu, 3);
-          expect(Math.max(...local.map((p) => p.x))).toBeCloseTo(spec.foot.hu, 3);
-          expect(Math.min(...local.map((p) => p.z))).toBeCloseTo(-spec.foot.hv, 3);
-          expect(Math.max(...local.map((p) => p.z))).toBeCloseTo(spec.foot.hv, 3);
-          expect(Math.min(...local.map((p) => p.y))).toBeCloseTo(spec.baseY, 3);
-          expect(Math.max(...local.map((p) => p.y))).toBeCloseTo(
-            spec.baseY + (spec.roof.kind === 'flat' ? spec.roof.topM : 0),
-            3,
-          );
-          offset += count + (i === 0 ? 6 : 0);
-        }
+          });
+        expect(facesPresent(), facility.id).toBe(true);
+        mesh.position.x += 1;
+        mesh.updateMatrixWorld(true);
+        expect(facesPresent(), 'displaced drawing fails contact alignment').toBe(false);
+        mesh.position.x -= 1;
+        mesh.updateMatrixWorld(true);
       }
       // Directly inject this lane's planner until the coordinator wires the lazy registry.
       const plan = planStructures(
