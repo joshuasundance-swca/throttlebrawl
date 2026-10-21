@@ -727,7 +727,15 @@ export function workyardParts(kind: string, solids: readonly PnwSolidDef[]): Box
     size: [b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0],
     at: [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2],
     color:
-      name === 'roof' ? '#7a8580' : name === 'post' ? '#d0a447' : name === 'back' ? '#42685f' : '#97704b',
+      name === 'apron'
+        ? '#8a8e88'
+        : name === 'roof'
+          ? '#7a8580'
+          : name === 'post'
+            ? '#d0a447'
+            : name === 'back'
+              ? '#42685f'
+              : '#97704b',
     solid: name,
   }));
   // Timber end-grain bands and a shed's corrugated back: painted faces, no extra reachable volume.

@@ -73,6 +73,35 @@ function ride(seed: number, optional: boolean) {
 }
 
 describe('the authored Port Shift loading line is optional and repeatable', () => {
+  it('rides from the ordinary verge onto each loading apron and stops without leaving the course', async () => {
+    const config = setup(1);
+    const { pnwPlacesLayout } = await loadPnwPlacesLayout();
+    for (const yard of pnwPlacesLayout(config.road, 1).workyards) {
+      const side = Math.sign(yard.d);
+      const verge = config.road.vergeAt(yard.edge, yard.s, side < 0 ? 'left' : 'right');
+      const h = riderHarness(config, {
+        edge: yard.edge,
+        s: yard.s - 6,
+        d: verge.dOuter - side,
+        speed: 5,
+        yaw: side * 1.1,
+      });
+      const events: SimEvent[] = [];
+      let entered = false;
+      for (let tick = 0; tick < 240 && !entered; tick++) {
+        events.push(...h.step(input(h.rider.speed < 6 ? 0.3 : 0, 0, side)));
+        entered = Math.abs(h.rider.pos.d) >= Math.abs(verge.dOuter) + 1;
+      }
+      expect(entered, yard.kind).toBe(true);
+      for (let tick = 0; tick < 60; tick++) events.push(...h.step(input(0, 1, 0)));
+      expect(h.rider.mode, yard.kind).toBe('Road');
+      expect(Math.abs(h.rider.pos.d), 'stopped beyond the old decorative-ground boundary').toBeGreaterThan(
+        Math.abs(verge.dOuter) + 1,
+      );
+      expect(h.rider.speed).toBeLessThan(0.1);
+      expect(events.filter((e) => e.type === 'overboard' || e.type === 'crash')).toEqual([]);
+    }
+  });
   it('lands on the actual shed roof and meets its back wall below the roof, with an above-wall control', async () => {
     const config = setup(1);
     const { pnwPlacesLayout } = await loadPnwPlacesLayout();

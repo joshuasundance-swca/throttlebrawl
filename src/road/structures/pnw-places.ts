@@ -349,6 +349,17 @@ function planLayout(road: RoadNetwork, seed: number): PnwPlacesLayout {
       const s = (f.s0 + f.s1) / 2,
         d = (f.d0 + f.d1) / 2;
       const solids = workyardSolids(kind, f.d1 - f.d0, f.s1 - f.s0, Math.sign(d));
+      // A visible loading yard joins the existing verge through an explicit paved support.
+      // Industrial decorative grass remains out of bounds elsewhere; no global ground policy changes.
+      const side = d < 0 ? -1 : 1;
+      const verge = road.vergeAt(e.index, s, side < 0 ? 'left' : 'right');
+      const inner = verge.dOuter - side * 0.25;
+      const outer = side < 0 ? f.d0 : f.d1;
+      solids.push({
+        name: 'apron',
+        cls: 'building',
+        box: box(d - (inner + outer) / 2, Math.abs(outer - inner) / 2, -0.12, 0.02, 0, (f.s1 - f.s0) / 2),
+      });
       const spot = spotAt(road, f.id, e.index, s, d, LAND_TOP_M);
       workyards.push({ edge: e.index, s, d, kind, solids, specs: made(spot, solids) });
     }
