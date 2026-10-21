@@ -20,6 +20,31 @@ const roadContracts = [
 ].sort();
 
 describe('planPush', () => {
+  it.each(['.github/workflows/suite.yml', '.github/workflows/ci.yml', '.github\\workflows\\suite.yml'])(
+    'checks contributor guidance when its CI capacity source changes: %s',
+    (source) => {
+      const contract = 'scripts/contributing-docs.test.ts';
+      expect(planPush([source], tree(contract))).toMatchObject({ mode: 'files', tests: [contract] });
+    },
+  );
+
+  it('keeps CI guidance selection bounded, deduplicated and compatible with missing tests', () => {
+    const contract = 'scripts/contributing-docs.test.ts';
+    expect(
+      planPush(['.github/workflows/ci.yml', '.github/workflows/suite.yml', contract], tree(contract)).tests,
+    ).toEqual([contract]);
+    expect(planPush(['.github/workflows/suite.yml'], tree()).tests).toEqual([]);
+    for (const source of [
+      '.github/workflows/deploy.yml',
+      'docs/engineering.md',
+      'AGENTS.md',
+      'package-lock.json',
+      'src/ui/menu.ts',
+    ]) {
+      expect(planPush([source], tree(contract)).tests, source).toEqual([]);
+    }
+  });
+
   it.each(['packs/future-pack/modifiers/harvest.json', 'packs\\future-pack\\modifiers\\harvest.json'])(
     'checks warning copy and eligible road-event barks for modifier input %s',
     (source) => {
