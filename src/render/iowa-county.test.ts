@@ -22,30 +22,30 @@ it('draws every contact box exactly, including crib slats and the clear shed pas
     layer.group.updateMatrixWorld(true);
     for (const [i, f] of layout.facilities.entries()) {
       const mesh = layer.views[i]!.mesh;
-      const pos = mesh.geometry.getAttribute('position');
-      let offset = 0;
-      for (const [index, spec] of [f.specs.at(-1)!, ...f.specs.slice(0, -1)].entries()) {
-        const count = index === 0 ? 36 : 30;
-        const points: Vector3[] = [];
-        for (let k = offset; k < offset + count; k++) {
-          const p = new Vector3().fromBufferAttribute(pos, k).applyMatrix4(mesh.matrixWorld);
-          const dx = p.x - spec.foot.x,
-            dz = p.z - spec.foot.z;
-          points.push(
-            new Vector3(dx * spec.foot.ux + dz * spec.foot.uz, p.y, -dx * spec.foot.uz + dz * spec.foot.ux),
+      const ray = new Raycaster();
+      const facesPresent = () =>
+        f.specs.every((spec) => {
+          const height = spec.roof.kind === 'flat' ? spec.roof.topM : 0;
+          const center = new Vector3(spec.foot.x, spec.baseY + height / 2, spec.foot.z);
+          const axes = [
+            { normal: new Vector3(spec.foot.ux, 0, spec.foot.uz), half: spec.foot.hu },
+            { normal: new Vector3(0, 1, 0), half: height / 2 },
+            { normal: new Vector3(-spec.foot.uz, 0, spec.foot.ux), half: spec.foot.hv },
+          ];
+          return axes.every(({ normal, half }) =>
+            [-1, 1].every((sign) => {
+              const outward = normal.clone().multiplyScalar(sign);
+              ray.set(center.clone().addScaledVector(outward, half + 0.02), outward.clone().negate());
+              return ray.intersectObject(mesh).some((hit) => Math.abs(hit.distance - 0.02) < 0.001);
+            }),
           );
-        }
-        expect(Math.min(...points.map((p) => p.x))).toBeCloseTo(-spec.foot.hu, 3);
-        expect(Math.max(...points.map((p) => p.x))).toBeCloseTo(spec.foot.hu, 3);
-        expect(Math.min(...points.map((p) => p.z))).toBeCloseTo(-spec.foot.hv, 3);
-        expect(Math.max(...points.map((p) => p.z))).toBeCloseTo(spec.foot.hv, 3);
-        expect(Math.min(...points.map((p) => p.y))).toBeCloseTo(spec.baseY, 3);
-        expect(Math.max(...points.map((p) => p.y))).toBeCloseTo(
-          spec.baseY + (spec.roof.kind === 'flat' ? spec.roof.topM : 0),
-          3,
-        );
-        offset += count + (index === 0 ? 6 : 0);
-      }
+        });
+      expect(facesPresent(), f.id).toBe(true);
+      mesh.position.x += 1;
+      mesh.updateMatrixWorld(true);
+      expect(facesPresent(), 'displaced drawing fails contact alignment').toBe(false);
+      mesh.position.x -= 1;
+      mesh.updateMatrixWorld(true);
       layer.update(f.x + 200, f.z, 400);
       expect(mesh.visible).toBe(true);
       expect(mesh.geometry.drawRange.count).toBe(Infinity);
