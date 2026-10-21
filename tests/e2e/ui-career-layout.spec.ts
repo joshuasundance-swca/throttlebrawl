@@ -236,7 +236,7 @@ async function offBikeCoverControl(page: Page) {
   const crashFrom = await page.evaluate(() => {
     const g = (window as TestWindow).__game;
     if (!g) throw new Error('race seam missing');
-    g.lockstep(0);
+    g.lockstep(1);
     g.setBot(false);
     return g.snapshot()?.tick ?? 0;
   });
@@ -253,74 +253,82 @@ async function offBikeCoverControl(page: Page) {
       await page.keyboard.down('KeyW');
       await page.keyboard.down('KeyH');
     }
-    await page.evaluate((mode) => {
-      const g = (window as TestWindow).__game;
-      if (!g) throw new Error('race seam missing');
-      const from = g.snapshot()?.tick ?? 0;
-      g.fastForward(
-        (s) =>
-          s.tick > from + 1200 ||
-          (g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as { mode?: string } | undefined)
-            ?.mode === mode,
-        { then: 0 },
-      );
-    }, mode);
-    await fastForwardDone(page, `off-bike cover control: ${mode}`);
+    const result = await page.evaluate(
+      ({ mode, crashFrom }) => {
+        const w = window as TestWindow;
+        const g = w.__game;
+        if (!g) throw new Error('race seam missing');
+        const self = () =>
+          g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as { mode?: string } | undefined;
+        const measure = () => {
+          const parts = w.__playerParts?.() ?? [];
+          const covers = ['bike', 'rider'].map((kind) => {
+            const part = parts
+              .filter((p) => p.kind === kind)
+              .sort(
+                (a, b) =>
+                  (b.box.right - b.box.left) * (b.box.bottom - b.box.top) -
+                  (a.box.right - a.box.left) * (a.box.bottom - a.box.top),
+              )[0];
+            if (!part) return null;
+            const d = document.createElement('div');
+            d.id = `planted-${kind}-cover`;
+            Object.assign(d.style, {
+              position: 'fixed',
+              left: `${part.box.left}px`,
+              top: `${part.box.top}px`,
+              width: `${part.box.right - part.box.left}px`,
+              height: `${part.box.bottom - part.box.top}px`,
+              background: '#f0f',
+              zIndex: '99',
+            });
+            document.getElementById('hud')?.append(d);
+            return d.id;
+          });
+          return {
+            mode: self()?.mode,
+            tick: g.snapshot()?.tick,
+            loopOut: g
+              .events()
+              .some(
+                (e) =>
+                  e.type === 'crash' &&
+                  e.actor === g.playerId() &&
+                  e.tick > crashFrom &&
+                  e.data?.['cause'] === 'wheelie' &&
+                  e.data?.['loopOut'] === true,
+              ),
+            kinds: [...new Set(parts.map((p) => p.kind))],
+            covers,
+            pieces: w.__layoutPieces?.() ?? [],
+            w: innerWidth,
+            h: innerHeight,
+          };
+        };
+        const from = g.snapshot()?.tick ?? 0;
+        return new Promise<ReturnType<typeof measure>>((resolve) => {
+          g.fastForward(
+            (s) => {
+              if (self()?.mode !== mode && s.tick <= from + 1200) return false;
+              // The loop draws this actual sim state after its step listeners, then schedules its
+              // next frame. This callback was queued first, so it measures that draw before another
+              // tick can remount a rider whose bike is already nearby. Zero lockstep means real time,
+              // not a freeze; use the valid one-tick hand-back and keep observation in this task.
+              requestAnimationFrame(() => resolve(measure()));
+              return true;
+            },
+            { then: 1 },
+          );
+        });
+      },
+      { mode, crashFrom },
+    );
+    await fastForwardDone(page, `off-bike cover control: ${mode} measured at tick ${result.tick}`);
     if (mode === 'Tumble') {
       await page.keyboard.up('KeyH');
       await page.keyboard.up('KeyW');
-      const loopOut = await page.evaluate((from) => {
-        const g = (window as TestWindow).__game;
-        return g
-          ?.events()
-          .some(
-            (e) =>
-              e.type === 'crash' &&
-              e.actor === g.playerId() &&
-              e.tick > from &&
-              e.data?.['cause'] === 'wheelie' &&
-              e.data?.['loopOut'] === true,
-          );
-      }, crashFrom);
-      expect(loopOut, 'the held wheelie caused the real player crash').toBe(true);
+      expect(result.loopOut, 'the held wheelie caused the real player crash').toBe(true);
     }
-    const result = await page.evaluate(() => {
-      const w = window as TestWindow;
-      const self = w.__game?.snapshot()?.entities?.find((e) => e.id === w.__game?.playerId()) as
-        { mode?: string } | undefined;
-      const parts = w.__playerParts?.() ?? [];
-      const covers = ['bike', 'rider'].map((kind) => {
-        const part = parts
-          .filter((p) => p.kind === kind)
-          .sort(
-            (a, b) =>
-              (b.box.right - b.box.left) * (b.box.bottom - b.box.top) -
-              (a.box.right - a.box.left) * (a.box.bottom - a.box.top),
-          )[0];
-        if (!part) return null;
-        const d = document.createElement('div');
-        d.id = `planted-${kind}-cover`;
-        Object.assign(d.style, {
-          position: 'fixed',
-          left: `${part.box.left}px`,
-          top: `${part.box.top}px`,
-          width: `${part.box.right - part.box.left}px`,
-          height: `${part.box.bottom - part.box.top}px`,
-          background: '#f0f',
-          zIndex: '99',
-        });
-        document.getElementById('hud')?.append(d);
-        return d.id;
-      });
-      return {
-        mode: self?.mode,
-        kinds: [...new Set(parts.map((p) => p.kind))],
-        covers,
-        pieces: w.__layoutPieces?.() ?? [],
-        w: innerWidth,
-        h: innerHeight,
-      };
-    });
     expect(result.mode, 'the real race reached the detached state').toBe(mode);
     expect(result.kinds.sort(), `${mode}: both actual bodies measured`).toEqual(['bike', 'rider']);
     const found = layoutFindings(result.pieces, result.w, result.h);
