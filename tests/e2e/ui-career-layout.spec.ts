@@ -246,11 +246,40 @@ async function offBikeCoverControl(page: Page) {
   expect(identity?.maskBound, 'actual mask assigns followed-player white and rival materials black').toBe(
     true,
   );
+  // Bleed off the paid landing's surge before the overhold: launching the tumble at boosted
+  // racing speed can throw a body past the course edge, whose real recovery skips get-up.
+  await page.keyboard.down('KeyS');
+  const approach = await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    if (!g) throw new Error('race seam missing');
+    const from = g.snapshot()?.tick ?? 0;
+    const self = () =>
+      g.snapshot()?.entities?.find((e) => e.id === g.playerId()) as
+        { mode: string; speed: number; boostS?: number } | undefined;
+    return new Promise<ReturnType<typeof self>>((resolve) => {
+      g.fastForward(
+        (s) => {
+          const me = self();
+          if (s.tick <= from + 1200 && me?.mode === 'Road' && (me.speed > 10 || (me.boostS ?? 0) > 0))
+            return false;
+          requestAnimationFrame(() => resolve(self()));
+          return true;
+        },
+        { then: 1 },
+      );
+    });
+  });
+  await page.keyboard.up('KeyS');
+  expect(approach?.mode, 'braking keeps the real player on the road').toBe('Road');
+  // The wheelie pops at 6 m/s and settles below 3. At this pace the rider can coast through
+  // the overhold without gas, avoiding the high-speed cartwheel and the landing's surge.
+  expect(approach?.speed, 'the approach is fast enough for a wheelie').toBeGreaterThanOrEqual(6);
+  expect(approach?.speed, 'the approach is a slow coast into the overhold').toBeLessThanOrEqual(10);
+  expect(approach?.boostS ?? 0, 'the landing surge has ended before the overhold').toBe(0);
   for (const mode of ['Tumble', 'OnFoot']) {
     if (mode === 'Tumble') {
       // A deliberately overheld wheelie causes a real crash. The bot's incidental next collision
       // is not a layout contract: better riding must not make these physical controls disappear.
-      await page.keyboard.down('KeyW');
       await page.keyboard.down('KeyH');
     }
     const result = await page.evaluate(
@@ -288,6 +317,14 @@ async function offBikeCoverControl(page: Page) {
           return {
             mode: self()?.mode,
             tick: g.snapshot()?.tick,
+            recovery: g
+              .events()
+              .filter(
+                (e) =>
+                  e.actor === g.playerId() &&
+                  e.tick > crashFrom &&
+                  ['crash', 'railOver', 'splash', 'respawn', 'getUp'].includes(e.type),
+              ),
             loopOut: g
               .events()
               .some(
@@ -323,10 +360,10 @@ async function offBikeCoverControl(page: Page) {
       },
       { mode, crashFrom },
     );
+    console.log(`off-bike ${mode}: recovery events ${JSON.stringify(result.recovery)}`);
     await fastForwardDone(page, `off-bike cover control: ${mode} measured at tick ${result.tick}`);
     if (mode === 'Tumble') {
       await page.keyboard.up('KeyH');
-      await page.keyboard.up('KeyW');
       expect(result.loopOut, 'the held wheelie caused the real player crash').toBe(true);
     }
     expect(result.mode, 'the real race reached the detached state').toBe(mode);
