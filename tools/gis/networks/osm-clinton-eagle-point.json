@@ -119,7 +119,7 @@
           "id": "osm-clinton-eagle-entry",
           "name": "Park Entry",
           "realName": "Eagle Point Park entry drive",
-          "tags": ["rural"],
+          "tags": ["rural", "iowa-park"],
           "features": [
             {
               "kind": "copSpawn",
@@ -135,13 +135,13 @@
           "id": "osm-clinton-eagle-south-loop",
           "name": "South Loop",
           "realName": "Eagle Point Park South Loop",
-          "tags": ["rural"]
+          "tags": ["rural", "iowa-park"]
         },
         {
           "id": "osm-clinton-eagle-central-loop",
           "name": "Central Loop",
           "realName": "Eagle Point Park Central Loop",
-          "tags": ["rural"]
+          "tags": ["rural", "iowa-park"]
         }
       ]
     }

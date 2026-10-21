@@ -144,6 +144,44 @@ describe('Port Shift is a playable first Longview race', () => {
     );
   });
 
+  it('bakes a signed optional carrier wholly outside drive lanes from the canonical freight-yard recipe', () => {
+    const recipe = read<{
+      lines: { roads: { id: string; tags: string[]; features: BakedRoad['features'] }[] }[];
+    }>('tools/gis/networks/osm-pnw-longview.json');
+    const { roads } = bundle();
+    const industrial = roads.find((r) => r.id === 'osm-longview-industrial')!;
+    const source = recipe.lines.flatMap((l) => l.roads).find((r) => r.id === industrial.id)!;
+    expect(source.tags).toContain('longview-port-yard');
+    expect(industrial.features).toEqual(source.features);
+    const carriers = industrial.features?.filter((f) => f.kind === 'rampTruck') ?? [];
+    expect(carriers.length).toBeGreaterThan(1);
+    const road = createRoadNetwork(bundle());
+    const edge = road.edgeIndex(industrial.id);
+    for (const carrier of carriers) {
+      const drive = road.lanesAt(edge, carrier.s0).filter((l) => l.kind === 'drive');
+      expect(carrier.d0).toBeGreaterThan(Math.max(...drive.map((l) => l.dCenterM + l.widthM / 2)) + 0.4);
+      expect(carrier.d1).toBeLessThan(road.vergeAt(edge, carrier.s0, 'right').dOuter);
+      expect(
+        industrial.features?.some(
+          (f) =>
+            f.kind === 'billboard' &&
+            f.item === 'port-loading-line' &&
+            f.s1 < carrier.s0 &&
+            carrier.s0 - f.s1 < 100,
+        ),
+      ).toBe(true);
+      const throughLanding = industrial.samples.data['kappa']!.filter(
+        (_, i) =>
+          i * industrial.sampleSpacingM >= carrier.s0 - 80 &&
+          i * industrial.sampleSpacingM <= carrier.s1 + 140,
+      );
+      expect(
+        Math.max(...throughLanding.map(Math.abs)),
+        'straight approach, flight and recovery',
+      ).toBeLessThan(1 / 800);
+    }
+  });
+
   it('gives the town stretches pedestrian space on drawn land clear of the travel lanes', () => {
     const data = bundle();
     const zones = data.roads.flatMap((r) =>

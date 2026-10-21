@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "iowa-hay-truck",
+  "name": "County Hay Flatbed",
+  "category": "truck",
+  "tags": ["event", "hay-spill", "iowa"],
+  "lengthM": 7.5,
+  "widthM": 2.4,
+  "heightM": 3.15,
+  "cruiseMps": 12,
+  "hazard": "normal",
+  "behaviour": { "roadside": "solid", "carFollowing": true, "laneChanges": false, "dives": false },
+  "meta": {
+    "status": "live",
+    "notes": "Event-only crawling farm flatbed, absent from ordinary weighted traffic. The Iowa-specific procedural open bed supports the existing attached hay load clear of the cab, inside this vehicle's physical envelope. No new GLB or paid asset. Its dimensions do not enlarge the race's existing largest-vehicle avoidance envelope.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-21" }
+  }
+}

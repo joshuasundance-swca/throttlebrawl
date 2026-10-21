@@ -63,6 +63,12 @@
       "s1": 1227.9434,
       "side": "both",
       "tag": "rural"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1227.9434,
+      "side": "both",
+      "tag": "iowa-farm-traffic"
     }
   ],
   "features": [

@@ -212,6 +212,8 @@ export { FERRY_DIM, FERRY_ROOF, ferrySections } from './ferry';
 // render/pnw-places.ts); the registry (`STRUCTURE_LAYERS`) loads the same module for the sim.
 export const loadWaterfrontLayout = () => import('./structures/waterfront');
 export const loadPnwPlacesLayout = () => import('./structures/pnw-places');
+export const loadIowaParkLayout = () => import('./structures/iowa-park');
+export type { IowaParkLayout, IowaParkFacility, IowaParkPart, IowaParkSign } from './structures/iowa-park';
 export type {
   BlockKind,
   Frontage,

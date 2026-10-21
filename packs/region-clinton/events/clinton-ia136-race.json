@@ -12,6 +12,7 @@
     "paceMps": 36.5
   },
   "traffic": { "densityScale": 0.8 },
+  "modifiers": { "pool": ["iowa-hay-truck"], "maxPerRace": 1, "chanceScale": 1 },
   "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2, "heat": true },
   "rules": {},
   "objectives": [{ "id": "podium", "kind": "finish-place", "params": { "maxPlace": 3 }, "required": true }],

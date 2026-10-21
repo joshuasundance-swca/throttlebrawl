@@ -16,6 +16,7 @@ import { trafficHeightM } from '../sim/api';
 import {
   createRoadNetwork,
   loadPnwPlacesLayout,
+  loadIowaParkLayout,
   loadWaterfrontLayout,
   type BakedNetwork,
   type BakedRoad,
@@ -44,6 +45,7 @@ import { readGlb } from './glb';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { apartmentSurfaces, TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
+import { hasIowaPark, IowaParkLayer } from './iowa-park';
 import { PartyLights } from './party-lights';
 import { QUALITY_TIERS, sceneryReach, type QualityTier } from './quality';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
@@ -636,6 +638,9 @@ export async function stillSceneOf(
         landReach: (e, side, s) => rs.landReach(e, side, s),
       })
     : null;
+  const iowaPark = hasIowaPark(tags)
+    ? new IowaParkLayer(look, { layout: (await loadIowaParkLayout()).iowaParkLayout(road, seed) })
+    : null;
   // Run W-U: San Francisco's Chinatown and North Beach (a code-made kit, no models).
   const blocks = hasBlocks(tags) ? new BlocksLayer(look, { road, dressing, seed }) : null;
   // Run W-U: San Francisco's mural alleys, the crew halfway through the race.
@@ -662,6 +667,7 @@ export async function stillSceneOf(
     lights.group,
     wf?.group,
     places?.group,
+    iowaPark?.group,
     blocks?.group,
     mission?.group,
     scenes?.group,
@@ -681,6 +687,7 @@ export async function stillSceneOf(
       // Everything near enough is built at once here (the renderer builds one a frame).
       wf?.update(x, z, lodM, undefined, 1000);
       places?.update(x, z, drawM, lodM, Infinity);
+      iowaPark?.update(x, z, drawM);
       // The blocks build one mesh a frame: as many frames as a ride to here would have had.
       if (blocks) for (let i = 0; i < 30; i++) blocks.update(x, z, BLOCKS_NEAR_M * cityDetail);
       if (mission) for (let i = 0; i < 8; i++) mission.update(x, z, 0, 0.5);
