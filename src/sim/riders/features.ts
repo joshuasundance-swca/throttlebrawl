@@ -37,7 +37,7 @@ import {
 import type { FurnitureShape } from '../../road';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDeck, type SimMovingDecks } from '../types';
 import type { World } from '../world';
-import { carrierParts, carrierTopAt } from './carrier-shape';
+import { carrierGroundTopAt, carrierParts, carrierTopAt } from './carrier-shape';
 
 /** A boostPad's defaults: speed added (m/s) and how long the boost lasts (s). */
 export const BOOST_DEFAULT_MPS = 8;
@@ -291,8 +291,8 @@ function deckOf(f: BakedFeature, s: number, d: number): number {
   const { run, lip } = rampTruckShape(f);
   const into = intoOf(f, s);
   const overDeck = d >= f.d0 && d <= f.d1;
-  if (into < run) return Math.max(overDeck ? (lip * into) / run : 0, carrierTopAt(f, s, d));
-  return Math.max(overDeck && into < cabIntoOf(f) ? lip : 0, carrierTopAt(f, s, d));
+  if (into < run) return Math.max(overDeck ? (lip * into) / run : 0, carrierGroundTopAt(f, s, d));
+  return Math.max(overDeck && into < cabIntoOf(f) ? lip : 0, carrierGroundTopAt(f, s, d));
 }
 
 /**

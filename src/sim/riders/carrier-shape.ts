@@ -13,6 +13,8 @@ export interface CarrierPart {
   bottomAt?: (s: number, d: number) => number;
   /** A continuous top large enough to hold a bike; a stack or lamp is only an obstacle. */
   support: FurnitureShape | null;
+  /** The parked trailer's thin raised edge rail above the rideable ramp. */
+  rampRail?: true;
 }
 
 const cache = new WeakMap<BakedFeature, readonly CarrierPart[]>();
@@ -52,6 +54,7 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
     profile?: (into: number, x: number) => number,
     support?: FurnitureShape,
     bottom?: (into: number, x: number) => number,
+    rampRail?: true,
   ) => {
     out.push({
       feature: f,
@@ -62,6 +65,7 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
         ? { bottomAt: (s: number, d: number) => hs * bottom(((s - foot) * facing) / ls, (d - middle) / ws) }
         : {}),
       support: support ?? null,
+      ...(rampRail ? { rampRail } : {}),
     });
   };
   if (moving) {
@@ -90,8 +94,9 @@ export function carrierParts(f: BakedFeature): readonly CarrierPart[] {
         (into) => rampTop(into) + 0.08,
         undefined,
         (into) => rampTop(into) - 0.34,
+        true,
       );
-      add(11.5, 16.8, x0, x1, 2.88, undefined, undefined, () => 2.46);
+      add(11.5, 16.8, x0, x1, 2.88, undefined, undefined, () => 2.46, true);
       for (const fp of [4.5, 8.2, 11.3, 14, 16.6]) {
         const postTop = Math.min(rampTop(fp), 2.8) - 0.3;
         add(fp - 0.09, fp + 0.09, x0, x1, postTop, undefined, undefined, () => 0.62);
@@ -188,5 +193,13 @@ export function onCarrierPart(p: CarrierPart, s: number, d: number): boolean {
 export function carrierTopAt(f: BakedFeature, s: number, d: number): number {
   let top = 0;
   for (const p of carrierParts(f)) if (onCarrierPart(p, s, d)) top = Math.max(top, p.topAt(s, d));
+  return top;
+}
+
+/** Ground-reaching body tops only; raised trailer rails, posts and braces remain collision parts. */
+export function carrierGroundTopAt(f: BakedFeature, s: number, d: number): number {
+  let top = 0;
+  for (const p of carrierParts(f))
+    if (!p.bottomAt && onCarrierPart(p, s, d)) top = Math.max(top, p.topAt(s, d));
   return top;
 }

@@ -7,8 +7,11 @@ import {
   type BakedFeature,
 } from '../../road';
 import type { SimConfig, SimEvent } from '../types';
+import { worldHash } from '../world';
 import { riderState } from './index';
 import { RIDER_CONTACT_HALF_WIDTH_M } from './contact';
+import { carrierTopAt } from './carrier-shape';
+import { deckHeight } from './features';
 import { supportKeyOf } from './supports';
 import { input, riderHarness, testConfig } from './testing';
 
@@ -52,6 +55,74 @@ function air(s: number, h: number, speed: number, vy = 0) {
   return run;
 }
 describe('carrier contacts obey actual surfaces and the vehicle closing-speed rule', () => {
+  it('keeps the thin raised trailer rail solid without treating it as rideable ground', () => {
+    const cfg = config([TRUCK], true);
+    const s = TRUCK.s0 + 9;
+    const d = D + 1.33;
+    const railTop = carrierTopAt(TRUCK, s, d);
+    expect(railTop).toBeGreaterThan(2);
+    expect(deckHeight(cfg, 0, s, d, { bodies: false })).toBe(0);
+
+    const h = riderHarness(cfg, { s, d, speed: 0 });
+    h.rider.mode = 'Airborne';
+    h.rider.h = railTop + 0.01;
+    const st = riderState(h.world);
+    st.yAbs[h.rider.id] = cfg.road.surfaceHeight(0, s, d) + h.rider.h;
+    st.vy[h.rider.id] = -1;
+    const events = h.step(input(0));
+    expect(events.some((event) => event.type === 'land')).toBe(false);
+    expect(h.rider.mode).toBe('Airborne');
+  });
+  it('records the ramp actually ridden off and forgets it on landing', () => {
+    const cfg = config([TRUCK], true);
+    const s = TRUCK.s0 + 9;
+    const d = TRUCK.d1 - 0.05;
+    const h = riderHarness(cfg, { s, d, speed: 34.4, yaw: 0.12 });
+    const st = riderState(h.world);
+    h.rider.h = deckHeight(cfg, 0, s, d, { bodies: false });
+    st.yAbs[h.rider.id] = cfg.road.surfaceHeight(0, s, d) + h.rider.h;
+    st.vy[h.rider.id] = (34.4 * 2.8) / 11.5;
+    st.lastTick[h.rider.id] = h.world.tick - 1;
+    const first = h.step(input(0, 0, 1));
+    expect(
+      first.some((event) => event.type === 'jump'),
+      JSON.stringify(first),
+    ).toBe(true);
+    expect(st.rampLaunch[h.rider.id]).toBe(`0:${TRUCK.id}`);
+    let landed = false;
+    for (let t = 0; t < 180 && !landed; t++) landed = h.step(input(0)).some((event) => event.type === 'land');
+    expect(landed).toBe(true);
+    expect(st.rampLaunch[h.rider.id]).toBeNull();
+  });
+  it.each([
+    { origin: null, vy: 6, clears: false },
+    { origin: '0:other-truck', vy: 6, clears: false },
+    { origin: `0:${TRUCK.id}`, vy: -6, clears: false },
+    { origin: `0:${TRUCK.id}`, vy: 6, clears: true },
+  ])(
+    'limits the rising rail step to an actual same-truck takeoff: $origin, vy $vy',
+    ({ origin, vy, clears }) => {
+      const cfg = config([TRUCK], true);
+      const s = TRUCK.s0 + 10.3;
+      const d = D + 1.33;
+      const h = riderHarness(cfg, { s, d, speed: 34.4 });
+      h.rider.mode = 'Airborne';
+      h.rider.h = 2.6;
+      const st = riderState(h.world);
+      st.yAbs[h.rider.id] = cfg.road.surfaceHeight(0, s, d) + h.rider.h;
+      st.vy[h.rider.id] = vy;
+      st.rampLaunch[h.rider.id] = origin;
+      const withOrigin = worldHash(h.world);
+      st.rampLaunch[h.rider.id] = null;
+      if (origin !== null) expect(worldHash(h.world)).not.toBe(withOrigin);
+      st.rampLaunch[h.rider.id] = origin;
+      const events = h.step(input(0));
+      const hit = events.find((event) => event.data['object'] === 'rampTruck');
+      expect(Boolean(hit), JSON.stringify(events)).toBe(!clears);
+      if (!clears && vy > 0) expect(hit?.type).toBe('crash');
+      if (clears) expect(h.rider.speed).toBeGreaterThan(30);
+    },
+  );
   it('a rider below road height still clears the parked cab mirror after its overlapping roof', () => {
     const h = riderHarness(config([TRUCK], true), {
       s: TRUCK.s0 + 18.78,
@@ -157,6 +228,7 @@ describe('carrier contacts obey actual surfaces and the vehicle closing-speed ru
   it.each([6, 12])('an airborne hit at %s m/s is decided by closing speed', (speed) => {
     const h = air(622.5, 1.7, speed);
     h.rider.pos.dir = -1;
+    riderState(h.world).rampLaunch[h.rider.id] = `0:${TRUCK.id}`;
     const events: SimEvent[] = [];
     for (let t = 0; t < 90 && !events.some((e) => e.data['object'] === 'rampTruck'); t++) {
       events.push(...h.step(input(0)));
@@ -164,6 +236,7 @@ describe('carrier contacts obey actual surfaces and the vehicle closing-speed ru
     const hit = events.find((e) => e.data['object'] === 'rampTruck');
     expect(hit?.type).toBe(speed < 10 ? 'wobble' : 'crash');
     expect(Number(hit?.data['impactMps'])).toBeGreaterThan(0);
+    if (speed >= 10) expect(riderState(h.world).rampLaunch[h.rider.id]).toBeNull();
   });
 
   it('a stopped rider can use the existing U-turn gesture on the deck and ride back off', () => {

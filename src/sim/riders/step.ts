@@ -671,6 +671,18 @@ function carrierContact(
   hBefore?: number,
 ): boolean {
   const pos = m.pos;
+  const railClimb = (part: CarrierPart, top: number): number =>
+    m.mode === 'Airborne' &&
+    hBefore !== undefined &&
+    height > hBefore &&
+    (st.vy[m.id] ?? 0) > 0 &&
+    part.rampRail === true &&
+    part.feature.params?.['moving'] !== true &&
+    st.rampLaunch[m.id] === `${pos.edge}:${part.feature.id}` &&
+    top > height &&
+    top - height <= KERB_M
+      ? KERB_M
+      : 0;
   let chosen: { hit: FurnitureHit<CarrierPart>; move: ReturnType<typeof moveOf>; vertical: boolean } | null =
     null;
   for (const f of trucksNear(config, pos.edge, pos.s, CONTACT_REACH_M, decks.next)) {
@@ -700,6 +712,7 @@ function carrierContact(
         clamp(s, shape.s - shape.hu, shape.s + shape.hu),
         clamp(d, shape.d - shape.hv, shape.d + shape.hv),
       );
+      const partClearance = Math.max(clearance, railClimb(part, top));
       let h = hBefore === undefined ? height : hBefore + (height - hBefore) * hit.t;
       // A bike following the ramp is pitched along it: its front wheel meets the lip at the lip's
       // height, before its middle gets there. A level horizontal capsule must not block that climb.
@@ -731,7 +744,7 @@ function carrierContact(
         continue;
       // A support's top is caught by supportAt; smaller tops are obstacles met at the fall speed.
       const fromAbove = hBefore !== undefined && hBefore >= top - 1e-6;
-      if ((!fromAbove && h + clearance >= top) || height + clearance >= top || top <= 0) continue;
+      if ((!fromAbove && h + partClearance >= top) || height + partClearance >= top || top <= 0) continue;
       if (
         fromAbove &&
         supportsOn(world) &&
@@ -780,11 +793,12 @@ function carrierContact(
     if (height + clearance >= other.maxTop) continue;
     const c = other.shape;
     const top = other.topAt(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv));
+    const partClearance = Math.max(clearance, railClimb(other, top));
     const clearsBottom =
       !other.bottomAt ||
       height + RIDER_BODY_HEIGHT_M >=
         other.bottomAt(clamp(pos.s, c.s - c.hu, c.s + c.hu), clamp(pos.d, c.d - c.hv, c.d + c.hv));
-    if (clearsBottom && height + clearance < top) keepOff(c, pos, m.yaw, axis.ns, axis.nd);
+    if (clearsBottom && height + partClearance < top) keepOff(c, pos, m.yaw, axis.ns, axis.nd);
   }
   if (!vertical) {
     const normal = vs * axis.ns + vd * axis.nd;
@@ -1643,6 +1657,7 @@ function fallFrom(world: World, config: SimConfig, st: RiderState, m: Mover, inp
   st.yAbs[m.id] = config.road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
   st.vy[m.id] = 0;
   st.airTicks[m.id] = 0;
+  st.rampLaunch[m.id] = null;
   startFlight(st, m, input, slopeAt(config, m));
   wheelieTakeoff(world, st, m);
   driftTakeoff(world, st, m);
@@ -2035,6 +2050,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // A lip's ballistic height is already this tick's end; a crest's start is the hilltop now.
     st.vy[m.id] = crest ? vy0 : vy0 - gravity * (rampFlight?.elapsed ?? dt);
     st.airTicks[m.id] = 0;
+    st.rampLaunch[m.id] =
+      !crest && launchTruck && launchTruck.params?.['moving'] !== true
+        ? `${before.edge}:${launchTruck.id}`
+        : null;
     // The flight starts at the slope the bike rode off (last tick's ground pitch, a wheelie's
     // angle included); the wheelie and the drift end.
     startFlight(st, m, input, st.pitch[m.id] ?? slopeAt(config, m));
@@ -2384,6 +2403,7 @@ function land(
   st.yAbs[m.id] = surface + deck;
   st.vy[m.id] = slopeVy;
   st.airTicks[m.id] = 0;
+  st.rampLaunch[m.id] = null;
   st.crestHold[m.id] = 1;
   groundPitch(st, m, slope);
   // On a support it stands on it now, moving over it at its speed (backward when the top outruns it).
@@ -2844,7 +2864,16 @@ export function ridersStep(world: World, config: SimConfig): void {
       driftDown(world, st, m);
     }
     // Out of the air (down in a crash, back on a road), it is no longer out past an edge.
-    if (m.mode !== 'Airborne') clearOver(st, m.id);
+    if (m.mode !== 'Airborne') {
+      clearOver(st, m.id);
+      st.rampLaunch[m.id] = null;
+    } else if (
+      st.rampLaunch[m.id] !== null &&
+      world.events.some((event) => event.type === 'crash' && event.actor === m.id)
+    ) {
+      // The tumble phase may not change mode until later this tick; contact privilege ends at impact.
+      st.rampLaunch[m.id] = null;
+    }
     // Where it left the course, kept while it is off it (sim/riders/course.ts; gap.ts `left`).
     if (m.mode === 'Road' || m.mode === 'Airborne') noteLeft(world, config, st, m);
   }
