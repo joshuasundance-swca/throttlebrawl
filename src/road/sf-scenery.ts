@@ -115,7 +115,13 @@ export function planSfScenery(road: RoadNetwork, seed: number): readonly SfScene
   const cached = bySeed.get(seed);
   if (cached) return cached;
   const out: SfSceneryPlace[] = [];
-  if (road.terrain) {
+  if (
+    road.terrain ||
+    !road.edges.some(
+      (edge) =>
+        !edge.isTrafficOnly && edge.tags.some((tag) => tag.tag === 'headlands' || tag.tag === 'presidio'),
+    )
+  ) {
     bySeed.set(seed, out);
     return out;
   }

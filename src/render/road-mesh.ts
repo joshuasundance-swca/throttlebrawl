@@ -1024,8 +1024,8 @@ export function standIn(kind: SceneryKind, variant = 0): BufferGeometry {
     // a coastal tree: a trunk and a broad dark crown, until the San Francisco kit loads
     coastTree: [
       variant === 0
-        ? { size: [1.42, 5, 1.18], at: [0.09, 2.5, 0.06], color: '#5b4a3a' }
-        : { size: [0.7, 5, 0.7], at: [0, 2.5, 0], color: '#5b4a3a' },
+        ? { size: [1.42, 6, 1.18], at: [0.09, 3, 0.06], color: '#5b4a3a' }
+        : { size: [0.7, 6, 0.7], at: [0, 3, 0], color: '#5b4a3a' },
       { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
     ],
     // an apartment block of two plots, taller than a row house (playtest 4, R3)
@@ -1035,8 +1035,8 @@ export function standIn(kind: SceneryKind, variant = 0): BufferGeometry {
     ],
     // the headlands' own, until the kit loads: a long low concrete block, a dark shrub, a red rock
     battery: [{ size: [30, 3.7, 14.44], at: [0, 1.85, -1.68], color: '#a1a497' }],
-    brush: [{ size: [2.58, 1.2, 1.7], at: [-0.02, 0.6, 0.09], color: '#505f3c' }],
-    outcrop: [{ size: [5.34, 2.6, 2.8], at: [0.01, 1.3, 0.54], color: '#a45440' }],
+    brush: [{ size: [2.58, 1.8, 1.7], at: [-0.02, 0.9, 0.09], color: '#505f3c' }],
+    outcrop: [{ size: [5.34, 2.8, 2.8], at: [0.01, 1.4, 0.54], color: '#a45440' }],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -3449,17 +3449,11 @@ export function buildRoadScene(
   }
 
   const sfContacts = planStreetFurniture(road, seed).items.filter((it) => it.layer === 'scenery');
-  if (sfContacts.length !== sfPlaces.length)
-    throw new Error('SF scenery contact plan differs from the drawn placements');
-  for (let i = 0; i < sfPlaces.length; i++) {
-    const spot = sfPlaces[i]!;
-    const contact = sfContacts[i]!;
-    if (
-      spot.kind !== contact.kind ||
-      spot.edge !== contact.edge ||
-      spot.s !== contact.s ||
-      spot.d !== contact.d
-    )
+  const sfKey = (kind: string, edge: number, s: number, d: number) => `${kind}:${edge}:${s}:${d}`;
+  const candidates = new Map(sfPlaces.map((spot) => [sfKey(spot.kind, spot.edge, spot.s, spot.d), spot]));
+  for (const contact of sfContacts) {
+    const spot = candidates.get(sfKey(contact.kind, contact.edge, contact.s, contact.d));
+    if (!spot || spot.variant !== contact.variant || spot.size !== contact.size)
       throw new Error('SF scenery contact plan differs from the drawn placements');
     spots.push({ ...spot, phase: 0, ...(spot.kind === 'battery' ? { reachM: 24 } : {}) });
   }

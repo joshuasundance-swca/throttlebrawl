@@ -557,7 +557,7 @@ class Collector {
     const spec: FurnitureSpec = FURNITURE[kind];
     const shape = shapeOf(road, kind, variant, edge, s, d, yaw, size);
     // Never on a lane of any road (its own, a branch's, a shortcut's through a plaza).
-    if (layer !== 'scenery' && lanesUnderPiece(road, edge, shape) >= 0) return;
+    if (lanesUnderPiece(road, edge, shape) >= 0) return;
     this.items.push({
       id: this.items.length,
       kind,

@@ -801,6 +801,26 @@ it('SF physical scenery fallbacks match the same contact footprints as their loa
     }
 });
 
+it('SF fallbacks visibly fill the contact height', () => {
+  for (const kind of ['brush', 'outcrop'] as const) {
+    const geometry = standIn(kind);
+    expect(geometryTop(geometry), kind).toBeCloseTo(FURNITURE[kind].heightM, 2);
+    geometry.dispose();
+  }
+  for (const variant of [0, 1]) {
+    const geometry = standIn('coastTree', variant);
+    const pos = geometry.getAttribute('position');
+    const trunkTop = Array.from({ length: pos.count }, (_, i) => i).some(
+      (i) =>
+        Math.abs(pos.getY(i) - FURNITURE.coastTree.heightM) < 0.01 &&
+        Math.abs(pos.getX(i)) < 1 &&
+        Math.abs(pos.getZ(i)) < 1,
+    );
+    expect(trunkTop, `coastTree fallback variant ${variant} has a trunk through contact height`).toBe(true);
+    geometry.dispose();
+  }
+});
+
 /**
  * Street furniture (playtest 4, "solid but forgiving"; road/furniture.ts): each kind's sim footprint (a
  * circle or a box round its own centre, in the model's frame) vs the drawn model's cross-section, centred
