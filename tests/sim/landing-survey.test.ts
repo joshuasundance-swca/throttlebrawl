@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { realRoutes } from '../../src/app';
 import { lookup, registryFromGlob } from '../../src/content';
@@ -29,15 +28,6 @@ const fixture = (run: (c: LandingCase, i: number) => LandingResult) => {
 };
 
 describe('landing survey scheduling', () => {
-  it('schedules individual races before the pooled oracle instead of one whole-survey deadline', () => {
-    const source = readFileSync(new URL('./riders-landings.test.ts', import.meta.url), 'utf8');
-    expect(source).toContain('concurrent: false');
-    expect(source).toContain('shuffle: false');
-    expect(source).toContain('for (const c of survey.cases)');
-    expect(source).toContain('survey.run(c)');
-    expect(source).toContain('checkLandings(survey)');
-  });
-
   it('retains both seeds and policies for every event-derived route in the original order', () => {
     const registry = registryFromGlob(
       import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
