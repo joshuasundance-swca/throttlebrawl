@@ -31,6 +31,8 @@
 //
 // Pure + - * / and core math, like the rest of road/: the same network and seed give the same plan.
 import { atan2, cos, sin } from '../core';
+import { dispatchCourts, dispatchCourtClear } from './dispatch-court';
+import type { StructureFoot } from './structures';
 import { DRAWN_VERGE_M } from './furniture-constants';
 import { lanesUnderOf } from './lanes-under';
 import type { RoadNetwork } from './network';
@@ -549,7 +551,10 @@ export function lanesUnderPiece(
 
 class Collector {
   readonly items: StreetFurniture[] = [];
-  constructor(private readonly road: RoadNetwork) {}
+  private readonly reserved: readonly StructureFoot[];
+  constructor(private readonly road: RoadNetwork) {
+    this.reserved = dispatchCourts(road).map((c) => c.foot);
+  }
   add(
     kind: FurnitureKind,
     layer: FurnitureLayer,
@@ -570,6 +575,11 @@ class Collector {
           : roadYaw(road, edge, s) + (turn.along > 0 ? Math.PI : 0);
     const spec: FurnitureSpec = FURNITURE[kind];
     const shape = shapeOf(road, kind, variant, edge, s, d, yaw, size);
+    if (this.reserved.length > 0) {
+      const centre = road.toWorld(edge, shape.s, shape.d, 0);
+      const radius = shape.r + Math.sqrt(shape.hu * shape.hu + shape.hv * shape.hv);
+      if (!dispatchCourtClear(this.reserved, centre.x, centre.z, radius)) return;
+    }
     // Never on a lane of any road (its own, a branch's, a shortcut's through a plaza).
     if (lanesUnderPiece(road, edge, shape, s, d) >= 0) return;
     this.items.push({

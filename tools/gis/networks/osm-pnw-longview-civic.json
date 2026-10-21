@@ -112,7 +112,12 @@
         }
       },
       "roads": [
-        { "id": "osm-longview-civic-hudson", "name": "Hudson Street", "tags": ["town"] },
+        {
+          "id": "osm-longview-civic-hudson",
+          "name": "Hudson Street",
+          "tags": ["town"],
+          "sideRuns": [{ "tag": "dispatch-court", "side": "right", "s0": 40, "s1": 56 }]
+        },
         {
           "id": "osm-longview-civic-20th",
           "name": "20th Avenue",

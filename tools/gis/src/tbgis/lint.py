@@ -43,6 +43,7 @@ TAGS = {
     "warehouses",
     "longview-port-yard",
     "longview-street-life",
+    "dispatch-court",
     "iowa-farm-traffic",
     "iowa-park",
     "iowa-county-farmstead",

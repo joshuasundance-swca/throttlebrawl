@@ -4,6 +4,7 @@ import { createRoadNetwork } from '../network';
 import { ensureStructures, planStructures, structuresAt, topAt } from '../structures';
 import type { BakedNetwork, BakedRoad } from '../types';
 import { pnwPlacesLayout } from './pnw-places';
+import { dispatchCourts } from '../dispatch-court';
 const networks = import.meta.glob<BakedNetwork>('/packs/region-pnw/regions/*/networks/*.json', {
   eager: true,
   import: 'default',
@@ -21,6 +22,129 @@ function make(id: string) {
 }
 
 describe('Street Diamond sites explicitly join the course with open physical aprons', () => {
+  it('requires a bounded one-side kit span, supports either side and does not duplicate repeated authoring', () => {
+    const network = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const raw = Object.values(files).filter((r) => network.roads.includes(r.id));
+    const host = raw.find((r) => r.tags?.some((t) => t.tag === 'dispatch-court'))!;
+    const tag = host.tags!.find((t) => t.tag === 'dispatch-court')!;
+    const changed = (tags: typeof host.tags) =>
+      createRoadNetwork({ network, roads: raw.map((r) => (r.id === host.id ? { ...r, tags } : r)) });
+    for (const bad of [
+      { ...tag, side: 'both' as const },
+      { ...tag, s0: 0, s1: host.lengthM },
+      { ...tag, s1: tag.s0 + 8 },
+    ]) {
+      const road = changed([...(host.tags?.filter((t) => t !== tag) ?? []), bad]);
+      expect(dispatchCourts(road)).toEqual([]);
+      expect(pnwPlacesLayout(road, 1).streetSites.filter((s) => String(s.kind) === 'dispatch-court')).toEqual(
+        [],
+      );
+    }
+    const left = changed(host.tags?.map((t) => (t === tag ? { ...t, side: 'left' as const } : t)));
+    expect(dispatchCourts(left)[0]?.d).toBeLessThan(0);
+    expect(pnwPlacesLayout(left, 1).streetSites.find((s) => String(s.kind) === 'dispatch-court')?.d).toBe(
+      dispatchCourts(left)[0]?.d,
+    );
+    const repeated = changed([...(host.tags ?? []), tag]);
+    expect(dispatchCourts(repeated)).toHaveLength(1);
+    const longer = changed(host.tags?.map((t) => (t === tag ? { ...t, s0: tag.s0 - 8, s1: tag.s1 + 8 } : t)));
+    const bounded = dispatchCourts(longer)[0]!;
+    expect(bounded, 'a longer bounded window still places the fixed kit').toBeDefined();
+    expect(bounded.s).toBe((tag.s0 + tag.s1) / 2);
+    expect(bounded.foot.hu * 2).toBe(8);
+    expect(bounded.foot.hv * 2).toBe(16);
+    const longerSite = pnwPlacesLayout(longer, 1).streetSites.find((s) => s.kind === 'dispatch-court')!;
+    const currentSite = pnwPlacesLayout(changed(host.tags), 1).streetSites.find(
+      (s) => s.kind === 'dispatch-court',
+    )!;
+    expect(longerSite.solids).toEqual(currentSite.solids);
+    expect(longerSite.specs.map((st) => st.foot)).toEqual(currentSite.specs.map((st) => st.foot));
+  });
+  it('opts the Hudson dispatch court into a continuous open riding apron, with removal and relocation controls', async () => {
+    const road = make('osm-pnw-longview-civic');
+    const court = pnwPlacesLayout(road, 1).streetSites.find((s) => String(s.kind) === 'dispatch-court');
+    expect(court, 'authored Hudson dispatch court').toBeDefined();
+    if (!court) return;
+    expect(road.edges[court.edge]?.id).toBe('osm-longview-civic-hudson');
+    const plan = await ensureStructures(road, 1);
+    const apron = court.specs.find((s) => s.rule.endsWith(':apron'))!;
+    const controlRoad = make('osm-pnw-longview-civic');
+    const noApron = planStructures(
+      controlRoad,
+      1,
+      {
+        control: {
+          plan: (_r, _s, out) => {
+            for (const st of plan.items) if (st.rule !== apron.rule) out.add(st);
+          },
+        },
+      },
+      { control: { tags: ['dispatch-court'], load: () => Promise.reject(new Error('unused')) } },
+    );
+    // A bike-width corridor crosses the whole court, including both connections to the verge.
+    for (let s = court.s - 6; s <= court.s + 6; s += 0.5)
+      for (let d = 10.8; d <= 16.2; d += 0.2) {
+        const pos = { edge: court.edge, s, d };
+        const y = road.surfaceHeight(pos.edge, s, d) + 0.15;
+        expect(courseAt(road, plan, pos, y).kind, `supported ${s}/${d}`).not.toBe('out');
+      }
+    const gap = { edge: court.edge, s: court.s - 5, d: 13 };
+    expect(
+      courseAt(controlRoad, noApron, gap, controlRoad.surfaceHeight(gap.edge, gap.s, gap.d) + 0.15).kind,
+    ).toBe('out');
+    const network = Object.values(networks).find((n) => n.id === 'osm-pnw-longview-civic')!;
+    const original = Object.values(files).filter((r) => network.roads.includes(r.id));
+    {
+      const control = createRoadNetwork({
+        network,
+        roads: original.map((r) => ({
+          ...r,
+          tags: r.tags?.filter((t) => t.tag !== 'dispatch-court'),
+        })),
+      });
+      expect(
+        pnwPlacesLayout(control, 1).streetSites.filter((s) => String(s.kind) === 'dispatch-court'),
+      ).toEqual([]);
+      expect(
+        (await ensureStructures(control, 1)).items.some((st) =>
+          st.rule.startsWith(apron.rule.split(':')[0]!),
+        ),
+      ).toBe(false);
+    }
+    const moved = createRoadNetwork({
+      network,
+      roads: original.map((r) => ({
+        ...r,
+        tags: r.tags?.map((t) => (t.tag === 'dispatch-court' ? { ...t, s0: t.s0 - 16, s1: t.s1 - 16 } : t)),
+      })),
+    });
+    const movedCourt = pnwPlacesLayout(moved, 1).streetSites.find(
+      (s) => String(s.kind) === 'dispatch-court',
+    )!;
+    expect(movedCourt.s).toBe(court.s - 16);
+    const movedApron = movedCourt.specs.find((st) => st.rule.endsWith(':apron'))!;
+    expect(Math.hypot(movedApron.foot.x - apron.foot.x, movedApron.foot.z - apron.foot.z)).toBeGreaterThan(
+      10,
+    );
+    expect(movedCourt.solids).toEqual(court.solids);
+    const movedPlan = await ensureStructures(moved, 1);
+    expect(
+      courseAt(moved, movedPlan, gap, moved.surfaceHeight(gap.edge, gap.s, gap.d) + 0.15).kind,
+      'relocation removes physical support from the old court',
+    ).toBe('out');
+    const movedGap = { ...gap, s: gap.s - 16 };
+    expect(
+      courseAt(moved, movedPlan, movedGap, moved.surfaceHeight(movedGap.edge, movedGap.s, movedGap.d) + 0.15)
+        .kind,
+      'relocation supplies physical support at the new court',
+    ).toBe('top');
+    for (const edge of road.edges.filter((e) => e.isConnector)) {
+      expect(pnwPlacesLayout(road, 1).streetSites.some((site) => site.edge === edge.index)).toBe(false);
+      expect(edge.features.some((f) => f.params?.['place'] === 'dispatch-court')).toBe(false);
+      expect(edge.tags.some((t) => t.tag === 'dispatch-court')).toBe(false);
+    }
+    expect(pnwPlacesLayout(road, 2).streetSites).toEqual(pnwPlacesLayout(road, 1).streetSites);
+  });
   it('provides continuous low support from the existing verge to the open site, preserving other networks', async () => {
     const road = make('osm-pnw-longview-diamond'),
       layout = pnwPlacesLayout(road, 1);
@@ -59,8 +183,16 @@ describe('Street Diamond sites explicitly join the course with open physical apr
       ).toBe('out');
     }
     expect(pnwPlacesLayout(road, 2).streetSites).toEqual(sites);
-    for (const id of ['osm-pnw-longview', 'osm-pnw-longview-civic', 'pnw-c1'])
+    for (const id of ['osm-pnw-longview', 'pnw-c1'])
       expect(pnwPlacesLayout(make(id), 1).streetSites, id).toEqual([]);
+    const yards = pnwPlacesLayout(make('osm-pnw-longview'), 1).workyards;
+    expect(yards.length, 'legacy feature-driven freight sites remain present').toBeGreaterThan(0);
+    for (const yard of yards) expect(yard.specs.some((st) => st.rule.endsWith(':apron'))).toBe(true);
+    expect(
+      pnwPlacesLayout(make('osm-pnw-longview-civic'), 1).streetSites.some(
+        (s) => s.kind === 'civic-frontage' || s.kind === 'plant-market',
+      ),
+    ).toBe(false);
   });
   it('keeps a plant canopy open under its roof, with physical counter and posts', async () => {
     const road = make('osm-pnw-longview-diamond'),
