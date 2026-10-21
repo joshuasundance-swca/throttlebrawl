@@ -33,6 +33,7 @@ import {
   type BakedRoad,
   type BakedSplitZone,
   type BakedTag,
+  type BakedTerrain,
 } from './types';
 
 /** How a mover leaving one edge enters the next: at the next edge's `from` or `to` end. */
@@ -159,6 +160,8 @@ export interface CurvedRates {
 
 export interface RoadNetwork {
   readonly id: string;
+  /** Authored regional coverage; readonly input shared with the content registry. */
+  readonly terrain?: BakedTerrain | undefined;
   readonly edges: readonly Edge[];
   edgeIndex(id: string): number;
   toWorld(edge: number, s: number, d: number, h: number): WorldPoint;
@@ -1003,6 +1006,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
 
   return {
     id: bundle.network.id,
+    ...(bundle.network.terrain === undefined ? {} : { terrain: bundle.network.terrain }),
     edges,
     edgeIndex,
     toWorld,

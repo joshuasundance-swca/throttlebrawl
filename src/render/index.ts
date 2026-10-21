@@ -45,6 +45,7 @@ import { createChunkGate } from './chunk-gate';
 import type { PresentationScope } from './presentation';
 import { loadPnwPlacesLayout, loadWaterfrontLayout, structuresOf, type StructurePlan } from '../road';
 import type { AirPays } from './air-pays';
+import type { TerrainTrees } from './terrain-trees';
 import type { Boards, BoardCatalog, BoardSlot, VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
 import type { EventProps } from './event-props';
@@ -203,6 +204,8 @@ export interface RendererPresentationOptions {
 }
 
 export interface GameRenderer {
+  /** False while the drawing path for this road's physical natural scenery is unavailable. */
+  physicalWorldReady?(): boolean;
   applyPresentation(
     recipe: RendererPresentationRecipe,
     options: RendererPresentationOptions,
@@ -298,6 +301,7 @@ export interface GameRenderer {
 }
 
 export interface SceneryStatus {
+  terrainTrees?: { placed: number; visible: number } | null;
   seed: number;
   /** The road scene's numbers, or null before setRoad. */
   road: RoadSceneStats | null;
@@ -413,6 +417,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     eventProps: EventProps;
     smashables: Smashables;
     airPays: AirPays;
+    terrainTrees: TerrainTrees;
+    terrainChunks: typeof import('./terrain-mesh').buildTerrainChunks;
   } | null = null;
   /** Newspaper crashes received while the race-parts chunk is pending. */
   const pendingAirEvents: SimEvent[] = [];
@@ -434,19 +440,39 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const eventProps = new m.EventProps(look);
       const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
       const airPays = new m.AirPays();
+      const terrainTrees = new m.TerrainTrees(look, roadArgs?.road ?? null, sceneSeed);
       boards = new m.Boards(look);
       boards.hide(hiddenRefs);
       buildBoards();
       airPays.setStructures(structurePlan);
+      airPays.setRoad(roadArgs?.road ?? null);
       airPays.pushEvents(pendingAirEvents);
       pendingAirEvents.length = 0;
       views.setEffects(effects);
       camera.add(effects.tint, speedLines.root, rain.root);
-      for (const o of [effects.root, eventProps.root, smashables.root, airPays.root, boards.root]) {
+      for (const o of [
+        effects.root,
+        eventProps.root,
+        smashables.root,
+        airPays.root,
+        boards.root,
+        terrainTrees.root,
+      ]) {
         persistent.add(o);
         scene.add(o);
       }
-      race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables, airPays };
+      race = {
+        effects,
+        speedLines,
+        rain,
+        rainColourOf: m.rainColourOf,
+        eventProps,
+        smashables,
+        airPays,
+        terrainTrees,
+        terrainChunks: m.buildTerrainChunks,
+      };
+      if (roadArgs?.road.terrain) buildRoad();
     });
   };
   const noFeel: FeelCounts = { sparks: 0, drops: 0, paper: 0, rings: 0, reactors: 0, tint: 0 };
@@ -595,6 +621,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // the road is built again once it is in (playtest 4 run C, punch item 6: the lake's land is a bank down to the
   // shore, which needs the water's level), and its roadside with it, so the docks stand at the lake's level.
   const requestWater = (road: RoadNetwork) => {
+    // The synchronous installRoad build already drew this road with its resolved water.
+    if (water?.road === road) return;
     const current = scope.capture();
     water = null;
     void loadNetworkWater(road.id)
@@ -997,11 +1025,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   };
   const buildRoad = () => {
     if (!roadArgs) return;
+    race?.terrainTrees.setRoad(roadArgs.road, sceneSeed);
     if (roadScene) {
       scene.remove(roadScene.group);
       roadScene.dispose();
     }
     roadScene = buildRoadScene(roadArgs.road, look, roadArgs.dressing, {
+      terrainChunks: race?.terrainChunks ?? null,
       roadsideDensity: roadArgs.density,
       seed: sceneSeed,
       models,
@@ -1070,9 +1100,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (!m) return gate.later(requestModels);
       modelsModule = m;
       const { tropical, tags } = networkTags(args.road, args.dressing);
-      const kinds = m
-        .modelKindsFor({ tropical, tags, palette: new Set(Object.keys(palette ?? {})), traffic: trafficIds })
-        .filter((k) => !requested.has(k));
+      const needed = m.modelKindsFor({
+        tropical,
+        tags,
+        palette: new Set(Object.keys(palette ?? {})),
+        traffic: trafficIds,
+      });
+      // A previous presentation may have retired the layer request after its model loaded.
+      if (needed.some((k) => loadedModels[k] && k.endsWith('Roadside'))) requestRoadside();
+      if (needed.some((k) => loadedModels[k] && (k === 'sfDowntown' || k === 'pdxDowntown')))
+        requestDowntown();
+      const kinds = needed.filter((k) => !requested.has(k));
       if (!kinds.length) return;
       for (const k of kinds) requested.add(k);
       const { models: loaded, report } = await m.loadSceneryModels(assets, kinds);
@@ -1125,6 +1163,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     waterfrontLoading = false;
     blocksLoading = false;
     requested.clear();
+    const retryable = modelsModule && modelReport ? new Set(modelsModule.retryableKinds(modelReport)) : null;
+    // Loaded models survive a presentation; only unfinished or retryable kinds need another answer.
+    for (const kind of Object.keys(loadedModels) as ModelKind[])
+      if (!retryable?.has(kind)) requested.add(kind);
     rigs?.invalidatePresentation();
     gate.newRoad();
     return presentation;
@@ -1153,6 +1195,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     structurePlan = null;
     views.setStructures(null);
     race?.airPays.setStructures(null);
+    views.setRoad(null);
+    race?.airPays.setRoad(null);
   };
   const installRoad = (
     road: RoadNetwork,
@@ -1192,6 +1236,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     }
     roadTime = env.timeOfDay;
     roadArgs = { road, dressing, density: params.roadsideDensity };
+    views.setRoad(road);
+    race?.airPays.setRoad(road);
     roofs = roofSpans(road);
     buildRoad();
     if (vergeModule) buildVerge(pendingVerge);
@@ -1223,6 +1269,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildBoards();
   };
   return {
+    physicalWorldReady: () => !roadArgs?.road.terrain || race !== null,
     applyPresentation(recipe, options) {
       const token = advancePresentation();
       if (options.reset === 'measurement-to-menu') resetTransient();
@@ -1321,6 +1368,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // are content, and threats are never trimmed (they are not scenery).
       const reach = sceneryReach(params, quality);
       sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, reach.drawM, reach.lodM, 1, reach) : 0;
+      sceneryVisible += race?.terrainTrees.update(pose.x, pose.z, reach.drawM) ?? 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, reach.drawM, reach.propDetail);
       // The street fronts are placed over the first frames of a race; their shop names follow.
       if (roadside?.ready && !roadsideWords) {
@@ -1475,6 +1523,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     riders: () => rigs?.counts() ?? null,
     scenery: () => ({
+      terrainTrees: race?.terrainTrees.counts() ?? null,
       seed: sceneSeed,
       road: roadScene?.stats ?? null,
       models: modelReport,

@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   CONTEXT,
@@ -34,6 +35,7 @@ import {
   cmdAnnounce,
   cmdPlan,
   cmdReport,
+  coveredSuiteResult,
   conflictComment,
   cutShort,
   decide,
@@ -832,10 +834,13 @@ describe("main's own run, as the train reads it", () => {
     }
   });
 
-  it('every other conclusion reads as before', () => {
+  it('success requires the main gate; every other conclusion reads as before', () => {
     expect(ciState(null)).toBe('none');
     expect(ciState({ ...done(''), status: 'in_progress' })).toBe('pending');
-    expect(ciState(done('success'))).toBe('success');
+    expect(ciState(done('success'))).toBe('none');
+    expect(ciState(done('success'), [{ name: 'gate', status: 'completed', conclusion: 'success' }])).toBe(
+      'success',
+    );
     for (const c of ['failure', 'timed_out', 'startup_failure']) expect(ciState(done(c))).toBe('failure');
     expect(ciState(done('skipped'))).toBe('none');
   });
@@ -890,6 +895,147 @@ describe("main's own run, as the train reads it", () => {
     const listing = `/repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${sha('a')}&event=push&per_page=10`;
     const gateOfRead = (got: Awaited<ReturnType<typeof readMain>>) =>
       mainGate({ id: got.run?.id ?? 0, state: got.state, attempt: got.run?.attempt ?? 1 }, false);
+
+    const passedGate = { id: 1, name: 'gate', status: 'completed', conclusion: 'success' };
+    const successfulApi = (o: {
+      pages: { total_count?: number; jobs: unknown[] }[];
+      listedAttempt?: number;
+      attempts?: number[];
+      detailStatus?: string;
+      detailStates?: string[];
+    }) => {
+      vi.stubEnv('GITHUB_REPOSITORY', REPO);
+      vi.stubEnv('GH_TOKEN', 'test-token');
+      vi.stubEnv('GITHUB_API_URL', 'https://api.github.com');
+      const urls: string[] = [];
+      let details = 0;
+      const attempts = o.attempts ?? [o.listedAttempt ?? 1];
+      vi.stubGlobal('fetch', (url: string) => {
+        const p = url.replace('https://api.github.com', '');
+        urls.push(p);
+        let body: unknown;
+        if (p.includes('/actions/workflows/ci.yml/runs'))
+          body = {
+            workflow_runs: [
+              {
+                id: 37423758824,
+                status: 'completed',
+                conclusion: 'success',
+                run_attempt: o.listedAttempt ?? 1,
+                created_at: '2026-10-06T08:00:00Z',
+              },
+            ],
+          };
+        else if (/\/actions\/runs\/37423758824$/.test(p)) {
+          const status =
+            o.detailStates?.[Math.min(details, o.detailStates.length - 1)] ?? o.detailStatus ?? 'completed';
+          body = {
+            id: 37423758824,
+            status,
+            conclusion: status === 'completed' ? 'success' : null,
+            run_attempt: attempts[Math.min(details++, attempts.length - 1)],
+          };
+        } else if (/\/attempts\/\d+\/jobs\?/.test(p)) {
+          const page = Number(new URL(url).searchParams.get('page') ?? 1);
+          body = o.pages[page - 1];
+        }
+        return Promise.resolve(
+          body
+            ? new Response(JSON.stringify(body), { status: 200 })
+            : new Response('not found', { status: 404 }),
+        );
+      });
+      return urls;
+    };
+
+    it.each(
+      [
+        [],
+        [{ id: 2, name: 'route', status: 'completed', conclusion: 'success' }],
+        [{ id: 2, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'success' }],
+        [{ ...passedGate, conclusion: 'skipped' }],
+        [{ ...passedGate, status: 'in_progress' }],
+        [passedGate, { ...passedGate, id: 3 }],
+        [{ ...passedGate, run_attempt: 2 }],
+        [{ ...passedGate, run_id: 5 }],
+      ].map((jobs) => ({ jobs })),
+    )(
+      'a completed-success workflow without one completed successful gate is no verdict: $jobs',
+      async ({ jobs }) => {
+        successfulApi({ pages: [{ total_count: jobs.length, jobs }] });
+        expect((await readMain(sha('a'))).state).toBe('none');
+        successfulApi({ pages: [{ total_count: jobs.length, jobs }] });
+        expect(await mainCiState(done('success'))).toBe('none');
+      },
+    );
+
+    it('accepts the complete latest attempt with a gate, including a later jobs page', async () => {
+      const page = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 2,
+        name: `job ${i}`,
+        status: 'completed',
+        conclusion: 'success',
+      }));
+      const urls = successfulApi({
+        listedAttempt: 1,
+        attempts: [2],
+        pages: [
+          { total_count: 101, jobs: page },
+          { total_count: 101, jobs: [passedGate] },
+        ],
+      });
+      const read = await readMain(sha('a'));
+      expect(read.state).toBe('success');
+      expect(read.run?.attempt).toBe(2);
+      expect(urls).toContain(`/repos/${REPO}/actions/runs/37423758824/attempts/2/jobs?per_page=100&page=2`);
+      successfulApi({ pages: [{ total_count: 1, jobs: [passedGate] }] });
+      expect(await mainCiState(done('success'))).toBe('success');
+    });
+
+    it.each(
+      [
+        [{ jobs: [passedGate] }],
+        [{ total_count: 2, jobs: [passedGate] }],
+        [{ total_count: 1, jobs: [passedGate, { ...passedGate, id: 2 }] }],
+        [{ total_count: 2, jobs: [passedGate, passedGate] }],
+      ].map((pages) => ({ pages })),
+    )('does not accept malformed or truncated jobs: $pages', async ({ pages }) => {
+      successfulApi({ pages });
+      expect((await readMain(sha('a'))).state).toBe('none');
+    });
+
+    it('rejects a rerun that begins while jobs are read, and honors a pending final attempt', async () => {
+      successfulApi({ attempts: [1, 2], pages: [{ total_count: 1, jobs: [passedGate] }] });
+      expect((await readMain(sha('a'))).state).toBe('none');
+      successfulApi({ attempts: [2], detailStatus: 'in_progress', pages: [] });
+      const read = await readMain(sha('a'));
+      expect(read.state).toBe('pending');
+      expect(gateOfRead(read)).toMatchObject({ go: false, watch: 37423758824 });
+    });
+
+    it('never steps back to an older attempt returned by a stale detail response', async () => {
+      successfulApi({ listedAttempt: 2, attempts: [1], pages: [{ total_count: 1, jobs: [passedGate] }] });
+      expect((await readMain(sha('a'))).state).toBe('none');
+    });
+
+    it('still makes plan wait when the final detail read discovers a rerun in progress', async () => {
+      successfulApi({
+        attempts: [1, 2],
+        detailStates: ['completed', 'in_progress'],
+        pages: [{ total_count: 1, jobs: [passedGate] }],
+      });
+      const read = await readMain(sha('a'));
+      expect(read.state).toBe('pending');
+      expect(gateOfRead(read)).toMatchObject({ go: false, watch: 37423758824 });
+    });
+
+    it('does not accept when the next jobs page fails or changes the declared total', async () => {
+      const page = Array.from({ length: 100 }, (_, i) => ({ ...passedGate, id: i + 2, name: `job ${i}` }));
+      for (const tail of [[], [{ total_count: 102, jobs: [passedGate] }]]) {
+        successfulApi({ pages: [{ total_count: 101, jobs: page }, ...tail] });
+        expect((await readMain(sha('a'))).state).toBe('none');
+      }
+    });
 
     it("reads a cancelled run's latest attempt's jobs, and the annotations of its cancelled ones only", async () => {
       const urls = stubApi({ conclusion: 'cancelled', run_attempt: 2 }, liveJobs, {
@@ -1088,7 +1234,15 @@ describe('the landing invariant (decide)', () => {
   const base = sha('0');
   const nowOf = (b: typeof bundle) =>
     new Map(b.map((p) => [p.number, { headSha: p.headSha, draft: false, autoMerge: true }]));
-  const input = { result: 'success', bundle, base, mainNow: base, now: nowOf(bundle), run: 42 };
+  const input = {
+    result: 'success',
+    bundle,
+    base,
+    mainNow: base,
+    now: nowOf(bundle),
+    run: 42,
+    controlScope: 'full',
+  };
 
   it('green on an unmoved main with every head unchanged: success on each, in order, and the next train', () => {
     const d = decide(input);
@@ -1156,13 +1310,33 @@ describe('the landing invariant (decide)', () => {
 
   it('a lone PR that fails on a green main is the culprit; the own-branch suite says which kind', () => {
     const one = [bundle[0]!];
-    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'success' as const };
+    const at = {
+      ...input,
+      result: 'failure',
+      bundle: one,
+      now: nowOf(one),
+      mainCi: 'success' as const,
+      controlScope: 'full',
+    };
     expect(decide({ ...at, control: 'failure' }).blame).toEqual({ number: 11, sha: sha('a'), kind: 'own' });
     const comp = decide({ ...at, control: 'success' });
     expect(comp.blame?.kind).toBe('composition');
     expect(comp.statuses[0]).toMatchObject({ state: 'failure' });
     expect(comp.statuses[0]!.description).toContain('passes on its branch, fails on main');
     expect(decide({ ...at, control: 'cancelled' }).blame?.kind).toBe('unknown');
+  });
+
+  it('a targeted or unscoped control cannot classify a full branch result', () => {
+    const one = [bundle[0]!];
+    const at = { ...input, result: 'failure', bundle: one, now: nowOf(one), mainCi: 'success' as const };
+    for (const controlScope of [undefined, 'targeted']) {
+      for (const control of ['success', 'failure']) {
+        const d = decide({ ...at, control, controlScope });
+        expect(d.blame?.kind).toBe('unknown');
+        expect(d.statuses[0]?.description).toContain('fails alone on main');
+        expect(d.statuses[0]?.description).not.toContain('passes on its branch');
+      }
+    }
   });
 
   it('an identical lone tree stays red after one run, excludes composition, and proves no persistence', () => {
@@ -1215,6 +1389,7 @@ describe('the landing invariant (decide)', () => {
     expect(d.statuses[0]?.state).toBe('failure');
     const c = blameComment({
       kind: 'same-tree',
+      controlScope: 'full',
       sha: sha('a'),
       base,
       run: 42,
@@ -1709,10 +1884,45 @@ describe('the commands, against a fake GitHub', () => {
       ],
     }),
   ];
+  const MAIN_DETAILS: [RegExp, () => unknown] = [
+    /^GET \/repos\/owner\/game\/actions\/runs\/5$/,
+    () => ({ id: 5, status: 'completed', conclusion: 'success', run_attempt: 1 }),
+  ];
   const statusPosts = (calls: Call[]) =>
     calls
       .filter((c) => c.method === 'POST' && c.path.includes('/statuses/'))
       .map((c) => ({ sha: c.path.slice(c.path.lastIndexOf('/') + 1), ...c.body }));
+
+  it.each([false, true])(
+    'plan: workflow success is accepted only with a real main gate: %s',
+    async (gate) => {
+      ghEnv();
+      const { lines, outputs } = capture();
+      fakeGitHub([
+        MAIN,
+        mainRun('success'),
+        MAIN_DETAILS,
+        [
+          MAIN_JOBS[0],
+          () => ({
+            total_count: gate ? 2 : 1,
+            jobs: [
+              { id: 10, name: 'route', status: 'completed', conclusion: 'success' },
+              ...(gate ? [{ id: 11, name: 'gate', status: 'completed', conclusion: 'success' }] : []),
+            ],
+          }),
+        ],
+        graphql([]),
+      ]);
+      await cmdPlan(CFG);
+      expect(lines).toContainEqual(
+        expect.stringMatching(new RegExp(`^plan: main is .*\\(${gate ? 'success' : 'none'}\\)$`)),
+      );
+      // mainGate intentionally permits departure without a verdict; no ready PR means no assembly.
+      expect(outputs().depart).toBe('false');
+      expect(lines).toContain('plan: Nobody is waiting for the train.');
+    },
+  );
 
   it('plan: an unarmed PR with a green quick check gets a train note for announce to post; plan itself writes nothing', async () => {
     ghEnv();
@@ -1720,6 +1930,8 @@ describe('the commands, against a fake GitHub', () => {
     const calls = fakeGitHub([
       MAIN,
       mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
       graphql([
         node({ number: 4, head: sha('a'), quick: [ok], auto: false }),
         node({ number: 5, head: sha('b'), quick: [ok], auto: false, repo: 'fork/game' }),
@@ -1795,7 +2007,9 @@ describe('the commands, against a fake GitHub', () => {
       ],
     ] as const) {
       const { outputs } = capture();
-      runs.push(fakeGitHub([MAIN, mainRun('success'), graphql([...open], [...merged])]));
+      runs.push(
+        fakeGitHub([MAIN, mainRun('success'), MAIN_DETAILS, MAIN_JOBS, graphql([...open], [...merged])]),
+      );
       await cmdPlan(CFG);
       vi.stubEnv('TRAIN_BUNDLE', outputs().bundle ?? '[]');
       vi.stubEnv('TRAIN_CONFLICTS', outputs().conflicts ?? '[]');
@@ -1875,11 +2089,39 @@ describe('the commands, against a fake GitHub', () => {
       TRAIN_BASE: base,
       TRAIN_RESULT: 'cancelled',
       TRAIN_CONTROL: 'skipped',
+      TRAIN_CONTROL_SCOPE: 'full',
     });
   const open = (bundle: ReturnType<typeof riders>): [RegExp, () => unknown] => [
     /^POST \/graphql$/,
     () => listing(...bundle.map((b) => node({ number: b.number, head: b.headSha, quick: [ok] }))),
   ];
+
+  it('report: successful suite cannot post success or land without full coverage', async () => {
+    const two = riders(2);
+    for (const coverage of [undefined, 'diagnostic', 'quick', 'full']) {
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'success');
+      vi.stubEnv('TRAIN_COVERAGE', coverage);
+      const { lines } = capture();
+      fakeGitHub([MAIN, open(two)]);
+      await cmdReport(CFG);
+      expect(
+        lines.some((line) => line.includes('would post gate=success')),
+        String(coverage),
+      ).toBe(coverage === 'full');
+      expect(
+        lines.some((line) => line.includes('**unfinished**')),
+        String(coverage),
+      ).toBe(coverage !== 'full');
+    }
+  });
+
+  it('classifies a successful suite as unverified unless coverage is full', () => {
+    for (const coverage of [undefined, 'quick', 'diagnostic'])
+      expect(coveredSuiteResult('success', coverage)).toBe('unverified');
+    expect(coveredSuiteResult('success', 'full')).toBe('success');
+    expect(coveredSuiteResult('failure', 'diagnostic')).toBe('failure');
+  });
 
   it('report: a bundle whose suite timed out splits, and says so; a cancel with no timeout concludes nothing', async () => {
     const two = riders(2);
@@ -1904,10 +2146,11 @@ describe('the commands, against a fake GitHub', () => {
   const MAIN_JOBS: [RegExp, () => unknown] = [
     /^GET \/repos\/owner\/game\/actions\/runs\/5\/attempts\/1\/jobs\?per_page=100$/,
     () => ({
-      total_count: 2,
+      total_count: 3,
       jobs: [
         { id: 1, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'success' },
         { id: 2, name: 'suite / sim (3/6)', status: 'completed', conclusion: 'success' },
+        { id: 3, name: 'gate', status: 'completed', conclusion: 'success' },
       ],
     }),
   ];
@@ -1918,19 +2161,151 @@ describe('the commands, against a fake GitHub', () => {
   ];
   const lone = (cap: number) => riders(1).map((r) => ({ ...r, cap }));
 
+  it.each([false, true])(
+    'report: successful suite rows can blame a timeout only under an accepted main gate: %s',
+    async (gate) => {
+      const one = lone(1);
+      reportEnv(one);
+      const { lines } = capture();
+      fakeGitHub([
+        MAIN,
+        open(one),
+        OWN_JOBS,
+        notes(true),
+        LOG,
+        mainRun('success'),
+        MAIN_DETAILS,
+        [
+          MAIN_JOBS[0],
+          () => ({
+            total_count: gate ? 2 : 1,
+            jobs: [
+              { id: 10, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'success' },
+              ...(gate ? [{ id: 11, name: 'gate', status: 'completed', conclusion: 'success' }] : []),
+            ],
+          }),
+        ],
+        prFiles(11, ['src/render/road.ts']),
+        [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+      ]);
+      await cmdReport(CFG);
+      expect(lines).toContainEqual(
+        expect.stringMatching(new RegExp(`^report: \\*\\*${gate ? 'culprit' : 'timed-out-unblamed'}\\*\\*`)),
+      );
+      expect(lines.some((l) => l.includes('would comment'))).toBe(gate);
+    },
+  );
+
+  it.each(['success', 'failure'])(
+    'report: independent branch-control blame still works without an accepted main gate: %s',
+    async (control) => {
+      const one = lone(1);
+      reportEnv(one);
+      vi.stubEnv('TRAIN_RESULT', 'failure');
+      vi.stubEnv('TRAIN_CONTROL', control);
+      const { lines } = capture();
+      fakeGitHub([
+        MAIN,
+        open(one),
+        LOG,
+        mainRun('success'),
+        MAIN_DETAILS,
+        [
+          MAIN_JOBS[0],
+          () => ({
+            total_count: 1,
+            jobs: [{ id: 10, name: 'route', status: 'completed', conclusion: 'success' }],
+          }),
+        ],
+        [
+          OWN_JOBS[0],
+          () => ({
+            total_count: 1,
+            jobs: [
+              { id: 112110821845, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'failure' },
+            ],
+          }),
+        ],
+        [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+      ]);
+      await cmdReport(CFG);
+      expect(lines).toContainEqual(
+        expect.stringMatching(
+          new RegExp(
+            `^report: \\*\\*culprit\\*\\*: .*\\(${control === 'success' ? 'composition' : 'own'}\\)`,
+          ),
+        ),
+      );
+      expect(lines.some((l) => l.includes('would comment'))).toBe(true);
+    },
+  );
+
+  it.each(['success', 'failure'])(
+    'report: a targeted %s control reports selected shards and leaves the full branch unclassified',
+    async (control) => {
+      const one = lone(1);
+      reportEnv(one);
+      vi.stubEnv('TRAIN_RESULT', 'failure');
+      vi.stubEnv('TRAIN_CONTROL', control);
+      vi.stubEnv('TRAIN_CONTROL_SCOPE', 'targeted');
+      vi.stubEnv('TRAIN_CONTROL_JOBS', JSON.stringify(['suite / browser (5/7)']));
+      const { lines } = capture();
+      fakeGitHub([
+        MAIN,
+        open(one),
+        LOG,
+        mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
+        [
+          OWN_JOBS[0],
+          () => ({
+            total_count: 1,
+            jobs: [
+              { id: 112110821845, name: 'suite / browser (5/7)', status: 'completed', conclusion: 'failure' },
+            ],
+          }),
+        ],
+        [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
+      ]);
+      await cmdReport(CFG);
+      expect(lines).toContainEqual(expect.stringMatching(/^report: \*\*culprit\*\*: .*\(unknown\)/));
+      expect(lines).toContainEqual(
+        expect.stringContaining(
+          `selected failed-shard diagnostic (suite / browser (5/7)); result: ${control}`,
+        ),
+      );
+      expect(lines).toContainEqual(expect.stringContaining('full-branch outcome is untested'));
+      expect(
+        lines.some(
+          (line) => line.includes('passes on its branch') || line.includes('fails the full suite too'),
+        ),
+      ).toBe(false);
+    },
+  );
+
   it('report: a lone PR that timed out above cap 1 rides once more alone; nothing is blamed yet', async () => {
     const one = lone(8);
     reportEnv(one);
     const { lines } = capture();
-    const calls = fakeGitHub([MAIN, open(one), OWN_JOBS, notes(true), LOG, mainRun('success')]);
+    const calls = fakeGitHub([
+      MAIN,
+      open(one),
+      OWN_JOBS,
+      notes(true),
+      LOG,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+    ]);
     await cmdReport(CFG);
     expect(lines).toContainEqual(expect.stringMatching(/^report: \*\*timed-out\*\*/));
     expect(lines).toContain(
       `report: would post gate=pending on #11 ${sha('a').slice(0, 7)}: ${withCap('train 29: browser (5/7) timed out; rides once more alone', 1)}`,
     );
     expect(lines.some((l) => l.includes('would comment'))).toBe(false);
-    // It did not need the PR's files or main's jobs to decide that.
-    expect(calls.some((c) => /\/pulls\/11\/files|\/runs\/5\/attempts/.test(c.path))).toBe(false);
+    // Reading main's gate is now required; this cap still needs no PR changed-file lookup.
+    expect(calls.some((c) => /\/pulls\/11\/files/.test(c.path))).toBe(false);
   });
 
   it('report: a lone PR that timed out at cap 1 is blamed only when its diff reaches the job and main ran it green', async () => {
@@ -1944,6 +2319,7 @@ describe('the commands, against a fake GitHub', () => {
       notes(true),
       LOG,
       mainRun('success'),
+      MAIN_DETAILS,
       MAIN_JOBS,
       prFiles(11, ['src/render/road.ts', 'changes/2026-10-06-a.md']),
       [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
@@ -1966,6 +2342,7 @@ describe('the commands, against a fake GitHub', () => {
       notes(true),
       LOG,
       mainRun('success'),
+      MAIN_DETAILS,
       MAIN_JOBS,
       prFiles(11, [
         '.github/workflows/train.yml',
@@ -1993,6 +2370,7 @@ describe('the commands, against a fake GitHub', () => {
       notes(true),
       LOG,
       mainRun('success'),
+      MAIN_DETAILS,
       [MAIN_JOBS[0], () => ({ total_count: 0, jobs: [] })],
       prFiles(11, ['src/render/road.ts']),
     ]);
@@ -2030,6 +2408,8 @@ describe('the commands, against a fake GitHub', () => {
         ],
         [LOG[0], () => 'FAIL tests/sim/x.test.ts > exact tree\n'],
         mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
         [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
       ]);
       await cmdReport(CFG);
@@ -2063,6 +2443,7 @@ describe('the commands, against a fake GitHub', () => {
       notes(true),
       LOG,
       mainRun('success'),
+      MAIN_DETAILS,
       MAIN_JOBS,
       prFiles(11, ['src/render/road.ts']),
       [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
@@ -2110,6 +2491,8 @@ describe('the commands, against a fake GitHub', () => {
       ],
       [LOG[0], () => evil],
       mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
       [/^GET \/repos\/owner\/game\/compare\//, () => ({ commits: [] })],
     ]);
     await cmdReport(CFG);
@@ -2210,6 +2593,7 @@ describe('what a red train says', () => {
   it('writes a comment that names the run, the failing tests and what to do', () => {
     const c = blameComment({
       kind: 'composition',
+      controlScope: 'full',
       sha: sha('a'),
       base: sha('b'),
       run: 9,
@@ -2219,7 +2603,8 @@ describe('what a red train says', () => {
       mainCi: 'success',
     });
     expect(c).toContain('<!-- bundle-train -->');
-    expect(c).toContain('composition failure');
+    expect(c).toContain('runs disagree');
+    expect(c).not.toContain('It is a composition failure');
     expect(c).toContain('https://github.com/o/g/actions/runs/5');
     expect(c).toContain('#303 #339');
     expect(c).toContain('```text\ntests/sim/x.test.ts > a\n```');
@@ -2227,6 +2612,7 @@ describe('what a red train says', () => {
     expect(
       blameComment({
         kind: 'own',
+        controlScope: 'full',
         sha: sha('a'),
         base: sha('b'),
         run: 9,
@@ -2238,6 +2624,7 @@ describe('what a red train says', () => {
     ).toContain('fails the full suite too');
     const same = blameComment({
       kind: 'same-tree',
+      controlScope: 'full',
       control: 'skipped',
       sha: sha('a'),
       base: sha('b'),
@@ -2256,6 +2643,45 @@ describe('what a red train says', () => {
     expect(conflictComment({ sha: sha('a'), base: sha('b'), run: 9, url: 'u' })).toContain(
       'merge origin/main',
     );
+  });
+
+  it('names selected diagnostic shards without claiming a full branch outcome', () => {
+    for (const control of ['success', 'failure']) {
+      const c = blameComment({
+        kind: 'unknown',
+        control,
+        controlScope: 'targeted',
+        controlJobs: ['sim', 'browser'],
+        sha: sha('a'),
+        base: sha('b'),
+        run: 9,
+        url: 'u',
+        failing: [],
+        lacks: [],
+        mainCi: 'success',
+      });
+      expect(c).toContain('selected failed-shard diagnostic (sim, browser)');
+      expect(c).toContain(`result: ${control}`);
+      expect(c).toContain('full-branch outcome is untested');
+      expect(c).not.toContain('passes the full suite');
+      expect(c).not.toContain('fails the full suite too');
+      const untrustedKind = blameComment({
+        kind: control === 'success' ? 'composition' : 'own',
+        control,
+        controlScope: 'targeted',
+        controlJobs: ['sim'],
+        sha: sha('a'),
+        base: sha('b'),
+        run: 9,
+        url: 'u',
+        failing: [],
+        lacks: [],
+        mainCi: 'success',
+      });
+      expect(untrustedKind).toContain('full-branch outcome is untested');
+      expect(untrustedKind).not.toContain('passes on its own branch');
+      expect(untrustedKind).not.toContain('fails the full suite too');
+    }
   });
 
   it('says when a job timed out, names it, and says what to do about it', () => {
@@ -2552,7 +2978,7 @@ describe('the workflows', () => {
   // The landing invariant and the off switch also hang on these call sites: with `full: false`, or
   // with no heads to assemble, a gate or a train would go green on less than the whole suite on
   // exactly the bundle.
-  it('the full path, main, every train and its control run the whole suite, on what the plan assembled', () => {
+  it('full acceptance uses the assembled tree, while branch controls are explicitly diagnostic', () => {
     expect(jobs(ci).get('suite')).toContain(
       "\n      full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}\n",
     );
@@ -2568,14 +2994,17 @@ describe('the workflows', () => {
       expect(ride, line).toContain(`\n      ${line}\n`);
     const control = t.get('control') ?? '';
     expect(control).toMatch(
-      /^ {4}needs: \[plan, suite\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
+      /^ {4}needs: \[plan, suite, control-plan\]\n {4}if: always\(\) && !cancelled\(\) && needs\.plan\.outputs\.single != '' && needs\.plan\.outputs\.single_same_tree != 'true' && needs\.suite\.result == 'failure'\n/m,
     );
     expect(control).toContain('\n      full: true\n');
+    expect(control).toContain('\n      diagnostic-control: true\n');
     expect(control).toContain('\n      base: ${{ needs.plan.outputs.single }}\n');
     expect(control).not.toMatch(/^ {6}heads:/m);
     // Every suite job checks out base, then rebuilds the planned tree before anything installs.
     for (const [id, block] of jobs(suite)) {
-      const steps = block.split(/\n {6}- /);
+      const steps = block
+        .split(/\n {6}- /)
+        .filter((step) => !step.startsWith('name: Validate control selection and set coverage'));
       expect(steps[1], id).toMatch(
         /^uses: actions\/checkout@\S+\n {8}with:\n {10}ref: \$\{\{ inputs\.base \}\}\n/,
       );
@@ -2589,7 +3018,7 @@ describe('the workflows', () => {
   it("the report runs after every departed train, red or green, and reads the suite's own result", () => {
     const report = jobs(train).get('report') ?? '';
     expect(report).toMatch(
-      /^ {4}needs: \[plan, suite, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
+      /^ {4}needs: \[plan, suite, control-plan, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
     );
     expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
     expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
@@ -2600,12 +3029,18 @@ describe('the workflows', () => {
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
   });
 
-  it('the quick check is static (with the build and size budget) plus the unit slices, at most 4 jobs', () => {
+  it('the ordinary quick check runs static with budget and unit, excluding the heavy tiers', () => {
     const j = jobs(suite);
-    for (const id of ['sim', 'browser']) expect(j.get(id), id).toMatch(/^ {4}if: inputs\.full$/m);
-    for (const id of ['static', 'unit']) expect(j.get(id), id).not.toMatch(/^ {4}if:/m);
-    const unitSlices = /shard: \[([^\]]*)\]/.exec(j.get('unit') ?? '')?.[1]?.split(',') ?? [];
-    expect(1 + unitSlices.length).toBeLessThanOrEqual(4);
+    for (const [id, text] of j) {
+      const raw = /^ {4}if: (.+)$/m.exec(text)?.[1] ?? 'true';
+      const condition = raw.replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\.([a-z]+-[a-z-]+)/g, "['$1']");
+      expect(
+        runInNewContext(condition, {
+          inputs: { full: false, 'control-selection': '', 'diagnostic-control': false },
+        }),
+        id,
+      ).toBe(['static', 'unit'].includes(id));
+    }
     const stat = j.get('static') ?? '';
     expect(stat).toMatch(/if: \$\{\{ !inputs\.full \}\}\n {8}run: npm run check -- --tier static,budget\n/);
     expect(stat).toMatch(/if: inputs\.full\n {8}run: npm run check -- --tier static\n/);
@@ -2677,7 +3112,7 @@ describe('the workflows', () => {
       expect(canReach([f], 'suite / sim (1/6)'), f).toBe(false);
     for (const f of ['tests/sim/x.test.ts', 'tests/e2e/x.spec.ts', 'src/ui/x.ts'])
       expect(canReach([f], 'suite / sim (1/6)'), f).toBe(true);
-    // Nothing imports a test file, and only the workflows and their own tests name the two scripts
+    // Nothing imports a test file, and only CI routing/acceptance scripts and their tests name these scripts
     // (and contributing-docs.test.ts and stack-lite-docs.test.ts, unit tests: they read train.mjs to check what the contributor
     // pages say about it, and a unit test is reached by any code change anyway, see canReach).
     const tracked = spawnSync('git', ['ls-files', '-z', 'src', 'tests', 'scripts', 'tools'], {
@@ -2692,14 +3127,14 @@ describe('the workflows', () => {
     ];
     expect(files.length).toBeGreaterThan(400);
     const importsTest = /(?:from\s*|import\(\s*|require\(\s*)['"][^'"]*\.test(?:\.[cm]?[jt]s)?['"]/;
-    const namesScript = /(?:train|tested-tree)\.mjs/;
+    const namesScript = /(?:train|tested-tree|main-preflight|main-acceptance)\.mjs/;
     // The checks can find what they look for.
     expect(importsTest.test('import { x } from ' + "'./a" + ".test.ts';")).toBe(true);
     expect(read('scripts/train.test.ts')).toMatch(namesScript);
     for (const f of files) {
       expect(importsTest.test(read(f)), f).toBe(false);
       if (
-        !/^scripts\/(?:(?:train|tested-tree)\.(?:mjs|test\.ts)|(?:contributing|stack-lite)-docs\.test\.ts)$/.test(
+        !/^scripts\/(?:(?:train|tested-tree|main-preflight|main-acceptance)\.(?:mjs|test\.ts)|(?:contributing|stack-lite)-docs\.test\.ts)$/.test(
           f,
         )
       )

@@ -37,9 +37,11 @@ import {
 } from './land-topology';
 import { themeAt, type LandTheme, type SideTheme } from './themes';
 import { lakeWaterAt } from './water';
+import { terrainAt } from './terrain';
+import { DRAWN_VERGE_M } from './furniture-constants';
 
 /** The drawn verge past the shoulder, m (render/road-mesh.ts VERGE_M). */
-const VERGE_M = 0.6;
+const VERGE_M = DRAWN_VERGE_M;
 /** The road scene's sample step along an edge, m (render/road-mesh.ts STEP_M). */
 const STEP_M = 2;
 /** A road this high over the sea is a deck: no land beside it when untagged, m (road-mesh.ts ELEVATED_M). */
@@ -383,6 +385,17 @@ function waterNear(road: RoadNetwork): (x: number, z: number, r: number) => bool
 function landOf(road: RoadNetwork): LandOf {
   const known = kept.get(road);
   if (known) return known;
+  if (road.terrain) {
+    const absent: LandOf = {
+      reach: () => 0,
+      edge: () => 0,
+      skirt: () => null,
+      shelf: () => null,
+      rows: () => null,
+    };
+    kept.set(road, absent);
+    return absent;
+  }
   const covered = locator(road);
   const w = (edge: number, s: number, d: number) => road.toWorld(edge, s, d, 0);
   const tagged = road.edges.some((e) => e.tags.length > 0);
@@ -1078,8 +1091,12 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
     }
     return m;
   };
-  const section = sectionGroundOf(road, lakeLevel);
-  const terrain = terrainUnderOf(road, lakeBanksOf(road, lakeLevel));
+  const fullSection = sectionGroundOf(road, lakeLevel);
+  // Keep road candidates separate: an authored face above `top` must not hide a lower road.
+  const section = road.terrain ? roadSectionKept.get(road)! : fullSection;
+  const terrain: TerrainUnder = road.terrain
+    ? () => null
+    : terrainUnderOf(road, lakeBanksOf(road, lakeLevel));
   const land = landEdgeOf(road, lakeLevel);
   const zones = zoneReachOf(road);
   const painted = splitPaintOf(road);
@@ -1153,7 +1170,7 @@ export function groundUnderOf(road: RoadNetwork, lakeLevel: number | null = null
   };
   const under: GroundUnder = (x, z, top, own) => {
     const grounds = groundsAt(x, z);
-    let best: number | null = null;
+    let best: number | null = terrainAt(road.terrain, x, z, top, 'land')?.y ?? null;
     for (let j = 0; j < grounds.length; j += 4) {
       const e = grounds[j] ?? -1;
       const y = grounds[j + 2] ?? -Infinity;
@@ -1218,6 +1235,7 @@ export function zoneReachOf(road: RoadNetwork): ZoneReach {
         for (const side of [-1, 1] as const) {
           const railed = rails[side].some((b) => b.s0 < f.s1 && b.s1 > f.s0);
           if (side !== zoneSide && railed) continue;
+          if (road.terrain && !railed) continue;
           const inner = side < 0 ? VERGE_M - e.dMin : e.dMax + VERGE_M;
           const reach = Math.max(inner, side === zoneSide ? far + ZONE_DIVE_M : e.dMax + ZONE_FAR_M);
           out.push({ s0: f.s0, s1: f.s1, a: Math.max(0, f.s0 - ZONE_TAPER_M), side, inner, reach });
@@ -1307,6 +1325,8 @@ export type SectionGround = (
 ) => number | null;
 
 const sectionKept = new WeakMap<RoadNetwork, SectionGround>();
+/** Road-attached surfaces alone, so world queries can apply their height ceiling before adding source land. */
+const roadSectionKept = new WeakMap<RoadNetwork, SectionGround>();
 
 /**
  * The ground one edge's cross-section draws (render/road-mesh.ts `buildRoadScene`, row by row): its surface out to
@@ -1405,19 +1425,41 @@ export function sectionGroundOf(road: RoadNetwork, lakeLevel: number | null = nu
     const b = shoulderRow(ed, j, side);
     return a + (b - a) * t;
   };
-  const at: SectionGround = (e, s, d, exactWorld) => {
-    const ed = road.edges[e];
-    if (!ed) return null;
+  const onDrawnRoad = (ed: Edge, s: number, d: number): boolean => {
     const lo = ed.dMin - VERGE_M;
     const hi = ed.dMax + VERGE_M;
-    const onDrawnRoad = ed.isTrafficOnly
+    return ed.isTrafficOnly
       ? d >= lo && d <= hi
       : d < ed.dMin
         ? d >= shoulderReach(ed, s, -1)
         : d > ed.dMax
           ? d <= shoulderReach(ed, s, 1)
           : true;
-    if (onDrawnRoad) return holeIn(road, e, s) ? null : road.toWorld(e, s, d, 0).y;
+  };
+  const roadAt: SectionGround = (e, s, d) => {
+    const ed = road.edges[e];
+    if (!ed) return null;
+    if (onDrawnRoad(ed, s, d)) return holeIn(road, e, s) ? null : road.toWorld(e, s, d, 0).y;
+    let best: number | null = painted(e, s, d) ? road.toWorld(e, s, d, ZONE_FILL_LIFT_M).y : null;
+    if (Math.abs(d) <= zones(e, d > 0 ? 1 : -1, s)) {
+      const y = road.toWorld(e, s, d, ZONE_LIFT_M).y;
+      best = best === null ? y : Math.max(best, y);
+    }
+    return best;
+  };
+  roadSectionKept.set(road, roadAt);
+  const at: SectionGround = (e, s, d, exactWorld) => {
+    const ed = road.edges[e];
+    if (!ed) return null;
+    if (road.terrain) {
+      const world = exactWorld ?? road.toWorld(e, s, d, 0);
+      const land = terrainAt(road.terrain, world.x, world.z, Infinity, 'land');
+      const drawn = roadAt(e, s, d);
+      return land === null ? drawn : drawn === null ? land.y : Math.max(land.y, drawn);
+    }
+    if (onDrawnRoad(ed, s, d)) return roadAt(e, s, d);
+    const lo = ed.dMin - VERGE_M;
+    const hi = ed.dMax + VERGE_M;
     const side = d > 0 ? 1 : -1;
     const out = side > 0 ? d - hi : lo - d;
     const y = (h: number) => road.toWorld(e, s, d, h).y;

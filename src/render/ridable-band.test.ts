@@ -30,6 +30,7 @@ import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type ModelKind, type SceneryModels } from './models';
 import { placeItems } from './pnw-places';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
 import { KITS, scatterRoadside } from './roadside';
 import type { ScenesFile } from './scenes/data';
 import { placeScenes } from './scenes/place';
@@ -130,7 +131,11 @@ describe('nothing drawn on a ridable band is a ghost (playtest 4)', () => {
       const { tropical, tags } = networkTags(road, dressing);
       const kinds = modelKindsFor({ tropical, tags, palette: new Set(), traffic: [] });
       const loaded = await modelsFor(kinds);
-      const built = buildRoadScene(road, look, dressing, { seed: SEED, models: loaded });
+      const built = buildRoadScene(road, look, dressing, {
+        seed: SEED,
+        models: loaded,
+        terrainChunks: buildTerrainChunks,
+      });
       const plan = planStreetFurniture(road, SEED);
       const planned = new Set(
         plan.items.map((p) => `${p.rule}:${p.edge}:${p.s.toFixed(2)}:${p.d.toFixed(2)}`),

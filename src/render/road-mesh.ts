@@ -36,6 +36,12 @@ import {
   terrainProfilePlan,
   terrainEndProfile,
   landJoinTriangles,
+  DRAWN_VERGE_M,
+  planStreetFurniture,
+  planSfScenery,
+  ROAD_SURFACE_SIMPLIFY,
+  SHOULDER_LAP_M,
+  terrainAt,
   type Edge,
   type RoadNetwork,
 } from '../road';
@@ -71,6 +77,7 @@ import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
 import { deciduousGeometry } from './deciduous';
 import { SeaBands, seaPlanFor } from './sea-bands';
+import type { buildTerrainChunks } from './terrain-mesh';
 import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
@@ -83,10 +90,12 @@ import {
   LAND_TOP_M,
   ridableBandPast,
   SCENERY_KINDS,
+  SCENERY_RADIUS_M,
   SEAWALL_LAND_M,
   SUMMIT_REACH_M,
   WIDE_LAND_M,
   scatterEdge,
+  TRUNK_M,
   themeAt,
   waterCentre,
   type SceneryKind,
@@ -97,7 +106,7 @@ import {
 /** Surface higher than this above sea level (world y = 0) counts as a bridge deck. */
 export const ELEVATED_M = 2.5;
 /** Metres of shoulder beyond the outermost lane, drawn as verge. */
-const VERGE_M = 0.6;
+const VERGE_M = DRAWN_VERGE_M;
 /**
  * A rail band or wall stands this far past the outermost lane edge, m: the line the sim stops riders
  * and tumbling bodies at is the lane edge itself (sim/tumble wallBand, the riders' ride limits), so
@@ -223,12 +232,7 @@ const OVERLAY_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
  * all on the same samples. Within 1 cm, under the 2.5 cm the shoulder
  * stands over the ground band and the 3 cm the lines stand over the road. [default]
  */
-const ROAD_SIMPLIFY = { tolM: 0.01, maxSpanM: 40 };
-/**
- * How far a simplified road's shoulder reaches over the land beside it, m: twice ROAD_SIMPLIFY.tolM, so
- * its straight outer edge always covers the land's edge, which keeps every sample. [default]
- */
-const SHOULDER_LAP_M = 2 * ROAD_SIMPLIFY.tolM;
+const ROAD_SIMPLIFY = ROAD_SURFACE_SIMPLIFY;
 
 /** Metres from (x, z) to the nearest point of the chunk `key` names (0 inside it). */
 export function chunkDistance(key: string, x: number, z: number): number {
@@ -796,6 +800,8 @@ interface Clip {
 }
 
 export interface RoadSceneOptions {
+  /** Authored-face assembly loads with race-parts. Explicit null means a held, not-yet-ready scene. */
+  terrainChunks?: typeof buildTerrainChunks | null;
   /** Roadside scenery density: 1 = the default spacing, 0 = none (`render.roadsideDensity`). */
   roadsideDensity?: number;
   /** The race's seed: the scenery scatter derives from it (playtest 1c item 2). Default 1. */
@@ -963,7 +969,7 @@ const CABLE_COVER_EVERY_M = 12;
 export const SCENERY_CHUNK_M = 256;
 
 /** Code-made stand-ins, drawn until a model loads (or if it fails). No mounds: they stand on land. */
-function standIn(kind: SceneryKind): BufferGeometry {
+export function standIn(kind: SceneryKind, variant = 0): BufferGeometry {
   if (kind === 'deciduous') return deciduousGeometry();
   const parts: Record<Exclude<SceneryKind, 'deciduous'>, BoxPart[]> = {
     palm: [
@@ -1017,7 +1023,9 @@ function standIn(kind: SceneryKind): BufferGeometry {
     arch: [],
     // a coastal tree: a trunk and a broad dark crown, until the San Francisco kit loads
     coastTree: [
-      { size: [0.6, 5, 0.6], at: [0, 2.5, 0], color: '#5b4a3a' },
+      variant === 0
+        ? { size: [1.42, 6, 1.18], at: [0.09, 3, 0.06], color: '#5b4a3a' }
+        : { size: [0.7, 6, 0.7], at: [0, 3, 0], color: '#5b4a3a' },
       { size: [6, 4, 5], at: [0.8, 7, 0], color: '#2f4a33', rotY: 0.5 },
     ],
     // an apartment block of two plots, taller than a row house (playtest 4, R3)
@@ -1026,9 +1034,9 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [13.4, 0.6, 0.6], at: [0, 16.8, 0.1], color: '#f4efe4' },
     ],
     // the headlands' own, until the kit loads: a long low concrete block, a dark shrub, a red rock
-    battery: [{ size: [30, 3.7, 11.5], at: [0, 1.85, -0.25], color: '#a1a497' }],
-    brush: [{ size: [2, 1.2, 1.9], at: [0, 0.6, 0], color: '#505f3c' }],
-    outcrop: [{ size: [5, 2.6, 2.4], at: [0, 1.3, 0], color: '#a45440' }],
+    battery: [{ size: [30, 3.7, 14.44], at: [0, 1.85, -1.68], color: '#a1a497' }],
+    brush: [{ size: [2.58, 1.8, 1.7], at: [-0.02, 0.9, 0.09], color: '#505f3c' }],
+    outcrop: [{ size: [5.34, 2.8, 2.8], at: [0.01, 1.4, 0.54], color: '#a45440' }],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -1101,6 +1109,11 @@ export function buildRoadScene(
   dressing?: RoadDressing,
   opts: RoadSceneOptions = {},
 ): RoadScene {
+  const authoredTerrain = road.terrain;
+  if (authoredTerrain && opts.terrainChunks === undefined)
+    throw new Error(
+      'Authored terrain requires its drawing builder (or explicit null while the race is held)',
+    );
   const acc: Partial<Record<Layer, ChunkedStrips>> = {};
   const strip = (kind: Layer): ChunkedStrips =>
     (acc[kind] ??= new ChunkedStrips(chunkKey, OVERLAY_LAYERS.has(kind) ? OVERLAY_SIMPLIFY : undefined));
@@ -1302,8 +1315,10 @@ export function buildRoadScene(
   let sceneryLandM = 0;
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   const seed = opts.seed ?? 1;
+  // Physical SF scenery is always drawn, including at the lowest visual-density setting.
+  const sfPlaces = planSfScenery(road, seed);
   const tropical = isTropical(road.edges.map((e) => dressingOf(e, dressing).tags));
-  // A network that is not tropical gets the terrain skirt.
+  // Preserve the region's road-attached kit policy. Authored faces replace its natural ground.
   const terrain = !tropical;
   // Playtest 4 (P4-19): what holds a deck up is the deck's own tag. A `trestle` stretch stands on
   // timber bents, an `arch-bridge` stretch on concrete deck arches (with their kit loaded), and any
@@ -1805,6 +1820,7 @@ export function buildRoadScene(
           (b) => b.s0 < f.s1 && b.s1 > f.s0,
         );
         if (side !== zoneSide && railed) continue;
+        if (authoredTerrain && !railed) continue;
         const inner = side < 0 ? -outerL : outerR;
         const reach = Math.max(inner, side === zoneSide ? far + LAND_DIVE_M : e.dMax + LAND_FAR_M);
         const a = Math.max(0, f.s0 - LAND_TAPER_M);
@@ -2125,6 +2141,9 @@ export function buildRoadScene(
         const ramped = Math.min(h, LAKE_RAMP_M_PER_M * Math.max(0, (toNone[i] ?? 0) - 1) * step);
         shore.push(Number.isNaN(h) ? Number.NaN : plateauAt(s) - ramped);
       }
+      // Keep the theme's candidate reach for seeded scatter, but do not even generate legacy
+      // natural faces, profiles or join curtains when the authored terrain owns the ground.
+      if (authoredTerrain) continue;
       if (meets.some(Boolean))
         meetsRuns.push({
           edge: e,
@@ -2545,6 +2564,7 @@ export function buildRoadScene(
         length: e.length,
         density: e.isTrafficOnly ? 0 : density,
         tropical,
+        plannedSf: true,
         outer: outerOf,
         theme,
         band: (side, s) => ridableBandPast(road, e.index, side, s, outerOf(side)),
@@ -2661,11 +2681,16 @@ export function buildRoadScene(
         if (overGap(k)) deck.breakStrip();
         const i = Math.max(0, Math.min(ss.length - 1, Math.round(s / step)));
         // A terrain network's land strip hides the fascia where it meets the verge: skip it there.
-        if (terrain && (reachOf[out][i] ?? 0) > 0) {
+        if (!authoredTerrain && terrain && (reachOf[out][i] ?? 0) > 0) {
           deck.breakStrip();
           continue;
         }
         const top = w(e.index, s, d, -0.02);
+        // A low legacy embankment is natural ground, not a deck fascia. Authored faces own it.
+        if (authoredTerrain && top.y < ELEVATED_M) {
+          deck.breakStrip();
+          continue;
+        }
         // Nor does it stand over a lower road's lanes beside it (a link down the embankment), within the 3 m a road
         // under a bridge lies below (the I-5's curtain at Lake Samish's east shore road: 1.3 m over its lanes).
         if (
@@ -3194,7 +3219,7 @@ export function buildRoadScene(
     const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
     return { x: (q.x - p.x) / l, z: (q.z - p.z) / l };
   };
-  for (const a of terrain ? road.edges : []) {
+  for (const a of terrain && !authoredTerrain ? road.edges : []) {
     for (const l of a.nextLinks) {
       const b = road.edges[l.edge];
       const [near, far] = CORNER_LEG_M;
@@ -3273,6 +3298,8 @@ export function buildRoadScene(
   };
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
   for (const [layer, a] of Object.entries(acc) as [Layer, ChunkedStrips][]) {
+    // Includes the legacy roadside strips, shelves, junction curtains and corner fills.
+    if (authoredTerrain && layer === 'land') continue;
     const kind = kindOf(layer);
     // Small solid fragments cost a full draw each. Keep fine-detail chunks unchanged because
     // their visibility uses the original cell; solid surfaces use their actual geometry bounds.
@@ -3290,9 +3317,50 @@ export function buildRoadScene(
       addMesh(key, mesh);
     }
   }
+  if (authoredTerrain) {
+    for (const { key, surface, geometry } of opts.terrainChunks?.(authoredTerrain, chunkKey) ?? []) {
+      const mesh = new Mesh(geometry, look.material(surface === 'water' ? 'water' : 'land'));
+      mesh.name = surface === 'water' ? 'road-terrain-water' : 'road-terrain-land';
+      triangles += trisOf(geometry);
+      addMesh(key, mesh);
+    }
+    // Render-only land solids have no contacts. Authored land is rideable, so the old
+    // far-ground placement cannot move those solids onto it. Water props remain beyond
+    // the water hazard and use the actual source surface, including its holes.
+    for (let i = spots.length - 1; i >= 0; i--) {
+      const spot = spots[i]!;
+      const water = spot.kind === 'boat' || spot.kind === 'skiff' || spot.kind === 'fogBank';
+      if (!water) {
+        spots.splice(i, 1);
+        continue;
+      }
+      const ground = terrainAt(authoredTerrain, spot.p.x, spot.p.z);
+      const radius = (TRUNK_M[spot.kind] ?? SCENERY_RADIUS_M[spot.kind]) * spot.size;
+      const roots =
+        radius > 0
+          ? [
+              [radius, 0],
+              [-radius, 0],
+              [0, radius],
+              [0, -radius],
+            ]
+          : [];
+      const covered = roots.every(([dx, dz]) => {
+        const root = terrainAt(authoredTerrain, spot.p.x + dx!, spot.p.z + dz!);
+        return root && (root.surface === 'water') === water;
+      });
+      if (!ground || ground.surface !== 'water' || !covered) {
+        spots.splice(i, 1);
+        continue;
+      }
+      spot.p = { ...spot.p, y: ground.y };
+    }
+  }
   const m = new Matrix4();
   const q = new Quaternion();
   const one = new Vector3(1, 1, 1);
+  // Includes procedural inputs with no mesh: empty instance batches and merged-scatter sources.
+  const ownedGeometries = new Set<BufferGeometry>();
   /** Instanced scenery, one InstancedMesh per chunk that has any, so it culls with its chunk. */
   const addInstanced = <T extends { p: Point3 }>(
     name: string,
@@ -3301,6 +3369,7 @@ export function buildRoadScene(
     spots: readonly T[],
     matrixOf: (spot: T) => Matrix4,
   ) => {
+    ownedGeometries.add(geo);
     const byChunk = new Map<string, T[]>();
     for (const s of spots) {
       const key = chunkKey(s.p.x, s.p.z);
@@ -3379,6 +3448,16 @@ export function buildRoadScene(
     }
   }
 
+  const sfContacts = planStreetFurniture(road, seed).items.filter((it) => it.layer === 'scenery');
+  const sfKey = (kind: string, edge: number, s: number, d: number) => `${kind}:${edge}:${s}:${d}`;
+  const candidates = new Map(sfPlaces.map((spot) => [sfKey(spot.kind, spot.edge, spot.s, spot.d), spot]));
+  for (const contact of sfContacts) {
+    const spot = candidates.get(sfKey(contact.kind, contact.edge, contact.s, contact.d));
+    if (!spot || spot.variant !== contact.variant || spot.size !== contact.size)
+      throw new Error('SF scenery contact plan differs from the drawn placements');
+    spots.push({ ...spot, phase: 0, ...(spot.kind === 'battery' ? { reachM: 24 } : {}) });
+  }
+
   // Scenery (playtest 1c). The still props merge per block, a square of the world (scenery-merge.ts,
   // run W-S): one mesh per block, built near the camera, drawn as far stand-ins past the
   // level-of-detail distance. The boats bob and the fog banks are unlit, so those stay one InstancedMesh per model
@@ -3401,8 +3480,13 @@ export function buildRoadScene(
     const model = modelKind ? opts.models?.[modelKind] : undefined;
     if (model) fromModels.push(kind);
     if (!mine.length) continue;
-    const geos = model ? model.variants : [standIn(kind)];
+    const geos = model
+      ? model.variants
+      : kind === 'coastTree'
+        ? [standIn(kind, 0), standIn(kind, 1)]
+        : [standIn(kind)];
     if (model) for (const g of geos) shared.add(g);
+    else for (const g of geos) ownedGeometries.add(g);
     // Fog banks are unlit, in the region's fog-bank colour, so they melt into the haze.
     const fogHex = opts.palette?.['fogBank'];
     const material =
@@ -3488,7 +3572,7 @@ export function buildRoadScene(
 
   // The sea, at world y = 0 (sea level in the network frame). A tropical network with water beside its
   // roads (the Keys) draws it in colour bands (sea-bands.ts, playtest 4, P4-19); any other is one plane.
-  const seaPlan = tropical ? seaPlanFor(road, (e) => dressingOf(e, dressing).tags) : null;
+  const seaPlan = tropical && !authoredTerrain ? seaPlanFor(road, (e) => dressingOf(e, dressing).tags) : null;
   let sea: SeaBands | null = null;
   if (seaPlan) {
     const first = road.edges[0];
@@ -3507,7 +3591,7 @@ export function buildRoadScene(
     );
     group.add(sea.mesh);
     triangles += sea.triangles;
-  } else {
+  } else if (!authoredTerrain) {
     const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
     water.rotation.x = -Math.PI / 2;
     water.position.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
@@ -3515,7 +3599,7 @@ export function buildRoadScene(
     group.add(water);
     triangles += 2;
   }
-  meshes++;
+  if (!authoredTerrain) meshes++;
 
   return {
     group,
@@ -3542,6 +3626,14 @@ export function buildRoadScene(
     spots,
     bays: baySpots,
     landTop(edge, side, s, across) {
+      if (authoredTerrain) {
+        const e = road.edges[edge];
+        if (!e) return null;
+        const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
+        const p = w(edge, s, side * (outer + across), 0);
+        const ground = terrainAt(authoredTerrain, p.x, p.z);
+        return ground && ground.surface !== 'water' ? ground.y : null;
+      }
       const l = landOf[edge];
       if (!l || across <= LAKE_BANK_M) return null;
       const rows = l.shore[side];
@@ -3551,6 +3643,9 @@ export function buildRoadScene(
       return Number.isNaN(a) || Number.isNaN(b) ? null : (a + b) / 2;
     },
     landReach(edge, side, s) {
+      // Arbitrary holes cannot be represented by a continuous legacy strip width. Consumers
+      // that need such a strip must opt into the authored coverage query before placing props.
+      if (authoredTerrain) return 0;
       const l = landOf[edge];
       if (!l) return 0;
       const n = l.reach[side].length;
@@ -3582,7 +3677,7 @@ export function buildRoadScene(
           bobEuler.set(bob.pitch, s.turn, bob.roll, 'YXZ');
           b.mesh.setMatrixAt(
             i,
-            m.compose(bobAt.set(s.p.x, bob.rise, s.p.z), turn.setFromEuler(bobEuler), one),
+            m.compose(bobAt.set(s.p.x, s.p.y + bob.rise, s.p.z), turn.setFromEuler(bobEuler), one),
           );
         });
         b.mesh.instanceMatrix.needsUpdate = true;
@@ -3613,6 +3708,11 @@ export function buildRoadScene(
           (o.geometry as BufferGeometry).dispose();
         }
       });
+      for (const geometry of ownedGeometries) {
+        if (seen.has(geometry)) continue;
+        seen.add(geometry);
+        geometry.dispose();
+      }
     },
   };
 }

@@ -16,7 +16,7 @@ import {
   type TuningValues,
   type VergeEdge,
 } from '../core';
-import { roadsideGroundHeight, type RoadNetwork } from '../road';
+import { COURSE_STEP_M, roadBandHeight, roadsideGroundHeight, terrainAt, type RoadNetwork } from '../road';
 
 /**
  * Each surface's grip (a scale on steering authority) and speed (a scale on top speed and
@@ -146,6 +146,15 @@ export function groundUnder(
   d: number,
   h: number,
 ): GroundSurface | null {
+  if (road.terrain) {
+    if (roadBandHeight(road, edge, s, d) !== null)
+      return h > COURSE_STEP_M
+        ? null
+        : (road.groundAt(edge, s, d) ?? road.vergeAt(edge, s, d < 0 ? 'left' : 'right').surface);
+    const p = road.toWorld(edge, s, d, h);
+    const ground = terrainAt(road.terrain, p.x, p.z, p.y + COURSE_STEP_M);
+    return ground && ground.surface !== 'water' && p.y - ground.y <= COURSE_STEP_M ? ground.surface : null;
+  }
   if (h > 0) return null;
   const own = road.groundAt(edge, s, d);
   if (own !== null) return own;

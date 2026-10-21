@@ -12,7 +12,7 @@
 //
 // The table: HITBOX_TABLE=1 npx vitest run --project unit scripts/hitboxes.test.ts prints it.
 import { readdirSync, readFileSync } from 'node:fs';
-import { Box3, BufferGeometry, Matrix4, Vector3 } from 'three';
+import { Box3, BufferGeometry, Matrix4, Vector3, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_HITBOX,
@@ -29,6 +29,7 @@ import {
   type SimTrafficTypeDef,
 } from '../src/sim/api';
 import { RIDER_CONTACT_HALF_WIDTH_M, RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
+import { carrierParts } from '../src/sim/riders/carrier-shape';
 import {
   createRoadNetwork,
   FURNITURE,
@@ -65,11 +66,11 @@ import { readGlb } from '../src/render/glb';
 import { DowntownLayer, pdxFootprint, type DowntownItem } from '../src/render/downtown';
 import { createFlatLook } from '../src/render/look';
 import { MODEL_ASSETS, type ModelKind } from '../src/render/models';
-import { bakeRepoModel } from '../src/render/model-files.test-util';
+import { bakeRepoModel, readAsset } from '../src/render/model-files.test-util';
 import { solidHazardModel } from '../src/render/pnw-places';
 import { riderLookOf } from '../src/render/rider-looks';
 import { bakePart, RIDER_BOX_M } from '../src/render/riders/bake';
-import { BARRIER_OUT_M } from '../src/render/road-mesh';
+import { BARRIER_OUT_M, standIn } from '../src/render/road-mesh';
 import { smashableParts } from '../src/render/smashables';
 import {
   ANIMAL_HEIGHT_M,
@@ -94,19 +95,10 @@ import {
 /** How far a drawn end or side may sit from its sim box's, m (the lane brief: "say 0.15 m per side"). */
 const TOLERANCE_M = 0.15;
 /**
- * The known exceptions, each with its reason and the most it may miss by, m. Every one waits on a
- * change bigger than a size: listed here so the table names them and they cannot grow unseen.
+ * Known footprint exceptions. The old wide-carrier entries healed when the model's body overhang
+ * was compared with its separately collidable body parts instead of the narrower rideable plate.
  */
-const EXCEPTIONS: Readonly<Record<string, { upToM: number; why: string }>> = {
-  'ramp trucks: staging-truck-west (osm-sm-old-road-back)': {
-    upToM: 0.45,
-    why: 'a 6 m wide staging truck: the ramp is drawn exactly the sim ramp, and the model trailer is 13% wider than its ramp (0.14 m a side on a 2 m truck, 0.41 m on a 6 m one)',
-  },
-  'ramp trucks: staging-truck-east (osm-sm-old-road)': {
-    upToM: 0.45,
-    why: 'as staging-truck-west',
-  },
-};
+const EXCEPTIONS: Readonly<Record<string, { upToM: number; why: string }>> = {};
 /**
  * The known height exceptions, each with its reason and the most it may miss by, m. None now: the
  * carved bear (2.3 m in its file, drawn 2.03 m) and the log pile (2.4 m, drawn 2.05 m) were the two,
@@ -661,12 +653,17 @@ function hazardRows(features: { road: string; f: Feature }[]): Row[] {
   return rows;
 }
 
-/** Parked ramp trucks: the feature's box vs the tow-truck model the road scene stands in it. */
+/** Parked trucks: the authored ramp plate and the separately collidable body vs the drawn model. */
 async function rampTruckRows(features: { road: string; f: Feature }[]): Promise<Row[]> {
   const truck = await bakeRepoModel('truck');
   const ramp = truck.ramp;
   const g = truck.variants[0];
   if (!ramp || !g) throw new Error('the ramp truck model has no ramp measure');
+  const source = readGlb(await readAsset(MODEL_ASSETS.truck, 'glb'));
+  const plate = source.getObjectByName('ramp_surface') as Mesh<BufferGeometry> | undefined;
+  if (!plate?.isMesh) throw new Error('the ramp truck model has no ramp_surface mesh');
+  plate.geometry.computeBoundingBox();
+  const rampFoot = plate.geometry.boundingBox as Box3;
   g.computeBoundingBox();
   const whole = g.boundingBox as Box3;
   const rows: Row[] = [];
@@ -677,20 +674,40 @@ async function rampTruckRows(features: { road: string; f: Feature }[]): Promise<
     const sz = run / ramp.runM;
     const len = Math.abs(f.s1 - f.s0);
     const w = Math.abs(f.d1 - f.d0);
-    // The model's foot is at the feature's s0 and it runs +z; centre both on the box's middle.
+    const middle = (f.d0 + f.d1) / 2;
+    const bodyHalfWidth = Math.max(
+      w / 2,
+      ...carrierParts(f).map((part) => Math.abs(part.shape.d - middle) + part.shape.hv),
+    );
+    // The model's foot is at s0 and runs +z. Its rails, cab and mirrors extend past the plate;
+    // carrierParts supplies those physical footprints, while the feature width is the rideable plate.
     rows.push({
       group: 'ramp trucks',
       thing: `${f.id} (${road})`,
       outcome: 'ride the ramp; the body past the lip: crash, its sides: a scrape',
       simL: len,
-      simW: w,
+      simW: bodyHalfWidth * 2,
       drawn: {
         z0: whole.min.z * sz - len / 2,
         z1: whole.max.z * sz - len / 2,
         x0: whole.min.x * sx,
         x1: whole.max.x * sx,
       },
-      how: 'tow-truck model, scaled as road-mesh.ts rampTruckMatrix',
+      how: 'whole tow-truck model vs authored length and carrierParts body width',
+    });
+    rows.push({
+      group: 'ramp trucks',
+      thing: `${f.id} (${road}) ramp plate`,
+      outcome: 'ride the full-width ramp to launch',
+      simL: run,
+      simW: w,
+      drawn: {
+        z0: rampFoot.min.z * sz - run / 2,
+        z1: rampFoot.max.z * sz - run / 2,
+        x0: rampFoot.min.x * sx,
+        x1: rampFoot.max.x * sx,
+      },
+      how: 'committed ramp_surface mesh vs authored rideable ramp',
     });
   }
   return rows;
@@ -771,7 +788,55 @@ const FURNITURE_DRAWN: Readonly<
   'wf-lamp': 'lamp',
   'wf-bench': 'bench',
   'parked-car': { model: 'sfRoadside', variants: [0, 1, 2] },
+  battery: { model: 'sfHeadlands', variants: [0] },
+  brush: { model: 'sfHeadlands', variants: [1] },
+  outcrop: { model: 'sfHeadlands', variants: [2] },
+  coastTree: { model: 'sfIdentity', variants: [0, 1] },
 };
+
+it('SF physical scenery fallbacks match the same contact footprints as their loaded models', () => {
+  for (const kind of ['battery', 'brush', 'outcrop', 'coastTree'] as const)
+    for (const variant of kind === 'coastTree' ? [0, 1] : [0]) {
+      const spec = FURNITURE[kind];
+      const foot: FurnitureFoot = spec.foot[Math.min(variant, spec.foot.length - 1)]!;
+      const geometry = standIn(kind, variant);
+      const f = sliceFoot(geometry, sliceHeights(spec.heightM));
+      geometry.dispose();
+      const hx = foot.r ?? foot.hx ?? 0;
+      const hz = foot.r ?? foot.hz ?? 0;
+      const mismatch = worst({
+        simL: 2 * hz,
+        simW: 2 * hx,
+        drawn: {
+          z0: f.z0 - (foot.cz ?? 0),
+          z1: f.z1 - (foot.cz ?? 0),
+          x0: f.x0 - (foot.cx ?? 0),
+          x1: f.x1 - (foot.cx ?? 0),
+        },
+      });
+      expect(mismatch, `${kind} fallback variant ${variant}`).toBeLessThanOrEqual(TOLERANCE_M);
+    }
+});
+
+it('SF fallbacks visibly fill the contact height', () => {
+  for (const kind of ['brush', 'outcrop'] as const) {
+    const geometry = standIn(kind);
+    expect(geometryTop(geometry), kind).toBeCloseTo(FURNITURE[kind].heightM, 2);
+    geometry.dispose();
+  }
+  for (const variant of [0, 1]) {
+    const geometry = standIn('coastTree', variant);
+    const pos = geometry.getAttribute('position');
+    const trunkTop = Array.from({ length: pos.count }, (_, i) => i).some(
+      (i) =>
+        Math.abs(pos.getY(i) - FURNITURE.coastTree.heightM) < 0.01 &&
+        Math.abs(pos.getX(i)) < 1 &&
+        Math.abs(pos.getZ(i)) < 1,
+    );
+    expect(trunkTop, `coastTree fallback variant ${variant} has a trunk through contact height`).toBe(true);
+    geometry.dispose();
+  }
+});
 
 /**
  * Street furniture (playtest 4, "solid but forgiving"; road/furniture.ts): each kind's sim footprint (a
@@ -948,6 +1013,36 @@ describe('hitboxes match what is drawn (playtest 4)', () => {
     // An unfitted chopper (2.59 m long) against the rider's 2.0 m box.
     expect(
       worst({ simL: 2, simW: 0.8, drawn: { z0: -1.32, z1: 1.27, x0: -0.49, x1: 0.49 } }),
+    ).toBeGreaterThan(TOLERANCE_M);
+  });
+
+  it('checks a narrow low-lip ramp and detects an unmodelled wider drawn plate or body', async () => {
+    const f: Feature = {
+      kind: 'rampTruck',
+      id: 'scaled-carrier-control',
+      s0: 200,
+      s1: 221.05,
+      d0: 10,
+      d1: 12,
+      params: { lipHeightM: 2.2 },
+    };
+    const rows = await rampTruckRows([{ road: 'control-road', f }]);
+    const name = `${f.id} (control-road)`;
+    const body = rows.find((row) => row.thing === name);
+    const rampPlate = rows.find((row) => row.thing === `${name} ramp plate`);
+    expect(body, 'whole truck and collidable body are checked').toBeDefined();
+    expect(rampPlate, 'rideable ramp plate is checked separately').toBeDefined();
+    for (const row of rows) {
+      expect(worst(row), row.thing).toBeLessThanOrEqual(TOLERANCE_M);
+      const widerDrawing: Row = { ...row, drawn: { ...row.drawn, x1: row.drawn.x1 + 0.2 } };
+      expect(worst(widerDrawing), `${row.thing}: drawn part without physical width`).toBeGreaterThan(
+        TOLERANCE_M,
+      );
+    }
+    const bodyRow = body!;
+    expect(
+      worst({ ...bodyRow, simL: bodyRow.simL - 0.5 }),
+      'a box short of the visible bumper',
     ).toBeGreaterThan(TOLERANCE_M);
   });
 

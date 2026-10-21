@@ -23,7 +23,8 @@ import {
 } from '../world';
 import { spawnPickup } from '../combat';
 import { riderState } from '../riders';
-import { aiState, aiSystem, AI_STYLE_IDS, grudgeTargets, resolveProfile, takedownPush } from './index';
+import { aiState, aiSystem, AI_STYLE_IDS, resolveProfile } from './index';
+import { grudgeTargets, takedownPush } from './step';
 import { see, vehicleSize } from './sense';
 
 const noop = (name: SystemName): SimSystem => ({ name, init() {}, step() {} });

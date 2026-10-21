@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Main skips its suite when the pushed tree was already tested (docs/engineering.md, "CI on GitHub
-// Actions"). Two steps of ci.yml use this file:
+// Actions"). Main's bounded preflight imports decide; ci.yml's acceptance gate uses this CLI:
 //
-//   node scripts/tested-tree.mjs decide [--tree <tree sha>]   (the `plan` job, push to main only)
+//   node scripts/tested-tree.mjs decide [--tree <tree sha>]   (standalone exact-proof lookup)
 //   node scripts/tested-tree.mjs gate                          (the `gate` job; reads NEEDS)
 //
 // A green full PR gate, or a train after its full suite passes and before it posts merge-enabling
@@ -25,6 +25,7 @@ import { git } from './lib.mjs';
 
 export const ARTIFACT_PREFIX = 'tested-tree-';
 const TREE = /^[0-9a-f]{40}$/;
+const positiveId = (id) => Number.isSafeInteger(id) && id > 0;
 
 /** The artifact a passed full suite uploads for the tree it tested. */
 export function artifactName(/** @type {string} */ tree) {
@@ -50,9 +51,9 @@ export function candidates(artifacts, tree) {
     .filter(
       (a) =>
         a.name === name &&
-        !a.expired &&
-        typeof a.workflow_run?.id === 'number' &&
-        a.workflow_run.repository_id !== undefined &&
+        a.expired === false &&
+        positiveId(a.workflow_run?.id) &&
+        positiveId(a.workflow_run?.repository_id) &&
         a.workflow_run.head_repository_id === a.workflow_run.repository_id,
     )
     .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
@@ -99,7 +100,7 @@ export async function decide(tree, { repo, api }) {
         reason: `tree ${short}: run lookup failed (${message(err)}); running the whole suite`,
       };
     }
-    if (runVouches(run)) {
+    if (run?.id === a.workflow_run?.id && runVouches(run)) {
       return {
         skip: true,
         reason: `tree ${short}: ${run.path === '.github/workflows/train.yml' ? 'train' : 'PR'} run ${run.id} recorded this exact tree after its full suite passed; skipping the suite (${run.html_url ?? ''})`,
@@ -124,7 +125,7 @@ export const PROD_BUILD = 'prod-build';
 /**
  * The aggregate's verdict from `toJSON(needs)`. Two green shapes, nothing else:
  * - the suite path: plan succeeded or was skipped (a PR), route succeeded or was skipped (a push),
- *   the suite succeeded, and prod-build was skipped;
+ *   the suite succeeded with coverage matching its route, and prod-build was skipped;
  * - the skip path, only when plan ran and said skip=true: the suite was skipped, and prod-build
  *   succeeded.
  * A failed, cancelled or missing job fails the gate on either path.
@@ -142,6 +143,23 @@ export function gateVerdict(needs) {
   want('route', ['success', 'skipped']);
   for (const job of SUITE) want(job, skip ? ['skipped'] : ['success']);
   want(PROD_BUILD, skip ? ['success'] : ['skipped']);
+  if (!skip && needs.suite?.result === 'success') {
+    const route = needs.route;
+    const expected =
+      route?.result === 'skipped' && needs.plan?.result === 'success'
+        ? 'full' // a main push
+        : route?.result === 'success' && needs.plan?.result === 'skipped'
+          ? route.outputs?.path === 'full'
+            ? 'full'
+            : ['train', 'docs'].includes(route.outputs?.path ?? '')
+              ? 'quick'
+              : null
+          : null;
+    if (!expected)
+      problems.push(`route path is ${route?.outputs?.path ?? 'missing'}, cannot establish suite coverage`);
+    else if (needs.suite.outputs?.coverage !== expected)
+      problems.push(`suite coverage is ${needs.suite.outputs?.coverage ?? 'missing'}, needs ${expected}`);
+  }
   return { ok: problems.length === 0, path: skip ? 'skip' : 'suite', problems };
 }
 

@@ -14,7 +14,7 @@ export interface LaneHit {
   d: number;
 }
 
-/** The grid's cell, m, and how far round a point it looks for centre lines (wider than any road's half). */
+/** The grid's cell, m, and minimum center-line neighborhood; wide roads extend that neighborhood. */
 const CELL_M = 16;
 const LOOK_M = 32;
 /** A road more than this far above or below the point is a bridge over it or a road under it, m. [default] */
@@ -29,9 +29,11 @@ interface Station {
 
 export class LanesUnder {
   private readonly cells = new Map<string, Station[]>();
+  private extent = 0;
 
   constructor(private readonly road: RoadNetwork) {
-    for (const e of road.edges)
+    for (const e of road.edges) {
+      this.extent = Math.max(this.extent, -e.dMin + e.spacing, e.dMax + e.spacing);
       for (let i = 0; i < e.count; i++) {
         const st = { edge: e.index, s: Math.min(e.length, i * e.spacing), x: e.x[i] ?? 0, z: e.z[i] ?? 0 };
         const k = `${Math.floor(st.x / CELL_M)},${Math.floor(st.z / CELL_M)}`;
@@ -39,6 +41,7 @@ export class LanesUnder {
         if (list) list.push(st);
         else this.cells.set(k, [st]);
       }
+    }
   }
 
   /**
@@ -53,14 +56,16 @@ export class LanesUnder {
     skip: (edge: number, s: number) => boolean = () => false,
   ): LaneHit | null {
     const road = this.road;
-    const reach = Math.ceil(LOOK_M / CELL_M);
+    // LOOK_M is a cheap minimum neighborhood, never a maximum road-width assumption.
+    const look = Math.max(LOOK_M, this.extent + Math.max(0, margin));
+    const reach = Math.ceil(look / CELL_M);
     const ci = Math.floor(x / CELL_M);
     const cj = Math.floor(z / CELL_M);
     const tried = new Set<string>();
     for (let i = ci - reach; i <= ci + reach; i++)
       for (let j = cj - reach; j <= cj + reach; j++)
         for (const st of this.cells.get(`${i},${j}`) ?? []) {
-          if ((st.x - x) * (st.x - x) + (st.z - z) * (st.z - z) > LOOK_M * LOOK_M) continue;
+          if ((st.x - x) * (st.x - x) + (st.z - z) * (st.z - z) > look * look) continue;
           const e = road.edges[st.edge];
           if (!e) continue;
           // Square to the centre line from this station (a few steps along the tangent).

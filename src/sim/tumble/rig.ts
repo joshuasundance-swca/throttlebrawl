@@ -28,13 +28,17 @@ import {
   courseEdgeTopAt,
   edgeTopAt,
   gapAt,
+  groundUnderOf,
   pastAt,
+  terrainAt,
   waterLevelOf,
   type Past,
   type RoadNetwork,
   type RoadPos,
 } from '../../road';
-import { wallBand, type TumbleBody } from './body';
+import { BODY_RADIUS_M, wallBand, type TumbleBody } from './body';
+import type { TerrainTreePlan } from '../../road/structures/terrain-trees';
+import { constrainTrees, treeVelocity, type TreeContact } from './tree-contacts';
 
 const GRAVITY = 9.81;
 
@@ -295,14 +299,19 @@ export function stepCluster(
   offRoad = false,
   tops?: TopUnder,
   honest = false,
+  trees?: TerrainTreePlan,
 ): ClusterContact {
+  if (dt === 0) return overboardContact(road, c, false, false);
   if (c.splashed) return overboardContact(road, c, false, false);
+  const previous =
+    road.terrain && trees?.items.length ? c.p.map((q) => ({ x: q.x, y: q.y, z: q.z })) : undefined;
   for (const q of c.p) {
     q.vy -= GRAVITY * dt;
     q.x += q.vx * dt;
     q.y += q.vy * dt;
     q.z += q.vz * dt;
   }
+  if (road.terrain) return stepTerrainCluster(road, c, dt, mu, offRoad, tops, trees, previous);
   if (c.overboard) {
     relax(c);
     return fallToWater(road, c, false, honest);
@@ -365,10 +374,162 @@ export function stepCluster(
   };
 }
 
+/** Authored worlds have finite surfaces; a reference road plane is never an off-road floor. */
+function stepTerrainCluster(
+  road: RoadNetwork,
+  c: Cluster,
+  dt: number,
+  mu: number,
+  offRoad: boolean,
+  tops?: TopUnder,
+  trees?: TerrainTreePlan,
+  previousPoints?: readonly { x: number; y: number; z: number }[],
+): ClusterContact {
+  const previous = centre(c.p);
+  previous.x -= previous.vx * dt;
+  previous.z -= previous.vz * dt;
+  const ceilings = c.p.map((q) => q.y - q.vy * dt + CONTACT_M);
+  const under = groundUnderOf(road);
+  const samples = new Map<
+    Particle,
+    { x: number; z: number; y: number; normal: { x: number; y: number; z: number } }
+  >();
+  const support = (q: Particle, i: number) => {
+    const known = samples.get(q);
+    if (known && known.x === q.x && known.z === q.z) return known;
+    const ceiling = ceilings[i] ?? q.y;
+    const land = under(q.x, q.z, ceiling);
+    const top = tops?.(q.x, q.z, ceiling) ?? null;
+    const solid = Math.max(land ?? -Infinity, top ?? -Infinity);
+    const water = terrainAt(road.terrain, q.x, q.z, Infinity, 'water');
+    const y = water && water.y >= solid ? -Infinity : solid;
+    const face = terrainAt(road.terrain, q.x, q.z, ceiling, 'land');
+    const sample = { x: q.x, z: q.z, y, normal: face && face.y === y ? face.normal : { x: 0, y: 1, z: 0 } };
+    samples.set(q, sample);
+    return sample;
+  };
+  const hit = c.p.map((q, i) => q.y < support(q, i).y);
+  const treeContacts: TreeContact[] = [];
+  if (trees && previousPoints) constrainTrees(c.p, trees, previousPoints, treeContacts);
+  // A slender trunk can pin an axle while the other points move past it: converge those links
+  // with the contact, without changing ordinary no-contact trajectories.
+  for (let it = 0; it < (treeContacts.length ? ITERATIONS * 3 : ITERATIONS); it++) {
+    const before = previousPoints ? c.p.map((q) => ({ x: q.x, y: q.y, z: q.z })) : undefined;
+    linkPositions(c);
+    if (trees && before) constrainTrees(c.p, trees, before, treeContacts);
+    c.p.forEach((q, i) => {
+      // Constraints move a particle across a sloping face: sample again at its own corrected XYZ.
+      q.y = Math.max(q.y, support(q, i).y);
+    });
+  }
+  c.p.forEach((q, i) => {
+    const { y, normal: n } = support(q, i);
+    if (q.y > y + CONTACT_M) return;
+    const vn = q.vx * n.x + q.vy * n.y + q.vz * n.z;
+    if (vn < 0) {
+      const bounce = hit[i] && -vn * GROUND_RESTITUTION >= SETTLE_MPS ? GROUND_RESTITUTION : 0;
+      q.vx -= (1 + bounce) * vn * n.x;
+      q.vy -= (1 + bounce) * vn * n.y;
+      q.vz -= (1 + bounce) * vn * n.z;
+    }
+    const outgoing = Math.max(0, q.vx * n.x + q.vy * n.y + q.vz * n.z);
+    const tx = q.vx - outgoing * n.x;
+    const ty = q.vy - outgoing * n.y;
+    const tz = q.vz - outgoing * n.z;
+    const speed = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    const k = speed > 0 ? Math.max(0, 1 - (mu * GRAVITY * dt) / speed) : 0;
+    q.vx = outgoing * n.x + tx * k;
+    q.vy = outgoing * n.y + ty * k;
+    q.vz = outgoing * n.z + tz * k;
+  });
+  for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
+  for (const contact of treeContacts) treeVelocity(contact);
+  let at = centre(c.p);
+  let p = road.project(at.x, at.z, at.edge);
+  const band = wallBand(road, p.edge, p.s, offRoad);
+  for (const side of ['left', 'right'] as const) {
+    const sign = side === 'right' ? 1 : -1;
+    const line = (side === 'right' ? band.hi : band.lo) + sign * BODY_RADIUS_M;
+    const top = courseEdgeTopAt(road, p.edge, p.s, side);
+    const deck = road.surfaceHeight(p.edge, p.s, line);
+    const f = road.frameAt(p.edge, p.s);
+    const previousD = p.d - (previous.x - at.x) * f.tz + (previous.z - at.z) * f.tx;
+    // Keep the body on the face it approached. An outside approach hits the field face of the rail.
+    const face = sign * (previousD - line) >= 0 ? sign : -sign;
+    const distance = face * (p.d - line);
+    const roof = tops?.(at.x, at.z, at.y + CONTACT_M) ?? null;
+    if (
+      roof === null &&
+      top !== null &&
+      top > 0 &&
+      distance < BODY_RADIUS_M &&
+      at.y >= deck &&
+      at.y <= deck + top
+    ) {
+      const shift = line + face * BODY_RADIUS_M - p.d;
+      const nx = -f.tz * face;
+      const nz = f.tx * face;
+      for (const q of c.p) {
+        q.x -= f.tz * shift;
+        q.z += f.tx * shift;
+        const vn = q.vx * nx + q.vz * nz;
+        if (vn < 0) {
+          q.vx -= (1 + WALL_RESTITUTION) * vn * nx;
+          q.vz -= (1 + WALL_RESTITUTION) * vn * nz;
+        }
+      }
+      at = centre(c.p);
+      p = road.project(at.x, at.z, at.edge);
+    }
+  }
+  const supported = c.p.some((q, i) => Number.isFinite(support(q, i).y));
+  const touching = c.p.some((q, i) => q.y <= support(q, i).y + CONTACT_M);
+  const wasOverboard = c.overboard;
+  const water = terrainAt(road.terrain, at.x, at.z, Infinity, 'water');
+  c.overboard =
+    (wasOverboard && !touching) ||
+    (!supported && (at.y < road.surfaceHeight(p.edge, p.s, p.d) || (water !== null && at.y <= water.y)));
+  let splash = false;
+  if (c.overboard) {
+    if (water && at.y <= water.y) {
+      splash = true;
+      c.splashed = true;
+      for (const q of c.p) {
+        q.y += water.y - at.y;
+        q.vx = q.vy = q.vz = 0;
+      }
+    }
+  }
+  for (const q of c.p) q.edge = p.edge;
+  const ground = under(at.x, at.z, at.y + CONTACT_M);
+  const roof = tops?.(at.x, at.z, at.y + CONTACT_M) ?? null;
+  const reference = Math.max(ground ?? -Infinity, roof ?? -Infinity, water?.y ?? -Infinity);
+  return {
+    edge: p.edge,
+    s: p.s,
+    d: p.d,
+    // Mover height remains encoded relative to a finite reference even where no solid supports it.
+    ground: Number.isFinite(reference) ? reference : road.surfaceHeight(p.edge, p.s, p.d),
+    railOver: c.overboard && !wasOverboard,
+    splash,
+  };
+}
+
 /** Where an overboard cluster's centre lies over the road (for the mover). */
 function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, splash: boolean): ClusterContact {
   const at = centre(c.p);
   const p = road.project(at.x, at.z, at.edge);
+  if (road.terrain) {
+    const ground = groundUnderOf(road)(at.x, at.z, at.y + CONTACT_M);
+    const water = terrainAt(road.terrain, at.x, at.z, at.y + CONTACT_M, 'water');
+    const reference = Math.max(ground ?? -Infinity, water?.y ?? -Infinity);
+    return {
+      ...p,
+      ground: Number.isFinite(reference) ? reference : road.surfaceHeight(p.edge, p.s, p.d),
+      railOver,
+      splash,
+    };
+  }
   const band = wallBand(road, p.edge);
   const d = clamp(p.d, band.lo, band.hi);
   return { edge: p.edge, s: p.s, d, ground: road.surfaceHeight(p.edge, p.s, d), railOver, splash };

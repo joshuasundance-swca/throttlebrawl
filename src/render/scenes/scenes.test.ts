@@ -18,6 +18,7 @@ import {
 } from '../../road';
 import { createFlatLook } from '../look';
 import { buildRoadScene, type RoadDressing, type RoadScene } from '../road-mesh';
+import { buildTerrainChunks } from '../terrain-mesh';
 import { KEYS_KIT, PNW_KIT, scatterRoadside, SF_KIT, type RoadsideKit } from '../roadside';
 import { ridableBandPast, SCENERY_RADIUS_M, themeAt, type ScenerySpot, type SideTag } from '../scenery';
 import { SCENES_PER_RACE, scenesProblems, SIGN_MAX_WORDS, type ScenesFile } from './data';
@@ -75,7 +76,10 @@ function world(id: string, seed: number) {
   let w = built.get(key);
   if (!w) {
     const t = track(id);
-    w = { ...t, scene: buildRoadScene(t.road, look, t.dressing, { seed }) };
+    w = {
+      ...t,
+      scene: buildRoadScene(t.road, look, t.dressing, { seed, terrainChunks: buildTerrainChunks }),
+    };
     built.set(key, w);
   }
   return w;

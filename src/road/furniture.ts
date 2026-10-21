@@ -31,15 +31,17 @@
 //
 // Pure + - * / and core math, like the rest of road/: the same network and seed give the same plan.
 import { atan2, cos, sin } from '../core';
+import { DRAWN_VERGE_M } from './furniture-constants';
 import { lanesUnderOf } from './lanes-under';
 import type { RoadNetwork } from './network';
+import { planSfScenery } from './sf-scenery';
 import type { BakedFeature } from './types';
 import { onSide, scatterHash, themeAt, type LandTheme, type SideTag } from './themes';
 
 /** What a rider meeting it does (docs/content-packs.md, "Contact outcomes"). */
 export type FurnitureClass = 'solid' | 'light';
 /** Which render layer draws it (and so which model its `variant` indexes). */
-export type FurnitureLayer = 'kit' | 'downtown' | 'waterfront' | 'mission';
+export type FurnitureLayer = 'kit' | 'downtown' | 'waterfront' | 'mission' | 'scenery';
 
 /**
  * A footprint in the model's own frame (+Z its front, +X its right), m, before its size: a circle of
@@ -139,6 +141,33 @@ export const FURNITURE = {
     ],
     what: 'a parked car',
   },
+  battery: {
+    cls: 'solid',
+    heightM: 3.73,
+    foot: [{ hx: 15, hz: 7.22, cz: -1.68 }],
+    what: 'a concrete battery',
+  },
+  brush: {
+    cls: 'light',
+    heightM: 1.8,
+    foot: [{ hx: 1.29, hz: 0.85, cx: -0.02, cz: 0.09 }],
+    what: 'a coyote brush clump',
+  },
+  outcrop: {
+    cls: 'solid',
+    heightM: 2.8,
+    foot: [{ hx: 2.67, hz: 1.4, cx: 0.01, cz: 0.54 }],
+    what: 'a chert outcrop',
+  },
+  coastTree: {
+    cls: 'solid',
+    heightM: 6,
+    foot: [
+      { hx: 0.71, hz: 0.59, cx: 0.09, cz: 0.06 },
+      { hx: 0.35, hz: 0.35 },
+    ],
+    what: 'a Presidio tree trunk',
+  },
 } as const satisfies Record<string, FurnitureSpec>;
 
 export type FurnitureKind = keyof typeof FURNITURE;
@@ -200,7 +229,7 @@ export interface FurniturePlan {
 // ---- the shared rules -----------------------------------------------------------------------------
 
 /** The drawn verge past the drawn shoulder (render/road-mesh.ts VERGE_M), m. */
-export const DRAWN_VERGE_M = 0.6;
+export { DRAWN_VERGE_M } from './furniture-constants';
 /** Render's narrowest land between two close roads, and its margin off the other road's verge (road-mesh.ts), m. */
 const NARROWEST_LAND_M = 1.5;
 const LAND_GAP_MARGIN_M = 0.3;
@@ -494,11 +523,25 @@ export function rimOf(shape: FurnitureShape): { s: number; d: number }[] {
 }
 
 /** The road whose lanes (FURNITURE_LANES_CLEAR_M wider) a footprint on `edge` stands on, or -1. */
-export function lanesUnderPiece(road: RoadNetwork, edge: number, shape: FurnitureShape): number {
+export function lanesUnderPiece(
+  road: RoadNetwork,
+  edge: number,
+  shape: FurnitureShape,
+  atS: number,
+  atD: number,
+): number {
   const finder = lanesUnderOf(road);
+  const s = Math.max(0, Math.min(road.edges[edge]?.length ?? 0, atS));
+  const origin = road.toWorld(edge, s, atD, 0);
+  const frame = road.frameAt(edge, s);
   for (const q of rimOf(shape)) {
-    const p = road.toWorld(edge, Math.max(0, Math.min(road.edges[edge]?.length ?? 0, q.s)), q.d, 0);
-    const hit = finder.at(p.x, p.y, p.z, FURNITURE_LANES_CLEAR_M);
+    // The drawn model stays rigid in its placement frame. Re-evaluating each end in the road's
+    // curved frame can move a long battery away from a lane that its visible end cuts through.
+    const ds = q.s - atS,
+      dd = q.d - atD;
+    const x = origin.x + ds * frame.tx - dd * frame.tz;
+    const z = origin.z + ds * frame.tz + dd * frame.tx;
+    const hit = finder.at(x, origin.y, z, FURNITURE_LANES_CLEAR_M);
     if (hit) return hit.edge;
   }
   return -1;
@@ -528,7 +571,7 @@ class Collector {
     const spec: FurnitureSpec = FURNITURE[kind];
     const shape = shapeOf(road, kind, variant, edge, s, d, yaw, size);
     // Never on a lane of any road (its own, a branch's, a shortcut's through a plaza).
-    if (lanesUnderPiece(road, edge, shape) >= 0) return;
+    if (lanesUnderPiece(road, edge, shape, s, d) >= 0) return;
     this.items.push({
       id: this.items.length,
       kind,
@@ -1289,6 +1332,18 @@ export function planStreetFurniture(road: RoadNetwork, seed: number): FurnitureP
   placeDowntown(road, out, seed);
   placeWaterfront(road, out, seed);
   placeMission(road, out, seed);
+  for (const spot of planSfScenery(road, seed))
+    out.add(
+      spot.kind,
+      'scenery',
+      spot.kind,
+      spot.variant,
+      spot.edge,
+      spot.s,
+      spot.d,
+      { yaw: spot.turn },
+      spot.size,
+    );
   const byEdge: StreetFurniture[][] = road.edges.map(() => []);
   let reachS = 0;
   for (const it of out.items) {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 // M5 riding-readability: join real pack words, prepared voice playback and Largest-text layout.
 // The ticker seam replaces/holds presentation only; it never rewrites simulation state.
@@ -246,7 +247,7 @@ test('every prepared voiced bark starts with its complete Largest subtitle clear
     expect(voice?.textAtStart, `${line.ref}: subtitle already complete when voice starts`).toBe(line.text);
     expect(voice?.refAtStart).toBe(line.ref);
     const reading = await measure(page);
-    evidence.push({ ...reading, voice, clipUrl: response.url() });
+    evidence.push({ ...reading, voice, clipUrl: new URL(response.url()).pathname });
     await page.evaluate(
       (row) => (window as DeliveryWindow).__subtitleDeliveryEvidence?.push(row),
       evidence.at(-1),
@@ -312,6 +313,13 @@ test('every prepared voiced bark starts with its complete Largest subtitle clear
   }
   expect(evidence.length).toBe(VOICES.length);
   expect(problems).toEqual([]);
+  mkdirSync('test-results/screenshots', { recursive: true });
+  const evidencePath = `test-results/screenshots/subtitle-delivery-${randomUUID()}-evidence.json`;
+  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+  await test.info().attach('subtitle-delivery-evidence', {
+    path: evidencePath,
+    contentType: 'application/json',
+  });
   console.log(
     `[examined] ${evidence.length} transferred voiced lines: prepared source start, exact Largest subtitle, clipping and HUD geometry`,
   );

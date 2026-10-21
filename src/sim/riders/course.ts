@@ -25,6 +25,8 @@
 // and so does one with the ground beside the road off (`ground.offRoad` 0: the M1 wall at the lanes). Pure + - * / over the road's queries, no random draw; the crash is the over-the-
 // barrier one (`cause: 'over'`, `past: 'ground'`), so no state is made until a rider leaves the course.
 import { cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
+import { terrainAt } from '../../road';
+import { highDrop } from './gap';
 import {
   courseAt,
   BRUSH_STEP_M,
@@ -252,17 +254,23 @@ export function leaveCourse(
   // Level with him (no more than a kerb down): a structure's top he rides on, another road he is handed onto.
   // Lower than that he went off an edge onto nothing drawn: out, as off any edge.
   if (spot.kind === 'top' && spot.y >= feet - KERB_M) return false;
+  if (spot.kind === 'terrain' && spot.y >= feet - KERB_M) return false;
   if (spot.kind === 'road' && spot.y >= feet - KERB_M) {
     handOnto(config.road, m, spot);
     return false;
   }
+  const p = config.road.toWorld(pos.edge, pos.s, pos.d, 0);
+  const source = terrainAt(config.road.terrain, p.x, p.z);
+  const water = source?.surface === 'water';
+  const floorY = water ? source.y : feet;
+  const dropM = Math.max(0, feet - floorY);
   emit(world, 'crash', m.id, {
     cause: 'over',
     overboard: true,
-    past: 'ground',
-    dropM: 0,
-    high: false,
-    floorY: feet,
+    past: water ? 'water' : 'ground',
+    dropM,
+    high: highDrop(world.params, dropM),
+    floorY,
     side,
     speed: m.speed,
     yaw: m.yaw,

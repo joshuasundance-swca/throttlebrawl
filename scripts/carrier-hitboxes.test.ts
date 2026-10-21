@@ -31,6 +31,7 @@ import { deckHeight, movingDecks, truckBodyTop } from '../src/sim/riders/feature
 import { input, riderHarness, testConfig } from '../src/sim/riders/testing';
 import { riderState } from '../src/sim/riders';
 import { RIDER_HALF_LENGTH_M } from '../src/sim/riders/contact';
+import { carrierParts, onCarrierPart } from '../src/sim/riders/carrier-shape';
 import { createWorld } from '../src/sim/world';
 import { mergeBoxes } from '../src/render/geometry';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
@@ -80,6 +81,15 @@ function topOf(meshes: readonly Mesh[], x: number, z: number): number | null {
   return hit ? hit.point.y : null;
 }
 
+/** Outer drawn surface at a particular trailer station and height, rather than the cab's global width. */
+function sideOf(meshes: readonly Mesh[], height: number, into: number): number | null {
+  const hit = new Raycaster(new Vector3(10, height, into), new Vector3(-1, 0, 0), 0, 20).intersectObjects(
+    [...meshes],
+    false,
+  )[0];
+  return hit ? hit.point.x : null;
+}
+
 function meshOf(g: BufferGeometry): Mesh {
   const mesh = new Mesh(g, new MeshBasicMaterial({ side: DoubleSide }));
   mesh.updateMatrixWorld(true);
@@ -100,6 +110,61 @@ describe('the parked carrier: nothing drawn stands where the sim has nothing', a
   const drawn = [meshOf(g.clone())];
   const config = configWith([TRUCK]);
   const simTop = (into: number, x: number) => deckHeight(config, 0, TRUCK.s0 + into, MID + x);
+
+  it('the scaled trailer side sill and raised rails have local physical contact at their drawn stations', () => {
+    const wide: BakedFeature = {
+      ...TRUCK,
+      id: 'wide-local-rail',
+      d0: 0.4,
+      d1: 6.4,
+      params: { rampLengthM: 11.5, lipHeightM: 2.2 },
+    };
+    const scaled = meshOf(g.clone().scale((wide.d1 - wide.d0) / 2.5, 2.2 / 2.8, 1));
+    const center = (wide.d0 + wide.d1) / 2;
+    const localGap = (meshes: readonly Mesh[], into: number, height: number, parts = carrierParts(wide)) => {
+      const drawnSide = sideOf(meshes, height, into);
+      expect(drawnSide, `drawn side at ${into} m, ${height} m high`).not.toBeNull();
+      const physicalSide = Math.max(
+        (wide.d1 - wide.d0) / 2,
+        ...parts
+          .filter(
+            (part) =>
+              onCarrierPart(part, wide.s0 + into, part.shape.d) &&
+              part.topAt(wide.s0 + into, part.shape.d) >= height &&
+              (part.bottomAt?.(wide.s0 + into, part.shape.d) ?? 0) <= height,
+          )
+          .map((part) => part.shape.d + part.shape.hv - center),
+      );
+      return Math.abs((drawnSide ?? 0) - physicalSide);
+    };
+    for (const [into, height] of [
+      [6.4, 0.95],
+      [8.2, 0.55],
+      [8.2, 1.42],
+      [14, 0.55],
+      [14, 2.12],
+    ] as const) {
+      expect(
+        localGap([scaled], into, height),
+        `local side at ${into} m, ${height} m high`,
+      ).toBeLessThanOrEqual(0.15);
+    }
+    const missingLocalRails = carrierParts(wide).filter(
+      (part) => Math.abs(part.shape.d - center) + part.shape.hv <= (wide.d1 - wide.d0) / 2,
+    );
+    expect(
+      localGap([scaled], 8.2, 0.55, missingLocalRails),
+      'the unchanged drawn sill is detected when local physical rails are missing, despite a full-width cab',
+    ).toBeGreaterThan(0.15);
+    const widerLocalDrawing = new BoxGeometry(0.25, 0.2, 0.2);
+    widerLocalDrawing.translate(3.125, 0.5, 3);
+    expect(localGap([scaled], 3, 0.5)).toBeLessThanOrEqual(0.15);
+    expect(new Box3().setFromObject(scaled).max.x).toBeGreaterThan(3.25);
+    expect(
+      localGap([scaled, meshOf(widerLocalDrawing)], 3, 0.5),
+      'a planted wider drawing at the ramp foot is detected without widening the cab/global envelope',
+    ).toBeGreaterThan(0.15);
+  });
 
   /** Every sampled point of the truck where the drawn top stands above the sim's, by more than the tolerance. */
   function ghosts(meshes: readonly Mesh[]) {
