@@ -47,6 +47,18 @@ describe('Street Diamond sites explicitly join the course with open physical apr
     );
     const repeated = changed([...(host.tags ?? []), tag]);
     expect(dispatchCourts(repeated)).toHaveLength(1);
+    const longer = changed(host.tags?.map((t) => (t === tag ? { ...t, s0: tag.s0 - 8, s1: tag.s1 + 8 } : t)));
+    const bounded = dispatchCourts(longer)[0]!;
+    expect(bounded, 'a longer bounded window still places the fixed kit').toBeDefined();
+    expect(bounded.s).toBe((tag.s0 + tag.s1) / 2);
+    expect(bounded.foot.hu * 2).toBe(8);
+    expect(bounded.foot.hv * 2).toBe(16);
+    const longerSite = pnwPlacesLayout(longer, 1).streetSites.find((s) => s.kind === 'dispatch-court')!;
+    const currentSite = pnwPlacesLayout(changed(host.tags), 1).streetSites.find(
+      (s) => s.kind === 'dispatch-court',
+    )!;
+    expect(longerSite.solids).toEqual(currentSite.solids);
+    expect(longerSite.specs.map((st) => st.foot)).toEqual(currentSite.specs.map((st) => st.foot));
   });
   it('opts the Hudson dispatch court into a continuous open riding apron, with removal and relocation controls', async () => {
     const road = make('osm-pnw-longview-civic');

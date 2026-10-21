@@ -30,7 +30,7 @@ export function dispatchCourts(road: RoadNetwork): DispatchCourt[] {
         !Number.isFinite(tag.s1) ||
         tag.s0 < 0 ||
         tag.s1 > edge.length ||
-        Math.abs(tag.s1 - tag.s0 - LENGTH_M) > 1e-6 ||
+        tag.s1 - tag.s0 < LENGTH_M ||
         (tag.s0 === 0 && tag.s1 === edge.length)
       )
         continue;
@@ -57,7 +57,7 @@ export function dispatchCourts(road: RoadNetwork): DispatchCourt[] {
           ux: cos(yaw),
           uz: -sin(yaw),
           hu: DISPATCH_COURT_DEPTH_M / 2,
-          hv: (tag.s1 - tag.s0) / 2,
+          hv: LENGTH_M / 2,
         },
       });
     }

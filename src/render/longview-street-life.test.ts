@@ -332,6 +332,32 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
       expect(
         Math.hypot(spotAt(moved, movedItem).p.x - spot.p.x, spotAt(moved, movedItem).p.z - spot.p.z),
       ).toBeGreaterThan(10);
+      const left = createRoadNetwork({
+        network: civic,
+        roads: civicRoads.map((r) => ({
+          ...r,
+          tags: r.tags?.map((t) => (t.tag === 'dispatch-court' ? { ...t, side: 'left' as const } : t)),
+        })),
+      });
+      const leftLayout = pnwPlacesLayout(left, 1);
+      const leftSite = leftLayout.streetSites.find((s) => s.kind === 'dispatch-court')!;
+      const leftItem = placeItems(left, 1, leftLayout).find((i) => i.kind === 'dispatch-court')!;
+      try {
+        expect(leftItem.d).toBe(leftSite.d);
+        expect(leftItem.d).toBeLessThan(0);
+        const leftSpot = spotAt(left, leftItem);
+        expect(Math.hypot(leftSpot.p.x - spot.p.x, leftSpot.p.z - spot.p.z)).toBeGreaterThan(20);
+        for (const st of leftSite.specs)
+          expect(
+            left.project(st.foot.x, st.foot.z, leftSite.edge).d,
+            'all physical pieces move to the authored side',
+          ).toBeLessThan(0);
+        const leftApron = leftSite.specs.find((st) => st.rule.endsWith(':apron'))!;
+        expect(leftApron.foot.x).toBe(leftSpot.p.x);
+        expect(leftApron.foot.z).toBe(leftSpot.p.z);
+      } finally {
+        leftItem.geometry.dispose();
+      }
       const otherEdge = road.edges.find((e) => e.id === 'osm-longview-civic-20th')!;
       const positive = road.toWorld(otherEdge.index, otherEdge.length / 2, 0, 0);
       expect(lanesNear(road, positive.x, positive.z, site.edge, 0.4)).toBe(true);
