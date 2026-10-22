@@ -1,0 +1,28 @@
+{
+  "type": "traffic-type",
+  "id": "park-hiker",
+  "name": "Bluff Walk Regular",
+  "category": "pedestrian",
+  "tags": ["local", "iowa-park"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "heightM": 1.75,
+  "cruiseMps": 1.3,
+  "hazard": "normal",
+  "behaviour": {
+    "roadside": "dodges",
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "strolls": true
+  },
+  "look": {
+    "procedural": { "preset": "ped-hiker" },
+    "paintOptions": ["#a35b35", "#58714b", "#e6c58a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A light pack for the bluff walk, binoculars for the river. Only the authored Eagle Point visitor zone uses this type; no mapped trail or facility entrance is implied.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-21" }
+  }
+}
