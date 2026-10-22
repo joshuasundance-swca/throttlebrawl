@@ -313,6 +313,8 @@ def test_body_specific_proxy_levels_holes_and_identity_survive_bake_and_proof() 
     assert lake_proof["provenance"] == {"source": "synthetic lake observations"}
     decoded = recipe.Mesh.model_validate_json(recipe.encode_mesh(mesh))
     assert [p.water_body for p in decoded.patches] == [p.water_body for p in mesh.patches]
+    for patch in decoded.patches:
+        patch.vertices = [(recipe.f32(x), recipe.f32(y), recipe.f32(z)) for x, y, z in patch.vertices]
     assert recipe.validate_coverage(decoded, inputs) == proof
 
 
@@ -405,3 +407,85 @@ def test_existing_connected_approach_road_may_meet_deck_at_grade() -> None:
     separation = proof["minimum_natural_top_separation_m"]
     assert isinstance(separation, (int, float))
     assert separation > 0
+
+
+def test_exact_existing_edge_nodes_make_conforming_faces_without_moving_coverage() -> None:
+    patch = recipe.Patch(
+        surface="grass",
+        vertices=[(0, 0, 0), (4, 0, 0), (4, 0, 4), (0, 0, 4), (2, 0, 2)],
+        triangles=[(0, 2, 1), (0, 3, 4), (4, 3, 2)],
+    )
+    original_vertices = list(patch.vertices)
+    original_union = unary_union(
+        [Polygon([(patch.vertices[i][0], patch.vertices[i][2]) for i in t]) for t in patch.triangles]
+    )
+    mesh = recipe.Mesh(patches=[patch])
+    recipe.conform_mesh(mesh)
+    assert patch.vertices == original_vertices
+    assert len(patch.triangles) == 4
+    actual_union = unary_union(
+        [Polygon([(patch.vertices[i][0], patch.vertices[i][2]) for i in t]) for t in patch.triangles]
+    )
+    assert actual_union.equals(original_union)
+    # The long diagonal is actually subdivided, not suppressed from the topology proof.
+    edges = [tuple(sorted([t[i], t[(i + 1) % 3]])) for t in patch.triangles for i in range(3)]
+    assert (0, 2) not in edges
+    assert edges.count((0, 4)) == edges.count((2, 4)) == 2
+
+
+def test_conformity_never_snaps_a_nearby_noncollinear_node() -> None:
+    patch = recipe.Patch(
+        surface="grass",
+        vertices=[(0, 0, 0), (4, 0, 0), (4, 0, 4), (0, 0, 4), (2, 0, 2.000000238418579)],
+        triangles=[(0, 2, 1), (0, 3, 4), (4, 3, 2)],
+    )
+    original = patch.model_dump()
+    recipe.conform_mesh(recipe.Mesh(patches=[patch]))
+    assert patch.model_dump() == original
+
+
+def test_fractional_body_proxy_serialization_restores_actual_float32_before_physical_proof() -> None:
+    inputs = body_inputs()
+    assert inputs.water_bodies is not None
+    inputs.water_bodies.bodies[0].elevations = [0.207804784, 0.207804784, 0.207804784]
+    mesh = recipe.bake(inputs)
+    original = recipe.validate_coverage(mesh, inputs)
+    decoded = recipe.Mesh.model_validate_json(recipe.encode_mesh(mesh))
+    for patch in decoded.patches:
+        patch.vertices = [(recipe.f32(x), recipe.f32(y), recipe.f32(z)) for x, y, z in patch.vertices]
+    assert recipe.geometry_sha256(decoded) == recipe.geometry_sha256(mesh)
+    assert recipe.validate_coverage(decoded, inputs) == original
+
+
+def test_body_proof_uses_declared_noded_plan_and_reports_source_displacement() -> None:
+    inputs = body_inputs()
+    assert inputs.water_bodies is not None
+    inputs.water_bodies.bodies[0].polygons = [
+        [[(40.003, 0.101), (60.701, 0.109), (60.303, 40.503), (40.107, 40.011)]]
+    ]
+    mesh = recipe.bake(inputs)
+    proof = recipe.validate_coverage(mesh, inputs)["water_bodies"]
+    assert isinstance(proof, dict)
+    lake = proof["lake"]
+    assert isinstance(lake, dict)
+    assert lake["planned_missing_area_m2"] == lake["planned_extra_area_m2"] == 0
+    displacement = lake["source_boundary_displacement_m"]
+    assert isinstance(displacement, (int, float)) and displacement > 0
+    # Changing preserved geometry cannot validate the old output under the same body ID.
+    inputs.water_bodies.bodies[0].polygons = [[[(41, 1), (59, 1), (59, 39), (41, 39)]]]
+    with pytest.raises(ValueError, match=r"body.*geometry"):
+        recipe.validate_coverage(mesh, inputs)
+
+
+def test_declared_precision_cannot_silently_remove_a_source_water_hole() -> None:
+    inputs = body_inputs()
+    assert inputs.water_bodies is not None
+    inputs.water_bodies.bodies[0].polygons = [
+        [
+            [(40, 0), (60, 0), (60, 40), (40, 40)],
+            [(50, 20), (50.0001, 20), (50.0001, 20.0001), (50, 20.0001)],
+        ]
+    ]
+    mesh = recipe.bake(inputs)
+    with pytest.raises(ValueError, match="source holes"):
+        recipe.validate_coverage(mesh, inputs)
