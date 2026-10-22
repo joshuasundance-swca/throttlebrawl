@@ -32,6 +32,16 @@
       { "kind": "base:pickup", "weight": 4, "hazard": "normal" },
       { "kind": "base:sedan-rental", "weight": 4, "hazard": "normal" }
     ],
+    "areas": [
+      {
+        "tag": "iowa-farm-traffic",
+        "mix": [
+          { "kind": "base:pickup", "weight": 4, "hazard": "normal" },
+          { "kind": "base:sedan-rental", "weight": 4, "hazard": "normal" },
+          { "kind": "base:box-truck", "weight": 1 }
+        ]
+      }
+    ],
     "pedestrians": [],
     "animals": []
   },
