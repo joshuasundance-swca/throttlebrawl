@@ -92,6 +92,12 @@ export { gestureTimingProblems, gestureWindowTicks, kickConvertTicks, type Windu
 export { applyInputParam, INPUT_TUNING, inputDefaults, type InputThresholds } from './tuning';
 
 export interface InputSystem {
+  /**
+   * Temporarily gives another screen exclusive input ownership. Clears pending actions at both
+   * boundaries; held controls must be released before they can act again. Leases nest and release
+   * idempotently. Sampling while suspended returns neutral without driving devices or the bot.
+   */
+  acquireSuspendLease(): { release(): void };
   /** Samples this tick's command and clears latched presses. `dt` is the sim step, seconds. */
   sample(dt: number): SimInput;
   /** The action state behind the last sample (for the HUD and the test handle). */
@@ -226,7 +232,24 @@ export function createInput(opts: InputOptions): InputSystem {
   const gamepad = new GamepadState(padBase);
   let padBindings: ControlOptions['padBindings'] | null = null;
   const readPads = opts.gamepads ?? browserGamepads;
-  const haptics = createHaptics(opts.vibrate === undefined ? {} : { vibrate: opts.vibrate });
+  let disposed = false;
+  const suspendOwners = new Set<object>();
+  const inactive = () => disposed || suspendOwners.size > 0;
+  const feedback = createHaptics(opts.vibrate === undefined ? {} : { vibrate: opts.vibrate });
+  let hapticsEnabled = true;
+  const haptics: Haptics = {
+    supported: feedback.supported,
+    setEnabled(on) {
+      hapticsEnabled = on;
+      feedback.setEnabled(on && !inactive());
+    },
+    enabled: () => hapticsEnabled,
+    onEvents: (events, playerId, nowMs) => (inactive() ? null : feedback.onEvents(events, playerId, nowMs)),
+    onMoves: (moves, nowMs) => (inactive() ? null : feedback.onMoves(moves, nowMs)),
+    pulse(kind) {
+      if (!inactive()) feedback.pulse(kind);
+    },
+  };
   let controls: ControlOptions = { ...DEFAULT_CONTROL_OPTIONS, ...opts.controls };
   const { surface } = opts;
   let layout = opts.layout;
@@ -234,6 +257,67 @@ export function createInput(opts: InputOptions): InputSystem {
   let last = emptyActions();
   /** Whether the devices' wheelie flag was up last sample, for the tick that marks its pop. */
   let wheelieUp = false;
+  // Physical state is separate from the keyboard's action latches: clearing those latches must
+  // not turn an OS autorepeat into a new press when ownership returns.
+  const heldKeys = new Set<string>();
+  const quarantinedKeys = new Set<string>();
+  const quarantinedPads = new Map<number, { buttons: Set<number>; axes: Set<number> }>();
+
+  const clearActions = () => {
+    keyboard.clear();
+    touch.clear();
+    // TouchState.clear releases a gesture but deliberately preserves its short-tap latch. Retire
+    // that one pending gesture here; normal sample must never be used to drain a viewer's input.
+    touch.sample(emptyActions());
+    gamepad.clear();
+    last = emptyActions();
+    wheelieUp = false;
+    feedback.onMoves(null);
+  };
+  const quarantinePads = () => {
+    quarantinedPads.clear();
+    readPads().forEach((pad, index) => {
+      if (!pad?.connected) return;
+      const buttons = new Set<number>();
+      const axes = new Set<number>();
+      pad.buttons.forEach((b, i) => {
+        if (b.pressed || b.value > 0) buttons.add(i);
+      });
+      pad.axes.forEach((v, i) => {
+        if (Math.abs(v) > thresholds.gamepadDeadZone) axes.add(i);
+      });
+      if (buttons.size || axes.size) quarantinedPads.set(index, { buttons, axes });
+    });
+  };
+  const clearBoundary = () => {
+    clearActions();
+    for (const code of heldKeys) quarantinedKeys.add(code);
+    quarantinePads();
+  };
+  const racePads = () => {
+    const pads = readPads();
+    if (!quarantinedPads.size) return pads;
+    return pads.map((pad, index) => {
+      const blocked = quarantinedPads.get(index);
+      if (!blocked) return pad;
+      if (!pad?.connected) {
+        quarantinedPads.delete(index);
+        return pad;
+      }
+      const buttons = pad.buttons.map((b, i) => {
+        if (!blocked.buttons.has(i)) return b;
+        if (!b.pressed && b.value <= 0) blocked.buttons.delete(i);
+        return { pressed: false, value: 0 };
+      });
+      const axes = pad.axes.map((v, i) => {
+        if (!blocked.axes.has(i)) return v;
+        if (Math.abs(v) <= thresholds.gamepadDeadZone) blocked.axes.delete(i);
+        return 0;
+      });
+      if (!blocked.buttons.size && !blocked.axes.size) quarantinedPads.delete(index);
+      return { connected: pad.connected, mapping: pad.mapping, buttons, axes };
+    });
+  };
 
   /** An injected tilt device (setTilt), or null for the browser's sensors. */
   let injectedTilt: TiltSource | null = null;
@@ -288,16 +372,27 @@ export function createInput(opts: InputOptions): InputSystem {
   const onKeyDown: Listener = (e) => {
     const k = e as KeyboardEvent;
     if (k.code === 'Backquote' || k.code === 'Escape') return; // the tuning panel and pause are ui's
+    heldKeys.add(k.code);
+    if (inactive()) {
+      quarantinedKeys.add(k.code);
+      return;
+    }
+    if (quarantinedKeys.has(k.code) || k.repeat) return;
     keyboard.down(k.code);
   };
-  const onKeyUp: Listener = (e) => keyboard.up((e as KeyboardEvent).code);
+  const onKeyUp: Listener = (e) => {
+    const code = (e as KeyboardEvent).code;
+    heldKeys.delete(code);
+    quarantinedKeys.delete(code);
+    keyboard.up(code);
+  };
   const onBlur: Listener = () => {
-    keyboard.clear();
-    touch.clear();
-    gamepad.clear();
+    heldKeys.clear();
+    clearActions();
   };
 
   const onPointerDown: Listener = (e) => {
+    if (inactive()) return;
     const p = e as unknown as PointerLike;
     const box = surface.getBoundingClientRect();
     const got = touch.down(p.pointerId, p.clientX - box.left, p.clientY - box.top, p.timeStamp, zones(box));
@@ -310,12 +405,14 @@ export function createInput(opts: InputOptions): InputSystem {
     p.preventDefault();
   };
   const onPointerMove: Listener = (e) => {
+    if (inactive()) return;
     const p = e as unknown as PointerLike;
     const box = surface.getBoundingClientRect();
     touch.move(p.pointerId, p.clientX - box.left, p.clientY - box.top, p.timeStamp);
   };
   // pointerup, pointercancel and a lost capture are all a release.
   const onPointerUp: Listener = (e) => {
+    if (inactive()) return;
     const p = e as unknown as PointerLike;
     touch.up(p.pointerId);
   };
@@ -336,8 +433,26 @@ export function createInput(opts: InputOptions): InputSystem {
   for (const [type, fn] of pointerEvents) surface.addEventListener(type, fn);
 
   return {
+    acquireSuspendLease() {
+      if (disposed) return { release() {} };
+      const owner = {};
+      suspendOwners.add(owner);
+      feedback.setEnabled(false);
+      clearBoundary();
+      return {
+        release() {
+          if (!suspendOwners.delete(owner) || disposed) return;
+          clearBoundary();
+          feedback.setEnabled(hapticsEnabled && !inactive());
+        },
+      };
+    },
     sample(dt) {
       const a = emptyActions();
+      if (inactive()) {
+        last = a;
+        return toSimInput(a);
+      }
       if (driver) {
         driver(a);
         // The devices' latches still drain, so a press made while the bot drove does not leak.
@@ -345,14 +460,14 @@ export function createInput(opts: InputOptions): InputSystem {
         const drained = emptyActions();
         keyboard.sample(drained, dt);
         touch.sample(emptyActions());
-        gamepad.sample(drained, readPads(), thresholds.gamepadDeadZone, dt);
+        gamepad.sample(drained, racePads(), thresholds.gamepadDeadZone, dt);
         if (drained.cycleCamera) a.cycleCamera = true;
         if (drained.pause) a.pause = true;
         wheelieUp = false;
       } else {
         keyboard.sample(a, dt);
         touch.sample(a);
-        gamepad.sample(a, readPads(), thresholds.gamepadDeadZone, dt);
+        gamepad.sample(a, racePads(), thresholds.gamepadDeadZone, dt);
         const tiltSteer = (injectedTilt ?? sensorTilt)?.steer(dt) ?? null;
         if (tiltSteer !== null) a.steer = Math.max(-1, Math.min(1, a.steer + tiltSteer));
         // Auto-throttle: full throttle unless braking, so the brake still stops the bike. The wheelie
@@ -395,6 +510,14 @@ export function createInput(opts: InputOptions): InputSystem {
     },
     stickBase: () => touch.base(),
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      suspendOwners.clear();
+      feedback.setEnabled(false);
+      clearActions();
+      heldKeys.clear();
+      quarantinedKeys.clear();
+      quarantinedPads.clear();
       sensorTilt?.dispose();
       sensorTilt = null;
       for (const [type, fn] of keyEvents) opts.keys.removeEventListener(type, fn);
