@@ -43,7 +43,17 @@
           "name": "Washington Approach",
           "tags": ["town"],
           "features": [
-            { "kind": "copSpawn", "id": "civic-patrol-shoulder", "s0": 4, "s1": 20, "d0": 5, "d1": 7 }
+            { "kind": "copSpawn", "id": "civic-patrol-shoulder", "s0": 4, "s1": 20, "d0": 5, "d1": 7 },
+            {
+              "kind": "billboard",
+              "id": "civic-choice-guide",
+              "s0": 37,
+              "s1": 39,
+              "d0": 13.6,
+              "d1": 20,
+              "item": "longview-civic-directions",
+              "params": { "style": "guide" }
+            }
           ]
         },
         { "id": "osm-longview-civic-diagonal", "name": "Washington Diagonal", "tags": ["town"] },
@@ -145,7 +155,7 @@
       "label": "hudson",
       "kind": "detour",
       "marked": true,
-      "sign": "HUDSON / 20TH: LONGER GRID ROUTE. WASHINGTON: DIAGONAL.",
+      "sign": "WASHINGTON: STRAIGHT; HUDSON: RIGHT, LONGER. GRID VIA 20TH.",
       "aiTake": 0.45,
       "connectorWidthM": 6,
       "minRadiusM": 42.5,

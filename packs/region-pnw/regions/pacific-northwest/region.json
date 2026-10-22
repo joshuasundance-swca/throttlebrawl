@@ -131,6 +131,12 @@
   },
   "signs": [
     {
+      "id": "longview-civic-directions",
+      "text": "WASHINGTON: STRAIGHT; HUDSON: RIGHT, LONGER. GRID VIA 20TH.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
       "id": "longview-diamond-directions",
       "text": "20TH / WASHINGTON: LEFT. INNER ROUTE.",
       "tags": ["site"],
