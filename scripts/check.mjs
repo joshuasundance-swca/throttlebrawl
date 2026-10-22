@@ -66,7 +66,11 @@ function fromPlaywright(out) {
   };
 }
 /** How many test files Vitest ran (passed, failed or skipped): the total in "Test Files ... (N)". */
-const vitestFiles = (out) => Number(/Test Files\s+[^\n]*\((\d+)\)/.exec(out)?.[1] ?? -1);
+function vitestFiles(out) {
+  // Tests can print summary-shaped text before the runner's own final summary.
+  const summary = [...out.matchAll(/^[ \t]*Test Files\b[^\r\n]*\r?$/gm)].at(-1)?.[0] ?? '';
+  return Number(/\((\d+)\)[ \t\r]*$/.exec(summary)?.[1] ?? -1);
+}
 /** How many tests Playwright started: "Running N tests using W workers". */
 const playwrightRunning = (out) => Number(/Running (\d+) tests? using/.exec(out)?.[1] ?? -1);
 function fromDist() {

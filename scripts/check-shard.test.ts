@@ -54,7 +54,7 @@ cp.spawn = (cmd, args) => {
   child.stdout = new PassThrough(); child.stderr = new PassThrough();
   process.nextTick(() => {
     const count = f.ran ?? args.slice(args.indexOf('--') + 1).length;
-    child.stdout.write('Test Files ' + count + ' passed (' + count + ')\\nTests 1 passed (1)\\n');
+    child.stdout.write((f.priorOutput ?? '') + (f.summary ?? ('Test Files ' + count + ' passed (' + count + ')\\n')) + 'Tests 1 passed (1)\\n');
     child.emit('close', 0);
   });
   return child;
@@ -65,7 +65,14 @@ syncBuiltinESMExports();
 
 let fixtureNumber = 0;
 function controlledUnit(
-  fixture: { inventory: string[]; changed: string[]; ran?: number; listFails?: boolean },
+  fixture: {
+    inventory: string[];
+    changed: string[];
+    ran?: number;
+    listFails?: boolean;
+    priorOutput?: string;
+    summary?: string;
+  },
   named = true,
   shard = '1/3',
 ) {
@@ -109,6 +116,35 @@ describe('check train-quick unit execution', () => {
     expect(mismatch.status).toBe(1);
     expect(mismatch.stdout).toContain('FAIL (ran 2, the slice planned 1 files)');
   });
+  it('audits the final anchored runner summary rather than earlier test console output', () => {
+    const fixture = { inventory, changed: ['src/ui/sample.ts'] };
+    const maskedMismatch = controlledUnit({
+      ...fixture,
+      ran: 2,
+      priorOutput: 'stdout | sample.test.ts > logs text\nTest Files 1 passed (1)\n',
+    });
+    expect(maskedMismatch.status).toBe(1);
+    expect(maskedMismatch.stdout).toContain('FAIL (ran 2, the slice planned 1 files)');
+    const finalMatch = controlledUnit({ ...fixture, ran: 1, priorOutput: 'Test Files 2 passed (2)\n' });
+    expect(finalMatch.status, finalMatch.stderr).toBe(0);
+    const inline = controlledUnit({ ...fixture, summary: 'prefix Test Files 1 passed (1)\n' });
+    expect(inline.status).toBe(1);
+    const malformed = controlledUnit({
+      ...fixture,
+      priorOutput: 'Test Files 1 passed (1)\n',
+      summary: 'Test Files one passed (one)\n',
+    });
+    expect(malformed.status).toBe(1);
+    expect(malformed.stdout).toContain('FAIL (ran -1, the slice planned 1 files)');
+  });
+  it.each(['', 'Test Files one passed (one)\n'])(
+    'retains failure for missing or malformed final file summaries: %s',
+    (summary) => {
+      const result = controlledUnit({ inventory, changed: ['src/ui/sample.ts'], summary });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('FAIL (ran -1, the slice planned 1 files)');
+    },
+  );
   it('reports validated empty selections and shards without ever invoking an unfiltered runner', () => {
     for (const result of [
       controlledUnit({ inventory, changed: ['src/ui/unnamed.ts'] }),

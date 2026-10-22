@@ -102,6 +102,24 @@ function executeCoverage(env: { diagnostic: string; selection: string; full: str
   return writes;
 }
 
+function executeCoverageJob(env: { diagnostic: string; selection: string; full: string; named?: string }) {
+  const runs: unknown = runInNewContext(
+    field(jobBlock('static'), 'if')
+      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      .replace(/\.([a-z]+-[a-z-]+)/g, "['$1']"),
+    {
+      inputs: {
+        'diagnostic-control': env.diagnostic === 'true',
+        'control-selection': env.selection,
+        'quick-named-units': env.named === 'true',
+        full: env.full === 'true',
+      },
+      fromJSON: JSON.parse,
+    },
+  );
+  return runs ? executeCoverage(env) : null;
+}
+
 describe('diagnostic control workflow contract', () => {
   it('opts into named units only for the ordinary train quick caller', () => {
     const ci = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
@@ -159,6 +177,17 @@ describe('diagnostic control workflow contract', () => {
       expect(() => executeCoverage({ ...env, named: 'true' })).toThrow(
         'quick-named-units requires ordinary quick coverage',
       );
+  });
+
+  it('runs incompatible-input validation even when diagnostic selection excludes static and units', () => {
+    const selection = JSON.stringify({ static: false, unit: [], sim: [1], browser: [], totals });
+    for (const full of ['true', 'false']) {
+      const diagnostic = { diagnostic: 'true', selection, full };
+      expect(executeCoverageJob({ ...diagnostic, named: 'false' })).toBeNull();
+      expect(() => executeCoverageJob({ ...diagnostic, named: 'true' })).toThrow(
+        'quick-named-units requires ordinary quick coverage',
+      );
+    }
   });
 
   it('passes the opt-in CLI argument only to opted-in unit jobs', () => {

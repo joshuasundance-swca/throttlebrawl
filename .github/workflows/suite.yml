@@ -117,7 +117,7 @@ jobs:
   # still runs the build and size budget too; no check or routing changes. [default]
   static:
     name: static
-    if: ${{ inputs.control-selection == '' || !inputs.diagnostic-control || fromJSON(inputs.control-selection).static }}
+    if: ${{ inputs.quick-named-units || inputs.control-selection == '' || !inputs.diagnostic-control || fromJSON(inputs.control-selection).static }}
     outputs:
       coverage: ${{ steps.coverage.outputs.value }}
     runs-on: ubuntu-latest
