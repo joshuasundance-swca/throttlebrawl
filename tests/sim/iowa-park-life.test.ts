@@ -1,15 +1,8 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
-import network from '../../packs/region-clinton/regions/clinton-iowa/networks/osm-clinton-eagle-point.json';
 import { createHeadlessRace } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
-import {
-  createRoadNetwork,
-  terrainAt,
-  roadBandHeight,
-  type BakedRoad,
-  type BakedNetwork,
-} from '../../src/road';
+import { createRoadNetwork, terrainAt, roadBandHeight } from '../../src/road';
 import { iowaParkLayout } from '../../src/road/structures/iowa-park';
 import { quantizeInput, type SimConfig, type SimInput } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
@@ -56,20 +49,13 @@ describe('Eagle Point park visitors use local content and real source ground', (
       expect(p.pos.s).toBeLessThanOrEqual(f.s1);
       expect(st.crosses[k]).toBe(0);
     }
-    const baked = Object.values(
-      import.meta.glob<BakedRoad>(
-        '/packs/region-clinton/regions/clinton-iowa/roads/osm-clinton-eagle-*.json',
-        {
-          eager: true,
-          import: 'default',
-        },
-      ),
-    );
+    const network = registry.networks['region-clinton:osm-clinton-eagle-point']!;
+    const baked = network.roads.map((id) => registry.roads[`region-clinton:${id}`]!);
     const road = createRoadNetwork({
-      network: network as BakedNetwork,
+      network,
       roads: baked.map((r) => ({
         ...r,
-        features: r.features.filter((f) => f.id !== 'eagle-entry-visitors'),
+        features: (r.features ?? []).filter((f) => f.id !== 'eagle-entry-visitors'),
       })),
     });
     expect(pedsState(createSimWithWorld({ ...c, road }).world).id).toEqual([]);

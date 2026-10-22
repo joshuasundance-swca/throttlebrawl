@@ -14,8 +14,9 @@ describe('Eagle Point visitor authoring', () => {
       const road = JSON.parse(
         readFileSync(`packs/region-clinton/regions/clinton-iowa/roads/${source.id}.json`, 'utf8'),
       ) as BakedRoad;
-      expect(road.features).toEqual('features' in source ? source.features : []);
-      for (const f of road.features.filter((f) => f.kind === 'roadsideZone')) {
+      const features = road.features ?? [];
+      expect(features).toEqual('features' in source ? source.features : []);
+      for (const f of features.filter((f) => f.kind === 'roadsideZone')) {
         zones++;
         expect(source.tags).toContain('iowa-park');
         expect(f.d1).toBeLessThan(0);
