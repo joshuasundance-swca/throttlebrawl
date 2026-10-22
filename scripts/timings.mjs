@@ -129,7 +129,8 @@ export function meanOverheads(jobs) {
   );
 }
 
-function average(maps) {
+/** Average each observed file, retaining a positive mean that tenth-second rounding would erase. */
+export function average(maps) {
   const sums = {};
   const counts = {};
   for (const m of maps)
@@ -140,7 +141,11 @@ function average(maps) {
   return Object.fromEntries(
     Object.keys(sums)
       .sort()
-      .map((k) => [k, Math.round((sums[k] / counts[k]) * 10) / 10]),
+      .map((k) => {
+        const mean = sums[k] / counts[k];
+        const rounded = Math.round(mean * 10) / 10;
+        return [k, rounded === 0 && mean > 0 ? mean : rounded];
+      }),
   );
 }
 
