@@ -37,7 +37,7 @@ import {
   stepAttitude,
   touchdown,
 } from './air';
-import { terrainGrade } from './terrain';
+import { terrainGrade, terrainGroundAt } from './terrain';
 import { trunkTouch, noteTreeTouch } from './terrain-trees';
 import { RIDER_CONTACT_HALF_WIDTH_M, applyShove, riderContacts, RIDER_BODY_HEIGHT_M } from './contact';
 import { groundEdgeOpen, roadPastLine, leaveCourse, courseEdgesOn, courseSpotOf } from './course';
@@ -1773,8 +1773,12 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const steer = clamp(input.steer / 127, -1, 1);
   const pos = m.pos;
   const frameKappa = road.kappaAt(pos.edge, pos.s);
+  const fresh = st.lastTick[m.id] !== world.tick - 1;
   const feetBefore = st.yAbs[m.id] ?? road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
-  const terrainBefore = terrainAtFeet(road, pos, feetBefore + KERB_M);
+  // A newly placed grounded rider needs its real source floor, which can stand above the
+  // reference road. Continuous motion and airborne reentry still select floors by height.
+  const terrainBefore =
+    terrainAtFeet(road, pos, feetBefore + KERB_M) ?? (fresh ? terrainGroundAt(road, pos) : null);
   const grade = terrainBefore
     ? terrainGrade(road, pos, m.yaw, terrainBefore)
     : road.frameAt(pos.edge, pos.s).grade * pos.dir;
@@ -1782,7 +1786,6 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   if (wobble > 0) st.wobble[m.id] = Math.max(0, wobble - world.timeScale);
   // Vertical: where the bike is now (a ramp truck's deck included), and how fast it was rising if it
   // was riding last tick too.
-  const fresh = st.lastTick[m.id] !== world.tick - 1;
   // Put down inside a ramp truck (a remount where the bike came to rest, by tumble's hand-back):
   // step out beside it on the road's side, so the rider is never stood on or in the truck.
   // Playtest 3's moving decks: the trucks as this tick starts (`now`) for where the bike is, and one

@@ -49,3 +49,5 @@ Leaving source ground now follows the physical fall instead of extending the ref
 over water or missing land. An overhead road cannot catch a rider falling below it. Real lower
 terrain remains rideable, and landing forecasts and rendered floor references use the same height
 selection. Course-boundary judgment and landing crash thresholds are unchanged.
+Newly placed grounded riders still settle onto real source land above the reference road; this
+placement rule is separate from continuous movement and cannot catch an airborne rider from below.
