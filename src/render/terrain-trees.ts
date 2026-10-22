@@ -1,6 +1,6 @@
 import { Group, InstancedMesh, Object3D, type BufferGeometry, type Material } from 'three';
 import type { RoadNetwork } from '../road';
-import { planTerrainTrees, type TerrainTree } from '../road/structures/terrain-trees';
+import { isParkTreeNetwork, planTerrainTrees, type TerrainTree } from '../road/structures/terrain-trees';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import { deciduousGeometry } from './deciduous';
 
@@ -17,7 +17,8 @@ export class TerrainTrees {
   readonly root = new Group();
   private road: RoadNetwork | null = null;
   private seed = -1;
-  private readonly geometry: BufferGeometry;
+  private geometry: BufferGeometry;
+  private park = false;
   private readonly material: Material;
   private readonly chunks: TreeChunk[] = [];
   private placed = 0;
@@ -37,6 +38,12 @@ export class TerrainTrees {
     }
     this.chunks.length = 0;
     this.placed = this.visible = 0;
+    const park = road !== null && isParkTreeNetwork(road);
+    if (park !== this.park) {
+      this.geometry.dispose();
+      this.geometry = deciduousGeometry(park ? 'park' : 'rural');
+      this.park = park;
+    }
     if (!road) return;
     const cells = new Map<string, TerrainTree[]>();
     for (const tree of planTerrainTrees(road, seed).items) {

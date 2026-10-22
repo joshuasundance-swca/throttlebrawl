@@ -18,7 +18,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { atlasLayoutPath, DOUBLE_SIDED_ROLES, glbPath, PROPS, ROLES } from './catalog.mjs';
+import { atlasLayoutPath, DOUBLE_SIDED_ROLES, PROPS, ROLES } from './catalog.mjs';
+import { propFile } from './prop-files.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(HERE, '../..');
@@ -997,17 +998,23 @@ async function main(argv) {
     const props = names.length ? names.map((n) => PROPS.find((p) => p.name === n) ?? n) : PROPS;
     const unknown = props.filter((p) => typeof p === 'string');
     if (unknown.length) throw new Error(`unknown prop(s) ${unknown.join(', ')}`);
-    jobs = props.map((p) => [p, path.join(repoRoot, glbPath(p))]);
+    jobs = props.map((p) => [p, null]);
   }
   let failed = 0;
   let examined = 0;
-  for (const [prop, glb] of jobs) {
-    if (!existsSync(glb)) {
-      console.error(`SCORE ${prop.name}: no GLB at ${path.relative(repoRoot, glb)}`);
+  for (const [prop, explicitGlb] of jobs) {
+    let glb, bytes;
+    try {
+      if (explicitGlb) {
+        glb = explicitGlb;
+        bytes = readFileSync(glb);
+      } else ({ file: glb, bytes } = await propFile(repoRoot, prop));
+    } catch (err) {
+      console.error(`SCORE ${prop.name}: ${err.message}`);
       failed++;
       continue;
     }
-    const res = scoreGlb(readFileSync(glb), prop);
+    const res = scoreGlb(bytes, prop);
     examined += res.summary.total;
     if (validate) {
       const v = khronosValidate(glb);

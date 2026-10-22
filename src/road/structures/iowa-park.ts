@@ -6,6 +6,7 @@ import type { RoadNetwork } from '../network';
 import type { StructurePlanner, StructureSpec } from '../structures';
 import { terrainAt } from '../terrain';
 import { scatterHash } from '../themes';
+import { landmarkPlaces } from './landmark-places';
 
 export const IOWA_PARK_TAG = 'iowa-park';
 /** Clear land between the full drawn road/verge and any facility footprint, metres. */
@@ -154,6 +155,7 @@ export function iowaParkLayout(road: RoadNetwork, seed: number): IowaParkLayout 
   const old = bySeed.get(seed);
   if (old) return old;
   const facilities: IowaParkFacility[] = [];
+  const towers = landmarkPlaces(road).filter((p) => p.foundation);
   if (road.terrain)
     for (let kind = 0; kind < 3; kind++) {
       const def = figures(kind);
@@ -198,6 +200,24 @@ export function iowaParkLayout(road: RoadNetwork, seed: number): IowaParkLayout 
         const frame = road.frameAt(c.edge, c.s);
         const ux = -c.side * frame.tx;
         const uz = -c.side * frame.tz;
+        // Separating axes of the world-aligned tower pad and this rotated facility pad. Reserve only
+        // a real footprint overlap; the facilities' ordinary 120 m mutual spacing remains separate.
+        if (
+          towers.some((t) => {
+            const h = t.foundation!.halfM,
+              dx = p.x - t.x,
+              dz = p.z - t.z;
+            const a = def.width / 2,
+              b = def.depth / 2;
+            return (
+              Math.abs(dx) < h + Math.abs(ux) * a + Math.abs(uz) * b &&
+              Math.abs(dz) < h + Math.abs(uz) * a + Math.abs(ux) * b &&
+              Math.abs(dx * ux + dz * uz) < a + h * (Math.abs(ux) + Math.abs(uz)) &&
+              Math.abs(-dx * uz + dz * ux) < b + h * (Math.abs(ux) + Math.abs(uz))
+            );
+          })
+        )
+          continue;
         let low = Infinity;
         let high = -Infinity;
         // At half-metre spacing, across the full pad, including its perimeter and interior.

@@ -907,6 +907,7 @@ export const LANDMARK_KITS = [
   'gorge-landmarks',
   'seven-mile-kit',
   'keys-identity',
+  'eagle-stone-tower',
 ] as const;
 export type LandmarkKitId = (typeof LANDMARK_KITS)[number];
 

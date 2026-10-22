@@ -2,6 +2,7 @@
 // networks as the game builds them, the landmark kits as the game bakes them, and a printer for the
 // examined lines.
 import type { BufferGeometry } from 'three';
+import { datasetIndex } from '../assets';
 import { assetIndex, createPackLibrary } from '../content';
 import {
   createRoadNetwork,
@@ -248,9 +249,28 @@ export function holds(
 export async function landmarkKit(id: LandmarkKitId): Promise<LandmarkKit> {
   const mod: string = 'node:fs';
   const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string): Uint8Array };
-  const row = assetIndex(createPackLibrary().registry()).find((r) => r.id === landmarkKitAsset(id));
+  const row = [...assetIndex(createPackLibrary().registry()), ...datasetIndex()].find(
+    (r) => r.id === landmarkKitAsset(id),
+  );
   if (!row) throw new Error(`no asset row for the landmark kit ${id}`);
-  const buf = fs.readFileSync(`packs/${row.packId}/assets/${row.id}.glb`);
+  let buf: Uint8Array;
+  if (row.source === 'dataset') {
+    const helper: string = '../../scripts/dataset-assets.mjs';
+    const { readLock, ensureCached } = (await import(/* @vite-ignore */ helper)) as {
+      readLock: (root: string) => {
+        lock: { files: { path: string; region?: string }[] } | null;
+        problems: string[];
+      };
+      ensureCached: (root: string, lock: unknown, pin: unknown) => Promise<{ bytes: Uint8Array }>;
+    };
+    const { lock, problems } = readLock('.');
+    if (!lock || problems.length) throw new Error(`invalid dataset lock: ${problems.join('; ')}`);
+    const matches = lock.files.filter((f) => f.path === `${row.packId}/${row.id}.glb`);
+    const pin = matches[0];
+    if (matches.length !== 1 || !pin || pin.region !== row.region)
+      throw new Error(`no exact dataset pin for ${row.id}`);
+    buf = (await ensureCached('.', lock, pin)).bytes;
+  } else buf = fs.readFileSync(`packs/${row.packId}/assets/${row.id}.glb`);
   const data = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   return bakeLandmarkKit(id, readGlb(data));
 }

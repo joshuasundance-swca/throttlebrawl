@@ -9,7 +9,7 @@
   "osmQuery": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
   "osmExtract": ".cache/osm/clinton-ia136.json",
   "outRoot": "packs/region-clinton/regions/clinton-iowa",
-  "networkNotes": "One traversal of Eagle Point Park entry, South Loop and Central Loop, ending before the lodge junction. OSM line and actual USGS terrain; main approach two-way, loops forward-only following the city road-map arrows. No North Loop, pedestrian bridge, alternate or repeated-edge lap. Widths are arcade adaptations, not surveyed: entry two 3 m lanes plus 1.5 m shoulders each side; loops one 3 m lane; 0.5 m soft grass verges. The 8.94 m/s traffic pace and paved-shoulder patrol marker are gameplay choices, not surveyed signs or a real parking lot. No claim about current on-site motorcycle access or exact retaining-wall positions.",
+  "networkNotes": "One traversal of Eagle Point Park entry, South Loop and Central Loop, ending before the lodge junction. OSM line and actual USGS terrain; main approach two-way, loops forward-only following the city road-map arrows. No North Loop, pedestrian bridge, alternate or repeated-edge lap. Widths are arcade adaptations, not surveyed: entry two 3 m lanes plus 1.5 m shoulders each side; loops one 3 m lane; 0.5 m soft grass verges. The 8.94 m/s traffic pace and paved-shoulder patrol marker are gameplay choices, not surveyed signs or a real parking lot. No claim about current on-site motorcycle access or exact retaining-wall positions. Tower landmark placement uses the approximate center of OpenStreetMap way 839770216 (https://www.openstreetmap.org/way/839770216), retrieved separately on 2026-10-22T20:08:05Z at 41.8941338, -90.1737434; the original highway geometry query did not supply this point. The original model and its terrain foundation are gameplay adaptations, not a surveyed building footprint or dimensions.",
   "sampleSpacingM": 1.5,
   "lines": [
     {
@@ -147,7 +147,22 @@
           "id": "osm-clinton-eagle-south-loop",
           "name": "South Loop",
           "realName": "Eagle Point Park South Loop",
-          "tags": ["rural", "iowa-park"]
+          "tags": ["rural", "iowa-park"],
+          "features": [
+            {
+              "kind": "landmark",
+              "id": "eagle-stone-tower",
+              "s0": 324.7553169559811,
+              "s1": 336.7553169559811,
+              "d0": -49.69651695152721,
+              "d1": -37.69651695152721,
+              "params": {
+                "model": "models/landmarks/eagle-stone-tower#eagle_stone_tower",
+                "scale": 1,
+                "yawDeg": -90
+              }
+            }
+          ]
         },
         {
           "id": "osm-clinton-eagle-central-loop",
