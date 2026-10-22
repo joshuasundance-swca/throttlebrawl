@@ -6,6 +6,7 @@ import type { LaneInfo } from '../../src/core';
 import { createRoadNetwork, createRouteProgress } from '../../src/road';
 import type { BakedNetwork, BakedRoad, BakedRoute } from '../../src/road/types';
 import { BIKE_HALF_WIDTH_M } from '../../src/sim/riders';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 // Run W-U's live check, mustFix 1: the Mangrove Boardwalk rejoined the Mangrove Reach at d -3, the
 // middle of the ONCOMING lane, so a rider came off the planks at race speed head-on into the Keys'
@@ -21,7 +22,11 @@ import { BIKE_HALF_WIDTH_M } from '../../src/sim/riders';
 const ONCOMING_SLACK_M = BIKE_HALF_WIDTH_M + 1e-3;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const json = <T>(file: string) => JSON.parse(readFileSync(file, 'utf8')) as T;
+const inputs = packInputs(root);
+const json = <T>(file: string) =>
+  JSON.parse(
+    inputs.materialize(path.relative(root, file).split(path.sep).join('/'), readFileSync(file, 'utf8')),
+  ) as T;
 
 interface Live {
   network: BakedNetwork;

@@ -19,8 +19,10 @@ import { describe, expect, it } from 'vitest';
 import { lintPacks, parsePack, registryFromGlob, type PackFile, type ParsedPack } from '../../src/content';
 import { setPieceSlots, type BakedFeature } from '../../src/road';
 import { ALL_TUNING } from './tuning';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const inputs = packInputs(ROOT);
 
 // ---------------------------------------------------------------------------------------------
 // 1. Set-piece slots
@@ -131,7 +133,9 @@ function readPacks(): { dir: string; files: PackFile[] }[] {
       dir: `packs/${d.name}`,
       files: list(path.join(packs, d.name)).map((rel) => ({
         path: rel,
-        json: JSON.parse(readFileSync(path.join(packs, d.name, rel), 'utf8')) as unknown,
+        json: JSON.parse(
+          inputs.materialize(`packs/${d.name}/${rel}`, readFileSync(path.join(packs, d.name, rel), 'utf8')),
+        ) as unknown,
       })),
     }));
 }

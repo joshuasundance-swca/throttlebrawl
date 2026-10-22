@@ -13,6 +13,7 @@ import type { BakedNetwork, BakedRoad } from '../../src/road/types';
 import { barrierLimits } from '../../src/sim/riders';
 import { funnelLimits } from '../../src/sim/riders/funnel';
 import type { SimConfig } from '../../src/sim/types';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 // Lane drops on the live roads (W-R multi-lane highways): the riders' funnel (sim/riders/funnel.ts)
 // exists only where the road's width changes. On every live network it is checked every 10 m, both
@@ -26,7 +27,11 @@ import type { SimConfig } from '../../src/sim/types';
 // onto their streets brings the mapped right edge in. All four are checked against their data.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const json = <T>(file: string) => JSON.parse(readFileSync(file, 'utf8')) as T;
+const inputs = packInputs(root);
+const json = <T>(file: string) =>
+  JSON.parse(
+    inputs.materialize(path.relative(root, file).split(path.sep).join('/'), readFileSync(file, 'utf8')),
+  ) as T;
 
 function networks(): { network: BakedNetwork; roads: BakedRoad[] }[] {
   const out: { network: BakedNetwork; roads: BakedRoad[] }[] = [];

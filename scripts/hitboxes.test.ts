@@ -14,6 +14,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { Box3, BufferGeometry, Matrix4, Vector3, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
+import { packInputs } from './pack-inputs.mjs';
 import {
   DEFAULT_HITBOX,
   HAZARD_OBJECT_HEIGHT_M,
@@ -133,6 +134,7 @@ const WIRE_M = 0.05;
  */
 const CANOPY_TOP_M = 1.95;
 const PACKS = ['base', 'region-pnw', 'region-sf'] as const;
+const inputs = packInputs(process.cwd());
 
 /** A footprint in a thing's own frame: z along its heading (front at -z), x across. */
 interface Foot {
@@ -1216,7 +1218,10 @@ const STRUCTURE_DRAWN_TOLERANCE_M = 0.05;
 /** A network from its pack files, as the game builds it. */
 function networkFrom(pack: string, region: string, id: string) {
   const dir = `packs/${pack}/regions/${region}`;
-  const network = JSON.parse(readFileSync(`${dir}/networks/${id}.json`, 'utf8')) as BakedNetwork;
+  const networkFile = `${dir}/networks/${id}.json`;
+  const network = JSON.parse(
+    inputs.materialize(networkFile, readFileSync(networkFile, 'utf8')),
+  ) as BakedNetwork;
   const roads = network.roads.map(
     (r) => JSON.parse(readFileSync(`${dir}/roads/${r}.json`, 'utf8')) as BakedRoad,
   );

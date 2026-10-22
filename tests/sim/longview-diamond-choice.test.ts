@@ -18,9 +18,11 @@ import { TRAFFIC, trafficState } from '../../src/sim/traffic';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
 import type { SimConfig, SimInput } from '../../src/sim/types';
 import { firstSeed, ISOLATED } from './batch';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const ROOT = 'packs/region-pnw/regions/pacific-northwest';
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const baked = read<BakedNetwork>(`${ROOT}/networks/osm-pnw-longview-diamond.json`);
 const roads = baked.roads.map((id) => read<BakedRoad>(`${ROOT}/roads/${id}.json`));
 const route = read<BakedRoute>(`${ROOT}/routes/osm-longview-street-diamond.json`);

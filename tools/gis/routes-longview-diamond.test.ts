@@ -15,13 +15,16 @@ import {
 import { GroundTris } from '../../src/render/land-probe.test-util';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 import { buildTrafficGraph } from '../../src/sim/traffic/network';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const ROOT = 'packs/region-pnw/regions/pacific-northwest';
 interface Provenanced {
   provenance: {
     tool: { configRef: string };
     sources: { name: string; spdx: string; sha256: string }[];
+    terrain?: { manifest: string; geometrySha256: string };
   };
 }
 interface SourceRoad {
@@ -29,7 +32,8 @@ interface SourceRoad {
   features?: BakedRoad['features'];
   sideRuns?: { tag: string; side: string; s0: number; s1: number }[];
 }
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const bundle = () => {
   const network = read<BakedNetwork & Provenanced>(`${ROOT}/networks/osm-pnw-longview-diamond.json`);
   const roads = network.roads.map((id) => read<BakedRoad & Provenanced>(`${ROOT}/roads/${id}.json`));
@@ -38,8 +42,11 @@ const bundle = () => {
 };
 
 describe('Longview diamond streets offer a complete two-way route choice', () => {
-  it('meets the drawn mixed-flat junction slopes with order-independent cached physical ground', () => {
+  it('retains cached mixed-flat junction support when authored terrain is absent', () => {
     const data = bundle();
+    // Keep the original legacy-ground regression as a control. The shipped course now uses
+    // authored terrain, whose drawing/support is exercised separately below.
+    delete data.network.terrain;
     const road = createRoadNetwork(data);
     const skirts = skirtOf(road);
     const reach = landEdgeOf(road);
@@ -146,8 +153,15 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
         id,
       ).toBe(false);
     }
+    const roadProvenance = { ...network.provenance };
+    delete roadProvenance.terrain;
+    expect(network.provenance.terrain).toBeDefined();
+    const terrainManifest = read<{ expected_geometry_sha256: string }>(network.provenance.terrain!.manifest);
+    expect(network.provenance.terrain!.geometrySha256).toBe(terrainManifest.expected_geometry_sha256);
     for (const r of roads) {
-      expect(r.provenance).toEqual(network.provenance);
+      // Terrain is a separately derived network layer; every original road-compiler provenance
+      // field still compares exactly, rather than copying a lake claim onto individual roads.
+      expect(r.provenance).toEqual(roadProvenance);
       const heights = r.samples.data['y']!;
       expect(heights.every(Number.isFinite)).toBe(true);
       expect(Math.max(...heights)).toBeGreaterThan(0);
@@ -282,7 +296,7 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
       road,
       createFlatLook(),
       Object.fromEntries(data.roads.map((r) => [r.id, r])),
-      { seed: 1 },
+      { seed: 1, terrainChunks: buildTerrainChunks },
     );
     try {
       const ground = new GroundTris(scene.group);

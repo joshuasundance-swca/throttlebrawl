@@ -1,4 +1,4 @@
-# Offline Eagle terrain recipe
+# Offline source-derived terrain recipe
 
 This standalone authoring tool reproduces the selected Eagle terrain from small, preserved numeric
 inputs. The game does not import Python, NumPy, Shapely or GEOS. Like Blender, this is an external
@@ -224,6 +224,39 @@ These are explicitly approximate game surfaces. A median proxy does not establis
 hydraulic continuity, canal slope, flood model, current conditions or surveyed datum/clearance. The
 source spread and provenance stay in the proof so site review can decide whether a horizontal proxy
 is appropriate. This API chooses no source observations, feature segmentation or physical constants.
+
+## Longview Street Diamond
+
+`longview-diamond/manifest.json` selects the separate Street Diamond terrain. Use it instead of the
+Eagle manifest in the command above. Its three hashed numeric inputs retain the bounded 20 m USGS
+sample grid, identified OpenStreetMap water polygons and interior-water observations, actual rendered
+ground-owning road faces, explicitly classified Washington bridge deck faces, and two generic
+frontage apron ground guides. No Python or geometry library ships to the game.
+
+The manifest records extraction source hashes, retrievals, source observation spread, selected
+Float32 geometry and source-to-planned shoreline displacement. Four lake holes remain dry. The
+bounded grid clips outer source water; water levels are separate horizontal median proxies, not
+current levels or evidence of hydraulic independence. The DEM does not resolve a distinct island
+rise. One tiny unnamed polygon has a nearby outside observation below its proxy. These are game
+surfaces, not a surveyed lake, bank, property, bridge underside or navigational-clearance model.
+
+Apron roots are original game geometry, not measured source elevation. Their guide footprints take
+the declared precision path; final physical interpolation retains small height residue. Integration
+checks actual slab contact rather than bit-exact equality to an ideal plane. Terrain-aware sign feet
+fit their local ground while leaving the panels in their authored positions.
+
+After regeneration, retain only each patch's `surface`, `vertices` and `triangles` in the dataset
+terrain input; `waterBody` is authoring evidence, not a runtime field. Pin its exact bytes in
+`assets.lock.json` with the network's `embed` target. Keep the authored network small and preserve
+the manifest reference and selected geometry hash in `provenance.terrain`. Run
+`npm run assets:fetch -- --build-inputs` before local tests or pack checks. The shared Node pack
+materializer assembles the verified input into the normal network JSON for build, dev and tests;
+the browser's network loader and terrain format stay unchanged. Restart the dev server after changing
+the lock. The generated pack index describes authored source bytes, not the assembled emitted bytes.
+A road-network rebake is not this terrain integration:
+changed roads, shoulders, site layouts or classification require fresh extraction and review before
+reattaching a mesh. Do not update the selected fingerprint automatically to make a changed bake pass.
+Civic Triangle needs its own road-band review; this fixture does not opt it into terrain.
 
 ## Focused checks
 
