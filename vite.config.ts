@@ -13,7 +13,6 @@ import {
 import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 import { bootPreloadPlugin } from './scripts/boot-preload.mjs';
 import { datasetAssetsPlugin } from './scripts/dataset-assets.mjs';
-import { packInputsPlugin } from './scripts/pack-inputs-vite.mjs';
 import { stripPackNotesPlugin } from './scripts/pack-notes.mjs';
 import { preParsePacksPlugin } from './scripts/pre-parse-packs.mjs';
 import { serviceWorkerPlugin } from './scripts/service-worker.mjs';
@@ -81,7 +80,6 @@ export default defineConfig({
   // credits.json, the credits page's data, is made from the ledger and the packs (scripts/credits.mjs).
   // The first load by module goes to .cache/ for the perf check (scripts/first-load-modules.mjs).
   plugins: [
-    packInputsPlugin({ root }),
     stripPackNotesPlugin(),
     preParsePacksPlugin({ root }),
     selfTestHash(),

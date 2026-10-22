@@ -3,7 +3,6 @@ import path from 'node:path';
 import { build, createServer, type Rolldown } from 'vite';
 import { afterAll, expect, it } from 'vitest';
 import { cachePath, datasetAssetsPlugin, sha256 } from './dataset-assets.mjs';
-import { packInputsPlugin } from './pack-inputs-vite.mjs';
 import { preParsePacksPlugin } from './pre-parse-packs.mjs';
 
 const parent = path.resolve('scratch/pack-input-vite-tests');
@@ -62,9 +61,15 @@ async function compiled(enabled = true, validate = false, fetchFn?: typeof fetch
     logLevel: 'silent',
     base: './',
     plugins: [
-      ...(enabled ? [packInputsPlugin({ root })] : []),
+      ...(enabled
+        ? [
+            datasetAssetsPlugin({
+              root,
+              fetchFn: fetchFn ?? (() => Promise.reject(new Error('offline fixture'))),
+            }),
+          ]
+        : []),
       ...(validate ? [preParsePacksPlugin({ root })] : []),
-      ...(fetchFn ? [datasetAssetsPlugin({ root, fetchFn })] : []),
     ],
     build: {
       write: false,
@@ -163,7 +168,7 @@ it('serves the same terrain in dev JSON modules and the URL fetched by the runti
     configFile: false,
     root,
     logLevel: 'silent',
-    plugins: [packInputsPlugin({ root })],
+    plugins: [datasetAssetsPlugin({ root })],
     server: { host: '127.0.0.1', port: 0 },
   });
   try {

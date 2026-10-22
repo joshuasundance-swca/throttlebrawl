@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { packInputs } from './pack-inputs.mjs';
 
 /** Keep original pack IDs so glob discovery, note stripping and schema validation still apply. */
-export function packInputsPlugin({ root }) {
+export function packInputsPlugin({ root, inputsOf }) {
   let command;
   let inputs;
   function prepared() {
-    return (inputs ??= packInputs(root));
+    return (inputs ??= inputsOf(root));
   }
   function targetOf(id) {
     const [file, query = ''] = id.split('?');

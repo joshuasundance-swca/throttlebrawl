@@ -13,6 +13,8 @@ and filesystem pack checks share one verified-cache materializer; normal network
 full production schema validation remain in place. It is emitted once with the network, with no
 additional runtime terrain fetch or runtime asset row. Local setup uses
 `npm run assets:fetch -- --build-inputs`; the generated pack index still describes authored sources.
+The existing dataset Vite plugin owns preparation and assembly, including its Node self-test runner
+callers; no second plugin registration is required.
 
 The original mixed-junction cache regression remains an explicit no-terrain control. The shipped
 course drawing check supplies the terrain builder and retains lane, recovery-margin and walking-area
