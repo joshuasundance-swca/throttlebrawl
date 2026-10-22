@@ -52,6 +52,28 @@ it.each([
   },
 );
 
+it('constructs an empty facility layer without Three invalid-object errors after plans are prepared', async () => {
+  const tags = new Set(['iowa-park']);
+  const gate = createChunkGate();
+  await prepareIowaFacilities(tags, gate.chunk.bind(gate));
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const layer = new IowaFacilitiesLayer(createFlatLook(), {
+    road: roadOf('osm-clinton-eagle-point'),
+    seed: 1,
+    tags: new Set(),
+  });
+  try {
+    expect(layer.park).toBeNull();
+    expect(layer.county).toBeNull();
+    expect(layer.visibleContent()).toEqual([]);
+    expect(layer.update(0, 0, 400)).toBe(0);
+    expect(consoleError).not.toHaveBeenCalled();
+  } finally {
+    layer.dispose();
+    consoleError.mockRestore();
+  }
+});
+
 it('keeps a failed layout unavailable and prepares it on a later race without refetching a successful sibling', async () => {
   vi.resetModules();
   const fresh = await import('./iowa-facilities');
