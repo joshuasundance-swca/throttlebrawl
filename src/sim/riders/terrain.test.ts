@@ -6,6 +6,7 @@ import {
   planStructures,
   type BakedTerrain,
   type BakedFeature,
+  type BakedTerrainPatch,
 } from '../../road';
 import { createSimWithWorld } from '../create';
 import { quantizeInput } from '../api';
@@ -100,6 +101,7 @@ function supportEndConfig(
   features: BakedFeature[] = [],
   authored = true,
   neighbour = false,
+  extraTerrain: BakedTerrainPatch[] = [],
 ) {
   const specs = (neighbour ? ['a', 'b'] : ['a']).map((id) => ({ id, lengthM: 300, kappa: 0 }));
   const bundle = fixtureNetwork(specs);
@@ -145,7 +147,11 @@ function supportEndConfig(
         ...(authored
           ? {
               terrain: {
-                patches: [rect(0, -100, -0.44, 'grass'), ...(water ? [rect(-100, -300, -5, 'water')] : [])],
+                patches: [
+                  rect(0, -100, -0.44, 'grass'),
+                  ...(water ? [rect(-100, -300, -5, 'water')] : []),
+                  ...extraTerrain,
+                ],
               },
             }
           : {}),
@@ -156,6 +162,113 @@ function supportEndConfig(
 }
 
 describe('riding authored physical terrain', () => {
+  it.each(['road', 'raised land'] as const)('a fall cannot reenter %s from beneath its floor', (kind) => {
+    const raised: BakedTerrainPatch = {
+      surface: 'grass',
+      vertices: [
+        [5.48, 0.5, -101],
+        [5.48, 0.5, -300],
+        [30, 0.5, -101],
+        [30, 0.5, -300],
+      ],
+      triangles: [
+        [0, 2, 1],
+        [2, 3, 1],
+      ],
+    };
+    const config = supportEndConfig(0, true, [], true, false, kind === 'raised land' ? [raised] : []);
+    const { sim, world } = createSimWithWorld(config);
+    const me = world.movers.find((m) => m.kind === 'rider')!;
+    me.pos.s = kind === 'road' ? 102 : 100.8;
+    me.pos.d = kind === 'road' ? 5.8 : 12;
+    me.speed = 36;
+    me.yaw = kind === 'road' ? -0.8 : 0;
+    me.mode = 'Airborne';
+    me.h = -1;
+    const st = riderState(world);
+    st.yAbs[me.id] = -1;
+    st.vy[me.id] = -2;
+    let crashed = false;
+    for (let tick = 0; tick < 120 && !crashed; tick++) {
+      const before = sim.snapshot().entities.find((e) => e.id === me.id)!.y;
+      sim.step([input]);
+      expect(sim.events().filter((e) => e.type === 'land')).toEqual([]);
+      expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeLessThanOrEqual(before);
+      crashed = sim.events().some((e) => e.type === 'crash');
+    }
+    expect(crashed).toBe(true);
+  });
+
+  it('lands from above on real dry terrain beneath an overhead reference road and keeps that floor', () => {
+    const lower: BakedTerrainPatch = {
+      surface: 'grass',
+      vertices: [
+        [-40, -2, 0],
+        [-40, -2, -300],
+        [40, -2, 0],
+        [40, -2, -300],
+      ],
+      triangles: [
+        [0, 2, 1],
+        [2, 3, 1],
+      ],
+    };
+    const config = supportEndConfig(0, true, [], true, false, [lower]);
+    const { sim, world } = createSimWithWorld(config);
+    const me = world.movers.find((m) => m.kind === 'rider')!;
+    me.pos.s = 102;
+    me.pos.d = 0;
+    me.speed = 1;
+    me.mode = 'Airborne';
+    me.h = -1.97;
+    const st = riderState(world);
+    st.yAbs[me.id] = me.h;
+    st.vy[me.id] = -2;
+    expect(sim.snapshot().entities.find((e) => e.id === me.id)!.floorY).toBe(-2);
+    expect(touchdownOf(world, config, me)?.y).toBeCloseTo(-2, 5);
+    let landed = false;
+    for (let tick = 0; tick < 4; tick++) {
+      sim.step([input]);
+      landed ||= sim.events().some((e) => e.type === 'land');
+      expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeCloseTo(-2, 5);
+      expect(me.mode).toBe('Road');
+      expect(sim.events().filter((e) => e.type === 'crash')).toEqual([]);
+    }
+    expect(landed).toBe(true);
+  });
+
+  it.each(['road', 'raised land'] as const)('still lands from above on %s', (kind) => {
+    const raised: BakedTerrainPatch = {
+      surface: 'grass',
+      vertices: [
+        [5.48, 0.5, -101],
+        [5.48, 0.5, -300],
+        [30, 0.5, -101],
+        [30, 0.5, -300],
+      ],
+      triangles: [
+        [0, 2, 1],
+        [2, 3, 1],
+      ],
+    };
+    const config = supportEndConfig(0, true, [], true, false, kind === 'raised land' ? [raised] : []);
+    const { sim, world } = createSimWithWorld(config);
+    const me = world.movers.find((m) => m.kind === 'rider')!;
+    const floor = kind === 'road' ? 0 : 0.5;
+    me.pos.s = 102;
+    me.pos.d = kind === 'road' ? 0 : 12;
+    me.speed = 1;
+    me.mode = 'Airborne';
+    me.h = floor + 0.03;
+    riderState(world).yAbs[me.id] = me.h;
+    riderState(world).vy[me.id] = -2;
+    sim.step([input]);
+    expect(sim.events().filter((e) => e.type === 'land')).toHaveLength(1);
+    expect(sim.events().filter((e) => e.type === 'crash')).toEqual([]);
+    expect(me.mode).toBe('Road');
+    expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeCloseTo(floor, 5);
+  });
+
   it.each(
     [0, 1].flatMap((courseEdges) =>
       ['supported', 'tiny', 'disabled'].map((kind) => [courseEdges, kind] as const),

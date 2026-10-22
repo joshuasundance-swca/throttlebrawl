@@ -37,7 +37,7 @@ import {
   stepAttitude,
   touchdown,
 } from './air';
-import { terrainGrade, terrainGroundAt } from './terrain';
+import { terrainGrade } from './terrain';
 import { trunkTouch, noteTreeTouch } from './terrain-trees';
 import { RIDER_CONTACT_HALF_WIDTH_M, applyShove, riderContacts, RIDER_BODY_HEIGHT_M } from './contact';
 import { groundEdgeOpen, roadPastLine, leaveCourse, courseEdgesOn, courseSpotOf } from './course';
@@ -251,6 +251,21 @@ const ASSIST_MARGIN_M = 1;
 /** It judges where the rider will be this far ahead, so riding away from the edge is left alone. */
 const ASSIST_LOOKAHEAD_S = 0.4;
 
+/** An XZ road-band hit above these feet is a ceiling, not support for this rider. */
+function terrainAtFeet(road: RoadNetwork, pos: Pick<RoadPos, 'edge' | 's' | 'd'>, ceiling: number) {
+  if (!road.terrain) return null;
+  const band = roadBandHeight(road, pos.edge, pos.s, pos.d);
+  if (band !== null && band <= ceiling) return null;
+  const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  const face = terrainAt(road.terrain, p.x, p.z, ceiling);
+  return face && face.surface !== 'water' ? face : null;
+}
+
+function roadAtFeet(road: RoadNetwork, pos: Pick<RoadPos, 'edge' | 's' | 'd'>, ceiling: number): boolean {
+  const band = roadBandHeight(road, pos.edge, pos.s, pos.d);
+  return band !== null && band <= ceiling;
+}
+
 /**
  * Keeps where a riding rider left the course (gap.ts `left`) while it is off it, and forgets it once it is back on
  * a road's band: the over-the-barrier mark's crossing when it flew over the edge, else (up on a top it rode onto)
@@ -415,8 +430,7 @@ function barrierContact(
       const near = side * (pos.d - outerLimit) <= 0;
       if (!near) {
         st.touching[m.id] = 0;
-        if (!terrainGroundAt(config.road, pos, feet + KERB_M))
-          leaveCourse(world, config, m, side, limit, feet);
+        if (!terrainAtFeet(config.road, pos, feet + KERB_M)) leaveCourse(world, config, m, side, limit, feet);
         return;
       }
       // Meet the outer face, rather than moving through the rail to its road-facing side.
@@ -456,8 +470,8 @@ function barrierContact(
   if (
     config.road.terrain &&
     !courseEdgesOn(world.params) &&
-    roadBandHeight(config.road, pos.edge, pos.s, pos.d) === null &&
-    terrainGroundAt(config.road, pos) === null &&
+    !roadAtFeet(config.road, pos, feet + KERB_M) &&
+    terrainAtFeet(config.road, pos, feet + KERB_M) === null &&
     courseEdgeTopAt(config.road, pos.edge, pos.s, side > 0 ? 'right' : 'left') === 0
   ) {
     // The old band's implicit clamp is no physical barrier over an authored source void.
@@ -1688,7 +1702,7 @@ function fallPastTerrain(
 ): void {
   const pos = m.pos;
   const p = config.road.toWorld(pos.edge, pos.s, pos.d, 0);
-  const source = terrainAt(config.road.terrain, p.x, p.z);
+  const source = terrainAt(config.road.terrain, p.x, p.z, Math.max(fromY, y) + KERB_M);
   const water = source?.surface === 'water';
   let mark = overMarkOf(st, m.id);
   if (!mark) {
@@ -1759,7 +1773,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const steer = clamp(input.steer / 127, -1, 1);
   const pos = m.pos;
   const frameKappa = road.kappaAt(pos.edge, pos.s);
-  const terrainBefore = terrainGroundAt(road, pos);
+  const feetBefore = st.yAbs[m.id] ?? road.surfaceHeight(pos.edge, pos.s, pos.d) + m.h;
+  const terrainBefore = terrainAtFeet(road, pos, feetBefore + KERB_M);
   const grade = terrainBefore
     ? terrainGrade(road, pos, m.yaw, terrainBefore)
     : road.frameAt(pos.edge, pos.s).grade * pos.dir;
@@ -1966,10 +1981,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   m.h = sup ? sup.top : 0;
   applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
-  const handed = crossToBranch(config, m);
-  const movedGround = terrainGroundAt(road, pos);
+  const handed = (!road.terrain || roadAtFeet(road, pos, yBefore + KERB_M)) && crossToBranch(config, m);
+  const movedGround = terrainAtFeet(road, pos, yBefore + vyBefore * dt + KERB_M);
   if (!sup && movedGround) m.h = movedGround.y - road.surfaceHeight(pos.edge, pos.s, pos.d);
-  else if (terrainBefore && !sup && roadBandHeight(road, pos.edge, pos.s, pos.d) === null)
+  else if (terrainBefore && !sup && !roadAtFeet(road, pos, yBefore + vyBefore * dt + KERB_M))
     m.h = yBefore - road.surfaceHeight(pos.edge, pos.s, pos.d);
   // Up on a structure's top its band's edge does not hold it: it rides to the top's edge, and off it.
   const eventsBeforeEdge = world.events.length;
@@ -2001,8 +2016,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   if (
     terrainBefore &&
     !sup &&
-    terrainGroundAt(road, pos) === null &&
-    roadBandHeight(road, pos.edge, pos.s, pos.d) === null &&
+    terrainAtFeet(road, pos, yBefore + vyBefore * dt + KERB_M) === null &&
+    !roadAtFeet(road, pos, yBefore + vyBefore * dt + KERB_M) &&
     !rampTruckAt(config, pos.edge, pos.s, pos.d, decks.next)
   ) {
     const side = pos.d < 0 ? -1 : 1;
@@ -2082,7 +2097,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
           (t, key) => key === sup.key || (t <= sup.top + KERB_M && t >= sup.top - KERB_M),
         )
       : supportAt(world, config, m, here, decks, () => true, sup.key);
-  const terrainAfter = terrainGroundAt(road, pos);
+  const terrainAfter = terrainAtFeet(road, pos, yBefore + vyBefore * dt + KERB_M);
   const deck = still
     ? ramp > 0
       ? Math.max(ramp, still.top)
@@ -2206,7 +2221,11 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     groundPitch(
       st,
       m,
-      still?.kind === 'structure' ? atan(structureGradeOf(world, config, m, still)) : slopeAt(config, m),
+      still?.kind === 'structure'
+        ? atan(structureGradeOf(world, config, m, still))
+        : terrainAfter
+          ? atan(terrainGrade(road, pos, m.yaw, terrainAfter))
+          : slopeAt(config, m),
     );
     // A wheelie's front is up this far above the slope (playtest 3).
     if (wh.pitchAdd !== 0) st.pitch[m.id] = (st.pitch[m.id] ?? 0) + wh.pitchAdd;
@@ -2314,7 +2333,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const y = yBefore + vy * dt - 0.5 * gravity * dt * dt;
   st.vy[m.id] = vy - gravity * dt;
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
-  crossToBranch(config, m);
+  if (!road.terrain || roadAtFeet(road, pos, Math.max(yBefore, y) + KERB_M)) crossToBranch(config, m);
   // Over the barrier (2026-10-06, sim/riders/gap.ts): higher than what stands at the edge, the rider
   // flies over it, and what lies past decides; below its top the barrier rule holds it as ever.
   const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d);
@@ -2323,9 +2342,10 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // supplies no landing surface. Use the existing physical edge/fall query for this case.
   const authoredVoid =
     road.terrain &&
-    roadBandHeight(road, pos.edge, pos.s, pos.d) === null &&
-    terrainGroundAt(road, pos) === null;
+    !roadAtFeet(road, pos, Math.max(yBefore, y) + KERB_M) &&
+    terrainAtFeet(road, pos, Math.max(yBefore, y) + KERB_M) === null;
   const course = courseEdgesOn(world.params);
+  const physicalMark = overMarkOf(st, m.id);
   const over = overBarrier(
     world,
     config,
@@ -2338,6 +2358,10 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     course || Boolean(authoredVoid),
     airFrom,
   );
+  // The old band query clears its mark on XZ reentry even when its floor is overhead. Keep
+  // the physical fall's crossing until an actual floor at this height catches the rider.
+  if (road.terrain && physicalMark && !roadAtFeet(road, pos, Math.max(yBefore, y) + KERB_M))
+    (st.over ??= {})[m.id] = physicalMark;
   if (over === 'barrier') {
     if (road.terrain) m.h = y - road.surfaceHeight(pos.edge, pos.s, pos.d);
     barrierContact(world, config, st, m, dt, airFrom);
@@ -2422,7 +2446,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     st.yAbs[m.id] = y;
     return;
   }
-  const naturalFloor = terrainGroundAt(road, pos, Math.max(st.yAbs[m.id] ?? y, y) + KERB_M);
+  const naturalFloor = terrainAtFeet(road, pos, Math.max(st.yAbs[m.id] ?? y, y) + KERB_M);
   const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
   const deck = onTop ? onTop.top : naturalFloor ? naturalFloor.y - surface : ramp;
   // Air control and flips (playtest 2): the bike's pitch, and the lean the steering asks for. The
@@ -2448,8 +2472,9 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     !onTop &&
     !naturalFloor &&
     ramp === 0 &&
-    roadBandHeight(road, pos.edge, pos.s, pos.d) === null;
-  if (!overGap && !pastEdge && !missingFloor && y - (surface + deck) <= 0)
+    !roadAtFeet(road, pos, Math.max(yBefore, y) + KERB_M);
+  const fromAboveFloor = !road.terrain || yBefore >= surface + deck - KERB_M;
+  if (!overGap && !pastEdge && !missingFloor && fromAboveFloor && y - (surface + deck) <= 0)
     land(world, config, st, m, surface, deck, onTop ?? undefined);
   else {
     m.h = y - surface;
@@ -2491,7 +2516,7 @@ function land(
 ): void {
   const pos = m.pos;
   const grade = config.road.frameAt(pos.edge, pos.s).grade * pos.dir;
-  const naturalFloor = terrainGroundAt(config.road, pos);
+  const naturalFloor = terrainAtFeet(config.road, pos, surface + deck + KERB_M);
   // Onto a structure's top (sim/riders/structures.ts), its roof's slope along the bike's heading is the
   // ground's (level on a flat roof, the pitch on a pitched one), not the road's below it.
   const roof = on && on.kind === 'structure' ? structureGradeOf(world, config, m, on) : null;
@@ -2509,7 +2534,12 @@ function land(
   const lateral = Math.abs(m.speed * sin(m.yaw));
   const crashAt = world.params['riders.landingCrashMps'] ?? 4;
   // The bike's attitude (sim/riders/air.ts): a trick landed, or nose first or looped out.
-  const slope = roof !== null ? atan(roof) : slopeAt(config, m);
+  const slope =
+    roof !== null
+      ? atan(roof)
+      : naturalFloor
+        ? atan(terrainGrade(config.road, pos, m.yaw, naturalFloor))
+        : slopeAt(config, m);
   const td = touchdown(st, m, slope);
   const crashes = lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL || td.crashes;
   const wobbles =
@@ -2692,6 +2722,7 @@ export function riderTouchdown(world: World, config: SimConfig, m: Mover): Touch
   let t = 0;
   let onTop = 0;
   let onTerrain = false;
+  let landed = false;
   const dt = FORECAST_STEP_S;
   const tops = supportsOn(world);
   const decks = tops ? movingDecks(world, world.timeScale / 60) : NO_DECKS;
@@ -2706,7 +2737,7 @@ export function riderTouchdown(world: World, config: SimConfig, m: Mover): Touch
   for (; t < FORECAST_MAX_S; t += dt) {
     v = Math.max(0, v - drag * v * v * dt);
     const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
-    const previousTerrain = terrainGroundAt(road, at, y + KERB_M);
+    const previousTerrain = terrainAtFeet(road, at, y + KERB_M);
     const prev = {
       edge: at.edge,
       s: at.s,
@@ -2735,7 +2766,7 @@ export function riderTouchdown(world: World, config: SimConfig, m: Mover): Touch
       at.d = step.hand.d;
       at.dir = step.hand.dir;
     }
-    const naturalFloor = terrainGroundAt(road, at, Math.max(prev.y, y) + KERB_M);
+    const naturalFloor = terrainAtFeet(road, at, Math.max(prev.y, y) + KERB_M);
     const pastEdge = !naturalFloor && mark !== null && step.result === 'past';
     // Out past the edge over water or a drop (or ground, with the course's edges on), and it falls: out of
     // bounds, not a landing.
@@ -2756,12 +2787,15 @@ export function riderTouchdown(world: World, config: SimConfig, m: Mover): Touch
       }
       t += dt * k;
       onTop = sup.top;
+      landed = true;
       break;
     }
     // Out past the edge its road's plane does not go on: only a road under it, or the ground's
     // edge (put back at the limit above), ends the flight there.
     const groundGap = naturalFloor ? y - naturalFloor.y : gap;
-    if (groundGap <= 0 && !pastEdge) {
+    const hasFloor =
+      !road.terrain || naturalFloor !== null || roadAtFeet(road, at, Math.max(prev.y, y) + KERB_M);
+    if (groundGap <= 0 && !pastEdge && hasFloor) {
       // Back to where the flight crossed the ground, between the two steps.
       const k = prev.groundGap > 0 ? prev.groundGap / (prev.groundGap - groundGap) : 1;
       if (prev.edge === at.edge) {
@@ -2770,10 +2804,12 @@ export function riderTouchdown(world: World, config: SimConfig, m: Mover): Touch
       }
       t += dt * k;
       onTerrain = naturalFloor !== null;
+      landed = true;
       break;
     }
   }
-  const landedTerrain = onTerrain ? terrainGroundAt(road, at) : null;
+  if (road.terrain && !landed) return null;
+  const landedTerrain = onTerrain ? terrainAtFeet(road, at, y + KERB_M) : null;
   const p = road.toWorld(
     at.edge,
     at.s,
@@ -2823,10 +2859,12 @@ export function riderFloor(world: World, config: SimConfig, m: Mover): number | 
       )
     : null;
   const mark = overMarkOf(st, m.id);
+  const naturalFloor = terrainAtFeet(road, pos, y + 1e-6);
+  if (!on && naturalFloor) return naturalFloor.y;
   if (mark) {
     // Out past the edge: a structure's top under it (a roof past the sidewalk) first.
     if (on) return surface + on.top;
-    const ground = terrainGroundAt(road, pos, y);
+    const ground = terrainAtFeet(road, pos, y);
     if (ground) return ground.y;
     const limits = (edge: number, s: number, d: number) => riderLimits(world, config, edge, s, d, true);
     const to = roadUnder(config, pos, y, limits);
@@ -2837,6 +2875,10 @@ export function riderFloor(world: World, config: SimConfig, m: Mover): number | 
       : mark.floorY;
   }
   const ramp = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.now });
+  if (road.terrain && ramp === 0 && !on && !roadAtFeet(road, pos, y + 1e-6)) {
+    const p = road.toWorld(pos.edge, pos.s, pos.d, 0);
+    return terrainAt(road.terrain, p.x, p.z, y)?.y ?? null;
+  }
   return surface + Math.max(0, ramp, on ? on.top : 0);
 }
 
