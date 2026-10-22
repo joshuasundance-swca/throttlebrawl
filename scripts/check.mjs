@@ -29,6 +29,7 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
 import { dependabotOnlyCommits } from './notes.mjs';
+import { planQuickUnits } from './quick-unit-plan.mjs';
 import {
   JOB_SHARE,
   overLine,
@@ -65,7 +66,11 @@ function fromPlaywright(out) {
   };
 }
 /** How many test files Vitest ran (passed, failed or skipped): the total in "Test Files ... (N)". */
-const vitestFiles = (out) => Number(/Test Files\s+[^\n]*\((\d+)\)/.exec(out)?.[1] ?? -1);
+function vitestFiles(out) {
+  // Tests can print summary-shaped text before the runner's own final summary.
+  const summary = [...out.matchAll(/^[ \t]*Test Files\b[^\r\n]*\r?$/gm)].at(-1)?.[0] ?? '';
+  return Number(/\((\d+)\)[ \t\r]*$/.exec(summary)?.[1] ?? -1);
+}
 /** How many tests Playwright started: "Running N tests using W workers". */
 const playwrightRunning = (out) => Number(/Running (\d+) tests? using/.exec(out)?.[1] ?? -1);
 function fromDist() {
@@ -269,8 +274,33 @@ if (shard !== null) {
  * every slice's files are printed instead (which slice runs my test?), and nothing runs.
  */
 const planOnly = process.argv.includes('--plan');
+const quickNamedUnits = process.argv.includes('--quick-named-units');
+if (
+  quickNamedUnits &&
+  (!slice ||
+    tiers?.length !== 1 ||
+    tiers[0] !== 'unit' ||
+    process.env.SUITE_FULL === 'true' ||
+    process.env.DIAGNOSTIC_CONTROL === 'true' ||
+    (process.env.CONTROL_SELECTION ?? '') !== '')
+) {
+  console.error('check: --quick-named-units requires an ordinary quick unit shard');
+  process.exit(1);
+}
 function sliceOf(step) {
-  const { files, tests } = runnerFiles(step.shardable);
+  const { files: inventory, tests } = runnerFiles(step.shardable);
+  const selection = quickNamedUnits
+    ? planQuickUnits({ git, exists: (f) => existsSync(path.join(repoRoot, f)), inventory })
+    : null;
+  if (selection) {
+    console.log(`quick units: ${selection.mode}; ${selection.reason}`);
+    if (selection.mode === 'files')
+      console.log(
+        `quick units: comparison ${selection.base}..${selection.head}; selected ${selection.tests.length} of ${inventory.length} unit files`,
+      );
+  }
+  const selected = selection?.mode === 'files';
+  const files = selection?.tests ?? inventory;
   const plan = planTier(step.shardable, files, slice.n);
   const mine = plan[slice.i - 1];
   const total = [...tests.values()].reduce((a, b) => a + b, 0);
@@ -309,11 +339,11 @@ function sliceOf(step) {
       console.log(`[slice ${k + 1}/${slice.n}] ${s.files.length} files, about ${s.predicted} s of job on CI`);
     for (const f of s.files) console.log(`  ${f}`);
   }
-  if (mine.files.length === 0) {
+  if (mine.files.length === 0 && !selected) {
     console.error(`check: slice ${slice.i}/${slice.n} of ${step.name} got no files; use fewer slices`);
     process.exit(1);
   }
-  return { files: mine.files, tests: step.shardable === 'e2e' ? testsIn(mine.files) : null };
+  return { files: mine.files, tests: step.shardable === 'e2e' ? testsIn(mine.files) : null, selected };
 }
 
 if (planOnly) {
@@ -336,6 +366,14 @@ for (const step of steps) {
     continue;
   }
   const planned = slice && step.shardable ? sliceOf(step) : null;
+  if (planned?.selected && planned.files.length === 0) {
+    rows.push([
+      step.name,
+      'NO SELECTED WORK',
+      `validated named-unit selection; slice ${slice.i}/${slice.n}; runner not started`,
+    ]);
+    continue;
+  }
   const args = planned ? planned.files : (step.args ?? []);
   const label = planned
     ? `${step.name} (slice ${slice.i}/${slice.n}, ${planned.files.length} files)`

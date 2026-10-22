@@ -3108,13 +3108,27 @@ describe('the workflows', () => {
     const vitest = read('vitest.config.ts');
     expect(vitest).toContain("include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'tools/**/*.test.ts'],");
     expect(vitest).toContain("include: ['tests/sim/**/*.test.ts'],");
-    for (const f of ['src/ui/x.test.ts', 'scripts/x.test.ts', 'tools/gis/x.test.ts'])
-      expect(canReach([f], 'suite / sim (1/6)'), f).toBe(false);
-    for (const f of ['tests/sim/x.test.ts', 'tests/e2e/x.spec.ts', 'src/ui/x.ts'])
-      expect(canReach([f], 'suite / sim (1/6)'), f).toBe(true);
-    // Nothing imports a test file, and only CI routing/acceptance scripts and their tests name these scripts
-    // (and contributing-docs.test.ts and stack-lite-docs.test.ts, unit tests: they read train.mjs to check what the contributor
-    // pages say about it, and a unit test is reached by any code change anyway, see canReach).
+    const unitTest = /^(?:src|scripts|tools)\/.+\.test\.ts$/;
+    const routingScript = /^scripts\/(?:train|tested-tree|main-preflight|main-acceptance)\.mjs$/;
+    for (const f of ['src/ui/x.test.ts', 'scripts/x.test.ts', 'tools/gis/x.test.ts']) {
+      expect(unitTest.test(f), f).toBe(true);
+      for (const job of ['suite / sim (1/6)', 'suite / browser (1/6)'])
+        expect(canReach([f], job), f).toBe(false);
+    }
+    for (const f of [
+      'tests/sim/x.test.ts',
+      'tests/e2e/x.spec.ts',
+      'src/ui/x.ts',
+      'scripts/x.mjs',
+      'x.test.ts',
+    ]) {
+      expect(unitTest.test(f) || routingScript.test(f), f).toBe(false);
+      for (const job of ['suite / sim (1/6)', 'suite / browser (1/6)'])
+        expect(canReach([f], job), f).toBe(true);
+    }
+    // Nothing imports a test file. Only CI routing/acceptance scripts and unit-project tests
+    // may name those scripts: all unit tests are excluded from sim/browser jobs, not just a
+    // fixed list of test basenames. Other production, sim and browser references still fail.
     const tracked = spawnSync('git', ['ls-files', '-z', 'src', 'tests', 'scripts', 'tools'], {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -3133,12 +3147,7 @@ describe('the workflows', () => {
     expect(read('scripts/train.test.ts')).toMatch(namesScript);
     for (const f of files) {
       expect(importsTest.test(read(f)), f).toBe(false);
-      if (
-        !/^scripts\/(?:(?:train|tested-tree|main-preflight|main-acceptance)\.(?:mjs|test\.ts)|(?:contributing|stack-lite)-docs\.test\.ts)$/.test(
-          f,
-        )
-      )
-        expect(namesScript.test(read(f)), f).toBe(false);
+      if (!unitTest.test(f) && !routingScript.test(f)) expect(namesScript.test(read(f)), f).toBe(false);
     }
   });
 

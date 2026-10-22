@@ -226,7 +226,7 @@ describe('CONTRIBUTING.md: how a PR lands', () => {
   it('says what `quick` and `gate` mean, where to read the gate text, and how to see why a PR waits', () => {
     const text = contributing.replace(/\s+/g, ' ');
     for (const [what, re] of [
-      ['quick is the fast check, not a licence to merge', /`quick`[^.]*(fast|first|few)/i],
+      ['quick provides early feedback, not acceptance', /`quick`[^.]*(early|first)/i],
       ['gate is the one required check', /`gate`[^.]*(required|only check|one check)/i],
       ['the gate text is read with gh pr checks', /gh pr checks <?[#\w]+>?/],
       ['the train line says why it waits', /`train`[^.]*(why|waiting|waits)/i],

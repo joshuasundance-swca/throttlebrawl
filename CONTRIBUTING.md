@@ -64,8 +64,8 @@ the full path too, but a fork author cannot arm auto-merge, so a maintainer merg
 1. **Open the PR.** CI starts at once. It first reads what you changed and who opened the PR, and picks a
    path for it (see "Which path your PR takes", below). An ordinary change from a branch of this repo
    takes the train path; a PR from a fork does not (see "Forks", below).
-2. **The `quick` check runs**: types, lint, the unit tests, the build and its size budget, a few
-   minutes in all. It is a fast first look, not permission to merge. If it is red, open it, fix the
+2. **The `quick` check runs**: types, lint, named unit tests, the build and its size budget.
+   It is a first look, not permission to merge. If it is red, open it, fix the
    cause and push.
 3. **Arm auto-merge**, in the same step as opening the PR if you can: `gh pr merge --auto --squash`. The
    train only carries PRs that are armed. Without it, a green PR on the train path waits for ever, and
@@ -91,7 +91,7 @@ token is read-only), so the run goes on and every job reports.
 
 ### What `quick` and `gate` mean
 
-- **`quick`** is the fast check of step 2. It tells you your change builds and passes the unit tests.
+- **`quick`** is the early check of step 2. It tells you your change builds and passes the selected unit tests.
   Nothing requires it for a merge.
 - **`gate`** is the one check that decides whether a PR may merge; GitHub requires it and nothing else.
   On the train path the train posts it as a status on your PR's head commit: pending while the PR rides
@@ -194,6 +194,11 @@ line; push a new commit (an empty one is fine) to start clean.
 
 An exact full-suite record from a trusted PR or train avoids repeating that suite on `main`. A
 quick check never supplies that record. An unrecorded final main still needs full acceptance.
+On the ordinary train route, quick reuses the pre-push planner's bounded named unit files across
+the existing three jobs. Manifest/lock changes and uncertain comparisons keep all units. A valid
+empty selection says `NO SELECTED WORK`; it runs no unit tests. Docs-only quick keeps all units
+because it is that PR's gate. A failure outside the named set may be discovered by the full train
+instead of quick, consuming a train attempt. No timing or equivalent-detection claim is made.
 An obsolete intermediate subset can finish as **superseded main (not accepted)** when a descendant's
 eligible CI is last observed; it gains no acceptance gate, tree record, build or release. Uncertainty
 falls back to the full suite, and later cancellation of that successor remains possible. See
