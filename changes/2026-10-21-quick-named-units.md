@@ -10,3 +10,5 @@ Incompatible named-unit and diagnostic inputs force the validation job to run ev
 The contributor-guidance test now checks that quick is early feedback rather than requiring an unmeasured speed claim; routing, gate, status-text and missing-step controls remain.
 
 CLI test fixtures explicitly choose their intended suite mode, so the full CI job's environment cannot change the scenario or mask a diagnostic-input rejection.
+
+The reachability test now permits routing-script references from every declared unit-project test, replacing its fixed test-name exceptions. The global ban on importing test files and the restrictions on production, simulation and browser references remain; production timeout routing is unchanged.
