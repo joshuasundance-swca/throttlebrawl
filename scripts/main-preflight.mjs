@@ -161,8 +161,15 @@ export async function routeMain(o) {
           `${base}/actions/workflows/${workflow.id}/runs?event=push&head_sha=${successor}`,
           'workflow_runs',
         );
-        if (!runs.length || runs.some((r) => !validRun(r, successor)))
-          return fallback('successor-eligibility-unproven');
+        if (!runs.length) {
+          // A complete empty observation proves no eligibility. Allow visibility to catch up only
+          // within the original budget, then re-read main and prove its ancestry again.
+          if (remaining() <= POLL_MS || REQUEST_CAP - requests < 1 + SUCCESSOR_REQUESTS)
+            return fallback(remaining() <= POLL_MS ? 'poll-deadline' : 'request-cap');
+          await sleep(POLL_MS);
+          continue;
+        }
+        if (runs.some((r) => !validRun(r, successor))) return fallback('successor-eligibility-unproven');
         runs.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id);
         const listed = runs[0];
         const chosen = await get(`${base}/actions/runs/${listed.id}`);
