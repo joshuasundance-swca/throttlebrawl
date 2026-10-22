@@ -2029,7 +2029,9 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
         spot.kind !== 'top' &&
         !leaveCourse(world, config, m, side, side > 0 ? lim.hi : lim.lo, yBefore));
     if (!accepted) {
-      if (course) st.yAbs[m.id] = yBefore;
+      // An unrideable top is still a physical contact/fall, even when the course query sees
+      // its roof. Only a leaveCourse call that rejected the surface has already reset us.
+      if (course && spot.kind !== 'top') st.yAbs[m.id] = yBefore;
       else {
         const y = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
         m.mode = 'Airborne';

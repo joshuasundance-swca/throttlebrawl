@@ -156,12 +156,17 @@ function supportEndConfig(
 }
 
 describe('riding authored physical terrain', () => {
-  it.each([0, 1])(
-    'steps from source land onto a level structure support without a reset or reference snap (course edges %s)',
-    (courseEdges) => {
-      const config = supportEndConfig(courseEdges, true, [
+  it.each(
+    [0, 1].flatMap((courseEdges) =>
+      ['supported', 'tiny', 'disabled'].map((kind) => [courseEdges, kind] as const),
+    ),
+  )(
+    'source land meets a %s-course-edge level top with support %s and keeps real feet',
+    (courseEdges, kind) => {
+      const base = supportEndConfig(courseEdges, true, [
         { kind: 'billboard', id: 'platform', s0: 100, s1: 120, d0: 10, d1: 14 },
       ]);
+      const config = { ...base, tuning: { ...base.tuning, 'riders.supports': kind === 'disabled' ? 0 : 1 } };
       planStructures(
         config.road,
         config.seed,
@@ -175,7 +180,7 @@ describe('riding authored physical terrain', () => {
                 edge: 0,
                 s: 110,
                 d: 10,
-                foot: { x: 12, z: -110, ux: 0, uz: -1, hu: 10, hv: 2 },
+                foot: { x: 12, z: -110, ux: 0, uz: -1, hu: 10, hv: kind === 'tiny' ? 0.1 : 2 },
                 baseY: -1,
                 roof: { kind: 'flat', topM: 0.56 },
               }),
@@ -191,10 +196,24 @@ describe('riding authored physical terrain', () => {
       me.h = -0.44;
       riderState(world).yAbs[me.id] = me.h;
       sim.step([input]);
-      expect(me.mode).toBe('Road');
-      expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeCloseTo(-0.44, 5);
-      expect(supportKeyOf(world, me.id)).toMatch(/^s:/);
-      expect(sim.events().filter((e) => e.type === 'crash' || e.type === 'jump')).toEqual([]);
+      if (kind === 'supported') {
+        expect(me.mode).toBe('Road');
+        expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeCloseTo(-0.44, 5);
+        expect(supportKeyOf(world, me.id)).toMatch(/^s:/);
+        expect(sim.events().filter((e) => e.type === 'crash' || e.type === 'jump')).toEqual([]);
+      } else {
+        expect(me.mode).toBe('Airborne');
+        expect(supportKeyOf(world, me.id)).toBe('');
+        expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeLessThan(-0.44);
+        for (let tick = 0; tick < 4; tick++) {
+          const before = sim.snapshot().entities.find((e) => e.id === me.id)!.y;
+          sim.step([input]);
+          expect(me.mode).not.toBe('Road');
+          expect(sim.snapshot().entities.find((e) => e.id === me.id)!.y).toBeLessThanOrEqual(before);
+          expect(sim.events().filter((e) => e.type === 'land')).toEqual([]);
+          expect(supportKeyOf(world, me.id)).toBe('');
+        }
+      }
     },
   );
 
