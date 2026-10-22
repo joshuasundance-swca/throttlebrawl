@@ -3,7 +3,7 @@
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
-  "revision": "87d54e91f23950929c4108516bb3d2150de46078",
+  "revision": "d433486b53352a6022acd8005e7f1c6a8df32def",
   "files": [
     {
       "path": "base/models/placeholder/marker-cube.glb",
@@ -115,8 +115,8 @@
     },
     {
       "path": "region-pnw/terrain/longview-diamond.json",
-      "bytes": 2395585,
-      "sha256": "5b1a4495282c16545d221a5c45601cf7490f796e59532122ad0a0d9b2e6f8dde",
+      "bytes": 2521217,
+      "sha256": "1dad559a1a8a6d4b490342bb8ef7ba21cc78416bfc641f4ea2e606f8992b50e9",
       "region": "pacific-northwest",
       "note": "Source-derived Street Diamond terrain; OSM/USGS attribution and regeneration record in THIRD_PARTY_ASSETS.md",
       "embed": {

@@ -121,10 +121,9 @@ describe('Street Diamond local places are usable and their riding payoff is opti
           const target = take && p.s > pad!.s0 - 100 && p.s < pad!.s1 + 20 ? (pad!.d0 + pad!.d1) / 2 : 2;
           const k = road.kappaAt(p.edge, p.s),
             v = h.rider.speed;
-          const steer = Math.max(
-            -1,
-            Math.min(1, 0.35 * (target - p.d) - 2.5 * h.rider.yaw + (k * v * v) / 22),
-          );
+          // Terrain holds world heading after steering is released. Dampen that heading so
+          // this take trajectory aims through the pad rather than overshooting beside it.
+          const steer = Math.max(-1, Math.min(1, 0.35 * (target - p.d) - 6 * h.rider.yaw + (k * v * v) / 22));
           const emitted = h.step(input(v < (fast ? 60 : 42) ? 1 : 0, 0, steer));
           events.push(...emitted);
           if (emitted.some((ev) => ev.type === 'boost' && ev.data['feature'] === pad!.id))

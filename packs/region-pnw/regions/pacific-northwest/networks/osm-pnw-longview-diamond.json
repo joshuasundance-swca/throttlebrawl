@@ -374,7 +374,7 @@
     "terrain": {
       "recipe": "tools/gis/terrain/recipe.py",
       "manifest": "tools/gis/terrain/longview-diamond/manifest.json",
-      "geometrySha256": "88a6ff08aecd75d9b9392f388c9bd2e71a6c038d781117e98cbbefd112596a0e",
+      "geometrySha256": "a78564fd602041b0e2789591dc4b6bbf114ecf26f217f36c2d40dd477f9f8b81",
       "source": "OpenStreetMap mapped water polygons and USGS 3DEP area elevation; preserved road/deck faces and two authored generic apron ground guides",
       "processing": "AI-assisted source-derived terrain. Water levels are horizontal DEM-median proxies; roads, grass transitions and site grades are game adaptations. Not surveyed property, current stage, flood, hydraulic or bridge-clearance information."
     }

@@ -37,3 +37,15 @@ approach, matching terrain steering. The boost must remain grounded across its o
 while riding; the approach may briefly leave the real bank and land cleanly. This replaces the old
 guarantee of no airtime anywhere along that fast grass approach, while preserving safe rejoin,
 optional pickup, visible-solid contact and crash checks.
+The take trajectory damps its world heading on terrain so it actually crosses the pad; the former
+road-steering controller could miss its outer edge while remaining grounded. Pad dimensions and
+activation, clean landing and safe return requirements are unchanged.
+
+Ground-guide boundaries receive local samples of the same coarse elevation field, avoiding thin
+false cliffs at the graded frontage. Water polygons and bridge separation remain unchanged; these
+samples refine the mesh, not the source survey's accuracy.
+
+Leaving source ground now follows the physical fall instead of extending the reference road plane
+over water or missing land. An overhead road cannot catch a rider falling below it. Real lower
+terrain remains rideable, and landing forecasts and rendered floor references use the same height
+selection. Course-boundary judgment and landing crash thresholds are unchanged.

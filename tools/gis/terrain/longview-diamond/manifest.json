@@ -19,7 +19,7 @@
     "numpy": "2.5.3",
     "pydantic": "2.13.5"
   },
-  "expected_geometry_sha256": "88a6ff08aecd75d9b9392f388c9bd2e71a6c038d781117e98cbbefd112596a0e",
+  "expected_geometry_sha256": "a78564fd602041b0e2789591dc4b6bbf114ecf26f217f36c2d40dd477f9f8b81",
   "provenance": {
     "network": "osm-pnw-longview-diamond",
     "frame": {
@@ -447,7 +447,13 @@
       "source": "Original procedural generic civic-frontage and plant-market physical apron roots; not surveyed properties",
       "sourceFile": "src/road/structures/pnw-places.ts",
       "convention": "Actual apron footprint at root plane; top is root +0.02 m and underside root -0.12 m. STEP-snapped arrangement and physical interpolation move footprint/height slightly; do not promise raw-boundary equality.",
-      "inputEvidenceSha256": "8d184b77d5a0496619ce6e54f01dbb2a935b164f51ffc1b65e67122866297cd9"
+      "inputEvidenceSha256": "8d184b77d5a0496619ce6e54f01dbb2a935b164f51ffc1b65e67122866297cd9",
+      "localSampling": {
+        "purpose": "Resolve coarse-grid interpolation cliffs around unchanged authored flat grades",
+        "radiiM": [0.00390625, 0.015625, 0.0625, 0.25, 0.5, 1, 2, 4],
+        "clearance": "Each outline remains more than two authoring precision steps from source road and water cutout boundaries",
+        "limits": "Not an analytic slope guarantee; new sites require physical footprint and riding checks"
+      }
     },
     "source_license": {
       "geometry": "ODbL-1.0",
@@ -467,7 +473,7 @@
       "No current conditions, flood, phone-performance or whole-race acceptance claim."
     ],
     "selected_geometry_review": {
-      "geometrySha256": "88a6ff08aecd75d9b9392f388c9bd2e71a6c038d781117e98cbbefd112596a0e",
+      "geometrySha256": "a78564fd602041b0e2789591dc4b6bbf114ecf26f217f36c2d40dd477f9f8b81",
       "restoredFloat32ProofEqual": true,
       "coverage": {
         "world_missing_area_m2": 0,
