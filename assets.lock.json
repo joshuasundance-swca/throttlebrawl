@@ -1,5 +1,5 @@
 {
-  "$comment": "Pins the big files the build bakes in from the Hugging Face dataset repo below (docs/engineering.md, Big and generated assets). revision is an exact commit, never a branch. A file's path is <packId>/<path under the pack's assets/>; region is a region id, or absent for files every region uses. Change it with npm run assets:add and assets:upload (scripts/assets.mjs).",
+  "$comment": "Pins verified files from the Hugging Face dataset (docs/engineering.md, Big and generated assets). revision is an exact commit. Runtime paths are <packId>/<path under assets/>; optional region scopes assets. Optional embed:{kind:network-terrain,target:packs/<same-pack>/regions/<region>/networks/<id>.json} marks a JSON build input, excluded from runtime manifest/emission and consumed by pack tooling. No embed preserves runtime behavior. Change pins with npm run assets:add and assets:upload (scripts/assets.mjs).",
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
