@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { InstancedMesh, Mesh, Raycaster, Vector3 } from 'three';
 import { courseAt, lanesNear, type BakedNetwork, type BakedRoute } from '../../src/road';
 import { buildRoadScene, drawnBarrierSpans, networkTags } from '../../src/render/road-mesh';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 import { VergeLayer } from '../../src/render/verge';
 import { edgeHoldAt } from '../../src/sim/riders';
 import { riderHarness, input } from '../../src/sim/riders/testing';
@@ -82,7 +83,7 @@ it('listed contact meets actual panels, protects truck cuts and hands grounded r
         }
     if (!samples.length) continue;
     if (control) samples.unshift(control);
-    const scene = buildRoadScene(road, look, t.dressing, { seed: 1 });
+    const scene = buildRoadScene(road, look, t.dressing, { seed: 1, terrainChunks: buildTerrainChunks });
     const verge = new VergeLayer(road, look, { tags: networkTags(road, t.dressing).tags });
     const staticMeshes: Mesh[] = [];
     const shortcutMeshes: Mesh[] = [];
@@ -292,7 +293,7 @@ it.each(['pnw-c1', 'sf-downtown'])(
     const road = t.road;
     const edge = road.edgeIndex(id === 'pnw-c1' ? 'c-pnw-mill-out' : 'c-dt-plaza-out');
     const e = road.edges[edge]!;
-    const scene = buildRoadScene(road, look, t.dressing, { seed: 1 });
+    const scene = buildRoadScene(road, look, t.dressing, { seed: 1, terrainChunks: buildTerrainChunks });
     const verge = new VergeLayer(road, look, { tags: networkTags(road, t.dressing).tags });
     const ground = new DownIndex(
       [scene.group, verge.group],

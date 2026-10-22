@@ -19,6 +19,7 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../road';
 import { GroundTris } from './land-probe.test-util';
 import { createFlatLook } from './look';
 import { buildRoadScene } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
 
 const networkFiles = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/networks/*.json', {
   eager: true,
@@ -125,7 +126,10 @@ describe('the junction sweep: one clean surface where a connector meets a road',
       networks++;
       const road = createRoadNetwork({ network, roads });
       if (!road.edges.some((e) => e.isConnector)) continue;
-      const { group } = buildRoadScene(road, createFlatLook(), undefined, { postRoads: () => true });
+      const { group } = buildRoadScene(road, createFlatLook(), undefined, {
+        postRoads: () => true,
+        terrainChunks: buildTerrainChunks,
+      });
       const tris = new GroundTris(group, /^road-/);
       for (const e of road.edges) {
         // The stretches of this edge that belong to a junction: all of a connector, and the ends of

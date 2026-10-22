@@ -36,6 +36,7 @@ import { createFlatLook } from './look';
 import { bakeRepoModel } from './model-files.test-util';
 import { modelKindsFor, type SceneryModels } from './models';
 import { buildRoadScene, networkTags, type RoadDressing, type RoadScene } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
 
 const look = createFlatLook();
 const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
@@ -142,7 +143,11 @@ describe('a bridge stands on timber trestle bents only where its own deck is tag
 
   it.each(BRIDGED)('%s: every bent stands under a `trestle` deck, and no other deck has one', (id) => {
     const t = track(id);
-    const scene = buildRoadScene(t.road, look, t.dressing, { seed: 7, models: SUPPORTS });
+    const scene = buildRoadScene(t.road, look, t.dressing, {
+      seed: 7,
+      models: SUPPORTS,
+      terrainChunks: buildTerrainChunks,
+    });
     const bents = instances(scene.group, 'road-trestle');
     const p = new Vector3();
     const wrong: string[] = [];
@@ -174,7 +179,11 @@ describe('a bridge stands on timber trestle bents only where its own deck is tag
         .filter((x) => x.tag === 'bridge')
         .map((x) => ({ ...x, tag: TRESTLE_TAG })),
     ]);
-    const scene = buildRoadScene(t.road, look, t.dressing, { seed: 7, models: SUPPORTS });
+    const scene = buildRoadScene(t.road, look, t.dressing, {
+      seed: 7,
+      models: SUPPORTS,
+      terrainChunks: buildTerrainChunks,
+    });
     const bents = instances(scene.group, 'road-trestle');
     print(`control: the Gorge's decks tagged trestle stand ${bents.length} bents`);
     expect(bents.length).toBeGreaterThan(20);
@@ -260,8 +269,15 @@ describe('the arches a deck tagged `arch-bridge` gets', () => {
 describe("the Gorge's three bridges are concrete deck arches", () => {
   const gorge = track('osm-pnw-gorge');
   const archDecks = decks(gorge).filter((d) => d.arch);
-  const scene = buildRoadScene(gorge.road, look, gorge.dressing, { seed: 7, models: SUPPORTS });
-  const plain = buildRoadScene(gorge.road, look, gorge.dressing, { seed: 7 });
+  const scene = buildRoadScene(gorge.road, look, gorge.dressing, {
+    seed: 7,
+    models: SUPPORTS,
+    terrainChunks: buildTerrainChunks,
+  });
+  const plain = buildRoadScene(gorge.road, look, gorge.dressing, {
+    seed: 7,
+    terrainChunks: buildTerrainChunks,
+  });
   const arches = scene.bays.filter((s) => s.kind === 'arch');
 
   /** The road-pylons instances standing within a deck's arches, as (s on the deck, width). */
