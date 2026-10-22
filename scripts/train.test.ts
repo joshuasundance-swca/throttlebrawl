@@ -75,6 +75,12 @@ import {
 } from './train.mjs';
 import { rerunDecision } from './rerun-main.mjs';
 
+// Command tests replace Git's boundary only; the assembly tests retain the real implementation.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
+});
+
 const REPO = 'owner/game';
 const sha = (c: string) => c.repeat(40);
 
@@ -224,7 +230,15 @@ describe('state in the gate status', () => {
 function node(o: {
   number: number;
   head: string;
-  quick?: { conclusion: string; status?: string; startedAt?: string; app?: string }[];
+  quick?: {
+    conclusion: string;
+    status?: string;
+    startedAt?: string;
+    completedAt?: string | null;
+    app?: string;
+    databaseId?: number | null;
+    id?: string;
+  }[];
   gateRun?: boolean;
   gate?: { state: string; description: string };
   /** The train's note: a commit status on its own context, `train`, which no rule requires. */
@@ -243,7 +257,10 @@ function node(o: {
     name: 'quick',
     status: q.status ?? 'COMPLETED',
     conclusion: q.conclusion,
+    id: q.id ?? 'CR_selected',
+    databaseId: q.databaseId,
     startedAt: q.startedAt ?? '2026-10-02T17:07:51Z',
+    completedAt: q.completedAt ?? null,
     checkSuite: { app: { slug: q.app ?? 'github-actions' } },
   }));
   const contexts = [
@@ -1802,6 +1819,7 @@ describe('the commands, against a fake GitHub', () => {
   const ok = { conclusion: 'SUCCESS' };
   const base = sha('0');
   afterEach(() => {
+    vi.mocked(spawnSync).mockReset();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -1851,9 +1869,14 @@ describe('the commands, against a fake GitHub', () => {
       if (!hit) return Promise.resolve(new Response(`no fake for ${method} ${p}`, { status: 404 }));
       const v = hit[1](body);
       return Promise.resolve(
-        typeof v === 'string'
-          ? new Response(v, { status: 200 })
-          : new Response(JSON.stringify(v), { status: 200, headers: { 'content-type': 'application/json' } }),
+        v instanceof Response
+          ? v
+          : typeof v === 'string'
+            ? new Response(v, { status: 200 })
+            : new Response(JSON.stringify(v), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }),
       );
     });
     return calls;
@@ -1892,6 +1915,218 @@ describe('the commands, against a fake GitHub', () => {
     calls
       .filter((c) => c.method === 'POST' && c.path.includes('/statuses/'))
       .map((c) => ({ sha: c.path.slice(c.path.lastIndexOf('/') + 1), ...c.body }));
+
+  const quickId = 120015606386;
+  const pendingQuick = {
+    conclusion: '',
+    status: 'IN_PROGRESS',
+    databaseId: quickId,
+    startedAt: '2026-10-22T18:00:00Z',
+  };
+  const restQuick = () => ({
+    id: quickId,
+    node_id: 'CR_selected',
+    head_sha: sha('a'),
+    name: 'quick',
+    app: { slug: 'github-actions' },
+    status: 'completed',
+    conclusion: 'success',
+    started_at: pendingQuick.startedAt,
+    completed_at: '2026-10-22T18:01:00Z',
+  });
+  const exactQuick = (answer: unknown): [RegExp, () => unknown] => [
+    new RegExp(`^GET /repos/owner/game/check-runs/${quickId}$`),
+    () => answer,
+  ];
+  /** No real fetch, git write or remote access: selection still flows through the whole command. */
+  const fakeAssembly = () => {
+    const commands: string[][] = [];
+    vi.mocked(spawnSync).mockImplementation(((_command: string, args: string[]) => {
+      commands.push(args);
+      let stdout: string;
+      if (args[0] === 'fetch') stdout = '';
+      else if (args[0] === 'show') stdout = '1792692000';
+      else if (args[0] === 'merge-tree') stdout = sha('e');
+      else if (args[0] === 'commit-tree') stdout = sha('f');
+      else if (args[0] === 'rev-parse') stdout = args.at(-1)?.endsWith('^{commit}') ? base : sha('e');
+      else throw new Error(`unexpected git call: ${args.join(' ')}`);
+      return { status: 0, stdout, stderr: '' };
+    }) as typeof spawnSync);
+    return commands;
+  };
+  const reconciliationCalls = (calls: Call[]) => calls.filter((c) => /\/check-runs\//.test(c.path));
+
+  it('plan: reconciles only the exact selected pending quick once, then selects it through normal eligibility', async () => {
+    ghEnv();
+    const { lines, outputs } = capture();
+    const git = fakeAssembly();
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: [pendingQuick] })]),
+      exactQuick(restQuick()),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs().depart).toBe('true');
+    expect(JSON.parse(outputs().bundle ?? '')).toEqual([{ number: 4, headSha: sha('a'), cap: 8 }]);
+    expect(reconciliationCalls(calls).map((c) => c.path)).toEqual([`/repos/${REPO}/check-runs/${quickId}`]);
+    expect(calls.filter((c) => c.method !== 'GET' && c.path !== '/graphql')).toEqual([]);
+    expect(git[0]).toEqual(['fetch', '--no-tags', '--quiet', 'origin', base, sha('a')]);
+    expect(timers).not.toHaveBeenCalled();
+    expect(lines).toContainEqual(expect.stringContaining(`selected quick: {"id":"${quickId}"`));
+    expect(lines).toContainEqual(expect.stringContaining('reconciled quick:'));
+    const query = calls.find((c) => c.path === '/graphql')?.body?.query ?? '';
+    expect(query).toMatch(/\bid databaseId\b/);
+    expect(query).not.toContain('fullDatabaseId');
+  });
+
+  it.each([
+    ['pending', { status: 'in_progress', conclusion: null }],
+    ['failure', { conclusion: 'failure' }],
+    ['cancelled', { conclusion: 'cancelled' }],
+    ['skipped', { conclusion: 'skipped' }],
+    ['neutral', { conclusion: 'neutral' }],
+    ['missing status', { status: undefined }],
+    ['missing conclusion', { conclusion: undefined }],
+    ['wrong id', { id: quickId - 1 }],
+    ['unsafe id', { id: Number.MAX_SAFE_INTEGER + 1 }],
+    ['wrong node id', { node_id: 'CR_other' }],
+    ['wrong head', { head_sha: sha('b') }],
+    ['missing head', { head_sha: undefined }],
+    ['wrong name', { name: 'gate' }],
+    ['wrong app', { app: { slug: 'other' } }],
+  ])('plan: refuses exact-check reconciliation with %s', async (_reason, extra) => {
+    ghEnv();
+    const { outputs } = capture();
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: [pendingQuick] })]),
+      exactQuick({ ...restQuick(), ...extra }),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs().depart).toBe('false');
+    expect(outputs().bundle).toBe('[]');
+    expect(reconciliationCalls(calls)).toHaveLength(1);
+  });
+
+  it('plan: the newest pending check cannot borrow an older success', async () => {
+    ghEnv();
+    const { outputs } = capture();
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([
+        node({
+          number: 4,
+          head: sha('a'),
+          quick: [{ ...ok, databaseId: quickId - 1, startedAt: '2026-10-22T17:00:00Z' }, pendingQuick],
+        }),
+      ]),
+      exactQuick({ ...restQuick(), status: 'in_progress', conclusion: null }),
+      [new RegExp(`^GET /repos/owner/game/check-runs/${quickId - 1}$`), () => restQuick()],
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs().depart).toBe('false');
+    expect(reconciliationCalls(calls).map((c) => c.path)).toEqual([`/repos/${REPO}/check-runs/${quickId}`]);
+  });
+
+  it.each([undefined, null, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'plan: refuses missing or unsafe selected identity %s without a REST read',
+    async (databaseId) => {
+      ghEnv();
+      const { lines, outputs } = capture();
+      const calls = fakeGitHub([
+        MAIN,
+        mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
+        graphql([node({ number: 4, head: sha('a'), quick: [{ ...pendingQuick, databaseId }] })]),
+      ]);
+      await cmdPlan(CFG);
+      expect(outputs().depart).toBe('false');
+      expect(reconciliationCalls(calls)).toEqual([]);
+      expect(lines).toContainEqual(expect.stringContaining('no safe selected check identity'));
+    },
+  );
+
+  it.each([
+    { repo: 'fork/game' },
+    { draft: true },
+    { auto: false },
+    { title: 'x [full-gate]' },
+    { totalCount: 140 },
+    { gateRun: true },
+    { oid: sha('b') },
+    { quick: [] },
+    { quick: [{ ...pendingQuick, app: 'other' }] },
+    { gate: { state: 'success', description: 'passed train 3' } },
+    { gate: { state: 'failure', description: 'failed train 3' } },
+    { gate: { state: 'pending', description: withPark('timed out without blame', base) } },
+  ])('plan: irrelevant PR keeps its refusal without extra reads: %j', async (extra) => {
+    ghEnv();
+    const { outputs } = capture();
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: [pendingQuick], ...extra })]),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs().depart).toBe('false');
+    expect(reconciliationCalls(calls)).toEqual([]);
+  });
+
+  it.each([new Response('unavailable', { status: 503 }), 'not-json', null])(
+    'plan: unavailable or malformed reconciliation refuses only its PR without retries',
+    async (answer) => {
+      ghEnv();
+      const { lines, outputs } = capture();
+      fakeAssembly();
+      const timers = vi.spyOn(globalThis, 'setTimeout');
+      const calls = fakeGitHub([
+        MAIN,
+        mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
+        graphql([
+          node({ number: 4, head: sha('a'), quick: [pendingQuick] }),
+          node({ number: 5, head: sha('b'), quick: [ok] }),
+        ]),
+        exactQuick(answer),
+      ]);
+      await cmdPlan(CFG);
+      expect(outputs().depart).toBe('true');
+      expect(JSON.parse(outputs().bundle ?? '')).toEqual([{ number: 5, headSha: sha('b'), cap: 8 }]);
+      expect(reconciliationCalls(calls)).toHaveLength(1);
+      expect(timers).not.toHaveBeenCalled();
+      expect(lines).toContainEqual(expect.stringContaining('quick reconciliation refused:'));
+    },
+  );
+
+  it('plan: an already green quick needs no reconciliation', async () => {
+    ghEnv();
+    const { outputs } = capture();
+    fakeAssembly();
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: [ok] })]),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs().depart).toBe('true');
+    expect(reconciliationCalls(calls)).toEqual([]);
+  });
 
   it.each([false, true])(
     'plan: workflow success is accepted only with a real main gate: %s',

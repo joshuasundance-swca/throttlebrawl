@@ -297,6 +297,23 @@ export function normalizePr(node) {
         ? String(quick.conclusion ?? '').toLowerCase()
         : 'pending'
       : 'none',
+    // databaseId is declared Int in the live schema, but current check IDs exceed 32 bits.
+    // Accept only an exactly representable positive integer; never decode the opaque node ID.
+    quickCheck: quick
+      ? {
+          id:
+            Number.isSafeInteger(quick.databaseId) && quick.databaseId > 0 ? String(quick.databaseId) : null,
+          nodeId: typeof quick.id === 'string' ? quick.id : null,
+          headSha: String(commit.oid),
+          name: String(quick.name),
+          app: String(quick.checkSuite.app.slug),
+          status: quick.status ?? null,
+          conclusion: quick.conclusion ?? null,
+          startedAt: quick.startedAt ?? null,
+          completedAt: quick.completedAt ?? null,
+          observedAt: new Date().toISOString(),
+        }
+      : null,
     gateCheck: Boolean(latest(CONTEXT)),
     truncated,
     gateStatus: statusOf(CONTEXT),
@@ -1222,7 +1239,7 @@ export const PRS_QUERY = `query ($owner: String!, $name: String!, $after: String
         autoMergeRequest { mergeMethod }
         commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
           __typename
-          ... on CheckRun { name status conclusion startedAt checkSuite { app { slug } } }
+          ... on CheckRun { id databaseId name status conclusion startedAt completedAt checkSuite { app { slug } } }
           ... on StatusContext { context state description }
         } } } } } }
       }
@@ -1250,6 +1267,57 @@ async function openPrs() {
     after = conn.pageInfo.endCursor;
   }
   throw new Error('more than 1000 open PRs');
+}
+
+/**
+ * One read of the exact selected pending check, only if every other eligibility guard passes.
+ * No retry: an unavailable or inconclusive observation leaves this PR waiting for another event.
+ * @param {ReturnType<typeof normalizePr>} pr
+ * @param {Parameters<typeof eligibility>[1]} o
+ */
+async function reconcileQuick(pr, o) {
+  const selected = pr.quickCheck;
+  if (selected) console.log(`plan: #${pr.number} selected quick: ${JSON.stringify(selected)}`);
+  if (pr.quick !== 'pending' || !eligibility({ ...pr, quick: 'success' }, o).ok) return pr;
+  const refused = (/** @type {string} */ reason) => {
+    console.log(`plan: #${pr.number} quick reconciliation refused: ${reason}`);
+    return pr;
+  };
+  if (!selected?.id) return refused('no safe selected check identity');
+  try {
+    /** @type {any} */
+    const check = await api('GET', `/repos/${repo()}/check-runs/${selected.id}`, undefined, {
+      retry: false,
+    });
+    console.log(
+      `plan: #${pr.number} reconciled quick: ${JSON.stringify({
+        id: check?.id ?? null,
+        nodeId: check?.node_id ?? null,
+        headSha: check?.head_sha ?? null,
+        name: check?.name ?? null,
+        app: check?.app?.slug ?? null,
+        status: check?.status ?? null,
+        conclusion: check?.conclusion ?? null,
+        startedAt: check?.started_at ?? null,
+        completedAt: check?.completed_at ?? null,
+        observedAt: new Date().toISOString(),
+      })}`,
+    );
+    if (
+      !Number.isSafeInteger(check?.id) ||
+      String(check.id) !== selected.id ||
+      (selected.nodeId !== null && check.node_id !== selected.nodeId) ||
+      check.head_sha !== pr.headSha ||
+      check.name !== QUICK ||
+      check.app?.slug !== 'github-actions'
+    )
+      return refused('exact check identity, head, name or app did not match');
+    if (check.status !== 'completed' || check.conclusion !== 'success')
+      return refused('the exact selected check is not completed success');
+    return { ...pr, quick: 'success' };
+  } catch (err) {
+    return refused(`exact check read failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /** The recently merged PRs, with their head commit's `train` note (shape checked live on 2026-10-06). */
@@ -1755,6 +1823,7 @@ export async function cmdPlan(cfg = loadConfig()) {
     say(`Dry run with the PRs asked for, in that order: ${prList(wanted, 400)}.`);
   } else {
     const o = { repo: repo(), cap: cfg.cap, main: base };
+    for (const [i, pr] of prs.entries()) prs[i] = await reconcileQuick(pr, o);
     const rows = prs.map((pr) => ({ pr, e: eligibility(pr, o) }));
     for (const { pr, e } of rows)
       console.log(
