@@ -128,6 +128,18 @@
               "s1": 20,
               "d0": 3.35,
               "d1": 4.15
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "eagle-entry-visitors",
+              "s0": 190,
+              "s1": 210,
+              "d0": -5.9,
+              "d1": -5.7,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["region-clinton:park-hiker", "region-clinton:park-runner"]
+              }
             }
           ]
         },

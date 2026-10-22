@@ -1,0 +1,28 @@
+{
+  "type": "traffic-type",
+  "id": "park-runner",
+  "name": "River Bluff Runner",
+  "category": "pedestrian",
+  "tags": ["local", "iowa-park"],
+  "lengthM": 0.5,
+  "widthM": 0.5,
+  "heightM": 1.6,
+  "cruiseMps": 3.2,
+  "hazard": "normal",
+  "behaviour": {
+    "roadside": "dodges",
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "strolls": true
+  },
+  "look": {
+    "procedural": { "preset": "ped-jogger" },
+    "paintOptions": ["#e4a649", "#3e7181", "#dfddd0"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A bright running top on the grass above the Mississippi. Only the authored Eagle Point visitor zone uses this type; the paved corner line stays open.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-21" }
+  }
+}
