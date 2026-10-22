@@ -4,7 +4,7 @@ import { PROPS } from '../catalog.mjs';
 import { load, triangles } from '../cx5-reader.mjs';
 import { repoRoot, scoreGlb } from '../score.mjs';
 import { propFile } from '../prop-files.mjs';
-import { bakeLandmarkKit, type LandmarkKitId } from '../../../src/render/models';
+import { bakeLandmarkKit } from '../../../src/render/models';
 import { columnParts } from '../../../src/render/structure-columns.test-util';
 import { surfacePoints } from '../../../src/render/structures.test-util';
 
@@ -102,8 +102,7 @@ describe('original Eagle stone tower exterior', () => {
   });
 
   it('bakes through the existing renderer and measures honest exterior ground columns without capping the deck', async () => {
-    // The generic bake accepts named roots; runtime kit registration belongs to later integration.
-    const kit = bakeLandmarkKit('eagle-stone-tower' as LandmarkKitId, await scene());
+    const kit = bakeLandmarkKit('eagle-stone-tower', await scene());
     try {
       const near = kit.nodes.get('eagle_stone_tower_lod0')!;
       expect(near.geometry.getAttribute('position').count).toBeGreaterThan(0);
