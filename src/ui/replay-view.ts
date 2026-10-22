@@ -103,4 +103,13 @@ export const REPLAY_CSS = `
   padding: 6px 10px; font-size: 0.875rem; white-space: normal; overflow-wrap: anywhere; }
 #ui #replay-actions button:focus-visible { outline: 3px solid #f5c542; outline-offset: 2px; }
 #ui #replay-actions button:disabled { opacity: 0.55; cursor: default; }
+/* The follow view keeps the rider low in the centre. On a short landscape screen a bottom
+   panel hides that rider; place the controls beside the scene instead. */
+@media (orientation: landscape) and (max-height: 440px) {
+  #ui #replay { justify-content: center; align-items: flex-end; }
+  #replay-panel { width: min(240px, 40vw); max-height: 100%; }
+  #replay-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #replay-camera, #replay-return { grid-column: 1 / -1; }
+  #ui #replay-actions button { padding-inline: 6px; }
+}
 `;
