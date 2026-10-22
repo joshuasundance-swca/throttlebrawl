@@ -19,6 +19,8 @@ import {
 } from '../../src/replay';
 
 const registry = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+// One finite simulation guard for the county ride and its natural vehicle traversal.
+const COUNTY_SCENARIO_TICKS = 60 * 60 * 9;
 function run(take: boolean, bike = 'base:moped', traffic = false, stunt = false, seed = 1) {
   const { config } = createHeadlessRace(
     {
@@ -64,7 +66,7 @@ function run(take: boolean, bike = 'base:moped', traffic = false, stunt = false,
   const crashes: unknown[] = [];
   let style = 0;
   let maxTraffic = 0;
-  while (!sim.isOver() && sim.tick < 60 * 60 * 9) {
+  while (!sim.isOver() && sim.tick < COUNTY_SCENARIO_TICKS) {
     const snapshot = sim.snapshot();
     const me = snapshot.entities[0]!;
     const actions = emptyActions();
@@ -334,8 +336,8 @@ it.each([1, -1] as const)(
         const histories = new Map<string, number[]>();
         const history: number[] = [];
         let last: unknown;
-        let reason = 'tick bound';
-        for (let tick = 0; tick < 60 * 300; tick++) {
+        let reason = 'simulation guard reached before complete traversal';
+        for (let tick = 0; tick < COUNTY_SCENARIO_TICKS; tick++) {
           const st = trafficState(world);
           for (let slot = 0; slot < st.id.length; slot++) {
             if (st.retired[slot] !== 0) continue;
@@ -388,7 +390,8 @@ it.each([1, -1] as const)(
             riderState(world).yAbs[me.id] = road.surfaceHeight(me.pos.edge, me.pos.s, me.pos.d);
           }
           // A junction queue can drain several movements before this generation enters.
-          // Ingress and traversal share the existing finite simulation bound above.
+          // Share the county ride's finite guard; reaching it means incomplete traversal,
+          // not proof that the queue is permanently deadlocked.
           sim.step([quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 })]);
         }
         if (!selected) reason = 'no observed host-to-ingress generation';
