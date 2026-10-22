@@ -10,7 +10,8 @@
 // rows into PROPS, so two Codex batches never edit the same rows.
 //
 // `asset` is the asset id under packs/<pack>/assets/ (docs/content-packs.md, "Asset references");
-// the GLB lives at packs/<pack>/assets/<asset>.glb, `pack` defaulting to 'base'. Node names inside
+// legacy GLBs live at packs/<pack>/assets/<asset>.glb, `pack` defaulting to 'base'. Dataset rows
+// instead name a pin at <pack>/<asset>.glb in assets.lock.json. Node names inside
 // a GLB are snake_case.
 import { BASE_PROPS } from './catalog/base.mjs';
 import { IOWA_PROPS } from './catalog/iowa.mjs';
@@ -123,6 +124,7 @@ export { VARIANT_VIEWS, VIEWS } from './catalog/views.mjs';
  * @property {string} asset         asset id under packs/<pack>/assets/
  * @property {string} [pack]        the pack the GLB is baked into (default 'base'): a region's own
  *   models go in its region pack (packs/region-sf, packs/region-pnw); the Keys' stay in base
+ * @property {'pack' | 'dataset'} [storage]  canonical storage; omitted means legacy pack-local
  * @property {string} [region]      informational: the region id the model belongs to (a folder
  *   under packs/<pack>/regions/). The per-region model budget counts a base-pack model as that
  *   region's own only when its row says so; without it a base-pack model counts as shared
@@ -174,6 +176,9 @@ export const packOf = (prop) => prop.pack ?? 'base';
  * @returns {string}
  */
 export const glbPath = (prop) => `packs/${packOf(prop)}/assets/${prop.asset}.glb`;
+
+/** Canonical dataset pin path (not a local pack filename). @param {Prop} prop @returns {string} */
+export const datasetPath = (prop) => `${packOf(prop)}/${prop.asset}.glb`;
 
 /**
  * Repo-relative path of the layout JSON for a prop's atlas sheet (tools/atlas writes it).

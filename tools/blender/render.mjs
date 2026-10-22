@@ -13,12 +13,13 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findBlender, runBlender, SKIP_NOTE } from './blender.mjs';
-import { glbPath, PROPS } from './catalog.mjs';
+import { PROPS } from './catalog.mjs';
 import { repoRoot } from './score.mjs';
+import { propFile } from './prop-files.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-function main(argv) {
+async function main(argv) {
   const at = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : null);
   const flagValues = new Set([at('--engine'), at('--out')].filter(Boolean));
   const names = argv.filter((a) => !a.startsWith('--') && !flagValues.has(a));
@@ -36,9 +37,11 @@ function main(argv) {
   mkdirSync(out, { recursive: true });
   let bad = 0;
   for (const prop of props) {
-    const glb = path.join(repoRoot, glbPath(prop));
-    if (!existsSync(glb)) {
-      console.error(`RENDER ${prop.name}: no GLB at ${glbPath(prop)} (run the build first)`);
+    let glb;
+    try {
+      ({ file: glb } = await propFile(repoRoot, prop));
+    } catch (err) {
+      console.error(`RENDER ${prop.name}: ${err.message}`);
       bad++;
       continue;
     }
@@ -62,4 +65,4 @@ function main(argv) {
   return bad ? 1 : 0;
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

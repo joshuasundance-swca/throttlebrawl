@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { Box3, Raycaster, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
-import { PROPS, glbPath } from '../catalog.mjs';
+import { PROPS } from '../catalog.mjs';
 import { load, triangles } from '../cx5-reader.mjs';
-import { scoreGlb } from '../score.mjs';
+import { repoRoot, scoreGlb } from '../score.mjs';
+import { propFile } from '../prop-files.mjs';
 import { bakeLandmarkKit, type LandmarkKitId } from '../../../src/render/models';
 import { columnParts } from '../../../src/render/structure-columns.test-util';
 import { surfacePoints } from '../../../src/render/structures.test-util';
@@ -13,7 +13,7 @@ const prop = () => {
   if (!row) throw new Error('missing Eagle stone tower catalog row');
   return row;
 };
-const scene = () => load(process.env['EAGLE_TOWER_GLB'] ?? glbPath(prop()));
+const scene = async () => load((await propFile(repoRoot, prop())).file);
 const node = (root: Object3D, name: string) => {
   const result = root.getObjectByName(name);
   if (!result) throw new Error(`missing tower node ${name}`);
@@ -39,12 +39,13 @@ describe('original Eagle stone tower exterior', () => {
     expect(Math.min(...low)).toBeGreaterThan(Math.max(...high) * 1.7);
     for (const ring of [low, high]) expect(Math.max(...ring) / Math.min(...ring)).toBeLessThan(1.1);
   });
-  it('registers a Clinton landmark with near/far geometry and passes the existing asset score', () => {
+  it('registers a Clinton landmark with near/far geometry and passes the existing asset score', async () => {
     const row = prop();
     expect(row.pack).toBe('region-clinton');
     expect(row.region).toBe('clinton-iowa');
     expect(row.kind).toBe('variants');
-    const result = scoreGlb(readFileSync(process.env['EAGLE_TOWER_GLB'] ?? glbPath(row)), row);
+    expect(row.storage).toBe('dataset');
+    const result = scoreGlb((await propFile(repoRoot, row)).bytes, row);
     expect(result.summary.failed).toEqual([]);
     expect(result.counts.triangles).toBeGreaterThan(0);
   });

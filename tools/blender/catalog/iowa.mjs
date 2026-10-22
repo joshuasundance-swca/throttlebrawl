@@ -8,6 +8,7 @@ export const IOWA_PROPS = [
     script: 'props/eagle_stone_tower.py',
     asset: 'models/landmarks/eagle-stone-tower',
     pack: 'region-clinton',
+    storage: 'dataset',
     region: 'clinton-iowa',
     kind: 'variants',
     budget: { materials: 5 },
