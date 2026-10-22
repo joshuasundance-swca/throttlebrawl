@@ -2,7 +2,14 @@
 import { expect, it } from 'vitest';
 import { buildSimConfig, streamForEvent } from '../../src/app/config';
 import { lookup, registryFromGlob, type ContentRegistry } from '../../src/content';
-import { capPerDirection, TRAFFIC, trafficAreaAt, trafficState, trafficSystem } from '../../src/sim/traffic';
+import {
+  capPerDirection,
+  TRAFFIC,
+  trafficAreaAt,
+  trafficGhost,
+  trafficState,
+  trafficSystem,
+} from '../../src/sim/traffic';
 import { fromCorridor } from '../../src/sim/traffic/corridor';
 import { buildTrafficGraph } from '../../src/sim/traffic/network';
 import { junctionSpawnAllowed } from '../../src/sim/traffic/junctions';
@@ -12,6 +19,7 @@ import type { Mover } from '../../src/sim/world';
 import { createSimWithWorld } from '../../src/sim/create';
 import { blankActions, botInput, createBot } from '../../src/dev/bot';
 import { nearestOnEdges } from '../../src/road';
+import { SIM_DT } from '../../src/sim/api';
 import {
   configFromHeader,
   createInputRecorder,
@@ -70,7 +78,8 @@ it('finishes an input-driven highway ride that encounters a delivery truck and r
         sim.step(inputs);
         if (tick % HASH_EVERY_TICKS === 0) recorder.checkpoint(tick, sim.hash());
         if (tamperTick < 0 && player.speed > 5) tamperTick = tick;
-        if (player.mode !== 'Road')
+        const clean = player.mode === 'Road' && !trafficGhost(world, player.id);
+        if (!clean)
           for (const encounter of encounters.values())
             if (encounter.ahead && !encounter.passed) encounter.interrupted = true;
         const st = trafficState(world);
@@ -88,14 +97,14 @@ it('finishes an input-driven highway ride that encounters a delivery truck and r
             followingTick: -1,
             passTick: -1,
           };
-          if (player.mode === 'Road' && delta > 0 && delta < 100) {
+          if (clean && delta > 0 && delta < 100) {
             encounter.ahead = true;
             if (Math.abs(truck.pos.d - player.pos.d) < 1 && player.speed > 5) {
               encounter.following = true;
               if (encounter.followingTick < 0) encounter.followingTick = tick;
             }
           }
-          if (player.mode === 'Road' && encounter.ahead && delta < -15) {
+          if (clean && encounter.ahead && delta < -15) {
             encounter.passed = true;
             if (encounter.passTick < 0) encounter.passTick = tick;
           }
@@ -119,14 +128,15 @@ it('finishes an input-driven highway ride that encounters a delivery truck and r
   expect(replay.finalHash).toBe(r.sim.hash());
   expect(r.tamperTick).toBeGreaterThan(0);
   const tampered = structuredClone(recording);
-  tampered.inputs[r.tamperTick]![0]!.steer = 127;
+  const command = tampered.inputs[r.tamperTick]![0]!;
+  command.steer = command.steer === 127 ? -127 : 127;
   expect(createReplayController(tampered).run(fresh()).desync).not.toBeNull();
   process.stdout.write(
     `[examined] Iowa input-driven following/pass, seed ${search.seed}, bike ${r.c.riders.find((r) => r.role === 'player')!.bike.contentId}, encounters ${JSON.stringify([...r.encounters.entries()].filter(([, e]) => e.following && e.passed && !e.interrupted))}, finish tick ${r.sim.tick}, encoded/reloaded replay ${replay.checked} hashes, tamper tick ${r.tamperTick}\n`,
   );
-}, 120000);
+});
 
-function body(c: ReturnType<typeof config>, mover: Mover, lengthM: number, widthM: number) {
+function body(c: ReturnType<typeof config>, mover: Mover, lengthM: number, widthM: number, heightM: number) {
   const point = c.road.toWorld(mover.pos.edge, mover.pos.s, mover.pos.d, 0);
   const frame = c.road.frameAt(mover.pos.edge, mover.pos.s);
   const cy = Math.cos(mover.yaw),
@@ -141,6 +151,7 @@ function body(c: ReturnType<typeof config>, mover: Mover, lengthM: number, width
     sn,
     lengthM,
     widthM,
+    heightM,
   };
 }
 function onPavement(
@@ -177,6 +188,7 @@ function onPavement(
   });
 }
 function overlaps(a: ReturnType<typeof body>, b: ReturnType<typeof body>) {
+  if (a.y + a.heightM <= b.y || b.y + b.heightM <= a.y) return false;
   return [
     [a.tx, a.tz],
     [-a.tz, a.tx],
@@ -187,6 +199,31 @@ function overlaps(a: ReturnType<typeof body>, b: ReturnType<typeof body>) {
       (p.lengthM / 2) * Math.abs(p.tx * x! + p.tz * z!) + (p.widthM / 2) * Math.abs(-p.tz * x! + p.tx * z!);
     return Math.abs((a.x - b.x) * x! + (a.z - b.z) * z!) < radius(a) + radius(b) - 0.02;
   });
+}
+
+/** Conservative world-metres per road-metre, including offset curvature and bank changes. */
+function highwayMotionScale(c: ReturnType<typeof config>) {
+  let scale = 1;
+  for (const index of c.route.mainEdges) {
+    const edge = c.road.edges[index]!;
+    const d = Math.max(Math.abs(edge.dMin), Math.abs(edge.dMax));
+    const minDenominator = Math.min(...edge.kappa.map((k) => 1 - Math.abs(k) * d));
+    expect(minDenominator, 'authored highway offsets have a finite curvature metric').toBeGreaterThan(0);
+    for (let i = 1; i < edge.count; i++) {
+      const ds = Math.min(edge.spacing, edge.length - (i - 1) * edge.spacing);
+      const base =
+        Math.hypot(edge.x[i]! - edge.x[i - 1]!, edge.y[i]! - edge.y[i - 1]!, edge.z[i]! - edge.z[i - 1]!) /
+        ds;
+      const minTangentNorm = Math.hypot(edge.tx[i]! + edge.tx[i - 1]!, edge.tz[i]! + edge.tz[i - 1]!) / 2;
+      const tangentRate =
+        Math.hypot(edge.tx[i]! - edge.tx[i - 1]!, edge.tz[i]! - edge.tz[i - 1]!) /
+        ds /
+        (minTangentNorm * minTangentNorm);
+      const bankRate = Math.abs(edge.bank[i]! - edge.bank[i - 1]!) / ds;
+      scale = Math.max(scale, (base + d * (tangentRate + bankRate)) / minDenominator);
+    }
+  }
+  return scale;
 }
 
 it('offers occasional delivery trucks only at the authored farm traffic spawn tags', () => {
@@ -320,7 +357,11 @@ for (const road of taggedRoads)
       for (const edge of c.route.mainEdges)
         for (let s = 0; s < c.road.edges[edge]!.length; s += TRAFFIC.windowM)
           addMover(world, 'rider', { edge, s, d: 8, dir: 1 }, player);
-      const originalBody = body(c, vehicle, truck.lengthM, truck.widthM);
+      const originalBody = body(c, vehicle, truck.lengthM, truck.widthM, truck.heightM!);
+      expect(
+        overlaps(originalBody, { ...originalBody, y: originalBody.y + originalBody.heightM + 1 }),
+        'same horizontal footprint at another height does not contact',
+      ).toBe(false);
       expect(
         onPavement(c, vehicle, { ...originalBody, y: originalBody.y + truck.heightM! }, 0, 0),
         'an elevated body over the same road has no pavement at its height',
@@ -355,6 +396,11 @@ for (const road of taggedRoads)
       ).toBe(false);
       const visited = new Set<number>([start.edge]);
       let previous = c.road.toWorld(start.edge, start.s, start.d, 0);
+      let previousSpeed = vehicle.speed;
+      const motionScale = highwayMotionScale(c);
+      expect(truck.lengthM, 'a one-body-length teleport exceeds the content/velocity bound').toBeGreaterThan(
+        st.v0[slot]! * SIM_DT * motionScale,
+      );
       let travelled = 0;
       let maximumStep = 0;
       let opposingPasses = 0;
@@ -369,9 +415,15 @@ for (const road of taggedRoads)
         const point = c.road.toWorld(vehicle.pos.edge, vehicle.pos.s, vehicle.pos.d, 0);
         const step = Math.hypot(point.x - previous.x, point.y - previous.y, point.z - previous.z);
         expect(Number.isFinite(step)).toBe(true);
+        // One tick's speed times the authored road metric, plus 1 mm for baked-coordinate
+        // rounding at joined endpoints. No observed-rate or hand-picked world-step ceiling.
+        expect(step, `velocity-qualified continuity at tick ${world.tick}`).toBeLessThanOrEqual(
+          Math.max(previousSpeed, vehicle.speed) * SIM_DT * motionScale + 0.001,
+        );
         maximumStep = Math.max(maximumStep, step);
         travelled += step;
         previous = point;
+        previousSpeed = vehicle.speed;
         expect(c.route.mainEdges).toContain(vehicle.pos.edge);
         const lane = c.road
           .lanesAt(vehicle.pos.edge, vehicle.pos.s)
@@ -380,7 +432,7 @@ for (const road of taggedRoads)
         expect(Math.abs(vehicle.pos.d - lane!.dCenterM) + truck.widthM / 2).toBeLessThanOrEqual(
           lane!.widthM / 2 + 0.01,
         );
-        const box = body(c, vehicle, truck.lengthM, truck.widthM);
+        const box = body(c, vehicle, truck.lengthM, truck.widthM, truck.heightM!);
         for (const along of [-truck.lengthM / 2, truck.lengthM / 2])
           for (const across of [-truck.widthM / 2, truck.widthM / 2]) {
             const edge = c.road.edges[vehicle.pos.edge]!;
@@ -402,7 +454,7 @@ for (const road of taggedRoads)
           if (id === vehicle.id || st.retired[otherSlot]) continue;
           const other = world.movers[id]!;
           const type = c.trafficTypes[st.type[otherSlot]!]!;
-          const otherBody = body(c, other, type.lengthM, type.widthM);
+          const otherBody = body(c, other, type.lengthM, type.widthM, type.heightM!);
           expect(
             overlaps(box, otherBody),
             `physical truck contact at tick ${world.tick}: ${vehicle.id}/${id}`,
@@ -419,11 +471,10 @@ for (const road of taggedRoads)
           );
       }
       expect(travelled).toBeGreaterThan(truck.lengthM);
-      expect(maximumStep).toBeLessThan(0.75);
       expect(opposingPasses, 'actual opposing bodies pass the tracked truck').toBeGreaterThan(0);
       expect(st.generation[slot], 'the tracked identity eventually recycles normally').not.toBe(generation);
       process.stdout.write(
-        `[examined] Iowa ordinary ${road.id}/${direction}: seed ${search.seed}, identity ${vehicle.id}/${generation}, ${travelled.toFixed(1)}m, ${visited.size} roads, maximum step ${maximumStep.toFixed(3)}m, opposing body observations ${opposingPasses}, off-map terminal corner samples ${terminalExitCorners}, recycled at ${world.tick}\n`,
+        `[examined] Iowa ordinary ${road.id}/${direction}: seed ${search.seed}, identity ${vehicle.id}/${generation}, ${travelled.toFixed(1)}m, ${visited.size} roads, maximum step ${maximumStep.toFixed(3)}m, authored motion scale ${motionScale.toFixed(3)}, opposing body observations ${opposingPasses}, off-map terminal corner samples ${terminalExitCorners}, recycled at ${world.tick}\n`,
       );
     });
   }
