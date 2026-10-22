@@ -180,6 +180,8 @@ describe('main preflight preserves acceptance while skipping superseded work', (
     const s = scenario({
       answer: (p) => {
         if (budget === 'requests' && p.includes('/actions/artifacts?')) {
+          // Complete proof pages leave too few requests for another descendant decision
+          // after the empty successor observation below, rather than exhausting earlier.
           const page = Number(new URL(p, 'https://api.invalid').searchParams.get('page'));
           return {
             total_count: (REQUEST_CAP - 7) * 100,
@@ -196,6 +198,7 @@ describe('main preflight preserves acceptance while skipping superseded work', (
       skip: false,
       reason: budget === 'time' ? 'poll-deadline' : 'request-cap',
     });
+    expect(s.calls.filter((p) => p.includes(`/workflows/${ci.id}/runs?`))).toHaveLength(1);
     expect(s.sleeps).toEqual([]);
     expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
   });
