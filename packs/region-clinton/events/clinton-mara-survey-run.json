@@ -1,0 +1,29 @@
+{
+  "type": "event",
+  "id": "clinton-mara-survey-run",
+  "name": "Survey Run",
+  "kind": "grudge-match",
+  "region": "clinton-iowa",
+  "timeOfDay": "noon",
+  "weather": "dry",
+  "lengths": [{ "id": "standard", "route": "osm-clinton-eagle-point-run", "laps": 1 }],
+  "field": { "riders": ["mara-vale"], "paceMps": 16 },
+  "traffic": { "densityScale": 0.8 },
+  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2, "heat": true },
+  "rules": { "rival": "mara-vale", "winBy": "finish-ahead", "grudgeStakes": 1 },
+  "objectives": [{ "id": "beat-mara", "kind": "beat-rival", "required": true }],
+  "rewards": {
+    "byPlaceCash": [1500, 300],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A Quick Play finish-ahead challenge against the fictional local road surveyor on Eagle Point's existing technical route. Her shipped precise racer personality is unchanged. No required combat, new road, career chapter, unlock or real access claim. Ordinary Rural Rush remains the default Iowa race.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-22" }
+  }
+}
