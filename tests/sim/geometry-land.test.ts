@@ -388,7 +388,7 @@ describe('the land probes', () => {
         })),
       }),
       dressing: {},
-      roads: bundle.roads,
+      roads: [...bundle.roads],
       palette: {},
     });
     const net: RouteNetwork = {
