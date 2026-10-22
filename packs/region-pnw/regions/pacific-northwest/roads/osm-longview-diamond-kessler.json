@@ -80,7 +80,8 @@
       "d0": 13.0,
       "d1": 21.0,
       "params": {
-        "place": "plant-market"
+        "place": "plant-market",
+        "music": "busker"
       }
     },
     {

@@ -227,9 +227,20 @@
           "tags": ["rural"],
           "sideRuns": [
             { "tag": "iowa-county-farmstead", "side": "right", "s0": 650, "s1": 670 },
+            { "tag": "iowa-county-farmstead", "side": "right", "s0": 900, "s1": 1000 },
+            { "tag": "iowa-county-farmstead", "side": "left", "s0": 1400, "s1": 1500 },
             { "tag": "iowa-county-farmstead", "side": "right", "s0": 1930, "s1": 1950 }
           ],
           "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "county-loading-stroll",
+              "s0": 640,
+              "s1": 650,
+              "d0": 18,
+              "d1": 19,
+              "params": { "kinds": ["base:dog-walker"], "maxPeds": 1 }
+            },
             {
               "kind": "roadsideZone",
               "id": "county-loading-shed",

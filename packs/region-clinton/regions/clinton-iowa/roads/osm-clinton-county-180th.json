@@ -71,6 +71,18 @@
       "tag": "iowa-county-farmstead"
     },
     {
+      "s0": 900,
+      "s1": 1000,
+      "side": "right",
+      "tag": "iowa-county-farmstead"
+    },
+    {
+      "s0": 1400,
+      "s1": 1500,
+      "side": "left",
+      "tag": "iowa-county-farmstead"
+    },
+    {
       "s0": 1930.0,
       "s1": 1950.0,
       "side": "right",
@@ -78,6 +90,15 @@
     }
   ],
   "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "county-loading-stroll",
+      "s0": 640,
+      "s1": 650,
+      "d0": 18,
+      "d1": 19,
+      "params": { "kinds": ["base:dog-walker"], "maxPeds": 1 }
+    },
     {
       "kind": "roadsideZone",
       "id": "county-loading-shed",

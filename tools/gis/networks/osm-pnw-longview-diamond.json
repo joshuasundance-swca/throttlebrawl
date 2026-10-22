@@ -253,7 +253,8 @@
               "d0": 13,
               "d1": 21,
               "params": {
-                "place": "plant-market"
+                "place": "plant-market",
+                "music": "busker"
               }
             },
             {
