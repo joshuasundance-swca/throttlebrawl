@@ -6,6 +6,8 @@
 // plays it back against a fresh sim with desync detection. replay/ imports only the sim contract.
 import type { SimConfig, SimInput, Sim } from '../sim/api';
 
+export { validateCompletedRecording } from './completed';
+
 export const REPLAY_FORMAT_VERSION = 1;
 /** The recording keeps the state hash after every tick that is a multiple of this. */
 export const HASH_EVERY_TICKS = 60;
