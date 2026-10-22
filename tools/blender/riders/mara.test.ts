@@ -25,6 +25,7 @@ describe('Mara draws her own Iowa surveyor model', () => {
     if (!row) throw new Error('Mara needs her own rider catalog entry');
     const { lock, problems } = readLock(root);
     expect(problems).toEqual([]);
+    if (!lock) throw new Error('Mara model lock did not load');
     const pin = lock.files.find((file) => file.path === datasetPath(row));
     if (!pin) throw new Error('Mara needs a pinned rider model');
     expect(pin.region).toBe(mara.region);
