@@ -26,6 +26,7 @@ export const RIDERS = [
   { id: 'gripman-gus', pack: 'region-sf', region: 'san-francisco', maxTris: BUDGET },
   { id: 'pivot', pack: 'region-sf', region: 'san-francisco', maxTris: BUDGET },
   { id: 'officer-meter', pack: 'region-sf', region: 'san-francisco', maxTris: BUDGET },
+  { id: 'mara-vale', pack: 'region-clinton', region: 'clinton-iowa', maxTris: BUDGET },
 ];
 
 /** The dataset path of a rider's GLB (assets.lock.json `path`). */
