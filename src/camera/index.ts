@@ -32,6 +32,12 @@ export {
 } from './finish-shot';
 export { FALLBACK_IMPULSE } from './jolt';
 export { SHAKE_TRAUMA } from './shake';
+export type { ReplayCamera, ReplayCameraContext, ReplayCameraMode, ReplayCameraOptions } from './replay';
+
+/** Replay rigs load only when the viewer needs them; live view settings remain separate. */
+export function loadReplayCamera(): Promise<typeof import('./replay')> {
+  return import('./replay');
+}
 
 /**
  * Camera modes. M1 built the chase cam; M2 (camera-2) adds look-back (the held action) and the
