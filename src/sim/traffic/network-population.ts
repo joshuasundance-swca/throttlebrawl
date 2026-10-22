@@ -172,7 +172,13 @@ export function populateNetwork(world: World, config: SimConfig, st: TrafficStat
         (path?.terminal === true && (st.u[k] ?? 0) >= path.c.hi - 0.1)
       );
     };
-    const place = (pos: RoadPos, type: number, v0: number, slot: number): number => {
+    const place = (
+      pos: RoadPos,
+      type: number,
+      v0: number,
+      slot: number,
+      convoy: readonly number[] = [],
+    ): number => {
       const t = config.trafficTypes[type];
       if (
         !t ||
@@ -214,10 +220,23 @@ export function populateNetwork(world: World, config: SimConfig, st: TrafficStat
       for (const m of world.movers) {
         if (m.id === st.id[slot] || (m.kind !== 'vehicle' && m.kind !== 'rider')) continue;
         const other = config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
-        const reach =
-          m.kind === 'rider'
-            ? st.reactionM
-            : (t.lengthM + typeOf(config, st, st.id.indexOf(m.id)).lengthM) / 2 + TRAFFIC.spawnGapM;
+        let reach = st.reactionM;
+        if (m.kind === 'vehicle') {
+          const otherType = typeOf(config, st, st.id.indexOf(m.id));
+          const member = convoy.includes(m.id);
+          // Only this spawn's own group uses its following headway. Keep all unrelated traffic
+          // at ordinary spawn clearance, and bound the rigid bodies even on a curved road.
+          reach = Math.max(
+            (t.lengthM + otherType.lengthM) / 2 +
+              (member ? IDM.minGapM + v0 * IDM.timeGapS : TRAFFIC.spawnGapM),
+            member
+              ? (Math.sqrt(t.lengthM * t.lengthM + t.widthM * t.widthM) +
+                  Math.sqrt(otherType.lengthM * otherType.lengthM + otherType.widthM * otherType.widthM)) /
+                  2 +
+                  IDM.minGapM
+              : 0,
+          );
+        }
         const dx = point.x - other.x;
         const dz = point.z - other.z;
         if (Math.abs(point.y - other.y) < 3 && dx * dx + dz * dz < reach * reach) return -1;
@@ -260,12 +279,15 @@ export function populateNetwork(world: World, config: SimConfig, st: TrafficStat
         if (lead < 0) continue;
         const n = Math.max(1, Math.min(4, Math.floor(t.behaviour?.convoy ?? 1)));
         if (n > 1) {
+          const convoy = [st.id[lead]!];
           const extra = 1 + Math.floor(nextFloat(world.rng.traffic) * (n - 1));
           const step = t.lengthM + IDM.minGapM + v0 * IDM.timeGapS + TRAFFIC.convoyExtraGapM;
           for (let i = 1; i <= extra; i++) {
             const count = st.id.filter((_id, k) => st.dir[k] === dir && st.retired[k] === 0).length;
             if (count >= target) break;
-            if (place({ ...pos, s: pos.s - pos.dir * i * step }, type, v0, -1) < 0) break;
+            const follower = place({ ...pos, s: pos.s - pos.dir * i * step }, type, v0, -1, convoy);
+            if (follower < 0) break;
+            convoy.push(st.id[follower]!);
           }
         }
         return true;
