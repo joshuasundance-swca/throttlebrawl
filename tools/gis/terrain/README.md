@@ -142,6 +142,40 @@ terrain grades, source datum reconciliation, scenery contacts, race progress and
 still require site-specific review. No site-specific classification, water level, collar width or
 physical-clearance threshold is chosen by this optional input.
 
+## Desired natural-ground planes
+
+The road-band input may also contain `groundGrades`, an array of upward world-XYZ triangles with
+the same shape as `triangles`. A guide specifies a desired natural-ground plane; it is not a road,
+deck or terrain cutout. Omission preserves the selected Eagle fingerprint. Choosing guide footprints
+and heights belongs to reviewed site extraction, including the actual feet, aprons and people that
+need support. This input chooses no site constants or water levels and does not modify the source DEM.
+
+Roads and guides share the existing nearest-control transition machinery: a 39.99 m buffer whose
+final arrangement stays within the conservative 40 m offset. The nearest actual control-boundary
+plane receives the existing 0.06 m tuck for a road and zero tuck for a guide. Final transition-boundary
+and outside-owned nodes keep their original DEM heights. Inside a guide's declared STEP-snapped
+footprint, nodes use that guide's actual Float32 plane directly, including snapped boundary nodes
+that lie just outside the original footprint. Heights are rounded to Float32; sloped-face interpolation
+therefore retains that physical precision. The globally noded arrangement includes every guide edge.
+Guide footprints undergo the same declared precision operations as other arrangement inputs; exact
+equality with an original apron or other unsnapped footprint is not promised. Site review must examine
+the resulting footprint displacement and support at its edges as well as its interior.
+
+Every guide must be finite, upward and noncollapsed before and after Float32 rounding, retain a
+nonempty STEP-snapped footprint, and fit inside the bounded source domain. Positive-area overlap
+with a road, elevated deck or source water rejects both before and after quantization. Guide planes
+must agree throughout their overlap and at shared nodes or edges, checked with exact rational plane
+heights on both original and snapped intersections; inconsistent shared heights reject rather than
+silently choosing the higher plane. Consistent coplanar guide overlaps are allowed. The recipe does
+not repair source geometry or remove water to make a guide fit.
+
+Only ground-owning road faces determine the inward terrain cutout. Grades remain grass, and the
+unchanged world-coverage, manifold-boundary, shoreline, deck-support and identified-body checks still
+apply. A guide cannot count as support for a missing terrain patch. Guides can change the noded mesh
+and its tessellation without changing source water outlines, holes, proxy levels or road/deck faces;
+identified-body proof continues to compare output with the independently reconstructed arrangement.
+Geometry validation is not rendered, pedestrian, rider, survey or phone acceptance.
+
 ## Identified water bodies
 
 The exact legacy manifest keys `{road_band, grid, river, water_samples}` retain the original single
