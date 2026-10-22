@@ -135,7 +135,13 @@ describe('train-quick named-unit adapter', () => {
       { mode: 'files', tests: ['src/ui/missing.test.ts'], reason: 'bad' },
       { mode: 'files', tests: [42], reason: 'bad' },
     ])
-      expect(planQuickUnits({ ...fixture(), planner: () => plan }).mode).toBe('full');
+      // Deliberately cross the planner's type boundary to test runtime rejection.
+      expect(
+        planQuickUnits({
+          ...fixture(),
+          planner: () => plan as unknown as ReturnType<typeof planPushFromRevisions>,
+        }).mode,
+      ).toBe('full');
     expect(
       planQuickUnits({
         ...fixture(),
@@ -147,7 +153,7 @@ describe('train-quick named-unit adapter', () => {
     expect(
       planQuickUnits({
         ...fixture(),
-        planner: () => ({ mode: 'files', tests: [inventory[0], inventory[0]], reason: 'overlap' }),
+        planner: () => ({ mode: 'files', tests: [inventory[0]!, inventory[0]!], reason: 'overlap' }),
       }),
     ).toMatchObject({ mode: 'files', tests: [inventory[0]] });
   });
