@@ -8,6 +8,7 @@ import {
   createRoadNetwork,
   lanesUnderOf,
   readConnector,
+  type BakedFeature,
   type BakedNetwork,
   type BakedRoad,
   type BakedRoute,
@@ -19,7 +20,7 @@ import { LAND_TOP_M } from '../../src/render/scenery';
 
 interface Recipe {
   id: string;
-  lines: { id: string; roads: { id: string; features?: BoardSlot[] }[] }[];
+  lines: { id: string; roads: { id: string; features?: BakedFeature[] }[] }[];
   branches: { id: string; marked?: boolean; sign?: string }[];
   routes: { id: string; startRoad: string }[];
 }
@@ -51,8 +52,12 @@ const reg = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: tru
 const catalog = boardCatalog(reg, 'region-pnw:pacific-northwest');
 
 /** Find this authored choice's named slot. A moved, missing or pooled replacement is not a match. */
-function paired(slots: readonly BoardSlot[], sign: string, splitS: number) {
-  return slots.find(
+function paired(
+  slots: readonly BakedFeature[],
+  sign: string,
+  splitS: number,
+): (BoardSlot & { id: string; item: string }) | undefined {
+  const slot = slots.find(
     (s) =>
       s.kind === 'billboard' &&
       s.item &&
@@ -61,6 +66,12 @@ function paired(slots: readonly BoardSlot[], sign: string, splitS: number) {
       s.s1 < splitS &&
       splitCopy(catalog.items[s.item]?.text ?? '').headline === splitCopy(sign).headline,
   );
+  if (!slot) return undefined;
+  const { item, pool, ...rest } = slot;
+  if (!item) return undefined;
+  // Authored data permits explicitly undefined optionals. Renderer slots omit an absent pool
+  // and require this named item to have resolved before crossing the boundary.
+  return { ...rest, item, ...(pool === undefined ? {} : { pool }) };
 }
 
 describe('Longview approach directions are authored, resolvable and physically placed', () => {
@@ -100,19 +111,28 @@ describe('Longview approach directions are authored, resolvable and physically p
         expect(slot, 'every direction needs a full headline, never only a secondary kicker').toBeDefined();
         if (!slot) continue;
         expect(sourceApproach.features?.find((f) => f.id === slot.id)).toEqual(slot);
+        const rawSlot = approach.features!.find((f) => f.id === slot.id)!;
+        const normalized = paired([{ ...rawSlot, pool: undefined }], clause, splitS);
+        expect(normalized, 'explicitly absent authored pool normalizes to the same named slot').toEqual(slot);
+        expect(normalized).not.toHaveProperty('pool');
         expect(approach.tags?.some((t) => t.tag === 'town')).toBe(true);
-        const item = catalog.items[slot.item!]!;
+        const item = catalog.items[slot.item]!;
         expect(item.kind).toBe('sign');
         expect(catalog.pools?.signs?.some((i) => i.ref === item.ref)).toBe(false);
         expect(
-          boardCatalog(reg, 'region-pnw:pacific-northwest', new Set([item.ref])).items[slot.item!],
+          boardCatalog(reg, 'region-pnw:pacific-northwest', new Set([item.ref])).items[slot.item],
         ).toBeUndefined();
-        for (const changed of [
-          (approach.features ?? []).filter((f) => f !== slot),
-          (approach.features ?? []).map((f) => (f === slot ? { ...f, item: 'missing-direction-item' } : f)),
-          (approach.features ?? []).map((f) => (f === slot ? { ...f, s0: splitS, s1: splitS + 1 } : f)),
-          (approach.features ?? []).map((f) => (f === slot ? { ...f, item: undefined, pool: 'signs' } : f)),
-        ])
+        const controls: BakedFeature[][] = [
+          (approach.features ?? []).filter((f) => f.id !== slot.id),
+          (approach.features ?? []).map((f) =>
+            f.id === slot.id ? { ...f, item: 'missing-direction-item' } : f,
+          ),
+          (approach.features ?? []).map((f) => (f.id === slot.id ? { ...f, s0: splitS, s1: splitS + 1 } : f)),
+          (approach.features ?? []).map((f) =>
+            f.id === slot.id ? { ...f, item: undefined, pool: 'signs' } : f,
+          ),
+        ];
+        for (const changed of controls)
           expect(
             paired(changed, clause, splitS),
             'missing, wrong, moved and pooled controls',
