@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import mara from '../../../packs/region-clinton/riders/mara-vale.json';
-import { cachedBytes, readLock } from '../../../scripts/dataset-assets.mjs';
+import { cachedBytes, ensureCached, readLock } from '../../../scripts/dataset-assets.mjs';
 import { readGlb } from '../../../src/render/glb';
 import { riderLookOf } from '../../../src/render/rider-looks';
 import { bakePart } from '../../../src/render/riders/bake';
@@ -11,7 +11,7 @@ import { datasetPath, RIDERS } from './catalog.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 describe('Mara draws her own Iowa surveyor model', () => {
-  it('the actual rider look resolves to her pinned, real authored body', () => {
+  it('the actual rider look resolves to her pinned, real authored body', async () => {
     const source = {
       contentId: `region-clinton:${mara.id}`,
       role: 'rival' as const,
@@ -29,6 +29,7 @@ describe('Mara draws her own Iowa surveyor model', () => {
     const pin = lock.files.find((file) => file.path === datasetPath(row));
     if (!pin) throw new Error('Mara needs a pinned rider model');
     expect(pin.region).toBe(mara.region);
+    await ensureCached(root, lock, pin);
     const bytes = cachedBytes(root, pin);
     if (!bytes) throw new Error('Mara model cache must match the published pin');
     const body = bakePart(readGlb(Uint8Array.from(bytes).buffer), 'rider');
