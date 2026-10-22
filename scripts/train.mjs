@@ -276,7 +276,20 @@ export function normalizePr(node) {
       .sort((/** @type {any} */ a, /** @type {any} */ b) =>
         String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')),
       )[0];
-  const quick = latest(QUICK);
+  const quickRuns = runs.filter((r) => r.name === QUICK);
+  const quickTimes = quickRuns.map((r) => (typeof r.startedAt === 'string' ? Date.parse(r.startedAt) : NaN));
+  const newestQuickTime = Math.max(...quickTimes);
+  // A queued run can have no startedAt. Multiple candidates need valid times and a unique
+  // newest time; ties among older checks do not obscure that newest check.
+  const quickAmbiguous =
+    quickRuns.length > 1 &&
+    (quickTimes.some((time) => !Number.isFinite(time)) ||
+      quickTimes.filter((time) => time === newestQuickTime).length > 1);
+  const quick = quickAmbiguous
+    ? undefined
+    : quickRuns.length === 1
+      ? quickRuns[0]
+      : quickRuns[quickTimes.indexOf(newestQuickTime)];
   const statusOf = (/** @type {string} */ context) => {
     const s = contexts.find(
       (/** @type {any} */ c) => c.__typename === 'StatusContext' && c.context === context,
@@ -297,6 +310,24 @@ export function normalizePr(node) {
         ? String(quick.conclusion ?? '').toLowerCase()
         : 'pending'
       : 'none',
+    // databaseId is declared Int in the live schema, but current check IDs exceed 32 bits.
+    // Accept only an exactly representable positive integer; never decode the opaque node ID.
+    quickCheck: quick
+      ? {
+          id:
+            Number.isSafeInteger(quick.databaseId) && quick.databaseId > 0 ? String(quick.databaseId) : null,
+          nodeId: typeof quick.id === 'string' ? quick.id : null,
+          headSha: String(commit.oid),
+          name: String(quick.name),
+          app: String(quick.checkSuite.app.slug),
+          status: quick.status ?? null,
+          conclusion: quick.conclusion ?? null,
+          startedAt: quick.startedAt ?? null,
+          completedAt: quick.completedAt ?? null,
+          observedAt: new Date().toISOString(),
+        }
+      : null,
+    quickAmbiguous,
     gateCheck: Boolean(latest(CONTEXT)),
     truncated,
     gateStatus: statusOf(CONTEXT),
@@ -1179,9 +1210,9 @@ const runNumber = () => Number(env.GITHUB_RUN_NUMBER ?? 0);
  * @param {string} method
  * @param {string} url
  * @param {unknown} [body]
- * @param {{ retry?: boolean, raw?: boolean }} [o]
+ * @param {{ retry?: boolean, raw?: boolean, signal?: AbortSignal }} [o]
  */
-async function api(method, url, body, { retry = method === 'GET', raw = false } = {}) {
+async function api(method, url, body, { retry = method === 'GET', raw = false, signal } = {}) {
   const token = env.GH_TOKEN ?? env.GITHUB_TOKEN;
   if (!token) throw new Error('GH_TOKEN is not set');
   const full = url.startsWith('https://') ? url : `${env.GITHUB_API_URL ?? 'https://api.github.com'}${url}`;
@@ -1195,7 +1226,7 @@ async function api(method, url, body, { retry = method === 'GET', raw = false } 
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(60_000),
+      signal: signal ?? AbortSignal.timeout(60_000),
     });
     if (res.ok) {
       if (res.status === 204) return null;
@@ -1222,7 +1253,7 @@ export const PRS_QUERY = `query ($owner: String!, $name: String!, $after: String
         autoMergeRequest { mergeMethod }
         commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
           __typename
-          ... on CheckRun { name status conclusion startedAt checkSuite { app { slug } } }
+          ... on CheckRun { id databaseId name status conclusion startedAt completedAt checkSuite { app { slug } } }
           ... on StatusContext { context state description }
         } } } } } }
       }
@@ -1250,6 +1281,62 @@ async function openPrs() {
     after = conn.pageInfo.endCursor;
   }
   throw new Error('more than 1000 open PRs');
+}
+
+/**
+ * One read of the exact selected pending check, only if every other eligibility guard passes.
+ * No retry: an unavailable or inconclusive observation leaves this PR waiting for another event.
+ * @param {ReturnType<typeof normalizePr>} pr
+ * @param {Parameters<typeof eligibility>[1]} o
+ * @param {AbortSignal} signal the optional pass's shared request deadline
+ */
+async function reconcileQuick(pr, o, signal) {
+  const selected = pr.quickCheck;
+  if (pr.quickAmbiguous) console.log(`plan: #${pr.number} quick selection refused: ambiguous start times`);
+  if (selected) console.log(`plan: #${pr.number} selected quick: ${JSON.stringify(selected)}`);
+  if (pr.quick !== 'pending' || !eligibility({ ...pr, quick: 'success' }, o).ok) return pr;
+  const refused = (/** @type {string} */ reason) => {
+    console.log(`plan: #${pr.number} quick reconciliation refused: ${reason}`);
+    return pr;
+  };
+  if (!selected?.id) return refused('no safe selected check identity');
+  if (signal.aborted) return refused('optional reconciliation deadline expired');
+  try {
+    /** @type {any} */
+    const check = await api('GET', `/repos/${repo()}/check-runs/${selected.id}`, undefined, {
+      retry: false,
+      signal,
+    });
+    console.log(
+      `plan: #${pr.number} reconciled quick: ${JSON.stringify({
+        id: check?.id ?? null,
+        nodeId: check?.node_id ?? null,
+        headSha: check?.head_sha ?? null,
+        name: check?.name ?? null,
+        app: check?.app?.slug ?? null,
+        status: check?.status ?? null,
+        conclusion: check?.conclusion ?? null,
+        startedAt: check?.started_at ?? null,
+        completedAt: check?.completed_at ?? null,
+        observedAt: new Date().toISOString(),
+      })}`,
+    );
+    if (signal.aborted) return refused('optional reconciliation deadline expired');
+    if (
+      !Number.isSafeInteger(check?.id) ||
+      String(check.id) !== selected.id ||
+      (selected.nodeId !== null && check.node_id !== selected.nodeId) ||
+      check.head_sha !== pr.headSha ||
+      check.name !== QUICK ||
+      check.app?.slug !== 'github-actions'
+    )
+      return refused('exact check identity, head, name or app did not match');
+    if (check.status !== 'completed' || check.conclusion !== 'success')
+      return refused('the exact selected check is not completed success');
+    return { ...pr, quick: 'success' };
+  } catch (err) {
+    return refused(`exact check read failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /** The recently merged PRs, with their head commit's `train` note (shape checked live on 2026-10-06). */
@@ -1755,6 +1842,9 @@ export async function cmdPlan(cfg = loadConfig()) {
     say(`Dry run with the PRs asked for, in that order: ${prList(wanted, 400)}.`);
   } else {
     const o = { repo: repo(), cap: cfg.cap, main: base };
+    // The optional pass shares one existing request-sized deadline, rather than one per PR.
+    const reconciliationSignal = AbortSignal.timeout(60_000);
+    for (const [i, pr] of prs.entries()) prs[i] = await reconcileQuick(pr, o, reconciliationSignal);
     const rows = prs.map((pr) => ({ pr, e: eligibility(pr, o) }));
     for (const { pr, e } of rows)
       console.log(
