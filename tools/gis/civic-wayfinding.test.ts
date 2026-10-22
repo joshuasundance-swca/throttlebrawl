@@ -63,9 +63,9 @@ describe('Civic short-approach guide gives both choices equal headline treatment
     expect(slot, 'branch metadata needs an actual named guide board').toBeDefined();
     if (!slot) return;
     expect(branch.sign).toBe(source.branches.find((b) => b.id === branch.id)!.sign);
-    const sourceApproach = source.lines.flatMap((line) => line.roads).find((r) => r.id === approach.id)! as {
-      features?: readonly BakedFeature[];
-    };
+    const sourceApproach = source.lines
+      .flatMap<{ id: string; features?: readonly BakedFeature[] }>((line) => line.roads)
+      .find((r) => r.id === approach.id)!;
     expect(sourceApproach.features?.find((f) => f.id === slot.id)).toEqual(slot);
     const item = catalog.items[slot.item]!;
     expect(item.kind).toBe('sign');
