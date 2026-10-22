@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe('catalog prop files', () => {
-  it('declares dataset storage only for the tower and retains legacy pack paths', () => {
+  it('declares dataset storage for the tower and retains legacy pack paths', () => {
     expect(tower.storage).toBe('dataset');
     expect(datasetPath(tower)).toBe('region-clinton/models/landmarks/eagle-stone-tower.glb');
     expect(glbPath(tower)).toBe('packs/region-clinton/assets/models/landmarks/eagle-stone-tower.glb');
@@ -171,6 +171,41 @@ describe('catalog prop files', () => {
 
 describe('dataset authoring candidates', () => {
   const actualBytes = async () => (await propFile(repoRoot, tower)).bytes;
+  it('builds a first dataset candidate before pinning but still requires a pin for --check', async () => {
+    const f = fixture(await actualBytes());
+    f.lock.files = [];
+    f.save();
+    const lock = readFileSync(path.join(f.root, 'assets.lock.json'));
+    const legacy = put(f.root, 'packs/base/assets/models/scenery/untouched.glb', 'legacy');
+    const outs = ['a', 'b'].map((k) => put(f.root, `.cache/blender/build/tower.${k}.glb`, f.bytes));
+    const result = await acceptBuild(f.root, tower, outs, { fetchFn: f.fetchFn });
+    expect(result.same).toBe(true);
+    expect(result.score.summary.failed).toEqual([]);
+    expect(result.note).toMatch(/candidate/);
+    expect(readFileSync(outs[0]!)).toEqual(f.bytes);
+    await expect(acceptBuild(f.root, tower, outs, { check: true, fetchFn: f.fetchFn })).rejects.toThrow(
+      /missing dataset pin/,
+    );
+    expect(f.fetchFn).not.toHaveBeenCalled();
+    expect(existsSync(path.join(f.root, glbPath(tower)))).toBe(false);
+    expect(existsSync(cachePath(f.root, f.pin.path))).toBe(false);
+    expect(readFileSync(path.join(f.root, 'assets.lock.json'))).toEqual(lock);
+    expect(readFileSync(legacy, 'utf8')).toBe('legacy');
+  });
+
+  it('rejects an unsafe dataset target even before its first pin', async () => {
+    const f = fixture(await actualBytes());
+    f.lock.files = [];
+    f.save();
+    const outs = ['a', 'b'].map((k) => put(f.root, `.cache/blender/build/tower.${k}.glb`, f.bytes));
+    await expect(acceptBuild(f.root, { ...tower, pack: 'missing-pack' }, outs)).rejects.toThrow(/pack/);
+    await expect(acceptBuild(f.root, { ...tower, region: 'missing-region' }, outs)).rejects.toThrow(/region/);
+    put(f.root, glbPath(tower), 'local duplicate');
+    await expect(acceptBuild(f.root, tower, outs)).rejects.toThrow(/already bakes/);
+    expect(readFileSync(path.join(f.root, glbPath(tower)), 'utf8')).toBe('local duplicate');
+    expect(existsSync(cachePath(f.root, f.pin.path))).toBe(false);
+  });
+
   it('scores a deterministic candidate without changing the pin, published cache or legacy files', async () => {
     const f = fixture(await actualBytes());
     const cached = put(f.root, `.cache/assets/${f.pin.path}`, f.bytes);

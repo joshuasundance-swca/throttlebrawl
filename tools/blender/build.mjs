@@ -18,25 +18,26 @@ import { findBlender, runBlender, SKIP_NOTE } from './blender.mjs';
 import { glbPath, PROPS } from './catalog.mjs';
 import { repoRoot, scoreGlb } from './score.mjs';
 import { optimizeFile } from './optimize.mjs';
-import { propFile, propSource } from './prop-files.mjs';
+import { propFile, propSource, propTarget } from './prop-files.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 
 /** Score both deterministic rebuilds and select the existing storage-specific output policy. */
 export async function acceptBuild(root, prop, outs, { check = false, fetchFn = fetch } = {}) {
-  const source = propSource(root, prop);
+  const dataset = prop.storage === 'dataset';
+  const source = dataset && !check ? propTarget(root, prop) : propSource(root, prop);
   const [a, b] = outs.map((out) => optimizeFile(out, prop));
   const same = sha(a) === sha(b);
   const score = scoreGlb(a, prop);
   let published;
-  if (check && source.pin) published = (await propFile(root, prop, fetchFn)).bytes;
-  else if (!source.pin && existsSync(source.file)) published = readFileSync(source.file);
+  if (check && dataset) published = (await propFile(root, prop, fetchFn)).bytes;
+  else if (!dataset && existsSync(source.file)) published = readFileSync(source.file);
   const matches = !!published && [a, b].every((bytes) => sha(bytes) === sha(published));
   let note;
   if (check) note = matches ? 'matches the canonical GLB' : 'DIFFERS from the canonical GLB';
   else if (!same || score.summary.failed.length) note = 'not written: determinism or score failed';
-  else if (source.pin)
+  else if (dataset)
     note = `candidate at ${path.relative(root, outs[0]).split(path.sep).join('/')}; publish explicitly with assets:add and assets:upload`;
   else if (matches) note = 'unchanged';
   else {

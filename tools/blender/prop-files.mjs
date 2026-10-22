@@ -5,34 +5,42 @@ import { cachePath, ensureCached, readLock } from '../../scripts/dataset-assets.
 import { datasetPath, glbPath, packOf, PROPS } from './catalog.mjs';
 
 /**
- * Resolve storage metadata without fetching or writing. A dataset row never falls back to packs.
+ * Validate a catalog target without fetching or requiring a published pin. Dataset builds use
+ * this before authoring their first candidate; consumers use the strict propSource below.
  * @param {string} root
  * @param {import('./catalog.mjs').Prop} prop
  */
-export function propSource(root, prop) {
+export function propTarget(root, prop) {
   if (prop.storage !== undefined && !['pack', 'dataset'].includes(prop.storage))
     throw new Error(`${prop.name}: unknown prop storage ${prop.storage}`);
   if (prop.storage !== 'dataset') return { file: path.join(root, glbPath(prop)) };
+  const rel = datasetPath(prop);
+  const pack = path.join(root, 'packs', packOf(prop));
+  if (!existsSync(path.join(pack, 'pack.json'))) throw new Error(`${rel}: missing pack`);
+  if (existsSync(path.join(root, glbPath(prop))))
+    throw new Error(`${rel}: packs/${packOf(prop)}/assets/ already bakes this asset id; keep one`);
+  if (prop.region) {
+    const region = path.join(pack, 'regions', prop.region);
+    if (!existsSync(region) || !statSync(region).isDirectory())
+      throw new Error(`${rel}: region ${prop.region} is not in pack ${packOf(prop)}`);
+  }
+  return { file: cachePath(root, rel) };
+}
+
+/** Resolve the exact canonical pin. A dataset consumer never falls back to packs or candidates. */
+export function propSource(root, prop) {
+  if (prop.storage !== 'dataset') return propTarget(root, prop);
   const { lock, problems } = readLock(root);
   if (problems.length) throw new Error(`assets.lock.json: ${problems.join('; ')}`);
   const rel = datasetPath(prop);
   const pin = lock.files.find((f) => f.path === rel);
   if (!pin) throw new Error(`${prop.name}: missing dataset pin ${rel}`);
   if (pin.embed) throw new Error(`${rel}: a prop cannot be an embedded build input`);
-  const pack = path.join(root, 'packs', packOf(prop));
-  if (!existsSync(path.join(pack, 'pack.json'))) throw new Error(`${rel}: missing pack`);
-  if (existsSync(path.join(root, glbPath(prop))))
-    throw new Error(`${rel}: packs/${packOf(prop)}/assets/ already bakes this asset id; keep one`);
   if (pin.region !== prop.region)
     throw new Error(
       `${rel}: pin region ${pin.region ?? '(shared)'} differs from catalog region ${prop.region ?? '(shared)'}`,
     );
-  if (prop.region) {
-    const region = path.join(pack, 'regions', prop.region);
-    if (!existsSync(region) || !statSync(region).isDirectory())
-      throw new Error(`${rel}: region ${prop.region} is not in pack ${packOf(prop)}`);
-  }
-  return { file: cachePath(root, rel), lock, pin };
+  return { ...propTarget(root, prop), lock, pin };
 }
 
 /** Canonical filename and verified bytes; fetchFn is the existing dataset helper's fixture seam. */
