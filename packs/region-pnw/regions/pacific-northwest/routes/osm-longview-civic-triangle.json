@@ -60,7 +60,7 @@
       "id": "osm-longview-civic-hudson",
       "kind": "detour",
       "marked": true,
-      "sign": "HUDSON / 20TH: LONGER GRID ROUTE. WASHINGTON: DIAGONAL.",
+      "sign": "WASHINGTON: STRAIGHT; HUDSON: RIGHT, LONGER. GRID VIA 20TH.",
       "aiTake": 0.45,
       "traffic": "road",
       "roads": [
