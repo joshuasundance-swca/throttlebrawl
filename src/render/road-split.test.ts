@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { createFlatLook } from './look';
 import { buildRoadScene, guidedZone, laneEdges, laneSpans, ZONE_LEAD_PAINT_M } from './road-mesh';
+import { buildTerrainChunks } from './terrain-mesh';
 
 const networkFiles = import.meta.glob<BakedNetwork>('../../packs/base/regions/*/networks/*.json', {
   eager: true,
@@ -55,7 +56,10 @@ const top = (group: Group, p: { x: number; z: number }): string => hitsAt(group,
 describe('the shortcut split (playtest 1b)', () => {
   const road = shortcutNetwork();
   const look = createFlatLook();
-  const { group } = buildRoadScene(road, look, undefined, { postRoads: () => true });
+  const { group } = buildRoadScene(road, look, undefined, {
+    postRoads: () => true,
+    terrainChunks: buildTerrainChunks,
+  });
   group.updateMatrixWorld(true);
   const zone = road.splitZones()[0];
   if (!zone) throw new Error('no split zone');
@@ -222,7 +226,10 @@ describe('the split-zone paint stays on the road (playtest 4)', () => {
         return (zHi > hi + 0.3 && zLo < hi - 0.3) || (zLo < lo - 0.3 && zHi > lo + 0.3);
       });
       if (zones.length === 0) continue;
-      const { group } = buildRoadScene(road, createFlatLook(), undefined, { postRoads: () => true });
+      const { group } = buildRoadScene(road, createFlatLook(), undefined, {
+        postRoads: () => true,
+        terrainChunks: buildTerrainChunks,
+      });
       group.updateMatrixWorld(true);
       const paint = new Set(['road-splitZone', 'road-splitMark']);
       // From above the road wherever it climbs (the high country stands over 100 m).

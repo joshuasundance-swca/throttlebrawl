@@ -20,6 +20,7 @@ import { hasPnwPlaces, placeItems, spotAt } from './pnw-places';
 import { buildRoadScene } from './road-mesh';
 import { PNW_KIT, scatterRoadside } from './roadside';
 import { SCENERY_RADIUS_M } from './scenery';
+import { buildTerrainChunks } from './terrain-mesh';
 
 const networks = import.meta.glob<BakedNetwork>('/packs/region-pnw/regions/*/networks/*.json', {
   eager: true,
@@ -214,9 +215,9 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
       control,
       createFlatLook(),
       Object.fromEntries(withoutZone.map((r) => [r.id, r])),
-      { seed: 1 },
+      { seed: 1, terrainChunks: buildTerrainChunks },
     );
-    const ground = new GroundTris(scene.group, /^road-(land|shoulder)/);
+    const ground = new GroundTris(scene.group, /^road-(land|shoulder|terrain-land)/);
     const item = placeItems(road, 1, pnwPlacesLayout(road, 1)).find((i) => i.kind === 'dispatch-court')!;
     const spot = spotAt(road, item),
       c = Math.cos(spot.turn),
@@ -476,9 +477,9 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
       control,
       createFlatLook(),
       Object.fromEntries(controlRoads.map((r) => [r.id, r])),
-      { seed: 1 },
+      { seed: 1, terrainChunks: buildTerrainChunks },
     );
-    const ground = new GroundTris(scene.group, /^road-(land|shoulder)/);
+    const ground = new GroundTris(scene.group, /^road-(land|shoulder|terrain-land)/);
     const roadSamples = road.edges.flatMap((e) =>
       Array.from({ length: Math.ceil(e.length / 2) + 1 }, (_, i) => {
         const s = Math.min(e.length, i * 2),
@@ -501,7 +502,10 @@ describe('Street Diamond has distinct, physically grounded local life on its arm
               const hit = ground.heightAt(x, z, anchor.y + 1);
               expect(hit, `${st.rule} existing ground`).not.toBeNull();
               expect(Math.abs((hit?.y ?? Infinity) - anchor.y)).toBeLessThan(0.35);
-              expect(hit?.up ?? 0).toBeGreaterThan(0.9);
+              expect(
+                hit?.up ?? 0,
+                `${st.rule} ground normal at footprint ${u},${v} (x=${x}, z=${z})`,
+              ).toBeGreaterThan(0.9);
               for (const sample of roadSamples) {
                 const dx = x - sample.a.x,
                   dz = z - sample.a.z;

@@ -51,7 +51,7 @@ describe('Street Diamond local places are usable and their riding payoff is opti
       const h = riderHarness(config, {
         edge: e.index,
         s: from,
-        d: verge.dOuter - side,
+        d: verge.dInner - side,
         speed: 5,
         yaw: side * 1.1,
       });
@@ -88,7 +88,9 @@ describe('Street Diamond local places are usable and their riding payoff is opti
         );
         tick++
       )
-        contact.push(...wall.step(input(wall.rider.speed < 6 ? 0.35 : 0, 0, side)));
+        // Off-road steering changes world heading; hold the authored approach heading instead
+        // of continually turning in a circle before reaching the visible solid.
+        contact.push(...wall.step(input(wall.rider.speed < 6 ? 0.35 : 0, 0, 0)));
       expect(
         contact.some(
           (ev) => (ev.type === 'wobble' || ev.type === 'crash') && ev.data['structure'] !== undefined,
@@ -111,23 +113,27 @@ describe('Street Diamond local places are usable and their riding payoff is opti
       function ride(take: boolean) {
         const h = riderHarness(config, { edge: e.index, s: pad!.s0 - 160, d: 2, speed: fast ? 55 : 35 });
         const events: SimEvent[] = [];
-        let airborne = false,
+        let groundedBoost = false,
+          padAirborne = false,
           returned = false;
         for (let tick = 0; tick < 1800; tick++) {
           const p = h.rider.pos;
           const target = take && p.s > pad!.s0 - 100 && p.s < pad!.s1 + 20 ? (pad!.d0 + pad!.d1) / 2 : 2;
           const k = road.kappaAt(p.edge, p.s),
             v = h.rider.speed;
-          const steer = Math.max(
-            -1,
-            Math.min(1, 0.35 * (target - p.d) - 2.5 * h.rider.yaw + (k * v * v) / 22),
-          );
-          events.push(...h.step(input(v < (fast ? 60 : 42) ? 1 : 0, 0, steer)));
-          airborne ||= h.rider.mode === 'Airborne';
+          // Terrain holds world heading after steering is released. Dampen that heading so
+          // this take trajectory aims through the pad rather than overshooting beside it.
+          const steer = Math.max(-1, Math.min(1, 0.35 * (target - p.d) - 6 * h.rider.yaw + (k * v * v) / 22));
+          const emitted = h.step(input(v < (fast ? 60 : 42) ? 1 : 0, 0, steer));
+          events.push(...emitted);
+          if (emitted.some((ev) => ev.type === 'boost' && ev.data['feature'] === pad!.id))
+            groundedBoost = h.rider.mode === 'Road';
+          if (h.rider.pos.s >= pad!.s0 && h.rider.pos.s <= pad!.s1)
+            padAirborne ||= h.rider.mode === 'Airborne';
           if (p.s > pad!.s1 + 30 && p.d < 4) returned = true;
           if (p.s > pad!.s1 + 140) break;
         }
-        return { events, airborne, returned, s: h.rider.pos.s, d: h.rider.pos.d };
+        return { events, groundedBoost, padAirborne, returned, s: h.rider.pos.s, d: h.rider.pos.d };
       }
       const taken = ride(true),
         miss = ride(false);
@@ -135,7 +141,13 @@ describe('Street Diamond local places are usable and their riding payoff is opti
         1,
       );
       expect(taken.returned).toBe(true);
-      expect(taken.airborne).toBe(false);
+      // The real bank can give a brief clean hop on the fast approach. The pad itself is a
+      // grounded boost, and must not launch the rider or require an airborne pickup.
+      expect(taken.groundedBoost).toBe(true);
+      expect(taken.padAirborne).toBe(false);
+      expect(
+        taken.events.filter((ev) => ev.type === 'land').every((ev) => ev.data['quality'] === 'clean'),
+      ).toBe(true);
       expect(taken.events.filter((ev) => ev.type === 'crash')).toEqual([]);
       expect(taken.s).toBeGreaterThan(pad.s1 + 130);
       expect(miss.events.filter((ev) => ev.type === 'boost' || ev.type === 'crash')).toEqual([]);

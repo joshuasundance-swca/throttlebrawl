@@ -3,7 +3,7 @@
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
-  "revision": "50680511f9c5dd1b98c967099bd3c8dc2ffd88d8",
+  "revision": "d433486b53352a6022acd8005e7f1c6a8df32def",
   "files": [
     {
       "path": "base/models/placeholder/marker-cube.glb",
@@ -112,6 +112,17 @@
       "sha256": "f58f2f11b2fb0ce90933df907f87bb8d2ed5d24821e1077e73a83c80eef5f6e4",
       "region": "san-francisco",
       "note": "Rider model: pivot, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-pnw/terrain/longview-diamond.json",
+      "bytes": 2521217,
+      "sha256": "1dad559a1a8a6d4b490342bb8ef7ba21cc78416bfc641f4ea2e606f8992b50e9",
+      "region": "pacific-northwest",
+      "note": "Source-derived Street Diamond terrain; OSM/USGS attribution and regeneration record in THIRD_PARTY_ASSETS.md",
+      "embed": {
+        "kind": "network-terrain",
+        "target": "packs/region-pnw/regions/pacific-northwest/networks/osm-pnw-longview-diamond.json"
+      }
     }
   ]
 }

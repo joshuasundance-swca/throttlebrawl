@@ -7,6 +7,7 @@ import type { BakedNetwork, BakedRoad, BakedRoute } from '../../src/road/types';
 import { rideLimits } from '../../src/sim/ground';
 import { barrierLimits, BIKE_HALF_WIDTH_M } from '../../src/sim/riders';
 import type { SimConfig } from '../../src/sim/types';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 // The W-Q sim and route contracts over every live network (interview, 2026-10-02: "junction
 // choices in races", "U-turns", "Anywhere with ground"). Every split zone is a branch: each
@@ -18,7 +19,11 @@ import type { SimConfig } from '../../src/sim/types';
 // barrier limits on every road, so nothing about an existing race changes.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const json = <T>(file: string) => JSON.parse(readFileSync(file, 'utf8')) as T;
+const inputs = packInputs(root);
+const json = <T>(file: string) =>
+  JSON.parse(
+    inputs.materialize(path.relative(root, file).split(path.sep).join('/'), readFileSync(file, 'utf8')),
+  ) as T;
 
 interface Live {
   network: BakedNetwork;

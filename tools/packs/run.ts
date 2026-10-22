@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 // Imported file by file rather than through src/content/index.ts, which also pulls in the
 // bundled base pack (import.meta.glob, a Vite-only API this Node tool does not use).
 import { formatFinding, type Finding } from '../../src/content/findings';
@@ -105,6 +106,7 @@ export async function checkPacks(options: CheckOptions): Promise<CheckResult> {
   const absPacks = path.join(root, packsDir);
   if (!existsSync(absPacks)) return result;
   const parsed: { dir: string; pack: ParsedPack }[] = [];
+  const inputs = packInputs(root);
   for (const d of readdirSync(absPacks, { withFileTypes: true })) {
     if (!d.isDirectory()) continue;
     const dir = `${packsDir}/${d.name}`;
@@ -122,14 +124,17 @@ export async function checkPacks(options: CheckOptions): Promise<CheckResult> {
       result.jsonFiles++;
       try {
         // JSON.parse is strict: no comments, no trailing commas.
-        files.push({ path: f.path, json: JSON.parse(new TextDecoder().decode(f.bytes)) });
+        files.push({
+          path: f.path,
+          json: JSON.parse(inputs.materialize(`${dir}/${f.path}`, new TextDecoder().decode(f.bytes))),
+        });
       } catch (err) {
         report(dir, {
           level: 'error',
           rule: 'schema',
           file: f.path,
           pointer: '',
-          message: `not strict JSON: ${(err as Error).message}`,
+          message: `${err instanceof SyntaxError ? 'not strict JSON' : 'pack input'}: ${(err as Error).message}`,
         });
       }
     }

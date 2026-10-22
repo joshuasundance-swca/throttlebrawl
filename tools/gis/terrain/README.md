@@ -1,4 +1,4 @@
-# Offline Eagle terrain recipe
+# Offline source-derived terrain recipe
 
 This standalone authoring tool reproduces the selected Eagle terrain from small, preserved numeric
 inputs. The game does not import Python, NumPy, Shapely or GEOS. Like Blender, this is an external
@@ -95,6 +95,13 @@ The transition uses a 39.99 m buffer and lies within a conservative 40 m offset.
 and outside-owned nodes have zero blend. Adjacent arrangement cells share nodes. Water has explicit
 triangles and a horizontal DEM-median height.
 
+A later cell/target overlay can subdivide only one side of a previously noded shared edge. Before
+validation, exact collinear T-junctions are subdivided at already-existing physical vertices. This
+adds no vertex, moves no coordinate or height, changes no projected coverage, and never snaps a
+nearby noncollinear point. New faces share the existing vertex's height; interpolation inside the
+subdivided face follows those vertices. Final upward-face, manifold boundary, coverage and shoreline
+checks still run unchanged. This is mesh conformity, not source-polygon repair or a boundary waiver.
+
 Fixed-precision normalization and noding move boundaries. An effectively zero-area road-union hole
 collapses, while the source island remains dry in the selected topology. Raw source shoreline
 equality is not claimed: boundary strips move by less than a millimetre in this selected fixture.
@@ -103,6 +110,153 @@ continuous seam. Some final faces are steep, including millimetre-scale faces ne
 Reproducibility and valid geometry are not rideability, visual, phone-performance or hydrological
 acceptance. Source hashes and the selected fingerprint keep those reviewed limitations attached to
 this particular artifact; changing them requires repeating the geometric and runtime review.
+
+## Explicit elevated decks
+
+The road-band numeric input may additionally contain `elevatedDecks`, an array of upward world-XYZ
+triangles with the same shape as `triangles`. Existing `triangles` still own the natural-ground
+cutout and collar. Omitted `elevatedDecks` is an empty array and preserves the Eagle geometry
+fingerprint. Classifying actual extracted faces belongs to the site's reviewed source extraction;
+the recipe does not guess a bridge from height or modify runtime road geometry.
+
+Elevated faces do not cut holes in source ground/water or pull the collar toward their tops.
+Ground-owning road/water overlap is still rejected both before and after boundary quantization.
+The latter check tests the actual snapped outlines without another snapping overlay that could
+erase a thin overlap. Original road/deck evidence must be finite and upward, and remain so after
+Float32 rounding; no invalid or collapsed face is discarded or repaired.
+
+Every elevated face must lie entirely inside the bounded source domain and have natural support
+coverage beneath its full projected footprint. That coverage is the actual grass/water mesh plus
+ground-owning road faces, never the elevated faces themselves. Coverage validation therefore cannot
+hide a missing river or ground patch under a bridge. Over every positive-area overlap, the actual
+Float32 deck top must be strictly above the natural grass/water face. Exact rational triangle clipping and
+plane differences check all overlap vertices, including an intersection hidden by a safe midpoint.
+The proof records natural-face and ordinary-road overlap counts separately, and the minimum natural
+top separation in metres (null if no natural face overlaps). Existing approach road/deck faces may
+meet at grade: they remain the unchanged road layer, and no road/road clearance is asserted. Shared
+edges with no overlapping area do not assert a separation.
+
+**Top separation is not surveyed physical clearance.** It does not model deck thickness, undersides,
+supports, flood stages or navigable clearance. Approach classification, ground/deck transitions,
+terrain grades, source datum reconciliation, scenery contacts, race progress and rendered behavior
+still require site-specific review. No site-specific classification, water level, collar width or
+physical-clearance threshold is chosen by this optional input.
+
+## Desired natural-ground planes
+
+The road-band input may also contain `groundGrades`, an array of upward world-XYZ triangles with
+the same shape as `triangles`. A guide specifies a desired natural-ground plane; it is not a road,
+deck or terrain cutout. Omission preserves the selected Eagle fingerprint. Choosing guide footprints
+and heights belongs to reviewed site extraction, including the actual feet, aprons and people that
+need support. This input chooses no site constants or water levels and does not modify the source DEM.
+
+Roads and guides share the existing nearest-control transition machinery: a 39.99 m buffer whose
+final arrangement stays within the conservative 40 m offset. The nearest actual control-boundary
+plane receives the existing 0.06 m tuck for a road and zero tuck for a guide. Final transition-boundary
+and outside-owned nodes keep their original DEM heights. Inside a guide's declared STEP-snapped
+footprint, nodes use that guide's actual Float32 plane directly, including snapped boundary nodes
+that lie just outside the original footprint. Heights are rounded to Float32; sloped-face interpolation
+therefore retains that physical precision. The globally noded arrangement includes every guide edge.
+Guide footprints undergo the same declared precision operations as other arrangement inputs; exact
+equality with an original apron or other unsnapped footprint is not promised. Site review must examine
+the resulting footprint displacement and support at its edges as well as its interior.
+
+Every guide must be finite, upward and noncollapsed before and after Float32 rounding, retain a
+nonempty STEP-snapped footprint, and fit inside the bounded source domain. Positive-area overlap
+with a road, elevated deck or source water rejects both before and after quantization. Guide planes
+must agree throughout their overlap and at shared nodes or edges, checked with exact rational plane
+heights on both original and snapped intersections; inconsistent shared heights reject rather than
+silently choosing the higher plane. Consistent coplanar guide overlaps are allowed. The recipe does
+not repair source geometry or remove water to make a guide fit.
+
+Only ground-owning road faces determine the inward terrain cutout. Grades remain grass, and the
+unchanged world-coverage, manifold-boundary, shoreline, deck-support and identified-body checks still
+apply. A guide cannot count as support for a missing terrain patch. Guides can change the noded mesh
+and its tessellation without changing source water outlines, holes, proxy levels or road/deck faces;
+identified-body proof continues to compare output with the independently reconstructed arrangement.
+Geometry validation is not rendered, pedestrian, rider, survey or phone acceptance.
+
+## Identified water bodies
+
+The exact legacy manifest keys `{road_band, grid, river, water_samples}` retain the original single
+water-median mode and Eagle geometry fingerprint. A second, mutually exclusive mode uses exactly
+`{road_band, grid, water_bodies}`. Mixed or partial input sets are rejected. Both modes retain hashed
+numeric files, pinned authoring versions and selected output fingerprints.
+
+The `water_bodies` file has this shape (numbers here are synthetic examples, not site data):
+
+```json
+{
+  "formatVersion": 1,
+  "bodies": [
+    {
+      "id": "source-feature-id",
+      "polygons": [[[[0, 0], [10, 0], [10, 10], [0, 10]]]],
+      "elevations": [1, 2, 3],
+      "provenance": {"source": "capture record and observation method"}
+    }
+  ]
+}
+```
+
+Each polygon is an outer ring followed by any holes, in network X/Z metres. IDs must be unique;
+geometry must be nonempty and valid; observations must be nonempty and finite. Bodies with
+positive-area overlap are ambiguous ownership and rejected, including overlap introduced by
+quantization. The authorer never repairs invalid polygons or matches separate geometry/observation
+lists by ordinal. Bodies must retain nonempty coverage in the quantized source domain.
+
+Each body receives its own horizontal Float32 median elevation proxy and output water patch labelled
+`waterBody`. The output contains geometry, not runtime sampling dependencies. Coverage and shoreline
+proof aggregate all water patches. Per-body checks independently reconstruct the declared globally
+snap-rounded arrangement from preserved road, grid and water inputs, including the subsequent
+cell/target intersections, before comparing that planned polygon coverage exactly to actual output
+faces. The planned oracle never comes from unioning the output triangles themselves. Body labels,
+proxy levels and source holes remain checked; source holes and planned holes must correspond one to
+one by overlap. Raw or merely pre-noding snapped shoreline equality is not claimed: new grid/cell
+intersections also undergo the declared precision operation. The keyed proof reports source-to-plan
+missing/extra areas and boundary Hausdorff displacement, without a fitted tolerance or automatic
+acceptance allowance. It also preserves source observation count, minimum/maximum/median, supplied
+provenance, source-body hash and output geometry hash. Selecting changed source transformations or a
+new geometry fingerprint still requires review; a passing proof does not select its own artifact.
+Omitted body labels are not serialized into legacy output.
+
+These are explicitly approximate game surfaces. A median proxy does not establish a measured stage,
+hydraulic continuity, canal slope, flood model, current conditions or surveyed datum/clearance. The
+source spread and provenance stay in the proof so site review can decide whether a horizontal proxy
+is appropriate. This API chooses no source observations, feature segmentation or physical constants.
+
+## Longview Street Diamond
+
+`longview-diamond/manifest.json` selects the separate Street Diamond terrain. Use it instead of the
+Eagle manifest in the command above. Its three hashed numeric inputs retain the bounded 20 m USGS
+sample grid, identified OpenStreetMap water polygons and interior-water observations, actual rendered
+ground-owning road faces, explicitly classified Washington bridge deck faces, and two generic
+frontage apron ground guides. No Python or geometry library ships to the game.
+
+The manifest records extraction source hashes, retrievals, source observation spread, selected
+Float32 geometry and source-to-planned shoreline displacement. Four lake holes remain dry. The
+bounded grid clips outer source water; water levels are separate horizontal median proxies, not
+current levels or evidence of hydraulic independence. The DEM does not resolve a distinct island
+rise. One tiny unnamed polygon has a nearby outside observation below its proxy. These are game
+surfaces, not a surveyed lake, bank, property, bridge underside or navigational-clearance model.
+
+Apron roots are original game geometry, not measured source elevation. Their guide footprints take
+the declared precision path; final physical interpolation retains small height residue. Integration
+checks actual slab contact rather than bit-exact equality to an ideal plane. Terrain-aware sign feet
+fit their local ground while leaving the panels in their authored positions.
+
+After regeneration, retain only each patch's `surface`, `vertices` and `triangles` in the dataset
+terrain input; `waterBody` is authoring evidence, not a runtime field. Pin its exact bytes in
+`assets.lock.json` with the network's `embed` target. Keep the authored network small and preserve
+the manifest reference and selected geometry hash in `provenance.terrain`. Run
+`npm run assets:fetch -- --build-inputs` before local tests or pack checks. The shared Node pack
+materializer assembles the verified input into the normal network JSON for build, dev and tests;
+the browser's network loader and terrain format stay unchanged. Restart the dev server after changing
+the lock. The generated pack index describes authored source bytes, not the assembled emitted bytes.
+A road-network rebake is not this terrain integration:
+changed roads, shoulders, site layouts or classification require fresh extraction and review before
+reattaching a mesh. Do not update the selected fingerprint automatically to make a changed bake pass.
+Civic Triangle needs its own road-band review; this fixture does not opt it into terrain.
 
 ## Focused checks
 

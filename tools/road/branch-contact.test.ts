@@ -28,9 +28,14 @@ import {
   type Corridor,
 } from '../../src/sim/traffic/corridor';
 import { placeVehicle, TRAFFIC, trafficState, trafficSystem } from '../../src/sim/traffic';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const json = <T>(file: string) => JSON.parse(readFileSync(file, 'utf8')) as T;
+const inputs = packInputs(root);
+const json = <T>(file: string) =>
+  JSON.parse(
+    inputs.materialize(path.relative(root, file).split(path.sep).join('/'), readFileSync(file, 'utf8')),
+  ) as T;
 
 interface Live {
   network: BakedNetwork;

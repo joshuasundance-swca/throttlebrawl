@@ -19,7 +19,7 @@ import {
   type Camera,
   type Texture,
 } from 'three';
-import { lanesUnderOf } from '../road';
+import { lanesUnderOf, terrainAt } from '../road';
 import type { RoadNetwork } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
@@ -650,6 +650,24 @@ export class Boards {
     // Posts and the cross rails stand BEHIND the printed face (local -z), so nothing crosses the
     // words; the face itself is a thin panel in front of them.
     const back = -POST_BEHIND_M;
+    const post = (x: number): BoxPart => {
+      let bottom = 0;
+      if (road.terrain) {
+        const c = Math.cos(group.rotation.y);
+        const sn = Math.sin(group.rotation.y);
+        const feet = [-0.09, 0.09].flatMap((dx) =>
+          [-0.09, 0.09].map((dz) => {
+            const px = base.x + (x + dx) * c + (back + dz) * sn;
+            const pz = base.z - (x + dx) * sn + (back + dz) * c;
+            return terrainAt(road.terrain, px, pz, base.y + size.bottom, 'land');
+          }),
+        );
+        // Keep the readable face at its authored height. Extend each post into the lowest
+        // sampled soil under its foot; a water face or absent patch supplies no invented floor.
+        if (feet.every((foot) => foot !== null)) bottom = Math.min(...feet.map((foot) => foot.y)) - base.y;
+      }
+      return { size: [0.18, postH - bottom, 0.18], at: [x, (postH + bottom) / 2, back], color: face.frame };
+    };
     const frame: BoxPart[] =
       item.kind === 'cone'
         ? [
@@ -660,8 +678,8 @@ export class Boards {
             ...incidentCones(w),
           ]
         : [
-            { size: [0.18, postH, 0.18], at: [-w * 0.34, postH / 2, back], color: face.frame },
-            { size: [0.18, postH, 0.18], at: [w * 0.34, postH / 2, back], color: face.frame },
+            post(-w * 0.34),
+            post(w * 0.34),
             { size: [w + 0.3, 0.16, 0.14], at: [0, size.bottom - 0.08, back * 0.5], color: face.frame },
             { size: [w + 0.3, 0.16, 0.14], at: [0, postH + 0.08, back * 0.5], color: face.frame },
           ];

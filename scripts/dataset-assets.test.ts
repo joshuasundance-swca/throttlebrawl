@@ -500,7 +500,7 @@ describe('assets fetch --build-inputs', () => {
   it('does no network work for an empty selection, and verifies warm pinned inputs without runtime assets', () => {
     const cliRoot = path.join(root, 'cli');
     mkdirSync(path.join(cliRoot, 'scripts'), { recursive: true });
-    for (const name of ['assets.mjs', 'dataset-assets.mjs', 'lib.mjs'])
+    for (const name of ['assets.mjs', 'dataset-assets.mjs', 'pack-inputs-vite.mjs', 'lib.mjs'])
       copyFileSync(path.join(repoRoot, 'scripts', name), path.join(cliRoot, 'scripts', name));
     const invoke = (args: string[]) =>
       spawnSync(

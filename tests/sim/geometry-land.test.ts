@@ -24,6 +24,8 @@ import {
   type Object3D,
 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { createRoadNetwork, fixtureNetwork, type BakedTerrainPatch } from '../../src/road';
+import { initialPedGround, supportedPedMove } from '../../src/sim/peds/ground';
 import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
 import { buildRoadScene, BURIED_M, networkTags, type RoadScene } from '../../src/render/road-mesh';
 import { buildTerrainChunks } from '../../src/render/terrain-mesh';
@@ -139,7 +141,7 @@ const PED_FAR_SLACK_M = 1.5;
 const PED_DIVE_M = 3.5;
 /** Half the widest pedestrian or animal in the packs (the elk, 0.9 m). */
 const PED_HALF_M = 0.45;
-/** Ground this far under the pedestrian's road-height feet is an embankment below, not its ground. */
+/** Drawn ground must agree with the pedestrian's own supporting floor within this many metres. */
 const PED_SINK_M = 0.25;
 
 /** The packs' traffic types, for the sim's crossing rule below. */
@@ -204,10 +206,14 @@ export function wetPeds(
           for (let d = from; d <= out + 1e-9; d = d + 1 > out && d < out ? out : d + 1) {
             points++;
             const p = t.road.toWorld(e.index, s, side * d, 0);
-            const hit = ground.at(p.x, p.z, p.y + 20);
-            if (!hit || WATER_SURFACES.test(hit.name) || hit.y < p.y - PED_SINK_M) {
+            // Snapshot feet are groundY + the intentional hop/dive arc, not the road reference.
+            // Initial support selects this source/road's floor; cap the rendered read near it so
+            // an unrelated deck above cannot conceal missing ground at the person's height.
+            const feet = initialPedGround(t.road, { edge: e.index, s, d: side * d });
+            const hit = ground.at(p.x, p.z, (feet ?? p.y) + PED_SINK_M);
+            if (feet === null || !hit || WATER_SURFACES.test(hit.name) || hit.y < feet - PED_SINK_M) {
               wet.push(
-                `${t.id} peds ${e.id} s ${f.s0.toFixed(0)}: at s ${s.toFixed(0)} d ${(side * d).toFixed(1)} ${hit?.name ?? 'nothing'} at ${hit ? (hit.y - p.y).toFixed(2) : '-'} m`,
+                `${t.id} peds ${e.id} s ${f.s0.toFixed(0)}: at s ${s.toFixed(0)} d ${(side * d).toFixed(1)} ${hit?.name ?? 'nothing'} at ${hit && feet !== null ? (hit.y - feet).toFixed(2) : '-'} m from support${feet === null ? ' (no dry source support)' : ''}`,
               );
               bad = true;
               break;
@@ -333,6 +339,107 @@ function carve(group: Object3D, x: number, z: number, r: number): number {
 }
 
 describe('the land probes', () => {
+  it('reads pedestrians at their source support height, including a connected Diamond market dive', () => {
+    const net = NETWORKS.find((n) => n.id === 'osm-pnw-longview-diamond')!;
+    const t = track(net);
+    const edge = t.road.edgeIndex('osm-longview-diamond-kessler');
+    const from = { edge, s: 860, d: 18 };
+    const y = initialPedGround(t.road, from)!;
+    expect(y).not.toBeNull();
+    const end = supportedPedMove(t.road, from, { s: 860, d: 21.5 }, y, {
+      lengthM: 0.5,
+      widthM: 0.6,
+    });
+    expect(end.d).toBe(21.5);
+    const p = t.road.toWorld(edge, end.s, end.d, 0);
+    const hit = new DownIndex(sceneOf(t).group, VISIBLE).at(p.x, p.z, end.y + PED_SINK_M)!;
+    expect(hit.name).toBe('road-terrain-land');
+    expect(end.y).toBeCloseTo(hit.y, 4);
+    print(
+      `[examined] Diamond market d ${from.d} to ${end.d}: support ${end.y.toFixed(4)} m, drawn ${hit.y.toFixed(4)} m, road reference ${p.y.toFixed(4)} m`,
+    );
+    expect(wetPeds(t, net, new DownIndex(sceneOf(t).group, VISIBLE)).wet).toEqual([]);
+  });
+
+  it('negative control: pedestrian source support cannot be replaced by missing ground, water or an unrelated deck', () => {
+    const bundle = fixtureNetwork([{ id: 'a', lengthM: 100, kappa: 0 }]);
+    const patch: BakedTerrainPatch = {
+      surface: 'grass',
+      vertices: [
+        [-40, -1, -100],
+        [-40, -1, 0],
+        [40, -1, -100],
+        [40, -1, 0],
+      ],
+      triangles: [
+        [0, 1, 2],
+        [2, 1, 3],
+      ],
+    };
+    const make = (patches?: BakedTerrainPatch[]): Track => ({
+      id: 'pedestrian-support-control',
+      road: createRoadNetwork({
+        ...bundle,
+        network: { ...bundle.network, ...(patches ? { terrain: { patches } } : {}) },
+        roads: bundle.roads.map((r) => ({
+          ...r,
+          features: [{ kind: 'roadsideZone', id: 'walkers', s0: 40, s1: 44, d0: 10, d1: 12 }],
+        })),
+      }),
+      dressing: {},
+      roads: [...bundle.roads],
+      palette: {},
+    });
+    const net: RouteNetwork = {
+      id: 'pedestrian-support-control',
+      pack: 'control',
+      region: 'control',
+      routes: [],
+      allowed: new Set(['a']),
+    };
+    const plane = new Mesh(
+      new PlaneGeometry(100, 200).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({ side: DoubleSide }),
+    );
+    plane.position.set(0, -1, -50);
+    plane.name = 'road-terrain-land';
+    const authored = make([patch]);
+    // This deliberate metre of source/reference separation makes the old road-height
+    // comparison fail independently of later refinements to any real course's ground.
+    const reference = authored.road.toWorld(0, 40, 10, 0).y;
+    expect(reference - initialPedGround(authored.road, { edge: 0, s: 40, d: 10 })!).toBeGreaterThan(
+      PED_SINK_M,
+    );
+    const band = buildRoadScene(make([]).road, look, {}, { seed: 1, terrainChunks: buildTerrainChunks });
+    const drawn = () => new DownIndex([band.group, plane]);
+    // A real source floor may be below the road reference: this is the positive control.
+    expect(wetPeds(authored, net, drawn()).wet).toEqual([]);
+    const missing = wetPeds(authored, net, new DownIndex(band.group)).wet;
+    plane.name = 'road-terrain-water';
+    const water = wetPeds(authored, net, drawn()).wet;
+    plane.name = 'road-deck';
+    plane.position.y = 4;
+    const deck = wetPeds(authored, net, drawn()).wet;
+    plane.name = 'road-terrain-land';
+    plane.position.y = -1;
+    const missingSource = wetPeds(make([]), net, drawn()).wet;
+    const wetSource = wetPeds(make([{ ...patch, surface: 'water' }]), net, drawn()).wet;
+    const wrongSource = wetPeds(
+      make([{ ...patch, vertices: patch.vertices.map(([x, , z]) => [x, 1, z]) }]),
+      net,
+      drawn(),
+    ).wet;
+    const legacy = wetPeds(make(), net, drawn()).wet;
+    for (const found of [missing, water, deck, missingSource, wetSource, wrongSource, legacy])
+      expect(found.length).toBeGreaterThan(0);
+    print(
+      `[negative control] pedestrian support: missing ${missing.length}, water ${water.length}, unrelated deck ${deck.length}, missing source ${missingSource.length}, water source ${wetSource.length}, mismatched source ${wrongSource.length}, legacy sink ${legacy.length}`,
+    );
+    plane.geometry.dispose();
+    plane.material.dispose();
+    band.dispose();
+  });
+
   it.each(['road-land', 'road-water', 'road-terrain-land', 'road-terrain-water'])(
     'reads %s as visible ground and keeps dry land separate from water',
     (name) => {

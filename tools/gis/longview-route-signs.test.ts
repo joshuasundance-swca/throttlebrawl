@@ -17,6 +17,7 @@ import { Boards, splitCopy, type BoardSlot } from '../../src/render/boards';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene } from '../../src/render/road-mesh';
 import { LAND_TOP_M } from '../../src/render/scenery';
+import { buildTerrainChunks } from '../../src/render/terrain-mesh';
 
 interface Recipe {
   id: string;
@@ -209,6 +210,7 @@ describe('Longview approach directions are authored, resolvable and physically p
       const boards = new Boards(createFlatLook());
       const scene = buildRoadScene(road, createFlatLook(), Object.fromEntries(raw.map((r) => [r.id, r])), {
         roadsideDensity: 0,
+        terrainChunks: buildTerrainChunks,
       });
       try {
         boards.build(road, (id) => (id === approach.id ? slots : []), catalog);
@@ -219,39 +221,63 @@ describe('Longview approach directions are authored, resolvable and physically p
           expect(view.style).toBe('guide');
           const frame = view.group.children.find((o) => o !== view.panel) as Mesh;
           const vertices = frame.geometry.getAttribute('position');
-          const feet = [];
-          for (let i = 0; i < vertices.count; i++)
-            if (Math.abs(vertices.getY(i)) < 1e-6) {
-              feet.push(
-                new Vector3(vertices.getX(i), 0, vertices.getZ(i)).applyMatrix4(view.group.matrixWorld),
+          // Each post can extend below the road datum to the authored soil. Read both
+          // actual bottom faces instead of assuming their local height is zero.
+          const feet = [-1, 1].map((side) => {
+            const indices = Array.from({ length: vertices.count }, (_, i) => i).filter(
+              (i) => Math.sign(vertices.getX(i)) === side,
+            );
+            const bottom = Math.min(...indices.map((i) => vertices.getY(i)));
+            const corners = indices
+              .filter((i) => Math.abs(vertices.getY(i) - bottom) < 1e-6)
+              .map((i) =>
+                new Vector3(vertices.getX(i), vertices.getY(i), vertices.getZ(i)).applyMatrix4(
+                  view.group.matrixWorld,
+                ),
               );
-            }
-          expect(feet.length).toBeGreaterThan(0);
+            expect(corners.length, 'each post has a drawn bottom face').toBeGreaterThan(0);
+            return corners;
+          });
           const lands: Mesh[] = [];
           scene.group.updateMatrixWorld(true);
           scene.group.traverse((o) => {
-            if (o instanceof Mesh && o.name === 'road-land') lands.push(o as Mesh);
+            if (o instanceof Mesh && o.name === (road.terrain ? 'road-terrain-land' : 'road-land'))
+              lands.push(o as Mesh);
           });
           expect(lands.length).toBeGreaterThan(0);
           const finder = lanesUnderOf(road);
           const edge = road.edges.find((e) => e.id === approach.id)!;
           const ray = new Raycaster();
-          for (const p of feet) {
-            expect(
-              finder.at(p.x, p.y, p.z, 7.5),
-              'every post-foot corner clears every lane, its six-metre grass band and recovery margin',
-            ).toBeNull();
-            const projected = road.project(p.x, p.z, edge.index);
-            const verge = road.vergeAt(edge.index, projected.s, projected.d < 0 ? 'left' : 'right');
-            expect(Math.abs(projected.d)).toBeGreaterThan(Math.abs(verge.dOuter) + 1.5);
-            ray.set(new Vector3(p.x, p.y + 1, p.z), new Vector3(0, -1, 0));
-            const hit = ray.intersectObjects(lands, false)[0];
-            expect(hit, 'post has actual land triangles under it').toBeDefined();
-            // Boards use the road datum; legacy land is LAND_TOP_M below it. Account for
-            // grade across the toed-in post footprint and 2 mm of mesh interpolation precision.
-            // This bounds the inherited datum gap; it does not claim exact post/ground contact.
-            const gradeDelta = Math.abs(p.y - road.surfaceHeight(edge.index, projected.s, projected.d));
-            expect(Math.abs(p.y - hit!.point.y + LAND_TOP_M)).toBeLessThan(gradeDelta + 0.002);
+          for (const post of feet) {
+            const groundGaps: number[] = [];
+            for (const p of post) {
+              expect(
+                finder.at(p.x, p.y, p.z, 7.5),
+                'every post-foot corner clears every lane, its six-metre grass band and recovery margin',
+              ).toBeNull();
+              const projected = road.project(p.x, p.z, edge.index);
+              const verge = road.vergeAt(edge.index, projected.s, projected.d < 0 ? 'left' : 'right');
+              expect(Math.abs(projected.d)).toBeGreaterThan(Math.abs(verge.dOuter) + 1.5);
+              ray.set(new Vector3(p.x, p.y + 1, p.z), new Vector3(0, -1, 0));
+              const hit = ray.intersectObjects(lands, false)[0];
+              expect(hit, 'post has actual land triangles under it').toBeDefined();
+              if (road.terrain) {
+                // A level post foot reaches the lowest soil corner: none floats, and at
+                // least one corner meets the actual terrain triangles within 2 mm.
+                const gap = hit!.point.y - p.y;
+                expect(gap, 'post foot does not float above drawn soil').toBeGreaterThanOrEqual(-0.002);
+                groundGaps.push(gap);
+              } else {
+                // Legacy land is LAND_TOP_M below the road datum, including grade across
+                // the toed-in footprint and 2 mm of mesh interpolation precision.
+                const gradeDelta = Math.abs(p.y - road.surfaceHeight(edge.index, projected.s, projected.d));
+                expect(Math.abs(p.y - hit!.point.y + LAND_TOP_M)).toBeLessThan(gradeDelta + 0.002);
+              }
+            }
+            if (road.terrain)
+              expect(Math.abs(Math.min(...groundGaps)), 'each post reaches the drawn soil').toBeLessThan(
+                0.002,
+              );
           }
           // Positive control for lane detection and a real hole outside the land surface.
           const lane = road.toWorld(edge.index, (slot.s0 + slot.s1) / 2, 2, 0);
@@ -259,7 +285,7 @@ describe('Longview approach directions are authored, resolvable and physically p
           ray.set(new Vector3(lane.x + 10000, lane.y + 1, lane.z), new Vector3(0, -1, 0));
           expect(ray.intersectObjects(lands, false)).toEqual([]);
           console.info(
-            `[examined] ${recipe.id}: board s${(slot.s0 + slot.s1) / 2}, split s${splitS}, route start s${route.start.s}; ${feet.length} post-foot vertices on drawn land outside recovery band`,
+            `[examined] ${recipe.id}: board s${(slot.s0 + slot.s1) / 2}, split s${splitS}, route start s${route.start.s}; ${feet.flat().length} post-foot vertices on drawn land outside recovery band`,
           );
         }
         boards.build(road, () => [], catalog);
