@@ -51,3 +51,6 @@ terrain remains rideable, and landing forecasts and rendered floor references us
 selection. Course-boundary judgment and landing crash thresholds are unchanged.
 Newly placed grounded riders still settle onto real source land above the reference road; this
 placement rule is separate from continuous movement and cannot catch an airborne rider from below.
+The connected market dive still checks actual support against drawn ground. Its old fixed point no
+longer differs from the reference plane by more than the pedestrian tolerance after mesh refinement;
+a deliberate one-metre synthetic source/reference separation retains that regression guarantee.

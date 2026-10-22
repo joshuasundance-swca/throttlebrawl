@@ -355,7 +355,6 @@ describe('the land probes', () => {
     const hit = new DownIndex(sceneOf(t).group, VISIBLE).at(p.x, p.z, end.y + PED_SINK_M)!;
     expect(hit.name).toBe('road-terrain-land');
     expect(end.y).toBeCloseTo(hit.y, 4);
-    expect(p.y - end.y).toBeGreaterThan(PED_SINK_M);
     print(
       `[examined] Diamond market d ${from.d} to ${end.d}: support ${end.y.toFixed(4)} m, drawn ${hit.y.toFixed(4)} m, road reference ${p.y.toFixed(4)} m`,
     );
@@ -405,6 +404,12 @@ describe('the land probes', () => {
     plane.position.set(0, -1, -50);
     plane.name = 'road-terrain-land';
     const authored = make([patch]);
+    // This deliberate metre of source/reference separation makes the old road-height
+    // comparison fail independently of later refinements to any real course's ground.
+    const reference = authored.road.toWorld(0, 40, 10, 0).y;
+    expect(reference - initialPedGround(authored.road, { edge: 0, s: 40, d: 10 })!).toBeGreaterThan(
+      PED_SINK_M,
+    );
     const band = buildRoadScene(make([]).road, look, {}, { seed: 1, terrainChunks: buildTerrainChunks });
     const drawn = () => new DownIndex([band.group, plane]);
     // A real source floor may be below the road reference: this is the positive control.
