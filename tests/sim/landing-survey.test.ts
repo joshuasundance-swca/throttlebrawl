@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { realRoutes } from '../../src/app';
 import { lookup, registryFromGlob } from '../../src/content';
+import { LANDING_EVENTS, landingManifest } from './landing-inventory';
+import { LANDING_FILES } from './landing-group.mjs';
 import {
   checkLandings,
   landingCases,
@@ -28,6 +30,44 @@ const fixture = (run: (c: LandingCase, i: number) => LandingResult) => {
 };
 
 describe('landing survey scheduling', () => {
+  it('partitions the existing three-event cohort by route without changing or repeating races', () => {
+    expect(LANDING_EVENTS).toEqual([
+      'base:m1-skeleton-sprint',
+      'region-pnw:pnw-fogline-run',
+      'region-sf:sf-hill-sprint',
+    ]);
+    const manifest = landingManifest();
+    expect(manifest.cases.map(({ key: _key, file: _file, ...c }) => c)).toEqual(landingCases());
+    expect(new Set(manifest.cases.map((c) => c.key)).size).toBe(manifest.cases.length);
+    const routes = [...new Set(manifest.cases.map((c) => JSON.stringify([c.event, c.route])))];
+    for (const [i, route] of routes.entries()) {
+      const rows = manifest.cases.filter((c) => JSON.stringify([c.event, c.route]) === route);
+      expect(rows.map((c) => [c.seed, c.thumb])).toEqual([
+        [1, false],
+        [1, true],
+        [2, false],
+        [2, true],
+      ]);
+      expect(new Set(rows.map((c) => c.file))).toEqual(new Set([LANDING_FILES[i % LANDING_FILES.length]]));
+    }
+    const attempted: LandingCase[] = [];
+    for (const file of LANDING_FILES) {
+      const required = manifest.cases.filter((c) => c.file === file);
+      expect(required.length).toBeGreaterThan(0);
+      const survey = landingSurvey((c) => {
+        attempted.push(c);
+        return row();
+      }, required);
+      for (const c of required) {
+        survey.run(c);
+        survey.run(c);
+      }
+      expect(survey.results()).toHaveLength(required.length);
+    }
+    expect(attempted.map((c) => JSON.stringify([c.event, c.route, c.seed, c.thumb])).sort()).toEqual(
+      manifest.cases.map((c) => c.key).sort(),
+    );
+  });
   it('retains both seeds and policies for every event-derived route in the original order', () => {
     const registry = registryFromGlob(
       import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),

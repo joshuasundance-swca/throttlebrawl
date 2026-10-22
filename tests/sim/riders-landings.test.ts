@@ -1,24 +1,30 @@
-// The complete landing survey is scheduled race by race; the pooled oracle keeps its original
-// thresholds across the whole inventory. Selecting only the oracle fails on missing results.
-import { describe, it } from 'vitest';
-import { checkLandings, landingSurvey } from './landing-survey';
+// Ordinary files run in one existing CI job; the mandatory reporter judges only the complete pool.
+import { describe, inject, it } from 'vitest';
+import { LANDING_FILES, LANDING_VERSION } from './landing-group.mjs';
+import { landingKey, landingManifest } from './landing-inventory';
+import { landingSurvey } from './landing-survey';
 
 describe(
-  'forgiving landings: a seeded batch on every route (playtest 2, 2026-10-02)',
-  { concurrent: false, shuffle: false },
+  'forgiving landings: existing three-event survey, route bucket 1',
+  { concurrent: false, shuffle: false, retry: 0, repeats: 0 },
   () => {
-    const survey = landingSurvey();
-    for (const c of survey.cases) {
+    const required = landingManifest().cases.filter((c) => c.file === LANDING_FILES[0]);
+    const survey = landingSurvey(undefined, required);
+    for (const c of survey.cases)
       it(
         c.event + ' ' + c.route + ', seed ' + c.seed + ', ' + (c.thumb ? 'thumb' : 'bot'),
-        () => {
-          survey.run(c);
+        ({ task }) => {
+          const marker = inject('landingSurvey');
+          if (!marker || marker.version !== LANDING_VERSION || !marker.token)
+            throw new Error('Missing complete landing reporter');
+          const result = survey.run(c);
+          task.meta.landingSurvey = {
+            ...marker,
+            key: landingKey(c),
+            ...result,
+          };
         },
         900_000,
       );
-    }
-    it('counts landings and their outcomes for the bot, a held-thumb player and the rivals', () => {
-      checkLandings(survey);
-    });
   },
 );

@@ -1,5 +1,6 @@
 import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
 import FileTimes from './tests/file-times.ts';
+import LandingReporter from './tests/landing-reporter.ts';
 import TimedSequencer from './tests/sequencer.ts';
 import viteConfig from './vite.config.ts';
 
@@ -20,7 +21,7 @@ export default mergeConfig(
       // Vitest's own reporters (the default one, and github-actions on CI), plus each sim file's
       // whole time, collect included, which scripts/timings.mjs reads into tests/timings.json.
       // [default]
-      reporters: [...configDefaults.reporters, new FileTimes()],
+      reporters: [...configDefaults.reporters, new FileTimes(), new LandingReporter()],
       projects: [
         {
           extends: true,

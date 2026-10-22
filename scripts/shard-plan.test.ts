@@ -39,6 +39,53 @@ function expectPartition(files: string[], slices: { files: string[] }[]) {
   expect([...seen].sort()).toEqual([...new Set(files)].sort());
 }
 
+describe('complete landing group scheduling', () => {
+  const group = [
+    'tests/sim/riders-landings.test.ts',
+    'tests/sim/riders-landings-b.test.ts',
+    'tests/sim/riders-landings-c.test.ts',
+  ];
+  const reader = 'tests/sim/reader.test.ts';
+  const others = ['tests/sim/x.test.ts', 'tests/sim/y.test.ts'];
+  const options = {
+    timings: { sim: Object.fromEntries(group.map((f, i) => [f, 100 + i])), overhead: { sim: 10 } },
+    read: (f: string) => (f === reader ? 'presetBatch()' : ''),
+  };
+  it('rejects a partial group even when all requested slices could be nonempty', () => {
+    expect(() => planTier('sim', [group[0]!, ...others], 2, options)).toThrow(
+      /landing.*complete|incomplete.*landing/i,
+    );
+  });
+  it('dedicates the second job to the complete group after the isolated readers', () => {
+    const files = [...group, reader, ...others];
+    const plan = planTier('sim', files, 4, options);
+    expectPartition(files, plan);
+    expect(plan[0]?.files).toEqual([reader]);
+    expect(plan[1]?.files).toEqual([...group].sort());
+    expect(planTier('sim', [...files].reverse(), 4, options)).toEqual(plan);
+  });
+  it('defines one/two/three job boundaries without splitting or empty jobs', () => {
+    expect(planTier('sim', group, 1, options)[0]?.files).toEqual([...group].sort());
+    expect(() => planTier('sim', group, 2, options)).toThrow(/fewer slices/i);
+    const two = planTier('sim', [...group, reader, ...others], 2, options);
+    expect(two[0]?.files).toEqual([reader]);
+    expect(two[1]?.files).toEqual([...group, ...others].sort());
+    expect(planTier('sim', [...group, ...others], 2, options)[0]?.files).toEqual([...group].sort());
+    expect(planTier('sim', [...group, reader, others[0]!], 3, options).map((s) => s.files)).toEqual([
+      [reader],
+      [...group].sort(),
+      [others[0]],
+    ]);
+    expect(() => planTier('sim', [...group, reader], 3, options)).toThrow(/fewer slices/i);
+    expect(() => planTier('sim', [...group, ...others], 4, options)).toThrow(/fewer slices/i);
+  });
+  it('rejects a landing file becoming a batch reader', () => {
+    expect(() => planTier('sim', [...group, ...others], 2, { ...options, read: () => 'simBatch()' })).toThrow(
+      /landing.*reader/i,
+    );
+  });
+});
+
 describe('planSlices', () => {
   it('puts every file in exactly one slice, for every slice count, with real and unknown timings', () => {
     for (const tier of ['unit', 'sim', 'e2e'] as const) {
