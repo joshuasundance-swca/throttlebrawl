@@ -16,9 +16,11 @@ import {
 import { createSimWithWorld } from '../../src/sim/create';
 import { riderState } from '../../src/sim/riders';
 import { raceState } from '../../src/sim/race';
-import { TRAFFIC, trafficState } from '../../src/sim/traffic';
+import { TRAFFIC, trafficState, trafficSystem } from '../../src/sim/traffic';
+import { placeRoadVehicle } from '../../src/sim/traffic/path-view';
 import { gapSimConfig } from '../../src/sim/tumble/gap-fixture';
 import type { SimConfig, SimInput } from '../../src/sim/types';
+import { createWorld, stepWorld } from '../../src/sim/world';
 import { firstSeed, ISOLATED } from './batch';
 
 const ROOT = 'packs/region-pnw/regions/pacific-northwest';
@@ -40,6 +42,81 @@ const isolated = () => {
 };
 
 describe('the civic triangle is rideable rather than decorative', () => {
+  it('rejects ambient cars on the rider fork while dedicated forward and reverse entries still move', () => {
+    const reg = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+    const eventId = 'region-pnw:pnw-t1-bridge-city';
+    const base = buildSimConfig(reg, streamForEvent(reg, eventId), { seed: 1, eventId });
+    const c: SimConfig = { ...base, road, route: progress, tuning: { ...base.tuning, ...ISOLATED } };
+    const type = c.trafficTypes.findIndex(
+      (t) => t.category === 'car' && !t.behaviour?.kerb && t.cruiseMps > 0,
+    );
+    expect(type).toBeGreaterThanOrEqual(0);
+    const rows = baked.junctions
+      .flatMap((j) => j.connectors)
+      .map(readConnector)
+      .filter((r) => r !== null);
+    const rider = rows.find((r) => r.splitZone)!;
+    const members = route.branches!.find((b) => b.traffic === 'road')!;
+    const placement = (id: string) => {
+      const edge = road.edgeIndex(id);
+      const s = road.edges[edge]!.length / 2;
+      const lane = road.lanesAt(edge, s).find((l) => l.kind === 'drive' || l.kind === 'shortcut')!;
+      return { type, pos: { edge, s, d: lane.dCenterM, dir: lane.direction }, v0: 10, speed: 10 };
+    };
+    const staleRoute: BakedRoute = {
+      ...route,
+      branches: route.branches!.map((b) =>
+        b.id !== members.id
+          ? b
+          : {
+              ...b,
+              roads: [rider.road, ...b.roads.filter((id) => id !== rider.road)],
+            },
+      ),
+    };
+    const stale: SimConfig = { ...c, route: createRouteProgress(road, staleRoute) };
+    const oldWorld = createWorld(stale);
+    trafficSystem.init(oldWorld, stale);
+    expect(
+      () => placeRoadVehicle(oldWorld, stale, placement(rider.road)),
+      'stale membership permits a real ambient car',
+    ).not.toThrow();
+    const world = createWorld(c);
+    trafficSystem.init(world, c);
+    expect(() => placeRoadVehicle(world, c, placement(rider.road))).toThrow('no legal finite exit');
+    const host = new Set(progress.mainEdges);
+    const streets = new Set(
+      members.roads.map((id) => road.edgeIndex(id)).filter((edge) => !road.edges[edge]!.isConnector),
+    );
+    const entries = rows.filter(
+      (r) =>
+        r.trafficOnly &&
+        ((host.has(road.edgeIndex(r.from.road)) && streets.has(road.edgeIndex(r.to.road))) ||
+          (host.has(road.edgeIndex(r.to.road)) && streets.has(road.edgeIndex(r.from.road)))),
+    );
+    const directions = new Set<number>();
+    for (const entry of entries) {
+      const positive = createWorld(c);
+      trafficSystem.init(positive, c);
+      const spec = placement(entry.road);
+      const slot = placeRoadVehicle(positive, c, spec);
+      const st = trafficState(positive);
+      const id = st.id[slot]!;
+      const generation = st.generation[slot];
+      const start = road.toWorld(spec.pos.edge, spec.pos.s, spec.pos.d, 0);
+      for (let tick = 0; tick < 60; tick++) stepWorld(positive, c, [trafficSystem], []);
+      const mover = positive.movers[id]!;
+      const end = road.toWorld(mover.pos.edge, mover.pos.s, mover.pos.d, 0);
+      expect(Math.hypot(end.x - start.x, end.z - start.z), entry.road).toBeGreaterThan(2);
+      expect(st.generation[slot], 'same ambient vehicle generation').toBe(generation);
+      directions.add(spec.pos.dir);
+    }
+    expect([...directions].sort()).toEqual([-1, 1]);
+    process.stdout.write(
+      `[examined] stale rider ingress accepts placement; current rejects; ${entries.length} dedicated movement controls move in both directions\n`,
+    );
+  });
+
   it.each(['diagonal', 'grid'] as const)(
     'finishes the %s with a rental moped and replays every input',
     (choice) => {
