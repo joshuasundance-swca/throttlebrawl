@@ -10,6 +10,7 @@ import statistics
 import struct
 from collections import Counter
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import pairwise
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -71,7 +72,33 @@ class Grid(BaseModel):
 
 
 class RoadBand(BaseModel):
+    """Ground-owning road faces and explicitly elevated top faces, in world metres."""
+
     triangles: list[tuple[Coordinate, Coordinate, Coordinate]]
+    elevated_decks: list[tuple[Coordinate, Coordinate, Coordinate]] = Field(
+        default_factory=list, alias="elevatedDecks"
+    )
+
+    @model_validator(mode="after")
+    def physical_faces(self) -> RoadBand:
+        for name in ("triangles", "elevated_decks"):
+            rounded = []
+            for triangle in getattr(self, name):
+                # Validate the original evidence as well as its actual physical representation.
+                for vertex in triangle:
+                    for value in vertex:
+                        f32(value)
+                if signed_area2([(v[0], v[2]) for v in triangle]) >= 0:
+                    raise ValueError("Non-upward original road/deck face")
+                physical = cast(
+                    tuple[Coordinate, Coordinate, Coordinate],
+                    tuple(tuple(f32(value) for value in vertex) for vertex in triangle),
+                )
+                if signed_area2([(v[0], v[2]) for v in physical]) >= 0:
+                    raise ValueError("Non-upward or collapsed Float32 road/deck face")
+                rounded.append(physical)
+            setattr(self, name, rounded)
+        return self
 
 
 class River(BaseModel):
@@ -222,7 +249,9 @@ def bake(inputs: LoadedInputs) -> Mesh:
     canonical_domain = set_precision(domain, STEP)
     canonical_road = set_precision(raw_road, STEP)
     water = set_precision(raw_water, STEP)
-    if canonical_road.intersection(water).area:
+    # Test the actual snapped boundaries without snapping the intersection again;
+    # a second fixed-precision overlay can erase a thin newly introduced overlap.
+    if set_precision(canonical_road, 0).intersection(set_precision(water, 0)).area:
         raise ValueError("Quantized road/river overlap requires an ownership decision")
     retained_road = set_precision(raw_road.buffer(-0.02, quad_segs=64), STEP)
     transition = set_precision(raw_road.buffer(39.99, quad_segs=64), STEP)
@@ -314,7 +343,94 @@ def bake(inputs: LoadedInputs) -> Mesh:
         )
     mesh = Mesh(patches=patches)
     validate_mesh(mesh)
+    if inputs.roads.elevated_decks:
+        validate_decks(mesh, inputs)
     return mesh
+
+
+def deck_overlap_separation(
+    deck: tuple[Coordinate, Coordinate, Coordinate],
+    ground: tuple[Coordinate, Coordinate, Coordinate],
+) -> Fraction | None:
+    """Exact rational clipping and plane comparison of two actual Float32 triangles."""
+    xyz = [[tuple(Fraction(v) for v in vertex) for vertex in face] for face in (deck, ground)]
+    ring = [(v[0], v[2]) for v in xyz[0]]
+
+    def cross(
+        a: tuple[Fraction, Fraction], b: tuple[Fraction, Fraction], p: tuple[Fraction, Fraction]
+    ) -> Fraction:
+        return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+
+    clip = [(v[0], v[2]) for v in xyz[1]]
+    for a, b in zip(clip, [*clip[1:], clip[0]], strict=True):
+        previous_ring, ring = ring, []
+        if not previous_ring:
+            return None
+        for p, q in zip(previous_ring, [*previous_ring[1:], previous_ring[0]], strict=True):
+            cp, cq = cross(a, b, p), cross(a, b, q)
+            if cp <= 0:
+                ring.append(p)
+            if (cp < 0 < cq) or (cq < 0 < cp):
+                t = cp / (cp - cq)
+                ring.append((p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
+    if len(ring) < 3 or not sum(
+        p[0] * q[1] - p[1] * q[0] for p, q in zip(ring, [*ring[1:], ring[0]], strict=True)
+    ):
+        return None
+
+    def height(face: list[tuple[Fraction, ...]], x: Fraction, z: Fraction) -> Fraction:
+        a, b, c = face
+        dx1, dz1, dy1 = b[0] - a[0], b[2] - a[2], b[1] - a[1]
+        dx2, dz2, dy2 = c[0] - a[0], c[2] - a[2], c[1] - a[1]
+        det = dx1 * dz2 - dx2 * dz1
+        return a[1] + ((dy1 * dz2 - dy2 * dz1) * (x - a[0]) + (dx1 * dy2 - dx2 * dy1) * (z - a[2])) / det
+
+    return min(height(xyz[0], x, z) - height(xyz[1], x, z) for x, z in ring)
+
+
+def validate_decks(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
+    """Prove full projected support and strictly positive F32 top-plane separation.
+
+    This is not a deck thickness, underside, survey or navigable clearance claim.
+    A linear plane difference attains its minimum at an overlap polygon vertex.
+    """
+    # Revalidate mutable/directly constructed evidence, not only file-loaded inputs.
+    roads = RoadBand.model_validate(inputs.roads.model_dump(by_alias=True))
+    natural = list(roads.triangles)
+    for patch in mesh.patches:
+        for face in patch.triangles:
+            natural.append(
+                cast(
+                    tuple[Coordinate, Coordinate, Coordinate],
+                    tuple(tuple(f32(value) for value in patch.vertices[i]) for i in face),
+                )
+            )
+    faces = [Polygon([(v[0], v[2]) for v in t]) for t in natural]
+    support = unary_union(faces)
+    tree = STRtree(faces)
+    grid = inputs.grid
+    domain = box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1])
+    minimum = math.inf
+    overlaps = 0
+    for deck in roads.elevated_decks:
+        footprint = Polygon([(v[0], v[2]) for v in deck])
+        if footprint.difference(domain).area:
+            raise ValueError("Elevated deck lacks bounded source coverage")
+        for k in tree.query(footprint):
+            separation = deck_overlap_separation(deck, natural[int(k)])
+            if separation is None:
+                continue
+            if separation <= 0 or float(separation) <= 0:
+                raise ValueError("Elevated deck has nonpositive Float32 top separation")
+            minimum = min(minimum, float(separation))
+            overlaps += 1
+        if footprint.difference(support).area:
+            raise ValueError("Elevated deck lacks natural ground/water coverage")
+    return {
+        "faces": len(roads.elevated_decks),
+        "overlap_faces": overlaps,
+        "minimum_top_separation_m": minimum,
+    }
 
 
 def validate_mesh(mesh: Mesh) -> None:
@@ -360,6 +476,7 @@ def encode_mesh(mesh: Mesh) -> bytes:
 
 
 def validate_coverage(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
+    validate_mesh(mesh)
     unions: dict[str, Geometry] = {}
     boundaries: dict[str, set[tuple[XZ, XZ]]] = {}
     for patch in mesh.patches:
@@ -394,12 +511,15 @@ def validate_coverage(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
     shoreline = unions["grass"].boundary.intersection(unions["water"].boundary)
     if shoreline.difference(shared_lines).length or shared_lines.difference(shoreline).length:
         raise ValueError("Unmatched grass/water shoreline edge")
-    return {
+    proof: dict[str, JsonValue] = {
         "world_missing_area_m2": 0,
         "outside_domain_area_m2": 0,
         "shared_shoreline_edges": len(shared),
         "shared_shoreline_length_m": float(shared_lines.length),
     }
+    if inputs.roads.elevated_decks:
+        proof["elevated_decks"] = validate_decks(mesh, inputs)
+    return proof
 
 
 def atomic_write(path: Path, payload: bytes) -> None:

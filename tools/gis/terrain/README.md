@@ -104,6 +104,36 @@ Reproducibility and valid geometry are not rideability, visual, phone-performanc
 acceptance. Source hashes and the selected fingerprint keep those reviewed limitations attached to
 this particular artifact; changing them requires repeating the geometric and runtime review.
 
+## Explicit elevated decks
+
+The road-band numeric input may additionally contain `elevatedDecks`, an array of upward world-XYZ
+triangles with the same shape as `triangles`. Existing `triangles` still own the natural-ground
+cutout and collar. Omitted `elevatedDecks` is an empty array and preserves the Eagle geometry
+fingerprint. Classifying actual extracted faces belongs to the site's reviewed source extraction;
+the recipe does not guess a bridge from height or modify runtime road geometry.
+
+Elevated faces do not cut holes in source ground/water or pull the collar toward their tops.
+Ground-owning road/water overlap is still rejected both before and after boundary quantization.
+The latter check tests the actual snapped outlines without another snapping overlay that could
+erase a thin overlap. Original road/deck evidence must be finite and upward, and remain so after
+Float32 rounding; no invalid or collapsed face is discarded or repaired.
+
+Every elevated face must lie entirely inside the bounded source domain and have natural support
+coverage beneath its full projected footprint. That coverage is the actual grass/water mesh plus
+ground-owning road faces, never the elevated faces themselves. Coverage validation therefore cannot
+hide a missing river or ground patch under a bridge. Over every positive-area overlap, the actual
+Float32 deck top must be strictly above the supporting face. Exact rational triangle clipping and
+plane differences check all overlap vertices, including an intersection hidden by a safe midpoint.
+The proof records face and overlap counts and the minimum top separation in metres. Shared edges
+with no overlapping area do not assert a separation.
+
+**Top separation is not surveyed physical clearance.** It does not model deck thickness, undersides,
+supports, flood stages or navigable clearance. Approach classification, ground/deck transitions,
+terrain grades, source datum reconciliation, scenery contacts, race progress and rendered behavior
+still require site-specific review. No site-specific classification, water level, collar width or
+physical-clearance threshold is chosen by this optional input. The recipe still uses one water
+median and requires nonempty ground-road, river and water-sample inputs.
+
 ## Focused checks
 
 Use the same authoring interpreter and the GIS project's existing dev tools:
