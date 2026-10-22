@@ -95,6 +95,13 @@ The transition uses a 39.99 m buffer and lies within a conservative 40 m offset.
 and outside-owned nodes have zero blend. Adjacent arrangement cells share nodes. Water has explicit
 triangles and a horizontal DEM-median height.
 
+A later cell/target overlay can subdivide only one side of a previously noded shared edge. Before
+validation, exact collinear T-junctions are subdivided at already-existing physical vertices. This
+adds no vertex, moves no coordinate or height, changes no projected coverage, and never snaps a
+nearby noncollinear point. New faces share the existing vertex's height; interpolation inside the
+subdivided face follows those vertices. Final upward-face, manifold boundary, coverage and shoreline
+checks still run unchanged. This is mesh conformity, not source-polygon repair or a boundary waiver.
+
 Fixed-precision normalization and noding move boundaries. An effectively zero-area road-union hole
 collapses, while the source island remains dry in the selected topology. Raw source shoreline
 equality is not claimed: boundary strips move by less than a millimetre in this selected fixture.
@@ -166,9 +173,17 @@ lists by ordinal. Bodies must retain nonempty coverage in the quantized source d
 
 Each body receives its own horizontal Float32 median elevation proxy and output water patch labelled
 `waterBody`. The output contains geometry, not runtime sampling dependencies. Coverage and shoreline
-proof aggregate all water patches; per-body checks additionally require the labelled output to match
-its own snapped source outline, holes and proxy level. The keyed proof preserves source observation
-count, minimum/maximum/median, supplied provenance, source-body hash and output geometry hash.
+proof aggregate all water patches. Per-body checks independently reconstruct the declared globally
+snap-rounded arrangement from preserved road, grid and water inputs, including the subsequent
+cell/target intersections, before comparing that planned polygon coverage exactly to actual output
+faces. The planned oracle never comes from unioning the output triangles themselves. Body labels,
+proxy levels and source holes remain checked; source holes and planned holes must correspond one to
+one by overlap. Raw or merely pre-noding snapped shoreline equality is not claimed: new grid/cell
+intersections also undergo the declared precision operation. The keyed proof reports source-to-plan
+missing/extra areas and boundary Hausdorff displacement, without a fitted tolerance or automatic
+acceptance allowance. It also preserves source observation count, minimum/maximum/median, supplied
+provenance, source-body hash and output geometry hash. Selecting changed source transformations or a
+new geometry fingerprint still requires review; a passing proof does not select its own artifact.
 Omitted body labels are not serialized into legacy output.
 
 These are explicitly approximate game surfaces. A median proxy does not establish a measured stage,

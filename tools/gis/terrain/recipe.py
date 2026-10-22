@@ -305,6 +305,42 @@ def road_union(inputs: LoadedInputs) -> Geometry:
     return unary_union(faces)
 
 
+def authoring_cells(inputs: LoadedInputs) -> list[Geometry]:
+    """Reconstruct the declared snap-rounded arrangement from preserved numeric inputs."""
+    grid = inputs.grid
+    domain = set_precision(box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1]), STEP)
+    raw_road = road_union(inputs)
+    water_sources_areas = water_areas(inputs)
+    raw_water = (
+        water_sources_areas[0][1]
+        if len(water_sources_areas) == 1
+        else unary_union([area for _, area in water_sources_areas])
+    )
+    water = set_precision(raw_water, STEP)
+    retained = set_precision(raw_road.buffer(-0.02, quad_segs=64), STEP)
+    transition = set_precision(raw_road.buffer(39.99, quad_segs=64), STEP)
+    edges: set[tuple[XZ, XZ]] = set()
+    for j in range(len(grid.z) - 1):
+        for i in range(len(grid.x) - 1):
+            a, b = (grid.x[i], grid.z[j]), (grid.x[i + 1], grid.z[j])
+            c, d = (grid.x[i], grid.z[j + 1]), (grid.x[i + 1], grid.z[j + 1])
+            for points in [(a, b, c), (b, d, c)]:
+                for u, v in zip(points, points[1:] + points[:1], strict=True):
+                    edges.add(cast(tuple[XZ, XZ], tuple(sorted([u, v]))))
+    linework = [LineString(edge) for edge in sorted(edges)]
+    linework += [
+        domain.boundary,
+        water.boundary,
+        retained.boundary,
+        transition.boundary,
+        set_precision(raw_road, STEP).boundary,
+    ]
+    if inputs.water_bodies is not None:
+        linework += [set_precision(area, STEP).boundary for _, area in water_sources_areas]
+    noded = union_all(linework, grid_size=STEP)
+    return sorted(polygonize(noded), key=lambda p: (p.bounds, p.area, p.wkb_hex))
+
+
 def bake(inputs: LoadedInputs) -> Mesh:
     """Reproduce the selected algorithm, face order and Float32 node values."""
     grid = inputs.grid
@@ -341,26 +377,7 @@ def bake(inputs: LoadedInputs) -> Mesh:
     land = difference(canonical_domain, union_all([water, retained_road], grid_size=STEP), grid_size=STEP)
     if not land.is_valid or not water.is_valid:
         raise ValueError("Invalid overlay; no repair is permitted")
-    edges: set[tuple[XZ, XZ]] = set()
-    for j in range(len(grid.z) - 1):
-        for i in range(len(grid.x) - 1):
-            a, b = (grid.x[i], grid.z[j]), (grid.x[i + 1], grid.z[j])
-            c, d = (grid.x[i], grid.z[j + 1]), (grid.x[i + 1], grid.z[j + 1])
-            for points in [(a, b, c), (b, d, c)]:
-                for u, v in zip(points, points[1:] + points[:1], strict=True):
-                    edges.add(cast(tuple[XZ, XZ], tuple(sorted([u, v]))))
-    linework = [LineString(edge) for edge in sorted(edges)]
-    linework += [
-        canonical_domain.boundary,
-        water.boundary,
-        retained_road.boundary,
-        transition.boundary,
-        canonical_road.boundary,
-    ]
-    if inputs.water_bodies is not None:
-        linework += [area.boundary for _, area in body_areas]
-    noded = union_all(linework, grid_size=STEP)
-    cells = sorted(polygonize(noded), key=lambda p: (p.bounds, p.area, p.wkb_hex))
+    cells = authoring_cells(inputs)
     inside = [transition.covers(cell.representative_point()) for cell in cells]
     final_transition = unary_union([cell for cell, yes in zip(cells, inside, strict=True) if yes])
     boundary = final_transition.boundary
@@ -435,9 +452,71 @@ def bake(inputs: LoadedInputs) -> Mesh:
         )
     mesh = Mesh(patches=patches)
     validate_mesh(mesh)
+    conform_mesh(mesh)
     if inputs.roads.elevated_decks:
         validate_decks(mesh, inputs)
     return mesh
+
+
+def conform_mesh(mesh: Mesh) -> None:
+    """Subdivide exact collinear T-junctions using existing physical vertices only.
+
+    A cell/target overlay can split one side of a shared edge again after global
+    noding. Retain every face's coverage and every vertex; do not snap near misses,
+    discard edges, move source geometry or exempt the result from coverage proof.
+    """
+
+    def on_edge(p: XZ, a: XZ, b: XZ) -> bool:
+        if p in (a, b):
+            return False
+        px, pz, ax, az, bx, bz = (Fraction(v) for q in (p, a, b) for v in q)
+        return (
+            (bx - ax) * (pz - az) == (bz - az) * (px - ax)
+            and min(ax, bx) <= px <= max(ax, bx)
+            and min(az, bz) <= pz <= max(az, bz)
+        )
+
+    for patch in mesh.patches:
+        points = [(f32(x), f32(z)) for x, _y, z in patch.vertices]
+        by_point: dict[XZ, int] = {}
+        for i, point in enumerate(points):
+            previous = by_point.get(point)
+            if previous is not None and f32(patch.vertices[previous][1]) != f32(patch.vertices[i][1]):
+                raise ValueError("Inconsistent physical terrain node height")
+            by_point[point] = i
+        owners: dict[tuple[XZ, XZ], list[int]] = {}
+        for ti, face in enumerate(patch.triangles):
+            ring = [points[i] for i in face]
+            for a, b in zip(ring, ring[1:] + ring[:1], strict=True):
+                owners.setdefault(cast(tuple[XZ, XZ], tuple(sorted([a, b]))), []).append(ti)
+        exposed = [edge for edge, faces in owners.items() if len(faces) == 1]
+        candidates = sorted({p for edge in exposed for p in edge})
+        tree = STRtree([Point(p) for p in candidates])
+        splits: dict[int, set[int]] = {}
+        for a, b in exposed:
+            for k in tree.query(LineString([a, b])):
+                p = candidates[int(k)]
+                if on_edge(p, a, b):
+                    splits.setdefault(owners[(a, b)][0], set()).add(by_point[p])
+        if not splits:
+            continue
+        triangles: list[Triangle] = []
+        for ti, face in enumerate(patch.triangles):
+            fragments = [face]
+            for node in sorted(splits.get(ti, set())):
+                divided: list[Triangle] = []
+                for fragment in fragments:
+                    for j in range(3):
+                        ia, ib, ic = fragment[j], fragment[(j + 1) % 3], fragment[(j + 2) % 3]
+                        if on_edge(points[node], points[ia], points[ib]):
+                            divided.extend([(ia, node, ic), (node, ib, ic)])
+                            break
+                    else:
+                        divided.append(fragment)
+                fragments = divided
+            triangles.extend(fragments)
+        patch.triangles = triangles
+    validate_mesh(mesh)
 
 
 def deck_overlap_separation(
@@ -637,6 +716,7 @@ def validate_body_sources(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonVal
         ):
             raise ValueError("Unexpected output water body identity")
     proof: dict[str, JsonValue] = {}
+    cells = authoring_cells(inputs)
     for body, area in expected:
         selected = [patch for patch in mesh.patches if patch.water_body == body.id]
         level = f32(statistics.median(body.elevations))
@@ -649,9 +729,26 @@ def validate_body_sources(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonVal
                 for face in patch.triangles
             ]
         )
-        target = set_precision(set_precision(area, STEP), 0)
+        snapped = set_precision(area, STEP)
+        target = unary_union(
+            [polygon for cell in cells for polygon in polygons(intersection(cell, snapped, grid_size=STEP))]
+        )
         if target.difference(actual).area or actual.difference(target).area:
-            raise ValueError("Water body output does not cover its own source geometry")
+            raise ValueError("Water body output does not cover its declared arrangement geometry")
+        source_holes = [Polygon(ring) for polygon in polygons(area) for ring in polygon.interiors]
+        planned_holes = [Polygon(ring) for polygon in polygons(target) for ring in polygon.interiors]
+        if (
+            len(source_holes) != len(planned_holes)
+            or any(
+                sum(hole.intersection(planned).area > 0 for planned in planned_holes) != 1
+                for hole in source_holes
+            )
+            or any(
+                sum(hole.intersection(planned).area > 0 for hole in source_holes) != 1
+                for planned in planned_holes
+            )
+        ):
+            raise ValueError("Water body source holes changed in the declared arrangement")
         payload = json.dumps(body.model_dump(), sort_keys=True, separators=(",", ":"), allow_nan=False)
         proof[body.id] = {
             "source_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
@@ -662,6 +759,12 @@ def validate_body_sources(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonVal
             "source_median_m": statistics.median(body.elevations),
             "float32_proxy_level_m": level,
             "provenance": body.provenance,
+            "planned_missing_area_m2": 0,
+            "planned_extra_area_m2": 0,
+            "source_missing_area_m2": area.difference(target).area,
+            "source_extra_area_m2": target.difference(area).area,
+            "source_boundary_displacement_m": area.boundary.hausdorff_distance(target.boundary),
+            "preserved_source_holes": len(source_holes),
         }
     return proof
 
