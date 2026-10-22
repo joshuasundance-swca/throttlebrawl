@@ -526,6 +526,12 @@ export interface AppHandle {
     complete: boolean;
     playing: boolean;
     mode: string;
+    frame: {
+      tick: number;
+      alpha: number;
+      camera: CameraPose;
+      player: { x: number; y: number; z: number };
+    } | null;
   } | null;
   frameStats(): FrameStats;
   /** Wall-clock time of each of the last ~600 sim steps, ms (dev/perf's sim step timer). */
@@ -647,6 +653,7 @@ export function createApp(opts: AppOptions): AppHandle {
     runtime: ReplayViewer | null;
     controls: ReturnType<typeof createReplayControls>;
     pose: CameraPose | null;
+    poseTick: number;
     alpha: number;
     preparing: boolean;
     interrupted: boolean;
@@ -1536,6 +1543,7 @@ export function createApp(opts: AppOptions): AppHandle {
       runtime: null,
       controls: createReplayControls(replayPads()),
       pose: null,
+      poseTick: -1,
       alpha: 1,
       preparing: true,
       interrupted: false,
@@ -1866,7 +1874,7 @@ export function createApp(opts: AppOptions): AppHandle {
             return;
           }
           const p = prepared.playback;
-          if (viewer.playing || !watching.pose) {
+          if (viewer.playing || !watching.pose || watching.poseTick !== p.curr.tick) {
             watching.alpha = viewer.playing ? alpha : 1;
             const me = interpolateEntity(p.prev, p.curr, watching.alpha, p.playerId);
             if (me)
@@ -1881,6 +1889,7 @@ export function createApp(opts: AppOptions): AppHandle {
                   ...(watching.ground ? { groundHeightAt: watching.ground } : {}),
                 },
               );
+            watching.poseTick = p.curr.tick;
           }
           frames.draw(timestampMs, synthetic, watching.pose !== null, () => {
             if (watching.pose) renderer.render(p.prev, p.curr, watching.alpha, watching.pose);
@@ -3613,8 +3622,10 @@ export function createApp(opts: AppOptions): AppHandle {
     }),
     replayFile: () => (recoveredTerminal ? encodeReplay(recoveredTerminal) : recorder.file()),
     replayPlayback: () => {
-      const viewer = replayWatch?.runtime;
+      const watching = replayWatch;
+      const viewer = watching?.runtime;
       const p = viewer?.prepared?.playback;
+      const me = p && watching ? interpolateEntity(p.prev, p.curr, watching.alpha, p.playerId) : null;
       return p
         ? {
             tick: p.curr.tick,
@@ -3623,6 +3634,15 @@ export function createApp(opts: AppOptions): AppHandle {
             complete: p.complete,
             playing: viewer.playing,
             mode: viewer.mode,
+            frame:
+              watching?.pose && me
+                ? {
+                    tick: watching.poseTick,
+                    alpha: watching.alpha,
+                    camera: { ...watching.pose },
+                    player: { x: me.x, y: me.y, z: me.z },
+                  }
+                : null,
           }
         : null;
     },

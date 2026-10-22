@@ -1423,6 +1423,7 @@ describe('AppHandle actual render wiring', () => {
     frame(0);
     frame(20);
     expect(app.replayPlayback()).toMatchObject({ complete: true, playing: false });
+    expect(boundary.render.mock.calls.at(-1)?.[2]).toBe(1);
     expect(boundary.inputSample).not.toHaveBeenCalled();
     expect(boundary.audioFrame).not.toHaveBeenCalled();
     expect(boundary.recorderCalls).toEqual([]);

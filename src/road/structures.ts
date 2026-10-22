@@ -502,7 +502,9 @@ export function raceStructures(
   const known = structuresOf(road, seed);
   if (known) return known;
   const needed = structureLayersFor(road, layers);
-  if (needed.length === 0) return EMPTY;
+  // Render's public lookup must see a known-clear world too, rather than mistake it for a
+  // world whose planners are unavailable. This follows the same registry path as nonempty plans.
+  if (needed.length === 0) return planStructures(road, seed, {}, layers);
   const planners: Record<string, StructurePlanner | undefined> = {};
   for (const name of needed) {
     const spec = layers[name];
