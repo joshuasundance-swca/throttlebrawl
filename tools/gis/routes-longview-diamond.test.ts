@@ -152,8 +152,13 @@ describe('Longview diamond streets offer a complete two-way route choice', () =>
       expect(heights.every(Number.isFinite)).toBe(true);
       expect(Math.max(...heights)).toBeGreaterThan(0);
     }
-    expect(route.branches).toHaveLength(1);
-    expect(route.branches?.[0]?.sign).toMatch(/LONGER OUTER ROUTE/);
+    const recipe = read<{ branches: { id: string; sign?: string }[] }>(network.provenance.tool.configRef);
+    expect(recipe.branches.length).toBeGreaterThan(0);
+    expect(route.branches?.map((b) => b.id)).toEqual(recipe.branches.map((b) => b.id));
+    for (const branch of route.branches ?? [])
+      expect(branch.sign).toBe(recipe.branches.find((b) => b.id === branch.id)?.sign);
+    // longview-route-signs.test.ts checks that the actual alternate's headline warns LONGER
+    // and that its physical road chain is longer; this provenance check follows authored copy.
     expect(new Set(roads.flatMap((r) => r.samples.data['y']!)).size).toBeGreaterThan(1);
   });
 

@@ -131,6 +131,24 @@
   },
   "signs": [
     {
+      "id": "longview-civic-directions",
+      "text": "WASHINGTON: STRAIGHT; HUDSON: RIGHT, LONGER. GRID VIA 20TH.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
+      "id": "longview-diamond-directions",
+      "text": "20TH / WASHINGTON: LEFT. INNER ROUTE.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
+      "id": "longview-diamond-outer-directions",
+      "text": "OLYMPIA / KESSLER: STRAIGHT, LONGER. OUTER ROUTE.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
       "id": "spur-keep-right",
       "text": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
       "tags": ["site"],

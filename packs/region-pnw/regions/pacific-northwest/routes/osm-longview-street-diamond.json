@@ -66,7 +66,7 @@
       "id": "osm-longview-diamond-olympia",
       "kind": "alternate",
       "marked": true,
-      "sign": "OLYMPIA / KESSLER: LONGER OUTER ROUTE. 20TH / WASHINGTON: INNER ROUTE.",
+      "sign": "20TH / WASHINGTON: LEFT. OLYMPIA / KESSLER: STRAIGHT, LONGER.",
       "aiTake": 0.35,
       "traffic": "road",
       "roads": [

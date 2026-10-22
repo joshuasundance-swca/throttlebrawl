@@ -106,6 +106,26 @@
               "s1": 20,
               "d0": 5,
               "d1": 7
+            },
+            {
+              "kind": "billboard",
+              "id": "diamond-route-directions",
+              "s0": 112,
+              "s1": 118,
+              "d0": 13.6,
+              "d1": 20,
+              "item": "longview-diamond-directions",
+              "params": { "style": "guide" }
+            },
+            {
+              "kind": "billboard",
+              "id": "diamond-outer-directions",
+              "s0": 172,
+              "s1": 178,
+              "d0": 13.6,
+              "d1": 20,
+              "item": "longview-diamond-outer-directions",
+              "params": { "style": "guide" }
             }
           ]
         },
@@ -311,7 +331,7 @@
       "label": "outer",
       "kind": "alternate",
       "marked": true,
-      "sign": "OLYMPIA / KESSLER: LONGER OUTER ROUTE. 20TH / WASHINGTON: INNER ROUTE.",
+      "sign": "20TH / WASHINGTON: LEFT. OLYMPIA / KESSLER: STRAIGHT, LONGER.",
       "aiTake": 0.35,
       "connectorWidthM": 6,
       "minRadiusM": 42.5,
