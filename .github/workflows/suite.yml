@@ -182,6 +182,8 @@ jobs:
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
+      - name: Prepare pinned pack inputs
+        run: npm run assets:fetch -- --build-inputs
       - run: npm audit signatures
       - name: Types, lint, format, packs, leak scan, size, notes
         if: inputs.full
@@ -254,6 +256,8 @@ jobs:
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
+      - name: Prepare pinned pack inputs
+        run: npm run assets:fetch -- --build-inputs
       - name: Unit tests, one slice
         run: npm run check -- --tier unit --shard "$SHARD/$SHARD_TOTAL" $QUICK_UNIT_ARGS
       # Fail fast on a PR, as in static above.
@@ -329,6 +333,8 @@ jobs:
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
       - run: npm ci
+      - name: Prepare pinned pack inputs
+        run: npm run assets:fetch -- --build-inputs
       - name: Seeded sim batch, one slice
         run: npm run check -- --tier sim --shard "$SHARD/$SHARD_TOTAL"
       # Fail fast on a PR, as in static above.

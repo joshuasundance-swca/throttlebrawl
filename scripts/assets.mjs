@@ -2,6 +2,7 @@
 // The dataset asset commands (scripts/dataset-assets.mjs has the why; docs/engineering.md, "Big and
 // generated assets").
 //   node scripts/assets.mjs fetch    download every pinned file into .cache/assets/ (sha256-checked)
+//                         --build-inputs  select only pinned pack build inputs
 //   node scripts/assets.mjs verify   check the lock against the repo and every cached file's sha256
 //   node scripts/assets.mjs add <file> --as <packId>/<path> [--region <id>] [--note <text>]
 //                                    copy a new or changed file into the cache and pin its hash
@@ -16,6 +17,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:
 import path from 'node:path';
 import {
   CACHE_DIR,
+  buildInputs,
   cachePath,
   cachedBytes,
   ensureCached,
@@ -48,9 +50,11 @@ function loadLock() {
 
 async function fetchAll() {
   const lock = loadLock();
+  const inputsOnly = args.includes('--build-inputs');
+  const files = inputsOnly ? buildInputs(lock) : lock.files;
   let downloaded = 0;
   let bytes = 0;
-  for (const file of lock.files) {
+  for (const file of files) {
     try {
       const r = await ensureCached(repoRoot, lock, file);
       if (r.downloaded) downloaded++;
@@ -60,8 +64,8 @@ async function fetchAll() {
     }
   }
   examined(
-    `${lock.files.length} pinned dataset files (${fmtBytes(bytes)}) at ${lock.repo}@${lock.revision.slice(0, 7)}: ` +
-      `${downloaded} downloaded, ${lock.files.length - downloaded} already cached`,
+    `${files.length} pinned ${inputsOnly ? 'build inputs' : 'dataset files'} (${fmtBytes(bytes)}) at ${lock.repo}@${lock.revision.slice(0, 7)}: ` +
+      `${downloaded} downloaded, ${files.length - downloaded} already cached`,
   );
 }
 
