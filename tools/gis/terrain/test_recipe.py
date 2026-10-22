@@ -8,6 +8,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from shapely.geometry import Point, Polygon  # type: ignore[import-untyped]
+from shapely.ops import unary_union  # type: ignore[import-untyped]
 
 from . import recipe
 
@@ -152,7 +154,7 @@ def test_declared_deck_preserves_water_and_land_without_pulling_the_collar() -> 
     decks = proof["elevated_decks"]
     assert isinstance(decks, dict)
     assert decks["faces"] == 2
-    assert decks["minimum_top_separation_m"] == 10
+    assert decks["minimum_natural_top_separation_m"] == 10
     # Move the same deck over dry land, including the existing approach's collar.
     inputs = replace(
         inputs,
@@ -167,7 +169,7 @@ def test_declared_deck_preserves_water_and_land_without_pulling_the_collar() -> 
     assert recipe.geometry_sha256(dry) == recipe.geometry_sha256(actual)
     dry_proof = recipe.validate_coverage(dry, inputs)["elevated_decks"]
     assert isinstance(dry_proof, dict)
-    separation = dry_proof["minimum_top_separation_m"]
+    separation = dry_proof["minimum_natural_top_separation_m"]
     assert isinstance(separation, (int, float))
     assert 8 <= separation < 10
 
@@ -255,3 +257,151 @@ def test_missing_natural_ground_below_deck_is_not_hidden_by_deck_coverage() -> N
     mesh.patches = [p for p in mesh.patches if p.surface != "water"]
     with pytest.raises(ValueError, match="cover"):
         recipe.validate_coverage(mesh, inputs)
+
+
+def water_bodies_payload() -> dict[str, object]:
+    return {
+        "formatVersion": 1,
+        "bodies": [
+            {
+                "id": "lake",
+                "polygons": [
+                    [[(40, 0), (60, 0), (60, 40), (40, 40)], [(46, 10), (54, 10), (54, 30), (46, 30)]]
+                ],
+                "elevations": [2, 3, 4],
+                "provenance": {"source": "synthetic lake observations"},
+            },
+            {
+                "id": "canal",
+                "polygons": [[[(60, 50), (80, 50), (80, 100), (60, 100)]]],
+                "elevations": [4, 6],
+                "provenance": {"source": "synthetic canal observations"},
+            },
+        ],
+    }
+
+
+def body_inputs() -> recipe.LoadedInputs:
+    return replace(
+        synthetic_inputs(),
+        river=None,
+        water=None,
+        water_bodies=recipe.WaterBodies.model_validate(water_bodies_payload()),
+    )
+
+
+def test_body_specific_proxy_levels_holes_and_identity_survive_bake_and_proof() -> None:
+    inputs = body_inputs()
+    mesh = recipe.bake(inputs)
+    water = [p for p in mesh.patches if p.surface == "water"]
+    assert {p.water_body: {v[1] for v in p.vertices} for p in water} == {"lake": {3}, "canal": {5}}
+    lake = next(p for p in water if p.water_body == "lake")
+    lake_faces = unary_union(
+        [Polygon([(lake.vertices[i][0], lake.vertices[i][2]) for i in face]) for face in lake.triangles]
+    )
+    assert not lake_faces.covers(Point(50, 20))  # source island remains dry
+    assert lake_faces.covers(Point(42, 20))  # positive water control
+    proof = recipe.validate_coverage(mesh, inputs)
+    bodies = proof["water_bodies"]
+    assert isinstance(bodies, dict)
+    assert set(bodies) == {"lake", "canal"}
+    lake_proof = bodies["lake"]
+    assert isinstance(lake_proof, dict)
+    assert lake_proof["source_elevation_min_m"] == 2
+    assert lake_proof["source_elevation_max_m"] == 4
+    assert lake_proof["source_observations"] == 3
+    assert lake_proof["provenance"] == {"source": "synthetic lake observations"}
+    decoded = recipe.Mesh.model_validate_json(recipe.encode_mesh(mesh))
+    assert [p.water_body for p in decoded.patches] == [p.water_body for p in mesh.patches]
+    assert recipe.validate_coverage(decoded, inputs) == proof
+
+
+def test_all_body_patches_count_in_world_coverage_and_shoreline_proof() -> None:
+    inputs = body_inputs()
+    mesh = recipe.bake(inputs)
+    proof = recipe.validate_coverage(mesh, inputs)
+    assert proof["world_missing_area_m2"] == 0
+    mesh.patches = [p for p in mesh.patches if p.water_body != "canal"]
+    with pytest.raises(ValueError, match=r"cover|body"):
+        recipe.validate_coverage(mesh, inputs)
+
+
+def test_relabelled_body_or_wrong_level_cannot_claim_source_identity() -> None:
+    inputs = body_inputs()
+    for change in ("identity", "level"):
+        mesh = recipe.bake(inputs)
+        patch = next(p for p in mesh.patches if p.water_body == "canal")
+        if change == "identity":
+            patch.water_body = "lake"
+        else:
+            patch.vertices = [(x, 3, z) for x, _y, z in patch.vertices]
+        with pytest.raises(ValueError, match=r"body|level"):
+            recipe.validate_coverage(mesh, inputs)
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "empty", "nonfinite", "overlap", "invalid"])
+def test_invalid_or_ambiguous_water_body_sources_reject(mutation: str) -> None:
+    payload = water_bodies_payload()
+    bodies = payload["bodies"]
+    assert isinstance(bodies, list)
+    if mutation == "duplicate":
+        bodies[1]["id"] = bodies[0]["id"]
+    elif mutation == "empty":
+        bodies[0]["elevations"] = []
+    elif mutation == "nonfinite":
+        bodies[0]["elevations"] = [float("nan")]
+    elif mutation == "overlap":
+        bodies[1]["polygons"] = bodies[0]["polygons"]
+    else:
+        bodies[0]["polygons"] = [[[(0, 0), (10, 10), (0, 10), (10, 0)]]]
+    with pytest.raises(ValueError):
+        recipe.WaterBodies.model_validate(payload)
+
+
+def test_versioned_body_manifest_loads_and_mixed_input_sets_reject(tmp_path: Path) -> None:
+    inputs = synthetic_inputs()
+    files = {
+        "road_band": inputs.roads.model_dump(by_alias=True),
+        "grid": inputs.grid.model_dump(by_alias=True),
+        "water_bodies": water_bodies_payload(),
+    }
+    manifest = inputs.manifest.model_copy(deep=True)
+    manifest.inputs = {}
+    for key, payload in files.items():
+        path = tmp_path / f"{key}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        manifest.inputs[key] = recipe.InputFile(path=path.name, sha256=recipe.sha256(path))
+    path = tmp_path / "manifest.json"
+    path.write_text(manifest.model_dump_json(), encoding="utf-8")
+    loaded = recipe.load_inputs(path)
+    assert loaded.river is None and loaded.water is None
+    assert loaded.water_bodies is not None
+    assert recipe.geometry_sha256(recipe.bake(loaded)) == recipe.geometry_sha256(recipe.bake(body_inputs()))
+    manifest.inputs["river"] = manifest.inputs["water_bodies"]
+    path.write_text(manifest.model_dump_json(), encoding="utf-8")
+    with pytest.raises(ValueError, match="input"):
+        recipe.load_inputs(path)
+
+
+def test_direct_mixed_water_modes_reject() -> None:
+    with pytest.raises(ValueError, match=r"water.*mode"):
+        recipe.bake(replace(body_inputs(), river=synthetic_inputs().river))
+
+
+def test_existing_connected_approach_road_may_meet_deck_at_grade() -> None:
+    inputs = synthetic_inputs(deck_y=1)
+    inputs = replace(
+        inputs,
+        roads=recipe.RoadBand.model_validate(
+            {"triangles": inputs.roads.triangles, "elevatedDecks": rectangle(2, 20, 4, 80, 1)}
+        ),
+    )
+    mesh = recipe.bake(inputs)
+    proof = recipe.validate_coverage(mesh, inputs)["elevated_decks"]
+    assert isinstance(proof, dict)
+    overlaps = proof["ordinary_road_overlap_faces"]
+    assert isinstance(overlaps, int)
+    assert overlaps > 0
+    separation = proof["minimum_natural_top_separation_m"]
+    assert isinstance(separation, (int, float))
+    assert separation > 0

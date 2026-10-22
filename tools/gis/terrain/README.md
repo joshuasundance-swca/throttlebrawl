@@ -122,17 +122,59 @@ Every elevated face must lie entirely inside the bounded source domain and have 
 coverage beneath its full projected footprint. That coverage is the actual grass/water mesh plus
 ground-owning road faces, never the elevated faces themselves. Coverage validation therefore cannot
 hide a missing river or ground patch under a bridge. Over every positive-area overlap, the actual
-Float32 deck top must be strictly above the supporting face. Exact rational triangle clipping and
+Float32 deck top must be strictly above the natural grass/water face. Exact rational triangle clipping and
 plane differences check all overlap vertices, including an intersection hidden by a safe midpoint.
-The proof records face and overlap counts and the minimum top separation in metres. Shared edges
-with no overlapping area do not assert a separation.
+The proof records natural-face and ordinary-road overlap counts separately, and the minimum natural
+top separation in metres (null if no natural face overlaps). Existing approach road/deck faces may
+meet at grade: they remain the unchanged road layer, and no road/road clearance is asserted. Shared
+edges with no overlapping area do not assert a separation.
 
 **Top separation is not surveyed physical clearance.** It does not model deck thickness, undersides,
 supports, flood stages or navigable clearance. Approach classification, ground/deck transitions,
 terrain grades, source datum reconciliation, scenery contacts, race progress and rendered behavior
 still require site-specific review. No site-specific classification, water level, collar width or
-physical-clearance threshold is chosen by this optional input. The recipe still uses one water
-median and requires nonempty ground-road, river and water-sample inputs.
+physical-clearance threshold is chosen by this optional input.
+
+## Identified water bodies
+
+The exact legacy manifest keys `{road_band, grid, river, water_samples}` retain the original single
+water-median mode and Eagle geometry fingerprint. A second, mutually exclusive mode uses exactly
+`{road_band, grid, water_bodies}`. Mixed or partial input sets are rejected. Both modes retain hashed
+numeric files, pinned authoring versions and selected output fingerprints.
+
+The `water_bodies` file has this shape (numbers here are synthetic examples, not site data):
+
+```json
+{
+  "formatVersion": 1,
+  "bodies": [
+    {
+      "id": "source-feature-id",
+      "polygons": [[[[0, 0], [10, 0], [10, 10], [0, 10]]]],
+      "elevations": [1, 2, 3],
+      "provenance": {"source": "capture record and observation method"}
+    }
+  ]
+}
+```
+
+Each polygon is an outer ring followed by any holes, in network X/Z metres. IDs must be unique;
+geometry must be nonempty and valid; observations must be nonempty and finite. Bodies with
+positive-area overlap are ambiguous ownership and rejected, including overlap introduced by
+quantization. The authorer never repairs invalid polygons or matches separate geometry/observation
+lists by ordinal. Bodies must retain nonempty coverage in the quantized source domain.
+
+Each body receives its own horizontal Float32 median elevation proxy and output water patch labelled
+`waterBody`. The output contains geometry, not runtime sampling dependencies. Coverage and shoreline
+proof aggregate all water patches; per-body checks additionally require the labelled output to match
+its own snapped source outline, holes and proxy level. The keyed proof preserves source observation
+count, minimum/maximum/median, supplied provenance, source-body hash and output geometry hash.
+Omitted body labels are not serialized into legacy output.
+
+These are explicitly approximate game surfaces. A median proxy does not establish a measured stage,
+hydraulic continuity, canal slope, flood model, current conditions or surveyed datum/clearance. The
+source spread and provenance stay in the proof so site review can decide whether a horizontal proxy
+is appropriate. This API chooses no source observations, feature segmentation or physical constants.
 
 ## Focused checks
 

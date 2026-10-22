@@ -109,6 +109,34 @@ class WaterSamples(BaseModel):
     elevations: list[FiniteFloat]
 
 
+class WaterBody(River):
+    id: str = Field(min_length=1)
+    elevations: list[FiniteFloat] = Field(min_length=1)
+    provenance: dict[str, JsonValue]
+
+
+class WaterBodies(BaseModel):
+    format_version: Literal[1] = Field(alias="formatVersion")
+    bodies: list[WaterBody] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def source_ownership(self) -> WaterBodies:
+        if len({body.id for body in self.bodies}) != len(self.bodies):
+            raise ValueError("Duplicate water body identity")
+        owned: list[Geometry] = []
+        for body in self.bodies:
+            if not body.polygons:
+                raise ValueError("Empty water body geometry")
+            faces = [Polygon(rings[0], rings[1:]) for rings in body.polygons if rings]
+            if len(faces) != len(body.polygons) or any(not p.is_valid or p.area <= 0 for p in faces):
+                raise ValueError("Invalid source water body geometry; no repair is permitted")
+            area = unary_union(faces)
+            if any(area.intersection(other).area for other in owned):
+                raise ValueError("Overlapping water body ownership")
+            owned.append(area)
+        return self
+
+
 class InputFile(BaseModel):
     path: str
     sha256: str
@@ -125,6 +153,7 @@ class Patch(BaseModel):
     surface: Literal["grass", "water"]
     vertices: list[Coordinate]
     triangles: list[Triangle]
+    water_body: str | None = Field(default=None, alias="waterBody")
 
 
 class Mesh(BaseModel):
@@ -136,9 +165,10 @@ class LoadedInputs:
     manifest: Manifest
     roads: RoadBand
     grid: Grid
-    river: River
-    water: WaterSamples
+    river: River | None
+    water: WaterSamples | None
     paths: tuple[Path, ...]
+    water_bodies: WaterBodies | None = None
 
 
 def f32(value: float) -> float:
@@ -178,8 +208,9 @@ def sha256(path: Path) -> str:
 def load_inputs(manifest_path: Path) -> LoadedInputs:
     manifest = Manifest.model_validate_json(manifest_path.read_bytes())
     names = {"road_band", "grid", "river", "water_samples"}
-    if set(manifest.inputs) != names:
-        raise ValueError("Manifest must name exactly the four numeric input files")
+    body_names = {"road_band", "grid", "water_bodies"}
+    if set(manifest.inputs) not in (names, body_names):
+        raise ValueError("Manifest input set must be exactly legacy water or versioned water bodies")
     versions = {
         "shapely": str(shapely.__version__),
         "geos": str(shapely.geos_version_string),
@@ -203,11 +234,55 @@ def load_inputs(manifest_path: Path) -> LoadedInputs:
         for triangle in roads.triangles
     ]
     grid = Grid.model_validate_json(paths["grid"].read_bytes())
-    river = River.model_validate_json(paths["river"].read_bytes())
-    water = WaterSamples.model_validate_json(paths["water_samples"].read_bytes())
-    if not roads.triangles or not river.polygons or not water.elevations:
+    river = River.model_validate_json(paths["river"].read_bytes()) if "river" in paths else None
+    water = (
+        WaterSamples.model_validate_json(paths["water_samples"].read_bytes())
+        if "water_samples" in paths
+        else None
+    )
+    bodies = (
+        WaterBodies.model_validate_json(paths["water_bodies"].read_bytes())
+        if "water_bodies" in paths
+        else None
+    )
+    if not roads.triangles:
         raise ValueError("Empty road, river or interior-water input")
-    return LoadedInputs(manifest, roads, grid, river, water, (manifest_path.resolve(), *paths.values()))
+    loaded = LoadedInputs(
+        manifest, roads, grid, river, water, (manifest_path.resolve(), *paths.values()), bodies
+    )
+    water_sources(loaded)
+    return loaded
+
+
+def water_sources(inputs: LoadedInputs) -> list[WaterBody]:
+    if inputs.water_bodies is not None:
+        if inputs.river is not None or inputs.water is not None:
+            raise ValueError("Conflicting water input modes")
+        return WaterBodies.model_validate(inputs.water_bodies.model_dump(by_alias=True)).bodies
+    if (
+        inputs.river is None
+        or inputs.water is None
+        or not inputs.river.polygons
+        or not inputs.water.elevations
+    ):
+        raise ValueError("Invalid legacy water input mode")
+    return [
+        WaterBody(
+            id="legacy", polygons=inputs.river.polygons, elevations=inputs.water.elevations, provenance={}
+        )
+    ]
+
+
+def water_areas(inputs: LoadedInputs) -> list[tuple[WaterBody, Geometry]]:
+    grid = inputs.grid
+    domain = box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1])
+    out: list[tuple[WaterBody, Geometry]] = []
+    for body in water_sources(inputs):
+        faces = [Polygon(rings[0], rings[1:]) for rings in body.polygons]
+        if any(not face.is_valid or face.area <= 0 for face in faces):
+            raise ValueError("Invalid source river polygon; no repair is permitted")
+        out.append((body, unary_union(faces).intersection(domain)))
+    return out
 
 
 def polygons(geometry: Geometry) -> list[Geometry]:
@@ -240,15 +315,21 @@ def bake(inputs: LoadedInputs) -> Mesh:
         np.linalg.solve([[v[0], v[2], 1] for v in t], [v[1] for v in t]) for t in inputs.roads.triangles
     ]
     tree = STRtree(faces)
-    river_faces = [Polygon(rings[0], rings[1:]) for rings in inputs.river.polygons]
-    if any(not face.is_valid or face.area <= 0 for face in river_faces):
-        raise ValueError("Invalid source river polygon; no repair is permitted")
-    raw_water = unary_union(river_faces).intersection(domain)
+    sources = water_areas(inputs)
+    raw_water = sources[0][1] if len(sources) == 1 else unary_union([area for _, area in sources])
     if raw_road.intersection(raw_water).area:
         raise ValueError("Road/river overlap requires an explicit new ownership decision")
     canonical_domain = set_precision(domain, STEP)
     canonical_road = set_precision(raw_road, STEP)
     water = set_precision(raw_water, STEP)
+    body_areas = [(body, set_precision(area, STEP)) for body, area in sources]
+    for i, (_, area) in enumerate(body_areas):
+        if area.is_empty:
+            raise ValueError("Water body has no coverage in the quantized source domain")
+        if any(
+            set_precision(area, 0).intersection(set_precision(other, 0)).area for _, other in body_areas[:i]
+        ):
+            raise ValueError("Quantized water body ownership overlaps")
     # Test the actual snapped boundaries without snapping the intersection again;
     # a second fixed-precision overlay can erase a thin newly introduced overlap.
     if set_precision(canonical_road, 0).intersection(set_precision(water, 0)).area:
@@ -276,6 +357,8 @@ def bake(inputs: LoadedInputs) -> Mesh:
         transition.boundary,
         canonical_road.boundary,
     ]
+    if inputs.water_bodies is not None:
+        linework += [area.boundary for _, area in body_areas]
     noded = union_all(linework, grid_size=STEP)
     cells = sorted(polygonize(noded), key=lambda p: (p.bounds, p.area, p.wkb_hex))
     inside = [transition.covers(cell.representative_point()) for cell in cells]
@@ -319,8 +402,10 @@ def bake(inputs: LoadedInputs) -> Mesh:
         return node_y[key]
 
     patches: list[Patch] = []
-    water_y = f32(statistics.median(inputs.water.elevations))
-    for surface, target in [("grass", land), ("water", water)]:
+    targets: list[tuple[Literal["grass", "water"], Geometry, WaterBody | None]] = [("grass", land, None)]
+    targets += [("water", area, body) for body, area in body_areas]
+    for surface, target, body in targets:
+        water_y = f32(statistics.median(body.elevations)) if body is not None else 0
         vertices: list[Coordinate] = []
         triangles: list[Triangle] = []
         indices: dict[Coordinate, int] = {}
@@ -339,7 +424,14 @@ def bake(inputs: LoadedInputs) -> Mesh:
                         face_indices.append(indices[vertex])
                     triangles.append(cast(Triangle, tuple(face_indices)))
         patches.append(
-            Patch(surface=cast(Literal["grass", "water"], surface), vertices=vertices, triangles=triangles)
+            Patch.model_validate(
+                {
+                    "surface": surface,
+                    "vertices": vertices,
+                    "triangles": triangles,
+                    "waterBody": body.id if body is not None and inputs.water_bodies is not None else None,
+                }
+            )
         )
     mesh = Mesh(patches=patches)
     validate_mesh(mesh)
@@ -396,7 +488,7 @@ def validate_decks(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
     """
     # Revalidate mutable/directly constructed evidence, not only file-loaded inputs.
     roads = RoadBand.model_validate(inputs.roads.model_dump(by_alias=True))
-    natural = list(roads.triangles)
+    natural: list[tuple[Coordinate, Coordinate, Coordinate]] = []
     for patch in mesh.patches:
         for face in patch.triangles:
             natural.append(
@@ -406,16 +498,22 @@ def validate_decks(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
                 )
             )
     faces = [Polygon([(v[0], v[2]) for v in t]) for t in natural]
-    support = unary_union(faces)
+    road_faces = [Polygon([(v[0], v[2]) for v in t]) for t in roads.triangles]
+    support = unary_union([*faces, *road_faces])
     tree = STRtree(faces)
+    road_tree = STRtree(road_faces)
     grid = inputs.grid
     domain = box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1])
     minimum = math.inf
     overlaps = 0
+    road_overlaps = 0
     for deck in roads.elevated_decks:
         footprint = Polygon([(v[0], v[2]) for v in deck])
         if footprint.difference(domain).area:
             raise ValueError("Elevated deck lacks bounded source coverage")
+        for k in road_tree.query(footprint):
+            if deck_overlap_separation(deck, roads.triangles[int(k)]) is not None:
+                road_overlaps += 1
         for k in tree.query(footprint):
             separation = deck_overlap_separation(deck, natural[int(k)])
             if separation is None:
@@ -428,8 +526,9 @@ def validate_decks(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
             raise ValueError("Elevated deck lacks natural ground/water coverage")
     return {
         "faces": len(roads.elevated_decks),
-        "overlap_faces": overlaps,
-        "minimum_top_separation_m": minimum,
+        "natural_overlap_faces": overlaps,
+        "ordinary_road_overlap_faces": road_overlaps,
+        "minimum_natural_top_separation_m": minimum if math.isfinite(minimum) else None,
     }
 
 
@@ -467,7 +566,7 @@ def geometry_sha256(mesh: Mesh) -> str:
 
 def encode_mesh(mesh: Mesh) -> bytes:
     """Compact portable JSON; consumers restore Float32 before physical use."""
-    payload = mesh.model_dump()
+    payload = mesh.model_dump(by_alias=True, exclude_none=True)
     for patch in payload["patches"]:
         patch["vertices"] = [
             [float(float32_decimal(value)) for value in vertex] for vertex in patch["vertices"]
@@ -479,23 +578,27 @@ def validate_coverage(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
     validate_mesh(mesh)
     unions: dict[str, Geometry] = {}
     boundaries: dict[str, set[tuple[XZ, XZ]]] = {}
-    for patch in mesh.patches:
+    for surface in sorted({patch.surface for patch in mesh.patches}):
+        selected = [patch for patch in mesh.patches if patch.surface == surface]
         faces = [
-            Polygon([(patch.vertices[i][0], patch.vertices[i][2]) for i in face]) for face in patch.triangles
+            Polygon([(patch.vertices[i][0], patch.vertices[i][2]) for i in face])
+            for patch in selected
+            for face in patch.triangles
         ]
-        unions[patch.surface] = unary_union(faces)
+        unions[surface] = unary_union(faces)
         edges: Counter[tuple[XZ, XZ]] = Counter()
-        for face in patch.triangles:
-            xz = [(patch.vertices[i][0], patch.vertices[i][2]) for i in face]
-            for u, v in zip(xz, xz[1:] + xz[:1], strict=True):
-                edges[cast(tuple[XZ, XZ], tuple(sorted([u, v])))] += 1
+        for patch in selected:
+            for face in patch.triangles:
+                xz = [(patch.vertices[i][0], patch.vertices[i][2]) for i in face]
+                for u, v in zip(xz, xz[1:] + xz[:1], strict=True):
+                    edges[cast(tuple[XZ, XZ], tuple(sorted([u, v])))] += 1
         if any(count > 2 for count in edges.values()):
             raise ValueError("Nonmanifold terrain edge")
-        boundaries[patch.surface] = {edge for edge, count in edges.items() if count == 1}
-        actual = unary_union([LineString(edge) for edge in sorted(boundaries[patch.surface])])
+        boundaries[surface] = {edge for edge, count in edges.items() if count == 1}
+        actual = unary_union([LineString(edge) for edge in sorted(boundaries[surface])])
         if (
-            actual.difference(unions[patch.surface].boundary).length
-            or unions[patch.surface].boundary.difference(actual).length
+            actual.difference(unions[surface].boundary).length
+            or unions[surface].boundary.difference(actual).length
         ):
             raise ValueError("Unmatched terrain boundary edge")
     grid = inputs.grid
@@ -519,6 +622,47 @@ def validate_coverage(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
     }
     if inputs.roads.elevated_decks:
         proof["elevated_decks"] = validate_decks(mesh, inputs)
+    if inputs.water_bodies is not None:
+        proof["water_bodies"] = validate_body_sources(mesh, inputs)
+    return proof
+
+
+def validate_body_sources(mesh: Mesh, inputs: LoadedInputs) -> dict[str, JsonValue]:
+    """Tie every labelled output patch to its own source outline, samples and proxy level."""
+    expected = water_areas(inputs)
+    ids = {body.id for body, _ in expected}
+    for patch in mesh.patches:
+        if (patch.surface == "water" and patch.water_body not in ids) or (
+            patch.surface != "water" and patch.water_body is not None
+        ):
+            raise ValueError("Unexpected output water body identity")
+    proof: dict[str, JsonValue] = {}
+    for body, area in expected:
+        selected = [patch for patch in mesh.patches if patch.water_body == body.id]
+        level = f32(statistics.median(body.elevations))
+        if not selected or any(v[1] != level for patch in selected for v in patch.vertices):
+            raise ValueError("Water body patch has missing coverage or wrong proxy level")
+        actual = unary_union(
+            [
+                Polygon([(patch.vertices[i][0], patch.vertices[i][2]) for i in face])
+                for patch in selected
+                for face in patch.triangles
+            ]
+        )
+        target = set_precision(set_precision(area, STEP), 0)
+        if target.difference(actual).area or actual.difference(target).area:
+            raise ValueError("Water body output does not cover its own source geometry")
+        payload = json.dumps(body.model_dump(), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        proof[body.id] = {
+            "source_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+            "geometry_sha256": geometry_sha256(Mesh(patches=selected)),
+            "source_observations": len(body.elevations),
+            "source_elevation_min_m": min(body.elevations),
+            "source_elevation_max_m": max(body.elevations),
+            "source_median_m": statistics.median(body.elevations),
+            "float32_proxy_level_m": level,
+            "provenance": body.provenance,
+        }
     return proof
 
 
