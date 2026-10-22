@@ -2,7 +2,7 @@
   "type": "pack",
   "id": "region-clinton",
   "name": "Region: Iowa",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "formatVersion": 1,
   "gameVersion": ">=0.1.0",
   "dependencies": { "base": "^0.1.0" },
