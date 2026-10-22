@@ -1,8 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   cachePath,
+  buildInputs,
+  cachedBytes,
   datasetAssetsPlugin,
   distFileName,
   ensureCached,
@@ -43,6 +46,13 @@ const lockWith = (files: unknown[]) => ({
   revision: REV,
   files,
 });
+const terrainFile = () => ({
+  ...fileFor('region-pnw/terrain/test.json', bytesOf('{"patches":[]}')),
+  embed: {
+    kind: 'network-terrain',
+    target: 'packs/region-pnw/regions/pacific-northwest/networks/test.json',
+  },
+});
 
 // A scratch root under the git-ignored cache, with its own lock.
 const root = path.join(repoRoot, '.cache', `dataset-test-${process.pid}`);
@@ -74,6 +84,44 @@ describe('the committed lock', () => {
 });
 
 describe('lockProblems', () => {
+  it('accepts an optional same-pack JSON terrain input and selects only build inputs', () => {
+    const runtime = fileFor('base/models/test.glb', bytesOf('model'));
+    const terrain = terrainFile();
+    const lock = lockWith([runtime, terrain]);
+    expect(lockProblems(lock)).toEqual([]);
+    expect(buildInputs(lock)).toEqual([terrain]);
+    expect(buildInputs(lockWith([runtime]))).toEqual([]);
+  });
+
+  it('rejects unsafe, cross-pack, duplicate and unknown embed mappings', () => {
+    const terrain = terrainFile();
+    for (const embed of [
+      null,
+      [],
+      'network-terrain',
+      {},
+      { ...terrain.embed, kind: 'patch' },
+      { ...terrain.embed, extra: true },
+      ...[
+        '/packs/region-pnw/regions/pacific-northwest/networks/test.json',
+        'packs/region-pnw/regions/pacific-northwest/networks/../test.json',
+        'packs/region-pnw/regions/pacific-northwest/networks/./test.json',
+        'packs/region-pnw/regions/pacific-northwest/networks/test.json?raw',
+        'packs\\region-pnw\\regions\\pacific-northwest\\networks\\test.json',
+        'packs/region-pnw/regions/pacific-northwest/roads/test.json',
+        'packs/region-pnw/regions/pacific-northwest/networks/test.glb',
+        'packs/other/regions/pacific-northwest/networks/test.json',
+      ].map((target) => ({ ...terrain.embed, target })),
+    ])
+      expect(lockProblems(lockWith([{ ...terrain, embed }])).join()).toMatch(/embed/);
+    expect(lockProblems(lockWith([{ ...terrain, path: 'region-pnw/terrain/test.glb' }])).join()).toMatch(
+      /JSON/,
+    );
+    expect(
+      lockProblems(lockWith([terrain, { ...terrain, path: 'region-pnw/terrain/other.json' }])).join(),
+    ).toMatch(/target.*listed twice/);
+  });
+
   it('names every way a lock can be wrong', () => {
     const good = fileFor('base/models/riders/kevin.glb', bytesOf('x'));
     expect(lockProblems(lockWith([good]))).toEqual([]);
@@ -94,6 +142,22 @@ describe('lockProblems', () => {
 });
 
 describe('repoProblems', () => {
+  it('requires an existing regular file for a declared terrain target', () => {
+    const terrain = terrainFile();
+    const fixture = path.join(root, 'target-validation');
+    const pack = path.join(fixture, 'packs/region-pnw');
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(path.join(pack, 'pack.json'), '{}');
+    const lock = lockWith([terrain]);
+    expect(repoProblems(fixture, lock).join()).toMatch(/target.*regular file/);
+    const target = path.join(fixture, terrain.embed.target);
+    mkdirSync(target, { recursive: true });
+    expect(repoProblems(fixture, lock).join()).toMatch(/target.*regular file/);
+    rmSync(target, { recursive: true });
+    writeFileSync(target, '{"type":"road-network"}');
+    expect(repoProblems(fixture, lock)).toEqual([]);
+  });
+
   it('flags a missing pack, an unknown region, and an id its pack already bakes', () => {
     const one = bytesOf('x');
     const lock = lockWith([
@@ -362,16 +426,15 @@ describe('the build plugin', () => {
   type Hooks = {
     configResolved(c: { command: string; root: string }): void;
     resolveId(s: string): string | null;
+    buildStart(this: Ctx): Promise<void>;
     load(this: Ctx, id: string): Promise<string | null>;
   };
   const body = bytesOf('rider bytes');
   const f = fileFor('base/models/test/rider.glb', body, 'florida-keys');
-  writeFileSync(
-    path.join((mkdirSync(root, { recursive: true }), root), LOCK_FILE),
-    JSON.stringify(lockWith([f])),
-  );
 
-  async function run(command: 'build' | 'serve', fetchFn: typeof fetch) {
+  async function run(command: 'build' | 'serve', fetchFn: typeof fetch, files = [f]) {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(path.join(root, LOCK_FILE), JSON.stringify(lockWith(files)));
     const plugin = datasetAssetsPlugin({ root, fetchFn }) as unknown as Hooks;
     plugin.configResolved({ command, root });
     const emitted: { fileName: string; source: Buffer }[] = [];
@@ -383,10 +446,34 @@ describe('the build plugin', () => {
     };
     const id = plugin.resolveId('virtual:dataset-assets');
     expect(id).toBeTruthy();
+    await plugin.buildStart.call(ctx);
+    if (command === 'build')
+      for (const input of buildInputs(lockWith(files))) expect(cachedBytes(root, input)).not.toBeNull();
     const code = (await plugin.load.call(ctx, id as string)) ?? '';
     const rows = JSON.parse(code.replace(/^export default /, '').replace(/;$/, '')) as { path: string }[];
     return { emitted, rows };
   }
+
+  it('prepares embedded inputs before load, but emits and manifests only runtime assets', async () => {
+    rmSync(path.join(root, '.cache'), { recursive: true, force: true });
+    const terrain = terrainFile();
+    const lock = lockWith([f, terrain]);
+    const net = fakeFetch({
+      [resolveUrl(lock, f.path)]: body,
+      [resolveUrl(lock, terrain.path)]: bytesOf('{"patches":[]}'),
+    });
+    const result = await run('build', net.fn, [f, terrain]);
+    expect(result.emitted.map((e) => e.fileName)).toEqual([distFileName(f)]);
+    expect(result.rows.map((r) => r.path)).toEqual([distFileName(f)]);
+    expect(net.calls).toEqual([resolveUrl(lock, terrain.path), resolveUrl(lock, f.path)]);
+    const offline = fakeFetch({});
+    await run('build', offline.fn, [f, terrain]);
+    expect(offline.calls).toEqual([]);
+    const dev = await run('serve', offline.fn, [f, terrain]);
+    expect(dev.rows.map((r) => r.path)).toEqual([`.cache/assets/${f.path}`]);
+    expect(dev.emitted).toEqual([]);
+    expect(offline.calls).toEqual([]);
+  });
 
   it('in a build, fetches what is missing, emits it under assets/ds/<region>/ and names that path', async () => {
     rmSync(path.join(root, '.cache'), { recursive: true, force: true });
@@ -406,5 +493,48 @@ describe('the build plugin', () => {
     expect(dev.emitted).toEqual([]);
     expect(dev.rows.map((r) => r.path)).toEqual([`.cache/assets/${f.path}`]);
     expect(net.calls).toEqual([]);
+  });
+});
+
+describe('assets fetch --build-inputs', () => {
+  it('does no network work for an empty selection, and verifies warm pinned inputs without runtime assets', () => {
+    const cliRoot = path.join(root, 'cli');
+    mkdirSync(path.join(cliRoot, 'scripts'), { recursive: true });
+    for (const name of ['assets.mjs', 'dataset-assets.mjs', 'lib.mjs'])
+      copyFileSync(path.join(repoRoot, 'scripts', name), path.join(cliRoot, 'scripts', name));
+    const invoke = (args: string[]) =>
+      spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'data:text/javascript,globalThis.fetch=()=>{throw new Error("network forbidden in this test")}',
+          path.join(cliRoot, 'scripts', 'assets.mjs'),
+          'fetch',
+          ...args,
+        ],
+        { encoding: 'utf8' },
+      );
+    const runtime = fileFor('base/models/uncached.glb', bytesOf('uncached model'));
+    writeFileSync(path.join(cliRoot, LOCK_FILE), JSON.stringify(lockWith([runtime])));
+    const empty = invoke(['--build-inputs']);
+    expect(empty.stderr).toBe('');
+    expect(empty.status).toBe(0);
+    expect(empty.stdout).toMatch(/0 pinned build inputs/);
+    const terrain = terrainFile();
+    writeFileSync(path.join(cliRoot, LOCK_FILE), JSON.stringify(lockWith([runtime, terrain])));
+    const cached = cachePath(cliRoot, terrain.path);
+    mkdirSync(path.dirname(cached), { recursive: true });
+    writeFileSync(cached, '{"patches":[]}');
+    const warm = invoke(['--build-inputs']);
+    expect(warm.stderr).toBe('');
+    expect(warm.status).toBe(0);
+    expect(warm.stdout).toMatch(/1 pinned build inputs.*0 downloaded, 1 already cached/);
+    const all = invoke([]);
+    expect(all.status).toBe(1);
+    expect(all.stderr).toMatch(/uncached.glb.*network forbidden/);
+    writeFileSync(cached, '{"patches":{}}'); // same length, different SHA
+    const corrupt = invoke(['--build-inputs']);
+    expect(corrupt.status).toBe(1);
+    expect(corrupt.stderr).toMatch(/terrain\/test.json.*network forbidden/);
   });
 });

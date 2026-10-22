@@ -6,12 +6,15 @@
 // - `npm run assets:fetch` downloads every pinned file into `.cache/assets/<path>` (git-ignored) and
 //   checks its sha256; a file already cached with the right hash is not downloaded again, so an
 //   offline machine with a warm cache keeps building.
+//   `-- --build-inputs` selects only JSON inputs embedded into pack networks by the pack tooling.
 // - `npm run assets:verify` checks the lock (paths, packs, regions, no id that a pack also bakes) and
 //   every cached file's sha256.
 // - The build bakes them in: `datasetAssetsPlugin()` serves `virtual:dataset-assets`, the manifest
-//   rows (`source: 'dataset'`), and emits each file into `dist/assets/ds/<region>/`, fetching any
+//   rows (`source: 'dataset'`), and emits each runtime file into `dist/assets/ds/<region>/`, fetching any
 //   that are not cached yet. The game then loads them from its own origin like any baked file, so
 //   offline play and the service worker work the same (interview round 7: "what about offline play?").
+//   An optional `embed` mapping instead marks a pinned build input: prepare its verified cache at
+//   build start, then leave its consumption to pack tooling without a duplicate runtime row/file.
 // - A file's dataset path is `<packId>/<path under the pack's assets/>`, so its asset id is the same
 //   id a pack entry's `modelAsset` would name (docs/content-packs.md, "Asset references").
 // - `region` (a region id, or none for files every region uses) lets the size budget count models
@@ -53,9 +56,12 @@ const SHA1_RE = /^[0-9a-f]{40}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PATH_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*\/(?:[a-z0-9][a-z0-9._-]*\/)*[a-z0-9][a-z0-9._-]*\.([a-z0-9]+)$/;
+const NETWORK_TARGET_RE =
+  /^packs\/([a-z0-9]+(?:-[a-z0-9]+)*)\/regions\/[a-z0-9]+(?:-[a-z0-9]+)*\/networks\/[a-z0-9][a-z0-9._-]*\.json$/;
 
 /**
- * @typedef {{ path: string, bytes: number, sha256: string, region?: string, note?: string }} LockFile
+ * @typedef {{ kind: 'network-terrain', target: string }} Embed
+ * @typedef {{ path: string, bytes: number, sha256: string, region?: string, note?: string, embed?: Embed }} LockFile
  * @typedef {{ formatVersion: 1, repo: string, repoType: 'dataset', revision: string, files: LockFile[] }} Lock
  */
 
@@ -134,6 +140,7 @@ export function lockProblems(lock) {
     problems.push('revision must be an exact 40-character commit id, never a branch');
   if (!Array.isArray(lock.files)) return [...problems, 'files must be a list'];
   const seen = new Set();
+  const targets = new Set();
   for (const [i, f] of lock.files.entries()) {
     const where = `files[${i}]`;
     if (!f || typeof f !== 'object') {
@@ -155,10 +162,38 @@ export function lockProblems(lock) {
       problems.push(`${where}.sha256 must be 64 lower-case hex digits`);
     if (f.region !== undefined && (typeof f.region !== 'string' || !SLUG_RE.test(f.region)))
       problems.push(`${where}.region must be a region id`);
-    const extra = Object.keys(f).filter((k) => !['path', 'bytes', 'sha256', 'region', 'note'].includes(k));
+    if (f.embed !== undefined) {
+      if (!f.embed || typeof f.embed !== 'object' || Array.isArray(f.embed))
+        problems.push(`${where}.embed must be a network-terrain object`);
+      else {
+        if (f.embed.kind !== 'network-terrain')
+          problems.push(`${where}.embed.kind must be "network-terrain"`);
+        const target = typeof f.embed.target === 'string' ? NETWORK_TARGET_RE.exec(f.embed.target) : null;
+        if (!target)
+          problems.push(`${where}.embed.target must be "packs/<packId>/regions/<region>/networks/<id>.json"`);
+        else if (target[1] !== splitPath(typeof f.path === 'string' ? f.path : '').packId)
+          problems.push(`${where}.embed.target must belong to the file's pack`);
+        if (typeof f.embed.target === 'string') {
+          if (targets.has(f.embed.target))
+            problems.push(`${where}.embed.target ${f.embed.target} is listed twice`);
+          targets.add(f.embed.target);
+        }
+        const unknown = Object.keys(f.embed).filter((k) => !['kind', 'target'].includes(k));
+        if (unknown.length) problems.push(`${where}.embed has unknown fields: ${unknown.join(', ')}`);
+      }
+      if (m?.[1] !== 'json') problems.push(`${where}.embed requires a JSON input file`);
+    }
+    const extra = Object.keys(f).filter(
+      (k) => !['path', 'bytes', 'sha256', 'region', 'note', 'embed'].includes(k),
+    );
     if (extra.length) problems.push(`${where} has unknown fields: ${extra.join(', ')}`);
   }
   return problems;
+}
+
+/** Pinned inputs consumed by pack tooling rather than emitted as standalone runtime assets. */
+export function buildInputs(lock) {
+  return lock.files.filter((file) => file.embed !== undefined);
 }
 
 /** The pack id, asset id and extension a dataset path names. */
@@ -281,6 +316,11 @@ export function repoProblems(root, lock) {
   const regions = packRegions(root);
   for (const f of lock.files) {
     const { packId } = splitPath(f.path);
+    if (f.embed) {
+      const target = path.join(root, f.embed.target);
+      if (!existsSync(target) || !statSync(target).isFile())
+        problems.push(`${f.path}: embed target "${f.embed.target}" must be an existing regular file`);
+    }
     if (!existsSync(path.join(root, 'packs', packId, 'pack.json')))
       problems.push(`${f.path}: there is no pack "${packId}" under packs/`);
     else if (existsSync(path.join(root, 'packs', packId, 'assets', ...f.path.split('/').slice(1))))
@@ -395,10 +435,11 @@ export function worstRaceModelBytes(byRegion) {
 }
 
 /**
- * The Vite plugin. `virtual:dataset-assets` exports the manifest rows. In a build, each file is
+ * The Vite plugin. `virtual:dataset-assets` exports runtime manifest rows. In a build, each file is
  * fetched into the cache if needed, checked, and emitted at `distFileName`; the row's path is that
  * file, which the manifest resolves against the page. In dev and tests, rows point at the cache and
- * the dev server serves it (a file not fetched yet just falls back to its stand-in).
+ * the dev server serves it (a file not fetched yet just falls back to its stand-in). Embedded inputs
+ * are prepared before module loading in builds, and never emitted or added to the runtime manifest.
  */
 export function datasetAssetsPlugin({ root, fetchFn } = {}) {
   const resolved = `\0${VIRTUAL_ID}`;
@@ -411,6 +452,20 @@ export function datasetAssetsPlugin({ root, fetchFn } = {}) {
       base = root ?? config.root;
     },
     resolveId: (source) => (source === VIRTUAL_ID ? resolved : null),
+    async buildStart() {
+      if (!isBuild) return;
+      const { lock, problems } = readLock(base);
+      if (problems.length) this.error(`${LOCK_FILE}: ${problems.join('; ')}`);
+      for (const file of buildInputs(lock)) {
+        try {
+          await ensureCached(base, lock, file, fetchFn);
+        } catch (err) {
+          this.error(
+            `dataset input: ${String(err?.message ?? err)} (npm run assets:fetch -- --build-inputs)`,
+          );
+        }
+      }
+    },
     async load(id) {
       if (id !== resolved) return null;
       this.addWatchFile?.(path.join(base, LOCK_FILE));
@@ -418,6 +473,7 @@ export function datasetAssetsPlugin({ root, fetchFn } = {}) {
       if (problems.length) this.error(`${LOCK_FILE}: ${problems.join('; ')}`);
       const rows = [];
       for (const file of lock.files) {
+        if (file.embed !== undefined) continue;
         if (!isBuild) {
           rows.push(manifestRow(file, `${CACHE_DIR}/${file.path}`));
           continue;
