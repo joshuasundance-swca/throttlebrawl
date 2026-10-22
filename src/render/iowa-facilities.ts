@@ -46,7 +46,7 @@ export class IowaFacilitiesLayer {
       ? new IowaCountyLayer(look, { layout: countyPlan!.iowaCountyLayout(road, seed) })
       : null;
     this.layers = [this.park, this.county].filter((layer): layer is IowaParkLayer => layer !== null);
-    this.group.add(...this.layers.map((layer) => layer.group));
+    for (const layer of this.layers) this.group.add(layer.group);
   }
 
   visibleContent(): VisibleContent[] {
