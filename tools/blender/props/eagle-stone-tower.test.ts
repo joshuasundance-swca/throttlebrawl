@@ -127,6 +127,15 @@ describe('original Eagle stone tower exterior', () => {
       );
       expect(top(4, 0)).toBeGreaterThanOrEqual(3.35 - 1e-6);
       expect(top(4, 0)).toBeLessThanOrEqual(3.37);
+      const lowerMerlon = top(5, 0);
+      const lowerGap = top(5 * Math.cos(Math.PI / 8), 5 * Math.sin(Math.PI / 8));
+      expect(lowerMerlon).toBeGreaterThanOrEqual(4.7 - 1e-6);
+      expect(lowerMerlon).toBeLessThanOrEqual(4.72);
+      expect(lowerGap).toBeGreaterThanOrEqual(4.05 - 1e-6);
+      expect(lowerGap).toBeLessThanOrEqual(4.07);
+      expect(lowerGap, 'measured outer parapet gaps remain below the merlons').toBeLessThan(
+        lowerMerlon - 0.5,
+      );
       expect(top(20, 20), 'no invented distant solid').toBe(-Infinity);
       for (const part of parts) expect(part[4]).toBeCloseTo(0, 1);
     } finally {
