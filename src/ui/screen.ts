@@ -6,6 +6,7 @@ export type Screen =
   | 'settings'
   | 'race'
   | 'results'
+  | 'replay'
   | 'changelog'
   // The credits and data licences (roadmap M5, credits-1).
   | 'credits'

@@ -126,6 +126,14 @@ import type { HeatBadge } from './heat-badge';
 import type { CareerCallbacks, CareerScreens } from './career-screen';
 import type { RadioPanel } from './radio-panel-view';
 import type { WheelieGauge } from './moves-gauge';
+import {
+  createReplayView,
+  REPLAY_CSS,
+  type ReplayAction,
+  type ReplayView,
+  type ReplayViewState,
+} from './replay-view';
+export type { ReplayAction, ReplayViewState } from './replay-view';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
@@ -175,6 +183,10 @@ export interface UiCallbacks {
   /** Race from the menu, or "Race again" from the results. */
   onRace(): void;
   onBackToMenu(): void;
+  /** Watch the completed race from either result screen. App retains the original result. */
+  onWatchReplay(): void;
+  /** Viewer-local controls; these never deliver a normal gameplay action. */
+  onReplayAction(action: ReplayAction): void;
   onCopyReport: OnCopyReport;
   /** Optional diagnostic entry in the menu's More tools. */
   onMeasureFrames?: () => void;
@@ -239,6 +251,8 @@ export interface GameUi {
   /** The HUD from a whole snapshot: speed, position among riders, your health and your target's. */
   updateRace(snapshot: SimSnapshot, playerId: number, units: 'mph' | 'kmh'): void;
   showResults(result: RaceResult): void;
+  setReplayAvailable(available: boolean): void;
+  updateReplay(view: ReplayViewState): void;
   /** Opens the pause screen over the race (lifecycle auto-pause lands here too). */
   pause(): void;
   readonly paused: boolean;
@@ -362,7 +376,10 @@ export interface GameUi {
 }
 
 /** The career screens' methods (their elements stay inside ui). */
-export type CareerUi = Omit<CareerScreens, 'map' | 'results' | 'teaser' | 'overlays' | 'pauseMap'>;
+export type CareerUi = Omit<
+  CareerScreens,
+  'map' | 'results' | 'teaser' | 'overlays' | 'pauseMap' | 'setReplayAvailable'
+>;
 
 export interface UiOptions {
   actionGate?: UiActionOwner['actionGate'];
@@ -775,7 +792,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       MENU_FIRST_CSS +
       FINISH_SHOT_CSS +
       MENU_FLOW_CSS +
-      ACTION_SCREEN_CSS,
+      ACTION_SCREEN_CSS +
+      REPLAY_CSS,
   });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
@@ -1649,6 +1667,12 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const resultPlace = el('div', { id: 'results-place', className: 'title' });
   const resultPrize = el('div', { id: 'results-prize', className: 'card' });
   const resultTally = el('div', { id: 'results-tally', hidden: true });
+  let replayAvailable = false;
+  const watchReplay = button('results-watch-replay', 'small', 'Watch replay', () => {
+    if (replayAvailable) cb.onWatchReplay();
+  });
+  watchReplay.hidden = true;
+  watchReplay.disabled = true;
   const results = el(
     'div',
     { id: 'results', className: 'screen', hidden: true },
@@ -1659,6 +1683,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       [
         button('results-race', 'big', 'Retry', () => cb.onRace()),
         button('results-menu', 'small', 'Menu', () => cb.onBackToMenu()),
+        watchReplay,
       ],
     ),
   );
@@ -2082,6 +2107,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     settings: [settingsScreen.root],
     race: [hud, touchSurface],
     results: [results],
+    // Created on first entry, leaving the normal menu and result DOM untouched.
+    replay: [],
     changelog: [changelogScreen.root],
     credits: [creditsScreen],
     // Filled when the options screen's lazy chunk arrives (below).
@@ -2090,6 +2117,24 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     career: [],
     careerResults: [],
     teaser: [],
+  };
+  let replayView: ReplayView | null = null;
+  let replayState: ReplayViewState = {
+    status: 'loading',
+    camera: 'trackside',
+    elapsedSeconds: 0,
+    durationSeconds: 0,
+  };
+  const ensureReplay = () => {
+    if (!replayView) {
+      replayView = createReplayView((action) => {
+        if (current === 'replay') cb.onReplayAction(action);
+      });
+      settingsScreen.root.before(replayView.root);
+      screens.replay.push(replayView.root);
+    }
+    replayView.update(replayState);
+    return replayView;
   };
 
   // The career (run W-R): a lazy chunk (the first-load JavaScript budget), fetched as the game
@@ -2129,7 +2174,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
           onNextRegion: noop,
         },
         (id, cls, text, onClick) => button(id, cls, text, onClick),
+        () => cb.onWatchReplay(),
       );
+      c.setReplayAvailable(replayAvailable);
       hud.append(c.overlays);
       // The pause screen's network map heads its cards (interview, 2026-10-02: "Maybe just map on pause").
       pauseCards.prepend(c.pauseMap);
@@ -2395,6 +2442,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   function show(screen: Screen) {
     const previous = current;
     current = screen;
+    if (screen === 'replay') ensureReplay();
     // A transient card shown on the screen being left goes with it (transient-cards.ts); a notice on
     // the start screen is carried to the menu, where its time starts again.
     if (cardSlots.screenChanged(screen).includes('ui-notice')) timeNotice();
@@ -2433,6 +2481,17 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (screen === 'changelog')
       void loadChangelog().then(guardUiCompletion(root, (notes) => changelogScreen.setNotes(notes)));
     if (screen === 'credits') loadCredits();
+    if (screen === 'replay') replayView?.focus();
+    if (previous === 'replay' && screen === 'results')
+      (replayAvailable ? watchReplay : results.querySelector<HTMLButtonElement>('#results-race'))?.focus({
+        preventScroll: true,
+      });
+    if (previous === 'replay' && screen === 'careerResults')
+      realCareer?.results
+        .querySelector<HTMLButtonElement>(
+          replayAvailable ? '#career-results-watch-replay' : '#career-results-retry',
+        )
+        ?.focus({ preventScroll: true });
     // The choices follow the region and the road the menu has picked, and the garage.
     if (screen === 'raceOptions') {
       raceView = cb.raceOptions?.() ?? null;
@@ -2512,6 +2571,17 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   return {
     screen: () => current,
     show,
+    setReplayAvailable(available) {
+      replayAvailable = available;
+      watchReplay.hidden = !available;
+      watchReplay.disabled = !available;
+      // Availability outlives guarded lazy screen deliveries, including a later installation.
+      realCareer?.setReplayAvailable(available);
+    },
+    updateReplay(view) {
+      replayState = { ...view };
+      replayView?.update(replayState);
+    },
     updateHud,
     updateRace(snapshot, playerId, units) {
       const player = snapshot.entities[playerId] ?? null;

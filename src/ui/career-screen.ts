@@ -159,6 +159,7 @@ export interface CareerScreens {
   /** The pause screen's map with the player marked, or null to hide it. */
   showPauseMap(view: PauseMapView | null): void;
   showResults(view: CareerResultView): void;
+  setReplayAvailable(available: boolean): void;
   showTeaser(view: TeaserView): void;
   /** A learn-by-riding prompt over the race, for a few seconds. */
   prompt(text: string): void;
@@ -414,7 +415,11 @@ export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLEle
   return el('figure', { className: 'career-map' }, el('figcaption', { textContent: panel.name }), root);
 }
 
-export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): CareerScreens {
+export function createCareerScreens(
+  cb: CareerCallbacks,
+  button: ButtonFn,
+  onWatchReplay?: () => void,
+): CareerScreens {
   // ---- The map screen ---------------------------------------------------------------------------
   const tabs = el('div', { className: 'career-tabs' });
   tabs.setAttribute('role', 'tablist');
@@ -751,6 +756,12 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
   // ---- Results and the teaser -------------------------------------------------------------------
   const results = el('div', { id: 'career-results', className: 'screen', hidden: true });
   const teaser = el('div', { id: 'career-teaser', className: 'screen', hidden: true });
+  let replayAvailable = false;
+  const watchReplay = button('career-results-watch-replay', 'small', 'Watch replay', () => {
+    if (replayAvailable) onWatchReplay?.();
+  });
+  watchReplay.hidden = true;
+  watchReplay.disabled = true;
 
   // ---- Race overlays ----------------------------------------------------------------------------
   const promptBox = el('div', { id: 'career-prompt', hidden: true, role: 'status' });
@@ -776,6 +787,11 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     teaser,
     overlays,
     pauseMap,
+    setReplayAvailable(available) {
+      replayAvailable = available && onWatchReplay !== undefined;
+      watchReplay.hidden = !replayAvailable;
+      watchReplay.disabled = !replayAvailable;
+    },
     showMap(v, g, t, s) {
       view = v;
       show = s ?? null;
@@ -805,6 +821,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
       ];
       if (r.nextName) buttons.push(button('career-results-next', 'big', 'Next', () => cb.onNext()));
       buttons.push(button('career-results-map', 'small', 'Map', () => cb.onMap()));
+      buttons.push(watchReplay);
       results.replaceChildren(
         ...actionScreenParts(
           'career-results',
