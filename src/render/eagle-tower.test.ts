@@ -197,8 +197,14 @@ describe('Eagle tower shared source-ground foundation', () => {
     ]);
     b.roads[0]!.features = [feature];
     const data = b.roads[1]!.samples.data;
-    data.x = data.x.map(() => at.x);
-    data.z = data.z.map((_, i) => 50 - i * b.roads[1]!.sampleSpacingM);
+    b.roads[1]!.samples = {
+      ...b.roads[1]!.samples,
+      data: {
+        ...data,
+        x: data.x!.map(() => at.x),
+        z: data.z!.map((_, i) => 50 - i * b.roads[1]!.sampleSpacingM),
+      },
+    };
     expect(
       landmarkPlaces(createRoadNetwork({ ...b, network: { ...b.network, terrain: { patches: [patch()] } } })),
     ).toEqual([]);
