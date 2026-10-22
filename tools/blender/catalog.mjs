@@ -13,6 +13,7 @@
 // the GLB lives at packs/<pack>/assets/<asset>.glb, `pack` defaulting to 'base'. Node names inside
 // a GLB are snake_case.
 import { BASE_PROPS } from './catalog/base.mjs';
+import { IOWA_PROPS } from './catalog/iowa.mjs';
 import { KEYS_PROPS } from './catalog/keys.mjs';
 import { PNW_PROPS } from './catalog/pnw.mjs';
 import { SF_PROPS } from './catalog/sf.mjs';
@@ -158,6 +159,7 @@ export const CATALOG_FILES = [
   { file: 'keys', rows: KEYS_PROPS },
   { file: 'sf', rows: SF_PROPS },
   { file: 'pnw', rows: PNW_PROPS },
+  { file: 'iowa', rows: IOWA_PROPS },
 ];
 
 /** @type {Prop[]} */

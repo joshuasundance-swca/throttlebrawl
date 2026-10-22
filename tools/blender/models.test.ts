@@ -115,14 +115,15 @@ describe('the Blender model catalog', () => {
   });
 
   it('is the concatenation of its per-region files, each row in its own pack and region', () => {
-    expect(CATALOG_FILES.map((f) => f.file)).toEqual(['base', 'traffic', 'keys', 'sf', 'pnw']);
-    expect(CATALOG_FILES.flatMap((f) => f.rows)).toEqual(PROPS);
     const expected: Record<string, { pack: string; region?: string }> = {
       traffic: { pack: 'base' },
       keys: { pack: 'base', region: 'florida-keys' },
       sf: { pack: 'region-sf', region: 'san-francisco' },
       pnw: { pack: 'region-pnw', region: 'pacific-northwest' },
+      iowa: { pack: 'region-clinton', region: 'clinton-iowa' },
     };
+    expect(CATALOG_FILES.map((f) => f.file)).toEqual(['base', ...Object.keys(expected)]);
+    expect(CATALOG_FILES.flatMap((f) => f.rows)).toEqual(PROPS);
     for (const { file, rows } of CATALOG_FILES) {
       const want = expected[file];
       if (!want) continue;
