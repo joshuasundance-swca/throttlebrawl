@@ -8,3 +8,5 @@ Ordinary train-path quick checks now run the existing planner's named unit tests
 Incompatible named-unit and diagnostic inputs force the validation job to run even when diagnostic selection excludes static checks. Unit file-count checks use the runner's final summary, so earlier summary-shaped test output cannot hide a later count mismatch.
 
 The contributor-guidance test now checks that quick is early feedback rather than requiring an unmeasured speed claim; routing, gate, status-text and missing-step controls remain.
+
+CLI test fixtures explicitly choose their intended suite mode, so the full CI job's environment cannot change the scenario or mask a diagnostic-input rejection.

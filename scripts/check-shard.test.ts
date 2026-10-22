@@ -8,8 +8,13 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 
 const script = path.resolve(import.meta.dirname, 'check.mjs');
+// Each child scenario chooses its suite mode independently of the CI job running this test.
+const ordinaryQuickEnv = { SUITE_FULL: 'false', DIAGNOSTIC_CONTROL: 'false', CONTROL_SELECTION: '' };
 const check = (...args: string[]) => {
-  const res = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+  const res = spawnSync(process.execPath, [script, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, ...ordinaryQuickEnv },
+  });
   return { code: res.status, err: res.stderr };
 };
 
@@ -92,7 +97,12 @@ function controlledUnit(
     {
       cwd: path.resolve(import.meta.dirname, '..'),
       encoding: 'utf8',
-      env: { ...process.env, QUICK_FIXTURE: JSON.stringify(fixture), QUICK_RUNNER_ARGS: argsFile },
+      env: {
+        ...process.env,
+        ...ordinaryQuickEnv,
+        QUICK_FIXTURE: JSON.stringify(fixture),
+        QUICK_RUNNER_ARGS: argsFile,
+      },
     },
   );
   let args: string[] | null = null;
@@ -183,7 +193,7 @@ describe('check train-quick unit execution', () => {
         [script, '--tier', 'unit', '--shard', '1/3', '--quick-named-units'],
         {
           encoding: 'utf8',
-          env: { ...process.env, ...env },
+          env: { ...process.env, ...ordinaryQuickEnv, ...env },
         },
       );
       expect(result.status).toBe(1);
