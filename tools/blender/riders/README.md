@@ -53,7 +53,8 @@ CI has no Blender. `riders.test.ts` (in `npm test`) downloads the pinned GLBs at
 | Gripman Gus | Navy waistcoat with brass trim, red neckerchief, gripman's cap, mustache | Brass bell | Moped |
 | Pivot | Fleece vest, earbuds | Headset pushed up on his helmet | Carbon e-bike |
 | Officer Meter | Hi-vis vest, peaked cap | Ticket printer | Parking trike |
+| Mara Vale | Ochre survey vest with broad cream bands, slate sleeves and trousers, cream full-face helmet, rust-brown boots | Compact hip field-book case | Dirt bike |
 
 ## Provenance
 
-Every rider here was scripted in Blender by an AI agent (Claude) from text briefs (each pack file's `look.description` and the interview); no external model, scan, concept image or brand. MIT, logged as AI-made in [THIRD_PARTY_ASSETS.md](../../../THIRD_PARTY_ASSETS.md).
+The original sixteen riders were scripted in Blender by an AI agent (Claude) from text briefs (each pack file's `look.description` and the interview). Mara Vale's surveyor costume was scripted by an AI agent (Codex) from an original text brief, reusing the same figure and rig helpers. No external model, scan, concept image, texture or brand. MIT; the coordinator records each published model as AI-made in [THIRD_PARTY_ASSETS.md](../../../THIRD_PARTY_ASSETS.md).

@@ -385,6 +385,37 @@ def officer_meter(r):
     r.prop_on_hips(printer)
 
 
+def mara_vale(r):
+    r.body("cloth_b", "cloth_b", "boot", hands="glove", shoulders=0.98)
+    r.vest("cloth_a")
+    r.collar("cloth_b")
+    r.helmet("full", "helmet", stripe="cloth_a")
+    r.belt("dark", buckle="metal")
+    r.gloves("glove")
+    # Broad cream survey bands follow the vest's taper, so neither sinks into its shoulders.
+    # They are core geometry: the measured-line silhouette stays at the rider's far LOD.
+    def band_ring(z):
+        for (z0, rx0, rf0, fr0), (z1, rx1, rf1, fr1) in zip(r.torso_rings, r.torso_rings[1:]):
+            if z0 <= z <= z1:
+                t = (z - z0) / (z1 - z0)
+                rx, rf = rx0 + (rx1 - rx0) * t, rf0 + (rf1 - rf0) * t
+                fr = fr0 + (fr1 - fr0) * t
+                return R.ellipse(0, 0, z, rx + 0.023, rf + 0.023, front=fr)
+        raise ValueError("Mara's survey band must stay on the torso")
+
+    for z in (1.16, 1.32):
+        r.loft("chest", [band_ring(z * r.h), band_ring((z + 0.05) * r.h)], "trim")
+
+    def field_book(c):
+        x, f, z = c
+        r.box("prop", c, (0.06, 0.12, 0.18), "prop_b")
+        for side in (-1, 1):
+            r.box("prop", (x + side * 0.034, f, z), (0.008, 0.14, 0.2), "prop_a")
+        r.box("prop", (x + 0.039, f, z + 0.015), (0.006, 0.04, 0.025), "dark", detail=True)
+
+    r.prop_on_hips(field_book, at=(0.19, -0.02, 1.0))
+
+
 # Each rider: (height, bulk, head, colours, costume). Heights and bulks are "real proportions";
 # the palettes are each pack file's `look.palette`, or invented here where the pack has none.
 CAST = {
@@ -687,6 +718,28 @@ CAST = {
             "prop_a": "#3a3a3a",
         },
         officer_meter,
+    ),
+    "mara-vale": (
+        1.0,
+        0.96,
+        1.0,
+        {
+            "skin": SKIN_B,
+            "hair": "#3b2a1e",
+            "cloth_a": "#d7ab35",
+            "cloth_b": "#263740",
+            "cloth_c": "#b26035",
+            "trim": "#e6e1c5",
+            "boot": "#b26035",
+            "glove": "#202a30",
+            "helmet": "#e6e1c5",
+            "visor": "#182b35",
+            "metal": "#b8c0bc",
+            "dark": "#18232b",
+            "prop_a": "#d7ab35",
+            "prop_b": "#e6e1c5",
+        },
+        mara_vale,
     ),
 }
 
