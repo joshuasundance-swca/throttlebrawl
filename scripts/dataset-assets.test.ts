@@ -142,6 +142,22 @@ describe('lockProblems', () => {
 });
 
 describe('repoProblems', () => {
+  it('requires an existing regular file for a declared terrain target', () => {
+    const terrain = terrainFile();
+    const fixture = path.join(root, 'target-validation');
+    const pack = path.join(fixture, 'packs/region-pnw');
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(path.join(pack, 'pack.json'), '{}');
+    const lock = lockWith([terrain]);
+    expect(repoProblems(fixture, lock).join()).toMatch(/target.*regular file/);
+    const target = path.join(fixture, terrain.embed.target);
+    mkdirSync(target, { recursive: true });
+    expect(repoProblems(fixture, lock).join()).toMatch(/target.*regular file/);
+    rmSync(target, { recursive: true });
+    writeFileSync(target, '{"type":"road-network"}');
+    expect(repoProblems(fixture, lock)).toEqual([]);
+  });
+
   it('flags a missing pack, an unknown region, and an id its pack already bakes', () => {
     const one = bytesOf('x');
     const lock = lockWith([

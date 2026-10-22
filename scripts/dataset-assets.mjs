@@ -316,6 +316,11 @@ export function repoProblems(root, lock) {
   const regions = packRegions(root);
   for (const f of lock.files) {
     const { packId } = splitPath(f.path);
+    if (f.embed) {
+      const target = path.join(root, f.embed.target);
+      if (!existsSync(target) || !statSync(target).isFile())
+        problems.push(`${f.path}: embed target "${f.embed.target}" must be an existing regular file`);
+    }
     if (!existsSync(path.join(root, 'packs', packId, 'pack.json')))
       problems.push(`${f.path}: there is no pack "${packId}" under packs/`);
     else if (existsSync(path.join(root, 'packs', packId, 'assets', ...f.path.split('/').slice(1))))
