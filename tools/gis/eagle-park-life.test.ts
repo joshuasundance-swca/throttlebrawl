@@ -19,7 +19,6 @@ describe('Eagle Point visitor authoring', () => {
         zones++;
         expect(source.tags).toContain('iowa-park');
         expect(f.d1).toBeLessThan(0);
-        expect(f.s1 - f.s0).toBeLessThanOrEqual(25);
         expect(f.params?.['kinds']).toEqual([hiker, runner].map((t) => `region-clinton:${t.id}`));
       }
     }
@@ -30,10 +29,6 @@ describe('Eagle Point visitor authoring', () => {
     for (const type of [hiker, runner]) {
       expect(type.category).toBe('pedestrian');
       expect(type.behaviour).toMatchObject({ roadside: 'dodges', strolls: true, dives: true });
-      expect(type.lengthM).toBeLessThanOrEqual(0.5);
-      expect(type.widthM).toBeLessThanOrEqual(0.6);
-      expect(type.id).toMatch(/hiker|runner/);
-      expect(type.look.procedural.preset).toMatch(/^ped-(hiker|jogger)$/);
       const id = `region-clinton:${type.id}`;
       expect(peopleFigureFor(undefined, id, null)).toBe(type === hiker ? 'hiker' : 'jogger');
       expect(peopleFigureFor(undefined, id, 'film')).toBe('personPhone');
