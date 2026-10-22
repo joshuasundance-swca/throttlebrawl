@@ -1,5 +1,13 @@
 import { readFileSync } from 'node:fs';
-import { PerspectiveCamera, Raycaster, Vector3 } from 'three';
+import {
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  PerspectiveCamera,
+  Raycaster,
+  Vector3,
+  type BufferGeometry,
+} from 'three';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -15,6 +23,9 @@ import { createFlatLook } from './look';
 import { buildRoadScene } from './road-mesh';
 import { buildTerrainChunks } from './terrain-mesh';
 import { IowaParkLayer } from './iowa-park';
+import { deciduousGeometry } from './deciduous';
+import { TerrainTrees } from './terrain-trees';
+import { planTerrainTrees } from '../road/structures/terrain-trees';
 
 const ROOT = 'packs/region-clinton/regions/clinton-iowa';
 const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -24,6 +35,143 @@ const road = createRoadNetwork({ network, roads });
 const built = buildRoadScene(road, createFlatLook(), Object.fromEntries(roads.map((r) => [r.id, r])), {
   seed: 1,
   terrainChunks: buildTerrainChunks,
+});
+
+describe('Eagle park canopy presentation', () => {
+  const positions = (geometry: BufferGeometry) => Array.from(geometry.getAttribute('position').array);
+  const ordinaryRoads = roads.map((r) => ({ ...r, tags: r.tags?.filter((t) => t.tag !== 'iowa-park') }));
+  const ordinary = createRoadNetwork({ network, roads: ordinaryRoads });
+  const mixed = createRoadNetwork({ network, roads: roads.map((r, i) => (i ? r : ordinaryRoads[i]!)) });
+
+  it('has a fuller bounded park crown with the same physical trunk and a real empty control', () => {
+    const rural = deciduousGeometry();
+    const park = deciduousGeometry('park');
+    const material = createFlatLook().material('prop', { vertexColors: true });
+    const ruralMesh = new Mesh(rural, material),
+      parkMesh = new Mesh(park, material);
+    const ray = new Raycaster();
+    try {
+      expect(positions(park)).not.toEqual(positions(rural));
+      const p = park.getAttribute('position');
+      for (let i = 0; i < p.count; i++) {
+        expect(p.getY(i)).toBeGreaterThanOrEqual(0);
+        expect(p.getY(i)).toBeLessThanOrEqual(11.2 + 1e-6);
+        expect(Math.hypot(p.getX(i), p.getZ(i))).toBeLessThanOrEqual(4.8 + 1e-6);
+      }
+      for (const y of [1, 3, 4])
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+          const direction = new Vector3(Math.cos(a), 0, Math.sin(a));
+          ray.set(direction.clone().multiplyScalar(2).setY(y), direction.clone().negate());
+          expect(ray.intersectObject(parkMesh)[0]?.distance).toBeCloseTo(
+            ray.intersectObject(ruralMesh)[0]!.distance,
+            6,
+          );
+        }
+      const cover = (mesh: Mesh) => {
+        let hit = 0;
+        for (let x = -4.8; x <= 4.8; x += 0.3)
+          for (let z = -4.8; z <= 4.8; z += 0.3) {
+            ray.set(new Vector3(x, 12, z), new Vector3(0, -1, 0));
+            if (ray.intersectObject(mesh).length) hit++;
+          }
+        return hit;
+      };
+      expect(cover(ruralMesh)).toBeGreaterThan(0);
+      expect(cover(parkMesh)).toBeGreaterThan(cover(ruralMesh));
+      parkMesh.visible = false;
+      parkMesh.position.x = 100;
+      parkMesh.updateMatrixWorld(true);
+      expect(cover(parkMesh), 'a displaced empty canopy cannot pass coverage').toBe(0);
+    } finally {
+      rural.dispose();
+      park.dispose();
+      material.dispose();
+    }
+  });
+
+  it('switches park/default geometry without changing shared positions, chunks or threat visibility', () => {
+    const trees = new TerrainTrees(createFlatLook());
+    const parkGeometry = deciduousGeometry('park'),
+      ruralGeometry = deciduousGeometry();
+    try {
+      for (const source of [road, ordinary, mixed, road]) {
+        trees.setRoad(source, 1);
+        const plan = planTerrainTrees(source, 1);
+        const expected = source === road ? parkGeometry : ruralGeometry;
+        const actual: number[][] = [];
+        for (const child of trees.root.children) {
+          expect(child).toBeInstanceOf(InstancedMesh);
+          const mesh = child as InstancedMesh;
+          expect(positions(mesh.geometry)).toEqual(positions(expected));
+          for (let i = 0; i < mesh.count; i++) {
+            const matrix = new Matrix4();
+            mesh.getMatrixAt(i, matrix);
+            actual.push([matrix.elements[12], matrix.elements[13], matrix.elements[14]]);
+          }
+        }
+        expect(actual.length).toBe(plan.items.length);
+        for (const tree of plan.items)
+          expect(
+            actual.some(
+              ([x, y, z]) =>
+                Math.abs(x! - tree.x) < 1e-4 &&
+                Math.abs(y! - tree.baseY) < 1e-4 &&
+                Math.abs(z! - tree.z) < 1e-4,
+            ),
+          ).toBe(true);
+        expect(trees.root.children.length).toBe(
+          new Set(plan.items.map((t) => `${Math.floor(t.x / 100)},${Math.floor(t.z / 100)}`)).size,
+        );
+        const first = plan.items[0]!;
+        expect(trees.update(first.x, first.z, 0)).toBeGreaterThan(0);
+        expect(trees.update(first.x + 100000, first.z + 100000, 0)).toBe(0);
+      }
+      trees.setRoad(null, 1);
+      expect(trees.root.children).toEqual([]);
+    } finally {
+      trees.dispose();
+      parkGeometry.dispose();
+      ruralGeometry.dispose();
+    }
+  });
+
+  it('keeps actual canopy triangles out of both ordinary facility approach sightlines', () => {
+    const trees = new TerrainTrees(createFlatLook());
+    const blockerGeometry = deciduousGeometry('park');
+    const material = createFlatLook().material('prop', { vertexColors: true });
+    const blocker = new Mesh(blockerGeometry, material);
+    const ray = new Raycaster();
+    let checked = 0;
+    try {
+      for (let seed = 1; seed <= 8; seed++) {
+        trees.setRoad(road, seed);
+        trees.root.updateMatrixWorld(true);
+        for (const facility of iowaParkLayout(road, seed).facilities)
+          for (const sign of [-1, 1]) {
+            const eye = road.toWorld(facility.edge, facility.s + sign * 25, 0, 2.6);
+            const target = new Vector3(facility.x, facility.y + 2, facility.z);
+            const origin = new Vector3(eye.x, eye.y, eye.z);
+            const direction = target.clone().sub(origin).normalize();
+            ray.set(origin, direction);
+            ray.far = origin.distanceTo(target);
+            expect(ray.intersectObject(trees.root, true), facility.id).toEqual([]);
+            const midpoint = origin.clone().lerp(target, 0.5);
+            blocker.position.copy(midpoint).add(new Vector3(0, -7, 0));
+            blocker.updateMatrixWorld(true);
+            expect(
+              ray.intersectObject(blocker).length,
+              'a canopy in the opening blocks this detector',
+            ).toBeGreaterThan(0);
+            checked++;
+          }
+      }
+      expect(checked).toBeGreaterThan(0);
+    } finally {
+      trees.dispose();
+      blockerGeometry.dispose();
+      material.dispose();
+    }
+  });
 });
 const drawn = new GroundTris(built.group);
 afterAll(() => built.dispose());
