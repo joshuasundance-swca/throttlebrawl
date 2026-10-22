@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import struct
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,11 +16,13 @@ from shapely.ops import unary_union  # type: ignore[import-untyped]
 from . import recipe
 
 MANIFEST = Path(__file__).parent / "eagle-point" / "manifest.json"
+MANIFESTS = sorted(Path(__file__).parent.glob("*/manifest.json"))
+CachedBake = Callable[[Path], tuple[recipe.LoadedInputs, recipe.Mesh]]
 
 
 @pytest.mark.parametrize(
     "manifest_path",
-    sorted(Path(__file__).parent.glob("*/manifest.json")),
+    MANIFESTS,
     ids=lambda path: path.parent.name,
 )
 def test_every_shipped_manifest_loads_its_exact_committed_inputs(manifest_path: Path) -> None:
@@ -29,8 +32,31 @@ def test_every_shipped_manifest_loads_its_exact_committed_inputs(manifest_path: 
 
 
 @pytest.fixture(scope="module")
-def generated() -> recipe.Mesh:
-    return recipe.bake(recipe.load_inputs(MANIFEST))
+def cached_bake() -> CachedBake:
+    baked: dict[Path, tuple[recipe.LoadedInputs, recipe.Mesh]] = {}
+
+    def get(manifest_path: Path) -> tuple[recipe.LoadedInputs, recipe.Mesh]:
+        if manifest_path not in baked:
+            inputs = recipe.load_inputs(manifest_path)
+            baked[manifest_path] = inputs, recipe.bake(inputs)
+        return baked[manifest_path]
+
+    return get
+
+
+@pytest.fixture(scope="module")
+def generated(cached_bake: CachedBake) -> recipe.Mesh:
+    return cached_bake(MANIFEST)[1]
+
+
+@pytest.mark.parametrize("manifest_path", MANIFESTS, ids=lambda path: path.parent.name)
+def test_every_shipped_manifest_regenerates_its_selected_geometry(
+    manifest_path: Path, cached_bake: CachedBake
+) -> None:
+    inputs, mesh = cached_bake(manifest_path)
+    assert recipe.geometry_sha256(mesh) == inputs.manifest.expected_geometry_sha256, (
+        f"{manifest_path.parent.name}: regenerated geometry differs from its selected manifest"
+    )
 
 
 def test_regeneration_matches_selected_float32_geometry(generated: recipe.Mesh) -> None:
