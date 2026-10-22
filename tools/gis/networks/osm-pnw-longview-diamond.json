@@ -110,11 +110,21 @@
             {
               "kind": "billboard",
               "id": "diamond-route-directions",
-              "s0": 162,
-              "s1": 168,
+              "s0": 112,
+              "s1": 118,
               "d0": 13.6,
               "d1": 20,
               "item": "longview-diamond-directions",
+              "params": { "style": "guide" }
+            },
+            {
+              "kind": "billboard",
+              "id": "diamond-outer-directions",
+              "s0": 172,
+              "s1": 178,
+              "d0": 13.6,
+              "d1": 20,
+              "item": "longview-diamond-outer-directions",
               "params": { "style": "guide" }
             }
           ]

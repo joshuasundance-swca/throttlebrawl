@@ -132,7 +132,13 @@
   "signs": [
     {
       "id": "longview-diamond-directions",
-      "text": "20TH / WASHINGTON: LEFT. OLYMPIA / KESSLER: STRAIGHT, LONGER.",
+      "text": "20TH / WASHINGTON: LEFT. INNER ROUTE.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
+      "id": "longview-diamond-outer-directions",
+      "text": "OLYMPIA / KESSLER: STRAIGHT, LONGER. OUTER ROUTE.",
       "tags": ["site"],
       "status": "live"
     },

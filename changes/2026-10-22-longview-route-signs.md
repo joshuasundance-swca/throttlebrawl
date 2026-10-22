@@ -2,4 +2,4 @@
 kind: fixed
 audience: player
 ---
-Longview's Street Diamond now has an approach sign naming both choices and warning that the Olympia / Kessler route is longer.
+Longview's Street Diamond now has separate approach signs naming each choice and warning that the Olympia / Kessler route is longer.

@@ -77,11 +77,23 @@
     {
       "kind": "billboard",
       "id": "diamond-route-directions",
-      "s0": 162.0,
-      "s1": 168.0,
+      "s0": 112.0,
+      "s1": 118.0,
       "d0": 13.6,
       "d1": 20.0,
       "item": "longview-diamond-directions",
+      "params": {
+        "style": "guide"
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "diamond-outer-directions",
+      "s0": 172.0,
+      "s1": 178.0,
+      "d0": 13.6,
+      "d1": 20.0,
+      "item": "longview-diamond-outer-directions",
       "params": {
         "style": "guide"
       }

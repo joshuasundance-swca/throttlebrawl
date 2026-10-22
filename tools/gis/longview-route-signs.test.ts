@@ -12,7 +12,7 @@ import {
   type BakedRoad,
   type BakedRoute,
 } from '../../src/road';
-import { Boards, type BoardSlot } from '../../src/render/boards';
+import { Boards, splitCopy, type BoardSlot } from '../../src/render/boards';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene } from '../../src/render/road-mesh';
 import { LAND_TOP_M } from '../../src/render/scenery';
@@ -59,7 +59,7 @@ function paired(slots: readonly BoardSlot[], sign: string, splitS: number) {
       s.params?.['style'] === 'guide' &&
       s.s0 >= 0 &&
       s.s1 < splitS &&
-      catalog.items[s.item]?.text === sign,
+      splitCopy(catalog.items[s.item]?.text ?? '').headline === splitCopy(sign).headline,
   );
 }
 
@@ -88,30 +88,41 @@ describe('Longview approach directions are authored, resolvable and physically p
     const splitS = split.splitZone!.s0;
     const sourceApproach = recipe.lines.flatMap((l) => l.roads).find((r) => r.id === approach.id)!;
 
-    it('pairs the actual marked branch wording with a canonical and baked site-only guide before its split', () => {
+    const choices = () => branch.sign!.split(/(?<=[.!?])\s+/).filter((clause) => clause.trim());
+
+    it('gives each actual choice its own full headline on a canonical and baked site-only guide before the split', () => {
       expect(branch.sign).toBeTruthy();
       expect(branch.sign).toBe(recipe.branches.find((b) => b.id === branch.id)?.sign);
-      const slot = paired(approach.features ?? [], branch.sign!, splitS);
-      expect(slot, 'branch metadata alone does not draw a board').toBeDefined();
-      if (!slot) return;
-      expect(sourceApproach.features?.find((f) => f.id === slot.id)).toEqual(slot);
-      expect(approach.tags?.some((t) => t.tag === 'town')).toBe(true);
-      const item = catalog.items[slot.item!]!;
-      expect(item.kind).toBe('sign');
-      expect(catalog.pools?.signs?.some((i) => i.ref === item.ref)).toBe(false);
-      expect(
-        boardCatalog(reg, 'region-pnw:pacific-northwest', new Set([item.ref])).items[slot.item!],
-      ).toBeUndefined();
-      for (const changed of [
-        (approach.features ?? []).filter((f) => f !== slot),
-        (approach.features ?? []).map((f) => (f === slot ? { ...f, item: 'missing-direction-item' } : f)),
-        (approach.features ?? []).map((f) => (f === slot ? { ...f, s0: splitS, s1: splitS + 1 } : f)),
-        (approach.features ?? []).map((f) => (f === slot ? { ...f, item: undefined, pool: 'signs' } : f)),
-      ])
+      const clauses = choices();
+      const slots = clauses.map((clause) => paired(approach.features ?? [], clause, splitS));
+      for (const [i, clause] of clauses.entries()) {
+        const slot = slots[i];
+        expect(slot, 'every direction needs a full headline, never only a secondary kicker').toBeDefined();
+        if (!slot) continue;
+        expect(sourceApproach.features?.find((f) => f.id === slot.id)).toEqual(slot);
+        expect(approach.tags?.some((t) => t.tag === 'town')).toBe(true);
+        const item = catalog.items[slot.item!]!;
+        expect(item.kind).toBe('sign');
+        expect(catalog.pools?.signs?.some((i) => i.ref === item.ref)).toBe(false);
         expect(
-          paired(changed, branch.sign!, splitS),
-          'missing, wrong, moved and pooled controls',
+          boardCatalog(reg, 'region-pnw:pacific-northwest', new Set([item.ref])).items[slot.item!],
         ).toBeUndefined();
+        for (const changed of [
+          (approach.features ?? []).filter((f) => f !== slot),
+          (approach.features ?? []).map((f) => (f === slot ? { ...f, item: 'missing-direction-item' } : f)),
+          (approach.features ?? []).map((f) => (f === slot ? { ...f, s0: splitS, s1: splitS + 1 } : f)),
+          (approach.features ?? []).map((f) => (f === slot ? { ...f, item: undefined, pool: 'signs' } : f)),
+        ])
+          expect(
+            paired(changed, clause, splitS),
+            'missing, wrong, moved and pooled controls',
+          ).toBeUndefined();
+      }
+      expect(new Set(slots.map((slot) => slot?.id)).size).toBe(clauses.length);
+      for (let i = 1; i < slots.length; i++)
+        expect(slots[i]?.s0, 'separate reading positions in the authored choice order').toBeGreaterThan(
+          slots[i - 1]!.s1,
+        );
     });
 
     it('names the main and alternate streets with cues derived from the actual split geometry and discloses the longer route', () => {
@@ -169,65 +180,70 @@ describe('Longview approach directions are authored, resolvable and physically p
       expect(Math.sign(across(alt.id) - across(main.id))).toBe(Math.sign(side));
     });
 
-    it('builds the named guide with low parts past recovery grass, clear of all lanes and supported by actual drawn land', () => {
-      const slot = paired(approach.features ?? [], branch.sign!, splitS);
-      expect(slot).toBeDefined();
-      if (!slot) return;
+    it('builds every choice guide with low parts past recovery grass, clear of all lanes and supported by actual drawn land', () => {
+      const slots = choices().map((clause) => {
+        const slot = paired(approach.features ?? [], clause, splitS);
+        expect(slot, 'each choice must resolve independently').toBeDefined();
+        return slot!;
+      });
       const boards = new Boards(createFlatLook());
       const scene = buildRoadScene(road, createFlatLook(), Object.fromEntries(raw.map((r) => [r.id, r])), {
         roadsideDensity: 0,
       });
       try {
-        boards.build(road, (id) => (id === approach.id ? [slot] : []), catalog);
-        const view = boards.all().find((v) => v.slotId === slot.id)!;
-        expect(view, 'the production lane-clearance check must retain the board').toBeDefined();
-        expect(view.style).toBe('guide');
-        const frame = view.group.children.find((o) => o !== view.panel) as Mesh;
-        const vertices = frame.geometry.getAttribute('position');
-        const feet = [];
-        for (let i = 0; i < vertices.count; i++)
-          if (Math.abs(vertices.getY(i)) < 1e-6) {
-            feet.push(
-              new Vector3(vertices.getX(i), 0, vertices.getZ(i)).applyMatrix4(view.group.matrixWorld),
-            );
+        boards.build(road, (id) => (id === approach.id ? slots : []), catalog);
+        expect(boards.all().map((view) => view.slotId)).toEqual(slots.map((slot) => slot.id));
+        for (const slot of slots) {
+          const view = boards.all().find((v) => v.slotId === slot.id)!;
+          expect(view, 'the production lane-clearance check must retain the board').toBeDefined();
+          expect(view.style).toBe('guide');
+          const frame = view.group.children.find((o) => o !== view.panel) as Mesh;
+          const vertices = frame.geometry.getAttribute('position');
+          const feet = [];
+          for (let i = 0; i < vertices.count; i++)
+            if (Math.abs(vertices.getY(i)) < 1e-6) {
+              feet.push(
+                new Vector3(vertices.getX(i), 0, vertices.getZ(i)).applyMatrix4(view.group.matrixWorld),
+              );
+            }
+          expect(feet.length).toBeGreaterThan(0);
+          const lands: Mesh[] = [];
+          scene.group.updateMatrixWorld(true);
+          scene.group.traverse((o) => {
+            if (o instanceof Mesh && o.name === 'road-land') lands.push(o as Mesh);
+          });
+          expect(lands.length).toBeGreaterThan(0);
+          const finder = lanesUnderOf(road);
+          const edge = road.edges.find((e) => e.id === approach.id)!;
+          const ray = new Raycaster();
+          for (const p of feet) {
+            expect(
+              finder.at(p.x, p.y, p.z, 7.5),
+              'every post-foot corner clears every lane, its six-metre grass band and recovery margin',
+            ).toBeNull();
+            const projected = road.project(p.x, p.z, edge.index);
+            const verge = road.vergeAt(edge.index, projected.s, projected.d < 0 ? 'left' : 'right');
+            expect(Math.abs(projected.d)).toBeGreaterThan(Math.abs(verge.dOuter) + 1.5);
+            ray.set(new Vector3(p.x, p.y + 1, p.z), new Vector3(0, -1, 0));
+            const hit = ray.intersectObjects(lands, false)[0];
+            expect(hit, 'post has actual land triangles under it').toBeDefined();
+            // Boards use the road datum; legacy land is LAND_TOP_M below it. Account for
+            // grade across the toed-in post footprint and 2 mm of mesh interpolation precision.
+            // This bounds the inherited datum gap; it does not claim exact post/ground contact.
+            const gradeDelta = Math.abs(p.y - road.surfaceHeight(edge.index, projected.s, projected.d));
+            expect(Math.abs(p.y - hit!.point.y + LAND_TOP_M)).toBeLessThan(gradeDelta + 0.002);
           }
-        expect(feet.length).toBeGreaterThan(0);
-        const lands: Mesh[] = [];
-        scene.group.updateMatrixWorld(true);
-        scene.group.traverse((o) => {
-          if (o instanceof Mesh && o.name === 'road-land') lands.push(o as Mesh);
-        });
-        expect(lands.length).toBeGreaterThan(0);
-        const finder = lanesUnderOf(road);
-        const edge = road.edges.find((e) => e.id === approach.id)!;
-        const ray = new Raycaster();
-        for (const p of feet) {
-          expect(
-            finder.at(p.x, p.y, p.z, 7.5),
-            'every post-foot corner clears every lane, its six-metre grass band and recovery margin',
-          ).toBeNull();
-          const projected = road.project(p.x, p.z, edge.index);
-          const verge = road.vergeAt(edge.index, projected.s, projected.d < 0 ? 'left' : 'right');
-          expect(Math.abs(projected.d)).toBeGreaterThan(Math.abs(verge.dOuter) + 1.5);
-          ray.set(new Vector3(p.x, p.y + 1, p.z), new Vector3(0, -1, 0));
-          const hit = ray.intersectObjects(lands, false)[0];
-          expect(hit, 'post has actual land triangles under it').toBeDefined();
-          // Boards use the road datum; legacy land is LAND_TOP_M below it. Account for
-          // grade across the toed-in post footprint and 2 mm of mesh interpolation precision.
-          // This bounds the inherited datum gap; it does not claim exact post/ground contact.
-          const gradeDelta = Math.abs(p.y - road.surfaceHeight(edge.index, projected.s, projected.d));
-          expect(Math.abs(p.y - hit!.point.y + LAND_TOP_M)).toBeLessThan(gradeDelta + 0.002);
+          // Positive control for lane detection and a real hole outside the land surface.
+          const lane = road.toWorld(edge.index, (slot.s0 + slot.s1) / 2, 2, 0);
+          expect(finder.at(lane.x, lane.y, lane.z, 0.5)).not.toBeNull();
+          ray.set(new Vector3(lane.x + 10000, lane.y + 1, lane.z), new Vector3(0, -1, 0));
+          expect(ray.intersectObjects(lands, false)).toEqual([]);
+          console.info(
+            `[examined] ${recipe.id}: board s${(slot.s0 + slot.s1) / 2}, split s${splitS}, route start s${route.start.s}; ${feet.length} post-foot vertices on drawn land outside recovery band`,
+          );
         }
-        // Positive control for lane detection and a real hole outside the land surface.
-        const lane = road.toWorld(edge.index, (slot.s0 + slot.s1) / 2, 2, 0);
-        expect(finder.at(lane.x, lane.y, lane.z, 0.5)).not.toBeNull();
-        ray.set(new Vector3(lane.x + 10000, lane.y + 1, lane.z), new Vector3(0, -1, 0));
-        expect(ray.intersectObjects(lands, false)).toEqual([]);
         boards.build(road, () => [], catalog);
         expect(boards.all(), 'marked branch metadata alone still creates no automatic boards').toEqual([]);
-        console.info(
-          `[examined] ${recipe.id}: board s${(slot.s0 + slot.s1) / 2}, split s${splitS}, route start s${route.start.s}; ${feet.length} post-foot vertices on drawn land outside recovery band`,
-        );
       } finally {
         boards.clear();
         scene.dispose();
