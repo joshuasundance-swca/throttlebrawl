@@ -9,6 +9,7 @@ import {
   type BakedRoad,
 } from '../index';
 import { iowaParkLayout } from './iowa-park';
+import { landmarkPlaces } from './landmark-places';
 import { isParkTreeNetwork, planTerrainTrees } from './terrain-trees';
 
 function ground(y: number, surface: 'grass' | 'water' = 'grass'): BakedTerrainPatch {
@@ -165,6 +166,32 @@ function approachDistance(x: number, z: number, points: { x: number; z: number }
 }
 
 describe('Eagle park groves', () => {
+  it('keeps full crowns off the tower foundation and its road-facing opening across seeds and query orders', () => {
+    const park = createRoadNetwork({ network: eagle, roads: eagleRoads });
+    const at = landmarkPlaces(park).find((p) => p.foundation)!;
+    expect(at).toBeDefined();
+    const s = (at.feature.s0 + at.feature.s1) / 2;
+    const opening = [at, park.toWorld(at.edge, s - 35, 0, 0), park.toWorld(at.edge, s + 35, 0, 0)];
+    expect(approachDistance(at.x, at.z, opening), 'a planted blocker is detected').toBe(0);
+    let examined = 0;
+    for (let seed = 1; seed <= 32; seed++) {
+      const trees = planTerrainTrees(park, seed).items;
+      const cold = createRoadNetwork({ network: eagle, roads: eagleRoads });
+      iowaParkLayout(cold, seed);
+      expect(planTerrainTrees(cold, seed).items).toEqual(trees);
+      planTerrainTrees(park, seed + 1);
+      expect(planTerrainTrees(park, seed).items).toEqual(trees);
+      for (const tree of trees) {
+        const h = at.foundation!.halfM;
+        expect(
+          Math.hypot(Math.max(0, Math.abs(tree.x - at.x) - h), Math.max(0, Math.abs(tree.z - at.z) - h)),
+        ).toBeGreaterThanOrEqual(4.8 * tree.scale);
+        expect(approachDistance(tree.x, tree.z, opening)).toBeGreaterThanOrEqual(4.8 * tree.scale);
+        examined++;
+      }
+    }
+    expect(examined).toBeGreaterThan(0);
+  });
   it('adds a deterministic park profile while preserving facility sites and cold/warm results', () => {
     const park = createRoadNetwork({ network: eagle, roads: eagleRoads });
     const rural = createRoadNetwork({ network: eagle, roads: withoutPark(eagleRoads) });

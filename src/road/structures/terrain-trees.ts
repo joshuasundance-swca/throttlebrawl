@@ -4,6 +4,7 @@ import { terrainAt } from '../terrain';
 import { scatterHash, themeAt } from '../themes';
 import { cos, sin, TAU } from '../../core';
 import { iowaParkLayout, IOWA_PARK_TAG } from './iowa-park';
+import { landmarkPlaces } from './landmark-places';
 /** Verified against real rendered trunk rays; kept lazy with the physics planner. */
 export const RURAL_TRUNK = Object.freeze({ baseRadiusM: 0.38, topRadiusM: 0.22, heightM: 6 });
 /** Conservative silhouette bounds, used to keep foliage clear of road/shoulder space. */
@@ -122,6 +123,20 @@ export function planTerrainTrees(road: RoadNetwork, seed: number): TerrainTreePl
           ),
         }))
       : [];
+    const towers = park
+      ? landmarkPlaces(road)
+          .filter((p) => p.foundation)
+          .map((at) => ({
+            at,
+            before: road.toWorld(at.edge, Math.max(0, (at.feature.s0 + at.feature.s1) / 2 - 35), 0, 0),
+            after: road.toWorld(
+              at.edge,
+              Math.min(road.edges[at.edge]!.length, (at.feature.s0 + at.feature.s1) / 2 + 35),
+              0,
+              0,
+            ),
+          }))
+      : [];
     const spacing = park ? 60 : SPACING_M;
     const occupied: TerrainTree[] = [];
     for (const edge of road.edges) {
@@ -141,6 +156,18 @@ export function planTerrainTrees(road: RoadNetwork, seed: number): TerrainTreePl
             const scale = 0.8 + hash(k, 12 + n * 5) * 0.3;
             const radius = RURAL_TRUNK.baseRadiusM * scale;
             const crownRadius = CROWN_RADIUS_M * scale;
+            if (
+              towers.some(({ at, before, after }) => {
+                const h = at.foundation!.halfM;
+                const dx = Math.max(0, Math.abs(p.x - at.x) - h),
+                  dz = Math.max(0, Math.abs(p.z - at.z) - h);
+                return (
+                  dx * dx + dz * dz < crownRadius * crownRadius ||
+                  !clearsOpening(p, crownRadius, at, before, after)
+                );
+              })
+            )
+              continue;
             if (
               clearings.some(({ facility, before, after }) => {
                 const dx = p.x - facility.x,
