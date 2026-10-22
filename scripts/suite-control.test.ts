@@ -3,6 +3,7 @@ import path from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { suiteJobs } from './shard-plan.mjs';
+import { route } from './train.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const workflow = readFileSync(path.join(root, '.github', 'workflows', 'suite.yml'), 'utf8');
@@ -80,7 +81,7 @@ function evaluateControl(
   };
 }
 
-function executeCoverage(env: { diagnostic: string; selection: string; full: string }) {
+function executeCoverage(env: { diagnostic: string; selection: string; full: string; named?: string }) {
   const writes: Array<{ path: string; value: string }> = [];
   if (!coverageScript) throw new Error('coverage step was not found');
   runInNewContext(coverageScript, {
@@ -89,6 +90,7 @@ function executeCoverage(env: { diagnostic: string; selection: string; full: str
         DIAGNOSTIC_CONTROL: env.diagnostic,
         CONTROL_SELECTION: env.selection,
         FULL: env.full,
+        QUICK_NAMED_UNITS: env.named ?? 'false',
         GITHUB_OUTPUT: 'controlled-output',
       },
     },
@@ -100,7 +102,112 @@ function executeCoverage(env: { diagnostic: string; selection: string; full: str
   return writes;
 }
 
+function executeCoverageJob(env: { diagnostic: string; selection: string; full: string; named?: string }) {
+  const runs: unknown = runInNewContext(
+    field(jobBlock('static'), 'if')
+      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      .replace(/\.([a-z]+-[a-z-]+)/g, "['$1']"),
+    {
+      inputs: {
+        'diagnostic-control': env.diagnostic === 'true',
+        'control-selection': env.selection,
+        'quick-named-units': env.named === 'true',
+        full: env.full === 'true',
+      },
+      fromJSON: JSON.parse,
+    },
+  );
+  return runs ? executeCoverage(env) : null;
+}
+
 describe('diagnostic control workflow contract', () => {
+  it('opts into named units only for the ordinary train quick caller', () => {
+    const ci = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+    const caller = ci.split('\n  suite:\n')[1]?.split('\n  prod-build:\n')[0] ?? '';
+    const expression = field(caller, 'quick-named-units');
+    for (const event of ['push', 'pull_request']) {
+      for (const route of ['', 'full', 'docs', 'train']) {
+        const enabled: unknown = runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, '') || 'false', {
+          github: { event_name: event },
+          needs: { route: { outputs: { path: route } } },
+        });
+        expect(enabled, `${event}/${route}`).toBe(event === 'pull_request' && route === 'train');
+      }
+    }
+    const input = workflow.split('\n      quick-named-units:\n')[1]?.split(/\n {6}[\w-]+:\n/)[0] ?? '';
+    expect(field(input, 'default')).toBe('false');
+    for (const file of ['train.yml']) {
+      const train = readFileSync(path.join(root, '.github/workflows', file), 'utf8');
+      expect(field(train, 'quick-named-units')).toBe('');
+    }
+    const ordinary = {
+      live: true,
+      fork: false,
+      author: 'contributor',
+      title: 'change',
+      body: '',
+      files: ['src/ui/sample.ts'],
+    };
+    for (const overrides of [
+      { fork: true },
+      { author: 'dependabot[bot]' },
+      { title: '[full-gate] change' },
+      { files: ['.github/workflows/ci.yml'] },
+      { live: false },
+      { files: ['docs/example.md'] },
+    ]) {
+      const path = route({ ...ordinary, ...overrides }).path;
+      const enabled: unknown = runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ''), {
+        github: { event_name: 'pull_request' },
+        needs: { route: { outputs: { path } } },
+      });
+      expect(enabled, JSON.stringify(overrides)).toBe(false);
+    }
+  });
+
+  it('rejects named-unit narrowing for full and diagnostic calls before reporting coverage', () => {
+    expect(executeCoverage({ diagnostic: 'false', selection: '', full: 'false', named: 'true' })).toEqual([
+      { path: 'controlled-output', value: 'value=quick\n' },
+    ]);
+    for (const env of [
+      { diagnostic: 'false', selection: '', full: 'true' },
+      { diagnostic: 'true', selection: '', full: 'false' },
+      { diagnostic: 'false', selection: '{}', full: 'false' },
+    ])
+      expect(() => executeCoverage({ ...env, named: 'true' })).toThrow(
+        'quick-named-units requires ordinary quick coverage',
+      );
+  });
+
+  it('runs incompatible-input validation even when diagnostic selection excludes static and units', () => {
+    const selection = JSON.stringify({ static: false, unit: [], sim: [1], browser: [], totals });
+    for (const full of ['true', 'false']) {
+      const diagnostic = { diagnostic: 'true', selection, full };
+      expect(executeCoverageJob({ ...diagnostic, named: 'false' })).toBeNull();
+      expect(() => executeCoverageJob({ ...diagnostic, named: 'true' })).toThrow(
+        'quick-named-units requires ordinary quick coverage',
+      );
+    }
+  });
+
+  it('passes the opt-in CLI argument only to opted-in unit jobs', () => {
+    const unit = jobBlock('unit');
+    const expression = field(unit, 'QUICK_UNIT_ARGS');
+    for (const named of [false, true]) {
+      const result: unknown = runInNewContext(
+        expression.replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\.([a-z]+-[a-z-]+)/g, "['$1']"),
+        {
+          inputs: { 'quick-named-units': named },
+        },
+      );
+      expect(result).toBe(named ? '--quick-named-units' : '');
+    }
+    const command = unit.split('- name: Unit tests, one slice')[1]?.split('\n      #')[0] ?? '';
+    expect(field(command, 'run').replace('$QUICK_UNIT_ARGS', '').trim()).toBe(
+      'npm run check -- --tier unit --shard "$SHARD/$SHARD_TOTAL"',
+    );
+  });
+
   it('limits only train browser occupancy while retaining every shard and final-slice duty', () => {
     const ordinary = evaluateControl(null, false, 'browser');
     const train = evaluateControl(null, false, 'browser', 'pr-head-a pr-head-b');

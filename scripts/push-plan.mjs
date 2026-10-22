@@ -1,7 +1,9 @@
 // What the pre-push hook tests, from the files a push changes (docs/engineering.md, "Pre-commit
 // hooks and leak scan"). Pure, so scripts/push-plan.test.ts can pin it; scripts/pre-push.mjs runs it.
 //
-// The hook is a backstop, not the gate: CI runs every test on the PR. So it runs
+// The hook is a backstop, not the gate: full PR/train acceptance runs every test. Train-route
+// quick feedback also reuses this pure planner (quick-unit-plan.mjs), with broad CI units for
+// manifest/lock changes and uncertainty. The local hook runs
 //   - no tests for a push of docs, notes and Markdown only;
 //   - no local unit tests for a lockfile-only push or a package.json change confined to
 //     standard dependency maps; typecheck still runs;
@@ -11,7 +13,7 @@
 //     named after each source file it changed (`foo.ts` -> `foo.test.ts`; a folder's `index.ts` ->
 //     `<folder>.test.ts`). Vitest's import-graph selection (`--changed`, `related`) picked 142 of the
 //     261 unit test files for one content PR (#414) and took 4.6 min at two workers, so it is left
-//     to CI. [default]
+//     to full CI acceptance. [default]
 //   - the three authored truck-cut controls for their shared physics or track inputs. These are
 //     a bounded backstop for contact/terrain composition, not import-graph selection.
 //   - four existing road-content contracts for any pack's road/network/route or region JSON;
