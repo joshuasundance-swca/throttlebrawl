@@ -236,7 +236,7 @@ function node(o: {
     startedAt?: string | null;
     completedAt?: string | null;
     app?: string;
-    databaseId?: number | null;
+    databaseId?: number | null | undefined;
     id?: string;
   }[];
   gateRun?: boolean;
