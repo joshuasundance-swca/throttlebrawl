@@ -489,3 +489,201 @@ def test_declared_precision_cannot_silently_remove_a_source_water_hole() -> None
     mesh = recipe.bake(inputs)
     with pytest.raises(ValueError, match="source holes"):
         recipe.validate_coverage(mesh, inputs)
+
+
+def mesh_height(mesh: recipe.Mesh, x: float, z: float) -> float | None:
+    for patch in mesh.patches:
+        if patch.surface != "grass":
+            continue
+        for face in patch.triangles:
+            a, b, c = [patch.vertices[i] for i in face]
+            dx1, dz1 = b[0] - a[0], b[2] - a[2]
+            dx2, dz2 = c[0] - a[0], c[2] - a[2]
+            det = dx1 * dz2 - dx2 * dz1
+            u = ((x - a[0]) * dz2 - (z - a[2]) * dx2) / det
+            v = (dx1 * (z - a[2]) - dz1 * (x - a[0])) / det
+            if u >= 0 and v >= 0 and u + v <= 1:
+                return a[1] + u * (b[1] - a[1]) + v * (c[1] - a[1])
+    return None
+
+
+def graded_inputs(
+    guides: list[tuple[recipe.Coordinate, recipe.Coordinate, recipe.Coordinate]],
+) -> recipe.LoadedInputs:
+    inputs = synthetic_inputs()
+    return replace(
+        inputs,
+        roads=recipe.RoadBand.model_validate(
+            {**inputs.roads.model_dump(by_alias=True), "groundGrades": guides}
+        ),
+    )
+
+
+def test_ground_grade_is_an_untucked_plane_not_a_cutout_and_has_bounded_influence() -> None:
+    inputs = graded_inputs(rectangle(10, 20, 20, 30, 7))
+    mesh = recipe.bake(inputs)
+    baseline = recipe.bake(synthetic_inputs())
+    assert mesh_height(mesh, 15, 25) == 7
+    assert mesh_height(baseline, 15, 25) != 7
+    for x, z in [(11, 21), (19, 21), (11, 29), (19, 29)]:
+        assert mesh_height(mesh, x, z) == 7
+    assert mesh_height(mesh, 100, 100) == mesh_height(baseline, 100, 100) == 2
+    assert recipe.validate_coverage(mesh, inputs)["world_missing_area_m2"] == 0
+    # No source water plane or outline changes, even where a transition reaches it.
+    water = [p for p in mesh.patches if p.surface == "water"]
+    old_water = [p for p in baseline.patches if p.surface == "water"]
+    assert {v[1] for p in water for v in p.vertices} == {v[1] for p in old_water for v in p.vertices}
+
+    def footprint(patches: list[recipe.Patch]) -> recipe.Geometry:
+        return unary_union(
+            [Polygon([(p.vertices[i][0], p.vertices[i][2]) for i in t]) for p in patches for t in p.triangles]
+        )
+
+    assert footprint(water).equals(footprint(old_water))
+    assert inputs.roads.triangles == synthetic_inputs().roads.triangles
+    assert inputs.roads.elevated_decks == synthetic_inputs().roads.elevated_decks
+
+
+@pytest.mark.parametrize("kind", ["road", "deck", "water", "other-plane"])
+def test_grade_ownership_conflicts_are_rejected(kind: str) -> None:
+    guide = {
+        "road": rectangle(2, 20, 8, 30, 7),
+        "deck": rectangle(45, 20, 55, 30, 7),
+        "water": rectangle(45, 0, 55, 10, 7),
+        "other-plane": rectangle(15, 20, 25, 30, 8),
+    }[kind]
+    inputs = graded_inputs(rectangle(10, 20, 20, 30, 7) + guide)
+    with pytest.raises(ValueError, match="grade"):
+        recipe.bake(inputs)
+
+
+def test_consistent_overlapping_grade_planes_are_unambiguous() -> None:
+    inputs = graded_inputs(rectangle(10, 20, 20, 30, 7) + rectangle(15, 20, 25, 30, 7))
+    assert mesh_height(recipe.bake(inputs), 17, 25) == 7
+
+
+def test_shared_grade_boundary_cannot_have_conflicting_node_heights() -> None:
+    inputs = graded_inputs(rectangle(10, 20, 20, 30, 7) + rectangle(20, 20, 30, 30, 8))
+    with pytest.raises(ValueError, match="grade"):
+        recipe.bake(inputs)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        [((10, 7, 20), (20, 7, 20), (10, 7, 30))],
+        [((10, 7, 20), (10 + 1e-8, 7, 20), (10, 7, 30))],
+        [((10, float("nan"), 20), (10, 7, 30), (20, 7, 20))],
+    ],
+)
+def test_invalid_grade_evidence_is_rejected(
+    bad: list[tuple[recipe.Coordinate, recipe.Coordinate, recipe.Coordinate]],
+) -> None:
+    with pytest.raises(ValueError):
+        recipe.bake(graded_inputs(bad))
+
+
+def test_sloped_grade_follows_its_actual_plane_without_road_tuck() -> None:
+    guides = [tuple((x, x / 2 + 1, z) for x, _y, z in face) for face in rectangle(10, 20, 20, 30, 0)]
+    inputs = graded_inputs([(face[0], face[1], face[2]) for face in guides])
+    assert mesh_height(recipe.bake(inputs), 15, 25) == 8.5
+
+
+@pytest.mark.parametrize("target", ["road", "water"])
+def test_grade_conflict_introduced_only_by_quantization_is_rejected(target: str) -> None:
+    triangle = ((0, 7, 0), (0, 7, 100), (4, 7, 100))
+    a, b, c, d = (0.0041, 7, 0.1), (3.9961, 7, 99.9), (10, 7, 99.9), (10, 7, 0.1)
+    if target == "water":
+        inputs = graded_inputs([((10, 7, 0), (10, 7, 100), (14, 7, 100))])
+        inputs = replace(
+            inputs, river=recipe.River(polygons=[[[(10.0041, 0.1), (13.9961, 99.9), (20, 99.9), (20, 0.1)]]])
+        )
+    else:
+        inputs = graded_inputs([(a, b, c), (a, c, d)])
+        payload = inputs.roads.model_dump(by_alias=True)
+        payload["triangles"] = [triangle]
+        inputs = replace(inputs, roads=recipe.RoadBand.model_validate(payload))
+    with pytest.raises(ValueError, match="grade"):
+        recipe.bake(inputs)
+
+
+def test_grade_outside_source_domain_does_not_create_new_coverage() -> None:
+    with pytest.raises(ValueError, match=r"grade.*coverage"):
+        recipe.bake(graded_inputs(rectangle(95, 20, 105, 30, 7)))
+
+
+def test_non_grid_aligned_grade_owns_its_declared_snapped_plane() -> None:
+    inputs = graded_inputs([((10.0004, 7, 20.0004), (12.0004, 7, 30.0004), (20.0004, 7, 22.0004))])
+    mesh = recipe.bake(inputs)
+    # The declared STEP outline includes nodes outside the original evidence.
+    # Those nodes still belong to the desired plane, not a near-one blend.
+    assert mesh_height(mesh, 10, 20) == 7
+    assert mesh_height(mesh, 12, 30) == 7
+    assert mesh_height(mesh, 14, 24) == 7
+
+
+def test_non_grid_aligned_sloped_grade_uses_original_physical_plane() -> None:
+    face = ((10.0004, 6.0002, 20.0004), (12.0004, 7.0002, 30.0004), (20.0004, 11.0002, 22.0004))
+    inputs = graded_inputs([face])
+    mesh = recipe.bake(inputs)
+    for x, z in [(10, 20), (12, 30), (20, 22)]:
+        assert mesh_height(mesh, x, z) == recipe.f32(
+            float(recipe.exact_height(inputs.roads.ground_grades[0], x, z))
+        )
+
+
+@pytest.mark.parametrize("target", ["deck", "other-plane"])
+def test_grade_quantization_conflicts_also_reject_decks_and_other_guides(target: str) -> None:
+    obstacle: list[tuple[recipe.Coordinate, recipe.Coordinate, recipe.Coordinate]] = [
+        ((10, 8, 0), (10, 8, 100), (14, 8, 100))
+    ]
+    a, b, c, d = (10.0041, 7, 0.1), (13.9961, 7, 99.9), (20, 7, 99.9), (20, 7, 0.1)
+    guides: list[tuple[recipe.Coordinate, recipe.Coordinate, recipe.Coordinate]] = [(a, b, c), (a, c, d)]
+    source = Polygon([(v[0], v[2]) for v in obstacle[0]])
+    guide = Polygon([(v[0], v[2]) for v in (a, b, c, d)])
+    assert source.intersection(guide).area == 0
+    inputs = graded_inputs(guides + (obstacle if target == "other-plane" else []))
+    if target == "deck":
+        inputs.roads.elevated_decks = obstacle
+    with pytest.raises(ValueError, match="grade"):
+        recipe.bake(inputs)
+
+
+def test_grades_retain_identified_water_levels_holes_and_full_body_proof() -> None:
+    baseline = body_inputs()
+    inputs = replace(
+        baseline,
+        roads=recipe.RoadBand.model_validate(
+            {**baseline.roads.model_dump(by_alias=True), "groundGrades": rectangle(10, 20, 20, 30, 7)}
+        ),
+    )
+    mesh = recipe.bake(inputs)
+    assert mesh_height(mesh, 15, 25) == 7
+    proof = recipe.validate_coverage(mesh, inputs)
+    old_proof = recipe.validate_coverage(recipe.bake(baseline), baseline)
+    assert proof["world_missing_area_m2"] == 0
+    bodies, old_bodies = proof["water_bodies"], old_proof["water_bodies"]
+    assert isinstance(bodies, dict) and isinstance(old_bodies, dict)
+    for identity, body in bodies.items():
+        old = old_bodies[identity]
+        assert isinstance(body, dict) and isinstance(old, dict)
+        for key in ("source_sha256", "float32_proxy_level_m", "preserved_source_holes"):
+            assert body[key] == old[key]
+        assert body["planned_missing_area_m2"] == body["planned_extra_area_m2"] == 0
+
+
+def test_grade_transition_changes_nearby_ground_and_keeps_missing_ground_invalid() -> None:
+    inputs = graded_inputs(rectangle(10, 20, 20, 30, 7))
+    mesh = recipe.bake(inputs)
+    old_height = mesh_height(recipe.bake(synthetic_inputs()), 30, 25)
+    transition_height = mesh_height(mesh, 30, 25)
+    assert old_height is not None and transition_height is not None
+    assert old_height < transition_height < 7
+    grass = next(p for p in mesh.patches if p.surface == "grass")
+    grass.triangles = [
+        face
+        for face in grass.triangles
+        if not Polygon([(grass.vertices[i][0], grass.vertices[i][2]) for i in face]).covers(Point(15, 25))
+    ]
+    with pytest.raises(ValueError, match=r"cover|boundary"):
+        recipe.validate_coverage(mesh, inputs)

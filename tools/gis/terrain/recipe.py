@@ -78,10 +78,13 @@ class RoadBand(BaseModel):
     elevated_decks: list[tuple[Coordinate, Coordinate, Coordinate]] = Field(
         default_factory=list, alias="elevatedDecks"
     )
+    ground_grades: list[tuple[Coordinate, Coordinate, Coordinate]] = Field(
+        default_factory=list, alias="groundGrades"
+    )
 
     @model_validator(mode="after")
     def physical_faces(self) -> RoadBand:
-        for name in ("triangles", "elevated_decks"):
+        for name in ("triangles", "elevated_decks", "ground_grades"):
             rounded = []
             for triangle in getattr(self, name):
                 # Validate the original evidence as well as its actual physical representation.
@@ -305,11 +308,66 @@ def road_union(inputs: LoadedInputs) -> Geometry:
     return unary_union(faces)
 
 
+def exact_height(triangle: tuple[Coordinate, Coordinate, Coordinate], x: float, z: float) -> Fraction:
+    a, b, c = [tuple(Fraction(v) for v in vertex) for vertex in triangle]
+    dx1, dz1, dy1 = b[0] - a[0], b[2] - a[2], b[1] - a[1]
+    dx2, dz2, dy2 = c[0] - a[0], c[2] - a[2], c[1] - a[1]
+    det = dx1 * dz2 - dx2 * dz1
+    return (
+        a[1]
+        + ((dy1 * dz2 - dy2 * dz1) * (Fraction(x) - a[0]) + (dx1 * dy2 - dx2 * dy1) * (Fraction(z) - a[2]))
+        / det
+    )
+
+
+def grade_union(inputs: LoadedInputs) -> Geometry:
+    """Validate explicit desired-ground ownership, without adding road cutouts."""
+    guides = inputs.roads.ground_grades
+    if not guides:
+        return Polygon()
+    # Restore/validate direct mutable evidence exactly as for file-loaded faces.
+    guides = RoadBand.model_validate(inputs.roads.model_dump(by_alias=True)).ground_grades
+    areas = [Polygon([(v[0], v[2]) for v in face]) for face in guides]
+    grid = inputs.grid
+    domain = box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1])
+    roads = unary_union(
+        [
+            Polygon([(v[0], v[2]) for v in face])
+            for face in [*inputs.roads.triangles, *inputs.roads.elevated_decks]
+        ]
+    )
+    water = unary_union([area for _, area in water_areas(inputs)])
+    for i, area in enumerate(areas):
+        snapped = set_precision(area, STEP)
+        if snapped.is_empty or area.difference(domain).area:
+            raise ValueError("Ground grade lacks bounded source coverage")
+        for other in (roads, water):
+            if (
+                area.intersection(other).area
+                or set_precision(snapped, 0).intersection(set_precision(set_precision(other, STEP), 0)).area
+            ):
+                raise ValueError("Ground grade conflicts with road/deck or source water ownership")
+        for j, other in enumerate(areas[:i]):
+            overlaps = [
+                area.intersection(other),
+                set_precision(snapped, 0).intersection(set_precision(set_precision(other, STEP), 0)),
+            ]
+            if any(
+                exact_height(guides[i], float(x), float(z)) != exact_height(guides[j], float(x), float(z))
+                for overlap in overlaps
+                for x, z in shapely.get_coordinates(overlap)
+            ):
+                raise ValueError("Overlapping ground grade planes or shared heights are ambiguous")
+    return unary_union(areas)
+
+
 def authoring_cells(inputs: LoadedInputs) -> list[Geometry]:
     """Reconstruct the declared snap-rounded arrangement from preserved numeric inputs."""
     grid = inputs.grid
     domain = set_precision(box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1]), STEP)
     raw_road = road_union(inputs)
+    grades = grade_union(inputs)
+    controls = raw_road if grades.is_empty else unary_union([raw_road, grades])
     water_sources_areas = water_areas(inputs)
     raw_water = (
         water_sources_areas[0][1]
@@ -318,7 +376,7 @@ def authoring_cells(inputs: LoadedInputs) -> list[Geometry]:
     )
     water = set_precision(raw_water, STEP)
     retained = set_precision(raw_road.buffer(-0.02, quad_segs=64), STEP)
-    transition = set_precision(raw_road.buffer(39.99, quad_segs=64), STEP)
+    transition = set_precision(controls.buffer(39.99, quad_segs=64), STEP)
     edges: set[tuple[XZ, XZ]] = set()
     for j in range(len(grid.z) - 1):
         for i in range(len(grid.x) - 1):
@@ -337,6 +395,11 @@ def authoring_cells(inputs: LoadedInputs) -> list[Geometry]:
     ]
     if inputs.water_bodies is not None:
         linework += [set_precision(area, STEP).boundary for _, area in water_sources_areas]
+    if not grades.is_empty:
+        linework += [
+            set_precision(Polygon([(v[0], v[2]) for v in face]), STEP).boundary
+            for face in inputs.roads.ground_grades
+        ]
     noded = union_all(linework, grid_size=STEP)
     return sorted(polygonize(noded), key=lambda p: (p.bounds, p.area, p.wkb_hex))
 
@@ -346,11 +409,14 @@ def bake(inputs: LoadedInputs) -> Mesh:
     grid = inputs.grid
     domain = box(grid.x[0], grid.z[0], grid.x[-1], grid.z[-1])
     raw_road = road_union(inputs)
-    faces = [Polygon([(v[0], v[2]) for v in triangle]) for triangle in inputs.roads.triangles]
-    planes = [
-        np.linalg.solve([[v[0], v[2], 1] for v in t], [v[1] for v in t]) for t in inputs.roads.triangles
-    ]
+    grades = grade_union(inputs)
+    controls = raw_road if grades.is_empty else unary_union([raw_road, grades])
+    control_faces = [*inputs.roads.triangles, *inputs.roads.ground_grades]
+    faces = [Polygon([(v[0], v[2]) for v in triangle]) for triangle in control_faces]
+    planes = [np.linalg.solve([[v[0], v[2], 1] for v in t], [v[1] for v in t]) for t in control_faces]
     tree = STRtree(faces)
+    grade_faces = [set_precision(face, STEP) for face in faces[len(inputs.roads.triangles) :]]
+    grade_tree = STRtree(grade_faces)
     sources = water_areas(inputs)
     raw_water = sources[0][1] if len(sources) == 1 else unary_union([area for _, area in sources])
     if raw_road.intersection(raw_water).area:
@@ -371,7 +437,7 @@ def bake(inputs: LoadedInputs) -> Mesh:
     if set_precision(canonical_road, 0).intersection(set_precision(water, 0)).area:
         raise ValueError("Quantized road/river overlap requires an ownership decision")
     retained_road = set_precision(raw_road.buffer(-0.02, quad_segs=64), STEP)
-    transition = set_precision(raw_road.buffer(39.99, quad_segs=64), STEP)
+    transition = set_precision(controls.buffer(39.99, quad_segs=64), STEP)
     if retained_road.is_empty:
         raise ValueError("The inward road offset collapsed")
     land = difference(canonical_domain, union_all([water, retained_road], grid_size=STEP), grid_size=STEP)
@@ -389,7 +455,7 @@ def bake(inputs: LoadedInputs) -> Mesh:
         for ring in [polygon.exterior, *polygon.interiors]
         for v in ring.coords
     }
-    if final_transition.difference(raw_road.buffer(40, quad_segs=256)).area:
+    if final_transition.difference(controls.buffer(40, quad_segs=256)).area:
         raise ValueError("Final transition exceeds the conservative 40 m offset")
     node_y: dict[XZ, float] = {}
 
@@ -403,7 +469,7 @@ def bake(inputs: LoadedInputs) -> Mesh:
                 and final_transition.contains(point)
                 and boundary.distance(point) > SUPPORT_EPSILON
             ):
-                q = nearest_points(point, raw_road.boundary)[1]
+                q = nearest_points(point, controls.boundary)[1]
                 ids = [
                     int(k)
                     for k in tree.query(q.buffer(SUPPORT_EPSILON))
@@ -411,10 +477,21 @@ def bake(inputs: LoadedInputs) -> Mesh:
                 ]
                 if not ids:
                     raise ValueError("No actual road face supports the nearest boundary")
-                height = max(float(planes[k][0] * q.x + planes[k][1] * q.y + planes[k][2]) for k in ids)
+                height = max(
+                    float(planes[k][0] * q.x + planes[k][1] * q.y + planes[k][2])
+                    - (0.06 if k < len(inputs.roads.triangles) else 0)
+                    for k in ids
+                )
                 outer, distance = boundary.distance(point), point.distance(q)
-                weight = 1.0 if raw_road.covers(point) else outer / (outer + distance)
-                value = dem + (height - 0.06 - dem) * weight
+                weight = 1.0 if controls.covers(point) else outer / (outer + distance)
+                value = dem + (height - dem) * weight
+            guide_ids = [
+                int(k) + len(inputs.roads.triangles)
+                for k in grade_tree.query(point)
+                if grade_faces[int(k)].covers(point)
+            ]
+            if guide_ids:
+                value = max(float(planes[k][0] * x + planes[k][1] * z + planes[k][2]) for k in guide_ids)
             node_y[key] = f32(value)
         return node_y[key]
 
