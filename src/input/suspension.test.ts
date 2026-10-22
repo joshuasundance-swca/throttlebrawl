@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InputFlag, placeTouchButtons, type TouchLayout } from '../sim/api';
-import { createInput, emptyActions, PAD, toSimInput, type InputSystem } from './index';
+import { createInput, emptyActions, inputDefaults, PAD, toSimInput, type InputSystem } from './index';
 
 const DT = 1 / 60;
 const NEUTRAL = toSimInput(emptyActions());
@@ -52,7 +52,8 @@ function setup() {
     axes: [0, 0, 0, 0],
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
   };
-  const input = createInput({ keys, surface, layout: LAYOUT, gamepads: () => [pad], vibrate });
+  const pads: (typeof pad | null)[] = [pad];
+  const input = createInput({ keys, surface, layout: LAYOUT, gamepads: () => pads, vibrate });
   systems.push(input);
   const key = (type: 'keydown' | 'keyup', code: string, repeat = false) => {
     keys.dispatchEvent(Object.assign(new Event(type), { code, repeat }));
@@ -67,7 +68,19 @@ function setup() {
   const button = (index: number, value: number) => {
     pad.buttons[index] = { pressed: value >= 0.5, value };
   };
-  return { input, keys, surface, vibrate, pad, key, pointer, attack, button, sample: () => input.sample(DT) };
+  return {
+    input,
+    keys,
+    surface,
+    vibrate,
+    pad,
+    pads,
+    key,
+    pointer,
+    attack,
+    button,
+    sample: () => input.sample(DT),
+  };
 }
 
 describe('input suspension ownership', () => {
@@ -182,6 +195,76 @@ describe('input suspension ownership', () => {
     expect(t.sample().throttle).toBe(255);
     expect(tilt.steer).toHaveBeenCalledTimes(1);
     t.key('keydown', 'KeyX');
+    expect(t.sample().flags & InputFlag.attack).toBeTruthy();
+  });
+
+  it.each([0, 2])(
+    'quarantines the active radial stick pair (axis %i), including sub-threshold diagonals',
+    (axis) => {
+      const t = setup();
+      t.input.setOptions({ padBindings: { steer: [`axis${axis}`] } });
+      const dz = inputDefaults().gamepadDeadZone;
+      const diagonal = dz * 0.9;
+      expect(diagonal).toBeLessThan(dz);
+      expect(Math.hypot(diagonal, diagonal)).toBeGreaterThan(dz);
+      t.pad.axes[axis] = diagonal;
+      t.pad.axes[axis + 1] = diagonal;
+      expect(t.sample().steer).toBeGreaterThan(0);
+      const lease = t.input.acquireSuspendLease();
+      lease.release();
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.pad.axes[axis] = 1;
+      t.pad.axes[axis + 1] = 0;
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.pad.axes[axis] = diagonal;
+      t.pad.axes[axis + 1] = diagonal;
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.pad.axes[axis] = dz / 2;
+      t.pad.axes[axis + 1] = dz / 2;
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.pad.axes[axis] = 1;
+      expect(t.sample().steer).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(['throttle', 'brake'] as const)(
+    'rearms digital actions below their held threshold while shared %s remains quarantined',
+    (analog) => {
+      const t = setup();
+      t.input.setOptions({ padBindings: { attack: ['button7'], [analog]: ['button7'] } });
+      t.button(PAD.r2, 1);
+      expect(t.sample().flags & InputFlag.attack).toBeTruthy();
+      const lease = t.input.acquireSuspendLease();
+      lease.release();
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.button(PAD.r2, 0.25); // released as a digital action, still active as an analog action
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.button(PAD.r2, 1);
+      const repressed = t.sample();
+      expect(repressed.flags & InputFlag.attack).toBeTruthy();
+      expect(repressed[analog]).toBe(0);
+      t.button(PAD.r2, 0);
+      expect(t.sample()).toEqual(NEUTRAL);
+      t.button(PAD.r2, 0.25);
+      expect(t.sample()[analog]).toBe(Math.round(0.25 * 255));
+    },
+  );
+
+  it('preserves sparse pad indices and allows an alternate binding while one button stays held', () => {
+    const t = setup();
+    t.pads.unshift(null);
+    t.input.setOptions({ padBindings: { attack: ['button0', 'button8'] } });
+    t.button(PAD.cross, 1);
+    const lease = t.input.acquireSuspendLease();
+    lease.release();
+    expect(t.sample()).toEqual(NEUTRAL);
+    t.button(PAD.share, 1);
+    expect(t.sample().flags & InputFlag.attack).toBeTruthy();
+    t.button(PAD.share, 0);
+    expect(t.sample().flags & InputFlag.attack).toBe(0);
+    t.button(PAD.cross, 0.25);
+    t.sample();
+    t.button(PAD.cross, 1);
     expect(t.sample().flags & InputFlag.attack).toBeTruthy();
   });
 

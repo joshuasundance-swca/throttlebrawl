@@ -20,8 +20,10 @@ import { keyMapFromBindings } from './bindings';
 import {
   DEFAULT_PAD_MAP,
   GamepadState,
+  PAD_HELD_THRESHOLD,
   padMapFromBindings,
   type GamepadMap,
+  type PadButtonAction,
   type PadLike,
 } from './devices/gamepad';
 import { KeyboardState, type KeyMap } from './devices/keyboard';
@@ -261,7 +263,14 @@ export function createInput(opts: InputOptions): InputSystem {
   // not turn an OS autorepeat into a new press when ownership returns.
   const heldKeys = new Set<string>();
   const quarantinedKeys = new Set<string>();
-  const quarantinedPads = new Map<number, { buttons: Set<number>; axes: Set<number> }>();
+  const quarantinedPads = new Map<
+    number,
+    {
+      analogButtons: Set<number>;
+      digitalButtons: Set<number>;
+      axes: readonly [number, number] | null;
+    }
+  >();
 
   const clearActions = () => {
     keyboard.clear();
@@ -276,17 +285,21 @@ export function createInput(opts: InputOptions): InputSystem {
   };
   const quarantinePads = () => {
     quarantinedPads.clear();
+    const { steerAxis, steerAxisPair } = padMapFromBindings(controls.padBindings, padBase);
     readPads().forEach((pad, index) => {
       if (!pad?.connected) return;
-      const buttons = new Set<number>();
-      const axes = new Set<number>();
+      const analogButtons = new Set<number>();
+      const digitalButtons = new Set<number>();
       pad.buttons.forEach((b, i) => {
-        if (b.pressed || b.value > 0) buttons.add(i);
+        if (b.pressed || b.value > 0) analogButtons.add(i);
+        if (b.pressed || b.value >= PAD_HELD_THRESHOLD) digitalButtons.add(i);
       });
-      pad.axes.forEach((v, i) => {
-        if (Math.abs(v) > thresholds.gamepadDeadZone) axes.add(i);
-      });
-      if (buttons.size || axes.size) quarantinedPads.set(index, { buttons, axes });
+      const axes: readonly [number, number] | null =
+        Math.hypot(pad.axes[steerAxis] ?? 0, pad.axes[steerAxisPair] ?? 0) > thresholds.gamepadDeadZone
+          ? [steerAxis, steerAxisPair]
+          : null;
+      if (analogButtons.size || digitalButtons.size || axes)
+        quarantinedPads.set(index, { analogButtons, digitalButtons, axes });
     });
   };
   const clearBoundary = () => {
@@ -304,19 +317,27 @@ export function createInput(opts: InputOptions): InputSystem {
         quarantinedPads.delete(index);
         return pad;
       }
-      const buttons = pad.buttons.map((b, i) => {
-        if (!blocked.buttons.has(i)) return b;
-        if (!b.pressed && b.value <= 0) blocked.buttons.delete(i);
-        return { pressed: false, value: 0 };
+      // Digital actions rearm below their held threshold; continuous throttle/brake rearm at
+      // zero. Keep these masks separate when a physical button is bound to both kinds of action.
+      pad.buttons.forEach((b, i) => {
+        if (!b.pressed && b.value <= 0) blocked.analogButtons.delete(i);
+        if (!b.pressed && b.value < PAD_HELD_THRESHOLD) blocked.digitalButtons.delete(i);
       });
-      const axes = pad.axes.map((v, i) => {
-        if (!blocked.axes.has(i)) return v;
-        if (Math.abs(v) <= thresholds.gamepadDeadZone) blocked.axes.delete(i);
-        return 0;
-      });
-      if (!blocked.buttons.size && !blocked.axes.size) quarantinedPads.delete(index);
-      return { connected: pad.connected, mapping: pad.mapping, buttons, axes };
+      const pair = blocked.axes;
+      if (pair && Math.hypot(pad.axes[pair[0]] ?? 0, pad.axes[pair[1]] ?? 0) <= thresholds.gamepadDeadZone)
+        blocked.axes = null;
+      if (!blocked.analogButtons.size && !blocked.digitalButtons.size && !blocked.axes)
+        quarantinedPads.delete(index);
+      if (!blocked.axes) return pad;
+      const axes = pad.axes.map((v, i) => (blocked.axes?.includes(i) ? 0 : v));
+      return { connected: pad.connected, mapping: pad.mapping, buttons: pad.buttons, axes };
     });
+  };
+  const filterPadButton = (action: PadButtonAction, padIndex: number, buttonIndex: number, value: number) => {
+    const blocked = quarantinedPads.get(padIndex);
+    const buttons =
+      action === 'throttle' || action === 'brake' ? blocked?.analogButtons : blocked?.digitalButtons;
+    return buttons?.has(buttonIndex) ? 0 : value;
   };
 
   /** An injected tilt device (setTilt), or null for the browser's sensors. */
@@ -460,14 +481,14 @@ export function createInput(opts: InputOptions): InputSystem {
         const drained = emptyActions();
         keyboard.sample(drained, dt);
         touch.sample(emptyActions());
-        gamepad.sample(drained, racePads(), thresholds.gamepadDeadZone, dt);
+        gamepad.sample(drained, racePads(), thresholds.gamepadDeadZone, dt, filterPadButton);
         if (drained.cycleCamera) a.cycleCamera = true;
         if (drained.pause) a.pause = true;
         wheelieUp = false;
       } else {
         keyboard.sample(a, dt);
         touch.sample(a);
-        gamepad.sample(a, racePads(), thresholds.gamepadDeadZone, dt);
+        gamepad.sample(a, racePads(), thresholds.gamepadDeadZone, dt, filterPadButton);
         const tiltSteer = (injectedTilt ?? sensorTilt)?.steer(dt) ?? null;
         if (tiltSteer !== null) a.steer = Math.max(-1, Math.min(1, a.steer + tiltSteer));
         // Auto-throttle: full throttle unless braking, so the brake still stops the bike. The wheelie
