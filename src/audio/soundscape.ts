@@ -26,12 +26,13 @@
 // (soundscape-voices.ts makes the sounds). Timers run on the audio clock and a seeded generator,
 // so a test can drive it; presentation only, nothing here reaches the sim.
 
-export type ScapeRegion = 'keys' | 'pnw' | 'sf';
+export type ScapeRegion = 'keys' | 'pnw' | 'sf' | 'iowa';
 
 /** A region id as the content registry names it (`florida-keys`, ...), or null for none/unknown. */
 export function scapeRegionOf(regionId: string | null): ScapeRegion | null {
   if (!regionId) return null;
   const id = regionId.slice(regionId.indexOf(':') + 1).toLowerCase();
+  if (id === 'clinton-iowa') return 'iowa';
   if (id.includes('keys')) return 'keys';
   if (id.includes('northwest') || id === 'pnw') return 'pnw';
   if (id.includes('francisco') || id === 'sf') return 'sf';
@@ -98,6 +99,7 @@ export const NO_BEDS: Readonly<ScapeBeds> = Object.freeze({
 });
 
 export type ScapeEvent =
+  | { kind: 'leafRustle'; level: number }
   | { kind: 'joint'; level: number; wheelGapS: number }
   | { kind: 'rooster'; level: number; pitch: number }
   | { kind: 'gong'; level: number; strikes: number }
@@ -253,6 +255,10 @@ export interface Director {
 export function createDirector(seed = 0x5ca9e): Director {
   const rnd = scapeRandom(seed);
   const between = (lo: number, hi: number) => lo + (hi - lo) * rnd();
+  // An independent presentation stream keeps every existing region's random sequence intact.
+  const leafRandom = scapeRandom(seed ^ 0x1ea5);
+  const leafBetween = (lo: number, hi: number) => lo + (hi - lo) * leafRandom();
+  let nextLeaf = 0;
   let region: ScapeRegion | null = null;
   let lastEdge = -1;
   let lastS = 0;
@@ -291,8 +297,16 @@ export function createDirector(seed = 0x5ca9e): Director {
     step(i) {
       const events: ScapeEvent[] = [];
       if (i.region !== region) {
+        const previousSharedRegion = region === 'iowa' ? null : region;
         region = i.region;
-        arm(i.t);
+        // Before Iowa was recognized it behaved as null. Preserve that exact shared-RNG
+        // transition history, including its existing draws when leaving an older region.
+        if ((region === 'iowa' ? null : region) !== previousSharedRegion) arm(i.t);
+        else {
+          nextBar = -1;
+          lastNear.clear();
+        }
+        if (region === 'iowa') nextLeaf = i.t + leafBetween(2, 6);
         lastEdge = -1;
       }
       if (!region) return { events, rain: 0, beds: NO_BEDS };
@@ -359,6 +373,17 @@ export function createDirector(seed = 0x5ca9e): Director {
       }
 
       let rain = 0;
+      if (region === 'iowa') {
+        // Park roads also carry rural: the quieter park breeze takes precedence. These are
+        // stylized place textures, present at rest, independent of the bike's speed wind.
+        const park = i.tags.has('iowa-park');
+        beds.gust = (park ? 0.08 : i.tags.has('rural') ? 0.22 : 0) * gustShape(i.t);
+        if (i.t >= nextLeaf) {
+          if (park) events.push({ kind: 'leafRustle', level: leafBetween(0.12, 0.18) });
+          // Re-arm from now even off-tag or after a clock jump: never queue a burst.
+          nextLeaf = i.t + (park ? leafBetween(10, 22) : leafBetween(2, 6));
+        }
+      }
       if (region === 'pnw') {
         // Rain on the helmet: a steady patter, harder with speed; softer when off the bike.
         if (!i.dry) rain = i.grounded ? 0.45 + 0.55 * clamp01(speed / 35) : 0.25;

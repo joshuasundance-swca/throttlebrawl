@@ -1,6 +1,6 @@
 // Original agricultural facilities: drawing and contact consume these same boxes.
 import { atan2 } from '../../core';
-import { roadBandHeight } from '../course';
+import { roadBandHeight, roadsideGroundHeight } from '../course';
 import type { RoadNetwork } from '../network';
 import type { StructurePlanner, StructureSpec } from '../structures';
 
@@ -32,6 +32,172 @@ export interface IowaCountyFacility {
 }
 export interface IowaCountyLayout {
   facilities: readonly IowaCountyFacility[];
+  /** Soft low rows only: never registered as physical structures or supporting ground. */
+  crops?: readonly IowaCountyCrops[];
+}
+export interface IowaCountyCrops {
+  id: string;
+  edge: number;
+  s0: number;
+  s1: number;
+  x: number;
+  z: number;
+  radiusM: number;
+  /** World-space triangles, each corner sampled on the existing drawn/ridable strip. */
+  vertices: readonly V3[];
+}
+
+/** A short site tag stays a facility: rows need room for a readable run after the end headlands. */
+const FIELD_MIN_M = 24;
+const FIELD_END_M = 4;
+const ROW_STEP_M = 2;
+const ROW_HALF_M = 0.32;
+const ROW_HEIGHT_M = 0.18;
+const ROW_COUNT = 8;
+const ROW_SPACING_M = 1.4;
+const ROW_INSET_M = 0.4;
+
+function cropFields(road: RoadNetwork): IowaCountyCrops[] {
+  const fields: IowaCountyCrops[] = [];
+  if (road.terrain) return fields; // The county layer follows its existing legacy-land boundary.
+  for (const edge of road.edges)
+    for (const tag of edge.tags) {
+      if (tag.tag !== IOWA_COUNTY_TAG || tag.s1 - tag.s0 < FIELD_MIN_M) continue;
+      // Keep the full facility/encounter approach, exit and reaction corridor free, on both sides.
+      if (edge.features.some((f) => f.s0 - 24 < tag.s1 && f.s1 + 24 > tag.s0)) continue;
+      if (edge.tags.some((t) => /^(bridge|causeway|water-)/.test(t.tag) && t.s0 < tag.s1 && t.s1 > tag.s0))
+        continue;
+      const s0 = Math.max(0, tag.s0 + FIELD_END_M),
+        s1 = Math.min(edge.length, tag.s1 - FIELD_END_M);
+      for (const side of tag.side === 'both'
+        ? ([-1, 1] as const)
+        : ([tag.side === 'left' ? -1 : 1] as const)) {
+        const sideName = side < 0 ? 'left' : 'right';
+        const center = road.toWorld(edge.index, (s0 + s1) / 2, side * 20, 0);
+        const vertices: V3[] = [];
+        // One field's broad box bounds the only other-road segments worth examining below.
+        let x0 = Infinity,
+          x1 = -Infinity,
+          z0 = Infinity,
+          z1 = -Infinity;
+        for (let s = s0; s <= s1 + ROW_STEP_M; s += ROW_STEP_M) {
+          const atS = Math.min(s, s1);
+          const inner =
+            side * road.vergeAt(edge.index, atS, sideName).dOuter + IOWA_COUNTY_RECOVERY_M + ROW_INSET_M;
+          for (const d of [
+            side * (inner - ROW_HALF_M),
+            side * (inner + (ROW_COUNT - 1) * ROW_SPACING_M + ROW_HALF_M),
+          ]) {
+            const p = road.toWorld(edge.index, atS, d, 0);
+            x0 = Math.min(x0, p.x - 1);
+            x1 = Math.max(x1, p.x + 1);
+            z0 = Math.min(z0, p.z - 1);
+            z1 = Math.max(z1, p.z + 1);
+          }
+        }
+        const near = road.edges.flatMap((other) => {
+          if (other.index === edge.index) return [];
+          const segments: { ax: number; az: number; dx: number; dz: number; reach: number }[] = [];
+          let outer = Math.max(-other.dMin, other.dMax);
+          for (const section of other.sections)
+            outer = Math.max(
+              outer,
+              Math.abs(road.vergeAt(other.index, section.s0, 'left').dOuter),
+              Math.abs(road.vergeAt(other.index, section.s0, 'right').dOuter),
+            );
+          const reach = outer + IOWA_COUNTY_RECOVERY_M;
+          for (let k = 1; k < other.count; k++) {
+            const ax = other.x[k - 1]!,
+              az = other.z[k - 1]!,
+              bx = other.x[k]!,
+              bz = other.z[k]!;
+            if (
+              Math.max(ax, bx) + reach < x0 ||
+              Math.min(ax, bx) - reach > x1 ||
+              Math.max(az, bz) + reach < z0 ||
+              Math.min(az, bz) - reach > z1
+            )
+              continue;
+            segments.push({ ax, az, dx: bx - ax, dz: bz - az, reach });
+          }
+          return segments;
+        });
+        const point = (s: number, d: number): V3 | null => {
+          const y = roadsideGroundHeight(road, edge.index, s, d);
+          if (y === null) return null;
+          const p = road.toWorld(edge.index, s, d, 0);
+          for (const segment of near) {
+            const { ax, az, dx, dz, reach } = segment,
+              length = dx * dx + dz * dz;
+            const u = length > 0 ? Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.z - az) * dz) / length)) : 0;
+            const rx = p.x - ax - u * dx,
+              rz = p.z - az - u * dz;
+            if (rx * rx + rz * rz < reach * reach) return null;
+          }
+          return [p.x, y, p.z];
+        };
+        for (let row = 0; row < ROW_COUNT; row++)
+          for (let s = s0; s < s1; s += ROW_STEP_M) {
+            const end = Math.min(s + ROW_STEP_M, s1);
+            const across = (atS: number) =>
+              side *
+              (side * road.vergeAt(edge.index, atS, sideName).dOuter +
+                IOWA_COUNTY_RECOVERY_M +
+                ROW_INSET_M +
+                row * ROW_SPACING_M);
+            let supported = true,
+              low = Infinity,
+              high = -Infinity;
+            // Corners, row crest and interior: no strip may bridge a missing/wet patch or a step.
+            for (let atS = s; atS <= end + 1e-6; atS += 0.5)
+              for (let dd = -ROW_HALF_M; dd <= ROW_HALF_M + 1e-6; dd += ROW_HALF_M / 2) {
+                const p = point(atS, across(atS) + dd);
+                if (!p) supported = false;
+                else {
+                  low = Math.min(low, p[1]);
+                  high = Math.max(high, p[1]);
+                }
+              }
+            if (!supported || high - low > 0.15) continue;
+            const corners: V3[] = [];
+            for (const atS of [s, end])
+              for (const dd of [-ROW_HALF_M, 0, ROW_HALF_M]) {
+                const p = point(atS, across(atS) + dd);
+                if (!p) {
+                  supported = false;
+                  break;
+                }
+                corners.push([p[0], p[1] + (dd === 0 ? ROW_HEIGHT_M : 0.015), p[2]]);
+              }
+            if (!supported) continue;
+            for (const [a, b, c] of [
+              [0, 3, 1],
+              [1, 3, 4],
+              [1, 4, 2],
+              [2, 4, 5],
+            ])
+              vertices.push(corners[a!]!, corners[b!]!, corners[c!]!);
+          }
+        if (vertices.length === 0) continue;
+        let radiusM = 0;
+        for (const p of vertices) {
+          const dx = p[0] - center.x,
+            dz = p[2] - center.z;
+          radiusM = Math.max(radiusM, Math.sqrt(dx * dx + dz * dz));
+        }
+        fields.push({
+          id: `county-crops:${edge.id}:${tag.side}:${tag.s0}-${tag.s1}:${side}`,
+          edge: edge.index,
+          s0,
+          s1,
+          x: center.x,
+          z: center.z,
+          radiusM,
+          vertices,
+        });
+      }
+    }
+  return fields;
 }
 const box = (name: string, size: V3, at: V3, colour: string): IowaCountyPart => ({
   name,
@@ -181,7 +347,7 @@ export function iowaCountyLayout(road: RoadNetwork, _seed: number): IowaCountyLa
           specs,
         });
       }
-  const layout = { facilities };
+  const layout = { facilities, crops: cropFields(road) };
   cache.set(road, layout);
   return layout;
 }
