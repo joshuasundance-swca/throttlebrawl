@@ -128,6 +128,11 @@ describe('complete landing reporter', () => {
       const f = fixture();
       await f.reporter.onTestRunStart(f.specifications());
       const modules = f.modules((row, i) => {
+        // Keep all module paths and canonical keys unique; only their file ownership is wrong.
+        if (mode === 'wrong-file' && i < 2) {
+          row.key = cases[1 - i]!.key;
+          return;
+        }
         if (i !== 0) return;
         if (mode === 'missing') delete row.key;
         if (mode === 'duplicate') row.key = cases[1]!.key;
@@ -136,8 +141,9 @@ describe('complete landing reporter', () => {
         if (mode === 'token') row.token = 'previous-run';
         if (mode === 'malformed') row.player = { ...tally(), airCrash: NaN };
       });
-      if (mode === 'wrong-file') Object.assign(modules[0]!, { moduleId: path.join(root, files[1]!) });
-      expect(() => f.reporter.onTestRunEnd(modules, [], 'passed')).toThrow();
+      const finish = () => f.reporter.onTestRunEnd(modules, [], 'passed');
+      if (mode === 'wrong-file') expect(finish).toThrow('Unknown, duplicate or wrong-file landing key');
+      else expect(finish).toThrow();
       expect(process.exitCode).toBe(1);
       expect(f.marker()).toBeNull();
     },
