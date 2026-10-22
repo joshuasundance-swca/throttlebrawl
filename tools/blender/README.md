@@ -146,7 +146,7 @@ Shared traffic has one body mesh per type, with wheels baked in. Native GLB draw
 
 `models.test.ts` runs in the unit tier (`npm test`). It checks:
 
-- every GLB resolves to canonical bytes (dataset bytes verified against their pin) under the 1 MB size check;
+- every GLB resolves to nonempty canonical bytes (dataset bytes verified against their pin), and legacy pack files stay under the tracked-file 1 MiB size check; dataset assets retain the established build/download budgets;
 - every `score.mjs` check passes: budgets, names, roles, flat opaque materials, scale, ground, and the kind's rules (ramp geometry, waterline probes, variant layout and sway, bridge bays, levels of detail, the vehicle contract, text-surface UVs and extras, atlas UVs inside their tiles, outward winding, wire attach points);
 - three's own `GLTFLoader` parses it, with the named nodes the game will look up;
 - every pack-local GLB belongs to the legacy catalog partition, and dataset prop pins in the props/scenery/bikes/traffic/landmarks namespaces match exactly the dataset partition (riders and placeholders have their own catalogs);

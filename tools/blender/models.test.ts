@@ -171,9 +171,9 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
     bytes = await read(prop);
   });
 
-  it('has canonical verified bytes under the 1 MB size check', () => {
+  it('has nonempty canonical bytes and keeps legacy pack files under the tracked-file size check', () => {
     expect(bytes.length).toBeGreaterThan(0);
-    expect(bytes.length).toBeLessThan(1024 * 1024);
+    if (prop.storage !== 'dataset') expect(bytes.length).toBeLessThan(1024 * 1024);
   });
 
   it('passes every score check (budgets, names, flat materials, geometry rules)', () => {
