@@ -200,6 +200,18 @@ describe('app/loop: lockstep', () => {
     expect(frame(400)).toBe(MAX_STEPS_PER_FRAME);
   });
 
+  it('drops the partial step even when pause and resume happen between drawn frames', () => {
+    const { loop, count, frame } = rig();
+    expect(frame(12)).toBe(0);
+    expect(count.alphas.at(-1)).toBeGreaterThan(0);
+    loop.pause();
+    loop.resume();
+    expect(frame(9000)).toBe(0); // the first resumed frame establishes a fresh clock
+    expect(count.alphas.at(-1)).toBe(0);
+    expect(frame(6)).toBe(0); // no remainder from before the pause
+    expect(frame(12)).toBe(1);
+  });
+
   it('reads the count before every step, so a step can end the frame early', () => {
     // The test handle's fast-forward stops on its condition by handing the loop a smaller count.
     const { loop, frame } = rig((l, steps) => {

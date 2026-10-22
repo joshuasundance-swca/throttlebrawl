@@ -26,6 +26,7 @@ import type { QualitySetting, RendererPresentationRecipe, RendererPresentationTo
 import type { MeasurementSceneResult } from './measurement-scene';
 import {
   createFollowCamera,
+  loadReplayCamera,
   nearestFocus,
   shotFociOf,
   shotPose,
@@ -125,7 +126,9 @@ import {
   REGISTRY_PRESET_ID,
   resolvePreset,
 } from '../tuning';
-import { createUi, finishShotHudOn } from '../ui';
+import { createUi, finishShotHudOn, type ReplayAction } from '../ui';
+import type { ReplayViewer } from './replay-viewer';
+import { createReplayControls, replayKeyAction } from './replay-controls';
 import {
   buildSimConfig,
   DEFAULT_EVENT,
@@ -515,6 +518,15 @@ export interface AppHandle {
   replayFile(): unknown;
   /** Replays a replay file (parsed JSON) against a fresh sim of this build and compares hashes. */
   checkReplay(file: unknown): ReplayCheck;
+  /** The viewer's own simulation, separate from the finished race (read-only dev/test evidence). */
+  replayPlayback(): {
+    tick: number;
+    durationTicks: number;
+    checked: number;
+    complete: boolean;
+    playing: boolean;
+    mode: string;
+  } | null;
   frameStats(): FrameStats;
   /** Wall-clock time of each of the last ~600 sim steps, ms (dev/perf's sim step timer). */
   stepTimes(): readonly number[];
@@ -626,6 +638,21 @@ export function createApp(opts: AppOptions): AppHandle {
   let normalGeneration = 0;
   let normalContentGeneration = 0;
   let deliveryDepth = 0;
+  let normalPose: CameraPose | null = null;
+  type ReplayWatch = {
+    abort: AbortController;
+    screen: 'results' | 'careerResults';
+    recipe: RendererPresentationRecipe;
+    input: { release(): void };
+    runtime: ReplayViewer | null;
+    controls: ReturnType<typeof createReplayControls>;
+    pose: CameraPose | null;
+    alpha: number;
+    preparing: boolean;
+    interrupted: boolean;
+    ground: ((x: number, z: number) => number | null) | null;
+  };
+  let replayWatch: ReplayWatch | null = null;
   let retireNormal = () => {};
   let measurement: ReturnType<typeof import('./measurement-runtime').createMeasurementRuntime> | null = null;
   let pendingMeasurement: {
@@ -645,6 +672,7 @@ export function createApp(opts: AppOptions): AppHandle {
     pending.resolve(measurementRefusal(reason));
   };
   const actionGate = (action: import('./measurement-runtime').MeasurementAction, deliver: () => void) => {
+    if (replayWatch) return;
     const prepareDelivery = () => {
       if (deliveryDepth === 0) {
         normalGeneration++;
@@ -670,13 +698,13 @@ export function createApp(opts: AppOptions): AppHandle {
   };
   const captureNormal = () => {
     const generation = normalGeneration;
-    return () => generation === normalGeneration && !measurement?.intercepted;
+    return () => generation === normalGeneration && !measurement?.intercepted && !replayWatch;
   };
   // Background road requests survive menu navigation. Their pending ownership blocks
   // measurement entry; a measurement preparation still retires their content era.
   const captureNormalContent = () => {
     const generation = normalContentGeneration;
-    return () => generation === normalContentGeneration && !measurement?.intercepted;
+    return () => generation === normalContentGeneration && !measurement?.intercepted && !replayWatch;
   };
   // A fresh seed per race unless one is fixed (playtest 1c item 2); the seed goes into SimConfig,
   // so the recording's header carries it and replay and resume reproduce the race.
@@ -1196,12 +1224,13 @@ export function createApp(opts: AppOptions): AppHandle {
     if (holds.size > 0 || ui.paused) {
       loop.pause();
       frames.refresh();
-      audio.suspend();
+      if (!replayWatch) audio.suspend();
       return;
     }
     loop.resume();
     frames.refresh();
-    if (!measurement?.owned && state !== 'boot' && state !== 'tapToStart') void audio.resume();
+    if (!replayWatch && !measurement?.owned && state !== 'boot' && state !== 'tapToStart')
+      void audio.resume();
   };
   const hold = (reason: 'hidden' | 'context', on: boolean) => {
     if (on) holds.add(reason);
@@ -1367,6 +1396,8 @@ export function createApp(opts: AppOptions): AppHandle {
         onNextRegion: (id) => openCareer(id),
       },
       onBackToMenu: () => handle.backToMenu(),
+      onWatchReplay: () => void watchReplay(),
+      onReplayAction: replayAction,
       onCopyReport: opts.callbacks.onCopyReport,
       ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
       onPause: () => {
@@ -1432,6 +1463,147 @@ export function createApp(opts: AppOptions): AppHandle {
     layout,
     controls: controlOptionsOf(settings),
   });
+
+  function replayPads(): readonly (Gamepad | null)[] {
+    try {
+      return typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
+    } catch {
+      return [];
+    }
+  }
+  function offerReplay(): void {
+    const recording = recoveredTerminal ?? recorder.current();
+    ui.setReplayAvailable(
+      state === 'results' &&
+        !!recording?.end &&
+        !recoveryLocked &&
+        !recoveryBusy &&
+        !(attemptOwner?.terminal && !attemptOwner.settled),
+    );
+  }
+  function restoreReplay(watching: ReplayWatch): void {
+    if (replayWatch !== watching) return;
+    replayWatch = null;
+    watching.abort.abort();
+    if (!watching.runtime) watching.input.release();
+    try {
+      presentationRecipe = watching.recipe;
+      presentationToken = renderer.applyPresentation(watching.recipe, { reset: 'replay-boundary' });
+    } finally {
+      go('return');
+      ui.show(watching.screen);
+      syncRunning();
+      frames.invalidate();
+    }
+  }
+  function replayAction(action: ReplayAction): void {
+    const watching = replayWatch;
+    if (!watching) return;
+    if (action === 'return') {
+      if (watching.runtime) watching.runtime.dispose();
+      else restoreReplay(watching);
+    } else if (action === 'toggle') watching.runtime?.toggle();
+    else if (action === 'camera') watching.runtime?.cycleCamera();
+    else void watching.runtime?.restart();
+  }
+  async function watchReplay(): Promise<void> {
+    const screen = ui.screen();
+    const recording = recoveredTerminal ?? recorder.current();
+    if (
+      replayWatch ||
+      state !== 'results' ||
+      (screen !== 'results' && screen !== 'careerResults') ||
+      !ordinaryAllowed() ||
+      !recording?.end ||
+      !presentationRecipe ||
+      !curr ||
+      !race ||
+      pendingMeasurement ||
+      measurement?.owned ||
+      normalLoads.size > 0
+    )
+      return;
+    const inputLease = input.acquireSuspendLease();
+    if (!go('watch')) {
+      inputLease.release();
+      return;
+    }
+    const watching: ReplayWatch = {
+      abort: new AbortController(),
+      screen,
+      recipe: presentationRecipe,
+      input: inputLease,
+      runtime: null,
+      controls: createReplayControls(replayPads()),
+      pose: null,
+      alpha: 1,
+      preparing: true,
+      interrupted: false,
+      ground: null,
+    };
+    replayWatch = watching;
+    ui.updateReplay({ status: 'loading', camera: 'trackside', elapsedSeconds: 0, durationSeconds: 0 });
+    ui.show('replay');
+    const current = () => replayWatch === watching && !watching.abort.signal.aborted;
+    try {
+      const [owner, playback, cameras] = await Promise.all([
+        loadChunk('replay viewer', () => import('./replay-viewer')),
+        loadChunk('replay playback', () => import('./replay-playback')),
+        loadReplayCamera(),
+      ]);
+      if (!current()) return;
+      if (!owner || !playback) throw new Error('Replay code unavailable');
+      const runtime = owner.createReplayViewer({
+        acquireInput: () => inputLease,
+        acquireAudio: (signal) => audio.acquireSuspendLease({ signal }),
+        acquireWake: acquireWakeLease,
+        held: () => holds.size > 0 || renderer.contextLost || document.visibilityState !== 'visible',
+        prepare(signal) {
+          if (!current() || signal.aborted) throw new Error('Replay entry retired');
+          const session = playback.createReplayPlayback({
+            recording,
+            expectedReplayKey: appReplayKey(build, raceHashes(recording.header.eventId).sim),
+            roadsFor: roadsForHeader(registry, streams),
+            createSimulation: createSim,
+          });
+          const camera = cameras.createReplayCamera({ road: session.sim.config.road });
+          camera.setMotionAmount(motionNow.camera);
+          return Promise.resolve({ playback: session, camera });
+        },
+        commit() {
+          if (!current()) throw new Error('Replay entry retired');
+          presentationToken = renderer.applyPresentation(watching.recipe, { reset: 'replay-boundary' });
+          // Highest known land is conservative under overhead decks; an unsafe cinematic then
+          // falls back to follow. Unknown ground remains unknown, never a clearance proof.
+          watching.ground = (x, z) => renderer.groundHeightAt(x, z, Infinity);
+          watching.preparing = true;
+          if (watching.interrupted) {
+            runtime.pause();
+            watching.interrupted = false;
+          }
+        },
+        restore: () => restoreReplay(watching),
+        show: (view) => {
+          if (current()) ui.updateReplay(view);
+        },
+        resetClock: () => {
+          loop.pause();
+          syncRunning();
+        },
+        invalidatePose: () => {
+          watching.pose = null;
+        },
+        entryFailed: () => ui.notice('The replay could not start. Your result is unchanged.'),
+      });
+      watching.runtime = runtime;
+      await runtime.start();
+    } catch {
+      if (!current()) return;
+      if (watching.runtime) watching.runtime.dispose();
+      else restoreReplay(watching);
+      ui.notice('The replay could not start. Your result is unchanged.');
+    }
+  }
 
   // Presentation-only tuning (camera, audio, input thresholds, barks, visuals) applies at once; sim values
   // go through the recorder above. Boot values (a shipped or saved preset) are pushed once here.
@@ -1507,6 +1679,7 @@ export function createApp(opts: AppOptions): AppHandle {
         ui.notice('This result is complete, but its saved attempt could not be removed.');
       }
     }
+    offerReplay();
   };
 
   const lookWatch = createLookFallback();
@@ -1542,6 +1715,16 @@ export function createApp(opts: AppOptions): AppHandle {
     if (input.lastActions().pause) ui.pause();
   };
   const step = () => {
+    if (replayWatch) {
+      if (!replayWatch.preparing && renderer.physicalWorldReady?.() !== false) {
+        const viewer = replayWatch.runtime;
+        const session = viewer?.prepared?.playback;
+        const before = session?.curr.tick;
+        viewer?.step();
+        if (session && session.curr.tick !== before) renderer.pushEvents(session.sim.events());
+      }
+      return;
+    }
     if (measurement?.running) {
       const d = diagnostic;
       const current = measurement.current();
@@ -1662,10 +1845,50 @@ export function createApp(opts: AppOptions): AppHandle {
 
   const loop = createLoop(
     {
-      stepping: () => measurement?.running === true || state === 'race',
+      stepping: () =>
+        replayWatch
+          ? replayWatch.runtime?.playing === true
+          : measurement?.running === true || state === 'race',
       step,
       shouldRunFrame: () => measurement?.running === true || frameGate.shouldRun(),
       render(alpha, dt, timestampMs, synthetic) {
+        const watching = replayWatch;
+        if (watching) {
+          for (const action of watching.controls.poll(replayPads())) {
+            if (replayWatch !== watching) break;
+            replayAction(action);
+          }
+          if (replayWatch !== watching) return;
+          const viewer = watching.runtime;
+          const prepared = viewer?.prepared;
+          if (!prepared) {
+            if (normalPose) renderer.render(null, curr, 1, normalPose);
+            return;
+          }
+          const p = prepared.playback;
+          if (viewer.playing || !watching.pose) {
+            watching.alpha = viewer.playing ? alpha : 1;
+            const me = interpolateEntity(p.prev, p.curr, watching.alpha, p.playerId);
+            if (me)
+              watching.pose = prepared.camera.pose(
+                cameraTargetOf(me, p.curr.entities[p.playerId]),
+                (Math.max(0, p.curr.tick - 1) + watching.alpha) * SIM_DT,
+                viewer.mode,
+                {
+                  entities: p.curr.entities,
+                  aspect: viewAspect(),
+                  structures: renderer.structures(),
+                  ...(watching.ground ? { groundHeightAt: watching.ground } : {}),
+                },
+              );
+          }
+          frames.draw(timestampMs, synthetic, watching.pose !== null, () => {
+            if (watching.pose) renderer.render(p.prev, p.curr, watching.alpha, watching.pose);
+          });
+          if (watching.pose && !renderer.contextLost && renderer.physicalWorldReady?.() !== false)
+            watching.preparing = false;
+          return;
+        }
         if (measurement?.running) {
           const d = diagnostic;
           const current = measurement.current();
@@ -1747,6 +1970,7 @@ export function createApp(opts: AppOptions): AppHandle {
         // While the shot frames the landmark the HUD and the touch buttons are hidden (the results bring the screen back).
         ui.setFinishShot(finishShotHudOn(state, finishShot));
         frames.draw(timestampMs, synthetic, pose !== null, () => {
+          if (pose) normalPose = pose;
           if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         });
         if (normalAtDraw !== normalGeneration || measurement?.owned) return;
@@ -1808,6 +2032,8 @@ export function createApp(opts: AppOptions): AppHandle {
     // An app switch, a screen lock, a lost fullscreen or the rotate screen: mid-race the pause
     // screen opens, so the player comes back to it and resumes by choice.
     onHidden: (reason) => {
+      if (replayWatch && !replayWatch.runtime) replayWatch.interrupted = true;
+      replayWatch?.runtime?.pause();
       retireMeasurementEntry('superseded-before-start');
       if (measurement?.owned) measurement.fail(reason === 'visibility' ? 'hidden' : reason);
       flushAttempt();
@@ -1835,6 +2061,8 @@ export function createApp(opts: AppOptions): AppHandle {
   staleBuild?.onWaiting(offerUpdate);
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => {
+    if (lost && replayWatch && !replayWatch.runtime) replayWatch.interrupted = true;
+    if (lost) replayWatch?.runtime?.pause();
     if (lost) retireMeasurementEntry('superseded-before-start');
     if (lost && measurement?.owned) measurement.fail('context-lost');
     hold('context', lost);
@@ -2114,6 +2342,7 @@ export function createApp(opts: AppOptions): AppHandle {
   }
 
   function ordinaryAllowed(): boolean {
+    if (replayWatch) return false;
     if (!attemptOwner && savedRead?.kind === 'blocked' && state !== 'race') classifySavedAttempt();
     if (recoveryLocked || recoveryBusy) {
       if (!recoveryBusy) offerSavedAttempt(attemptOwner?.settled ? 'unavailable' : undefined);
@@ -2523,6 +2752,7 @@ export function createApp(opts: AppOptions): AppHandle {
 
   /** Starts a race and its recording at the current event and route, at `lengthId`. */
   function launchRace(lengthId: string): boolean {
+    ui.setReplayAvailable(false);
     stream = streams.forEvent(registry, eventId, lengthId, route);
     if (!go('race')) return false;
     // W-Q: a free-play race's light is drawn by its seed, or picked in its options with its weather
@@ -2852,6 +3082,7 @@ export function createApp(opts: AppOptions): AppHandle {
     });
     ui.show('careerResults');
     if (guarded && !persisted) offerFailedResult();
+    offerReplay();
   }
 
   /** The pause menu's Quit in a career race: it counts as a quit (no cash), then the map. */
@@ -3381,6 +3612,20 @@ export function createApp(opts: AppOptions): AppHandle {
       settings: settingsStore.record() ?? settings,
     }),
     replayFile: () => (recoveredTerminal ? encodeReplay(recoveredTerminal) : recorder.file()),
+    replayPlayback: () => {
+      const viewer = replayWatch?.runtime;
+      const p = viewer?.prepared?.playback;
+      return p
+        ? {
+            tick: p.curr.tick,
+            durationTicks: p.durationTicks,
+            checked: p.checked,
+            complete: p.complete,
+            playing: viewer.playing,
+            mode: viewer.mode,
+          }
+        : null;
+    },
     checkReplay(file) {
       const rec = decodeReplay(file);
       // The road and route handles come from the recording's own event and route, in any region
@@ -3466,6 +3711,19 @@ export function createApp(opts: AppOptions): AppHandle {
   window.addEventListener(
     'keydown',
     (event) => {
+      if (replayWatch) {
+        if (event.code === 'Tab') return;
+        const button =
+          typeof Element !== 'undefined' &&
+          event.target instanceof Element &&
+          event.target.closest('#replay button');
+        if (button && (event.code === 'Enter' || event.code === 'Space')) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const action = replayKeyAction(event.code, event.repeat);
+        if (action) replayAction(action);
+        return;
+      }
       const radioAction = radioKeyAction(event);
       if (radioAction) {
         event.preventDefault();

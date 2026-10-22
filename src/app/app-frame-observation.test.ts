@@ -6,6 +6,7 @@ import { createPackLibrary } from '../content';
 import { careerDefs } from './career-flow';
 import { regionChoices } from './regions';
 import { DEFAULT_SETTINGS } from '../save';
+import type { Recording } from '../replay';
 
 const boundary = vi.hoisted(() => ({
   ui: { paused: false, region: 'base:florida-keys', screen: 'start' },
@@ -20,6 +21,7 @@ const boundary = vi.hoisted(() => ({
   audioFrame: vi.fn(),
   countdownBeat: vi.fn(),
   inputSample: vi.fn(),
+  inputLease: vi.fn(),
   driver: vi.fn(),
   activeDriver: null as ((actions: import('../input').ActionState) => void) | null,
   receipt: vi.fn(
@@ -255,6 +257,7 @@ vi.mock('../input', async (original) => ({
       {},
       {
         get(_target, key) {
+          if (key === 'acquireSuspendLease') return () => ({ release: boundary.inputLease });
           if (key === 'sample')
             return () => {
               boundary.inputSample();
@@ -365,6 +368,7 @@ describe('AppHandle actual render wiring', () => {
     boundary.audioFrame.mockReset();
     boundary.countdownBeat.mockReset();
     boundary.inputSample.mockReset();
+    boundary.inputLease.mockReset();
     boundary.driver.mockReset();
     visible = { visibilityState: 'visible' };
     vi.stubGlobal('document', visible);
@@ -1387,6 +1391,74 @@ describe('AppHandle actual render wiring', () => {
     app.startRace();
     expect(app.getReplayAndSettings().replay).not.toBe(normal);
   });
+  it('watches a finished race independently, pauses across lifecycle changes and returns its exact result', async () => {
+    app.tap();
+    app.startRace();
+    frame(0);
+    boundary.finishNormalStep = true;
+    frame();
+    expect(app.state()).toBe('results');
+    const normal = app.getReplayAndSettings().replay;
+    const before = JSON.stringify(app.replayFile());
+    const profile = app.career().profile;
+    boundary.recorderCalls = [];
+    boundary.inputSample.mockClear();
+    boundary.audioFrame.mockClear();
+    boundary.callbacks!.onWatchReplay();
+    await vi.dynamicImportSettled();
+    expect(app.state()).toBe('replay');
+    expect(boundary.ui.screen).toBe('replay');
+    expect(app.replayPlayback()).toMatchObject({ tick: 0, complete: false, playing: true });
+    boundary.callbacks!.onReplayAction('toggle');
+    boundary.lifecycle!.onHidden('visibility');
+    boundary.lifecycle!.onShown();
+    frame(9000);
+    expect(app.replayPlayback()).toMatchObject({ tick: 0, playing: false });
+    app.startRace();
+    app.backToMenu();
+    expect(app.state()).toBe('replay');
+    boundary.callbacks!.onReplayAction('camera');
+    expect(app.replayPlayback()?.mode).toBe('orbit');
+    boundary.callbacks!.onReplayAction('toggle');
+    frame(0);
+    frame(20);
+    expect(app.replayPlayback()).toMatchObject({ complete: true, playing: false });
+    expect(boundary.inputSample).not.toHaveBeenCalled();
+    expect(boundary.audioFrame).not.toHaveBeenCalled();
+    expect(boundary.recorderCalls).toEqual([]);
+    boundary.callbacks!.onReplayAction('restart');
+    await vi.dynamicImportSettled();
+    expect(app.replayPlayback()).toMatchObject({ tick: 0, complete: false, playing: true });
+    boundary.callbacks!.onReplayAction('return');
+    expect(app.state()).toBe('results');
+    expect(boundary.ui.screen).toBe('results');
+    expect(app.replayPlayback()).toBeNull();
+    expect(app.getReplayAndSettings().replay).toBe(normal);
+    expect(JSON.stringify(app.replayFile())).toBe(before);
+    expect(app.career().profile).toBe(profile);
+    expect(boundary.inputLease).toHaveBeenCalledOnce();
+    expect(boundary.audioLease).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a wrong-key viewer before constructing a new sim, retaining the result', async () => {
+    app.tap();
+    app.startRace();
+    frame(0);
+    boundary.finishNormalStep = true;
+    frame();
+    const recording = app.getReplayAndSettings().replay as Recording | null;
+    if (!recording) throw new Error('finished recording missing');
+    recording.header.replayKey = 'wrong-key';
+    const sims = boundary.simConfigs.length;
+    boundary.callbacks!.onWatchReplay();
+    await vi.dynamicImportSettled();
+    expect(boundary.simConfigs).toHaveLength(sims);
+    expect(app.state()).toBe('results');
+    expect(boundary.ui.screen).toBe('results');
+    expect(app.replayPlayback()).toBeNull();
+    expect(boundary.inputLease).toHaveBeenCalledOnce();
+  });
+
   it('measurement has an independent seed draw and leaves the next normal draw equal to a no-measurement control', async () => {
     const make = (normalSeed: () => number, measureSeed: () => number) =>
       createApp({

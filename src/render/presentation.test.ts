@@ -220,6 +220,7 @@ function asyncScene(nestedFamily?: string) {
       Smashables: layer('smashables'),
       AirPays: layer('air pays'),
       TerrainTrees: layer('terrain trees'),
+      groundUnderOf: roadApi.groundUnderOf,
       rainColourOf: () => null,
     },
     'rider rigs': { RiderRigs: layer('rider rigs') },
@@ -496,6 +497,16 @@ describe('presentation ownership at every top-level renderer chunk edge', () => 
   );
 });
 describe('atomic renderer presentation', () => {
+  it('exposes known ground only once the active physical query has loaded', async () => {
+    const t = asyncScene();
+    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+    const p = t.pick.road.toWorld(0, 20, 0, 0);
+    expect(t.renderer.groundHeightAt(p.x, p.z, Infinity)).toBeNull();
+    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+    expect(t.renderer.groundHeightAt(p.x, p.z, Infinity)).toBeCloseTo(p.y);
+    expect(t.renderer.groundHeightAt(p.x, p.z, p.y - 1)).toBeNull();
+    expect(t.renderer.groundHeightAt(1e6, 1e6, Infinity)).toBeNull();
+  });
   it('holds authored physical scenery until its current drawing chunk arrives, with a legacy control', async () => {
     const t = asyncScene();
     expect(t.renderer.physicalWorldReady!()).toBe(true);
@@ -557,34 +568,37 @@ describe('atomic renderer presentation', () => {
     expect(t.installed).toContain('boards');
   });
 
-  it('gives a late race-parts landing layer the current roof plan and its queued newspaper crash', async () => {
-    const t = asyncScene();
-    const plan = {} as NonNullable<ReturnType<typeof roadApi.structuresOf>>;
-    vi.spyOn(roadApi, 'structuresOf').mockReturnValue(plan);
-    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
-    const snap: SimSnapshot = {
-      tick: 1,
-      entities: [],
-      timeScale: 1,
-      race: { over: false, routeLength: 1, finishOrder: [] },
-    };
-    t.renderer.render(snap, snap, 1, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 });
-    const crash: SimEvent = {
-      tick: 1,
-      type: 'crash',
-      actor: 0,
-      data: { attempt: 'newspaper' },
-    };
-    t.renderer.pushEvents([crash]);
-    await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
+  it.each(['measurement-to-menu', 'replay-boundary'] as const)(
+    'gives a late race-parts landing layer the current roof plan and its queued newspaper crash, then clears both on %s',
+    async (reset) => {
+      const t = asyncScene();
+      const plan = {} as NonNullable<ReturnType<typeof roadApi.structuresOf>>;
+      vi.spyOn(roadApi, 'structuresOf').mockReturnValue(plan);
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      const snap: SimSnapshot = {
+        tick: 1,
+        entities: [],
+        timeScale: 1,
+        race: { over: false, routeLength: 1, finishOrder: [] },
+      };
+      t.renderer.render(snap, snap, 1, { x: 0, y: 2, z: 0, lookX: 0, lookY: 0, lookZ: -1, fov: 60 });
+      const crash: SimEvent = {
+        tick: 1,
+        type: 'crash',
+        actor: 0,
+        data: { attempt: 'newspaper' },
+      };
+      t.renderer.pushEvents([crash]);
+      await t.resolve(t.calls.filter((call) => call.name === 'race parts').at(-1)!);
 
-    const air = t.layers.filter((layer) => layer.name === 'air pays').at(-1)!;
-    expect(air.structures).toEqual([plan]);
-    expect(air.pending).toEqual([crash]);
-    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
-    expect(air.structures).toEqual([plan, null]);
-    expect(air.pending).toEqual([]);
-  });
+      const air = t.layers.filter((layer) => layer.name === 'air pays').at(-1)!;
+      expect(air.structures).toEqual([plan]);
+      expect(air.pending).toEqual([crash]);
+      t.renderer.applyPresentation(t.pick, { reset });
+      expect(air.structures).toEqual([plan, null]);
+      expect(air.pending).toEqual([]);
+    },
+  );
 
   it('retains warmed modules, veto refs, render tuning and reduce-motion through reset', async () => {
     const t = asyncScene();
@@ -616,18 +630,21 @@ describe('atomic renderer presentation', () => {
     const text = t.constructors.filter((c) => c.name === 'text surfaces').at(-1)!;
     expect((text.args[2] as { hidden: Set<string> }).hidden.has('probe:veto')).toBe(true);
   });
-  it('preserves a queued verge event through coherent rebuild, while menu reset clears it', async () => {
-    const t = asyncScene();
-    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
-    await t.settleCurrent(0);
-    const event: SimEvent = { tick: 1, type: 'wobble', actor: 7, data: { cause: 'fence' } };
-    t.renderer.pushEvents([event]);
-    expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([event]);
-    t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
-    expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([event]);
-    t.renderer.applyPresentation(t.pick, { reset: 'measurement-to-menu' });
-    expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([]);
-  });
+  it.each(['measurement-to-menu', 'replay-boundary'] as const)(
+    'preserves a queued verge event through coherent rebuild, while %s clears it',
+    async (reset) => {
+      const t = asyncScene();
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      await t.settleCurrent(0);
+      const event: SimEvent = { tick: 1, type: 'wobble', actor: 7, data: { cause: 'fence' } };
+      t.renderer.pushEvents([event]);
+      expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([event]);
+      t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
+      expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([event]);
+      t.renderer.applyPresentation(t.pick, { reset });
+      expect(t.layers.filter((l) => l.name === 'verge').at(-1)!.pending).toEqual([]);
+    },
+  );
   it('resets frame and downtown/mission clocks, scenery counts and the plan pointer before the restored CPU draw', async () => {
     const t = asyncScene();
     t.renderer.applyPresentation(t.pick, { reset: 'preserve' });
