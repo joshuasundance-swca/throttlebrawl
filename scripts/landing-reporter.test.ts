@@ -178,6 +178,7 @@ describe('complete landing reporter', () => {
       } as ReturnType<typeof first.diagnostic>);
     vi.spyOn(modules[0]!.children, 'allTests').mockImplementation(function* () {
       yield first;
+      return undefined;
     });
     expect(() => f.reporter.onTestRunEnd(modules, [], 'passed')).toThrow();
   });
