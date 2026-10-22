@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { courseAt } from '../course';
+import { COURSE_STEP_M, courseAt } from '../course';
 import { createRoadNetwork } from '../network';
 import { ensureStructures, planStructures, structuresAt, topAt } from '../structures';
 import type { BakedNetwork, BakedRoad } from '../types';
 import { pnwPlacesLayout } from './pnw-places';
 import { dispatchCourts } from '../dispatch-court';
+import { terrainAt } from '../terrain';
 const networks = import.meta.glob<BakedNetwork>('/packs/region-pnw/regions/*/networks/*.json', {
   eager: true,
   import: 'default',
@@ -13,10 +14,10 @@ const files = import.meta.glob<BakedRoad>('/packs/region-pnw/regions/*/roads/*.j
   eager: true,
   import: 'default',
 });
-function make(id: string) {
+function make(id: string, withTerrain = true) {
   const network = Object.values(networks).find((n) => n.id === id)!;
   return createRoadNetwork({
-    network,
+    network: withTerrain ? network : { ...network, terrain: undefined },
     roads: Object.values(files).filter((r) => network.roads.includes(r.id)),
   });
 }
@@ -145,55 +146,68 @@ describe('Street Diamond sites explicitly join the course with open physical apr
     }
     expect(pnwPlacesLayout(road, 2).streetSites).toEqual(pnwPlacesLayout(road, 1).streetSites);
   });
-  it('provides continuous low support from the existing verge to the open site, preserving other networks', async () => {
-    const road = make('osm-pnw-longview-diamond'),
-      layout = pnwPlacesLayout(road, 1);
-    const sites = layout.streetSites ?? [];
-    expect(sites.length).toBeGreaterThan(0);
-    const plan = await ensureStructures(road, 1);
-    const controlRoad = make('osm-pnw-longview-diamond');
-    const controlPlan = planStructures(
-      controlRoad,
-      1,
-      {
-        'no-apron': {
-          plan: (_r, _s, out) => {
-            for (const st of plan.items) if (!st.rule.endsWith(':apron')) out.add(st);
+  it.each([true, false])(
+    'provides continuous low support from the existing verge to the open site (authored terrain: %s), preserving other networks',
+    async (withTerrain) => {
+      const road = make('osm-pnw-longview-diamond', withTerrain),
+        layout = pnwPlacesLayout(road, 1);
+      const sites = layout.streetSites ?? [];
+      expect(sites.length).toBeGreaterThan(0);
+      const plan = await ensureStructures(road, 1);
+      const controlRoad = make('osm-pnw-longview-diamond', withTerrain);
+      if (withTerrain) expect(controlRoad.terrain, 'authored ground is present').toBeDefined();
+      else expect(controlRoad.terrain, 'legacy control has no authored ground').toBeUndefined();
+      const controlPlan = planStructures(
+        controlRoad,
+        1,
+        {
+          'no-apron': {
+            plan: (_r, _s, out) => {
+              for (const st of plan.items) if (!st.rule.endsWith(':apron')) out.add(st);
+            },
           },
         },
-      },
-      { 'no-apron': { tags: ['longview-street-life'], load: () => Promise.reject(new Error('unused')) } },
-    );
-    for (const site of sites) {
-      expect(site.specs.some((st) => st.rule.endsWith(':apron'))).toBe(true);
-      const side = Math.sign(site.d),
-        verge = road.vergeAt(site.edge, site.s, side < 0 ? 'left' : 'right');
-      for (let d = Math.abs(verge.dOuter) - 0.1; d <= Math.abs(site.d); d += 0.2) {
-        const pos = { edge: site.edge, s: site.s - 5, d: side * d };
-        expect(
-          courseAt(road, plan, pos, road.surfaceHeight(pos.edge, pos.s, pos.d) + 0.15).kind,
-          'inviting site is ground',
-        ).not.toBe('out');
+        { 'no-apron': { tags: ['longview-street-life'], load: () => Promise.reject(new Error('unused')) } },
+      );
+      for (const site of sites) {
+        expect(site.specs.some((st) => st.rule.endsWith(':apron'))).toBe(true);
+        const side = Math.sign(site.d),
+          verge = road.vergeAt(site.edge, site.s, side < 0 ? 'left' : 'right');
+        for (let d = Math.abs(verge.dOuter) - 0.1; d <= Math.abs(site.d); d += 0.2) {
+          const pos = { edge: site.edge, s: site.s - 5, d: side * d };
+          expect(
+            courseAt(road, plan, pos, road.surfaceHeight(pos.edge, pos.s, pos.d) + 0.15).kind,
+            'inviting site is ground',
+          ).not.toBe('out');
+        }
+        const gap = { edge: site.edge, s: site.s - 5, d: side * (Math.abs(verge.dOuter) + 1) };
+        const y = controlRoad.surfaceHeight(gap.edge, gap.s, gap.d) + 0.15;
+        const withoutApron = courseAt(controlRoad, controlPlan, gap, y);
+        if (withTerrain) {
+          const point = controlRoad.toWorld(gap.edge, gap.s, gap.d, 0);
+          const terrain = terrainAt(controlRoad.terrain, point.x, point.z, y + COURSE_STEP_M);
+          expect(terrain, 'authored ground covers the removed apron').not.toBeNull();
+          expect(withoutApron, 'removed apron falls back to its authored ground face').toEqual({
+            ...terrain,
+            kind: 'terrain',
+          });
+        } else {
+          expect(withoutApron.kind, 'removed apron restores the legacy decorative-ground gap').toBe('out');
+        }
       }
-      const gap = { edge: site.edge, s: site.s - 5, d: side * (Math.abs(verge.dOuter) + 1) };
+      expect(pnwPlacesLayout(road, 2).streetSites).toEqual(sites);
+      for (const id of ['osm-pnw-longview', 'pnw-c1'])
+        expect(pnwPlacesLayout(make(id), 1).streetSites, id).toEqual([]);
+      const yards = pnwPlacesLayout(make('osm-pnw-longview'), 1).workyards;
+      expect(yards.length, 'legacy feature-driven freight sites remain present').toBeGreaterThan(0);
+      for (const yard of yards) expect(yard.specs.some((st) => st.rule.endsWith(':apron'))).toBe(true);
       expect(
-        courseAt(controlRoad, controlPlan, gap, controlRoad.surfaceHeight(gap.edge, gap.s, gap.d) + 0.15)
-          .kind,
-        'removed apron restores the decorative-ground gap',
-      ).toBe('out');
-    }
-    expect(pnwPlacesLayout(road, 2).streetSites).toEqual(sites);
-    for (const id of ['osm-pnw-longview', 'pnw-c1'])
-      expect(pnwPlacesLayout(make(id), 1).streetSites, id).toEqual([]);
-    const yards = pnwPlacesLayout(make('osm-pnw-longview'), 1).workyards;
-    expect(yards.length, 'legacy feature-driven freight sites remain present').toBeGreaterThan(0);
-    for (const yard of yards) expect(yard.specs.some((st) => st.rule.endsWith(':apron'))).toBe(true);
-    expect(
-      pnwPlacesLayout(make('osm-pnw-longview-civic'), 1).streetSites.some(
-        (s) => s.kind === 'civic-frontage' || s.kind === 'plant-market',
-      ),
-    ).toBe(false);
-  });
+        pnwPlacesLayout(make('osm-pnw-longview-civic'), 1).streetSites.some(
+          (s) => s.kind === 'civic-frontage' || s.kind === 'plant-market',
+        ),
+      ).toBe(false);
+    },
+  );
   it('keeps a plant canopy open under its roof, with physical counter and posts', async () => {
     const road = make('osm-pnw-longview-diamond'),
       plan = await ensureStructures(road, 1);

@@ -11,6 +11,7 @@ import { packFileOf, preParsePackFile } from '../src/content/pre-parse';
 import { distFileName, readLock, sha256 } from './dataset-assets.mjs';
 import { firstLoadScripts, staticImports } from './first-load.mjs';
 import { repoRoot } from './lib.mjs';
+import { packInputs } from './pack-inputs.mjs';
 
 describe('staticImports', () => {
   it('finds minified static imports and re-exports, never a dynamic import()', () => {
@@ -190,8 +191,10 @@ describe('the production build', { timeout: 120_000 }, () => {
     );
     expect(bundledRoads).toEqual([]);
 
-    // Lane F1: every road data file the build ships is the pre-parse of its file on disk (Zod's
-    // output), since the page's loader no longer runs Zod on it; one file per road data file on disk.
+    // Lane F1: every road data file the build ships is the pre-parse of its source plus verified
+    // pinned inputs (Zod's output), since the page's loader no longer runs Zod on it;
+    // one file per road data file on disk.
+    const inputs = packInputs(repoRoot);
     const onDisk = readdirSync(path.join(repoRoot, 'packs'), { recursive: true, withFileTypes: true })
       .filter((e) => e.isFile() && roadData.test(path.join(e.parentPath, e.name)))
       .map((e) => path.relative(repoRoot, path.join(e.parentPath, e.name)).split(path.sep).join('/'));
@@ -204,7 +207,9 @@ describe('the production build', { timeout: 120_000 }, () => {
     });
     for (const s of shippedRoads) {
       const file = packFileOf(s.rel);
-      const disk: unknown = JSON.parse(readFileSync(path.join(repoRoot, s.rel), 'utf8'));
+      const disk: unknown = JSON.parse(
+        inputs.materialize(s.rel, readFileSync(path.join(repoRoot, s.rel), 'utf8')),
+      );
       const want = file ? preParsePackFile(file.path, disk) : null;
       expect(want && 'data' in want, `${s.rel} passes its schema`).toBe(true);
       if (want && 'data' in want) expect(s.source, s.rel).toBe(JSON.stringify(want.data));
@@ -214,17 +219,19 @@ describe('the production build', { timeout: 120_000 }, () => {
     );
     expect(new Set(shippedRoads.map((s) => s.rel))).toEqual(new Set(onDisk));
 
-    // Run W-Q: every file assets.lock.json pins is baked in under assets/ds/ with its pinned bytes
-    // (offline keeps working), and the first load's manifest rows name it.
+    // Run W-Q: every runtime asset assets.lock.json pins is baked in under assets/ds/ with its
+    // pinned bytes (offline keeps working), and the first load's manifest rows name it.
+    // Embedded inputs belong to the assembled pack equality check above, never separate assets.
     const { lock } = readLock(repoRoot);
-    expect(lock?.files.length).toBeGreaterThan(0);
+    const runtimeAssets = lock?.files.filter((f) => f.embed === undefined) ?? [];
+    expect(runtimeAssets.length).toBeGreaterThan(0);
     const firstCode = firstChunks.map((c) => c.code).join('\n');
-    for (const f of lock?.files ?? []) {
+    for (const f of runtimeAssets) {
       const emitted = items.find((a) => a.fileName === distFileName(f));
       expect(emitted?.type, `${f.path} is not in the build`).toBe('asset');
       if (emitted?.type === 'asset') expect(sha256(Buffer.from(emitted.source))).toBe(f.sha256);
       expect(firstCode.includes(distFileName(f)), `${f.path}'s row is not in the first load`).toBe(true);
     }
-    console.log(`[examined] ${lock?.files.length ?? 0} dataset files baked into the build`);
+    console.log(`[examined] ${runtimeAssets.length} runtime dataset files baked into the build`);
   });
 });
