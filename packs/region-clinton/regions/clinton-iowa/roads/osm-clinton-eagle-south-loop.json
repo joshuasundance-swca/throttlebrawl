@@ -50,7 +50,21 @@
       "tag": "iowa-park"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "landmark",
+      "id": "eagle-stone-tower",
+      "s0": 324.7553169559811,
+      "s1": 336.7553169559811,
+      "d0": -49.69651695152721,
+      "d1": -37.69651695152721,
+      "params": {
+        "model": "models/landmarks/eagle-stone-tower#eagle_stone_tower",
+        "scale": 1,
+        "yawDeg": -90
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",
@@ -501,6 +515,6 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Baked by tools/gis from networks/osm-clinton-eagle-point.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+    "notes": "Baked by tools/gis from networks/osm-clinton-eagle-point.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit. Tower landmark added from the canonical South Loop feature without rebaking geometry. Its approximate center comes from OpenStreetMap way 839770216 (https://www.openstreetmap.org/way/839770216), retrieved separately on 2026-10-22T20:08:05Z at 41.8941338, -90.1737434, not the original highway geometry query. The original model and its terrain foundation are gameplay adaptations, not a surveyed footprint or dimensions."
   }
 }

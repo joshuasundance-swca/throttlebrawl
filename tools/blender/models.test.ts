@@ -2,18 +2,19 @@
 // every GLB in the catalog exists, is small, passes every score check, and loads in three's own
 // GLTFLoader with the node names the game will look up. The score guards are also shown to fire
 // on bad input, so a green run means the checks looked at something.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Box3, Vector3 } from 'three';
 import type { Mesh, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CATALOG_FILES, glbPath, PROPS } from './catalog.mjs';
 import { parseGlb, scoreGlb } from './score.mjs';
+import { propFile, propInventoryProblems } from './prop-files.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = (rel: string) => readFileSync(path.join(repoRoot, rel));
+const read = async (prop: (typeof PROPS)[number]) => (await propFile(repoRoot, prop)).bytes;
 type Prop = (typeof PROPS)[number];
 
 /** Rewrites a GLB's JSON chunk (keeps the binary chunk), for the negative tests. */
@@ -115,14 +116,15 @@ describe('the Blender model catalog', () => {
   });
 
   it('is the concatenation of its per-region files, each row in its own pack and region', () => {
-    expect(CATALOG_FILES.map((f) => f.file)).toEqual(['base', 'traffic', 'keys', 'sf', 'pnw']);
-    expect(CATALOG_FILES.flatMap((f) => f.rows)).toEqual(PROPS);
     const expected: Record<string, { pack: string; region?: string }> = {
       traffic: { pack: 'base' },
       keys: { pack: 'base', region: 'florida-keys' },
       sf: { pack: 'region-sf', region: 'san-francisco' },
       pnw: { pack: 'region-pnw', region: 'pacific-northwest' },
+      iowa: { pack: 'region-clinton', region: 'clinton-iowa' },
     };
+    expect(CATALOG_FILES.map((f) => f.file)).toEqual(['base', ...Object.keys(expected)]);
+    expect(CATALOG_FILES.flatMap((f) => f.rows)).toEqual(PROPS);
     for (const { file, rows } of CATALOG_FILES) {
       const want = expected[file];
       if (!want) continue;
@@ -151,27 +153,38 @@ describe('the Blender model catalog', () => {
   it('has no GLB in any pack that the catalog does not list', () => {
     const found = packGlbs();
     expect(found.length).toBeGreaterThanOrEqual(BEFORE_SPLIT.length);
-    expect(found).toEqual(PROPS.map((p) => glbPath(p)).sort());
+    expect(found).toEqual(
+      PROPS.filter((p) => p.storage !== 'dataset')
+        .map((p) => glbPath(p))
+        .sort(),
+    );
+  });
+
+  it('matches both storage partitions exhaustively to the local files and dataset prop pins', () => {
+    expect(propInventoryProblems(repoRoot)).toEqual([]);
   });
 });
 
 describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_name, prop) => {
-  const file = glbPath(prop);
+  let bytes: Buffer;
+  beforeAll(async () => {
+    bytes = await read(prop);
+  });
 
-  it('is committed and under the 1 MB size check', () => {
-    expect(existsSync(path.join(repoRoot, file)), file).toBe(true);
-    expect(statSync(path.join(repoRoot, file)).size).toBeLessThan(1024 * 1024);
+  it('has nonempty canonical bytes and keeps legacy pack files under the tracked-file size check', () => {
+    expect(bytes.length).toBeGreaterThan(0);
+    if (prop.storage !== 'dataset') expect(bytes.length).toBeLessThan(1024 * 1024);
   });
 
   it('passes every score check (budgets, names, flat materials, geometry rules)', () => {
-    const res = scoreGlb(read(file), prop);
+    const res = scoreGlb(bytes, prop);
     const failed = res.checks.filter((c) => !c.pass).map((c) => `${c.id}: ${c.detail}`);
     expect(failed).toEqual([]);
     expect(res.checks.length).toBeGreaterThanOrEqual(15);
   });
 
   it("loads in three's GLTFLoader with its named nodes", async () => {
-    const scene = await loadInThree(read(file));
+    const scene = await loadInThree(bytes);
     const names = new Set<string>();
     let meshes = 0;
     scene.traverse((o) => {
@@ -215,7 +228,7 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
 
   if (prop.asset.startsWith('models/bikes/')) {
     it('ships faceted geometry without normals and rebuilds finite face normals', async () => {
-      const scene = await loadInThree(read(file));
+      const scene = await loadInThree(bytes);
       let examined = 0;
       scene.traverse((o) => {
         if (!(o as Mesh).isMesh) return;
@@ -238,7 +251,7 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
     });
 
     it('has grounded axle pivots, rider targets and a connected steering assembly', async () => {
-      const scene = await loadInThree(read(file));
+      const scene = await loadInThree(bytes);
       scene.updateMatrixWorld(true);
       const bike = scene.getObjectByName('bike')!;
       const fork = scene.getObjectByName('fork')!;
@@ -300,7 +313,7 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
         expect(wheel.quaternion.y).toBeCloseTo(0, 5);
         expect(wheel.quaternion.z).toBeCloseTo(0, 5);
       }
-      expect(scoreGlb(read(file), prop).counts.triangles).toBeGreaterThanOrEqual(600);
+      expect(scoreGlb(bytes, prop).counts.triangles).toBeGreaterThanOrEqual(600);
     });
   }
 });
@@ -310,26 +323,26 @@ describe('the score guards fire', () => {
   const boat = PROPS.find((p) => p.name === 'boat')!;
   const signs = PROPS.find((p) => p.name === 'road_signs')!;
 
-  it('on a budget the model does not meet', () => {
-    const res = scoreGlb(read(glbPath(truck)), { ...truck, budget: { tris: 100, draws: 2, materials: 1 } });
+  it('on a budget the model does not meet', async () => {
+    const res = scoreGlb(await read(truck), { ...truck, budget: { tris: 100, draws: 2, materials: 1 } });
     expect(res.summary.failed).toEqual(
       expect.arrayContaining(['tris_budget', 'draws_budget', 'materials_budget']),
     );
   });
 
-  it('on a missing ramp, and on a boat wider than its hull', () => {
-    const noRamp = patchGlb(read(glbPath(truck)), (g) => {
+  it('on a missing ramp, and on a boat wider than its hull', async () => {
+    const noRamp = patchGlb(await read(truck), (g) => {
       for (const n of g.nodes) if (n.name === 'ramp_surface') n.name = 'ramp_deck';
     });
     expect(scoreGlb(noRamp, truck).summary.failed).toEqual(
       expect.arrayContaining(['required_nodes', 'ramp_measured']),
     );
-    const res = scoreGlb(read(glbPath(boat)), { ...boat, boat: { ...boat.boat!, maxOverhangM: 0 } });
+    const res = scoreGlb(await read(boat), { ...boat, boat: { ...boat.boat!, maxOverhangM: 0 } });
     expect(res.summary.failed).toContain('nothing_sticks_out_past_hull');
   });
 
-  it('on a text surface that lost its extras, and on non-snake-case names', () => {
-    const bad = patchGlb(read(glbPath(signs)), (g) => {
+  it('on a text surface that lost its extras, and on non-snake-case names', async () => {
+    const bad = patchGlb(await read(signs), (g) => {
       for (const n of g.nodes as { name?: string; extras?: unknown }[]) {
         if (n.name === 'sign_a_face') n.extras = {};
         if (n.name === 'sign_b') n.name = 'Sign-B';

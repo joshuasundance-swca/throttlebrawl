@@ -3,6 +3,8 @@ import { lanesUnderOf, LANES_UNDER_Y_M } from '../lanes-under';
 import { terrainAt } from '../terrain';
 import { scatterHash, themeAt } from '../themes';
 import { cos, sin, TAU } from '../../core';
+import { iowaParkLayout, IOWA_PARK_TAG } from './iowa-park';
+import { landmarkPlaces } from './landmark-places';
 /** Verified against real rendered trunk rays; kept lazy with the physics planner. */
 export const RURAL_TRUNK = Object.freeze({ baseRadiusM: 0.38, topRadiusM: 0.22, heightM: 6 });
 /** Conservative silhouette bounds, used to keep foliage clear of road/shoulder space. */
@@ -11,6 +13,47 @@ const CROWN_TOP_M = 11.2;
 const RECOVERY_M = 8;
 const SPACING_M = 75;
 const CELL_M = 16;
+
+/** One geometry per network: partial/mixed districts retain their ordinary rural cohort. */
+export function isParkTreeNetwork(road: RoadNetwork): boolean {
+  return (
+    !!road.terrain?.patches.some((p) => p.surface !== 'water') &&
+    road.edges.length > 0 &&
+    road.edges.every((edge) =>
+      [IOWA_PARK_TAG, 'rural'].every((tag) =>
+        (['left', 'right'] as const).every((side) =>
+          edge.tags.some(
+            (t) =>
+              t.tag === tag && (t.side === 'both' || t.side === side) && t.s0 <= 0 && t.s1 >= edge.length,
+          ),
+        ),
+      ),
+    )
+  );
+}
+
+type Point = { x: number; z: number };
+function segmentDistanceSq(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x,
+    dz = b.z - a.z;
+  const lengthSq = dx * dx + dz * dz;
+  const t = lengthSq ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / lengthSq)) : 0;
+  const nearX = p.x - a.x - t * dx;
+  const nearZ = p.z - a.z - t * dz;
+  return nearX * nearX + nearZ * nearZ;
+}
+/** Full canopy clearance from the triangular, road-facing opening, including its boundary. */
+function clearsOpening(p: Point, radius: number, a: Point, b: Point, c: Point): boolean {
+  const cross = (u: Point, v: Point) => (v.x - u.x) * (p.z - u.z) - (v.z - u.z) * (p.x - u.x);
+  const ab = cross(a, b),
+    bc = cross(b, c),
+    ca = cross(c, a);
+  if ((ab >= 0 && bc >= 0 && ca >= 0) || (ab <= 0 && bc <= 0 && ca <= 0)) return false;
+  return (
+    Math.min(segmentDistanceSq(p, a, b), segmentDistanceSq(p, b, c), segmentDistanceSq(p, c, a)) >=
+    radius * radius
+  );
+}
 
 /** One shared world-space broadleaf placement; central trunk only is solid. */
 export interface TerrainTree {
@@ -66,16 +109,45 @@ export function planTerrainTrees(road: RoadNetwork, seed: number): TerrainTreePl
   if (road.terrain) {
     const terrain = road.terrain;
     const lanes = lanesUnderOf(road);
+    const park = isParkTreeNetwork(road);
+    // Facilities are authoritative: one-way reservation keeps their seed/layout independent of trees.
+    const clearings = park
+      ? iowaParkLayout(road, seed).facilities.map((facility) => ({
+          facility,
+          before: road.toWorld(facility.edge, Math.max(0, facility.s - 35), 0, 0),
+          after: road.toWorld(
+            facility.edge,
+            Math.min(road.edges[facility.edge]!.length, facility.s + 35),
+            0,
+            0,
+          ),
+        }))
+      : [];
+    const towers = park
+      ? landmarkPlaces(road)
+          .filter((p) => p.foundation)
+          .map((at) => ({
+            at,
+            before: road.toWorld(at.edge, Math.max(0, (at.feature.s0 + at.feature.s1) / 2 - 35), 0, 0),
+            after: road.toWorld(
+              at.edge,
+              Math.min(road.edges[at.edge]!.length, (at.feature.s0 + at.feature.s1) / 2 + 35),
+              0,
+              0,
+            ),
+          }))
+      : [];
+    const spacing = park ? 60 : SPACING_M;
     const occupied: TerrainTree[] = [];
     for (const edge of road.edges) {
       for (const side of [-1, 1] as const) {
         const hash = (k: number, salt: number) => scatterHash(seed, edge.index * 977 + side, k, salt);
-        for (let k = 0; k * SPACING_M < edge.length; k++) {
-          const station = (k + 0.2 + hash(k, 1) * 0.6) * SPACING_M;
+        for (let k = 0; k * spacing < edge.length; k++) {
+          const station = (k + 0.2 + hash(k, 1) * 0.6) * spacing;
           if (hash(k, 2) > 0.7) continue;
           const count = 2 + Math.floor(hash(k, 3) * 3);
           for (let n = 0; n < count; n++) {
-            const s = station + (hash(k, 10 + n * 5) - 0.5) * 9;
+            const s = station + (hash(k, 10 + n * 5) - 0.5) * (park ? 22 : 9);
             if (s < 0 || s > edge.length || themeAt(edge.tags, side < 0 ? 'left' : 'right', s) !== 'rural')
               continue;
             const outer = side < 0 ? -edge.dMin : edge.dMax;
@@ -83,6 +155,30 @@ export function planTerrainTrees(road: RoadNetwork, seed: number): TerrainTreePl
             const p = road.toWorld(edge.index, s, d, 0);
             const scale = 0.8 + hash(k, 12 + n * 5) * 0.3;
             const radius = RURAL_TRUNK.baseRadiusM * scale;
+            const crownRadius = CROWN_RADIUS_M * scale;
+            if (
+              towers.some(({ at, before, after }) => {
+                const h = at.foundation!.halfM;
+                const dx = Math.max(0, Math.abs(p.x - at.x) - h),
+                  dz = Math.max(0, Math.abs(p.z - at.z) - h);
+                return (
+                  dx * dx + dz * dz < crownRadius * crownRadius ||
+                  !clearsOpening(p, crownRadius, at, before, after)
+                );
+              })
+            )
+              continue;
+            if (
+              clearings.some(({ facility, before, after }) => {
+                const dx = p.x - facility.x,
+                  dz = p.z - facility.z;
+                const reach = facility.radiusM + crownRadius;
+                return (
+                  dx * dx + dz * dz < reach * reach || !clearsOpening(p, crownRadius, facility, before, after)
+                );
+              })
+            )
+              continue;
             let low = Infinity;
             let high = -Infinity;
             let supported = true;
