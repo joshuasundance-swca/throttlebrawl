@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { routeMain, PREFLIGHT_MS, REQUEST_CAP, OUTPUT_RESERVE_MS } from './main-preflight.mjs';
+import { routeMain, PREFLIGHT_MS, POLL_MS, REQUEST_CAP, OUTPUT_RESERVE_MS } from './main-preflight.mjs';
 
 const repo = 'owner/game';
 const original = 'a'.repeat(40);
@@ -147,6 +147,166 @@ function scenario(
 }
 
 describe('main preflight preserves acceptance while skipping superseded work', () => {
+  it('retries a complete empty descendant observation before fully validating its pending run', async () => {
+    const pending = { ...run, status: 'pending' };
+    const s = scenario({
+      run: pending,
+      answer: (p) =>
+        p.includes(`/workflows/${ci.id}/runs?`) && s.now() === 0
+          ? { total_count: 0, workflow_runs: [] }
+          : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'superseded', skip: false, successor, run: run.id });
+    expect(s.sleeps).toEqual([POLL_MS]);
+    expect(s.calls.filter((p) => p.endsWith('/branches/main'))).toHaveLength(3);
+    expect(s.calls.filter((p) => p.includes('/compare/'))).toHaveLength(2);
+    expect(s.calls.filter((p) => p.endsWith(`/actions/runs/${run.id}`))).toHaveLength(3);
+    expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+  });
+
+  it('keeps permanent empty observations unaccepted within the original request and time bounds', async () => {
+    const s = scenario({
+      answer: (p) =>
+        p.includes(`/workflows/${ci.id}/runs?`) ? { total_count: 0, workflow_runs: [] } : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false, reason: 'request-cap' });
+    expect(s.sleeps.length).toBeGreaterThan(0);
+    expect(s.calls.some((p) => p.endsWith(`/actions/runs/${run.id}`))).toBe(false);
+    expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+    expect(s.now()).toBeLessThanOrEqual(PREFLIGHT_MS - OUTPUT_RESERVE_MS);
+  });
+
+  it.each(['time', 'requests'])('does not start empty-run grace without enough %s', async (budget) => {
+    const s = scenario({
+      answer: (p) => {
+        if (budget === 'requests' && p.includes('/actions/artifacts?')) {
+          // Complete proof pages leave too few requests for another descendant decision
+          // after the empty successor observation below, rather than exhausting earlier.
+          const page = Number(new URL(p, 'https://api.invalid').searchParams.get('page'));
+          return {
+            total_count: (REQUEST_CAP - 7) * 100,
+            artifacts: Array.from({ length: 100 }, (_, i) => ({ id: page * 100 + i, name: 'unrelated' })),
+          };
+        }
+        if (!p.includes(`/workflows/${ci.id}/runs?`)) return undefined;
+        if (budget === 'time') s.advance(PREFLIGHT_MS - OUTPUT_RESERVE_MS - POLL_MS);
+        return { total_count: 0, workflow_runs: [] };
+      },
+    });
+    expect(await s.route()).toMatchObject({
+      path: 'full',
+      skip: false,
+      reason: budget === 'time' ? 'poll-deadline' : 'request-cap',
+    });
+    expect(s.calls.filter((p) => p.includes(`/workflows/${ci.id}/runs?`))).toHaveLength(1);
+    expect(s.sleeps).toEqual([]);
+    expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+  });
+
+  it('uses newly read main and ancestry if another descendant appears during empty-run grace', async () => {
+    const latest = 'd'.repeat(40);
+    const s = scenario({
+      headAt: () => (s.now() === 0 ? successor : latest),
+      run: { ...run, head_sha: latest },
+      answer: (p) =>
+        p.includes(`/workflows/${ci.id}/runs?`) && s.now() === 0
+          ? { total_count: 0, workflow_runs: [] }
+          : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'superseded', skip: false, successor: latest });
+    expect(s.calls.some((p) => p.endsWith(`/compare/${original}...${latest}`))).toBe(true);
+    expect(s.calls.some((p) => p.includes(`head_sha=${latest}`))).toBe(true);
+  });
+
+  it('does not retain stale descendant evidence when main returns to the original during grace', async () => {
+    const s = scenario({
+      headAt: () => (s.now() === 0 ? successor : original),
+      answer: (p) =>
+        p.includes(`/workflows/${ci.id}/runs?`) ? { total_count: 0, workflow_runs: [] } : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false, reason: 'no-eligible-active-train' });
+    expect(s.sleeps).toEqual([POLL_MS]);
+    expect(s.calls.some((p) => p.endsWith(`/actions/runs/${run.id}`))).toBe(false);
+  });
+
+  it('requires proven ancestry again after empty-run grace', async () => {
+    const s = scenario({
+      answer: (p) => {
+        if (p.includes(`/workflows/${ci.id}/runs?`) && s.now() === 0)
+          return { total_count: 0, workflow_runs: [] };
+        if (p.includes('/compare/') && s.now() > 0) return { status: 'diverged' };
+        return undefined;
+      },
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false, reason: 'unproven-forward-ancestry' });
+  });
+
+  it.each([
+    { head_sha: original },
+    { event: 'pull_request' },
+    { workflow_id: 999 },
+    { repository: { ...identity, id: 999 } },
+    { head_repository: { ...identity, id: 999 } },
+    { run_attempt: 0 },
+    { status: 'completed', conclusion: 'cancelled' },
+    { status: 'completed', conclusion: 'failure' },
+  ])('does not relax successor eligibility after an empty observation %j', async (over) => {
+    const s = scenario({
+      run: { ...run, ...over },
+      answer: (p) =>
+        p.includes(`/workflows/${ci.id}/runs?`) && s.now() === 0
+          ? { total_count: 0, workflow_runs: [] }
+          : undefined,
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false });
+    expect(s.sleeps).toEqual([POLL_MS]);
+  });
+
+  it('rejects routing-only success after an empty successor observation', async () => {
+    const s = scenario({
+      run: { ...run, status: 'completed', conclusion: 'success' },
+      answer: (p) => {
+        if (p.includes(`/workflows/${ci.id}/runs?`) && s.now() === 0)
+          return { total_count: 0, workflow_runs: [] };
+        if (p.includes('/jobs?'))
+          return {
+            total_count: 1,
+            jobs: [
+              { id: 60, run_id: run.id, name: 'routing summary', status: 'completed', conclusion: 'success' },
+            ],
+          };
+        return undefined;
+      },
+    });
+    expect(await s.route()).toMatchObject({ path: 'full', skip: false, reason: 'successor-gate-not-proven' });
+  });
+
+  it.each(['unavailable', 'incomplete', 'changed attempt', 'changed final run', 'changed final main'])(
+    'fails closed on %s evidence following empty-run grace',
+    async (kind) => {
+      const s = scenario({
+        headAt: () => (kind === 'changed final main' && s.now() > POLL_MS ? 'd'.repeat(40) : successor),
+        detailAt: (read) => {
+          if (kind === 'changed attempt') return { ...run, run_attempt: 2 };
+          if (kind === 'changed final run' && read > 1)
+            return { ...run, status: 'completed', conclusion: 'cancelled' };
+          if (kind === 'changed final main' && read === 2) s.advance(1);
+          return run;
+        },
+        answer: (p) => {
+          if (!p.includes(`/workflows/${ci.id}/runs?`)) return undefined;
+          if (s.now() === 0) return { total_count: 0, workflow_runs: [] };
+          if (kind === 'unavailable') throw new Error('API unavailable');
+          if (kind === 'incomplete') return { total_count: 1, workflow_runs: [] };
+          return undefined;
+        },
+      });
+      expect(await s.route()).toMatchObject({ path: 'full', skip: false });
+      expect(s.sleeps).toEqual([POLL_MS]);
+      expect(s.calls.length).toBeLessThanOrEqual(REQUEST_CAP);
+    },
+  );
+
   it.each(['queued', 'pending'])(
     'fully revalidates a late %s descendant within the existing request cap',
     async (status) => {
