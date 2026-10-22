@@ -1,9 +1,9 @@
-"""Original stylized stone overlook: exterior only, not a measured reconstruction.
+"""Original stylized circular stone overlook; not a measured reconstruction.
 
-All dimensions are authored choices. The closed ground door and elevated blind arch
-do not promise an entrance or a rideable stair. The open parapet has a real solid floor;
-later ground-column collision can fill below that floor, but must preserve its open top.
-The shallow elevated recess may be conservatively filled by coarse measured columns.
+The official city photo documentId581 informed only broad circular massing. No image,
+texture, traced outline or historical dimensions are incorporated. Dimensions below are
+authored choices. Closed door and backed blind arches promise no entrance or stair.
+Real floors inside open crenellated parapets suit conservative ground-column solids.
 """
 
 import math
@@ -12,95 +12,105 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lib import MB, empty, export, make_mats, out_path, reset_scene
+from _lib import MB, P, empty, export, make_mats, out_path, reset_scene
 
-COLOURS = {"stone": "#8f8a79", "sandstone": "#a49b83", "trim": "#c2b79b",
-           "wood": "#544d3d", "glass": "#30352f"}
-BODY_TOP = 8.4
-FLOOR_TOP = 8.75
-PARAPET_TOP = 9.55
-MERLON_TOP = 10.5
-HALF = 2.6
-DECK_HALF = 3.1
+COLOURS = {"stone": "#928c7a", "sandstone": "#a69b82", "trim": "#c1b596",
+           "wood": "#554d3b", "glass": "#30362e"}
+OUTER_R = 5.2
+OUTER_FLOOR = 3.35
+UPPER_R = 2.55
+UPPER_FLOOR = 9.4
+TOP = 10.7
 
 
-def parapet(mb, detail):
-    mb.box(-DECK_HALF, DECK_HALF, -DECK_HALF, DECK_HALF, BODY_TOP, FLOOR_TOP, "trim")
+def wedge(mb, radius0, radius1, angle0, angle1, low, high, role):
+    plan = [(radius0, angle0), (radius1, angle0), (radius1, angle1), (radius0, angle1)]
+    mb.loft([[P(r * math.sin(a), r * math.cos(a), h) for r, a in plan]
+             for h in (low, high)], role)
+
+
+def ring(mb, inner, outer, low, high, n, role):
+    """One manifold annular solid, with a genuinely open centre, not a capped cylinder."""
+    loops = [[mb.v(P(r * math.sin(i * math.tau / n), r * math.cos(i * math.tau / n), h))
+              for i in range(n)] for r, h in ((outer, low), (outer, high), (inner, low), (inner, high))]
+    faces = []
+    for i in range(n):
+        j = (i + 1) % n
+        for a, b in ((0, 1), (1, 3), (3, 2), (2, 0)):
+            faces.append(mb.bm.faces.new((loops[a][i], loops[a][j], loops[b][j], loops[b][i])))
+    mb.tag(faces, role)
+
+
+def crown(mb, radius, floor, wall_top, tooth_top, n, detail):
+    ring(mb, radius - 0.48, radius, floor, wall_top, n, "stone")
+    count = 8 if detail else 4
+    for i in range(count):
+        angle = i * math.tau / count
+        wedge(mb, radius - 0.48, radius, angle - 0.13, angle + 0.13, wall_top, tooth_top, "stone")
+
+
+def blind_arch(mb, radius, angle, low, detail):
+    """Backed blind opening above solid stone, with a shallow proud stone surround."""
+    if not detail:
+        wedge(mb, radius, radius + 0.025, angle - 0.18, angle + 0.18, low, low + 1.5, "glass")
+        return
+    arch = MB(COLOURS)
+    spring = low + 1.2
+    arch.fprism([(-0.5, low), (0.5, low), (0.5, spring), (0.35, spring + 0.35),
+                 (0, spring + 0.5), (-0.35, spring + 0.35), (-0.5, spring)],
+                radius - 0.04, radius + 0.025, "glass")
     for side in (-1, 1):
-        a, b = (2.6, 3.1) if side > 0 else (-3.1, -2.6)
-        mb.box(a, b, -DECK_HALF, DECK_HALF, FLOOR_TOP, PARAPET_TOP, "stone")
-        mb.box(-2.6, 2.6, a, b, FLOOR_TOP, PARAPET_TOP, "stone")
-        for x in (-2.65, 0, 2.65):
-            mb.box(a, b, x - 0.45, x + 0.45, PARAPET_TOP, MERLON_TOP, "stone")
-        mb.box(-0.45, 0.45, a, b, PARAPET_TOP, MERLON_TOP, "stone")
-    if detail:
-        # A light coping makes the separated teeth read from the low chase view.
-        for side in (-1, 1):
-            a, b = (2.58, 3.1) if side > 0 else (-3.1, -2.58)
-            mb.box(a, b, -3.1, 3.1, PARAPET_TOP - 0.12, PARAPET_TOP, "trim")
-            mb.box(-2.58, 2.58, a, b, PARAPET_TOP - 0.12, PARAPET_TOP, "trim")
+        a, b = (0.5, 0.7) if side > 0 else (-0.7, -0.5)
+        arch.box(radius - 0.04, radius + 0.3, a, b, low, spring, "trim")
+    for i in range(4):
+        a, b = math.pi * i / 4, math.pi * (i + 1) / 4
+        arch.fprism([(math.cos(a) * 0.5, spring + math.sin(a) * 0.5),
+                     (math.cos(b) * 0.5, spring + math.sin(b) * 0.5),
+                     (math.cos(b) * 0.7, spring + math.sin(b) * 0.7),
+                     (math.cos(a) * 0.7, spring + math.sin(a) * 0.7)],
+                    radius - 0.04, radius + 0.3, "trim")
+    # Transfer the original front geometry radially, preserving roles and winding.
+    ca, sa = math.cos(angle), math.sin(angle)
+    for vertex in arch.bm.verts:
+        x, y = vertex.co.x, vertex.co.y
+        vertex.co.x = ca * x - sa * y
+        vertex.co.y = sa * x + ca * y
+    vertices = {v: mb.v(v.co) for v in arch.bm.verts}
+    for face in arch.bm.faces:
+        made = mb.bm.faces.new([vertices[v] for v in face.verts])
+        mb.tag([made], arch.mats[face.material_index], closed=False)
+    arch.bm.free()
 
 
 def tower(name, x, detail, mats):
     r = empty(name, loc=(x, 0, 0))
     r["exterior_only"] = True
-    r["top_m"] = MERLON_TOP
+    r["top_m"] = TOP
     mb = MB(COLOURS)
-    # A closed stone keep. Only the near front face has a shallow, backed arch recess.
-    mb.box(-HALF, 2.15 if detail else HALF, -HALF, HALF, 0, BODY_TOP, "stone")
+    n = 16 if detail else 8
+    mb.cyl((0, 0, OUTER_FLOOR / 2), "z", OUTER_R, OUTER_FLOOR / 2, n, "sandstone")
+    mb.cyl((0, 0, UPPER_FLOOR / 2), "z", UPPER_R, UPPER_FLOOR / 2, n, "stone")
+    mb.cyl((0, 0, 9.3), "z", 2.7, 0.1, n, "trim")
+    crown(mb, OUTER_R, OUTER_FLOOR, 4.05, 4.7, n, detail)
+    crown(mb, 2.7, UPPER_FLOOR, 10, TOP, n, detail)
+    mb.box(OUTER_R - 0.02, OUTER_R + 0.06, -0.6, 0.6, 0.1, 2.35, "wood")
+    blind_arch(mb, UPPER_R, 0, 5.9, detail)
     if detail:
-        for a, b in ((-HALF, -0.65), (0.65, HALF)):
-            mb.box(2.15, HALF, a, b, 0, BODY_TOP, "stone")
-        mb.box(2.15, HALF, -0.65, 0.65, 0, 3, "stone")
-        mb.fprism([(-0.65, BODY_TOP), (0.65, BODY_TOP), (0.65, 4.9),
-                   (0.46, 5.36), (0, 5.55), (-0.46, 5.36), (-0.65, 4.9)],
-                  2.15, HALF, "stone")
-        mb.fprism([(-0.65, 3), (0.65, 3), (0.65, 4.9), (0.46, 5.36),
-                   (0, 5.55), (-0.46, 5.36), (-0.65, 4.9)], 2.15, 2.18, "glass")
-        # Closed timber door, with a visible centre joint; no dark open entrance.
-        for a, b in ((-0.64, -0.02), (0.02, 0.64)):
-            mb.box(2.605, 2.66, a, b, 0.1, 2.3, "wood")
-        for h in (0.5, 1.8):
-            mb.box(2.66, 2.69, -0.6, 0.6, h, h + 0.08, "glass")
-        for side in (-1, 1):
-            a, b = (0.65, 0.88) if side > 0 else (-0.88, -0.65)
-            mb.box(2.58, 2.74, a, b, 2.85, 4.9, "trim")
-        for i in range(6):
-            a, b = math.pi * i / 6, math.pi * (i + 1) / 6
-            mb.fprism([(math.cos(a) * 0.66, 4.9 + math.sin(a) * 0.66),
-                       (math.cos(b) * 0.66, 4.9 + math.sin(b) * 0.66),
-                       (math.cos(b) * 0.89, 4.9 + math.sin(b) * 0.89),
-                       (math.cos(a) * 0.89, 4.9 + math.sin(a) * 0.89)], 2.58, 2.74, "trim")
-        mb.box(2.15, 2.82, -0.95, 0.95, 2.85, 3.02, "trim")
+        for angle in (math.pi / 2, math.pi, 3 * math.pi / 2):
+            blind_arch(mb, OUTER_R, angle, 1.15, True)
+        # Sparse offset stone facets, never a copied image or texture.
+        for radius, levels, count in ((OUTER_R, (0.45,), 8), (UPPER_R, (4.4, 8.2), 6)):
+            for row, h in enumerate(levels):
+                for i in range(count):
+                    a = (i + row * 0.35) * math.tau / count
+                    if radius == UPPER_R and h < 7.8 and (i == 0 or i == count - 1):
+                        continue
+                    wedge(mb, radius - 0.03, radius + 0.045, a + 0.06, a + 0.43,
+                          h, h + 0.38, "sandstone" if i % 3 else "stone")
     else:
-        # The far silhouette keeps the same closed-door/window cues and material roles.
-        mb.box(2.605, 2.66, -0.64, 0.64, 0.1, 2.3, "wood")
-        mb.box(2.605, 2.63, -0.65, 0.65, 3, 5.5, "glass")
-
-    # Four tapered corner buttresses make a grounded, broad-footed silhouette.
-    for sx in (-1, 1):
-        for sf in (-1, 1):
-            mb.hull([(sx * a, sf * b, h) for a, b, h in
-                     ((2.1, 2.1, 0), (3.1, 2.1, 0), (3.1, 3.1, 0), (2.1, 3.1, 0),
-                      (2.1, 2.1, 6.1), (2.65, 2.1, 6.1), (2.65, 2.65, 6.1), (2.1, 2.65, 6.1))], "sandstone")
-    parapet(mb, detail)
-    if detail:
-        # Short, offset courses are authored geometry, not a sampled stone texture.
-        for course in range(6):
-            h = 0.45 + course * 1.25
-            for j in range(3):
-                a = -2.45 + j * 1.55 + (0.15 if course % 2 else 0)
-                b = min(a + 1.3, 2.5)
-                if a >= b:
-                    continue
-                role = "sandstone" if (course + j) % 3 else "stone"
-                for side in (-1, 1):
-                    # Preserve the closed door and blind arch silhouettes on the front.
-                    if side < 0 or not (a < 0.95 and b > -0.95 and h < 5.8):
-                        f0, f1 = (2.6, 2.65) if side > 0 else (-2.65, -2.6)
-                        mb.box(f0, f1, a, b, h, h + 0.5, role)
-                    x0, x1 = (2.6, 2.65) if side > 0 else (-2.65, -2.6)
-                    mb.box(a, b, x0, x1, h, h + 0.5, role)
+        for angle in (math.pi / 2, math.pi, 3 * math.pi / 2):
+            wedge(mb, OUTER_R - 0.04, OUTER_R + 0.3, angle - 0.13, angle + 0.13,
+                  1.15, 2.85, "trim")
     mb.build(name + "_body", mats, r)
 
 
