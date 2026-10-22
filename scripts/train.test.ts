@@ -233,7 +233,7 @@ function node(o: {
   quick?: {
     conclusion: string;
     status?: string;
-    startedAt?: string;
+    startedAt?: string | null;
     completedAt?: string | null;
     app?: string;
     databaseId?: number | null;
@@ -259,7 +259,7 @@ function node(o: {
     conclusion: q.conclusion,
     id: q.id ?? 'CR_selected',
     databaseId: q.databaseId,
-    startedAt: q.startedAt ?? '2026-10-02T17:07:51Z',
+    startedAt: q.startedAt === undefined ? '2026-10-02T17:07:51Z' : q.startedAt,
     completedAt: q.completedAt ?? null,
     checkSuite: { app: { slug: q.app ?? 'github-actions' } },
   }));
@@ -1814,7 +1814,12 @@ describe('status posting', () => {
 describe('the commands, against a fake GitHub', () => {
   /** What the scripts send: a GraphQL query, or a commit status. */
   type Sent = { query?: string; state?: string; context?: string; description?: string; target_url?: string };
-  type Call = { method: string; path: string; body: Sent | undefined };
+  type Call = {
+    method: string;
+    path: string;
+    body: Sent | undefined;
+    signal: AbortSignal | null | undefined;
+  };
   const CFG = { live: true, cap: 8, landingMinutes: 10, mainWaitMinutes: 15 };
   const ok = { conclusion: 'SUCCESS' };
   const base = sha('0');
@@ -1864,7 +1869,7 @@ describe('the commands, against a fake GitHub', () => {
       const method = init.method ?? 'GET';
       const p = url.replace('https://api.github.com', '');
       const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Sent) : undefined;
-      calls.push({ method, path: p, body });
+      calls.push({ method, path: p, body, signal: init.signal });
       const hit = routes.find(([re]) => re.test(`${method} ${p}`));
       if (!hit) return Promise.resolve(new Response(`no fake for ${method} ${p}`, { status: 404 }));
       const v = hit[1](body);
@@ -2036,6 +2041,127 @@ describe('the commands, against a fake GitHub', () => {
     await cmdPlan(CFG);
     expect(outputs().depart).toBe('false');
     expect(reconciliationCalls(calls).map((c) => c.path)).toEqual([`/repos/${REPO}/check-runs/${quickId}`]);
+  });
+
+  it.each(
+    [null, 'not-a-date', '2026-10-22T17:00:00Z'].flatMap((startedAt) =>
+      [false, true].map((reverse) => ({ startedAt, reverse })),
+    ),
+  )('plan: ambiguous quick ordering cannot borrow an older green: %j', async ({ startedAt, reverse }) => {
+    ghEnv();
+    const { outputs } = capture();
+    const checks = [
+      { ...ok, databaseId: quickId - 1, startedAt: '2026-10-22T17:00:00Z' },
+      { ...pendingQuick, startedAt },
+    ];
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: reverse ? checks.reverse() : checks })]),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs().depart).toBe('false');
+    expect(reconciliationCalls(calls)).toEqual([]);
+  });
+
+  it.each([false, true])(
+    'plan: tied older checks do not obscure a unique newest quick: reverse %s',
+    async (reverse) => {
+      ghEnv();
+      const { outputs } = capture();
+      fakeAssembly();
+      const checks = [
+        { ...ok, databaseId: quickId - 2, startedAt: '2026-10-22T17:00:00Z' },
+        { ...ok, databaseId: quickId - 1, startedAt: '2026-10-22T17:00:00Z' },
+        pendingQuick,
+      ];
+      const calls = fakeGitHub([
+        MAIN,
+        mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
+        graphql([node({ number: 4, head: sha('a'), quick: reverse ? checks.reverse() : checks })]),
+        exactQuick(restQuick()),
+      ]);
+      await cmdPlan(CFG);
+      expect(outputs().depart).toBe('true');
+      expect(reconciliationCalls(calls).map((c) => c.path)).toEqual([`/repos/${REPO}/check-runs/${quickId}`]);
+    },
+  );
+
+  it('plan: all optional exact-check reads share one request deadline', async () => {
+    ghEnv();
+    const { outputs } = capture();
+    fakeAssembly();
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([
+        node({ number: 4, head: sha('a'), quick: [pendingQuick] }),
+        node({ number: 5, head: sha('b'), quick: [{ ...pendingQuick, databaseId: quickId + 1 }] }),
+      ]),
+      exactQuick(restQuick()),
+      [
+        new RegExp(`^GET /repos/owner/game/check-runs/${quickId + 1}$`),
+        () => ({ ...restQuick(), id: quickId + 1, head_sha: sha('b') }),
+      ],
+    ]);
+    await cmdPlan(CFG);
+    const bundle = JSON.parse(outputs().bundle ?? '') as { number: number }[];
+    expect(bundle.map((p) => p.number)).toEqual([4, 5]);
+    const reads = reconciliationCalls(calls);
+    expect(reads).toHaveLength(2);
+    expect(reads[0]?.signal).toBeInstanceOf(AbortSignal);
+    expect(reads[0]?.signal).toBe(reads[1]?.signal);
+    expect(reads[0]?.signal).not.toBe(calls.find((c) => c.path === '/graphql')?.signal);
+  });
+
+  it('plan: an exhausted optional deadline skips later pending checks while green PRs still ride', async () => {
+    ghEnv();
+    const { outputs, lines } = capture();
+    fakeAssembly();
+    const controllers: AbortController[] = [];
+    const deadlines = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      return controller.signal;
+    });
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([
+        node({ number: 4, head: sha('a'), quick: [pendingQuick] }),
+        node({ number: 5, head: sha('b'), quick: [{ ...pendingQuick, databaseId: quickId + 1 }] }),
+        node({ number: 6, head: sha('c'), quick: [ok] }),
+      ]),
+      [
+        new RegExp(`^GET /repos/owner/game/check-runs/${quickId}$`),
+        () => {
+          const signal = calls.at(-1)?.signal;
+          const controller = controllers.find((c) => c.signal === signal);
+          expect(controller).toBeDefined();
+          controller?.abort(new DOMException('shared deadline expired', 'TimeoutError'));
+          throw signal?.reason;
+        },
+      ],
+      [
+        new RegExp(`^GET /repos/owner/game/check-runs/${quickId + 1}$`),
+        () => ({ ...restQuick(), id: quickId + 1, head_sha: sha('b') }),
+      ],
+    ]);
+    await cmdPlan(CFG);
+    expect(JSON.parse(outputs().bundle ?? '')).toEqual([{ number: 6, headSha: sha('c'), cap: 8 }]);
+    expect(reconciliationCalls(calls)).toHaveLength(1);
+    expect(lines).toContainEqual(expect.stringContaining('optional reconciliation deadline expired'));
+    expect(deadlines.mock.calls.every(([ms]) => ms === 60_000)).toBe(true);
+    const ordinary = calls.filter((c) => c.path !== '/graphql' && !c.path.includes('/check-runs/'));
+    expect(new Set(ordinary.map((c) => c.signal)).size).toBe(ordinary.length);
   });
 
   it.each([undefined, null, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
