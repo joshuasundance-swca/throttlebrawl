@@ -400,6 +400,16 @@ def authoring_cells(inputs: LoadedInputs) -> list[Geometry]:
             set_precision(Polygon([(v[0], v[2]) for v in face]), STEP).boundary
             for face in inputs.roads.ground_grades
         ]
+        # A grade corner can lie centimetres from a coarse DEM edge. Without
+        # local samples that edge interpolates distant controls into an invented
+        # cliff beside the corner, even when the evaluated height field is gentle.
+        # These rings only sample that same field: they neither enlarge the flat
+        # grade nor move source geometry. Keep them away from protected outlines;
+        # re-noding a road/water cutout can otherwise change its snapped coverage.
+        clearance = min(grades.distance(raw_road), grades.distance(raw_water))
+        for radius in (4 * STEP, 16 * STEP, 64 * STEP, 0.25, 0.5, 1, 2, 4):
+            if radius + 2 * STEP < clearance:
+                linework.append(set_precision(grades.buffer(radius, quad_segs=8), STEP).boundary)
     noded = union_all(linework, grid_size=STEP)
     return sorted(polygonize(noded), key=lambda p: (p.bounds, p.area, p.wkb_hex))
 

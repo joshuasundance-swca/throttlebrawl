@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import struct
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +15,17 @@ from shapely.ops import unary_union  # type: ignore[import-untyped]
 from . import recipe
 
 MANIFEST = Path(__file__).parent / "eagle-point" / "manifest.json"
+
+
+@pytest.mark.parametrize(
+    "manifest_path",
+    sorted(Path(__file__).parent.glob("*/manifest.json")),
+    ids=lambda path: path.parent.name,
+)
+def test_every_shipped_manifest_loads_its_exact_committed_inputs(manifest_path: Path) -> None:
+    # Input hashes describe committed canonical bytes. Historical source-capture
+    # hashes remain provenance; no terrain bake or geometry fingerprint update is needed.
+    recipe.load_inputs(manifest_path)
 
 
 @pytest.fixture(scope="module")
@@ -687,3 +699,40 @@ def test_grade_transition_changes_nearby_ground_and_keeps_missing_ground_invalid
     ]
     with pytest.raises(ValueError, match=r"cover|boundary"):
         recipe.validate_coverage(mesh, inputs)
+
+
+@pytest.mark.parametrize("corner_x", [19.98046875, 19.9951171875])
+def test_gentle_grade_transition_near_a_dem_edge_has_no_interpolation_cliff(corner_x: float) -> None:
+    # Mild, compatible controls: a 1 m road, a 1.1 m grade and a 2 m DEM.
+    # A rotated grade corner close to a source grid edge must not interpolate
+    # a 20 m edge's distant controls into a centimetre-wide artificial cliff.
+    a, b = (12, 1.1, 15), (10, 1.1, 25)
+    c, d = (corner_x, 1.1, 16.5), (corner_x - 2, 1.1, 26.5)
+    inputs = graded_inputs([(a, b, c), (c, b, d)])
+    inputs = replace(
+        inputs,
+        grid=recipe.Grid(
+            x=list(range(0, 101, 20)),
+            z=list(range(0, 101, 20)),
+            heightRows=[[2] * 6] * 6,
+        ),
+    )
+    mesh = recipe.bake(inputs)
+    corner = Point(c[0], c[2])
+    normals = []
+    for patch in mesh.patches:
+        if patch.surface != "grass":
+            continue
+        for face in patch.triangles:
+            vertices = [patch.vertices[i] for i in face]
+            if Polygon([(v[0], v[2]) for v in vertices]).distance(corner) > 0.05:
+                continue
+            (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = vertices
+            det = (x1 - x0) * (z2 - z0) - (x2 - x0) * (z1 - z0)
+            dx = ((y1 - y0) * (z2 - z0) - (y2 - y0) * (z1 - z0)) / det
+            dz = ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)) / det
+            normals.append(1 / math.sqrt(1 + dx * dx + dz * dz))
+    assert normals
+    assert min(normals) >= 0.9
+    assert mesh_height(mesh, c[0], c[2]) == recipe.f32(c[1])
+    assert recipe.validate_coverage(mesh, inputs)["world_missing_area_m2"] == 0
