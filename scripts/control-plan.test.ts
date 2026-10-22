@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { collectControlPlan, controlInventory } from './control-plan.mjs';
+import { readFileSync } from 'node:fs';
+import { suiteJobs } from './shard-plan.mjs';
 
 const repo = 'owner/game';
 const sha = 'a'.repeat(40);
@@ -38,6 +40,22 @@ function fixture(options: { page?: (page: number) => unknown; after?: object; er
 }
 const input = { repo, sha, runId: 42, attempt: 1, shape };
 describe('branch control planning', () => {
+  it('keeps the landing job canonical shard number and denominator in targeted diagnostics', async () => {
+    const canonical = suiteJobs(
+      readFileSync(new URL('../.github/workflows/suite.yml', import.meta.url), 'utf8'),
+    );
+    const inventory = controlInventory(canonical);
+    const jobs = inventory.map((name: string, i: number) => ({
+      ...rows[0],
+      id: i + 1,
+      name,
+      conclusion: name === `suite / sim (2/${canonical.sim.slices})` ? 'failure' : 'success',
+    }));
+    const f = fixture({ page: () => ({ total_count: jobs.length, jobs }) });
+    const result = await collectControlPlan({ ...input, shape: canonical, api: f.api });
+    expect(result.scope).toBe('targeted');
+    expect(result.selection).toMatchObject({ sim: [2], totals: { sim: canonical.sim.slices } });
+  });
   it('explains full diagnostics in the actual CLI log when observation is unavailable', () => {
     const env = { ...process.env };
     delete env.GH_TOKEN;
