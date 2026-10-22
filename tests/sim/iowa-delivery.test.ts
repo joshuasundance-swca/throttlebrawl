@@ -243,7 +243,7 @@ it('offers occasional delivery trucks only at the authored farm traffic spawn ta
   addMover(
     world,
     'rider',
-    c.route.start,
+    { ...c.route.start, d: 0 },
     c.riders.findIndex((r) => r.role === 'player'),
   );
   trafficSystem.init(world, c);
@@ -322,7 +322,7 @@ for (const road of taggedRoads)
           const c = config(seed);
           const reference = buildTrafficGraph(c).reference;
           const index = reference.edges.indexOf(road.index);
-          const anchor = { ...c.route.start };
+          const anchor = { ...c.route.start, d: 0 };
           fromCorridor(reference, reference.off[index]! + road.length / 2 - 400, 8, 1, anchor);
           const world = createWorld(c);
           addMover(
