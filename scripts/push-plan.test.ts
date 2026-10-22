@@ -2,7 +2,8 @@
 // leak scan"): nothing for a docs-only or dependency-only push, the whole unit tier when a global
 // test or type configuration file changed, and otherwise only the unit test files the push names:
 // changed test files and tests named after changed source files, plus bounded contact and road
-// content contracts for their shared inputs. CI runs every test on the PR.
+// content contracts for their shared inputs. Full PR/train acceptance runs every test; ordinary
+// train-quick feedback reuses this planner through quick-unit-plan.mjs with broader fallbacks.
 import { describe, expect, it } from 'vitest';
 import { planPush, planPushFromRevisions } from './push-plan.mjs';
 

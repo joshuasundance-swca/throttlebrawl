@@ -8,10 +8,11 @@
 #   "[full-gate]" escape hatch (in the title, or alone on a line of the body) and PRs that change
 #   .github/ (a train runs main's workflows, not the PR's), and while the train is off (.github/train.json, "live": false) every PR but a
 #   docs-only one. Only this path records the tree it tested, for main's skip path (below).
-# - train: the quick check (static plus the build and its size budget, and the three unit slices).
+# - train: the quick check (static plus the build and its size budget, and bounded named units
+#   across the three existing slices; uncertainty and manifest/lock changes retain full units).
 #   Its aggregate is named `quick`, never `gate`, so auto-merge waits for the train, which runs the
 #   full suite once on a bundle of ready PRs and posts `gate` as a commit status on each head.
-# - docs: the same quick check, and its aggregate is the PR's `gate` (no sim or browser tier
+# - docs: quick static/build plus all units, and its aggregate is the PR's `gate` (no sim or browser tier
 #   needed), with the train on or off. Docs-only means docs/, changes/ and .md files, but never one
 #   the build or a deploy reads (README.md, space/, THIRD_PARTY_ASSETS.md; scripts/train.mjs SHIPS).
 # One source of `gate` per head commit: this workflow's aggregate job, or the train's status. The
@@ -120,6 +121,7 @@ jobs:
     uses: ./.github/workflows/suite.yml
     with:
       full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}
+      quick-named-units: ${{ github.event_name == 'pull_request' && needs.route.outputs.path == 'train' }}
       fail-fast: ${{ github.event_name == 'pull_request' }}
       save-caches: true
       upload-dist: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
