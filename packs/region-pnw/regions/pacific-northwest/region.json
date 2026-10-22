@@ -131,6 +131,12 @@
   },
   "signs": [
     {
+      "id": "longview-diamond-directions",
+      "text": "20TH / WASHINGTON: LEFT. OLYMPIA / KESSLER: STRAIGHT, LONGER.",
+      "tags": ["site"],
+      "status": "live"
+    },
+    {
       "id": "spur-keep-right",
       "text": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
       "tags": ["site"],
