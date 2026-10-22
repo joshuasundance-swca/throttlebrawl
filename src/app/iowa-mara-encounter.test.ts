@@ -66,7 +66,7 @@ describe('Iowa named park encounter', () => {
       expect(config.riders.filter((r) => r.role === 'rival').map((r) => r.contentId)).toEqual([MARA]);
       expect(config.riders.find((r) => r.role === 'player')?.bike.contentId).toBe('base:streetfighter-750');
       expect(config.riders.some((r) => r.controller.kind === 'cop')).toBe(true);
-      expect(config.trafficTypes.some((t) => t.category === 'car' && t.weight > 0)).toBe(true);
+      expect(config.trafficTypes.some((t) => t.category === 'car' && (t.weight ?? 0) > 0)).toBe(true);
     }
   });
 
