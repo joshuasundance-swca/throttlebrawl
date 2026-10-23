@@ -193,6 +193,7 @@ jobs:
           sparse-checkout: |
             scripts
             .github/workflows
+            tests/sim
       - name: Complete failed-shard inventory or full diagnostic fallback
         id: select
         env:
