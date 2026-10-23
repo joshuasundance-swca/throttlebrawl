@@ -66,18 +66,18 @@ const results = await Promise.all(
         let out = '';
         child.stdout.on('data', (d) => (out += d));
         child.stderr.on('data', (d) => (out += d));
-        child.on('close', (code) => resolve({ ...step, code, out, secs: (Date.now() - t0) / 1000 }));
+        child.on('close', (code) => {
+          const ok = code === 0;
+          const secs = (Date.now() - t0) / 1000;
+          // Report each completed step while its sibling may still be running. A passing step
+          // prints its summary lines only; a failing one prints everything.
+          const lines = ok ? out.split(/\r?\n/).filter((l) => step.keep.test(l)) : [out];
+          console.log(`pre-push: ${step.name} ${ok ? 'passed' : 'FAILED'} in ${secs.toFixed(1)} s`);
+          for (const l of lines) console.log(`  ${l.trim()}`);
+          resolve(ok);
+        });
       }),
   ),
 );
 
-let failed = false;
-for (const r of results) {
-  const ok = r.code === 0;
-  failed ||= !ok;
-  // A passing step prints its summary lines only; a failing one prints everything.
-  const lines = ok ? r.out.split(/\r?\n/).filter((l) => r.keep.test(l)) : [r.out];
-  console.log(`pre-push: ${r.name} ${ok ? 'passed' : 'FAILED'} in ${r.secs.toFixed(1)} s`);
-  for (const l of lines) console.log(`  ${l.trim()}`);
-}
-if (failed) process.exit(1);
+if (results.some((ok) => !ok)) process.exit(1);
