@@ -349,7 +349,7 @@ describe('sidewalk uses the mandatory same-process reporter', () => {
         if (mode === 'duplicate') meta.key = tests[1]!.meta().sidewalkSurvey!.key;
         if (mode === 'stale') meta.token = 'old-run';
         if (mode === 'crash') meta.hits = ['keys event seed 1 crash thing'];
-        if (mode === 'failed') vi.spyOn(test, 'result').mockReturnValue({ state: 'failed' });
+        if (mode === 'failed') vi.spyOn(test, 'result').mockReturnValue({ state: 'failed', errors: [] });
         if (mode === 'retried' || mode === 'repeated')
           vi.spyOn(test, 'diagnostic').mockReturnValue({
             retryCount: mode === 'retried' ? 1 : 0,
