@@ -2,7 +2,7 @@ import {
   configFromHeader,
   createReplayController,
   HASH_EVERY_TICKS,
-  validateCompletedRecording,
+  loadCompletedRecordingValidator,
   type Recording,
   type ReplayHeader,
 } from '../replay';
@@ -13,6 +13,7 @@ export interface ReplayPlaybackOptions {
   expectedReplayKey: string;
   roadsFor: (header: ReplayHeader) => Pick<SimConfig, 'road' | 'route'>;
   createSimulation: (config: SimConfig) => Sim;
+  signal?: AbortSignal;
 }
 
 export interface ReplayPlayback {
@@ -31,8 +32,10 @@ export interface ReplayPlayback {
 }
 
 /** A completed recording's presentation state, independent of clocks and the live race. */
-export function createReplayPlayback(options: ReplayPlaybackOptions): ReplayPlayback {
+export async function createReplayPlayback(options: ReplayPlaybackOptions): Promise<ReplayPlayback> {
   // Preflight must precede both road reconstruction and sim construction.
+  const { validateCompletedRecording } = await loadCompletedRecordingValidator();
+  if (options.signal?.aborted) throw new Error('replay: preparation retired');
   const recording = validateCompletedRecording(options.recording, options.expectedReplayKey);
   const { road, route } = options.roadsFor(recording.header);
   const sim = options.createSimulation(configFromHeader(recording.header, road, route));

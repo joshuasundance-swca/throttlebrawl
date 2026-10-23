@@ -4,10 +4,10 @@ import {
   createInputRecorder,
   HASH_EVERY_TICKS,
   replayHeader,
-  validateCompletedRecording,
   type Recording,
   type ReplayConfig,
 } from './index';
+import { validateCompletedRecording } from './completed';
 
 const KEY = 'current-code+event-content';
 

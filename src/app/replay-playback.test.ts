@@ -58,13 +58,28 @@ function start(f: ReturnType<typeof fixture>, recording: unknown = f.recording) 
   });
 }
 
-function exhaust(playback: ReturnType<typeof createReplayPlayback>) {
+function exhaust(playback: Awaited<ReturnType<typeof createReplayPlayback>>) {
   for (let tick = 0; tick < playback.durationTicks; tick++) playback.step();
   expect(playback.complete).toBe(true);
 }
 
 describe('completed recording playback', () => {
-  it('rejects wrong-key, malformed and unfinished recordings before road or sim construction', () => {
+  it('does not construct roads or a sim when preparation is retired while its validator loads', async () => {
+    const f = fixture(1);
+    const controller = new AbortController();
+    const pending = createReplayPlayback({
+      recording: f.recording,
+      expectedReplayKey: KEY,
+      roadsFor: f.roadsFor,
+      createSimulation: f.createSimulation,
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(pending).rejects.toThrow(/retired/);
+    expect(f.roadsFor).not.toHaveBeenCalled();
+    expect(f.createSimulation).not.toHaveBeenCalled();
+  });
+  it('rejects wrong-key, malformed and unfinished recordings before road or sim construction', async () => {
     const f = fixture(1);
     const unfinished = structuredClone(f.recording);
     delete unfinished.end;
@@ -74,7 +89,7 @@ describe('completed recording playback', () => {
       { ...f.recording, inputs: [[{ steer: 0.5, throttle: 255, brake: 0, flags: 0 }]] },
       unfinished,
     ]) {
-      expect(() => start(f, recording)).toThrow(/replay/i);
+      await expect(start(f, recording)).rejects.toThrow(/replay/i);
       expect(f.roadsFor).not.toHaveBeenCalled();
       expect(f.createSimulation).not.toHaveBeenCalled();
     }
@@ -82,10 +97,10 @@ describe('completed recording playback', () => {
 
   it.each([1, HASH_EVERY_TICKS + 1, HASH_EVERY_TICKS + 2])(
     'replays %i real sim ticks, snapshots, tuning changes and every compared hash exactly once',
-    (ticks) => {
+    async (ticks) => {
       const f = fixture(ticks);
       const original = structuredClone(f.recording);
-      const playback = start(f);
+      const playback = await start(f);
       const step = vi.spyOn(playback.sim, 'step');
       expect(playback.prev).toBeNull();
       expect(playback.curr).toEqual(f.snapshots[0]);
@@ -114,10 +129,10 @@ describe('completed recording playback', () => {
     },
   );
 
-  it('isolates config and inputs from later caller mutation and sim config mutation', () => {
+  it('isolates config and inputs from later caller mutation and sim config mutation', async () => {
     const f = fixture(3);
     const original = structuredClone(f.recording);
-    const playback = start(f);
+    const playback = await start(f);
     f.recording.inputs[0]![0]!.throttle = 0;
     f.recording.header.config!.riders[0]!.name = 'Changed';
     playback.sim.config.riders[0]!.name = 'Sim changed';
@@ -126,14 +141,14 @@ describe('completed recording playback', () => {
     expect(playback.sim.hash()).toBe(f.finalHash);
   });
 
-  it('exhausts all recorded inputs even when isOver already reports true', () => {
+  it('exhausts all recorded inputs even when isOver already reports true', async () => {
     const f = fixture(3);
     f.createSimulation.mockImplementation((config) => {
       const sim = createSim(config);
       vi.spyOn(sim, 'isOver').mockReturnValue(true);
       return sim;
     });
-    const playback = start(f);
+    const playback = await start(f);
     expect(playback.sim.isOver()).toBe(true);
     exhaust(playback);
     expect(playback.sim.tick).toBe(f.recording.inputs.length);
@@ -142,13 +157,13 @@ describe('completed recording playback', () => {
 
   it.each(['input', 'checkpoint', 'terminal'] as const)(
     'fails deterministically on tampered %s and keeps later steps stopped',
-    (kind) => {
+    async (kind) => {
       const f = fixture();
       const recording = structuredClone(f.recording);
       if (kind === 'input') recording.inputs[1]![0]!.throttle = 0;
       if (kind === 'checkpoint') recording.hashes[1]!.hash = (recording.hashes[1]!.hash ^ 1) >>> 0;
       if (kind === 'terminal') recording.end!.hash = (recording.end!.hash ^ 1) >>> 0;
-      const playback = start(f, recording);
+      const playback = await start(f, recording);
       const step = vi.spyOn(playback.sim, 'step');
       const failAt = kind === 'terminal' ? recording.inputs.length - 1 : HASH_EVERY_TICKS;
       for (let tick = 0; tick < failAt; tick++) playback.step();
@@ -165,7 +180,7 @@ describe('completed recording playback', () => {
     },
   );
 
-  it('checks the cumulative final hash after the final controller step', () => {
+  it('checks the cumulative final hash after the final controller step', async () => {
     const f = fixture(2);
     f.createSimulation.mockImplementation((config) => {
       const sim = createSim(config);
@@ -176,7 +191,7 @@ describe('completed recording playback', () => {
       );
       return sim;
     });
-    const playback = start(f);
+    const playback = await start(f);
     const step = vi.spyOn(playback.sim, 'step');
     playback.step();
     expect(() => playback.step()).toThrow(/replay.*(completion|final|hash)/i);
@@ -185,13 +200,13 @@ describe('completed recording playback', () => {
     expect(step).toHaveBeenCalledTimes(2);
   });
 
-  it('restarts with a fresh factory and identifies human slot zero in a multiple-slot field', () => {
+  it('restarts with a fresh factory and identifies human slot zero in a multiple-slot field', async () => {
     const f = fixture(3, 2);
-    const first = start(f);
+    const first = await start(f);
     expect(first.playerId).toBe(first.curr.entities.find((entity) => entity.slot === 0)?.id);
     expect(first.playerId).not.toBe(first.curr.entities.find((entity) => entity.slot === 1)?.id);
     exhaust(first);
-    const restarted = start(f);
+    const restarted = await start(f);
     expect(restarted.sim).not.toBe(first.sim);
     expect(restarted.sim.tick).toBe(0);
     expect(restarted.prev).toBeNull();
@@ -201,7 +216,7 @@ describe('completed recording playback', () => {
     expect(restarted.sim.hash()).toBe(first.sim.hash());
   });
 
-  it('stops if the injected simulation does not advance exactly one tick', () => {
+  it('stops if the injected simulation does not advance exactly one tick', async () => {
     const f = fixture(3);
     f.createSimulation.mockImplementation((config) => {
       const sim = createSim(config);
@@ -212,7 +227,7 @@ describe('completed recording playback', () => {
       });
       return sim;
     });
-    const playback = start(f);
+    const playback = await start(f);
     expect(() => playback.step()).toThrow(/replay.*tick/i);
     expect(playback.complete).toBe(false);
     const tick = playback.sim.tick;

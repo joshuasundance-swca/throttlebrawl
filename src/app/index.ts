@@ -1566,9 +1566,10 @@ export function createApp(opts: AppOptions): AppHandle {
         acquireAudio: (signal) => audio.acquireSuspendLease({ signal }),
         acquireWake: acquireWakeLease,
         held: () => holds.size > 0 || renderer.contextLost || document.visibilityState !== 'visible',
-        prepare(signal) {
+        async prepare(signal) {
           if (!current() || signal.aborted) throw new Error('Replay entry retired');
-          const session = playback.createReplayPlayback({
+          const session = await playback.createReplayPlayback({
+            signal,
             recording,
             expectedReplayKey: appReplayKey(build, raceHashes(recording.header.eventId).sim),
             roadsFor: roadsForHeader(registry, streams),
@@ -1576,7 +1577,7 @@ export function createApp(opts: AppOptions): AppHandle {
           });
           const camera = cameras.createReplayCamera({ road: session.sim.config.road });
           camera.setMotionAmount(motionNow.camera);
-          return Promise.resolve({ playback: session, camera });
+          return { playback: session, camera };
         },
         commit() {
           if (!current()) throw new Error('Replay entry retired');
