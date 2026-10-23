@@ -146,7 +146,7 @@ describe('Eagle Point North Run', () => {
     let grass = 0;
     let bodyCorners = 0;
     let racingGrid = 0;
-    let grassPatrols = 0;
+    let grassWaiters = 0;
     let pavedLaw = 0;
     try {
       const riders = sim.snapshot().entities.filter((entity) => entity.kind === 'rider');
@@ -154,19 +154,20 @@ describe('Eagle Point North Run', () => {
         const box = hitboxOf(config.riders[rider.id]?.hitbox);
         const e = road.edges[rider.road.edge]!;
         const patrolAt = cops.patrolAt[rider.id] ?? -1;
-        const grassPatrol = patrolAt >= 0 && (rider.road.d < e.dMin || rider.road.d > e.dMax);
-        if (grassPatrol) {
+        const grassWaiter = rider.road.d < e.dMin || rider.road.d > e.dMax;
+        if (grassWaiter) {
           expect(config.riders[rider.id]?.controller.kind).toBe('cop');
           expect(cops.phase[rider.id]).toBe(COP_PARKED);
           expect(rider.mode).toBe('Road');
           expect(rider.speed).toBe(0);
-          expect(config.route.progressAt(rider.road.edge, rider.road.s)).toBeCloseTo(patrolAt, 6);
+          if (patrolAt >= 0)
+            expect(config.route.progressAt(rider.road.edge, rider.road.s)).toBeCloseTo(patrolAt, 6);
           const pos = { edge: rider.road.edge, s: rider.road.s, d: rider.road.d, dir: rider.road.dir };
-          expect(terrainPatrolSpot(config, pos), `validated grass patrol ${rider.id}`).toEqual(pos);
+          expect(terrainPatrolSpot(config, pos), `validated grass waiter ${rider.id}`).toEqual(pos);
           const ground = terrainAt(road.terrain, rider.x, rider.z);
           expect(ground?.surface).toBe('grass');
           expect(rider.y).toBeCloseTo(ground!.y, 6);
-          grassPatrols++;
+          grassWaiters++;
         } else {
           expect(
             road
@@ -183,20 +184,28 @@ describe('Eagle Point North Run', () => {
           else racingGrid++;
         }
         for (const other of riders) {
-          if (other.id <= rider.id || other.road.edge !== rider.road.edge) continue;
+          if (other.id <= rider.id) continue;
           const otherBox = hitboxOf(config.riders[other.id]?.hitbox);
-          expect(
-            Math.abs(other.road.s - rider.road.s) >= (box.lengthM + otherBox.lengthM) / 2 ||
-              Math.abs(other.road.d - rider.road.d) >= (box.widthM + otherBox.widthM) / 2,
-            `nonoverlapping northern grid ${rider.id}/${other.id}`,
-          ).toBe(true);
+          if (other.road.edge === rider.road.edge)
+            expect(
+              Math.abs(other.road.s - rider.road.s) >= (box.lengthM + otherBox.lengthM) / 2 ||
+                Math.abs(other.road.d - rider.road.d) >= (box.widthM + otherBox.widthM) / 2,
+              `nonoverlapping northern grid ${rider.id}/${other.id}`,
+            ).toBe(true);
+          if (Math.abs(other.y - rider.y) < 1.6)
+            expect(
+              Math.hypot(other.x - rider.x, other.z - rider.z),
+              `physical rider body separation ${rider.id}/${other.id}`,
+            ).toBeGreaterThanOrEqual(
+              (Math.hypot(box.lengthM, box.widthM) + Math.hypot(otherBox.lengthM, otherBox.widthM)) / 2,
+            );
         }
         for (const along of [-box.lengthM / 2, box.lengthM / 2])
           for (const across of [-box.widthM / 2, box.widthM / 2]) {
             const s = rider.road.s + along;
             expect(s).toBeGreaterThanOrEqual(0);
             const frame = road.frameAt(rider.road.edge, rider.road.s);
-            const p = grassPatrol
+            const p = grassWaiter
               ? {
                   x: rider.x + frame.tx * along - frame.tz * across,
                   y: rider.y + frame.grade * along + Math.tan(frame.bank) * across,
@@ -257,10 +266,9 @@ describe('Eagle Point North Run', () => {
       expect(pavement).toBeGreaterThan(0);
       expect(grass).toBeGreaterThan(0);
       expect(racingGrid, 'racing grid still exercises the whole paved-width rule').toBeGreaterThan(0);
-      expect(pavedLaw, 'non-patrol law still exercises the original paved-width rule').toBeGreaterThan(0);
-      expect(grassPatrols, 'the actual waiting patrol exercises physical grass support').toBeGreaterThan(0);
+      expect(grassWaiters, 'actual parked law exercises physical grass support').toBeGreaterThan(0);
       process.stdout.write(
-        `[north support] ${pavement} drawn pavement rays, ${grass} terrain/runoff rays, ${bodyCorners} grid/patrol/finish body corners; ${racingGrid} paved racers, ${pavedLaw} paved law, ${grassPatrols} validated grass patrols\n`,
+        `[north support] ${pavement} drawn pavement rays, ${grass} terrain/runoff rays, ${bodyCorners} grid/waiter/finish body corners; ${racingGrid} paved racers, ${pavedLaw} paved law, ${grassWaiters} validated grass waiters\n`,
       );
     } finally {
       built.dispose();

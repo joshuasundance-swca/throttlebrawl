@@ -154,7 +154,15 @@ import {
 import { lawContactOf } from './law-knock';
 import { terrainPatrolSpot } from './terrain-patrol';
 
-import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
+import {
+  emit,
+  riderHitbox,
+  speedMultiplierOf,
+  systemState,
+  type Mover,
+  type SimSystem,
+  type World,
+} from '../world';
 import { lateSteps } from '../late';
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
@@ -364,6 +372,30 @@ export const CHAOS_HIT = 1;
 const PARK_GAP_M = 8;
 /** With a patrol (more cops in the race), the lot's cops park this close, about the middle. */
 const LOT_GAP_M = 4;
+
+/**
+ * Search only authored permission spans that this route actually allows. The body radius
+ * trims both ends; spacing is at least the ordinary reserve-lot gap. Finite content bounds
+ * the work without imposing a maximum field size or stopping short of a later safe span.
+ */
+function* waitingVergePositions(config: SimConfig, radius: number): Generator<RoadPos> {
+  for (const edge of config.route.mainEdges) {
+    const road = config.road.edges[edge];
+    if (!road || !config.route.allows(edge)) continue;
+    for (const tag of road.tags) {
+      if (tag.tag !== 'patrol-verge') continue;
+      const a = config.route.progressAt(edge, tag.s0);
+      const b = config.route.progressAt(edge, tag.s1);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      const lo = Math.max(0, Math.min(a, b)) + radius;
+      const hi = Math.min(config.route.length, Math.max(a, b)) - radius;
+      for (let at = lo; at <= hi; at += Math.max(LOT_GAP_M, 2 * radius + 0.3)) {
+        const pos = routePosAt(config, at);
+        if (pos) yield pos;
+      }
+    }
+  }
+}
 
 /**
  * Playtest 2's patrol [default] (the file header has the rule). `windowsS` are the seconds into the
@@ -965,9 +997,9 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean, grass = fa
   // Not beside a shortcut: a player who takes it would ride past him out of sight.
   const at = route.progressAt(pos.edge, pos.s);
   for (const [a, b] of branchSpans(config)) if (at >= a - 40 && at <= b + 40) return null;
+  if (grass) return terrainPatrolSpot(config, pos);
   const { drive: lane, shoulder } = sideLanes(config, pos);
   if (shoulder) return { ...pos, d: shoulder.dCenterM };
-  if (grass) return terrainPatrolSpot(config, pos);
   if (!edgeOk || !lane) return null;
   const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
   const spot = { ...pos, d: lane.dCenterM >= 0 ? hi : lo };
@@ -1231,6 +1263,62 @@ function startPatrol(
 }
 
 /**
+ * A route without an accessible lot must not leave its waiting reserves on the racing grid.
+ * Explicit grass permission supplies a bounded fallback after ordinary lot/patrol placement;
+ * existing safe positions and the cop-escape lead retain their original behavior.
+ */
+function parkUnsafeReserves(world: World, config: SimConfig, st: CopsState): void {
+  if (
+    !config.route.mainEdges.some((edge) =>
+      config.road.edges[edge]?.tags.some((t) => t.tag === 'patrol-verge'),
+    )
+  )
+    return;
+  for (const id of st.cops) {
+    const m = world.movers[id];
+    if (!m || st.phase[id] !== COP_PARKED || (st.patrolAt[id] ?? -1) >= 0 || clearOfLanes(config, m.pos))
+      continue;
+    if (config.event.kind === 'cop-escape' && id === st.cops[0]) continue;
+    const box = riderHitbox(config, m.riderIndex);
+    const radius = Math.sqrt(box.lengthM * box.lengthM + box.widthM * box.widthM) / 2;
+    let placed = false;
+    for (const p of waitingVergePositions(config, radius)) {
+      const spot = patrolSpot(config, p, true, true);
+      if (!spot) continue;
+      const validated = terrainPatrolSpot(config, spot);
+      if (!validated || validated.d !== spot.d) continue;
+      const w = config.road.toWorld(spot.edge, spot.s, spot.d, 0);
+      const grass = terrainAt(config.road.terrain, w.x, w.z);
+      if (!grass || grass.surface !== 'grass') continue;
+      const occupied = world.movers.some((other) => {
+        if (other.id === id || other.kind !== 'rider') return false;
+        const q = config.road.toWorld(other.pos.edge, other.pos.s, other.pos.d, other.h);
+        if (Math.abs(q.y - grass.y) >= 1.6) return false;
+        const otherBox = riderHitbox(config, other.riderIndex);
+        const otherRadius =
+          Math.sqrt(otherBox.lengthM * otherBox.lengthM + otherBox.widthM * otherBox.widthM) / 2;
+        const clearance = Math.max(
+          radius + otherRadius + 0.3,
+          defOf(config, other)?.controller.kind === 'cop' ? LOT_GAP_M : 0,
+        );
+        const dx = w.x - q.x,
+          dz = w.z - q.z;
+        return dx * dx + dz * dz < clearance * clearance;
+      });
+      if (occupied) continue;
+      m.pos = spot;
+      m.h = grass.y - w.y;
+      m.yaw = 0;
+      m.speed = 0;
+      placed = true;
+      break;
+    }
+    if (!placed)
+      throw new RangeError(`No safe permitted waiting position for cop ${id} on ${config.road.id}`);
+  }
+}
+
+/**
  * Puts up the END OF JURISDICTION sign (run W-T; the file header has the rule): the first clear
  * spot from JURISDICTION.share of the route, on land, at least HEAT.roadblockFinishM short of the
  * finish, beside the road on the route's right. None found: no sign.
@@ -1309,7 +1397,10 @@ export const copsSystem: SimSystem = {
       st.blockUntil[m.id] = 0;
       world.inputs[m.id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
     }
-    if (!mix) return;
+    if (!mix) {
+      parkUnsafeReserves(world, config, st);
+      return;
+    }
     // cops-3's spawn mix: the first `count` cops come out (each still on his roll), a wave gap
     // apart; the rest wait in the lot for a chaos summon (or, below, go on patrol).
     const count = Math.max(
@@ -1327,6 +1418,7 @@ export const copsSystem: SimSystem = {
     });
     st.chaosAt = Math.max(1, (world.params['cops.chaosSummonAt'] ?? 10) * jitter(world, mix.randomness));
     if ((mix.patrolMax ?? 0) > 0 && mix.mode !== 'none') startPatrol(world, config, st, count, spawn);
+    parkUnsafeReserves(world, config, st);
     if (heatOn(config) && mix.jurisdiction) placeLine(config, st);
   },
   // The step is in ./step.ts, a lazy chunk the race waits for (src/sim/late.ts).
