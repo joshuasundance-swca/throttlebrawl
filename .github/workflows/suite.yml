@@ -364,6 +364,11 @@ jobs:
   # rather than the missing-file mean. With the current 70 specs, ten slices predict 413-420 s;
   # eleven predict 370-376 s under the same 400 s line. These are planning predictions,
   # not measured job duration. Tests, worker policy, timeout and last-slice behavior are unchanged.
+  # Twelve since 2026-10-22: the new replay spec has two complete passing cases in
+  # train39877645083, browser job120167344043 (1.5m each, upper reservation186s).
+  # With this measured-case reservation, eleven predicts401-408s; twelve368-397s.
+  # Recent full browser refresh and replay split probes still exceed400s on eleven.
+  # Timeout, safety share, workers, train concurrency cap and final-slice duties stay unchanged.
   browser:
     name: browser (${{ matrix.shard }}/${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).totals.browser || strategy.job-total }})
     if: ${{ inputs.full && (inputs.control-selection == '' || !inputs.diagnostic-control || join(fromJSON(inputs.control-selection).browser, '') != '') }}
@@ -379,7 +384,7 @@ jobs:
       # ceiling, not a project budget (https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstrategymatrix).
       max-parallel: ${{ inputs.heads != '' && 6 || 256 }}
       matrix:
-        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).browser || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]') }}
+        shard: ${{ inputs.control-selection != '' && fromJSON(inputs.control-selection).browser || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]') }}
     steps:
       - uses: actions/checkout@v7
         with:
