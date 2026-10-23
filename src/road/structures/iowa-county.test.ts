@@ -8,9 +8,11 @@ import { planStructures, structuresAt, topAt, type StructureSpec } from '../stru
 import { ensureStructures, raceStructures, structureLayersFor } from '../structures';
 import { loadIowaCountyLayout } from '../index';
 import { landEdgeOf, sectionGroundOf, zoneReachOf } from '../drawn-ground';
+import { packInputs } from '../../../scripts/pack-inputs.mjs';
 
 const root = 'packs/region-clinton/regions/clinton-iowa';
-const read = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(file: string): T => JSON.parse(inputs.materialize(file, readFileSync(file, 'utf8'))) as T;
 const network = read<BakedNetwork>(`${root}/networks/osm-clinton-ia136.json`);
 const roads = network.roads.map((id) => read<BakedRoad>(`${root}/roads/${id}.json`));
 const road = createRoadNetwork({ network, roads });

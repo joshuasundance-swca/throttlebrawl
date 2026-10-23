@@ -140,7 +140,7 @@
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { atan2, clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
-import { standOffLanes, type RoadPos } from '../../road';
+import { standOffLanes, terrainAt, type RoadPos } from '../../road';
 import { barrierLimits } from '../riders';
 import {
   LAW_PROP_ID_BASE,
@@ -152,6 +152,7 @@ import {
 } from '../types';
 
 import { lawContactOf } from './law-knock';
+import { terrainPatrolSpot } from './terrain-patrol';
 
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 import { lateSteps } from '../late';
@@ -949,7 +950,7 @@ function branchSpans(config: SimConfig): [number, number][] {
   );
 }
 
-function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos | null {
+function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean, grass = false): RoadPos | null {
   const { road, route } = config;
   if (!road.edges[pos.edge] || !route.allows(pos.edge) || road.branchSideAt(pos.edge, pos.s) !== 0)
     return null;
@@ -966,6 +967,7 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos |
   for (const [a, b] of branchSpans(config)) if (at >= a - 40 && at <= b + 40) return null;
   const { drive: lane, shoulder } = sideLanes(config, pos);
   if (shoulder) return { ...pos, d: shoulder.dCenterM };
+  if (grass) return terrainPatrolSpot(config, pos);
   if (!edgeOk || !lane) return null;
   const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
   const spot = { ...pos, d: lane.dCenterM >= 0 ? hi : lo };
@@ -1046,8 +1048,26 @@ export function patrolSpots(world: World, config: SimConfig, count: number): { a
       const spot = pos && patrolSpot(config, pos, true);
       if (spot) {
         out.push({ at, pos: spot });
+        found = true;
         break;
       }
+    }
+    if (found) continue;
+    // An explicit tag permits physical grass only after both original paved searches fail.
+    // Same bounded station order, route limits and spacing; no extra random draw.
+    for (const direction of [1, -1]) {
+      const end = direction === 1 ? PATROL.patrolTries - 1 : PATROL.patrolTries;
+      for (let i = direction === 1 ? 0 : 1; i <= end; i++) {
+        const at = want + direction * i * PATROL.stepM;
+        if (at < earliest || at > PATROL.maxProgress * length) continue;
+        const pos = routePosAt(config, at);
+        const spot = pos && patrolSpot(config, pos, true, true);
+        if (!spot) continue;
+        out.push({ at, pos: spot });
+        found = true;
+        break;
+      }
+      if (found) break;
     }
   }
   // Long alternatives can bypass a timed main-road patrol for most of the race. Prefer a safe
@@ -1182,6 +1202,12 @@ function startPatrol(
     const spot = k >= 0 ? spots[k] : undefined;
     if (spot) {
       m.pos = spot.pos;
+      const e = config.road.edges[spot.pos.edge];
+      if (e && (spot.pos.d < e.dMin || spot.pos.d > e.dMax)) {
+        const at = config.road.toWorld(spot.pos.edge, spot.pos.s, spot.pos.d, 0);
+        const grass = terrainAt(config.road.terrain, at.x, at.z);
+        if (grass?.surface === 'grass') m.h = grass.y - at.y;
+      }
       m.yaw = 0;
       m.speed = 0;
       st.spawns[id] = 1;

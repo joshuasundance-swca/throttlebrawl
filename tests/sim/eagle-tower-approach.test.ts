@@ -18,6 +18,7 @@ import { createSimWithWorld } from '../../src/sim/create';
 import { riderState } from '../../src/sim/riders';
 import { supportKeyOf } from '../../src/sim/riders/supports';
 import { ISOLATED } from './batch';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const registry = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const { config } = createHeadlessRace(
@@ -120,8 +121,12 @@ function approach(source: SimConfig, outside: boolean, airborne: boolean) {
 
 function withoutFoundation(): SimConfig {
   const root = 'packs/region-clinton/regions/clinton-iowa';
+  const inputs = packInputs(process.cwd());
   const network = JSON.parse(
-    readFileSync(`${root}/networks/osm-clinton-eagle-point.json`, 'utf8'),
+    inputs.materialize(
+      `${root}/networks/osm-clinton-eagle-point.json`,
+      readFileSync(`${root}/networks/osm-clinton-eagle-point.json`, 'utf8'),
+    ),
   ) as BakedNetwork;
   const roads = network.roads.map(
     (id) => JSON.parse(readFileSync(`${root}/roads/${id}.json`, 'utf8')) as BakedRoad,

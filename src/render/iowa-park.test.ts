@@ -26,9 +26,11 @@ import { IowaParkLayer } from './iowa-park';
 import { deciduousGeometry } from './deciduous';
 import { TerrainTrees } from './terrain-trees';
 import { planTerrainTrees } from '../road/structures/terrain-trees';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const ROOT = 'packs/region-clinton/regions/clinton-iowa';
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const network = read<BakedNetwork>(`${ROOT}/networks/osm-clinton-eagle-point.json`);
 const roads = network.roads.map((id) => read<BakedRoad>(`${ROOT}/roads/${id}.json`));
 const road = createRoadNetwork({ network, roads });

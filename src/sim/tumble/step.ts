@@ -30,7 +30,7 @@ import { supportedWorldVelocity, leaveSupport } from '../riders/supports';
 import { startTrafficGhost } from '../traffic';
 import { type SimConfig, InputFlag } from '../types';
 import { type World, emit, type Mover, noteGrudge } from '../world';
-import { wallBand, type TumbleBody, ownSideBand, standingBand } from './body';
+import { wallBand, ownSideBand, standingBand } from './body';
 import { type Box, nearbyBoxes, collideBox } from './contacts';
 import {
   makeCluster,
@@ -249,6 +249,7 @@ function startCrash(
     { x: wx * RIDER_THROW + rx * riderSide, y: riderUp, z: wz * RIDER_THROW + rz * riderSide },
     turn(riderPitch, riderRoll, spin),
     pos.edge,
+    pos,
   );
   const bikeRig = makeCluster(
     'bike',
@@ -257,6 +258,7 @@ function startCrash(
     { x: wx * BIKE_THROW + rx * bikeSide, y: bikeUp, z: wz * BIKE_THROW + rz * bikeSide },
     turn(bikePitch, bikeRoll, 0),
     pos.edge,
+    pos,
   );
   const record: TumbleRecord = {
     phase: 'tumble',
@@ -552,15 +554,16 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
 /** Parks the bike at the nearest standing spot and stands the rider up on foot beside it. */
 function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): void {
   const road = config.road;
-  const place = (b: TumbleBody, ownSide: boolean): RoadPos => {
-    const p = road.project(b.x, b.z, b.edge);
+  const place = (c: Cluster, ownSide: boolean): RoadPos => {
+    const b = centre(c.p);
+    const p = c.anchor ?? road.project(b.x, b.z, b.edge);
     const dir = handBackDir(config, r, p.edge, p.s);
     const band = ownSide ? ownSideBand(road, p.edge, p.s, dir) : standingBand(road, p.edge, p.s);
     const d = p.d < band.lo ? band.lo : p.d > band.hi ? band.hi : p.d;
     return { edge: p.edge, s: p.s, d, dir };
   };
   // The bike is parked on the rider's own side of the road, so the remount never faces traffic.
-  const bike = place(r.bike, true);
+  const bike = place(r.bikeRig, true);
   r.parked = bike;
   r.phase = 'onFoot';
   r.handbackTick = world.tick;
@@ -573,7 +576,7 @@ function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): v
     r.getUpTotal = secondsToTicks(param(world, 'tumble.getUpS'));
     r.getUp = r.getUpTotal;
   }
-  m.pos = place(r.rider, false);
+  m.pos = place(r.riderRig, false);
   if (r.skipQueued) startSkip(world, config, m, r, bike);
 }
 
