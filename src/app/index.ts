@@ -1309,7 +1309,7 @@ export function createApp(opts: AppOptions): AppHandle {
         const region = pickedChoice()?.id ?? regionKeyOf(registry, eventId);
         const chosen = quickPlayEvent(registry, region, settings.quickPlayKind ?? 'race');
         const at = chosen?.eventId ?? eventId;
-        const view = raceOptionsView(registry, at, route, profile.bikes, settings.units);
+        const view = raceOptionsView(registry, at, route, profile.bikes, settings.units, settings.raceLength);
         const e = registry.events[at]!;
         if (e.kind === 'grudge-match' || (e.kind === 'takedown-hunt' && Array.isArray(e.rules?.['targets'])))
           view.rivals = [];
@@ -1440,6 +1440,10 @@ export function createApp(opts: AppOptions): AppHandle {
       },
       onSettingsChange: (next) => {
         const changedKind = next.quickPlayKind !== settings.quickPlayKind;
+        const changedCourse =
+          next.raceLength !== settings.raceLength &&
+          routeKeyOf(registry, eventId, next.raceLength, route) !==
+            routeKeyOf(registry, eventId, settings.raceLength, route);
         const changedLook = next.look !== settings.look;
         settings = next;
         settingsStore.save(next);
@@ -1455,7 +1459,7 @@ export function createApp(opts: AppOptions): AppHandle {
         }
         applyShake(next);
         audio.setRadioCut(radioCut(next));
-        if (changedKind && state !== 'race' && ordinaryAllowed()) showPicked();
+        if ((changedKind || changedCourse) && state !== 'race' && ordinaryAllowed()) showPicked();
       },
     },
   });
@@ -2187,6 +2191,7 @@ export function createApp(opts: AppOptions): AppHandle {
     // Offered again even when the event did not change (back to a region before another's road
     // data arrived), so the picker never stays empty.
     offerRoutes();
+    stream = streams.forEvent(registry, eventId, settings.raceLength, route);
     curr = newSim(seeds.next()).snapshot();
     prev = null;
     showRegion();

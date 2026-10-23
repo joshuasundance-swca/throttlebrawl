@@ -6,7 +6,7 @@
 import { lookup, packClosure, packOf, packSubset, type ContentRegistry } from '../content';
 import { MAX_RACE_RIVALS, type RaceOptions, type RaceTraffic } from '../save';
 import { formatSpeed, type OptionChoice, type RaceOptionsView } from '../ui';
-import { eventKey, PLAYER_PRESET, qualifyIn, raceField, type RaceSetup } from './config';
+import { eventKey, PLAYER_PRESET, qualifyIn, raceField, raceRouteKey, type RaceSetup } from './config';
 import { routeChoices } from './regions';
 import { bikeComparison } from './bike-comparison';
 
@@ -98,6 +98,7 @@ export function raceOptionsView(
   route: string | null,
   garage: Garage,
   units: 'mph' | 'kmh',
+  lengthId?: string,
 ): RaceOptionsView {
   const key = eventKey(eventId);
   const pack = packOf(key);
@@ -108,6 +109,12 @@ export function raceOptionsView(
     ({ name?: unknown; timeOfDayOptions: readonly { id: string }[] } & object) | undefined;
   const regionName = typeof region?.name === 'string' && region.name ? region.name : String(event.region);
   const road = routeChoices(reg, key).find((c) => c.id === route) ?? routeChoices(reg, key)[0];
+  const namedCourses =
+    new Set(event.lengths.map((l) => qualifyIn(pack, l.route))).size > 1 &&
+    event.lengths.some((l) => !['short', 'standard', 'long'].includes(l.id));
+  const routeName = (id: string) =>
+    reg.routes[id]?.name ?? words(reg.routes[id]?.id ?? id.split(':').at(-1) ?? id);
+  const selectedRoad = routeName(raceRouteKey(reg, key, lengthId, route));
   const bikeName = (id: string) => reg.bikes[id]?.name ?? id;
   const starter = qualifyIn('base', lookup(reg.riders, qualifyIn('base', PLAYER_PRESET)).bike);
   const usual = raceField(race, key, 1, false).length;
@@ -131,6 +138,18 @@ export function raceOptionsView(
     ...Array.from({ length: cast + 1 }, (_, n) => ({ value: n, label: n === 0 ? 'None' : String(n) })),
   ];
   const lengths: OptionChoice<string>[] =
-    route && road?.id === route ? [] : event.lengths.map((l) => ({ value: l.id, label: words(l.id) }));
-  return { where: `${regionName}, ${road?.name ?? event.name ?? event.id}`, bikes, times, rivals, lengths };
+    route && road?.id === route
+      ? []
+      : event.lengths.map((l) => ({
+          value: l.id,
+          label: namedCourses ? routeName(qualifyIn(pack, l.route)) : words(l.id),
+        }));
+  return {
+    where: `${regionName}, ${selectedRoad}`,
+    bikes,
+    times,
+    rivals,
+    lengths,
+    ...(namedCourses ? { lengthLabel: 'Course' as const } : {}),
+  };
 }
