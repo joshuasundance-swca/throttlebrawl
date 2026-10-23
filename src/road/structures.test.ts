@@ -12,6 +12,7 @@ import {
   modelFoot,
   modelSolid,
   planStructures,
+  raceStructures,
   requireStructures,
   STRUCTURE_MODELS,
   structureLayersFor,
@@ -146,6 +147,18 @@ describe('a structure is an oriented box in world metres with a base and a roof'
 });
 
 describe('the registry: one plan per network and seed, worked out by the layers the network needs', () => {
+  it('publishes the empty race plan so rendering can distinguish a clear world from an unplanned one', () => {
+    const plain = road();
+    expect(structuresOf(plain, 3)).toBeNull();
+    const plan = raceStructures(plain, 3, layers());
+    expect(plan.items).toEqual([]);
+    expect(structuresOf(plain, 3)).toBe(plan);
+    expect(raceStructures(plain, 3, layers())).toBe(plan);
+    expect(structuresOf(plain, 4)).toBeNull();
+    const unknown = road({ tags: [tag('towers')] });
+    expect(() => raceStructures(unknown, 3, layers())).toThrow(/not planned/);
+    expect(structuresOf(unknown, 3)).toBeNull();
+  });
   it('names the layers a network needs from its tags and features, and none for a plain road', () => {
     expect(structureLayersFor(road(), layers())).toEqual([]);
     expect(structureLayersFor(road({ tags: [tag('towers')] }), layers())).toEqual(['towers']);

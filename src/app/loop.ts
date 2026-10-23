@@ -117,6 +117,7 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
     },
     resume() {
       paused = false;
+      acc = 0;
       last = -1; // no catch-up burst after a pause
     },
     get paused() {

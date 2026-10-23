@@ -6,6 +6,15 @@ import { reloadLosesNothing, transition, type AppEvent, type AppState } from './
 // to the start screen). app/ hands this to platform/'s startOffline as `canReload`.
 
 describe('when a reload to a newer build may happen', () => {
+  it('keeps a watched race and its original result across update offers', () => {
+    expect(transition('results', 'watch')).toBe('replay');
+    expect(reloadLosesNothing('replay')).toBe(false);
+    expect(transition('replay', 'return')).toBe('results');
+    for (const state of ['boot', 'tapToStart', 'menu', 'race'] as const)
+      expect(transition(state, 'watch')).toBeNull();
+    for (const event of ['race', 'finished', 'back'] as const) expect(transition('replay', event)).toBeNull();
+  });
+
   it('never mid-race or on a result; in the menus, the start screen and boot', () => {
     const all: AppState[] = ['boot', 'tapToStart', 'menu', 'race', 'results'];
     expect(all.filter(reloadLosesNothing)).toEqual(['boot', 'tapToStart', 'menu']);

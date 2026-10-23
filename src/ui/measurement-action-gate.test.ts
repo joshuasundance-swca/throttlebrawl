@@ -434,6 +434,8 @@ describe('concrete UI pre-mutation deliveries', () => {
           onStartTap: tap,
           onRace: race,
           onBackToMenu: vi.fn(),
+          onWatchReplay: vi.fn(),
+          onReplayAction: vi.fn(),
           onCopyReport: debug,
           ...(withTool ? { onMeasureFrames: measure } : {}),
           onRegionChange: region,
