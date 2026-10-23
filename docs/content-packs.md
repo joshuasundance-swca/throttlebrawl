@@ -939,6 +939,8 @@ Tag: `[decided]` that all four kinds are wanted (secret roads and shortcuts, a s
 
 Tag: `[decided]` for one connected network with along/across coordinates, junctions, streaming, and jumps and ramps in v1; `[default]` for this exact interface.
 
+`patrol-verge` `[default]` is explicit author permission for a bounded grass waiting fallback after the ordinary paved patrol searches fail. Apply its side and station span only where actual solid grass supports the entire cop, with compatible height and grade, no barriers, gaps, water or solid blockers, and clearance from every road's lanes. It creates no land, parking lot or public-access claim. Paved placement, route bounds, cop spacing, bend/feature avoidance and random draws stay unchanged. The complete cop must fit within the four-metre belt off its lane edge, inside the terrain-tree planner's eight-metre recovery clearance; oversized bodies are rejected. Runtime queries validate support and solids, and authored opted-in routes are tested against the actual tree plan. This is gameplay permission, not automatic parking wherever grass is drawn. North Loop is the Eagle Point recipe's only opted-in road.
+
 This is the interface a later **offline GIS pipeline** emits, and hand-authored M1 tracks use the same interface. The runtime never talks to OpenStreetMap or any other source; it only reads baked files. That follows the research: "an offline compiler … bakes a compact game-specific format. The runtime never talks to OSM."
 
 ```mermaid

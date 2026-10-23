@@ -48,6 +48,12 @@
       "s1": 1358.8979,
       "side": "both",
       "tag": "iowa-park"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1358.8979,
+      "side": "both",
+      "tag": "patrol-verge"
     }
   ],
   "features": [],
@@ -634,6 +640,6 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Baked by tools/gis from networks/osm-clinton-eagle-point.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+    "notes": "Baked by tools/gis from networks/osm-clinton-eagle-point.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`. The matching recipe's patrol-verge tag explicitly permits physically checked gameplay patrol waiting on grass; it is not a surveyed parking or public access claim. Geometry unchanged."
   }
 }

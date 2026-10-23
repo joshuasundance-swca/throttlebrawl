@@ -138,6 +138,9 @@ describe('Eagle Point northern arc: ordinary motorcycles', () => {
     let travelledM = 0;
     const transitions: unknown[] = [];
     const unearnedProgress: unknown[] = [];
+    const footprintLengthM = snapshot.entities[playerId]?.footprintLengthM;
+    expect(footprintLengthM, 'the reproduced rider has a physical bike footprint').toBeGreaterThan(0);
+    if (footprintLengthM === undefined) throw new Error('Missing player bike footprint');
     const position = (m: (typeof snapshot.entities)[number]) => ({
       mode: m.mode,
       road: m.road,
@@ -171,7 +174,7 @@ describe('Eagle Point northern arc: ordinary motorcycles', () => {
         before.mode === 'Tumble' &&
         after.mode === 'Tumble' &&
         outsidePavement &&
-        stepM < after.footprintLengthM &&
+        stepM < footprintLengthM &&
         jump > config.route.length / 2
       ) {
         unearnedProgress.push({

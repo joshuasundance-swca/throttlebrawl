@@ -58,10 +58,25 @@ describe('tumble station continuity', () => {
     ]);
     const b = bundle.roads[1]!;
     const data = b.samples.data;
-    data['x'] = data['x']!.map(() => 3);
-    data['y'] = data['y']!.map(() => 20);
-    data['z'] = data['z']!.map((_, i) => -i * b.sampleSpacingM);
-    const road = createRoadNetwork(bundle);
+    const road = createRoadNetwork({
+      ...bundle,
+      roads: bundle.roads.map((r) =>
+        r.id !== b.id
+          ? r
+          : {
+              ...b,
+              samples: {
+                ...b.samples,
+                data: {
+                  ...data,
+                  x: data['x']!.map(() => 3),
+                  y: data['y']!.map(() => 20),
+                  z: data['z']!.map((_, i) => -i * b.sampleSpacingM),
+                },
+              },
+            },
+      ),
+    });
     const w = road.toWorld(1, 90, 0, 0);
     expect(road.project(w.x, w.z, 0).edge).toBe(1);
     const anchor = { edge: 0, s: 10, d: 0 };
