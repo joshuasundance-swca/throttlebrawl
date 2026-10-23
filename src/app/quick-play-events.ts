@@ -148,7 +148,7 @@ export function quickPlayObjective(reg: ContentRegistry, eventId: string): strin
         : r['winBy'] === 'knockdowns'
           ? `Knock ${rival} down ${count} times${r['rule'] === 'audit' ? ', plus one per hit you take (up to two more)' : ''}.`
           : `Beat ${rival} to the finish.`;
-    return `${win} Named opposition and event road stay fixed.`;
+    return `${win} Named opposition; authored event courses only.`;
   }
   return 'Race to the finish. Quick Play leaves your career unchanged.';
 }

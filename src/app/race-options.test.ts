@@ -5,7 +5,16 @@ import { describe, expect, it } from 'vitest';
 import { registryFromGlob } from '../content';
 import { createSim } from '../sim/api';
 import { DEFAULT_RACE_OPTIONS, MAX_RACE_RIVALS, RACE_TRAFFIC, type RaceOptions } from '../save';
-import { buildSimConfig, raceField, raceTimeOfDay, realRoutes, type RaceSetup } from './config';
+import {
+  buildSimConfig,
+  eventLength,
+  qualifyIn,
+  raceField,
+  raceRouteKey,
+  raceTimeOfDay,
+  realRoutes,
+  type RaceSetup,
+} from './config';
 import { menuBikes, menuRaceSetup, raceOptionsView, TRAFFIC_SCALE } from './race-options';
 import { createStreamCache, regionChoices } from './regions';
 
@@ -219,6 +228,66 @@ describe('P4-12: the menu race options reach the race config', () => {
 describe('P4-12, P4-13: the menu race options, from the record to the race', () => {
   const garage = { owned: [] as string[], current: null as string | null };
   const opts = (o: Partial<RaceOptions>): RaceOptions => ({ ...DEFAULT_RACE_OPTIONS, ...o });
+
+  it('named authored courses show their route names and selected location, with standard fallback', () => {
+    const courses = Object.entries(ALL.events).filter(
+      ([id, e]) =>
+        new Set(e.lengths.map((l) => qualifyIn(id.split(':')[0]!, l.route))).size > 1 &&
+        e.lengths.some((l) => !['short', 'standard', 'long'].includes(l.id)),
+    );
+    expect(courses.length, 'carried events offer a named authored course').toBeGreaterThan(0);
+    for (const [id, event] of courses) {
+      const standard = eventLength(event, 'standard');
+      const routeName = (route: string) => {
+        const def = ALL.routes[qualifyIn(id.split(':')[0]!, route)]!;
+        return (def.name ?? def.id.replace(/-/g, ' ')).toLowerCase();
+      };
+      for (const length of event.lengths) {
+        const view = raceOptionsView(ALL, id, null, garage, 'mph', length.id);
+        expect(view.lengthLabel).toBe('Course');
+        expect(view.lengths.find((l) => l.value === length.id)?.label.toLowerCase()).toBe(
+          routeName(length.route),
+        );
+        expect(view.where.toLowerCase()).toContain(routeName(length.route));
+        const stream = streams.forEvent(ALL, id, length.id);
+        expect(stream).toBe(streams.forRoute(ALL, raceRouteKey(ALL, id, length.id)));
+        const c = buildSimConfig(ALL, stream, { eventId: id, length: length.id, seed: 1 });
+        const original = buildSimConfig(ALL, streams.forEvent(ALL, id, standard.id), {
+          eventId: id,
+          length: standard.id,
+          seed: 1,
+        });
+        expect(c.event.routeId).toBe(raceRouteKey(ALL, id, length.id));
+        expect(c.event.paceMps).toBe(original.event.paceMps);
+        expect(c.riders.map((r) => r.contentId)).toEqual(original.riders.map((r) => r.contentId));
+      }
+      expect(raceOptionsView(ALL, id, null, garage, 'mph', 'missing-course').where.toLowerCase()).toContain(
+        routeName(standard.route),
+      );
+      expect(eventLength(event, 'missing-course')).toBe(standard);
+      const sameRoad = {
+        ...ALL,
+        events: {
+          ...ALL.events,
+          [id]: { ...event, lengths: [standard, { ...standard, id: 'named-same-road' }] },
+        },
+      };
+      expect(raceOptionsView(sameRoad, id, null, garage, 'mph').lengthLabel).toBeUndefined();
+    }
+    const ordinary = EVENTS.find((id) =>
+      ALL.events[id]!.lengths.every((l) => ['short', 'standard', 'long'].includes(l.id)),
+    )!;
+    const ordinaryView = raceOptionsView(
+      ALL,
+      ordinary,
+      null,
+      garage,
+      'mph',
+      courses[0]![1].lengths.at(-1)!.id,
+    );
+    expect(ordinaryView.lengthLabel).toBeUndefined();
+    expect(ordinaryView.lengths.find((l) => l.value === 'standard')?.label).toBe('Standard');
+  });
 
   it('the defaults change nothing: the race as it was, the garage bike riding', () => {
     expect(menuRaceSetup(ALL, DEFAULT_RACE_OPTIONS, garage)).toEqual({});
