@@ -3,6 +3,7 @@ import { openQuickPlay } from './menu-navigation';
 import type { TestHandle } from '../../src/dev/handle';
 import { readFileSync } from 'node:fs';
 import { diskEvents, domId, qualifyIn } from './packs-on-disk';
+import { fastForwardDone } from './lockstep';
 
 const profileFixture: unknown = JSON.parse(
   readFileSync(new URL('../fixtures/save/profile-v1.json', import.meta.url), 'utf8'),
@@ -128,6 +129,7 @@ test('an authored Grudge course updates its location and preview, launches and r
   await expect.poll(position).toEqual(original);
   await course(chosen.id);
   const before = await profile(page);
+  await page.screenshot({ path: test.info().outputPath('authored-course-setup.png') });
   await page.locator('#race-options-race').click();
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
   const first = await config(page);
@@ -137,9 +139,30 @@ test('an authored Grudge course updates its location and preview, launches and r
   await page.evaluate(() => {
     const h = (window as TestWindow).__game!;
     h.setBot(true);
+    h.fastForward(
+      (snap) =>
+        (snap.entities.find((e) => e.id === h.playerId())?.progress ?? 0) >= snap.race.routeLength / 2 ||
+        snap.race.over,
+      { perFrame: 240, then: 1 },
+    );
+  });
+  await fastForwardDone(page, 'authored course midpoint');
+  await page.screenshot({ path: test.info().outputPath('authored-course-race.png') });
+  await page.evaluate(() => {
+    const h = (window as TestWindow).__game!;
+    h.setBot(true);
     h.fastForward((snap) => snap.race.over, { perFrame: 240, then: 120 });
   });
   await expect(page.locator('#results')).toBeVisible({ timeout: 90_000 });
+  console.log(
+    `Authored course outcome (one bot observation, not balance acceptance): ${JSON.stringify(
+      await page.evaluate(() => {
+        const h = (window as TestWindow).__game!;
+        return { tick: h.snapshot()?.tick, player: h.playerId(), race: h.snapshot()?.race };
+      }),
+    )}`,
+  );
+  await page.screenshot({ path: test.info().outputPath('authored-course-results.png') });
   await page.locator('#results-race').click();
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
   expect((await config(page)).event).toEqual(first.event);
