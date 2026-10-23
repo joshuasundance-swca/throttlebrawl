@@ -74,15 +74,10 @@ test('an authored Grudge course updates its location and preview, launches and r
   page,
 }) => {
   test.setTimeout(120_000);
-  const event = diskEvents().find(
-    (e) =>
-      e['kind'] === 'grudge-match' &&
-      new Set(e.lengths.map((l) => qualifyIn(e.pack, l.route))).size > 1 &&
-      (e.lengths as { id: string; route: string }[]).some(
-        (l) => !['short', 'standard', 'long'].includes(l.id),
-      ),
-  );
-  expect(event, 'a carried Grudge event with a named course').toBeDefined();
+  // This acceptance case owns Juniper's new course. An unrelated named Grudge in another pack
+  // must not silently become its subject; route names and available course IDs still come from data.
+  const event = diskEvents().find((e) => e.key === 'region-pnw:pnw-t1-juniper-grudge');
+  expect(event, 'the carried Juniper challenge').toBeDefined();
   const lengths = event!.lengths as { id: string; route: string }[];
   const standard = lengths.find((l) => l.id === 'standard')!;
   const chosen = lengths.find((l) => !['short', 'standard', 'long'].includes(l.id))!;
