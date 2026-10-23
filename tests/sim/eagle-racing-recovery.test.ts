@@ -3,7 +3,6 @@
 // bikes. Full-route bot completion already lives in eagle-point-course; this probes the missing
 // asphalt -> grass -> asphalt transition, not a promise to take every bend at top speed.
 import { describe, expect, it } from 'vitest';
-import { createHeadlessRace } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { hitboxOf } from '../../src/core';
 import { roadBandHeight, terrainAt } from '../../src/road';
@@ -11,29 +10,43 @@ import { quantizeInput, type SimConfig, type SimInput } from '../../src/sim/api'
 import { createSimWithWorld } from '../../src/sim/create';
 import { groundUnder } from '../../src/sim/ground';
 import { riderState } from '../../src/sim/riders';
-import { ISOLATED } from './batch';
+import { eagleRecoveryConfigs } from './eagle-recovery-config';
 
 const registry = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const BIKES = ['base:rustbucket-400', 'base:streetfighter-750', 'base:superbike-1000'] as const;
 
 function configFor(bike: (typeof BIKES)[number]) {
-  return createHeadlessRace(
-    {
-      seed: 1,
-      eventId: 'region-clinton:clinton-ia136-race',
-      route: 'region-clinton:osm-clinton-eagle-point-run',
-      playerBike: bike,
-      eventPatch: { riders: [] },
-      tuning: { ...ISOLATED, 'ground.offRoad': 1, 'riders.courseEdges': 1 },
-    },
-    { registry },
-  ).config;
+  return eagleRecoveryConfigs(registry, bike).original;
+}
+
+// This fixture tests a brisk asphalt/grass seam crossing, not cornering at half a bike's
+// ceiling through an arbitrary midpoint hairpin. Choose the gentlest interior approach from
+// the actual road, with supported grass on both sides. Full-course bends have their own bot test.
+function recoveryStation(source: SimConfig, edge: number) {
+  const length = source.road.edges[edge]!.length;
+  const candidates = Array.from({ length: Math.max(1, Math.floor((length - 40) / 5)) }, (_, i) => 20 + i * 5)
+    .filter((s) =>
+      [-1, 1].every((side) => {
+        const outer = source.road.vergeAt(edge, s, side < 0 ? 'left' : 'right').dOuter;
+        const p = source.road.toWorld(edge, s, outer + side, 0);
+        return terrainAt(source.road.terrain, p.x, p.z)?.surface === 'grass';
+      }),
+    )
+    .map((s) => ({
+      s,
+      bend: Math.max(
+        ...[-15, -10, -5, 0, 5, 10, 15].map((ds) => Math.abs(source.road.kappaAt(edge, s + ds))),
+      ),
+    }))
+    .sort((a, b) => a.bend - b.bend || a.s - b.s);
+  if (!candidates.length) throw new Error('Missing supported interior recovery approach');
+  return candidates[0]!.s;
 }
 
 function ride(source: SimConfig, edge: number, side: -1 | 1, commands?: readonly SimInput[]) {
   const { sim, world } = createSimWithWorld(source);
   const me = world.movers.find((m) => m.kind === 'rider')!;
-  const s = source.road.edges[edge]!.length / 2;
+  const s = recoveryStation(source, edge);
   const lane = source.road.lanesAt(edge, s).find((l) => l.kind === 'drive' && l.direction === 1)!;
   const box = hitboxOf(source.riders[me.riderIndex]?.hitbox);
   const asphalt = lane.dCenterM + (side * lane.widthM) / 2;
@@ -137,12 +150,25 @@ describe('Eagle Point racing-bike recovery across continuous supported grass', (
   for (const bike of BIKES)
     for (const side of [-1, 1] as const)
       it(`${bike} rides from asphalt across the ${side < 0 ? 'left' : 'right'} grass seam and back`, () => {
-        const config = configFor(bike);
-        const loops = config.road.edges.filter(
-          (e) => !config.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1),
+        const { original, courses } = eagleRecoveryConfigs(registry, bike);
+        const cases = courses.flatMap((config) =>
+          config.road.edges
+            .filter(
+              (e) =>
+                config.route.allows(e.index) &&
+                !config.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1),
+            )
+            .map((edge) => ({ config, edge })),
         );
-        expect(loops.length).toBeGreaterThan(0);
-        for (const edge of loops) {
+        expect(cases.length).toBeGreaterThan(0);
+        const oneWayEdges = original.road.edges
+          .filter((e) => !original.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1))
+          .map((e) => e.id);
+        expect(
+          new Set(cases.map(({ edge }) => edge.id)),
+          'every one-way road has a legal recovery case',
+        ).toEqual(new Set(oneWayEdges));
+        for (const { config, edge } of cases) {
           const result = ride(config, edge.index, side);
           process.stdout.write(
             `[racing recovery] ${bike}/${edge.id}/${side}: ${JSON.stringify({ entryMps: result.entrySpeed, grassMps: result.grassSpeed, terrainMps: result.terrainSpeed, recovered: result.recovered, settledTicks: result.settledTicks, surfaces: result.surfaces, events: result.events.filter((e) => e.startsWith('crash:') || e.startsWith('jump:')), unsupported: result.unsupported, ticks: result.inputs.length })}\n`,

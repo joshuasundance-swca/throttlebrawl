@@ -7,7 +7,8 @@
 // event's field (regulars and locals), the local cop, the region's traffic and pedestrians, and
 // the set pieces its seed places, and finishes (a race it does not finish must end in a bust, the
 // dev bot never evades the cop, never a stall). The grid stands on the start road, the lot cop
-// waits at the route's lot, the patrol (playtest 2) waits on the shoulder up the road, and a seed
+// waits at the route's lot or explicitly permitted supported grass, the patrol (playtest 2) waits
+// clear of traffic up the road, and a seed
 // replays to identical state hashes.
 //
 // The race loads the way the game loads it: every carried pack combined into one registry, the
@@ -17,8 +18,12 @@ import { buildSimConfig, createStreamCache, realRoutes, regionChoices } from '..
 import { lookup, registryFromGlob } from '../../src/content';
 import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import { chooseSetPieces, setPieceSlots } from '../../src/road';
+import { chooseSetPieces, setPieceSlots, terrainAt } from '../../src/road';
+import { hitboxOf } from '../../src/core';
 import { createSim, type SimConfig } from '../../src/sim/api';
+import { createSimWithWorld } from '../../src/sim/create';
+import { COP_PARKED, copsState } from '../../src/sim/cops';
+import { terrainPatrolSpot } from '../../src/sim/cops/terrain-patrol';
 import { NO_ROAD_EVENTS } from './batch';
 
 const REG = registryFromGlob(
@@ -152,10 +157,10 @@ describe('real roads as routes: each one races well inside its region race', () 
   });
 
   for (const c of ROUTES) {
-    it(`${c.route}: the grid stands on the start road, the cop waits at the lot, the region's race is around it`, () => {
+    it(`${c.route}: the grid stands on the start road, cops wait safely, the region's race is around it`, () => {
       const config = raceConfig(c, 1);
       expect(config.event.routeId).toBe(c.route);
-      const sim = createSim(config);
+      const { sim, world } = createSimWithWorld(config);
       sim.step([toSimInput(emptyActions())]);
       const snap = sim.snapshot();
       const start = config.route.start;
@@ -164,9 +169,57 @@ describe('real roads as routes: each one races well inside its region race', () 
       expect(riders).toHaveLength(config.riders.length);
       const cops = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
       expect(cops.length, 'the local cop rides').toBeGreaterThan(0);
-      const patrol = cops.filter(
-        (i) => config.route.progressAt(riders[i]?.road.edge ?? -1, riders[i]?.road.s ?? 0) > 100,
-      );
+      const law = copsState(world);
+      const patrol = cops.filter((i) => (law.patrolAt[i] ?? -1) >= 0);
+      if (config.tuning['cops.patrolScale'] === 0)
+        expect(patrol, 'disabled timed patrols are not inferred from reserve waiting progress').toEqual([]);
+      const grassWaiters = cops.filter((i) => {
+        const cop = riders[i];
+        if (!cop) return false;
+        const edge = config.road.edges[cop.road.edge];
+        return (
+          edge &&
+          (cop.road.d < edge.dMin || cop.road.d > edge.dMax) &&
+          config.riders[i]?.controller.kind === 'cop' &&
+          law.phase[i] === COP_PARKED &&
+          cop.mode === 'Road' &&
+          cop.speed === 0
+        );
+      });
+      for (const i of grassWaiters) {
+        const cop = riders[i]!;
+        const pos = { edge: cop.road.edge, s: cop.road.s, d: cop.road.d, dir: cop.road.dir };
+        expect(config.route.allows(pos.edge), 'grass waiter belongs to this course').toBe(true);
+        const validated = terrainPatrolSpot(config, pos);
+        expect(validated, `explicit whole-body grass waiting permission ${i}`).not.toBeNull();
+        if (!validated) throw new Error(`Unsupported grass waiter ${i}`);
+        expect(validated).toMatchObject({ edge: pos.edge, s: pos.s, dir: pos.dir });
+        // One stationary physics step can round d by a few ulps when converting world frames.
+        expect(validated.d).toBeCloseTo(pos.d, 12);
+        const source = terrainAt(config.road.terrain, cop.x, cop.z);
+        expect(source?.surface).toBe('grass');
+        expect(cop.y).toBeCloseTo(source!.y, 6);
+        const box = hitboxOf(config.riders[i]?.hitbox);
+        const frame = config.road.frameAt(pos.edge, pos.s);
+        for (const along of [-box.lengthM / 2, box.lengthM / 2])
+          for (const across of [-box.widthM / 2, box.widthM / 2]) {
+            const x = cop.x + frame.tx * along - frame.tz * across;
+            const z = cop.z + frame.tz * along + frame.tx * across;
+            const corner = terrainAt(config.road.terrain, x, z);
+            expect(corner?.surface, `supported grass waiter corner ${i}`).toBe('grass');
+            expect(Math.abs(corner!.y - cop.y)).toBeLessThanOrEqual(0.15);
+          }
+        for (const other of riders) {
+          if (other.id === cop.id || Math.abs(other.y - cop.y) >= 1.6) continue;
+          const otherBox = hitboxOf(config.riders[other.id]?.hitbox);
+          expect(
+            Math.hypot(other.x - cop.x, other.z - cop.z),
+            `grass waiter clear of rider ${i}/${other.id}`,
+          ).toBeGreaterThanOrEqual(
+            (Math.hypot(box.lengthM, box.widthM) + Math.hypot(otherBox.lengthM, otherBox.widthM)) / 2,
+          );
+        }
+      }
       // The start road's drawn half-width, its shoulders included: under 10 m on a two-lane road, 11.5
       // m on run W-S's four-lane I-5 (its lot cop parks on the shoulder, 10.75 m out).
       const half = Math.max(
@@ -174,7 +227,7 @@ describe('real roads as routes: each one races well inside its region race', () 
       );
       for (const [i, e] of riders.entries()) {
         expect(moverProblem(e, config.route), `rider ${i}`).toBeNull();
-        if (patrol.includes(i)) continue;
+        if (patrol.includes(i) || grassWaiters.includes(i)) continue;
         expect(e.road.edge, `rider ${i} starts on the start road`).toBe(startEdge);
         expect(e.road.s, `rider ${i} starts behind the line`).toBeLessThanOrEqual(start.s + 1);
         expect(Math.abs(e.road.d), `rider ${i} starts on the road or its lot`).toBeLessThan(
@@ -196,10 +249,10 @@ describe('real roads as routes: each one races well inside its region race', () 
           .every((l) => Math.abs((cop?.d ?? 0) - l.dCenterM) >= l.widthM / 2);
         expect(off, 'the patrol waits off the travel lanes').toBe(true);
       }
-      // The rest wait at an authored lot, off the travel lanes and behind the grid. Its range
-      // comes from this road, so another course can place its lot without changing this test.
+      // Ordinary waiting cops retain their authored lot assertions. Only an actual parked,
+      // explicitly validated grass waiter may use the permitted alternative above.
       const lots = config.road.featuresOf(startEdge, 'copSpawn');
-      for (const i of cops.filter((k) => !patrol.includes(k))) {
+      for (const i of cops.filter((k) => !patrol.includes(k) && !grassWaiters.includes(k))) {
         const cop = riders[i]?.road;
         expect(
           lots.some((lot) => cop !== undefined && cop.s >= lot.s0 && cop.s <= lot.s1),

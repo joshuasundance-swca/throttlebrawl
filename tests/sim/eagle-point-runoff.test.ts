@@ -1,42 +1,18 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
-import { createHeadlessRace, qualifyIn, realRoutes } from '../../src/app';
-import { lookup, packOf, registryFromGlob } from '../../src/content';
+import { registryFromGlob } from '../../src/content';
 import { quantizeInput, type SimConfig, type SimEvent } from '../../src/sim/api';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { groundUnder, SURFACE_FEEL, surfaceFeel } from '../../src/sim/ground';
 import { createSimWithWorld } from '../../src/sim/create';
 import { riderState } from '../../src/sim/riders';
-import { ISOLATED } from './batch';
+import { eagleRecoveryConfigs } from './eagle-recovery-config';
 import { beyondAt, courseAt, pastAt, roadsideGroundHeight, terrainAt } from '../../src/road';
 import { routeNetworks, track } from './geometry-routes';
 
 const registry = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
-const EVENT = 'region-clinton:clinton-ia136-race';
-const ORIGINAL = 'region-clinton:osm-clinton-eagle-point-run';
-const networkOf = (route: string) => {
-  const network = lookup(registry.routes, route).network;
-  if (!network) throw new Error('A real-road recovery case requires a network');
-  return qualifyIn(packOf(route), network);
-};
-function configFor(route: string) {
-  return createHeadlessRace(
-    {
-      seed: 1,
-      eventId: EVENT,
-      route,
-      playerBike: 'base:moped',
-      eventPatch: { riders: [] },
-      tuning: { ...ISOLATED, 'ground.offRoad': 1, 'riders.courseEdges': 1 },
-    },
-    { registry },
-  ).config;
-}
-const config = configFor(ORIGINAL);
-const courseConfigs = realRoutes(registry, EVENT)
-  .filter((route) => networkOf(route) === networkOf(ORIGINAL))
-  .map((route) => (route === ORIGINAL ? config : configFor(route)));
+const { original: config, courses: courseConfigs } = eagleRecoveryConfigs(registry, 'base:moped');
 
 function excursion(
   source: SimConfig,
