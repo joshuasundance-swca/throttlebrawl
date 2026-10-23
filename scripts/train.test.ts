@@ -2669,6 +2669,33 @@ describe('the commands, against a fake GitHub', () => {
     },
   );
 
+  it('report: malformed merge timestamps stay out of logs without changing the merge decision', async () => {
+    const one = landingEnv();
+    const { lines } = capture();
+    const injected = 'unexpected\n::warning::timestamp-payload';
+    const calls = fakeGitHub([
+      MAIN,
+      open(one),
+      STATUS,
+      DISPATCH,
+      LANDED,
+      [/^GET \/repos\/owner\/game\/pulls\/11$/, () => ({ ...pull, merged_at: injected })],
+    ]);
+    await cmdReport(CFG);
+    expect(landingRows(lines)).toEqual([
+      expect.objectContaining({ event: 'first', reason: 'merged', mergedAt: null }),
+    ]);
+    expect(lines.join('\n')).not.toContain('timestamp-payload');
+    expect(lines).toContain('report: #11 merged at (unparseable timestamp)');
+    expect(statusPosts(calls).map((s) => s.state)).toEqual(['success']);
+    expect(calls.filter((c) => c.method === 'GET').map((c) => c.path)).toEqual([
+      `/repos/${REPO}/git/ref/heads/main`,
+      `/repos/${REPO}/pulls/11`,
+      `/repos/${REPO}/commits/main`,
+    ]);
+    expect(calls.at(-1)?.path).toBe(`/repos/${REPO}/actions/workflows/train.yml/dispatches`);
+  });
+
   it('report: missing landing readiness stays unknown and never dumps other response fields', async () => {
     const one = landingEnv();
     const { lines } = capture();

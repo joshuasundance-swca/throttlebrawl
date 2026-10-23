@@ -2240,7 +2240,7 @@ async function awaitLanding(
         );
       observations.set(n, { snapshot, requestMs, observedElapsedMs: observed - started });
       if (pr.merged_at) {
-        console.log(`report: #${n} merged at ${pr.merged_at}`);
+        console.log(`report: #${n} merged at ${snapshot.mergedAt ?? '(unparseable timestamp)'}`);
         waiting.delete(n);
       } else if (pr.state === 'closed') {
         console.log(`report: #${n} was closed without merging`);
