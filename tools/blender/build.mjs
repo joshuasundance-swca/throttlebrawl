@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Builds the catalog's props with headless Blender into each row's pack: packs/<pack>/assets/,
-// `pack` defaulting to base (README.md; catalog.mjs `glbPath`).
+// Builds catalog props with headless Blender. Legacy rows write packs/<pack>/assets/;
+// dataset rows leave candidates under .cache/blender/build/ for explicit publication.
 //
 //   node tools/blender/build.mjs              build every prop, twice each, and commit-ready copy
 //   node tools/blender/build.mjs boat palms   build some of them
 //   node tools/blender/build.mjs --check      rebuild into .cache only and compare with the
-//                                             committed GLBs byte for byte (nothing is written)
+//                                             canonical GLBs byte for byte (sources unchanged)
 //
 // Each prop is built twice; the two GLBs must be byte-identical (deterministic scripts), and the
 // first is scored (score.mjs) before it is copied into the pack. Without Blender (BLENDER_EXE
@@ -18,11 +18,37 @@ import { findBlender, runBlender, SKIP_NOTE } from './blender.mjs';
 import { glbPath, PROPS } from './catalog.mjs';
 import { repoRoot, scoreGlb } from './score.mjs';
 import { optimizeFile } from './optimize.mjs';
+import { propFile, propSource, propTarget } from './prop-files.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 
-function main(argv) {
+/** Score both deterministic rebuilds and select the existing storage-specific output policy. */
+export async function acceptBuild(root, prop, outs, { check = false, fetchFn = fetch } = {}) {
+  const dataset = prop.storage === 'dataset';
+  const source = dataset && !check ? propTarget(root, prop) : propSource(root, prop);
+  const [a, b] = outs.map((out) => optimizeFile(out, prop));
+  const same = sha(a) === sha(b);
+  const score = scoreGlb(a, prop);
+  let published;
+  if (check && dataset) published = (await propFile(root, prop, fetchFn)).bytes;
+  else if (!dataset && existsSync(source.file)) published = readFileSync(source.file);
+  const matches = !!published && [a, b].every((bytes) => sha(bytes) === sha(published));
+  let note;
+  if (check) note = matches ? 'matches the canonical GLB' : 'DIFFERS from the canonical GLB';
+  else if (!same || score.summary.failed.length) note = 'not written: determinism or score failed';
+  else if (dataset)
+    note = `candidate at ${path.relative(root, outs[0]).split(path.sep).join('/')}; publish explicitly with assets:add and assets:upload`;
+  else if (matches) note = 'unchanged';
+  else {
+    mkdirSync(path.dirname(source.file), { recursive: true });
+    copyFileSync(outs[0], source.file);
+    note = `written to ${glbPath(prop)}`;
+  }
+  return { same, score, matches, note, bytes: a.length };
+}
+
+async function main(argv) {
   const check = argv.includes('--check');
   const names = argv.filter((a) => !a.startsWith('--'));
   const props = names.length ? names.map((n) => PROPS.find((p) => p.name === n) ?? n) : PROPS;
@@ -53,22 +79,18 @@ function main(argv) {
       bad++;
       continue;
     }
-    const [a, b] = outs.map((o) => optimizeFile(o, prop));
-    const same = sha(a) === sha(b);
-    const score = scoreGlb(a, prop);
-    const committed = path.join(repoRoot, glbPath(prop));
-    const matches = existsSync(committed) && sha(readFileSync(committed)) === sha(a);
-    let note;
-    if (check) note = matches ? 'matches the committed GLB' : 'DIFFERS from the committed GLB';
-    else if (matches) note = 'unchanged';
-    else if (same && !score.summary.failed.length) {
-      mkdirSync(path.dirname(committed), { recursive: true });
-      copyFileSync(outs[0], committed);
-      note = `written to ${glbPath(prop)}`;
-    } else note = 'not written: determinism or score failed';
+    let result;
+    try {
+      result = await acceptBuild(repoRoot, prop, outs, { check });
+    } catch (err) {
+      console.error(`BUILD FAIL ${prop.name}: ${err.message}`);
+      bad++;
+      continue;
+    }
+    const { same, score, matches, note, bytes } = result;
     const s = score.summary;
     console.log(
-      `BUILD ${prop.name}: ${runs[0].secs}s + ${runs[1].secs}s, ${a.length} bytes, deterministic ${same}, ` +
+      `BUILD ${prop.name}: ${runs[0].secs}s + ${runs[1].secs}s, ${bytes} bytes, deterministic ${same}, ` +
         `score ${s.passed}/${s.total}${s.failed.length ? ` (FAILED: ${s.failed.join(', ')})` : ''}, ` +
         `${score.counts.triangles} tris, ${score.draws.draws_instanced} draws; ${note}`,
     );
@@ -78,4 +100,5 @@ function main(argv) {
   return bad ? 1 : 0;
 }
 
-process.exitCode = main(process.argv.slice(2));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  process.exitCode = await main(process.argv.slice(2));

@@ -169,6 +169,15 @@ function landmarkParts(road: RoadNetwork, at: LandmarkPlace, out: StructureSpec[
   const cls = classOf(id);
   for (const b of partsOf(id))
     out.push(placed(tag(id, cls), frame, [b[0], b[1], b[2] - shift, b[3] - shift, b[4], b[5]]));
+  if (at.foundation) {
+    const pad = at.foundation;
+    out.push({
+      ...tag(`${id}:foundation`, 'landmark'),
+      foot: { x: at.x, z: at.z, ux: 1, uz: 0, hu: pad.halfM, hv: pad.halfM },
+      baseY: pad.bottomY,
+      roof: { kind: 'flat', topM: pad.topY - pad.bottomY },
+    });
+  }
   // The cruise ship's top deck (render's EXTRAS): its funnel, mast, lifeboats and slides.
   if (id === 'keys-landmarks#cruise_ship')
     for (const b of partsOf('soup#cruise-top'))

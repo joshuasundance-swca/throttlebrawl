@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs';
 import { Mesh, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { describe, expect, it } from 'vitest';
-import { glbPath, PROPS } from './catalog.mjs';
+import { PROPS } from './catalog.mjs';
+import { propFile } from './prop-files.mjs';
 import { optimizeGlb } from './optimize.mjs';
-import { parseGlb } from './score.mjs';
+import { parseGlb, repoRoot } from './score.mjs';
 
 interface PackedGlb {
   gltf: {
@@ -156,7 +156,7 @@ describe('GLB optimiser', () => {
   });
   for (const prop of PROPS)
     it(`preserves ${prop.name} geometry and contracts deterministically`, async () => {
-      const input = readFileSync(glbPath(prop));
+      const { bytes: input } = await propFile(repoRoot, prop);
       const result = optimizeGlb(input, prop);
       const before = parsed(input);
       const after = parsed(result);

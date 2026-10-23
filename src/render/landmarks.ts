@@ -1,7 +1,7 @@
 // Landmarks (playtest 3, round 1: "real landmarks"; "Duval St, downtown Portland, Golden Gate"; the
 // critic's C8: one landmark system). A road file's `landmark` feature names a node of a landmark kit
 // (`<asset id>#<node>`, models.ts) and a footprint; this layer draws each one where its footprint
-// stands on the road, and nothing else: the sim ignores them.
+// stands; the shared structure plan gives their solid parts the same placement.
 //
 // Drawing, for the phone's budget (the plan caps the whole view at 3 landmark draws and aims for 1):
 // every landmark of a network is built into ONE vertex-coloured mesh, so a view of any number of
@@ -884,6 +884,15 @@ function cruiseShipTop(b: MeshBuilder, at: LandmarkPlacement): Piece {
 /** Pieces a kit node gets besides its own model, by `<kit>#<node>`: code-made parts set on it. */
 const EXTRAS: Readonly<Record<string, (b: MeshBuilder, at: LandmarkPlacement) => Piece>> = {
   'keys-landmarks#cruise_ship': cruiseShipTop,
+  'eagle-stone-tower#eagle_stone_tower': (b, at) => {
+    const pad = at.foundation!;
+    const run = b.addBox(
+      new Vector3(at.x - pad.halfM, pad.bottomY, at.z - pad.halfM),
+      new Vector3(at.x + pad.halfM, pad.topY, at.z + pad.halfM),
+      new Color('#b1ac99'),
+    );
+    return { x: at.x, z: at.z, r: Math.SQRT2 * pad.halfM, tiers: [{ maxM: LANDMARK_MID_M, ...run }] };
+  },
 };
 
 /**

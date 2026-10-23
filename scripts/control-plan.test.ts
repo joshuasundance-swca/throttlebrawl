@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { collectControlPlan, controlInventory } from './control-plan.mjs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import { suiteJobs } from './shard-plan.mjs';
 
 const repo = 'owner/game';
 const sha = 'a'.repeat(40);
@@ -38,6 +41,52 @@ function fixture(options: { page?: (page: number) => unknown; after?: object; er
 }
 const input = { repo, sha, runId: 42, attempt: 1, shape };
 describe('branch control planning', () => {
+  it('runs the actual planner from the job sparse checkout and emits the full fallback', () => {
+    const workflow = readFileSync(new URL('../.github/workflows/train.yml', import.meta.url), 'utf8');
+    const job = workflow.match(/^ {2}control-plan:\n[\s\S]*?(?=^ {2}[\w-]+:)/m)?.[0];
+    const sparse = job?.match(/ {10}sparse-checkout: \|\n((?: {12}.+\n)+)/)?.[1];
+    expect(sparse).toBeDefined();
+    const scratch = fileURLToPath(new URL('../scratch/', import.meta.url));
+    mkdirSync(scratch, { recursive: true });
+    const checkout = mkdtempSync(path.join(scratch, 'control-plan-sparse-'));
+    try {
+      for (const relative of sparse!.trim().split(/\n\s*/)) {
+        const target = path.join(checkout, relative);
+        mkdirSync(path.dirname(target), { recursive: true });
+        cpSync(new URL(`../${relative}`, import.meta.url), target, { recursive: true });
+      }
+      const output = path.join(checkout, 'github-output');
+      const env: NodeJS.ProcessEnv = { ...process.env, GITHUB_OUTPUT: output };
+      delete env.GH_TOKEN;
+      const result = spawnSync(process.execPath, ['scripts/control-plan.mjs'], {
+        cwd: checkout,
+        env,
+        encoding: 'utf8',
+      });
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('branch control: full (observation unavailable)');
+      expect(readFileSync(output, 'utf8')).toBe('scope=full\nselection=\njobs=[]\n');
+    } finally {
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+  it('keeps the landing job canonical shard number and denominator in targeted diagnostics', async () => {
+    const canonical = suiteJobs(
+      readFileSync(new URL('../.github/workflows/suite.yml', import.meta.url), 'utf8'),
+    );
+    const inventory = controlInventory(canonical);
+    const jobs = inventory.map((name: string, i: number) => ({
+      ...rows[0],
+      id: i + 1,
+      name,
+      conclusion: name === `suite / sim (2/${canonical.sim.slices})` ? 'failure' : 'success',
+    }));
+    const f = fixture({ page: () => ({ total_count: jobs.length, jobs }) });
+    const result = await collectControlPlan({ ...input, shape: canonical, api: f.api });
+    expect(result.scope).toBe('targeted');
+    expect(result.selection).toMatchObject({ sim: [2], totals: { sim: canonical.sim.slices } });
+  });
   it('explains full diagnostics in the actual CLI log when observation is unavailable', () => {
     const env = { ...process.env };
     delete env.GH_TOKEN;

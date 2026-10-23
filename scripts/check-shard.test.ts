@@ -44,6 +44,7 @@ cp.spawnSync = (cmd, args) => {
     if (args[0] === 'rev-parse') stdout = args.at(-1) === 'HEAD^{commit}' ? head : base;
     if (args[0] === 'rev-list') stdout = head + ' ' + base + ' ' + 'c'.repeat(40);
     if (args[0] === 'diff') stdout = f.changed.length ? f.changed.join('\\0') + '\\0' : '';
+    if (args[0] === 'ls-files') stdout = f.inventory.join('\\0') + '\\0';
     return { status: stdout === undefined ? 1 : 0, stdout, stderr: '' };
   }
   if (cmd === 'npx') {
@@ -59,8 +60,8 @@ cp.spawn = (cmd, args) => {
   child.stdout = new PassThrough(); child.stderr = new PassThrough();
   process.nextTick(() => {
     const count = f.ran ?? args.slice(args.indexOf('--') + 1).length;
-    child.stdout.write((f.priorOutput ?? '') + (f.summary ?? ('Test Files ' + count + ' passed (' + count + ')\\n')) + 'Tests 1 passed (1)\\n');
-    child.emit('close', 0);
+    child.stdout.write((f.priorOutput ?? '') + (f.summary ?? ('Test Files ' + count + ' passed (' + count + ')\\n')) + 'Tests ' + (f.passed ?? 1) + ' passed (1)\\n');
+    child.emit('close', f.exit ?? 0);
   });
   return child;
 };
@@ -77,9 +78,12 @@ function controlledUnit(
     listFails?: boolean;
     priorOutput?: string;
     summary?: string;
+    passed?: number;
+    exit?: number;
   },
   named = true,
   shard = '1/3',
+  tier = 'unit',
 ) {
   const argsFile = path.join(fixtureDir, `args-${fixtureNumber++}.json`);
   const res = spawnSync(
@@ -89,7 +93,7 @@ function controlledUnit(
       pathToFileURL(preload).href,
       script,
       '--tier',
-      'unit',
+      tier,
       '--shard',
       shard,
       ...(named ? ['--quick-named-units'] : []),
@@ -198,6 +202,54 @@ describe('check train-quick unit execution', () => {
       );
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('requires an ordinary quick unit shard');
+    }
+  });
+});
+
+describe('check complete landing sim execution', () => {
+  const group = [
+    'tests/sim/riders-landings.test.ts',
+    'tests/sim/riders-landings-b.test.ts',
+    'tests/sim/riders-landings-c.test.ts',
+  ];
+  // Existing source paths let the planner discover its actual batch reader without new runners.
+  const readers = ['tests/sim/dev-presets.test.ts'];
+  const other = 'tests/sim/landing-survey.test.ts';
+  const fixture = { inventory: [...group, ...readers, other], changed: [] };
+  const run = (extra: Partial<Parameters<typeof controlledUnit>[0]> = {}, shard = '2/3') =>
+    controlledUnit({ ...fixture, ...extra }, false, shard, 'sim');
+  it('sends all group files to one canonical job and none to another', () => {
+    const landing = run();
+    expect(landing.status, landing.stderr).toBe(0);
+    expect(landing.args).toEqual(['run', 'test:sim', '--', ...group.sort()]);
+    const otherJob = run({}, '3/3');
+    expect(otherJob.status, otherJob.stderr).toBe(0);
+    expect(otherJob.args).toEqual(['run', 'test:sim', '--', other]);
+  });
+  it('fails before a runner starts when the complete list contains only part of the group', () => {
+    const result = run({ inventory: [group[0]!, ...readers, other] });
+    expect(result.status).toBe(1);
+    expect(result.args).toBeNull();
+    expect(result.stderr).toMatch(/incomplete landing group/i);
+  });
+  it('retains reporter nonzero failure despite a positive ordinary runner summary', () => {
+    const result = run({ exit: 1 });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('3 files passed');
+    expect(result.stdout).toContain('gate: RED');
+  });
+  it('retains zero examined and exact final file count controls', () => {
+    for (const extra of [
+      { passed: 0 },
+      { ran: 2 },
+      { ran: 4 },
+      { summary: '' },
+      { summary: 'Test Files malformed\n' },
+      { ran: 2, priorOutput: 'Test Files 3 passed (3)\n' },
+    ]) {
+      const result = run(extra);
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toContain('gate: RED');
     }
   });
 });

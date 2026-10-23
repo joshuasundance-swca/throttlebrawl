@@ -32,17 +32,15 @@ import { hasMission, MissionLayer } from './mission';
 import { landmarkFootprints, landmarkKitsFor, LandmarkLayer } from './landmarks';
 import { CAMERA_FAR_M } from './index';
 import { createFlatLook } from './look';
-import { bakeRepoModel, readAsset } from './model-files.test-util';
+import { bakeRepoModel } from './model-files.test-util';
+import { landmarkKit } from './structures.test-util';
 import {
-  bakeLandmarkKit,
-  landmarkKitAsset,
   modelKindsFor,
   type LandmarkKit,
   type LandmarkKitId,
   type ModelKind,
   type SceneryModels,
 } from './models';
-import { readGlb } from './glb';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { apartmentSurfaces, TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
@@ -127,8 +125,7 @@ export function signCatalog(): BoardCatalog {
 /** A network's landmark kits, as the game loads them (none for a road with no landmark feature). */
 async function landmarkKitsOf(road: RoadNetwork): Promise<Map<LandmarkKitId, LandmarkKit>> {
   const kits = new Map<LandmarkKitId, LandmarkKit>();
-  for (const id of landmarkKitsFor(road))
-    kits.set(id, bakeLandmarkKit(id, readGlb(await readAsset(landmarkKitAsset(id), 'glb'))));
+  for (const id of landmarkKitsFor(road)) kits.set(id, await landmarkKit(id));
   return kits;
 }
 

@@ -29,6 +29,7 @@ const column = (cell: number, clip?: number): ColumnOptions => ({
 const OVER_ROAD = 0.05;
 
 export const PART_SOURCES: readonly PartSource[] = [
+  { id: 'eagle-stone-tower#eagle_stone_tower', options: { ...ground(0.5), merge: 0.15 } },
   // The Keys.
   { id: 'keys-landmarks#mallory_pier', options: ground(1) },
   { id: 'keys-landmarks#cruise_ship', options: ground(4) },

@@ -39,6 +39,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { repoRoot } from './lib.mjs';
+import { LANDING_FILES } from '../tests/sim/landing-group.mjs';
 
 export const TIMINGS_FILE = 'tests/timings.json';
 
@@ -376,7 +377,7 @@ export function collectedOnly(table) {
 export function planTier(tier, files, n, { timings = readTimings(), read } = {}) {
   const spec = TIERS[tier];
   if (!spec) throw new Error(`planTier: no slice plan for tier ${tier} (${Object.keys(TIERS).join(', ')})`);
-  return planSlices({
+  const options = {
     files,
     seconds: tier === 'sim' ? collectedOnly(timings.sim ?? {}) : (timings[tier] ?? {}),
     n,
@@ -390,5 +391,39 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     perFile: 'perFile' in spec ? spec.perFile : 0,
     // The table's own setup seconds (scripts/timings.mjs measures them with the file times), else TIERS'.
     overhead: isSeconds(timings.overhead?.[tier]) ? timings.overhead[tier] : spec.overhead,
-  });
+  };
+  const landing = tier === 'sim' ? LANDING_FILES.filter((f) => files.includes(f)) : [];
+  if (landing.length === 0) return planSlices(options);
+  if (landing.length !== LANDING_FILES.length)
+    throw new Error('Incomplete landing group: select the complete landing survey');
+  if (!Number.isInteger(n) || n < 1) throw new Error(`planTier: n must be a whole number >= 1, got ${n}`);
+  const readers = options.together;
+  if (landing.some((f) => readers.includes(f)))
+    throw new Error('A landing group file must not be a batch reader');
+  if (n === 1) return planSlices(options);
+  const others = [...new Set(files)].filter((f) => !landing.includes(f) && !readers.includes(f));
+  const part = (list, count) =>
+    planSlices({ ...options, files: list, n: count, together: readers.filter((f) => list.includes(f)) });
+  let plan;
+  if (readers.length > 0 && n === 2) {
+    plan = [...part(readers, 1), ...part([...landing, ...others], 1)];
+  } else {
+    const ordinaryJobs = n - (readers.length > 0 ? 2 : 1);
+    if (others.length < ordinaryJobs)
+      throw new Error('Landing group plan needs fewer slices to avoid empty jobs');
+    plan = [
+      ...(readers.length > 0 ? part(readers, 1) : []),
+      ...part(landing, 1),
+      ...part(others, ordinaryJobs),
+    ];
+  }
+  const seen = plan.flatMap((s) => s.files);
+  if (
+    plan.length !== n ||
+    plan.some((s) => s.files.length === 0) ||
+    new Set(seen).size !== seen.length ||
+    seen.length !== new Set(files).size
+  )
+    throw new Error('Landing group plan must be a complete nonempty partition');
+  return plan;
 }

@@ -3,7 +3,7 @@
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
-  "revision": "9e22a65107ebb59102ef48e045c9f9fda9ca7dac",
+  "revision": "e2b978be179d40c04dea92bcdb3ba6637808785b",
   "files": [
     {
       "path": "base/models/placeholder/marker-cube.glb",
@@ -70,6 +70,13 @@
       "bytes": 27492,
       "sha256": "90b2889e05321e6dffa7abaa1c7afd6bb0dd53d9c8242869aa54065660dcc7ca",
       "note": "Rider model: trooper-dalrymple, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-clinton/models/landmarks/eagle-stone-tower.glb",
+      "bytes": 22960,
+      "sha256": "6ee12f3f1e0a3517d686fdcd48fb7a742d6cad62de859b24a535f75107f69e65",
+      "region": "clinton-iowa",
+      "note": "Original AI-scripted stylized stone tower; official city photograph informed broad circular silhouette, without copied imagery or surveyed dimensions."
     },
     {
       "path": "region-clinton/models/riders/mara-vale.glb",
