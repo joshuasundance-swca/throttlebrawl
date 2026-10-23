@@ -1,6 +1,6 @@
 {
   "id": "osm-clinton-eagle-point",
-  "name": "Eagle Point South and Central Loops (OSM network bake)",
+  "name": "Eagle Point Park Loops (OSM network bake)",
   "region": "clinton-iowa",
   "crs": {
     "originLatDeg": 41.897,
@@ -9,7 +9,7 @@
   "osmQuery": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
   "osmExtract": ".cache/osm/clinton-ia136.json",
   "outRoot": "packs/region-clinton/regions/clinton-iowa",
-  "networkNotes": "One traversal of Eagle Point Park entry, South Loop and Central Loop, ending before the lodge junction. OSM line and actual USGS terrain; main approach two-way, loops forward-only following the city road-map arrows. No North Loop, pedestrian bridge, alternate or repeated-edge lap. Widths are arcade adaptations, not surveyed: entry two 3 m lanes plus 1.5 m shoulders each side; loops one 3 m lane; 0.5 m soft grass verges. The 8.94 m/s traffic pace and paved-shoulder patrol marker are gameplay choices, not surveyed signs or a real parking lot. No claim about current on-site motorcycle access or exact retaining-wall positions. Tower landmark placement uses the approximate center of OpenStreetMap way 839770216 (https://www.openstreetmap.org/way/839770216), retrieved separately on 2026-10-22T20:08:05Z at 41.8941338, -90.1737434; the original highway geometry query did not supply this point. The original model and its terrain foundation are gameplay adaptations, not a surveyed building footprint or dimensions.",
+  "networkNotes": "Open traversals of Eagle Point Park entry, South Loop, Central Loop and the long northern arc, ending before the northern loop rejoins the entry drive. OSM line and actual USGS terrain; main approach two-way, loops forward-only following the city road-map arrows. No pedestrian bridge, short bypass, alternate or repeated-edge lap. Widths are arcade adaptations, not surveyed: entry two 3 m lanes plus 1.5 m shoulders each side; loops one 3 m lane; 0.5 m soft grass verges. The 8.94 m/s traffic pace and paved-shoulder patrol marker are gameplay choices, not surveyed signs or a real parking lot. No claim about current on-site motorcycle access or exact retaining-wall positions. Tower landmark placement uses the approximate center of OpenStreetMap way 839770216 (https://www.openstreetmap.org/way/839770216), retrieved separately on 2026-10-22T20:08:05Z at 41.8941338, -90.1737434; the original highway geometry query did not supply this point. The original model and its terrain foundation are gameplay adaptations, not a surveyed building footprint or dimensions.",
   "sampleSpacingM": 1.5,
   "lines": [
     {
@@ -19,16 +19,16 @@
         "lon": -90.1800553
       },
       "pathTo": {
-        "lat": 41.8977594,
-        "lon": -90.1769029
+        "lat": 41.8968377,
+        "lon": -90.1771758
       },
       "start": {
         "lat": 41.895455,
         "lon": -90.1800553
       },
       "end": {
-        "lat": 41.8977594,
-        "lon": -90.1769029
+        "lat": 41.8968377,
+        "lon": -90.1771758
       },
       "via": [
         {
@@ -38,6 +38,10 @@
         {
           "lat": 41.8961629,
           "lon": -90.1762083
+        },
+        {
+          "lat": 41.8977594,
+          "lon": -90.1769029
         }
       ],
       "wayFilter": [
@@ -53,6 +57,10 @@
         {
           "lat": 41.8961629,
           "lon": -90.1762083
+        },
+        {
+          "lat": 41.8977594,
+          "lon": -90.1769029
         }
       ],
       "smoothing": {
@@ -97,6 +105,22 @@
           }
         },
         "osm-clinton-eagle-central-loop": {
+          "laneWidthM": 3,
+          "oneWay": true,
+          "verges": {
+            "left": {
+              "widthM": 0.5,
+              "surface": "grass",
+              "edge": "soft"
+            },
+            "right": {
+              "widthM": 0.5,
+              "surface": "grass",
+              "edge": "soft"
+            }
+          }
+        },
+        "osm-clinton-eagle-north-loop": {
           "laneWidthM": 3,
           "oneWay": true,
           "verges": {
@@ -169,6 +193,12 @@
           "name": "Central Loop",
           "realName": "Eagle Point Park Central Loop",
           "tags": ["rural", "iowa-park"]
+        },
+        {
+          "id": "osm-clinton-eagle-north-loop",
+          "name": "North Loop",
+          "realName": "Eagle Point Park North Loop",
+          "tags": ["rural", "iowa-park"]
         }
       ]
     }
@@ -188,7 +218,22 @@
         "rowGapM": 8
       },
       "notes": "A compact technical one-pass route: entry, South Loop, Central Loop. Actual OSM/USGS data. Single-file start; narrow arcade cross-sections are disclosed in network notes. No North Loop, pedestrian path or lap."
+    },
+    {
+      "id": "osm-clinton-eagle-north-run",
+      "name": "Eagle Point North Run",
+      "line": "park",
+      "startRoad": "osm-clinton-eagle-central-loop",
+      "startS": 48,
+      "finishRoad": "osm-clinton-eagle-north-loop",
+      "finishS": -30,
+      "startGrid": {
+        "rows": 6,
+        "perRow": 1,
+        "rowGapM": 8
+      },
+      "notes": "An open one-pass run from Central Loop around the long North Loop arc. Actual OSM/USGS data; forward-only loop roads and single-file start. Arcade cross-sections and access limitations are disclosed in network notes. No short bypass or repeated-edge lap."
     }
   ],
-  "waysLabel": "Eagle Point Park entry, South Loop and Central Loop"
+  "waysLabel": "Eagle Point Park entry, South Loop, Central Loop and North Loop"
 }

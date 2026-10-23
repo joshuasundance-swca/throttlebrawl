@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as roadApi from '../index';
 import type { BakedNetwork, BakedRoad } from '../types';
+import { packInputs } from '../../../scripts/pack-inputs.mjs';
 
 const root = 'packs/region-clinton/regions/clinton-iowa';
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const network = read<BakedNetwork>(`${root}/networks/osm-clinton-eagle-point.json`);
 const roads = network.roads.map((id) => read<BakedRoad>(`${root}/roads/${id}.json`));
 const road = roadApi.createRoadNetwork({ network, roads });

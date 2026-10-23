@@ -3,7 +3,7 @@
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
-  "revision": "e2b978be179d40c04dea92bcdb3ba6637808785b",
+  "revision": "cf7ac1f31de6235d9033ffcece98e055e2a14535",
   "files": [
     {
       "path": "base/models/placeholder/marker-cube.glb",
@@ -84,6 +84,17 @@
       "sha256": "a56aa20f2f9a61e9d112a24ba4d0d04a402282d984b07001704a9ce0a4a555fd",
       "region": "clinton-iowa",
       "note": "Rider model: mara-vale, original surveyor costume scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-clinton/terrain/eagle-point.json",
+      "bytes": 911572,
+      "sha256": "fb4940d90d3e9ac4a17c9e5d82ea12d096916005cace15abe40f566f03b250c9",
+      "region": "clinton-iowa",
+      "note": "Source-derived Eagle Point terrain; OSM/USGS attribution and regeneration record in THIRD_PARTY_ASSETS.md",
+      "embed": {
+        "kind": "network-terrain",
+        "target": "packs/region-clinton/regions/clinton-iowa/networks/osm-clinton-eagle-point.json"
+      }
     },
     {
       "path": "region-pnw/models/riders/deputy-lindqvist.glb",

@@ -39,6 +39,7 @@ import {
 import { BODY_RADIUS_M, wallBand, type TumbleBody } from './body';
 import type { TerrainTreePlan } from '../../road/structures/terrain-trees';
 import { constrainTrees, treeVelocity, type TreeContact } from './tree-contacts';
+import { projectCluster, type StationAnchor } from './projection';
 
 const GRAVITY = 9.81;
 
@@ -63,6 +64,8 @@ export interface Cluster {
   overboard: boolean;
   /** It reached the water plane (`splash` fired); it floats there, still, until the respawn. */
   splashed: boolean;
+  /** Persistent projection authority, included in the plain simulation state and replay hash. */
+  anchor: StationAnchor | null;
 }
 
 /** A distance constraint: `eq` holds the length, `min` only stops the points coming closer. */
@@ -146,6 +149,7 @@ export function makeCluster(
   v: { x: number; y: number; z: number },
   w: { x: number; y: number; z: number },
   edge: number,
+  anchor?: StationAnchor,
 ): Cluster {
   const layout = kind === 'rider' ? RIDER_POINTS : BIKE_POINTS;
   const p: Particle[] = layout.map((l) => ({
@@ -167,7 +171,21 @@ export function makeCluster(
     q.vy += w.z * ox - w.x * oz;
     q.vz += w.x * oy - w.y * ox;
   }
-  return { kind, p, overboard: false, splashed: false };
+  return {
+    kind,
+    p,
+    overboard: false,
+    splashed: false,
+    anchor: anchor ? { edge: anchor.edge, s: anchor.s, d: anchor.d } : null,
+  };
+}
+
+/** Fixtures without a crash position initialize once; normal crashes supply the exact station. */
+function projectRig(road: RoadNetwork, c: Cluster, dt = 0, transfer = false): RoadPos {
+  const at = centre(c.p);
+  const p = projectCluster(road, c.anchor ?? road.project(at.x, at.z, at.edge), c.p, dt, transfer);
+  c.anchor = p;
+  return { ...p, dir: 1 };
 }
 
 /** The cluster's centre and mean velocity (particles have equal mass). */
@@ -303,6 +321,12 @@ export function stepCluster(
 ): ClusterContact {
   if (dt === 0) return overboardContact(road, c, false, false);
   if (c.splashed) return overboardContact(road, c, false, false);
+  // Initialize fixture bodies before their first integration; production anchors start at crash.
+  if (!c.anchor) {
+    const at = centre(c.p);
+    const p = road.project(at.x, at.z, at.edge);
+    c.anchor = { edge: p.edge, s: p.s, d: p.d };
+  }
   const previous =
     road.terrain && trees?.items.length ? c.p.map((q) => ({ x: q.x, y: q.y, z: q.z })) : undefined;
   for (const q of c.p) {
@@ -314,6 +338,7 @@ export function stepCluster(
   if (road.terrain) return stepTerrainCluster(road, c, dt, mu, offRoad, tops, trees, previous);
   if (c.overboard) {
     relax(c);
+    projectRig(road, c, dt);
     return fallToWater(road, c, false, honest);
   }
   // One projection per cluster per step (road.project scans the edge's samples): the centre's.
@@ -321,7 +346,7 @@ export function stepCluster(
   // z stay put through the solve below, and each particle's (s, d) is the centre's plus its offset
   // along the road's frame there.
   const at = centre(c.p);
-  const pc = road.project(at.x, at.z, at.edge);
+  const pc = projectRig(road, c, dt, true);
   const f = road.frameAt(pc.edge, pc.s);
   const band = wallBand(road, pc.edge, pc.s, offRoad);
   // Decide the edge crossing before the deck floor can lift a body outside it.
@@ -364,6 +389,7 @@ export function stepCluster(
   if (over) return { ...fallToWater(road, c, true, honest), over };
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);
+  c.anchor = { edge: pc.edge, s: pc.s, d };
   return {
     edge: pc.edge,
     s: pc.s,
@@ -445,7 +471,7 @@ function stepTerrainCluster(
   for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
   for (const contact of treeContacts) treeVelocity(contact);
   let at = centre(c.p);
-  let p = road.project(at.x, at.z, at.edge);
+  let p = projectRig(road, c, dt, true);
   const band = wallBand(road, p.edge, p.s, offRoad);
   for (const side of ['left', 'right'] as const) {
     const sign = side === 'right' ? 1 : -1;
@@ -479,7 +505,10 @@ function stepTerrainCluster(
         }
       }
       at = centre(c.p);
-      p = road.project(at.x, at.z, at.edge);
+      // This correction is exactly lateral in p's frame: its station is unchanged. Reusing it
+      // avoids both a second scan and a fresh station window after each wall correction.
+      p = { ...p, d: p.d + shift };
+      c.anchor = { edge: p.edge, s: p.s, d: p.d };
     }
   }
   const supported = c.p.some((q, i) => Number.isFinite(support(q, i).y));
@@ -518,7 +547,7 @@ function stepTerrainCluster(
 /** Where an overboard cluster's centre lies over the road (for the mover). */
 function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, splash: boolean): ClusterContact {
   const at = centre(c.p);
-  const p = road.project(at.x, at.z, at.edge);
+  const p = { ...(c.anchor ?? road.project(at.x, at.z, at.edge)), dir: 1 as const };
   if (road.terrain) {
     const ground = groundUnderOf(road)(at.x, at.z, at.y + CONTACT_M);
     const water = terrainAt(road.terrain, at.x, at.z, at.y + CONTACT_M, 'water');
@@ -541,7 +570,7 @@ function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, spla
  */
 function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean, honest = false): ClusterContact {
   const at = centre(c.p);
-  const p = road.project(at.x, at.z, at.edge);
+  const p = c.anchor ?? road.project(at.x, at.z, at.edge);
   const side = p.d > 0 ? 'right' : 'left';
   const sign = side === 'right' ? 1 : -1;
   const beyond = honest
@@ -571,7 +600,7 @@ function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean, honest = 
  */
 export function intoWater(road: RoadNetwork, c: Cluster, depthM = 0): void {
   const at = centre(c.p);
-  const p = road.project(at.x, at.z, at.edge);
+  const p = c.anchor ?? road.project(at.x, at.z, at.edge);
   const side = p.d > 0 ? 'right' : 'left';
   const sign = side === 'right' ? 1 : -1;
   const floor =

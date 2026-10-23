@@ -11,6 +11,7 @@ import {
 import { iowaParkLayout } from './iowa-park';
 import { landmarkPlaces } from './landmark-places';
 import { isParkTreeNetwork, planTerrainTrees } from './terrain-trees';
+import { packInputs } from '../../../scripts/pack-inputs.mjs';
 
 function ground(y: number, surface: 'grass' | 'water' = 'grass'): BakedTerrainPatch {
   return {
@@ -140,7 +141,8 @@ describe('physical trees on authored rural land', () => {
 });
 
 const ROOT = 'packs/region-clinton/regions/clinton-iowa';
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const eagle = read<BakedNetwork>(`${ROOT}/networks/osm-clinton-eagle-point.json`);
 const eagleRoads = eagle.roads.map((id) => read<BakedRoad>(`${ROOT}/roads/${id}.json`));
 const withoutPark = (roads: BakedRoad[]) =>

@@ -7,9 +7,11 @@ import { buildTerrainChunks } from '../terrain-mesh';
 import { iowaParkLayout } from '../../road/structures/iowa-park';
 import { scenesProblems, type ScenesFile } from './data';
 import { placeScenes } from './place';
+import { packInputs } from '../../../scripts/pack-inputs.mjs';
 
 const ROOT = 'packs/region-clinton/regions/clinton-iowa';
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const file = read<ScenesFile>('packs/region-clinton/assets/scenes/clinton-iowa.json');
 function world(id: string) {
   const network = read<BakedNetwork>(`${ROOT}/networks/${id}.json`);

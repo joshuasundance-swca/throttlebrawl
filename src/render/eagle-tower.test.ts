@@ -19,6 +19,7 @@ import { iowaParkLayout } from '../road/structures/iowa-park';
 import { LandmarkLayer } from './landmarks';
 import { createFlatLook } from './look';
 import { landmarkKit } from './structures.test-util';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const model = 'models/landmarks/eagle-stone-tower#eagle_stone_tower';
 const feature = {
@@ -58,8 +59,12 @@ function fixture(patches: BakedTerrainPatch[] = [patch()], f: BakedFeature = fea
   return createRoadNetwork({ ...b, network: { ...b.network, terrain: { patches } } });
 }
 const root = 'packs/region-clinton/regions/clinton-iowa';
+const inputs = packInputs(process.cwd());
 const network = JSON.parse(
-  readFileSync(`${root}/networks/osm-clinton-eagle-point.json`, 'utf8'),
+  inputs.materialize(
+    `${root}/networks/osm-clinton-eagle-point.json`,
+    readFileSync(`${root}/networks/osm-clinton-eagle-point.json`, 'utf8'),
+  ),
 ) as BakedNetwork;
 const roads = network.roads.map(
   (id) => JSON.parse(readFileSync(`${root}/roads/${id}.json`, 'utf8')) as BakedRoad,
