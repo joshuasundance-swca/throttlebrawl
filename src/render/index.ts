@@ -210,10 +210,12 @@ export interface RendererPresentationRecipe {
   readonly quality: { readonly tier: QualityTierId; readonly scale: number };
 }
 export interface RendererPresentationOptions {
-  readonly reset: 'preserve' | 'measurement-to-menu';
+  readonly reset: 'preserve' | 'measurement-to-menu' | 'replay-boundary';
 }
 
 export interface GameRenderer {
+  /** Highest known physical ground at/below top, or null while unavailable/outside its coverage. */
+  groundHeightAt(x: number, z: number, top: number): number | null;
   /** False while the drawing path for this road's physical natural scenery is unavailable. */
   physicalWorldReady?(): boolean;
   applyPresentation(
@@ -431,6 +433,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     airPays: AirPays;
     terrainTrees: TerrainTrees;
     terrainChunks: typeof import('./terrain-mesh').buildTerrainChunks;
+    groundUnderOf: typeof import('../road').groundUnderOf;
   } | null = null;
   /** Newspaper crashes received while the race-parts chunk is pending. */
   const pendingAirEvents: SimEvent[] = [];
@@ -483,6 +486,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         airPays,
         terrainTrees,
         terrainChunks: m.buildTerrainChunks,
+        groundUnderOf: m.groundUnderOf,
       };
       if (roadArgs?.road.terrain) buildRoad();
     });
@@ -1322,10 +1326,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildBoards();
   };
   return {
+    groundHeightAt: (x, z, top) => (race && roadArgs ? race.groundUnderOf(roadArgs.road)(x, z, top) : null),
     physicalWorldReady: () => !roadArgs?.road.terrain || race !== null,
     applyPresentation(recipe, options) {
       const token = advancePresentation();
-      if (options.reset === 'measurement-to-menu') resetTransient();
+      if (options.reset === 'measurement-to-menu' || options.reset === 'replay-boundary') resetTransient();
       const trafficTypes = [...recipe.trafficTypes];
       riderLooks = [...recipe.riderLooks];
       playerPaint = recipe.playerPaint;

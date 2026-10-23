@@ -23,6 +23,7 @@ vi.mock('./career-screen', () => ({
     teaser: document.createElement('div'),
     overlays: document.createElement('div'),
     pauseMap: document.createElement('div'),
+    setReplayAvailable() {},
   }),
 }));
 
@@ -218,7 +219,14 @@ function setup() {
     stampText: '',
     layout,
     tuning: createTuningRegistry([], () => undefined),
-    callbacks: { onStartTap() {}, onRace() {}, onBackToMenu() {}, onCopyReport: () => Promise.resolve() },
+    callbacks: {
+      onStartTap() {},
+      onRace() {},
+      onBackToMenu() {},
+      onWatchReplay() {},
+      onReplayAction() {},
+      onCopyReport: () => Promise.resolve(),
+    },
   });
   ui.show('race');
   const widget = host.querySelector('#hud-target')!;

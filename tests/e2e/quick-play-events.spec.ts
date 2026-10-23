@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { openQuickPlay } from './menu-navigation';
 import type { TestHandle } from '../../src/dev/handle';
 import { readFileSync } from 'node:fs';
+import { diskEvents, domId, qualifyIn } from './packs-on-disk';
+import { fastForwardDone } from './lockstep';
 
 const profileFixture: unknown = JSON.parse(
   readFileSync(new URL('../fixtures/save/profile-v1.json', import.meta.url), 'utf8'),
@@ -9,7 +11,7 @@ const profileFixture: unknown = JSON.parse(
 
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: TestHandle };
 interface Config {
-  event: { contentId: string; kind: string; routeId: string; cops?: { mode: string } };
+  event: { contentId: string; kind: string; routeId: string; lengthId: string; cops?: { mode: string } };
   riders: { role: string; faction: string; contentId: string; bike: { contentId: string } }[];
   difficulty: { copFrequency: number };
 }
@@ -67,6 +69,100 @@ async function kind(page: Page, value: string) {
   }
   await expect(page.locator('#race-option-kind')).toHaveAttribute('data-value', value);
 }
+
+test('an authored Grudge course updates its location and preview, launches and retries the chosen course', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  // This acceptance case owns Juniper's new course. An unrelated named Grudge in another pack
+  // must not silently become its subject; route names and available course IDs still come from data.
+  const event = diskEvents().find((e) => e.key === 'region-pnw:pnw-t1-juniper-grudge');
+  expect(event, 'the carried Juniper challenge').toBeDefined();
+  const lengths = event!.lengths as { id: string; route: string }[];
+  const standard = lengths.find((l) => l.id === 'standard')!;
+  const chosen = lengths.find((l) => !['short', 'standard', 'long'].includes(l.id))!;
+  const routeKey = qualifyIn(event!.pack, chosen.route);
+  const route = JSON.parse(
+    readFileSync(
+      `packs/${event!.pack}/regions/${event!.region.split(':')[1]}/routes/${chosen.route}.json`,
+      'utf8',
+    ),
+  ) as { name: string };
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await openQuickPlay(page);
+  await page.locator(`#region-${domId(event!.region)}`).click();
+  await expect(page.locator('#route-own')).toBeVisible();
+  await page.locator('#menu-options').click();
+  await kind(page, 'grudge');
+  const position = () =>
+    page.evaluate(() => {
+      const h = (window as TestWindow).__game!;
+      const player = h.snapshot()?.entities.find((e) => e.id === h.playerId());
+      return player ? [player.x, player.z] : null;
+    });
+  await expect(page.locator('#race-option-length')).toHaveAttribute('data-value', standard.id);
+  await expect(page.locator('#race-option-length .ro-label')).toHaveText('Course');
+  const original = await position();
+  expect(original).not.toBeNull();
+  const course = async (id: string) => {
+    for (let n = 0; n < lengths.length; n++) {
+      if ((await page.locator('#race-option-length').getAttribute('data-value')) === id) break;
+      await page.locator('#race-option-length-next').click();
+    }
+    await expect(page.locator('#race-option-length')).toHaveAttribute('data-value', id);
+  };
+  await course(chosen.id);
+  await expect(page.locator('#race-option-length')).toHaveAttribute('data-value', chosen.id);
+  await expect(page.locator('#race-option-length .ro-choice')).toHaveText(route.name);
+  await expect(page.locator('#race-options .ro-head .ro-where')).toContainText(route.name);
+  await expect.poll(position).not.toEqual(original);
+  await course(standard.id);
+  await expect.poll(position).toEqual(original);
+  await course(chosen.id);
+  const before = await profile(page);
+  await page.screenshot({ path: test.info().outputPath('authored-course-setup.png') });
+  await page.locator('#race-options-race').click();
+  await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+  const first = await config(page);
+  expect(first.event.routeId).toBe(routeKey);
+  expect(first.event.lengthId).toBe(chosen.id);
+  expect(first.event.contentId).toBe(event!.key);
+  await page.evaluate(() => {
+    const h = (window as TestWindow).__game!;
+    h.setBot(true);
+    h.fastForward(
+      (snap) =>
+        (snap.entities.find((e) => e.id === h.playerId())?.progress ?? 0) >= snap.race.routeLength / 2 ||
+        snap.race.over,
+      { perFrame: 240, then: 1 },
+    );
+  });
+  await fastForwardDone(page, 'authored course midpoint');
+  await page.screenshot({ path: test.info().outputPath('authored-course-race.png') });
+  await page.evaluate(() => {
+    const h = (window as TestWindow).__game!;
+    h.setBot(true);
+    h.fastForward((snap) => snap.race.over, { perFrame: 240, then: 120 });
+  });
+  await expect(page.locator('#results')).toBeVisible({ timeout: 90_000 });
+  console.log(
+    `Authored course outcome (one bot observation, not balance acceptance): ${JSON.stringify(
+      await page.evaluate(() => {
+        const h = (window as TestWindow).__game!;
+        return { tick: h.snapshot()?.tick, player: h.playerId(), race: h.snapshot()?.race };
+      }),
+    )}`,
+  );
+  await page.screenshot({ path: test.info().outputPath('authored-course-results.png') });
+  await page.locator('#results-race').click();
+  await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+  expect((await config(page)).event).toEqual(first.event);
+  expect(await profile(page)).toBe(before);
+});
 
 for (const family of ['race', 'hunt', 'escape', 'grudge'])
   test(`${family} reaches the config and HUD, survives reload, and keeps the career untouched`, async ({

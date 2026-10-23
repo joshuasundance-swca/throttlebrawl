@@ -7,13 +7,17 @@ const root = path.resolve(import.meta.dirname, '../../..');
 const cache = process.env.LANDING_FIXTURE_CACHE;
 if (!cache) throw new Error('Fixture cache directory must be explicit');
 const scenario = process.env.LANDING_FIXTURE_SCENARIO;
-const reporter = new LandingReporter({
+const source = {
   files,
   inventoryModule:
     scenario === 'import-failure'
       ? 'tests/fixtures/landing-reporter/NOT-PRESENT.ts'
       : 'tests/fixtures/landing-reporter/inventory.ts',
-});
+};
+const reporter =
+  process.env.LANDING_FIXTURE_KIND === 'sidewalk'
+    ? new LandingReporter(undefined, source)
+    : new LandingReporter(source);
 if (scenario === 'missing-end-hook') Object.assign(reporter, { onTestRunEnd: undefined });
 // Trigger native interruption through its public API after cancellation listeners are installed.
 class Interrupt implements Reporter {

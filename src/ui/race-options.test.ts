@@ -38,6 +38,24 @@ const shown = (s: Settings, id: string) => {
 };
 
 describe('the race options screen as data', () => {
+  it('named courses use a Course row and persist arbitrary course IDs with standard fallback', () => {
+    const view: RaceOptionsView = {
+      ...VIEW,
+      lengthLabel: 'Course',
+      lengths: [
+        { value: 'standard', label: 'Original road' },
+        { value: 'authored-streets', label: 'Street course' },
+      ],
+    };
+    const course = row(DEFAULT_SETTINGS, 'length', view);
+    expect(course?.label).toBe('Course');
+    const picked = stepRaceOption(view, DEFAULT_SETTINGS, 'length', 1);
+    expect(picked.raceLength).toBe('authored-streets');
+    expect(sanitiseSettings(JSON.parse(JSON.stringify(picked))).raceLength).toBe(picked.raceLength);
+    expect(row({ ...picked, raceLength: 'elsewhere' }, 'length', view)?.index).toBe(0);
+    expect(row(picked, 'length', VIEW)?.choices[row(picked, 'length', VIEW)!.index]?.value).toBe('standard');
+    expect(row(DEFAULT_SETTINGS, 'length')?.label).toBe('Length');
+  });
   it('offers only loaded event families, saves the family separately and removes unsafe controls', () => {
     const view: RaceOptionsView = {
       ...VIEW,

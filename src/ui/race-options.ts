@@ -38,6 +38,8 @@ export interface RaceOptionsView {
   rivals: readonly OptionChoice<number | null>[];
   /** The event's lengths; empty while a picked road sets the length. */
   lengths: readonly OptionChoice<string>[];
+  /** Named alternatives on different routes are courses rather than duration choices. */
+  lengthLabel?: 'Course';
 }
 
 export type RaceOptionId =
@@ -166,7 +168,8 @@ const ROWS: readonly RowDef[] = [
 export function raceOptionRows(view: RaceOptionsView, s: Readonly<Settings>): RaceOptionRow[] {
   return ROWS.flatMap((def) => {
     const choices = def.choices(view);
-    return choices.length > 1 ? [{ id: def.id, label: def.label, choices, index: def.read(s, choices) }] : [];
+    const label = def.id === 'length' ? (view.lengthLabel ?? def.label) : def.label;
+    return choices.length > 1 ? [{ id: def.id, label, choices, index: def.read(s, choices) }] : [];
   });
 }
 

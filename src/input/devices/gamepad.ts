@@ -106,6 +106,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 const PAD_ACTIONS = Object.keys(DEFAULT_PAD_MAP.buttons) as PadButtonAction[];
 const MAX_INDEX = 63;
+/** Existing digital-action threshold, also used by ownership quarantine. */
+export const PAD_HELD_THRESHOLD = 0.5;
 
 /**
  * The saved remaps (settings `gamepadBindings`: action id to control tokens) as a GamepadMap.
@@ -171,20 +173,32 @@ export class GamepadState {
   /**
    * Writes this poll's gamepad actions into `a`. Every connected pad counts; `deadZone` is the
    * radial stick dead zone as a fraction of full deflection. `dt`, the seconds since the last poll,
-   * paces the U-turn button's taps (a sim step when left out).
+   * paces the U-turn button's taps (a sim step when left out). An optional ownership filter sees
+   * each normalized button value before aggregation, with its original (possibly sparse) pad index.
    */
-  sample(a: ActionState, pads: readonly (PadLike | null | undefined)[], deadZone: number, dt?: number): void {
+  sample(
+    a: ActionState,
+    pads: readonly (PadLike | null | undefined)[],
+    deadZone: number,
+    dt?: number,
+    filterButton?: (action: PadButtonAction, padIndex: number, buttonIndex: number, value: number) => number,
+  ): void {
     const live = pads.filter((p): p is PadLike => !!p && p.connected);
     const value = (action: PadButtonAction) => {
       let v = 0;
-      for (const p of live)
+      for (let padIndex = 0; padIndex < pads.length; padIndex++) {
+        const p = pads[padIndex];
+        if (!p?.connected) continue;
         for (const i of this.map.buttons[action]) {
           const b = p.buttons[i];
-          if (b) v = Math.max(v, b.pressed ? Math.max(b.value, 0.5) : b.value);
+          if (!b) continue;
+          const normalized = b.pressed ? Math.max(b.value, PAD_HELD_THRESHOLD) : b.value;
+          v = Math.max(v, filterButton ? filterButton(action, padIndex, i, normalized) : normalized);
         }
+      }
       return clamp(v, 0, 1);
     };
-    const held = (action: PadButtonAction) => value(action) >= 0.5;
+    const held = (action: PadButtonAction) => value(action) >= PAD_HELD_THRESHOLD;
 
     // The stick, with a radial dead zone rescaled so steering starts from zero at its edge.
     let steer = 0;

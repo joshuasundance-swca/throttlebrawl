@@ -10,6 +10,11 @@
       "id": "standard",
       "route": "pnw-hollow-sprint",
       "laps": 1
+    },
+    {
+      "id": "longview-street-diamond",
+      "route": "osm-longview-street-diamond",
+      "laps": 1
     }
   ],
   "field": {
