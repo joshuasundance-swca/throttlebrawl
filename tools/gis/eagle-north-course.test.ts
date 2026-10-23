@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { createHeadlessRace, routeChoices } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { hitboxOf } from '../../src/core';
+import { createSimWithWorld } from '../../src/sim/create';
+import { COP_PARKED, copsState } from '../../src/sim/cops';
+import { terrainPatrolSpot } from '../../src/sim/cops/terrain-patrol';
 import {
   createRoadNetwork,
   courseAt,
@@ -124,6 +127,9 @@ describe('Eagle Point North Run', () => {
       { seed: 1, eventId, route: routeId, freePlay: true, rivals: Object.keys(registry.riders).length },
       { registry },
     );
+    const observed = createSimWithWorld(config);
+    expect(observed.sim.hash(), 'the observed cops state belongs to the same initial race').toBe(sim.hash());
+    const cops = copsState(observed.world);
     const network = read<BakedNetwork>(`${ROOT}/networks/osm-clinton-eagle-point.json`);
     const roads = network.roads.map((id) => read<BakedRoad>(`${ROOT}/roads/${id}.json`));
     const route = read<BakedRoute>(`${ROOT}/routes/osm-clinton-eagle-north-run.json`);
@@ -139,21 +145,43 @@ describe('Eagle Point North Run', () => {
     let pavement = 0;
     let grass = 0;
     let bodyCorners = 0;
+    let racingGrid = 0;
+    let grassPatrols = 0;
+    let pavedLaw = 0;
     try {
       const riders = sim.snapshot().entities.filter((entity) => entity.kind === 'rider');
       for (const rider of riders) {
         const box = hitboxOf(config.riders[rider.id]?.hitbox);
-        expect(
-          road
-            .lanesAt(rider.road.edge, rider.road.s)
-            .some(
-              (lane) =>
-                ((lane.kind === 'drive' && lane.direction === 1) ||
-                  (rider.faction === 'law' && lane.kind === 'shoulder')) &&
-                Math.abs(rider.road.d - lane.dCenterM) + box.widthM / 2 <= lane.widthM / 2,
-            ),
-          `whole paved grid width ${rider.id}`,
-        ).toBe(true);
+        const e = road.edges[rider.road.edge]!;
+        const patrolAt = cops.patrolAt[rider.id] ?? -1;
+        const grassPatrol = patrolAt >= 0 && (rider.road.d < e.dMin || rider.road.d > e.dMax);
+        if (grassPatrol) {
+          expect(config.riders[rider.id]?.controller.kind).toBe('cop');
+          expect(cops.phase[rider.id]).toBe(COP_PARKED);
+          expect(rider.mode).toBe('Road');
+          expect(rider.speed).toBe(0);
+          expect(config.route.progressAt(rider.road.edge, rider.road.s)).toBeCloseTo(patrolAt, 6);
+          const pos = { edge: rider.road.edge, s: rider.road.s, d: rider.road.d, dir: rider.road.dir };
+          expect(terrainPatrolSpot(config, pos), `validated grass patrol ${rider.id}`).toEqual(pos);
+          const ground = terrainAt(road.terrain, rider.x, rider.z);
+          expect(ground?.surface).toBe('grass');
+          expect(rider.y).toBeCloseTo(ground!.y, 6);
+          grassPatrols++;
+        } else {
+          expect(
+            road
+              .lanesAt(rider.road.edge, rider.road.s)
+              .some(
+                (lane) =>
+                  ((lane.kind === 'drive' && lane.direction === 1) ||
+                    (rider.faction === 'law' && lane.kind === 'shoulder')) &&
+                  Math.abs(rider.road.d - lane.dCenterM) + box.widthM / 2 <= lane.widthM / 2,
+              ),
+            `whole paved grid width ${rider.id}`,
+          ).toBe(true);
+          if (rider.faction === 'law') pavedLaw++;
+          else racingGrid++;
+        }
         for (const other of riders) {
           if (other.id <= rider.id || other.road.edge !== rider.road.edge) continue;
           const otherBox = hitboxOf(config.riders[other.id]?.hitbox);
@@ -167,7 +195,14 @@ describe('Eagle Point North Run', () => {
           for (const across of [-box.widthM / 2, box.widthM / 2]) {
             const s = rider.road.s + along;
             expect(s).toBeGreaterThanOrEqual(0);
-            const p = road.toWorld(rider.road.edge, s, rider.road.d + across, 0);
+            const frame = road.frameAt(rider.road.edge, rider.road.s);
+            const p = grassPatrol
+              ? {
+                  x: rider.x + frame.tx * along - frame.tz * across,
+                  y: rider.y + frame.grade * along + Math.tan(frame.bank) * across,
+                  z: rider.z + frame.tz * along + frame.tx * across,
+                }
+              : road.toWorld(rider.road.edge, s, rider.road.d + across, rider.road.h);
             expect(ground.allAt(p.x, p.z, p.y + 0.4).some((hit) => Math.abs(hit.y - p.y) < 0.35)).toBe(true);
             bodyCorners++;
           }
@@ -221,8 +256,11 @@ describe('Eagle Point North Run', () => {
       expect(road.edges[edge]!.length).toBeLessThan(sourceLength * 1.02);
       expect(pavement).toBeGreaterThan(0);
       expect(grass).toBeGreaterThan(0);
+      expect(racingGrid, 'racing grid still exercises the whole paved-width rule').toBeGreaterThan(0);
+      expect(pavedLaw, 'non-patrol law still exercises the original paved-width rule').toBeGreaterThan(0);
+      expect(grassPatrols, 'the actual waiting patrol exercises physical grass support').toBeGreaterThan(0);
       process.stdout.write(
-        `[north support] ${pavement} drawn pavement rays, ${grass} terrain/runoff rays, ${bodyCorners} grid/finish body corners\n`,
+        `[north support] ${pavement} drawn pavement rays, ${grass} terrain/runoff rays, ${bodyCorners} grid/patrol/finish body corners; ${racingGrid} paved racers, ${pavedLaw} paved law, ${grassPatrols} validated grass patrols\n`,
       );
     } finally {
       built.dispose();
