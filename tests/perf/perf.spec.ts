@@ -92,7 +92,13 @@ interface StartTap {
   handlerMs: number;
   gapAudioMs: number;
   frameMs: number;
-  audio: { tapMs: number; contextMs: number; contextMadeInTap: boolean; calls: number };
+  audio: {
+    tapMs: number;
+    contextMs: number;
+    contextMadeInTap: boolean;
+    calls: number;
+    totalRetainedCalls: number;
+  };
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
@@ -204,6 +210,7 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
               contextMs: sum(contexts),
               contextMadeInTap: contexts.some((c) => c.at >= clickAt && c.at < handlerEnd),
               calls: calls.length,
+              totalRetainedCalls: w.__audioCalls?.length ?? 0,
             },
           };
         });
@@ -268,7 +275,15 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   // Soft tier: the probe's numbers after SOFT_SECONDS of throttled racing.
   const wait = SOFT_SECONDS * 1000 - (Date.now() - started);
   if (wait > 0) await page.waitForTimeout(wait);
-  const report = (await page.evaluate(() => (window as TestWindow).__game?.perf())) as PerfReport;
+  const { report, sampleTick, totalRetainedAudioCalls } = (await page.evaluate(() => {
+    const w = window as TestWindow;
+    const g = w.__game;
+    return {
+      report: g?.perf(),
+      sampleTick: g?.snapshot()?.tick ?? null,
+      totalRetainedAudioCalls: w.__audioCalls?.length ?? 0,
+    };
+  })) as { report: PerfReport; sampleTick: number | null; totalRetainedAudioCalls: number };
   const slowmo = await page.evaluate<Checkpoint | null>(
     () => (window as TestWindow).__slowmoCheckpoint ?? null,
   );
@@ -289,6 +304,12 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     viewport: `${report.width}x${report.height} @${report.pixelRatio}`,
     cpuThrottle: CPU_THROTTLE,
     seconds: SOFT_SECONDS,
+    sampleTick,
+    // Descriptive totals, not inferred boundaries of the rolling step-time sample.
+    retainedAudioCalls: {
+      atTapCompletion: startTap.audio.totalRetainedCalls,
+      atFinalSample: totalRetainedAudioCalls,
+    },
     checkpoints,
     slowmoCheckpoint: slowmo,
     frameMs: report.frameMs,
