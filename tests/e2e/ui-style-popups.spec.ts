@@ -359,6 +359,10 @@ for (const [where, width, height, finePointer] of [
     // A touch device held upright gets the rotate screen, so the upright sizes (and the laptop) use a fine pointer.
     test.use({ viewport: { width, height }, ...(finePointer ? { isMobile: false, hasTouch: false } : {}) });
     test('never covers a control on the start screen, menu, settings tabs or changelog', async ({ page }) => {
+      // This rendered tour visits startup, every settings tab, changelog, credits and a race.
+      // CI reached the default 30 s at the final race wait and passed the retry in 29.4 s.
+      // This is a harness hang guard; gameplay performance remains in the perf tier.
+      test.setTimeout(60_000);
       const problems = watchErrors(page);
       await page.addInitScript(() => {
         (window as TestWindow).__GAME_TEST__ = true;

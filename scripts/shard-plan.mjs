@@ -40,6 +40,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { repoRoot } from './lib.mjs';
 import { LANDING_FILES } from '../tests/sim/landing-group.mjs';
+import { SIDEWALK_FILES } from '../tests/sim/sidewalk-group.mjs';
 
 export const TIMINGS_FILE = 'tests/timings.json';
 
@@ -392,29 +393,47 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     // The table's own setup seconds (scripts/timings.mjs measures them with the file times), else TIERS'.
     overhead: isSeconds(timings.overhead?.[tier]) ? timings.overhead[tier] : spec.overhead,
   };
-  const landing = tier === 'sim' ? LANDING_FILES.filter((f) => files.includes(f)) : [];
-  if (landing.length === 0) return planSlices(options);
-  if (landing.length !== LANDING_FILES.length)
-    throw new Error('Incomplete landing group: select the complete landing survey');
+  const groups = [];
+  if (tier === 'sim')
+    for (const { name, files: required } of [
+      { name: 'landing', files: LANDING_FILES },
+      { name: 'sidewalk', files: SIDEWALK_FILES },
+    ]) {
+      const present = required.filter((f) => files.includes(f));
+      if (present.length === 0) continue;
+      if (present.length !== required.length)
+        throw new Error(`Incomplete ${name} group: select the complete ${name} survey`);
+      groups.push({ name, files: present });
+    }
+  if (groups.length === 0) return planSlices(options);
   if (!Number.isInteger(n) || n < 1) throw new Error(`planTier: n must be a whole number >= 1, got ${n}`);
   const readers = options.together;
-  if (landing.some((f) => readers.includes(f)))
-    throw new Error('A landing group file must not be a batch reader');
+  for (const group of groups)
+    if (group.files.some((f) => readers.includes(f)))
+      throw new Error(`A ${group.name} group file must not be a batch reader`);
   if (n === 1) return planSlices(options);
-  const others = [...new Set(files)].filter((f) => !landing.includes(f) && !readers.includes(f));
+  const grouped = groups.flatMap((g) => g.files);
+  const others = [...new Set(files)].filter((f) => !grouped.includes(f) && !readers.includes(f));
   const part = (list, count) =>
     planSlices({ ...options, files: list, n: count, together: readers.filter((f) => list.includes(f)) });
   let plan;
   if (readers.length > 0 && n === 2) {
-    plan = [...part(readers, 1), ...part([...landing, ...others], 1)];
+    plan = [...part(readers, 1), ...part([...grouped, ...others], 1)];
   } else {
-    const ordinaryJobs = n - (readers.length > 0 ? 2 : 1);
+    // Prefer a dedicated job per complete survey. At small slice counts whole groups may
+    // share a job, but no group can be split and the batch readers retain their own job.
+    const groupJobs = Math.min(groups.length, n - (readers.length > 0 ? 1 : 0) - (others.length ? 1 : 0));
+    if (groupJobs < 1) throw new Error('Survey group plan needs fewer slices to avoid empty jobs');
+    const ordinaryJobs = n - (readers.length > 0 ? 1 : 0) - groupJobs;
     if (others.length < ordinaryJobs)
-      throw new Error('Landing group plan needs fewer slices to avoid empty jobs');
+      throw new Error('Survey group plan needs fewer slices to avoid empty jobs');
+    const bins = Array.from({ length: groupJobs }, (_, i) =>
+      i < groupJobs - 1 ? groups[i].files : groups.slice(i).flatMap((g) => g.files),
+    );
     plan = [
       ...(readers.length > 0 ? part(readers, 1) : []),
-      ...part(landing, 1),
-      ...part(others, ordinaryJobs),
+      ...bins.flatMap((bin) => part(bin, 1)),
+      ...(ordinaryJobs > 0 ? part(others, ordinaryJobs) : []),
     ];
   }
   const seen = plan.flatMap((s) => s.files);
@@ -424,6 +443,6 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     new Set(seen).size !== seen.length ||
     seen.length !== new Set(files).size
   )
-    throw new Error('Landing group plan must be a complete nonempty partition');
+    throw new Error('Survey group plan must be a complete nonempty partition');
   return plan;
 }

@@ -18,3 +18,14 @@ export const landingManifest = () => ({
       ? [...cases, { ...cases[0]!, key: 'key:missing' }]
       : cases,
 });
+export const sidewalkManifest = () => ({
+  files,
+  cases: landingManifest().cases.map((c, i) => ({
+    key: c.key,
+    file: c.file,
+    region: `fixture-region:${i}`,
+    eventId: 'fixture:event',
+    seed: c.seed,
+    mode: 'fast' as const,
+  })),
+});
