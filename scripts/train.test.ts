@@ -1824,6 +1824,7 @@ describe('the commands, against a fake GitHub', () => {
   const ok = { conclusion: 'SUCCESS' };
   const base = sha('0');
   afterEach(() => {
+    vi.useRealTimers();
     vi.mocked(spawnSync).mockReset();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -2456,6 +2457,256 @@ describe('the commands, against a fake GitHub', () => {
     /^POST \/graphql$/,
     () => listing(...bundle.map((b) => node({ number: b.number, head: b.headSha, quick: [ok] }))),
   ];
+
+  const landingEnv = () => {
+    const one = riders(1);
+    reportEnv(one);
+    vi.stubEnv('TRAIN_DRY_RUN', '');
+    vi.stubEnv('TRAIN_RESULT', 'success');
+    vi.stubEnv('TRAIN_COVERAGE', 'full');
+    vi.stubEnv('TRAIN_TREE', sha('e'));
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    return one;
+  };
+  const landingRows = (lines: string[]) =>
+    lines
+      .filter((line) => line.startsWith('report: #11 landing: '))
+      .map((line) => JSON.parse(line.slice('report: #11 landing: '.length)) as Record<string, unknown>);
+  const STATUS: [RegExp, () => unknown] = [/^POST \/repos\/owner\/game\/statuses\//, () => ({})];
+  const DISPATCH: [RegExp, () => unknown] = [
+    /^POST \/repos\/owner\/game\/actions\/workflows\/train\.yml\/dispatches$/,
+    () => new Response(null, { status: 204 }),
+  ];
+  const LANDED: [RegExp, () => unknown] = [
+    /^GET \/repos\/owner\/game\/commits\/main$/,
+    () => ({ sha: sha('f'), commit: { tree: { sha: sha('e') } } }),
+  ];
+  const pull = {
+    state: 'open',
+    merged_at: null,
+    head: { sha: sha('a') },
+    draft: false,
+    auto_merge: { enabled_by: { login: 'private-identity' } },
+    mergeable: null,
+    mergeable_state: 'unknown',
+  };
+
+  it('report: landing logs first and changed readiness, suppresses identical polls, and still accepts a merge', async () => {
+    const one = landingEnv();
+    const { lines } = capture();
+    const mergedAt = '2026-10-23T14:16:12Z';
+    const changed = {
+      ...pull,
+      head: { sha: sha('b') },
+      draft: true,
+      auto_merge: null,
+      mergeable: false,
+      mergeable_state: 'blocked',
+    };
+    const answers = [
+      pull,
+      { ...pull, auto_merge: { enabled_by: { login: 'different-private-identity' } } },
+      changed,
+      { ...changed, state: 'closed', merged_at: mergedAt },
+    ];
+    const durations = [7, 11, 13, 17];
+    let index = 0;
+    const calls = fakeGitHub([
+      MAIN,
+      open(one),
+      STATUS,
+      DISPATCH,
+      LANDED,
+      [
+        /^GET \/repos\/owner\/game\/pulls\/11$/,
+        () => {
+          vi.setSystemTime(Date.now() + durations[index]!);
+          return answers[index++];
+        },
+      ],
+    ]);
+    const reporting = cmdReport(CFG);
+    await vi.runAllTimersAsync();
+    await reporting;
+    const rows = landingRows(lines);
+    expect(rows).toEqual([
+      {
+        event: 'first',
+        reason: 'waiting',
+        headSha: sha('a'),
+        state: 'open',
+        mergedAt: null,
+        draft: false,
+        autoMergeEnabled: true,
+        mergeable: null,
+        mergeableState: 'unknown',
+        requestMs: 7,
+        elapsedMs: 7,
+      },
+      {
+        event: 'changed',
+        reason: 'waiting',
+        headSha: sha('b'),
+        state: 'open',
+        mergedAt: null,
+        draft: true,
+        autoMergeEnabled: false,
+        mergeable: false,
+        mergeableState: 'blocked',
+        requestMs: 13,
+        elapsedMs: 30031,
+      },
+      {
+        event: 'changed',
+        reason: 'merged',
+        headSha: sha('b'),
+        state: 'closed',
+        mergedAt,
+        draft: true,
+        autoMergeEnabled: false,
+        mergeable: false,
+        mergeableState: 'blocked',
+        requestMs: 17,
+        elapsedMs: 45048,
+      },
+    ]);
+    expect(index).toBe(answers.length);
+    expect(statusPosts(calls).map((s) => s.state)).toEqual(['success']);
+    expect(calls.filter((c) => c.method === 'GET').map((c) => c.path)).toEqual([
+      `/repos/${REPO}/git/ref/heads/main`,
+      ...answers.map(() => `/repos/${REPO}/pulls/11`),
+      `/repos/${REPO}/commits/main`,
+    ]);
+    expect(calls.at(-1)?.path).toBe(`/repos/${REPO}/actions/workflows/train.yml/dispatches`);
+    expect(lines).toContain(`report: #11 merged at ${mergedAt}`);
+    expect(lines).toContainEqual(expect.stringContaining('is exactly the tested tree'));
+    expect(lines.join('\n')).not.toContain('private-identity');
+    expect(lines.join('\n')).not.toContain('enabled_by');
+  });
+
+  it.each([
+    { field: 'headSha', patch: { head: { sha: sha('b') } }, value: sha('b') },
+    { field: 'draft', patch: { draft: true }, value: true },
+    { field: 'autoMergeEnabled', patch: { auto_merge: null }, value: false },
+    { field: 'mergeable', patch: { mergeable: true }, value: true },
+    { field: 'mergeableState', patch: { mergeable_state: 'clean' }, value: 'clean' },
+  ])('report: landing notices a change in $field alone', async ({ field, patch, value }) => {
+    const one = landingEnv();
+    const { lines } = capture();
+    const answers = [pull, { ...pull, ...patch }, { state: 'closed', merged_at: null }];
+    let index = 0;
+    fakeGitHub([
+      MAIN,
+      open(one),
+      STATUS,
+      DISPATCH,
+      [/^GET \/repos\/owner\/game\/pulls\/11$/, () => answers[index++]],
+    ]);
+    const reporting = cmdReport(CFG);
+    await vi.runAllTimersAsync();
+    await reporting;
+    expect(landingRows(lines)[1]).toMatchObject({
+      event: 'changed',
+      reason: 'waiting',
+      [field]: value,
+    });
+  });
+
+  it.each(['closed', 'deadline'])(
+    'report: landing %s retains pending withdrawal and the next dispatch',
+    async (end) => {
+      const one = landingEnv();
+      const { lines } = capture();
+      let polls = 0;
+      const calls = fakeGitHub([
+        MAIN,
+        open(one),
+        STATUS,
+        DISPATCH,
+        [
+          /^GET \/repos\/owner\/game\/pulls\/11$/,
+          () => {
+            vi.setSystemTime(Date.now() + (polls++ === 0 ? 7 : 11));
+            return { ...pull, state: end === 'closed' && polls > 1 ? 'closed' : 'open' };
+          },
+        ],
+      ]);
+      const reporting = cmdReport({ ...CFG, landingMinutes: 0.5 });
+      await vi.runAllTimersAsync();
+      await reporting;
+      const rows = landingRows(lines);
+      expect(rows[0]).toMatchObject({ event: 'first', reason: 'waiting', requestMs: 7, elapsedMs: 7 });
+      expect(rows.at(-1)).toMatchObject(
+        end === 'closed'
+          ? { event: 'changed', reason: 'closed', state: 'closed', requestMs: 11, elapsedMs: 15018 }
+          : {
+              event: 'deadline',
+              reason: 'deadline',
+              state: 'open',
+              requestMs: 11,
+              lastObservedElapsedMs: 15018,
+              elapsedMs: 30018,
+            },
+      );
+      expect(rows.map((r) => r.event)).toEqual(
+        end === 'closed' ? ['first', 'changed'] : ['first', 'deadline'],
+      );
+      expect(statusPosts(calls).map((s) => [s.sha, s.state])).toEqual([
+        [sha('a'), 'success'],
+        [sha('a'), 'pending'],
+      ]);
+      expect(statusPosts(calls).at(-1)?.description).toContain(
+        'passed, but did not land; waits for the next train',
+      );
+      expect(calls.filter((c) => c.method === 'GET').map((c) => c.path)).toEqual([
+        `/repos/${REPO}/git/ref/heads/main`,
+        `/repos/${REPO}/pulls/11`,
+        `/repos/${REPO}/pulls/11`,
+      ]);
+      expect(calls.at(-1)?.path).toBe(`/repos/${REPO}/actions/workflows/train.yml/dispatches`);
+      expect(lines).toContain('report: #11 did not land; its success is taken back');
+    },
+  );
+
+  it('report: missing landing readiness stays unknown and never dumps other response fields', async () => {
+    const one = landingEnv();
+    const { lines } = capture();
+    fakeGitHub([
+      MAIN,
+      open(one),
+      STATUS,
+      DISPATCH,
+      [
+        /^GET \/repos\/owner\/game\/pulls\/11$/,
+        () => ({
+          state: 'closed',
+          merged_at: null,
+          head: { sha: 'not-a-sha', user: { login: 'private-identity' } },
+          body: 'unbounded-response-body',
+          mergeable_state: 'unexpected\n::warning::payload',
+        }),
+      ],
+    ]);
+    await cmdReport(CFG);
+    expect(landingRows(lines)).toEqual([
+      {
+        event: 'first',
+        reason: 'closed',
+        headSha: null,
+        state: 'closed',
+        mergedAt: null,
+        draft: null,
+        autoMergeEnabled: null,
+        mergeable: null,
+        mergeableState: null,
+        requestMs: 0,
+        elapsedMs: 0,
+      },
+    ]);
+    for (const text of ['private-identity', 'unbounded-response-body', '::warning::payload'])
+      expect(lines.join('\n')).not.toContain(text);
+  });
 
   it('report: successful suite cannot post success or land without full coverage', async () => {
     const two = riders(2);

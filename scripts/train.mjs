@@ -2174,6 +2174,34 @@ export async function cmdReport(cfg = loadConfig()) {
   }
 }
 
+/** Only bounded public readiness fields; never log the pull response or auto-merge identity. */
+function landingSnapshot(/** @type {any} */ pr) {
+  return {
+    headSha: typeof pr.head?.sha === 'string' && SHA.test(pr.head.sha) ? pr.head.sha : null,
+    state: pr.state === 'open' || pr.state === 'closed' ? pr.state : null,
+    mergedAt:
+      typeof pr.merged_at === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(pr.merged_at)
+        ? pr.merged_at
+        : null,
+    draft: typeof pr.draft === 'boolean' ? pr.draft : null,
+    autoMergeEnabled:
+      pr.auto_merge === null ? false : pr.auto_merge && typeof pr.auto_merge === 'object' ? true : null,
+    mergeable: typeof pr.mergeable === 'boolean' ? pr.mergeable : null,
+    mergeableState: [
+      'behind',
+      'blocked',
+      'clean',
+      'dirty',
+      'draft',
+      'has_hooks',
+      'unknown',
+      'unstable',
+    ].includes(pr.mergeable_state)
+      ? pr.mergeable_state
+      : null,
+  };
+}
+
 /**
  * Waits until every PR that passed has merged. One that has not merged in time gets its success
  * taken back (pending again), so it can never land later on a main it was not tested on.
@@ -2184,13 +2212,33 @@ async function awaitLanding(
   /** @type {number} */ minutes,
   /** @type {number} */ run,
 ) {
-  const deadline = Date.now() + minutes * 60_000;
+  const started = Date.now();
+  const deadline = started + minutes * 60_000;
   const waiting = new Set(land);
   const closed = new Set();
+  /** @type {Map<number, { snapshot: ReturnType<typeof landingSnapshot>, requestMs: number, observedElapsedMs: number }>} */
+  const observations = new Map();
   while (waiting.size && Date.now() < deadline) {
     for (const n of [...waiting]) {
+      const requested = Date.now();
       /** @type {any} */
       const pr = await api('GET', `/repos/${repo()}/pulls/${n}`);
+      const observed = Date.now();
+      // This measures the existing API call, including its retries and response decoding.
+      const requestMs = observed - requested;
+      const snapshot = landingSnapshot(pr);
+      const previous = observations.get(n);
+      if (!previous || JSON.stringify(previous.snapshot) !== JSON.stringify(snapshot))
+        console.log(
+          `report: #${n} landing: ${JSON.stringify({
+            event: previous ? 'changed' : 'first',
+            reason: pr.merged_at ? 'merged' : pr.state === 'closed' ? 'closed' : 'waiting',
+            ...snapshot,
+            requestMs,
+            elapsedMs: observed - started,
+          })}`,
+        );
+      observations.set(n, { snapshot, requestMs, observedElapsedMs: observed - started });
       if (pr.merged_at) {
         console.log(`report: #${n} merged at ${pr.merged_at}`);
         waiting.delete(n);
@@ -2201,6 +2249,19 @@ async function awaitLanding(
       }
     }
     if (waiting.size) await sleep(15_000);
+  }
+  for (const n of waiting) {
+    const last = observations.get(n);
+    console.log(
+      `report: #${n} landing: ${JSON.stringify({
+        event: 'deadline',
+        reason: 'deadline',
+        ...(last?.snapshot ?? landingSnapshot({})),
+        requestMs: last?.requestMs ?? null,
+        lastObservedElapsedMs: last?.observedElapsedMs ?? null,
+        elapsedMs: Date.now() - started,
+      })}`,
+    );
   }
   for (const n of [...waiting, ...closed]) {
     const p = bundle.find((b) => b.number === n);
