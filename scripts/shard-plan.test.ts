@@ -22,6 +22,8 @@ import {
 import { timedOrder } from '../tests/sequencer';
 import FileTimes from '../tests/file-times';
 import { meanOverheads, parseLog, runnerSeconds, simRuns } from './timings.mjs';
+import { LANDING_FILES } from '../tests/sim/landing-group.mjs';
+import { SIDEWALK_FILES } from '../tests/sim/sidewalk-group.mjs';
 
 type PlanOrder = Parameters<typeof planSlices>[0]['order'];
 
@@ -37,6 +39,21 @@ function expectPartition(files: string[], slices: { files: string[] }[]) {
   const seen = slices.flatMap((s) => s.files);
   expect(new Set(seen).size, 'no file in two slices').toBe(seen.length);
   expect([...seen].sort()).toEqual([...new Set(files)].sort());
+}
+
+// Historical timing-only fixtures must include each active mandatory survey completely.
+// Untabled members use the planner's ordinary fallback; partial-selection controls stay separate.
+function completeGroups(tier: string, files: string[]) {
+  return tier === 'sim'
+    ? [
+        ...new Set([
+          ...files,
+          ...[LANDING_FILES, SIDEWALK_FILES].flatMap((group) =>
+            group.some((f) => files.includes(f)) ? group : [],
+          ),
+        ]),
+      ]
+    : files;
 }
 
 describe('complete landing group scheduling', () => {
@@ -86,15 +103,82 @@ describe('complete landing group scheduling', () => {
   });
 });
 
+describe('complete sidewalk group scheduling', () => {
+  const group = [
+    'tests/sim/traffic-sidewalk-dodge.test.ts',
+    'tests/sim/traffic-sidewalk-dodge-hurricane.test.ts',
+    'tests/sim/traffic-sidewalk-dodge-pier.test.ts',
+    'tests/sim/traffic-sidewalk-dodge-alley.test.ts',
+    'tests/sim/traffic-sidewalk-dodge-bridge.test.ts',
+    'tests/sim/traffic-sidewalk-dodge-ferry.test.ts',
+  ];
+  const options = { read: () => '', timings: { sim: {} } };
+  it('rejects a partial selection before it can judge a regional or per-file pool', () => {
+    expect(() => planTier('sim', [group[0]!, 'tests/sim/other.test.ts'], 1, options)).toThrow(
+      /incomplete.*sidewalk|sidewalk.*complete/i,
+    );
+  });
+  it('keeps every event file in one existing job with the unchanged worker count', () => {
+    const files = [...group, 'tests/sim/x.test.ts', 'tests/sim/y.test.ts'];
+    const plan = planTier('sim', files, 3, options);
+    expectPartition(files, plan);
+    expect(plan.filter((s) => group.some((f) => s.files.includes(f)))).toHaveLength(1);
+    expect(plan.find((s) => s.files.includes(group[0]!))?.files).toEqual([...group].sort());
+    expect(TIERS.sim.workers).toBe(3);
+  });
+  it('keeps both complete surveys together within their own jobs, beside readers and ordinary work', () => {
+    const reader = 'tests/sim/reader.test.ts';
+    const ordinary = ['tests/sim/x.test.ts', 'tests/sim/y.test.ts', 'tests/sim/z.test.ts'];
+    const files = [...LANDING_FILES, ...group, reader, ...ordinary];
+    const mixed = { ...options, read: (f: string) => (f === reader ? 'presetBatch()' : '') };
+    for (let n = 1; n <= 6; n++) {
+      const plan = planTier('sim', files, n, mixed);
+      expectPartition(files, plan);
+      expect(plan).toHaveLength(n);
+      expect(plan.every((s) => s.files.length > 0)).toBe(true);
+      for (const required of [LANDING_FILES, group])
+        expect(plan.filter((s) => required.some((f) => s.files.includes(f)))).toHaveLength(1);
+      if (n > 1) expect(plan[0]!.files).toEqual([reader]);
+      if (n >= 4) {
+        expect(plan[1]!.files).toEqual([...LANDING_FILES].sort());
+        expect(plan[2]!.files).toEqual([...group].sort());
+      }
+      expect(planTier('sim', [...files].reverse(), n, mixed)).toEqual(plan);
+    }
+    expect(() => planTier('sim', files, 7, mixed)).toThrow(/fewer slices/i);
+    for (const required of [LANDING_FILES, group])
+      for (const missing of required)
+        expect(() =>
+          planTier(
+            'sim',
+            files.filter((f) => f !== missing),
+            1,
+            mixed,
+          ),
+        ).toThrow(/incomplete/i);
+  });
+  it('rejects a sidewalk group member becoming a shared batch reader', () => {
+    expect(() => planTier('sim', group, 1, { ...options, read: () => 'simBatch()' })).toThrow(
+      /sidewalk.*reader/i,
+    );
+  });
+  it('does not drop work to fill impossible slice counts and still supports the one-job complete pool', () => {
+    expectPartition(group, planTier('sim', group, 1, options));
+    expect(() => planTier('sim', group, 2, options)).toThrow(/fewer slices/i);
+    for (const n of [0, -1, 1.5, NaN])
+      expect(() => planTier('sim', group, n, options)).toThrow(/whole number/i);
+  });
+});
+
 describe('planSlices', () => {
   it('puts every file in exactly one slice, for every slice count, with real and unknown timings', () => {
     for (const tier of ['unit', 'sim', 'e2e'] as const) {
       const table = timings[tier] ?? {};
-      const files = [
+      const files = completeGroups(tier, [
         ...Object.keys(table),
         `tests/${tier}/brand-new-a.test.ts`,
         `tests/${tier}/brand-new-b.test.ts`,
-      ];
+      ]);
       expect(Object.keys(table).length, `tests/timings.json has ${tier} times`).toBeGreaterThan(10);
       for (let n = 1; n <= 8; n++) {
         const plan = planTier(tier, files, n, { timings, read: () => '' });
@@ -649,7 +733,11 @@ describe('whole jobs against their timeouts', () => {
     'plans every %s slice of the checked-in table within its share of the timeout',
     (tier) => {
       const jobs = suiteJobs(suite);
-      const files = Object.keys(timings[tier] ?? {}).filter((f) => existsSync(path.join(root, f)));
+      const tabled = Object.keys(timings[tier] ?? {}).filter((f) => existsSync(path.join(root, f)));
+      // A historical aggregate weight may predate new mandatory group members. Expand only
+      // active complete groups; new members retain the normal unmeasured fallback, never an
+      // invented measurement. planTier itself must still reject every partial selection.
+      const files = completeGroups(tier, tabled);
       expect(files.length, `tests/timings.json has ${tier} files on disk`).toBeGreaterThan(10);
       const plan = planTier(tier, files, jobs[tier].slices);
       const over = overLine(plan, jobs[tier].timeout);

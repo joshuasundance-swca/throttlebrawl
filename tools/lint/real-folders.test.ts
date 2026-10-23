@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
+import ts from 'typescript';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
 import { checkImport, MODULE_MAP, moduleOf } from '../../scripts/module-map.mjs';
@@ -29,7 +30,7 @@ function srcFiles(): string[] {
 /** Relative import specifiers of a file, resolved to repo-relative posix paths. */
 function importsOf(file: string): string[] {
   const text = readFileSync(path.join(repoRoot, file), 'utf8');
-  const specs = [...text.matchAll(/(?:from|import)\s*\(?\s*'(\.[^']*)'/g)].map((m) => m[1] ?? '');
+  const specs = relativeImportSpecifiers(text);
   return specs.map((s) =>
     path
       .relative(repoRoot, path.resolve(path.dirname(path.join(repoRoot, file)), s))
@@ -37,6 +38,69 @@ function importsOf(file: string): string[] {
       .join('/'),
   );
 }
+
+function relativeImportSpecifiers(text: string): string[] {
+  const source = ts.createSourceFile('imports.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const specifiers: string[] = [];
+  function add(node: ts.Node | undefined): void {
+    if (node && ts.isStringLiteralLike(node) && node.text.startsWith('.')) specifiers.push(node.text);
+  }
+  function visit(node: ts.Node): void {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      add(node.moduleSpecifier);
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      add(node.arguments[0]);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      add(node.argument.literal);
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      add(node.moduleReference.expression);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return specifiers;
+}
+
+describe('relative import extraction', () => {
+  it('ignores quoted fixture code and comments without hiding a real forbidden import', () => {
+    const source = `
+      const fixture = "return import('../save');";
+      const template = \`export * from '../dev';\`;
+      // import '../app';
+      /* export { hidden } from '../input'; */
+      const actual = import('../save');
+    `;
+    expect(relativeImportSpecifiers(source)).toEqual(['../save']);
+    expect(checkImport('src/camera/example.ts', 'src/save')).not.toBeNull();
+  });
+
+  it('keeps actual static, export, bare, dynamic, import-type and import-equals specifiers', () => {
+    const source = `
+      import { one } from '../static';
+      import type { Two } from "../static-type";
+      export { three } from '../export';
+      export * from "../export-all";
+      import '../bare';
+      const four = import("../dynamic");
+      const five = import(\`../dynamic-template\`);
+      type Six = import('../type').Six;
+      import seven = require('../equals');
+      import { external } from 'external';
+      const computed = import(prefix + '/computed');
+    `;
+    expect(relativeImportSpecifiers(source)).toEqual([
+      '../static',
+      '../static-type',
+      '../export',
+      '../export-all',
+      '../bare',
+      '../dynamic',
+      '../dynamic-template',
+      '../type',
+      '../equals',
+    ]);
+  });
+});
 
 describe('the lint rules against the real folders', () => {
   const files = srcFiles();
