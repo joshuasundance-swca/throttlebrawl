@@ -1,0 +1,58 @@
+{
+  "type": "route",
+  "id": "osm-clinton-eagle-north-run",
+  "name": "Eagle Point North Run",
+  "network": "osm-clinton-eagle-point",
+  "start": {
+    "road": "osm-clinton-eagle-central-loop",
+    "s": 48.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-clinton-eagle-north-loop",
+    "s": 1328.8979
+  },
+  "mainPath": ["osm-clinton-eagle-central-loop", "osm-clinton-eagle-north-loop"],
+  "allowedRoads": ["osm-clinton-eagle-central-loop", "osm-clinton-eagle-north-loop"],
+  "checkpoints": [],
+  "closed": false,
+  "startGrid": {
+    "rows": 6,
+    "perRow": 1,
+    "rowGapM": 8.0
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An open one-pass run from Central Loop around the long North Loop arc. Actual OSM/USGS data; forward-only loop roads and single-file start. Arcade cross-sections and access limitations are disclosed in network notes. No short bypass or repeated-edge lap.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-23",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-clinton-eagle-point.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];way[\"highway\"~\"^(primary|secondary|tertiary|unclassified|residential|service|trunk|primary_link|secondary_link|tertiary_link)$\"](41.86,-90.42,41.98,-90.17);out tags geom;",
+          "retrievedAt": "2026-10-15T21:21:57Z",
+          "sha256": "60dd79a1d5ed17064f8acab989132d8bfd3d4fcb30b4ee809456b1ee202466a1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 326 points in 1 request(s) (lon, lat WGS84, sha256 5e45921210136a4e), bilinear (line park)",
+          "retrievedAt": "2026-10-23T01:56:38Z",
+          "sha256": "a794eba32e6ec0b758bbb8a285a7b61ee65faeca3d6a1a38303ab1d40c573450"
+        }
+      ]
+    }
+  }
+}

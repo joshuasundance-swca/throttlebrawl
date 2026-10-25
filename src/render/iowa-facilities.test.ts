@@ -5,9 +5,11 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../road';
 import { IowaFacilitiesLayer, prepareIowaFacilities, iowaFacilitiesReady } from './iowa-facilities';
 import { createFlatLook } from './look';
 import { createChunkGate } from './chunk-gate';
+import { packInputs } from '../../scripts/pack-inputs.mjs';
 
 const root = 'packs/region-clinton/regions/clinton-iowa';
-const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+const inputs = packInputs(process.cwd());
+const read = <T>(path: string): T => JSON.parse(inputs.materialize(path, readFileSync(path, 'utf8'))) as T;
 const roadOf = (id: string) => {
   const network = read<BakedNetwork>(`${root}/networks/${id}.json`);
   return createRoadNetwork({

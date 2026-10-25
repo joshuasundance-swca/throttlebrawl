@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
-import { createHeadlessRace } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { quantizeInput, type SimConfig, type SimEvent } from '../../src/sim/api';
 import { createBot } from '../../src/dev';
@@ -8,22 +7,12 @@ import { emptyActions, toSimInput } from '../../src/input';
 import { groundUnder, SURFACE_FEEL, surfaceFeel } from '../../src/sim/ground';
 import { createSimWithWorld } from '../../src/sim/create';
 import { riderState } from '../../src/sim/riders';
-import { ISOLATED } from './batch';
+import { eagleRecoveryConfigs } from './eagle-recovery-config';
 import { beyondAt, courseAt, pastAt, roadsideGroundHeight, terrainAt } from '../../src/road';
 import { routeNetworks, track } from './geometry-routes';
 
 const registry = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
-const { config } = createHeadlessRace(
-  {
-    seed: 1,
-    eventId: 'region-clinton:clinton-ia136-race',
-    route: 'region-clinton:osm-clinton-eagle-point-run',
-    playerBike: 'base:moped',
-    eventPatch: { riders: [] },
-    tuning: { ...ISOLATED, 'ground.offRoad': 1, 'riders.courseEdges': 1 },
-  },
-  { registry },
-);
+const { original: config, courses: courseConfigs } = eagleRecoveryConfigs(registry, 'base:moped');
 
 function excursion(
   source: SimConfig,
@@ -62,18 +51,53 @@ function excursion(
 describe('Eagle Point recoverable roadside on a rental moped', () => {
   for (const side of [-1, 1] as const) {
     it(`can steer back from the ${side < 0 ? 'left' : 'right'} grass without an out-of-bounds reset`, () => {
-      const trials = config.road.edges
-        .filter((e) => !config.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1))
-        .map((edge) => excursion(config, edge.index, edge.length / 2, side, true));
+      // Recover onto a road this race actually allows. The network also contains roads
+      // belonging to its other courses; returning onto those is correctly out of bounds.
+      const trials = courseConfigs.flatMap((source) =>
+        source.road.edges
+          .filter(
+            (e) =>
+              source.route.allows(e.index) &&
+              !source.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1),
+          )
+          .map((edge) => ({
+            ...excursion(source, edge.index, edge.length / 2, side, true),
+            route: source.event.routeId,
+            edge: edge.id,
+          })),
+      );
       expect(trials.length).toBeGreaterThan(0);
+      const oneWayEdges = config.road.edges
+        .filter((e) => !config.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1))
+        .map((e) => e.id);
+      expect(
+        new Set(trials.map((r) => r.edge)),
+        'every one-way network road has a legal recovery case',
+      ).toEqual(new Set(oneWayEdges));
       for (const r of trials) {
-        expect(r.events.filter((e) => e.type === 'crash')).toEqual([]);
+        expect(
+          r.events.filter((e) => e.type === 'crash'),
+          `${r.route}/${r.edge}`,
+        ).toEqual([]);
         expect(r.furthest).toBeGreaterThan(0.8);
         expect(r.recovered).toBe(true);
       }
       process.stdout.write(`[runoff] side ${side}: ${JSON.stringify(trials)}\n`);
     });
   }
+
+  it('still rejects returning onto a road excluded from the chosen course', () => {
+    const excluded = config.road.edges.find(
+      (e) =>
+        !config.route.allows(e.index) &&
+        !config.road.lanesAt(e.index, e.length / 2).some((l) => l.direction === -1),
+    );
+    expect(excluded, 'the original course retains a real excluded-road control').toBeDefined();
+    if (!excluded) throw new Error('Missing excluded-road control');
+    const r = excursion(config, excluded.index, excluded.length / 2, 1, true);
+    expect(r.events.find((e) => e.type === 'crash')?.data).toMatchObject({ cause: 'over', past: 'ground' });
+    expect(r.recovered).toBe(false);
+  });
 
   it('still resets beyond actual ground, even though the mathematical road plane continues', () => {
     const edge = config.road.edges.find(

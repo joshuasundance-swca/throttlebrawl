@@ -10,7 +10,7 @@
   },
   "finish": {
     "road": "osm-clinton-eagle-central-loop",
-    "s": 501.8331
+    "s": 498.9608
   },
   "mainPath": ["osm-clinton-eagle-entry", "osm-clinton-eagle-south-loop", "osm-clinton-eagle-central-loop"],
   "allowedRoads": [
@@ -21,7 +21,7 @@
   "checkpoints": [
     {
       "road": "osm-clinton-eagle-south-loop",
-      "s": 517.8365
+      "s": 517.9614
     }
   ],
   "closed": false,
@@ -36,7 +36,7 @@
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
-      "createdAt": "2026-10-15",
+      "createdAt": "2026-10-23",
       "tool": {
         "name": "tools/gis/src/tbgis/network.py",
         "version": "0.1.0",
@@ -57,9 +57,9 @@
           "spdx": "LicenseRef-US-Public-Domain",
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
-          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 190 points in 1 request(s) (lon, lat WGS84, sha256 2611afdd90dca649), bilinear (line park)",
-          "retrievedAt": "2026-10-15T22:01:12Z",
-          "sha256": "79f3f59ef84410e80a36c347248db9a0d0c344a7e7d66b7266a5511517a8f0ec"
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 326 points in 1 request(s) (lon, lat WGS84, sha256 5e45921210136a4e), bilinear (line park)",
+          "retrievedAt": "2026-10-23T01:56:38Z",
+          "sha256": "a794eba32e6ec0b758bbb8a285a7b61ee65faeca3d6a1a38303ab1d40c573450"
         }
       ]
     }
