@@ -5,13 +5,11 @@
 //   node scripts/tested-tree.mjs decide [--tree <tree sha>]   (standalone exact-proof lookup)
 //   node scripts/tested-tree.mjs gate                          (the `gate` job; reads NEEDS)
 //
-// A green full PR gate, or a train after its full suite passes and before it posts merge-enabling
-// statuses, uploads an artifact named `tested-tree-<tree>`, where <tree> is the tree of
-// the merge commit that run tested (GitHub's merge of the PR head into main at the push). The
-// squash commit GitHub writes on merge has that same tree whenever main has not moved since: 60 of
-// 60 squash merges checked on 2026-10-03 matched git's own merge of (main before the squash, PR
-// head). The run API exposes neither the merge commit nor `base.sha`, and timestamps flip at the
-// edges, so the PR run records the tree it tested and main looks it up by name, repo-wide.
+// Existing `tested-tree-<tree>` artifacts locate candidate runs; their name/payload cannot prove
+// acceptance. Only a main train qualifies: independently observe its exact-attempt official plan
+// log's full tree, guarded record/upload success, complete jobs and stable source identity. The
+// official record's seven-day age cap cannot be extended by a substitute artifact. Full-PR and
+// weak name/run-shape-only evidence conservatively retain the full suite.
 //
 // `decide` prints one plain line and writes `skip=true|false` and `tree=<sha>` to $GITHUB_OUTPUT.
 // Trains must run main's workflow, not a feature branch's. Any doubt (no artifact, an API error,
@@ -24,6 +22,8 @@ import { pathToFileURL } from 'node:url';
 import { git } from './lib.mjs';
 
 export const ARTIFACT_PREFIX = 'tested-tree-';
+/** The workflow's existing seven-day retention also bounds independently verified evidence. */
+export const PROOF_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const TREE = /^[0-9a-f]{40}$/;
 const positiveId = (id) => Number.isSafeInteger(id) && id > 0;
 
@@ -59,57 +59,210 @@ export function candidates(artifacts, tree) {
     .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
 }
 
-/** Full PR checks and main's full train can record a tested tree; quick checks cannot. */
+/** Only the existing main-code train plan/report boundary can independently vouch for a tree. */
 export function runVouches(/** @type {Run} */ run) {
   return (
-    (run.event === 'pull_request' && run.path === '.github/workflows/ci.yml') ||
-    (run.path === '.github/workflows/train.yml' &&
-      run.head_branch === 'main' &&
-      ['workflow_run', 'workflow_dispatch'].includes(run.event))
+    run.path === '.github/workflows/train.yml' &&
+    run.head_branch === 'main' &&
+    ['workflow_run', 'workflow_dispatch'].includes(run.event)
+  );
+}
+
+/** @typedef {(path: string, options?: { raw?: boolean }) => Promise<any>} ProofApi */
+
+/** Stable main-code source/attempt identity, independent of a run's changing landing status. */
+export function trainRunIdentity(/** @type {any} */ run, /** @type {string} */ repo) {
+  if (
+    !run ||
+    !positiveId(run.id) ||
+    !positiveId(run.run_attempt) ||
+    !positiveId(run.workflow_id) ||
+    !TREE.test(run.head_sha ?? '') ||
+    !runVouches(run) ||
+    !positiveId(run.repository?.id) ||
+    run.head_repository?.id !== run.repository.id ||
+    run.repository.full_name !== repo ||
+    run.head_repository.full_name !== repo
+  )
+    return null;
+  return JSON.stringify([
+    run.id,
+    run.run_attempt,
+    run.workflow_id,
+    run.path,
+    run.event,
+    run.head_branch,
+    run.head_sha,
+    run.repository.id,
+    repo,
+  ]);
+}
+
+/** Complete, stable-count collections; every page and row must be observed unambiguously. */
+async function collection(/** @type {ProofApi} */ api, /** @type {string} */ url, /** @type {string} */ key) {
+  /** @type {any[]} */
+  const rows = [];
+  const ids = new Set();
+  let total;
+  for (let page = 1; page <= 100; page++) {
+    const result = await api(`${url}${url.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+    if (
+      !Number.isSafeInteger(result?.total_count) ||
+      result.total_count < 0 ||
+      (total !== undefined && total !== result.total_count) ||
+      !Array.isArray(result[key]) ||
+      result[key].length > 100
+    )
+      throw new Error('incomplete collection');
+    total = result.total_count;
+    for (const row of result[key]) {
+      if (!positiveId(row?.id) || ids.has(row.id)) throw new Error('ambiguous collection');
+      ids.add(row.id);
+      rows.push(row);
+    }
+    if (rows.length === total) return rows;
+    if (rows.length > total || result[key].length !== 100) throw new Error('incomplete page');
+  }
+  throw new Error('collection exceeds readable pages');
+}
+
+/** Explicit same-attempt job rows, also used by the train's skipped-suite observation. */
+export async function completeAttemptJobs(
+  /** @type {ProofApi} */ api,
+  /** @type {string} */ repo,
+  /** @type {number} */ runId,
+  /** @type {number} */ attempt,
+) {
+  if (!positiveId(runId) || !positiveId(attempt)) throw new Error('invalid attempt identity');
+  const jobs = await collection(api, `/repos/${repo}/actions/runs/${runId}/attempts/${attempt}/jobs`, 'jobs');
+  if (
+    jobs.some(
+      (job) =>
+        job.run_id !== runId ||
+        job.run_attempt !== attempt ||
+        typeof job.name !== 'string' ||
+        !job.name ||
+        typeof job.status !== 'string' ||
+        !job.status ||
+        (job.conclusion !== null && (typeof job.conclusion !== 'string' || !job.conclusion)),
+    )
+  )
+    throw new Error('malformed or mismatched jobs');
+  return jobs;
+}
+
+/** Strict UTC service timestamps, including the seven fractional digits seen in completed logs. */
+function timestamp(/** @type {unknown} */ value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(value))
+    return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 19) === value.slice(0, 19)
+    ? parsed
+    : null;
+}
+
+/** A locator is never authority: derive the requested tree from trusted official producer work. */
+async function officialProof(
+  /** @type {any} */ run,
+  /** @type {string} */ tree,
+  /** @type {string} */ repo,
+  /** @type {ProofApi} */ api,
+  /** @type {() => number} */ now,
+) {
+  const identity = trainRunIdentity(run, repo);
+  if (!identity) return false;
+  const jobs = await completeAttemptJobs(api, repo, run.id, run.run_attempt);
+  const plans = jobs.filter((j) => j.name === 'plan');
+  const reports = jobs.filter((j) => j.name === 'report');
+  if (plans.length !== 1 || reports.length !== 1) return false;
+  const plan = plans[0];
+  const report = reports[0];
+  if (
+    plan.status !== 'completed' ||
+    plan.conclusion !== 'success' ||
+    !['in_progress', 'completed'].includes(report.status) ||
+    !Array.isArray(report.steps)
+  )
+    return false;
+  const names = ['Record the tree this train tested', 'Upload the tested train tree'];
+  const chosen = names.map((name) => report.steps.filter((/** @type {any} */ step) => step?.name === name));
+  if (chosen.some((steps) => steps.length !== 1)) return false;
+  const [record, upload] = chosen.map((steps) => steps[0]);
+  if (
+    [record, upload].some(
+      (step) => step.status !== 'completed' || step.conclusion !== 'success' || !positiveId(step.number),
+    ) ||
+    record.number >= upload.number
+  )
+    return false;
+  const finishedPlan = timestamp(plan.completed_at);
+  const times = [record.started_at, record.completed_at, upload.started_at, upload.completed_at].map(
+    (value) => timestamp(value) ?? NaN,
+  );
+  const current = now();
+  if (
+    !Number.isFinite(current) ||
+    finishedPlan === null ||
+    times.some((t) => !Number.isFinite(t) || t > current) ||
+    times[0] < finishedPlan ||
+    times[1] < times[0] ||
+    times[2] < times[1] ||
+    times[3] < times[2] ||
+    current - times[1] > PROOF_MAX_AGE_MS
+  )
+    return false;
+  const log = await api(`/repos/${repo}/actions/jobs/${plan.id}/logs`, { raw: true });
+  if (typeof log !== 'string') return false;
+  const markers = log.split(/\r?\n/).filter((line) => /\btree=/.test(line));
+  if (markers.length !== 1) return false;
+  const match = /^(\S+) tree=([0-9a-f]{40})$/.exec(markers[0]);
+  const loggedAt = timestamp(match?.[1]);
+  if (!match || match[2] !== tree || loggedAt === null || loggedAt > finishedPlan) return false;
+  const unchanged = identity === trainRunIdentity(await api(`/repos/${repo}/actions/runs/${run.id}`), repo);
+  const finished = now();
+  return (
+    unchanged && Number.isFinite(finished) && finished >= current && finished - times[1] <= PROOF_MAX_AGE_MS
   );
 }
 
 /**
- * Looks `tree` up. `api(path)` returns the parsed JSON of a GitHub REST GET.
+ * The artifact only locates a main run; its official plan/report independently prove the tree.
  * @param {string} tree
- * @param {{ repo: string, api: (path: string) => Promise<any> }} o
- * @returns {Promise<{ skip: boolean, reason: string }>}
+ * @param {{ repo: string, api: ProofApi, now?: () => number }} o
+ * @returns {Promise<{ skip: boolean, reason: string, unavailable?: boolean }>}
  */
-export async function decide(tree, { repo, api }) {
+export async function decide(tree, { repo, api, now = Date.now }) {
   const short = tree.slice(0, 7);
-  let list;
   try {
-    list = await api(`/repos/${repo}/actions/artifacts?name=${artifactName(tree)}&per_page=100`);
-  } catch (err) {
-    return { skip: false, reason: `tree ${short}: lookup failed (${message(err)}); running the whole suite` };
-  }
-  const found = candidates(list?.artifacts ?? [], tree);
-  if (found.length === 0) {
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('invalid repository');
+    const list = await collection(
+      api,
+      `/repos/${repo}/actions/artifacts?name=${artifactName(tree)}`,
+      'artifacts',
+    );
+    for (const a of candidates(list, tree)) {
+      const run = await api(`/repos/${repo}/actions/runs/${a.workflow_run?.id}`);
+      if (
+        run?.id === a.workflow_run?.id &&
+        run.repository?.id === a.workflow_run?.repository_id &&
+        (await officialProof(run, tree, repo, api, now))
+      ) {
+        return {
+          skip: true,
+          reason: `tree ${short}: train run ${run.id} recorded this exact tree after its full suite passed; skipping the suite (https://github.com/${repo}/actions/runs/${run.id})`,
+        };
+      }
+    }
+  } catch {
     return {
       skip: false,
-      reason: `tree ${short}: no full PR or train recorded this tree; running the whole suite`,
+      unavailable: true,
+      reason: `tree ${short}: proof observation unavailable or incomplete; running the whole suite`,
     };
-  }
-  for (const a of found) {
-    let run;
-    try {
-      run = await api(`/repos/${repo}/actions/runs/${a.workflow_run?.id}`);
-    } catch (err) {
-      return {
-        skip: false,
-        reason: `tree ${short}: run lookup failed (${message(err)}); running the whole suite`,
-      };
-    }
-    if (run?.id === a.workflow_run?.id && runVouches(run)) {
-      return {
-        skip: true,
-        reason: `tree ${short}: ${run.path === '.github/workflows/train.yml' ? 'train' : 'PR'} run ${run.id} recorded this exact tree after its full suite passed; skipping the suite (${run.html_url ?? ''})`,
-      };
-    }
   }
   return {
     skip: false,
-    reason: `tree ${short}: no trusted full PR or main train vouches for it; running the whole suite`,
+    reason: `tree ${short}: no current official main-train proof vouches for it; running the whole suite`,
   };
 }
 
@@ -163,12 +316,8 @@ export function gateVerdict(needs) {
   return { ok: problems.length === 0, path: skip ? 'skip' : 'suite', problems };
 }
 
-function message(/** @type {unknown} */ err) {
-  return err instanceof Error ? err.message : String(err);
-}
-
 /** GitHub REST GET: the job's token through fetch on CI, else the signed-in `gh` CLI. */
-async function apiGet(/** @type {string} */ p) {
+async function apiGet(/** @type {string} */ p, { raw = false } = {}) {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   if (token) {
     const base = process.env.GITHUB_API_URL || 'https://api.github.com';
@@ -177,13 +326,13 @@ async function apiGet(/** @type {string} */ p) {
       signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) throw new Error(`GitHub API ${res.status} for ${p}`);
-    return res.json();
+    return raw ? res.text() : res.json();
   }
   // No shell: gh is a real executable on Windows too, and a shell would split the path at `&`.
   const r = spawnSync('gh', ['api', p.replace(/^\//, '')], { encoding: 'utf8' });
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(`gh api ${p}: ${r.stderr.trim()}`);
-  return JSON.parse(r.stdout);
+  return raw ? r.stdout : JSON.parse(r.stdout);
 }
 
 async function main(/** @type {string[]} */ argv) {

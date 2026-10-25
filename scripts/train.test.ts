@@ -1840,6 +1840,7 @@ describe('the commands, against a fake GitHub', () => {
       GITHUB_RUN_ID: '37414740605',
       GITHUB_RUN_ATTEMPT: '1',
       GITHUB_RUN_NUMBER: '29',
+      GITHUB_SHA: base,
       // On CI these name the real step's files: never write to them from a test.
       GITHUB_OUTPUT: '',
       GITHUB_STEP_SUMMARY: '',
@@ -1961,6 +1962,183 @@ describe('the commands, against a fake GitHub', () => {
     return commands;
   };
   const reconciliationCalls = (calls: Call[]) => calls.filter((c) => /\/check-runs\//.test(c.path));
+
+  const fullTreeRecord = (extra: Record<string, unknown> = {}) => ({
+    id: 7,
+    name: `tested-tree-${sha('e')}`,
+    expired: false,
+    workflow_run: { id: 91, repository_id: 12, head_repository_id: 12 },
+    ...extra,
+  });
+  const skippedJobs = () => [
+    { id: 1, run_id: 37414740605, run_attempt: 1, name: 'plan', status: 'completed', conclusion: 'success' },
+    { id: 2, run_id: 37414740605, run_attempt: 1, name: 'suite', status: 'completed', conclusion: 'skipped' },
+    { id: 3, run_id: 37414740605, run_attempt: 1, name: 'report', status: 'in_progress', conclusion: null },
+  ];
+  const proofRoutes = (
+    records: unknown[] = [fullTreeRecord()],
+    producer: Record<string, unknown> = {},
+  ): [RegExp, () => unknown][] => [
+    [
+      /^GET \/repos\/owner\/game\/actions\/artifacts\?/,
+      () => ({ total_count: records.length, artifacts: records }),
+    ],
+    [
+      /^GET \/repos\/owner\/game\/actions\/runs\/91$/,
+      () => ({
+        id: 91,
+        event: 'workflow_dispatch',
+        path: '.github/workflows/train.yml',
+        head_branch: 'main',
+        head_sha: base,
+        run_attempt: 1,
+        workflow_id: 22,
+        repository: { id: 12, full_name: REPO },
+        head_repository: { id: 12, full_name: REPO },
+        html_url: 'https://example.invalid/runs/91',
+        ...producer,
+      }),
+    ],
+    [
+      /^GET \/repos\/owner\/game\/actions\/runs\/91\/attempts\/1\/jobs\?/,
+      () => ({
+        total_count: 2,
+        jobs: [
+          {
+            id: 911,
+            run_id: 91,
+            run_attempt: 1,
+            name: 'plan',
+            status: 'completed',
+            conclusion: 'success',
+            completed_at: new Date(Date.now() - 3000).toISOString(),
+          },
+          {
+            id: 912,
+            run_id: 91,
+            run_attempt: 1,
+            name: 'report',
+            status: 'in_progress',
+            conclusion: null,
+            steps: [
+              {
+                name: 'Record the tree this train tested',
+                number: 2,
+                status: 'completed',
+                conclusion: 'success',
+                started_at: new Date(Date.now() - 2000).toISOString(),
+                completed_at: new Date(Date.now() - 1500).toISOString(),
+              },
+              {
+                name: 'Upload the tested train tree',
+                number: 3,
+                status: 'completed',
+                conclusion: 'success',
+                started_at: new Date(Date.now() - 1000).toISOString(),
+                completed_at: new Date(Date.now() - 500).toISOString(),
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+    [
+      /^GET \/repos\/owner\/game\/actions\/jobs\/911\/logs$/,
+      () => `${new Date(Date.now() - 4000).toISOString()} tree=${sha('e')}\n`,
+    ],
+    [
+      /^GET \/repos\/owner\/game\/actions\/runs\/37414740605$/,
+      () => ({
+        id: 37414740605,
+        head_sha: base,
+        run_attempt: 1,
+        workflow_id: 22,
+        event: 'workflow_dispatch',
+        path: '.github/workflows/train.yml',
+        head_branch: 'main',
+        repository: { id: 12, full_name: REPO },
+        head_repository: { id: 12, full_name: REPO },
+      }),
+    ],
+    [
+      /^GET \/repos\/owner\/game\/actions\/runs\/37414740605\/attempts\/1\/jobs\?/,
+      () => ({
+        total_count: 3,
+        jobs: skippedJobs(),
+      }),
+    ],
+  ];
+
+  it('plan: reuses only a trusted record of the exact fully assembled bundle tree', async () => {
+    ghEnv();
+    fakeAssembly();
+    const { lines, outputs } = capture();
+    const calls = fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: [ok] })]),
+      ...proofRoutes(),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs()).toMatchObject({ depart: 'true', reuse: 'true', tree: sha('e') });
+    expect(calls.map((c) => c.path)).toContain(
+      `/repos/${REPO}/actions/artifacts?name=tested-tree-${sha('e')}&per_page=100&page=1`,
+    );
+    expect(lines.join('\n')).toContain('train run 91 recorded this exact tree after its full suite passed');
+    expect(calls.filter((c) => c.method !== 'GET' && c.path !== '/graphql')).toEqual([]);
+  });
+
+  it.each([
+    ['cold tree', [], {}],
+    ['expired record', [fullTreeRecord({ expired: true })], {}],
+    ['different full tree', [fullTreeRecord({ name: `tested-tree-${sha('d')}` })], {}],
+    ['short tree', [fullTreeRecord({ name: 'tested-tree-eeeeeee' })], {}],
+    [
+      'fork record',
+      [fullTreeRecord({ workflow_run: { id: 91, repository_id: 12, head_repository_id: 13 } })],
+      {},
+    ],
+    ['untrusted workflow', [fullTreeRecord()], { path: '.github/workflows/other.yml' }],
+    ['feature train', [fullTreeRecord()], { head_branch: 'feature' }],
+    ['wrong producer id', [fullTreeRecord()], { id: 92 }],
+  ])('plan: %s runs the ordinary suite', async (_name, records, producer) => {
+    ghEnv();
+    fakeAssembly();
+    const { outputs } = capture();
+    fakeGitHub([
+      MAIN,
+      mainRun('success'),
+      MAIN_DETAILS,
+      MAIN_JOBS,
+      graphql([node({ number: 4, head: sha('a'), quick: [ok] })]),
+      ...proofRoutes(records, producer),
+    ]);
+    await cmdPlan(CFG);
+    expect(outputs()).toMatchObject({ depart: 'true', reuse: 'false' });
+  });
+
+  it.each(['artifact lookup', 'producer lookup'])(
+    'plan: an API error in %s runs the ordinary suite',
+    async (stage) => {
+      ghEnv();
+      fakeAssembly();
+      const { outputs } = capture();
+      const routes = proofRoutes();
+      routes[stage === 'artifact lookup' ? 0 : 1]![1] = () => new Response('unavailable', { status: 503 });
+      fakeGitHub([
+        MAIN,
+        mainRun('success'),
+        MAIN_DETAILS,
+        MAIN_JOBS,
+        graphql([node({ number: 4, head: sha('a'), quick: [ok] })]),
+        ...routes,
+      ]);
+      await cmdPlan(CFG);
+      expect(outputs()).toMatchObject({ depart: 'true', reuse: 'false' });
+    },
+  );
 
   it('plan: reconciles only the exact selected pending quick once, then selects it through normal eligibility', async () => {
     ghEnv();
@@ -2453,6 +2631,367 @@ describe('the commands, against a fake GitHub', () => {
       TRAIN_CONTROL: 'skipped',
       TRAIN_CONTROL_SCOPE: 'full',
     });
+
+  it.each(['success', 'cancelled', 'skipped', 'pending', 'empty child name'])(
+    'report: reuse refuses any %s suite child, even beside a skipped parent',
+    async (outcome) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      const { lines } = capture();
+      fakeGitHub([
+        [
+          /^GET \/repos\/owner\/game\/actions\/runs\/37414740605\/attempts\/1\/jobs\?/,
+          () => ({
+            total_count: 4,
+            jobs: [
+              ...skippedJobs(),
+              {
+                id: 4,
+                run_id: 37414740605,
+                run_attempt: 1,
+                name: outcome === 'empty child name' ? 'suite /' : 'suite / static',
+                status: outcome === 'pending' ? 'queued' : 'completed',
+                conclusion: outcome === 'pending' ? null : outcome,
+              },
+            ],
+          }),
+        ],
+        MAIN,
+        open(two),
+        ...proofRoutes(),
+      ]);
+      await cmdReport(CFG);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+      expect(lines.join('\n')).toContain('**unfinished**');
+    },
+  );
+
+  it.each([
+    'truncated',
+    'missing suite',
+    'missing report',
+    'suite ran',
+    'wrong attempt',
+    'missing run',
+    'missing attempt',
+    'duplicate suite',
+    'duplicate id',
+    'API error',
+  ])('report: reuse refuses %s current inventory', async (bad) => {
+    const two = riders(2);
+    reportEnv(two);
+    vi.stubEnv('TRAIN_RESULT', 'skipped');
+    vi.stubEnv('TRAIN_REUSE', 'true');
+    vi.stubEnv('TRAIN_TREE', sha('e'));
+    fakeAssembly();
+    const { lines } = capture();
+    const jobs = skippedJobs().filter((j) => bad !== 'missing suite' || j.name !== 'suite');
+    if (bad === 'missing report')
+      jobs.splice(
+        jobs.findIndex((j) => j.name === 'report'),
+        1,
+      );
+    if (bad === 'suite ran') jobs.find((j) => j.name === 'suite')!.conclusion = 'success';
+    if (bad === 'wrong attempt') jobs[0]!.run_attempt = 2;
+    if (bad === 'missing run') delete (jobs[0] as Record<string, unknown>).run_id;
+    if (bad === 'missing attempt') delete (jobs[0] as Record<string, unknown>).run_attempt;
+    if (bad === 'duplicate suite') jobs.push({ ...jobs[1]!, id: 4 });
+    if (bad === 'duplicate id') jobs.push({ ...jobs[0]! });
+    fakeGitHub([
+      [
+        /^GET \/repos\/owner\/game\/actions\/runs\/37414740605\/attempts\/1\/jobs\?/,
+        () =>
+          bad === 'API error'
+            ? new Response('unavailable', { status: 503 })
+            : { total_count: bad === 'truncated' ? 101 : jobs.length, jobs },
+      ],
+      MAIN,
+      open(two),
+      ...proofRoutes(),
+    ]);
+    await cmdReport(CFG);
+    expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+  });
+
+  it.each(['attempt', 'head', 'repository'])(
+    'report: reuse refuses a changed current-run %s during inventory reads',
+    async (changed) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      const { lines } = capture();
+      let reads = 0;
+      const calls = fakeGitHub([
+        [
+          /^GET \/repos\/owner\/game\/actions\/runs\/37414740605$/,
+          () => ({
+            id: 37414740605,
+            workflow_id: 22,
+            head_sha: reads > 0 && changed === 'head' ? sha('9') : base,
+            run_attempt: reads++ > 0 && changed === 'attempt' ? 2 : 1,
+            event: 'workflow_dispatch',
+            path: '.github/workflows/train.yml',
+            head_branch: 'main',
+            repository: { id: 12, full_name: REPO },
+            head_repository: { id: reads > 1 && changed === 'repository' ? 13 : 12, full_name: REPO },
+          }),
+        ],
+        MAIN,
+        open(two),
+        ...proofRoutes(),
+      ]);
+      await cmdReport(CFG);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+      expect(calls.some((c) => c.path.includes('/actions/artifacts?'))).toBe(false);
+    },
+  );
+
+  it.each([false, true])(
+    'report: complete second-page observation controls reuse (suite child=%s)',
+    async (child) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      const { lines } = capture();
+      let pages = 0;
+      const calls = fakeGitHub([
+        [
+          /^GET \/repos\/owner\/game\/actions\/runs\/37414740605\/attempts\/1\/jobs\?/,
+          () => {
+            pages++;
+            return {
+              total_count: 101,
+              jobs:
+                pages === 2
+                  ? [{ ...skippedJobs()[0], id: 1000, name: child ? 'suite / static' : 'other-final' }]
+                  : [
+                      ...skippedJobs(),
+                      ...Array.from({ length: 97 }, (_, i) => ({
+                        ...skippedJobs()[0],
+                        id: i + 100,
+                        name: `other-${i}`,
+                      })),
+                    ],
+            };
+          },
+        ],
+        MAIN,
+        open(two),
+        ...proofRoutes(),
+      ]);
+      await cmdReport(CFG);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(!child);
+      expect(calls.some((c) => c.path.endsWith('/actions/runs/91'))).toBe(!child);
+      expect(
+        calls.some((c) => c.path.includes('/runs/37414740605/attempts/1/jobs?') && c.path.endsWith('page=2')),
+      ).toBe(true);
+    },
+  );
+
+  it.each(['main', 'head', 'draft', 'auto-merge', 'closed'])(
+    'report: authoritative %s is re-read after the proof observation changes it',
+    async (changed) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      let advanced = false;
+      const { lines } = capture();
+      const calls = fakeGitHub([
+        [
+          /^GET \/repos\/owner\/game\/git\/ref\/heads\/main$/,
+          () => ({ object: { sha: advanced && changed === 'main' ? sha('9') : base } }),
+        ],
+        [
+          /^GET \/repos\/owner\/game\/actions\/artifacts\?/,
+          () => {
+            advanced = true;
+            return { total_count: 1, artifacts: [fullTreeRecord()] };
+          },
+        ],
+        [
+          /^POST \/graphql$/,
+          () =>
+            listing(
+              ...(advanced && changed === 'closed'
+                ? []
+                : two.map((p) =>
+                    node({
+                      number: p.number,
+                      head: advanced && changed === 'head' ? sha('c') : p.headSha,
+                      draft: advanced && changed === 'draft',
+                      auto: !(advanced && changed === 'auto-merge'),
+                      quick: [ok],
+                    }),
+                  )),
+            ),
+        ],
+        ...proofRoutes(),
+      ]);
+      await cmdReport(CFG);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+      expect(lines.join('\n')).toContain(changed === 'main' ? '**main-moved**' : '**stale**');
+      const paths = calls.map((c) => c.path);
+      expect(paths.lastIndexOf(`/repos/${REPO}/git/ref/heads/main`)).toBeGreaterThan(
+        paths.lastIndexOf(`/repos/${REPO}/actions/runs/91`),
+      );
+    },
+  );
+
+  it.each(['failed', 'timed out'])(
+    'report: a skipped suite cannot override an observed %s suite job with reused proof',
+    async (red) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      const { lines } = capture();
+      fakeGitHub([
+        MAIN,
+        open(two),
+        notes(red === 'timed out'),
+        LOG,
+        [
+          /^GET \/repos\/owner\/game\/actions\/runs\/37414740605\/attempts\/1\/jobs\?/,
+          () => ({
+            total_count: 1,
+            jobs: [
+              {
+                id: 112110821845,
+                run_id: 37414740605,
+                run_attempt: 1,
+                status: 'completed',
+                name: 'suite / browser (5/7)',
+                conclusion: red === 'failed' ? 'failure' : 'cancelled',
+                started_at: '2026-10-06T04:39:52Z',
+                completed_at: '2026-10-06T04:50:02Z',
+              },
+            ],
+          }),
+        ],
+        ...proofRoutes(),
+      ]);
+      await cmdReport(CFG);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+      expect(lines.join('\n')).toContain('**split**');
+    },
+  );
+
+  it('report: a skipped suite with a fresh exact proof can land, and names the original producer', async () => {
+    const two = riders(2);
+    reportEnv(two);
+    vi.stubEnv('TRAIN_RESULT', 'skipped');
+    vi.stubEnv('TRAIN_REUSE', 'true');
+    vi.stubEnv('TRAIN_TREE', sha('e'));
+    fakeAssembly();
+    const { lines } = capture();
+    const calls = fakeGitHub([MAIN, open(two), ...proofRoutes()]);
+    await cmdReport(CFG);
+    expect(lines.filter((l) => l.includes('would post gate=success'))).toHaveLength(two.length);
+    expect(lines.join('\n')).toContain('reused');
+    expect(lines.join('\n')).toContain('train run 91');
+    expect(lines.join('\n')).not.toContain('passed train 29');
+    expect(calls.filter((c) => c.method !== 'GET' && c.path !== '/graphql')).toEqual([]);
+  });
+
+  it.each([
+    ['reuse was not selected', '', sha('e'), [fullTreeRecord()]],
+    ['missing proof', 'true', sha('e'), []],
+    ['expired proof', 'true', sha('e'), [fullTreeRecord({ expired: true })]],
+    [
+      'bundle differs from proven tree',
+      'true',
+      sha('d'),
+      [fullTreeRecord({ name: `tested-tree-${sha('d')}` })],
+    ],
+    ['short tree', 'true', 'eeeeeee', [fullTreeRecord()]],
+  ])('report: skipped suite cannot land when %s', async (_name, reuse, tree, records) => {
+    const two = riders(2);
+    reportEnv(two);
+    vi.stubEnv('TRAIN_RESULT', 'skipped');
+    vi.stubEnv('TRAIN_REUSE', reuse);
+    vi.stubEnv('TRAIN_TREE', tree);
+    fakeAssembly();
+    const { lines } = capture();
+    fakeGitHub([MAIN, open(two), ...proofRoutes(records)]);
+    await cmdReport(CFG);
+    expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+    expect(lines.join('\n')).toContain('**unfinished**');
+  });
+
+  it.each(['main', 'head', 'draft', 'auto-merge', 'closed'])(
+    'report: reuse retains the current %s check',
+    async (changed) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      const { lines } = capture();
+      const current = two.map((p) =>
+        node({
+          number: p.number,
+          head: changed === 'head' ? sha('c') : p.headSha,
+          draft: changed === 'draft',
+          auto: changed !== 'auto-merge',
+          quick: [ok],
+        }),
+      );
+      fakeGitHub([
+        [
+          /^GET \/repos\/owner\/game\/git\/ref\/heads\/main$/,
+          () => ({ object: { sha: changed === 'main' ? sha('9') : base } }),
+        ],
+        graphql(changed === 'closed' ? [] : current),
+        ...proofRoutes(),
+      ]);
+      await cmdReport(CFG);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+      expect(lines.join('\n')).toContain(changed === 'main' ? '**main-moved**' : '**stale**');
+    },
+  );
+
+  it.each(['untrusted producer', 'lookup failure', 'assembly failure'])(
+    'report: reuse fails closed on %s',
+    async (failure) => {
+      const two = riders(2);
+      reportEnv(two);
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      vi.stubEnv('TRAIN_TREE', sha('e'));
+      fakeAssembly();
+      if (failure === 'assembly failure')
+        vi.mocked(spawnSync).mockReturnValue({ status: 1, stdout: '', stderr: 'unavailable' } as ReturnType<
+          typeof spawnSync
+        >);
+      const routes = proofRoutes([], failure === 'untrusted producer' ? { head_branch: 'feature' } : {});
+      if (failure === 'untrusted producer')
+        routes[0]![1] = () => ({ total_count: 1, artifacts: [fullTreeRecord()] });
+      if (failure === 'lookup failure') routes[0]![1] = () => new Response('unavailable', { status: 503 });
+      const { lines } = capture();
+      const calls = fakeGitHub([MAIN, open(two), ...routes]);
+      await cmdReport(CFG);
+      if (failure === 'untrusted producer')
+        expect(calls.some((c) => c.path === `/repos/${REPO}/actions/runs/91`)).toBe(true);
+      expect(lines.some((l) => l.includes('would post gate=success'))).toBe(false);
+      expect(lines.join('\n')).toContain('**unfinished**');
+    },
+  );
   const open = (bundle: ReturnType<typeof riders>): [RegExp, () => unknown] => [
     /^POST \/graphql$/,
     () => listing(...bundle.map((b) => node({ number: b.number, head: b.headSha, quick: [ok] }))),
@@ -2491,6 +3030,47 @@ describe('the commands, against a fake GitHub', () => {
     mergeable: null,
     mergeable_state: 'unknown',
   };
+
+  it.each(['merged', 'closed', 'deadline'])(
+    'report: reuse posts its original producer and retains %s landing behavior',
+    async (end) => {
+      const one = landingEnv();
+      vi.stubEnv('TRAIN_RESULT', 'skipped');
+      vi.stubEnv('TRAIN_COVERAGE', '');
+      vi.stubEnv('TRAIN_REUSE', 'true');
+      fakeAssembly();
+      capture();
+      const calls = fakeGitHub([
+        MAIN,
+        open(one),
+        STATUS,
+        DISPATCH,
+        LANDED,
+        ...proofRoutes(),
+        [
+          /^GET \/repos\/owner\/game\/pulls\/11$/,
+          () =>
+            end === 'merged'
+              ? { ...pull, state: 'closed', merged_at: '2026-10-23T08:00:00Z' }
+              : end === 'closed'
+                ? { ...pull, state: 'closed' }
+                : pull,
+        ],
+      ]);
+      const reporting = cmdReport(CFG);
+      await vi.runAllTimersAsync();
+      await reporting;
+      const posts = statusPosts(calls);
+      expect(posts.map((s) => s.state)).toEqual(end === 'merged' ? ['success'] : ['success', 'pending']);
+      expect(posts[0]?.description).toContain('reused');
+      expect(posts[0]?.description).toContain('train run 91');
+      expect(calls.at(-1)?.path).toBe(`/repos/${REPO}/actions/workflows/train.yml/dispatches`);
+      expect(calls.filter((c) => c.method !== 'GET' && c.path !== '/graphql').map((c) => c.path)).toEqual([
+        ...posts.map(() => `/repos/${REPO}/statuses/${sha('a')}`),
+        `/repos/${REPO}/actions/workflows/train.yml/dispatches`,
+      ]);
+    },
+  );
 
   it('report: landing logs first and changed readiness, suppresses identical polls, and still accepts a merge', async () => {
     const one = landingEnv();
@@ -3623,7 +4203,9 @@ describe('the workflows', () => {
     );
     const t = jobs(train);
     const ride = t.get('suite') ?? '';
-    expect(ride).toMatch(/^ {4}needs: plan\n {4}if: needs\.plan\.outputs\.depart == 'true'\n/m);
+    expect(ride).toMatch(
+      /^ {4}needs: plan\n {4}if: needs\.plan\.outputs\.depart == 'true' && needs\.plan\.outputs\.reuse != 'true'\n/m,
+    );
     for (const line of [
       'full: true',
       'base: ${{ needs.plan.outputs.base }}',
@@ -3660,12 +4242,39 @@ describe('the workflows', () => {
       /^ {4}needs: \[plan, suite, control-plan, control\]\n {4}if: always\(\) && needs\.plan\.outputs\.depart == 'true'\n/m,
     );
     expect(report).toContain('\n          TRAIN_RESULT: ${{ needs.suite.result }}\n');
+    expect(report).toContain('\n          TRAIN_REUSE: ${{ needs.plan.outputs.reuse }}\n');
     expect(report).toContain('\n          TRAIN_CONTROL: ${{ needs.control.result }}\n');
     expect(report).toContain(
       '\n          TRAIN_SINGLE_SAME_TREE: ${{ needs.plan.outputs.single_same_tree }}\n',
     );
     expect(report).toContain('\n          TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}\n');
     expect(report).toContain('\n          TRAIN_BASE: ${{ needs.plan.outputs.base }}\n');
+  });
+
+  it('routes only proved departed trains around the suite and never records a fresh proof on reuse', () => {
+    const t = jobs(train);
+    expect(t.get('plan')).toContain('\n      reuse: ${{ steps.plan.outputs.reuse }}\n');
+    const condition = /^ {4}if: (.+)$/m.exec(t.get('suite') ?? '')?.[1] ?? 'false';
+    for (const depart of ['true', 'false'])
+      for (const reuse of ['true', 'false', ''])
+        expect(Boolean(runInNewContext(condition, { needs: { plan: { outputs: { depart, reuse } } } }))).toBe(
+          depart === 'true' && reuse !== 'true',
+        );
+    const record =
+      (t.get('report') ?? '')
+        .split(/\n {6}- /)
+        .find((s) => s.startsWith('name: Record the tree this train tested')) ?? '';
+    const recordCondition = /^ {8}if: (.+)$/m.exec(record)?.[1] ?? 'false';
+    for (const reuse of ['true', 'false'])
+      expect(
+        Boolean(
+          runInNewContext(recordCondition, {
+            needs: { plan: { outputs: { reuse } }, suite: { result: 'skipped', outputs: {} } },
+            github: { event_name: 'workflow_dispatch' },
+            inputs: { dry_run: false },
+          }),
+        ),
+      ).toBe(false);
   });
 
   it('the ordinary quick check runs static with budget and unit, excluding the heavy tiers', () => {

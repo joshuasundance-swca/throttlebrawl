@@ -9,6 +9,8 @@ const tree = 'c'.repeat(40);
 const identity = { id: 10, full_name: repo };
 const ci = { id: 20, path: '.github/workflows/ci.yml', state: 'active' };
 const train = { id: 21, path: '.github/workflows/train.yml', state: 'active' };
+const PROOF_NOW = Date.parse('2026-10-23T16:00:00Z');
+const proofStamp = (offset: number) => new Date(PROOF_NOW + offset).toISOString();
 const run = {
   id: 30,
   workflow_id: ci.id,
@@ -35,7 +37,7 @@ function scenario(
     before?: (path: string, calls: string[]) => void;
     headAt?: (read: number) => string;
     detailAt?: (read: number) => Json;
-    answer?: (path: string) => Json | undefined;
+    answer?: (path: string) => Json | string | undefined;
   } = {},
 ) {
   let time = 0;
@@ -44,7 +46,7 @@ function scenario(
   const calls: string[] = [];
   const sleeps: number[] = [];
   const chosen = options.run ?? run;
-  const read = (path: string): Json => {
+  const read = (path: string): Json | string => {
     calls.push(path);
     options.before?.(path, calls);
     const answer = options.answer?.(path);
@@ -63,7 +65,60 @@ function scenario(
             ],
           }
         : { total_count: 0, artifacts: [] };
-    if (path.endsWith('/actions/runs/40')) return { id: 40, event: 'pull_request', path: ci.path };
+    if (path.endsWith('/actions/runs/40'))
+      return {
+        id: 40,
+        event: 'workflow_dispatch',
+        path: train.path,
+        head_branch: 'main',
+        head_sha: original,
+        run_attempt: 1,
+        workflow_id: train.id,
+        repository: identity,
+        head_repository: identity,
+      };
+    if (path.includes('/actions/runs/40/attempts/1/jobs?'))
+      return {
+        total_count: 2,
+        jobs: [
+          {
+            id: 41,
+            run_id: 40,
+            run_attempt: 1,
+            name: 'plan',
+            status: 'completed',
+            conclusion: 'success',
+            completed_at: proofStamp(-3000),
+          },
+          {
+            id: 42,
+            run_id: 40,
+            run_attempt: 1,
+            name: 'report',
+            status: 'in_progress',
+            conclusion: null,
+            steps: [
+              {
+                name: 'Record the tree this train tested',
+                number: 2,
+                status: 'completed',
+                conclusion: 'success',
+                started_at: proofStamp(-2000),
+                completed_at: proofStamp(-1500),
+              },
+              {
+                name: 'Upload the tested train tree',
+                number: 3,
+                status: 'completed',
+                conclusion: 'success',
+                started_at: proofStamp(-1000),
+                completed_at: proofStamp(-500),
+              },
+            ],
+          },
+        ],
+      };
+    if (path.endsWith('/actions/jobs/41/logs')) return `${proofStamp(-4000)} tree=${tree}\n`;
     if (path === `/repos/${repo}`) return identity;
     if (path.endsWith('/actions/workflows/ci.yml')) return ci;
     if (path.endsWith('/actions/workflows/train.yml')) return train;
@@ -122,8 +177,9 @@ function scenario(
       };
     throw new Error(`unexpected GET ${path}`);
   };
-  const api = (path: string): Promise<Json> => Promise.resolve().then(() => read(path));
+  const api = (path: string): Promise<Json | string> => Promise.resolve().then(() => read(path));
   return {
+    api,
     calls,
     sleeps,
     now: () => time,
@@ -137,6 +193,7 @@ function scenario(
         repo,
         api,
         now: () => time,
+        wallNow: () => PROOF_NOW,
         sleep: (ms: number) => {
           sleeps.push(ms);
           time += ms;
@@ -507,6 +564,55 @@ describe('main preflight preserves acceptance while skipping superseded work', (
     expect(await s.route()).toMatchObject({ path: 'tested', skip: true });
     expect(s.calls.some((p) => p.endsWith('/branches/main'))).toBe(false);
     expect(s.sleeps).toEqual([]);
+  });
+
+  it('passes raw log reads through the same abort-aware, body-consuming request boundary', async () => {
+    const s = scenario({ proof: true });
+    const observations: { path: string; signal: AbortSignal; raw: boolean }[] = [];
+    const result = await routeMain({
+      sha: original,
+      tree,
+      repo,
+      now: () => 0,
+      wallNow: () => PROOF_NOW,
+      api: (path: string, signal: AbortSignal, options: { raw: boolean }) => {
+        observations.push({ path, signal, raw: options.raw });
+        return s.api(path);
+      },
+    });
+    expect(result).toMatchObject({ path: 'tested', skip: true });
+    const logs = observations.filter((o) => o.path.endsWith('/logs'));
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ raw: true });
+    expect(logs[0]!.signal).toBeInstanceOf(AbortSignal);
+    expect(observations.filter((o) => !o.path.endsWith('/logs')).every((o) => !o.raw)).toBe(true);
+  });
+
+  it('aborts an unfinished text-log response within the existing request deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const s = scenario({ proof: true });
+      let logSignal: AbortSignal | undefined;
+      const pending = routeMain({
+        sha: original,
+        tree,
+        repo,
+        now: () => Date.now(),
+        wallNow: () => PROOF_NOW,
+        api: (path: string, signal: AbortSignal) => {
+          if (path.endsWith('/logs')) {
+            logSignal = signal;
+            return new Promise(() => {});
+          }
+          return s.api(path);
+        },
+      });
+      await vi.runAllTimersAsync();
+      expect(await pending).toMatchObject({ path: 'full', reason: 'request-deadline' });
+      expect(logSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('leaves current unrecorded main on its full backstop without a train', async () => {

@@ -148,6 +148,7 @@ Once the PR has ridden, the `gate` line says where it is.
 | `train N: passes on its branch, fails on main ...` or `train N: passes on its branch, timed out on main ...` | Your branch is fine alone, but fails on top of what landed on `main` since; the PR comment lists those PRs | Merge `origin/main` into your branch, fix what breaks and push |
 | `train N: conflicts with main ...` | Your branch no longer merges with `main` | Merge `origin/main` into your branch and push (do not rebase a pushed branch) |
 | `passed train N: ...` | Green; auto-merge lands it | Nothing |
+| `train N: reused ...` | Green without a new full suite: an earlier main train already passed the full suite on exactly the tree this bundle makes, and the train checked that proof again; auto-merge lands it | Nothing |
 
 A pending line ends with ` [cap N]` (the table leaves it out): N is the most PRs of a bundle your PR may
 ride in next. It starts at 8. When a bundle your PR rode in is red, it becomes half that bundle's size,

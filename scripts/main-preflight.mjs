@@ -33,7 +33,7 @@ export async function routeMain(o) {
   let requests = 0;
   let failed = false;
   const remaining = () => end - now();
-  async function get(path) {
+  async function get(path, { raw = false } = {}) {
     if (failed) throw new Error('preflight budget');
     if (requests >= REQUEST_CAP || remaining() <= 0) {
       failureReason = requests >= REQUEST_CAP ? 'request-cap' : 'deadline';
@@ -44,7 +44,7 @@ export async function routeMain(o) {
     let timer;
     try {
       const result = await Promise.race([
-        o.api(path, controller.signal),
+        o.api(path, controller.signal, { raw }),
         new Promise((_, reject) => {
           timer = setTimeout(
             () => {
@@ -95,20 +95,10 @@ export async function routeMain(o) {
   async function proof() {
     const result = await decide(o.tree, {
       repo: o.repo,
-      api: async (path) => {
-        if (path.includes('/actions/artifacts?')) {
-          const base = path.replace('&per_page=100', '');
-          try {
-            return { artifacts: await collection(base, 'artifacts') };
-          } catch (error) {
-            failed = true;
-            throw error;
-          }
-        }
-        return get(path);
-      },
+      api: get,
+      now: o.wallNow,
     });
-    if (failed) throw new Error('proof lookup failed');
+    if (failed || result.unavailable) throw new Error('proof lookup failed');
     return result.skip;
   }
   try {
@@ -273,13 +263,13 @@ async function main() {
         tree,
         repo: process.env.GITHUB_REPOSITORY,
         deadline,
-        api: async (path, signal) => {
+        api: async (path, signal, { raw = false } = {}) => {
           const response = await fetch(`${process.env.GITHUB_API_URL || 'https://api.github.com'}${path}`, {
             headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
             signal,
           });
           if (!response.ok) throw new Error('API unavailable');
-          return response.json();
+          return raw ? response.text() : response.json();
         },
       });
     }

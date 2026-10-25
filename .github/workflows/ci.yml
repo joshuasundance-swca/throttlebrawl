@@ -7,7 +7,7 @@
 # - full: the full suite on this PR, and the aggregate is the PR's `gate`: forks, Dependabot, the
 #   "[full-gate]" escape hatch (in the title, or alone on a line of the body) and PRs that change
 #   .github/ (a train runs main's workflows, not the PR's), and while the train is off (.github/train.json, "live": false) every PR but a
-#   docs-only one. Only this path records the tree it tested, for main's skip path (below).
+#   docs-only one. This PR path retains its tree record; PR records cannot authorize main's skip.
 # - train: the quick check (static plus the build and its size budget, and bounded named units
 #   across the three existing slices; uncertainty and manifest/lock changes retain full units).
 #   Its aggregate is named `quick`, never `gate`, so auto-merge waits for the train, which runs the
@@ -19,7 +19,8 @@
 # train's notes on a waiting PR (why it waits) use their own context, `train`, which no rule requires.
 #
 # On a push to main: bounded preflight selects full, tested or superseded. Full is the backstop;
-# tested reuses an exact full PR/train tree proof. An unrecorded older push can be superseded only
+# tested reuses independently verified official main-train evidence for the exact tree.
+# An unrecorded older push can be superseded only
 # by last-observed eligible descendant main CI, and stays UNACCEPTED (no gate, build or publication).
 # On tested, `prod-build` runs the push-only identity leak scan,
 # builds with the prod stamp and boots that build, and the aggregate accepts the skipped suite on
@@ -137,13 +138,13 @@ jobs:
   # The skip path's push-only work: what the suite would have done that depends on the push, not
   # the tree. The leak scan checks the squash commit's author and committer
   # (LEAKSCAN_IDENTITY_RANGE above; identity is [decided]) and re-scans the tree, which takes
-  # seconds. The build is not the PR run's build: it carries the prod stamp and this commit's
+  # seconds. The build is not the original main train's build: it carries the prod stamp and this commit's
   # changelog dates, and the prod channel loads no draft packs (src/app/index.ts, includeDrafts),
-  # while every PR run tests a dev build with drafts loaded. So this job boots its own build in
+  # while the full train tests a dev build with drafts loaded. So this job boots its own build in
   # Chromium before it can ship (the boot spec: page loads, WebGL2, no console errors or failed
   # requests, a non-blank canvas, the stamp names this commit). Only the boot is re-run here; the
-  # races, the other specs and perf ran on the PR's dev build (docs/engineering.md, "Main re-runs
-  # the suite only for a tree no green PR run tested"). It uploads the `dist` `deploy-prod` ships.
+  # races, the other specs and perf ran on the proven main train's dev build
+  # (docs/engineering.md, "Reusing a full tested tree"). It uploads the `dist` `deploy-prod` ships.
   prod-build:
     name: prod build (tree already tested)
     needs: [plan]
@@ -220,9 +221,9 @@ jobs:
   # gateVerdict): the suite path, where the suite succeeded; or the skip path, only when `plan`
   # said this tree was tested, where the suite was skipped and prod-build succeeded. A failed,
   # cancelled or missing job fails it on either path. On a PR's full path, a green gate records the
-  # tree it tested as an artifact named `tested-tree-<tree>` (7 days), which is what `plan` looks
-  # up on main; the quick check never records one, since it did not run the full suite. The record
-  # step cannot turn a PR red: if it fails, main just runs the whole suite.
+  # tree it tested as an artifact named `tested-tree-<tree>` (7 days). This retained best-effort PR
+  # record does not authorize reuse; only independently verified official main-train evidence can.
+  # The quick check never records one, and a record failure cannot turn a PR red.
   # When the verdict is red, the aggregate names the red suite jobs, their failed steps and their
   # failing tests (from their logs) in its own log, its summary and its annotations. Fail fast leaves
   # the red job `cancelled` like its siblings, and `gh run view --log-failed` prints only this job's
