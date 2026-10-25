@@ -219,9 +219,11 @@ jobs:
       DIAGNOSTIC_CONTROL: ${{ inputs.diagnostic-control }}
       CONTROL_SELECTION: ${{ inputs.control-selection }}
     runs-on: ubuntu-latest
-    # The refreshed table puts three slices at 227 s of job (2026-10-07), about 47% of this timeout.
-    # Two slices have a 331 s worker-time lower bound, beyond the unchanged 320 s planning line.
-    timeout-minutes: 8
+    # The table refreshed 2026-10-25 (686 unit files, up from 533 measured) plans three slices at
+    # 364 s of job; actual unit jobs in trains 40223075074, 40220249858 and 39981097326 took 317 to
+    # 451 s, up to 94% of the former 8-minute limit. Ten minutes puts the plan under its 400 s line
+    # without adding a job.
+    timeout-minutes: 10
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
