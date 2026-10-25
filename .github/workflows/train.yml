@@ -62,6 +62,7 @@ jobs:
       actions: read
     outputs:
       depart: ${{ steps.plan.outputs.depart }}
+      reuse: ${{ steps.plan.outputs.reuse }}
       post: ${{ steps.plan.outputs.post }}
       base: ${{ steps.plan.outputs.base }}
       heads: ${{ steps.plan.outputs.heads }}
@@ -150,7 +151,7 @@ jobs:
 
   suite:
     needs: plan
-    if: needs.plan.outputs.depart == 'true'
+    if: needs.plan.outputs.depart == 'true' && needs.plan.outputs.reuse != 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/suite.yml
@@ -235,6 +236,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
       # Record only a passed full suite, before report can post a success that lets a PR merge.
       # Main can then reuse this exact tree; intermediate bundle subsets still run the suite.
       # This job checks out main's scripts, never the assembled PR code, with its write token.
@@ -266,6 +268,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TRAIN_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           TRAIN_RESULT: ${{ needs.suite.result }}
+          TRAIN_REUSE: ${{ needs.plan.outputs.reuse }}
           TRAIN_COVERAGE: ${{ needs.suite.outputs.coverage }}
           TRAIN_CONTROL: ${{ needs.control.result }}
           TRAIN_CONTROL_SCOPE: ${{ needs.control-plan.result == 'success' && needs.control-plan.outputs.scope || 'full' }}

@@ -1,4 +1,4 @@
-// Main skips its suite only for a tree a green PR run tested, and gate accepts the skipped suite
+// Main skips its suite only for independently proven official main-train evidence, and gate accepts the skipped suite
 // on that path alone (docs/engineering.md, "CI on GitHub Actions"; scripts/tested-tree.mjs).
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,7 @@ import {
   SUITE,
   artifactName,
   candidates,
-  decide,
+  decide as decideProof,
   gateVerdict,
 } from './tested-tree.mjs';
 
@@ -19,6 +19,10 @@ import {
 const TREE = 'e4d5f9cffe2f2bf874375a01513e46bc58258c6c';
 const REPO_ID = 1396654584;
 const REPO = 'owner/throttlebrawl';
+const NOW = Date.parse('2026-10-23T16:00:00Z');
+const stamp = (offset = 0) => new Date(NOW + offset).toISOString();
+const decide = (tree: string, options: Parameters<typeof decideProof>[1]) =>
+  decideProof(tree, { now: () => NOW, ...options });
 
 /** An artifact as `GET /repos/{repo}/actions/artifacts?name=` lists it (shape read from the real API). */
 function artifact(over: Record<string, unknown> = {}, run: Record<string, unknown> = {}) {
@@ -37,17 +41,82 @@ const PR_RUN = {
   event: 'pull_request',
   path: '.github/workflows/ci.yml',
   html_url: 'https://example.invalid/run',
+  run_attempt: 1,
+  workflow_id: 22,
+  head_sha: 'b'.repeat(40),
+  repository: { id: REPO_ID, full_name: REPO },
+  head_repository: { id: REPO_ID, full_name: REPO },
 };
+const TRAIN_RUN = {
+  ...PR_RUN,
+  event: 'workflow_dispatch',
+  path: '.github/workflows/train.yml',
+  head_branch: 'main',
+};
+const officialJobs = (runId = TRAIN_RUN.id) => [
+  {
+    id: 101,
+    run_id: runId,
+    run_attempt: 1,
+    name: 'plan',
+    status: 'completed',
+    conclusion: 'success',
+    completed_at: stamp(-3000),
+  },
+  {
+    id: 102,
+    run_id: runId,
+    run_attempt: 1,
+    name: 'report',
+    status: 'in_progress',
+    conclusion: null,
+    steps: [
+      {
+        name: 'Record the tree this train tested',
+        number: 2,
+        status: 'completed',
+        conclusion: 'success',
+        started_at: stamp(-2000),
+        completed_at: stamp(-1500),
+      },
+      {
+        name: 'Upload the tested train tree',
+        number: 3,
+        status: 'completed',
+        conclusion: 'success',
+        started_at: stamp(-1000),
+        completed_at: stamp(-500),
+      },
+    ],
+  },
+];
 
 /** A fake GitHub API: the artifacts listing and runs by id. */
-function api(artifacts: unknown[], runs: Record<number, unknown> = { [PR_RUN.id]: PR_RUN }) {
+function api(
+  artifacts: unknown[],
+  runs: Record<number, unknown> = { [TRAIN_RUN.id]: TRAIN_RUN },
+  options: { jobs?: unknown[]; log?: string; finalRun?: unknown } = {},
+) {
   const calls: string[] = [];
+  const reads = new Map<number, number>();
   const get = (p: string): Promise<unknown> => {
     calls.push(p);
     if (p.includes('/actions/artifacts?'))
       return Promise.resolve({ total_count: artifacts.length, artifacts });
     const m = /\/actions\/runs\/(\d+)$/.exec(p);
-    if (m && runs[Number(m[1])]) return Promise.resolve(runs[Number(m[1])]);
+    if (m && runs[Number(m[1])]) {
+      const id = Number(m[1]);
+      const seen = reads.get(id) ?? 0;
+      reads.set(id, seen + 1);
+      return Promise.resolve(seen && options.finalRun ? options.finalRun : runs[id]);
+    }
+    const jobs = /\/actions\/runs\/(\d+)\/attempts\/1\/jobs\?/.exec(p);
+    if (jobs) {
+      const rows = options.jobs ?? officialJobs(Number(jobs[1]));
+      return Promise.resolve({ total_count: rows.length, jobs: rows });
+    }
+    if (p.endsWith('/actions/jobs/101/logs'))
+      return Promise.resolve(options.log ?? `${stamp(-4000)} tree=${TREE}\n`);
     return Promise.reject(new Error(`GitHub API 404 for ${p}`));
   };
   return { get, calls };
@@ -88,15 +157,15 @@ describe('decide', () => {
     const { get } = api([artifact()], { [PR_RUN.id]: { ...PR_RUN, id: 7 } });
     expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
   });
-  it('skips the suite when a green PR run of ci.yml recorded this tree', async () => {
+  it('skips only after the main plan and guarded official upload independently prove this tree', async () => {
     const { get, calls } = api([artifact()]);
     const d = await decide(TREE, { repo: REPO, api: get });
     expect(d.skip).toBe(true);
     expect(d.reason).toContain('37151625352');
-    expect(calls[0]).toBe(`/repos/${REPO}/actions/artifacts?name=tested-tree-${TREE}&per_page=100`);
+    expect(calls[0]).toBe(`/repos/${REPO}/actions/artifacts?name=tested-tree-${TREE}&per_page=100&page=1`);
   });
 
-  it('runs the suite when no PR run recorded the tree (main moved, so the merged tree is new)', async () => {
+  it('runs the suite when no candidate locates proof of the exact tree', async () => {
     const { get } = api([]);
     expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
   });
@@ -105,7 +174,8 @@ describe('decide', () => {
     const failing = () => Promise.reject(new Error('GitHub API 502'));
     const d = await decide(TREE, { repo: REPO, api: failing });
     expect(d.skip).toBe(false);
-    expect(d.reason).toContain('502');
+    expect(d.unavailable).toBe(true);
+    expect(d.reason).not.toContain('502'); // Never relay untrusted API/error text into workflow logs.
     // The run lookup failing is the same answer.
     const { get } = api([artifact()], {});
     expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(false);
@@ -150,7 +220,7 @@ describe('decide', () => {
     }
   });
 
-  it('only a pull_request run of ci.yml vouches: not a push run, not another workflow', async () => {
+  it('rejects push and unrelated workflows as proof producers', async () => {
     for (const run of [
       { ...PR_RUN, event: 'push' },
       { ...PR_RUN, path: '.github/workflows/other.yml' },
@@ -164,12 +234,153 @@ describe('decide', () => {
     const older = artifact({ id: 2, created_at: '2026-10-03T19:00:00Z' }, { id: 7 });
     const newer = artifact({ id: 3, created_at: '2026-10-03T21:00:00Z' }, { id: 8 });
     const { get, calls } = api([older, newer], {
-      7: { ...PR_RUN, id: 7 },
+      7: { ...TRAIN_RUN, id: 7 },
       8: { ...PR_RUN, id: 8, event: 'push' },
     });
     expect((await decide(TREE, { repo: REPO, api: get })).skip).toBe(true);
-    expect(calls.slice(1)).toEqual([`/repos/${REPO}/actions/runs/8`, `/repos/${REPO}/actions/runs/7`]);
+    expect(calls.filter((p) => /\/runs\/\d+$/.test(p))).toEqual([
+      `/repos/${REPO}/actions/runs/8`,
+      `/repos/${REPO}/actions/runs/7`,
+      `/repos/${REPO}/actions/runs/7`,
+    ]);
   });
+
+  it('refuses PR and name/run-shape-only evidence even when their names match', async () => {
+    expect(
+      (await decide(TREE, { repo: REPO, api: api([artifact()], { [PR_RUN.id]: PR_RUN }).get })).skip,
+    ).toBe(false);
+    expect(
+      (await decide(TREE, { repo: REPO, api: api([artifact()], undefined, { jobs: [] }).get })).skip,
+    ).toBe(false);
+  });
+
+  it.each([
+    ['wrong tree', `${stamp(-4000)} tree=${'a'.repeat(40)}\n`],
+    ['duplicate marker', `${stamp(-4000)} tree=${TREE}\n${stamp(-4000)} tree=${TREE}\n`],
+    ['malformed marker', `${stamp(-4000)} tree=${TREE.slice(0, 7)}\n`],
+    ['untimestamped marker', `tree=${TREE}\n`],
+    ['embedded marker', `${stamp(-4000)} plan: tree=${TREE}\n`],
+    ['invalid date', `2026-02-31T16:00:00Z tree=${TREE}\n`],
+  ])('refuses forged locator with %s in the official plan log', async (_name, log) => {
+    expect((await decide(TREE, { repo: REPO, api: api([artifact()], undefined, { log }).get })).skip).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    'missing plan',
+    'duplicate plan',
+    'failed plan',
+    'missing report',
+    'duplicate report',
+    'record skipped',
+    'upload failed',
+    'duplicate upload',
+    'wrong attempt',
+    'missing attempt',
+    'wrong run',
+    'missing run',
+    'reversed steps',
+  ])('refuses %s official producer evidence', async (bad) => {
+    const jobs: Record<string, unknown>[] = structuredClone(officialJobs());
+    if (bad === 'missing plan') jobs.shift();
+    if (bad === 'duplicate plan') jobs.push({ ...jobs[0], id: 103 });
+    if (bad === 'failed plan') jobs[0]!.conclusion = 'failure';
+    if (bad === 'missing report') jobs.pop();
+    if (bad === 'duplicate report') jobs.push({ ...jobs[1], id: 103 });
+    const report = jobs.find((j) => j.name === 'report');
+    const steps = report?.steps as Record<string, unknown>[] | undefined;
+    if (bad === 'record skipped') steps![0]!.conclusion = 'skipped';
+    if (bad === 'upload failed') steps![1]!.conclusion = 'failure';
+    if (bad === 'duplicate upload') steps!.push({ ...steps![1], number: 4 });
+    if (bad === 'wrong attempt') jobs[0]!.run_attempt = 2;
+    if (bad === 'missing attempt') delete jobs[0]!.run_attempt;
+    if (bad === 'wrong run') jobs[0]!.run_id = 5;
+    if (bad === 'missing run') delete jobs[0]!.run_id;
+    if (bad === 'reversed steps') steps![0]!.number = 4;
+    expect((await decide(TREE, { repo: REPO, api: api([artifact()], undefined, { jobs }).get })).skip).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    'expired official record',
+    'future upload',
+    'invalid record time',
+    'run attempt moved',
+    'head moved',
+  ])('refuses %s despite an unexpired locator', async (bad) => {
+    const jobs = officialJobs();
+    const steps = jobs[1]!.steps!;
+    if (bad === 'expired official record') steps[0]!.completed_at = stamp(-8 * 24 * 60 * 60 * 1000);
+    if (bad === 'future upload') steps[1]!.completed_at = stamp(1);
+    if (bad === 'invalid record time') steps[0]!.completed_at = 'yesterday';
+    const finalRun =
+      bad === 'run attempt moved'
+        ? { ...TRAIN_RUN, run_attempt: 2 }
+        : bad === 'head moved'
+          ? { ...TRAIN_RUN, head_sha: 'c'.repeat(40) }
+          : undefined;
+    expect(
+      (await decide(TREE, { repo: REPO, api: api([artifact()], undefined, { jobs, finalRun }).get })).skip,
+    ).toBe(false);
+  });
+
+  it.each([false, true])(
+    'caps official proof age at seven days independently of locator timestamps (expired=%s)',
+    async (expired) => {
+      const age = 7 * 24 * 60 * 60 * 1000 + (expired ? 1 : -1);
+      const shift = age - 1500;
+      const jobs = officialJobs();
+      jobs[0]!.completed_at = stamp(-3000 - shift);
+      for (const step of jobs[1]!.steps!) {
+        step.started_at = new Date(Date.parse(step.started_at) - shift).toISOString();
+        step.completed_at = new Date(Date.parse(step.completed_at) - shift).toISOString();
+      }
+      const log = `${stamp(-4000 - shift)} tree=${TREE}\n`;
+      const d = await decide(TREE, {
+        repo: REPO,
+        api: api([artifact({ created_at: stamp() })], undefined, { jobs, log }).get,
+      });
+      expect(d.skip).toBe(!expired);
+    },
+  );
+
+  it.each(['truncated', 'changed count', 'duplicate id', 'wrong repository', 'missing head'])(
+    'refuses %s complete proof evidence',
+    async (bad) => {
+      const fixture = api([artifact()]);
+      const d = await decide(TREE, {
+        repo: REPO,
+        api: async (p) => {
+          if (bad === 'wrong repository' && /\/runs\/\d+$/.test(p))
+            return { ...TRAIN_RUN, head_repository: { id: 4, full_name: REPO } };
+          if (bad === 'missing head' && /\/runs\/\d+$/.test(p)) return { ...TRAIN_RUN, head_sha: undefined };
+          if (p.includes('/jobs?')) {
+            const jobs = officialJobs();
+            if (bad === 'duplicate id') return { total_count: 2, jobs: [jobs[0], jobs[0]] };
+            if (bad === 'truncated') return { total_count: 101, jobs };
+            if (bad === 'changed count')
+              return p.endsWith('page=2')
+                ? { total_count: 102, jobs: [] }
+                : {
+                    total_count: 101,
+                    jobs: [
+                      ...jobs,
+                      ...Array.from({ length: 98 }, (_, i) => ({
+                        ...jobs[0],
+                        id: i + 200,
+                        name: `other-${i}`,
+                      })),
+                    ],
+                  };
+          }
+          return fixture.get(p);
+        },
+      });
+      expect(d.skip).toBe(false);
+    },
+  );
 });
 
 describe('train tree evidence precedes landing', () => {

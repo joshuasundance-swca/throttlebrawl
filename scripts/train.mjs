@@ -3,8 +3,8 @@
 // 2026-10-02: "Yes, build it"; parked as a draft that day, and revived on 2026-10-05: "Revive the
 // train instead of limiting parallel lanes"): every PR gets a quick check; ready PRs ride a train
 // together, and the full suite runs ONCE on the combination. Green: they all land. Red: the
-// bundle splits to find the culprit, and the rest still land. Main keeps running the full suite
-// after every landing, as a backstop.
+// bundle splits to find the culprit, and the rest still land. Main reuses independently proven
+// exact trees with production checks, or runs its full-suite backstop.
 //
 //   node scripts/train.mjs route       ci.yml on a pull request: which path the PR takes
 //                                      (train: the quick check now, the full suite in a train;
@@ -57,6 +57,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, stripVTControlCharacters } from 'node:util';
 import { hitTimeout } from './rerun-main.mjs';
 import { hasSuccessfulMainGate } from './main-acceptance.mjs';
+import { completeAttemptJobs, decide as testedTreeDecision, trainRunIdentity } from './tested-tree.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -620,7 +621,7 @@ export function mayHaveTimedOut(job) {
 }
 
 /**
- * The suite's result as the report judges it: a cancelled suite with a red job in it (one that ran
+ * The suite's result as the report judges it: a cancelled or skipped suite with a red job in it (one that ran
  * past its time limit, or one that failed) is red, so the bundle splits and a lone PR is blamed, and
  * each red lowers the cap like any other. A cancelled suite with no red job (someone cancelled the
  * run) still concludes nothing.
@@ -628,7 +629,8 @@ export function mayHaveTimedOut(job) {
  * @param {{ failed: string[], timedOut: string[] }} jobs the suite's failed and timed-out jobs
  */
 export function suiteResult(result, { failed, timedOut }) {
-  if (result === 'cancelled' && (failed.length > 0 || timedOut.length > 0)) return 'failure';
+  if (['cancelled', 'skipped'].includes(result) && (failed.length > 0 || timedOut.length > 0))
+    return 'failure';
   return result;
 }
 
@@ -709,6 +711,7 @@ function sameTreeControl(
  * @param {Record<string, string>} [o.mainJobs] main's own ci run on base: each job's conclusion by name (read only for a lone PR that timed out at cap 1)
  * @param {string[] | null} [o.files] that lone PR's changed files, or null when they could not be read
  * @param {number} o.run the train's run number
+ * @param {string} [o.reuseReason] original trusted producer when this train reused its exact tree
  */
 export function decide({
   result,
@@ -726,6 +729,7 @@ export function decide({
   mainJobs = {},
   files = null,
   run,
+  reuseReason,
 }) {
   const b7 = base.slice(0, 7);
   const late = timedOut.length > 0;
@@ -785,7 +789,9 @@ export function decide({
     };
   }
   if (result === 'success') {
-    const desc = `passed train ${run}: main ${b7} + ${prList(bundle.map((p) => p.number))}`;
+    const desc = reuseReason
+      ? `train ${run}: reused ${reuseReason}`
+      : `passed train ${run}: main ${b7} + ${prList(bundle.map((p) => p.number))}`;
     for (const p of bundle)
       statuses.push({ number: p.number, sha: p.headSha, state: 'success', description: clip(desc) });
     return {
@@ -793,10 +799,12 @@ export function decide({
       land: bundle.map((p) => p.number),
       verdict: 'green',
       dispatch: true,
-      why: `main ${b7} + ${prList(
-        bundle.map((p) => p.number),
-        200,
-      )} passed the full suite`,
+      why: reuseReason
+        ? `reused ${reuseReason}; current main and every PR still match`
+        : `main ${b7} + ${prList(
+            bundle.map((p) => p.number),
+            200,
+          )} passed the full suite`,
     };
   }
   if (bundle.length > 1) {
@@ -1765,6 +1773,83 @@ function fetchCommits(/** @type {string[]} */ shas) {
   if (r.status !== 0) throw new Error(`git fetch failed: ${r.stderr.trim()}`);
 }
 
+/** Reuse the existing trusted proof predicate; uncertain observations retain the full suite. */
+async function trustedTree(/** @type {string} */ tree) {
+  try {
+    return await testedTreeDecision(tree, {
+      repo: repo(),
+      api: (p, { raw = false } = {}) => api('GET', p, undefined, { retry: false, raw }),
+    });
+  } catch (err) {
+    return {
+      skip: false,
+      reason: `tree proof unavailable (${err instanceof Error ? err.message : err}); running the whole suite`,
+    };
+  }
+}
+
+/**
+ * A skipped suite needs a fresh proof of this exact base and ordered bundle, never a bare flag.
+ * @param {string} base
+ * @param {{ headSha: string }[]} bundle
+ * @param {string} tree
+ */
+async function reusedBundleProof(base, bundle, tree) {
+  if (!SHA.test(base) || !SHA.test(tree) || !bundle.length)
+    return { skip: false, reason: 'reuse requires a full base, tree and nonempty bundle' };
+  try {
+    const heads = bundle.map((p) => p.headSha);
+    fetchCommits([base, ...heads]);
+    const asm = assemble(gitRun, base, heads);
+    if (asm.conflicts.length || asm.tree !== tree)
+      return { skip: false, reason: 'current bundle does not assemble to the proven tree' };
+    return await trustedTree(tree);
+  } catch (err) {
+    return {
+      skip: false,
+      reason: `reuse assembly unavailable (${err instanceof Error ? err.message : err})`,
+    };
+  }
+}
+
+/** Reuse requires a complete current attempt consistent with the reusable workflow not running. */
+async function skippedSuiteObservation() {
+  /** @type {any[]} */
+  let children = [];
+  try {
+    const id = Number(env.GITHUB_RUN_ID);
+    const attempt = Number(env.GITHUB_RUN_ATTEMPT);
+    const get = (/** @type {string} */ p) => api('GET', p, undefined, { retry: false });
+    const url = `/repos/${repo()}/actions/runs/${id}`;
+    const run = await get(url);
+    const identity = trainRunIdentity(run, repo());
+    if (!identity || run.id !== id || run.run_attempt !== attempt || run.head_sha !== env.GITHUB_SHA)
+      return { safe: false, children };
+    const jobs = await completeAttemptJobs(get, repo(), id, attempt);
+    if (identity !== trainRunIdentity(await get(url), repo())) return { safe: false, children };
+    children = jobs.filter((j) => j.name.startsWith('suite /'));
+    const suites = jobs.filter((j) => j.name === 'suite');
+    const plans = jobs.filter((j) => j.name === 'plan');
+    const reports = jobs.filter((j) => j.name === 'report');
+    return {
+      safe:
+        children.length === 0 &&
+        suites.length === 1 &&
+        suites[0].status === 'completed' &&
+        suites[0].conclusion === 'skipped' &&
+        plans.length === 1 &&
+        plans[0].status === 'completed' &&
+        plans[0].conclusion === 'success' &&
+        reports.length === 1 &&
+        reports[0].status === 'in_progress' &&
+        reports[0].conclusion === null,
+      children,
+    };
+  } catch {
+    return { safe: false, children };
+  }
+}
+
 function cmdRoute() {
   const cfg = loadConfig();
   const diff = gitRun(['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD']);
@@ -1793,6 +1878,7 @@ export async function cmdPlan(cfg = loadConfig()) {
   const dry = env.TRAIN_DRY_RUN === 'true';
   const out = {
     depart: 'false',
+    reuse: 'false',
     post: 'false',
     base: '',
     heads: '',
@@ -1917,6 +2003,11 @@ export async function cmdPlan(cfg = loadConfig()) {
     single: rode.length === 1 ? /** @type {{ headSha: string }} */ (rode[0]).headSha : '',
     single_same_tree: singleTreeMatches(gitRun, asm.tree, heads) ? 'true' : 'false',
   });
+  if (rode.length) {
+    const proof = await trustedTree(asm.tree);
+    out.reuse = proof.skip ? 'true' : 'false';
+    say(proof.reason);
+  }
   say(
     rode.length
       ? `${dry ? 'Dry run: ' : ''}Train departs: main \`${base.slice(0, 7)}\` + ${prList(
@@ -2031,18 +2122,24 @@ export async function cmdReport(cfg = loadConfig()) {
     summary(s);
   };
 
-  const mainNow = await mainSha();
-  const open = await openPrs();
-  const now = new Map(
-    open.map((p) => [p.number, { headSha: p.headSha, draft: p.draft, autoMerge: p.autoMerge }]),
-  );
   // This run's suite jobs: which failed, and which ran past their time limit (GitHub reports those,
   // and then the whole suite, as cancelled). If they cannot be read, the suite's own result stands.
   /** @type {Awaited<ReturnType<typeof jobsOf>>} */
   let suiteJobs = [];
   /** @type {string[]} */
   let timedOut = [];
-  if (reported === 'failure' || reported === 'cancelled') {
+  let reuseObserved = false;
+  if (reported === 'skipped' && env.TRAIN_REUSE === 'true') {
+    const observed = await skippedSuiteObservation();
+    reuseObserved = observed.safe;
+    suiteJobs = observed.children;
+    if (!reuseObserved) say('cannot reuse: current attempt does not prove a fully skipped suite');
+    try {
+      timedOut = await timedOutJobs(suiteJobs);
+    } catch {
+      /* Reuse already refuses every child. */
+    }
+  } else if (reported === 'failure' || reported === 'cancelled') {
     try {
       suiteJobs = (await jobsOf(env.GITHUB_RUN_ID ?? '', env.GITHUB_RUN_ATTEMPT ?? 1)).filter((j) =>
         /^suite \/ /.test(String(j.name)),
@@ -2056,7 +2153,12 @@ export async function cmdReport(cfg = loadConfig()) {
   }
   const failedJobs = suiteJobs.filter((j) => j.conclusion === 'failure').map((j) => String(j.name));
   const judged = suiteResult(reported, { failed: failedJobs, timedOut });
-  const result = coveredSuiteResult(judged, env.TRAIN_COVERAGE);
+  const proof =
+    judged === 'skipped' && reuseObserved
+      ? await reusedBundleProof(base, bundle, env.TRAIN_TREE ?? '')
+      : null;
+  const result = proof?.skip ? 'success' : coveredSuiteResult(judged, env.TRAIN_COVERAGE);
+  if (proof) say(`${proof.skip ? 'reused' : 'cannot reuse'}: ${proof.reason}`);
   if (timedOut.length) console.log(`report: past their time limit: ${timedOut.join(', ')}`);
   if (judged !== reported)
     console.log(`report: the suite reads ${reported}, but a job in it is red, so the bundle is red`);
@@ -2071,7 +2173,7 @@ export async function cmdReport(cfg = loadConfig()) {
   /** @type {string[] | null} */
   let files = null;
   const lone = /** @type {{ number: number, headSha: string, cap: number } | undefined} */ (bundle[0]);
-  if (result === 'failure' && bundle.length === 1 && lone && mainNow === base) {
+  if (result === 'failure' && bundle.length === 1 && lone && (await mainSha()) === base) {
     // Blame needs main itself green: wait for main's own run on base if it is still going.
     const deadline = Date.now() + cfg.mainWaitMinutes * 60_000;
     let read = await readMain(base);
@@ -2095,6 +2197,13 @@ export async function cmdReport(cfg = loadConfig()) {
       }
     }
   }
+  // The proof and any diagnostic wait are finished. Only these final readiness observations
+  // authorize a landing; a main/PR change during the slower proof work must be seen here.
+  const mainNow = await mainSha();
+  const open = await openPrs();
+  const now = new Map(
+    open.map((p) => [p.number, { headSha: p.headSha, draft: p.draft, autoMerge: p.autoMerge }]),
+  );
   const d = decide({
     result,
     control,
@@ -2111,6 +2220,7 @@ export async function cmdReport(cfg = loadConfig()) {
     mainJobs,
     files,
     run,
+    reuseReason: proof?.skip ? proof.reason : undefined,
   });
   say(`**${d.verdict}**: ${d.why}.`);
   const failing = result === 'failure' ? await failingFromRun(suiteJobs, timedOut) : [];
