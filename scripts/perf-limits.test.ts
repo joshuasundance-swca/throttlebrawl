@@ -32,6 +32,7 @@ interface Times {
   startTapMs?: number;
   startTapReadings?: number;
   startTap?: { readings: number[] };
+  stepRemeasured?: { readings: number[] };
 }
 const baselineFile = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/baseline.json'), 'utf8')) as {
   soft: Times;
@@ -86,6 +87,25 @@ describe('the soft tier: a trend plus a 3x guard', () => {
     // main red on 2026-10-03.
     const old = judgeSoft({ frameMs: { p50: 66.7, p95: 149.9 } }, { frameMs: { p50: 33.3, p95: 66.6 } }, 2);
     expect(old.failures).toHaveLength(1);
+  });
+
+  it('stays quiet on the fifteen recorded sim step readings behind the 2026-10-25 baseline, and fires past 3x', () => {
+    // tests/perf/baseline.json `stepRemeasured.readings`: the readings the step baseline is the median
+    // of. 15.6 and 15 ms, on slow runners, failed the 2026-10-02 guard of 14.7 ms on PR 844's train and
+    // on main 0fb292f.
+    const soft = baselineFile.soft;
+    const readings = soft.stepRemeasured?.readings ?? [];
+    expect(readings).toHaveLength(15);
+    const sorted = [...readings].sort((a, b) => a - b);
+    expect(soft.stepMs?.p95).toBe(sorted[Math.floor(sorted.length / 2)]);
+    for (const step of readings) {
+      const j = judgeSoft({ frameMs: { p50: 66.7, p95: 100.1 }, stepMs: { p95: step } }, soft);
+      expect(j.failures, `step ${step}`).toEqual([]);
+    }
+    const limit = guardLimits(soft).stepP95;
+    expect(limit).toBeDefined();
+    const over = judgeSoft({ frameMs: soft.frameMs, stepMs: { p95: (limit ?? 0) + 0.1 } }, soft);
+    expect(over.failures).toHaveLength(1);
   });
 
   it('fires on the stored baselines at 3x plus one frame', () => {
