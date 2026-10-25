@@ -17,7 +17,17 @@
     "cpuThrottle": 4,
     "seconds": 20,
     "frameMs": { "p50": 66.7, "p95": 133.3 },
-    "stepMs": { "p95": 4.9 },
+    "stepMs": { "p95": 9.9 },
+    "stepRemeasured": {
+      "measuredAt": "2026-10-25",
+      "previous": "sim step p95 4.9 ms (2026-10-02, the eight runs under `rebaselined`)",
+      "runs": [
+        39874074271, 39882407073, 39886943497, 39963976603, 39968192229, 39968831218, 39975126129,
+        39981097326, 40220249858, 40223075074, 40225044632, 40227717689, 40228346415, 40229237142
+      ],
+      "readings": [7, 8, 8.6, 8.9, 9, 9.2, 9.7, 9.9, 10.6, 10.7, 12, 12.6, 13.9, 15, 15.6],
+      "reason": "Fifteen classic perf readings from these trains, PR full gates and main runs (2026-10-22 to 2026-10-25; one train printed two) put sim step p95 at 7 to 15.6 ms, median 9.9 ms: double the 2026-10-02 baseline as the sim gained regions, traffic networks, terrain and tumble contacts. The readings split by runner speed: with frame p50 near 33 ms they were 7 to 9.9 ms; with frame p50 near 67 ms (slow runners) 12 to 15.6 ms. Two slow-runner readings (15.6 ms on PR 844's train 40220249858, 15 ms on main 0fb292f run 40229237142) failed the old 14.7 ms guard and passed on re-run. The baseline is the median, so the 3x catastrophe guard is 29.7 ms. Frame baselines are unchanged: every frame reading was below them. The doubling is a trend to watch, not a phone measurement."
+    },
     "startTapMs": 46.8,
     "startTap": {
       "measuredAt": "2026-10-06",
