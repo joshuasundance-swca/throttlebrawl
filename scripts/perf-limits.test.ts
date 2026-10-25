@@ -32,6 +32,7 @@ interface Times {
   startTapMs?: number;
   startTapReadings?: number;
   startTap?: { readings: number[] };
+  stepRemeasured?: { readings: number[] };
 }
 const baselineFile = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/baseline.json'), 'utf8')) as {
   soft: Times;
@@ -88,12 +89,15 @@ describe('the soft tier: a trend plus a 3x guard', () => {
     expect(old.failures).toHaveLength(1);
   });
 
-  it('stays quiet on every sim step reading CI printed from 2026-10-22 to 2026-10-25, and fires past 3x', () => {
-    // The fifteen classic sim step p95 readings behind the 2026-10-25 step baseline
-    // (tests/perf/baseline.json, `stepRemeasured`): 15.6 and 15 ms, on slow runners, failed the
-    // 2026-10-02 guard of 14.7 ms on PR 844's train and on main 0fb292f.
+  it('stays quiet on the fifteen recorded sim step readings behind the 2026-10-25 baseline, and fires past 3x', () => {
+    // tests/perf/baseline.json `stepRemeasured.readings`: the readings the step baseline is the median
+    // of. 15.6 and 15 ms, on slow runners, failed the 2026-10-02 guard of 14.7 ms on PR 844's train and
+    // on main 0fb292f.
     const soft = baselineFile.soft;
-    const readings = [7, 8, 8.6, 8.9, 9, 9.2, 9.7, 9.9, 10.6, 10.7, 12, 12.6, 13.9, 15, 15.6];
+    const readings = soft.stepRemeasured?.readings ?? [];
+    expect(readings).toHaveLength(15);
+    const sorted = [...readings].sort((a, b) => a - b);
+    expect(soft.stepMs?.p95).toBe(sorted[Math.floor(sorted.length / 2)]);
     for (const step of readings) {
       const j = judgeSoft({ frameMs: { p50: 66.7, p95: 100.1 }, stepMs: { p95: step } }, soft);
       expect(j.failures, `step ${step}`).toEqual([]);
