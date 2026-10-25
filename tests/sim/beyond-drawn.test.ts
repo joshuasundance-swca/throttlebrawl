@@ -421,6 +421,9 @@ describe('what lies past an edge is what is drawn there (every route network)', 
     for (const net of routeNetworks()) {
       const n = netOf(net.id);
       const f = check(n, simRule(n));
+      // Release each network once checked: holding every region's roads, sim config and drawn index
+      // at once outgrew the CI worker's heap as regions were added.
+      nets.delete(`${net.pack}:${net.id}`);
       const looked = Object.values(f.counts).reduce((a, b) => a + b, 0);
       points += looked;
       const all = [...f.ghostDrop, ...f.ghostFloor, ...f.floorOff];
