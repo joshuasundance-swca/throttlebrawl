@@ -42,6 +42,7 @@ import {
   stepCluster,
   maxParticleSpeed,
 } from './rig';
+import { projectCluster } from './projection';
 import { runDistance, REMOUNT_M, stepRunner } from './runback';
 import {
   TUMBLE_TUNING,
@@ -556,7 +557,8 @@ function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): v
   const road = config.road;
   const place = (c: Cluster, ownSide: boolean): RoadPos => {
     const b = centre(c.p);
-    const p = c.anchor ?? road.project(b.x, b.z, b.edge);
+    // A continuous road projection keeps its exact numbers; a jump keeps the bounded station.
+    const p = c.anchor ? projectCluster(road, c.anchor, c.p, 0) : road.project(b.x, b.z, b.edge);
     const dir = handBackDir(config, r, p.edge, p.s);
     const band = ownSide ? ownSideBand(road, p.edge, p.s, dir) : standingBand(road, p.edge, p.s);
     const d = p.d < band.lo ? band.lo : p.d > band.hi ? band.hi : p.d;

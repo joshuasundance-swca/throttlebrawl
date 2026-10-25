@@ -16,6 +16,22 @@ describe('tumble station continuity', () => {
     expect(p.s).toBeLessThanOrEqual(14);
   });
 
+  it('returns the road projection unchanged when it already lies in the reachable window', () => {
+    // Shared tumbles keep their existing numbers where the old answer was already continuous, so
+    // seeded races and replays only change where the old projection would have jumped.
+    const road = circle();
+    for (const [s, d] of [
+      [10.37, 0.4],
+      [500.123, -3.7],
+      [12.9, 7.25],
+    ] as const) {
+      const w = road.toWorld(0, s + 0.61, d + 0.13, 0);
+      const legacy = road.project(w.x, w.z, 0);
+      const p = projectCluster(road, { edge: 0, s, d }, [point(w.x, w.y, w.z)], 1 / 60);
+      expect({ edge: p.edge, s: p.s, d: p.d }).toStrictEqual({ edge: legacy.edge, s: legacy.s, d: legacy.d });
+    }
+  });
+
   it('accepts actual pavement contact on a remote arm of the same edge', () => {
     const road = circle();
     const w = road.toWorld(0, 990, 0, 0);

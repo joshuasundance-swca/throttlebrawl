@@ -68,6 +68,11 @@ export function projectCluster(
   const range = 4 + travel * sRateFactor(f.kappa, anchor.d);
   const lo = anchor.s - range;
   const hi = anchor.s + range;
+  const candidate = transfer ? road.project(x, z, anchor.edge) : undefined;
+  // Where the road's own projection is already continuous, keep its exact numbers: the bounded
+  // search only replaces it where it would jump, so other tumbles and seeded races are unchanged.
+  if (candidate && candidate.edge === anchor.edge && candidate.s >= lo && candidate.s <= hi)
+    return { edge: candidate.edge, s: candidate.s, d: candidate.d };
   let local = near(road, anchor.edge, x, z, lo, hi);
   const distance = (p: StationAnchor) => {
     const w = road.toWorld(p.edge, p.s, 0, 0);
@@ -86,8 +91,7 @@ export function projectCluster(
       local = p;
     }
   }
-  if (!transfer) return local;
-  const candidate = road.project(x, z, anchor.edge);
+  if (!candidate) return local;
   const spacing = road.edges[candidate.edge]!.spacing;
   const remote = near(road, candidate.edge, x, z, candidate.s - spacing, candidate.s + spacing);
   // Check the particles themselves, not the centre's height above an arbitrary reference plane.
