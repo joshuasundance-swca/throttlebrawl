@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import struct
+import subprocess
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -67,11 +69,31 @@ def test_regeneration_matches_selected_float32_geometry(generated: recipe.Mesh) 
 
 def test_shipped_network_uses_the_reviewed_physical_geometry() -> None:
     root = Path(__file__).resolve().parents[3]
-    network = json.loads(
-        (
-            root / "packs/region-clinton/regions/clinton-iowa/networks/osm-clinton-eagle-point.json"
-        ).read_bytes()
+    # Use the same public, hash-verified materializer as Node pack checks and Vite.
+    # This integration check needs repository Node; the standalone recipe does not.
+    node = shutil.which("node")
+    if node is None:
+        raise RuntimeError("Network integration check needs the repository Node installation")
+    result = subprocess.run(
+        [
+            node,
+            "--input-type=module",
+            "-e",
+            "import { readFileSync } from 'node:fs';"
+            "import path from 'node:path';"
+            "const [modulePath, root, relative] = process.argv.slice(1);"
+            "const { packInputs } = await import(modulePath);"
+            "process.stdout.write(packInputs(root).materialize(relative,"
+            "readFileSync(path.join(root, relative), 'utf8')));",
+            (root / "scripts/pack-inputs.mjs").as_uri(),
+            str(root),
+            "packs/region-clinton/regions/clinton-iowa/networks/osm-clinton-eagle-point.json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
     )
+    network = json.loads(result.stdout)
     mesh = recipe.Mesh.model_validate(network["terrain"])
     expected = recipe.load_inputs(MANIFEST).manifest.expected_geometry_sha256
     assert recipe.geometry_sha256(mesh) == expected

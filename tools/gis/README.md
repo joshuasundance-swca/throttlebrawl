@@ -1,5 +1,12 @@
 # tools/gis: the real-road bake
 
+The focused Python terrain integration test also uses the repository's Node installation and
+hash-verified build-input cache (`npm run assets:fetch -- --build-inputs`). It invokes the existing
+public pack materializer to compare the assembled Eagle network with the selected terrain
+fingerprint. The standalone Python terrain recipe has no Node dependency. CI currently runs the
+game's Node checks, not the Python GIS authoring tests; run the focused authoring checks locally
+when changing their inputs or integration.
+
 The offline pipeline of the GIS side quest ([gis-1 in M2.md](../../docs/milestones/M2.md#gis-1--the-real-overseas-highway-side-quest-running-since-m1)).
 It bakes a stretch of the real Overseas Highway (US 1 through the Florida Keys) from public data
 into the same baked road format the hand-made track uses
