@@ -44,12 +44,54 @@ function config(seed = 1, content: ContentRegistry = registry, eventId = EVENT, 
   });
 }
 
+/**
+ * The ride's staging: the farm area carries only its delivery trucks, and oncoming traffic runs at
+ * half density. The authored mix makes this encounter rare by design (1 in 9 farm spawns, on about
+ * 1.35 km of the 5.2 km route): measured 2026-10-26 over seeds 1 to 24, 78 trucks spawned but only 5
+ * in the player's direction, 2 of them ahead, and 1 race (seed 5) qualified. A truck-only area with
+ * full oncoming traffic qualified 2 of 8 (the rest crashed into oncoming trucks while passing); this
+ * staging qualified 21 of 24. Both changes are content and tuning, so the replay header carries them.
+ * The authored rarity itself is the next test's subject, not this one's.
+ */
+function deliveryRideConfig(seed: number) {
+  const region = lookup(registry.regions, REGION);
+  const trucksOnly: ContentRegistry = {
+    ...registry,
+    regions: {
+      ...registry.regions,
+      [REGION]: {
+        ...region,
+        traffic: {
+          ...region.traffic,
+          areas: region.traffic.areas!.map((a) =>
+            a.tag === AREA ? { ...a, mix: a.mix.filter((m) => m.kind === TRUCK) } : a,
+          ),
+        },
+      },
+    },
+  };
+  return buildSimConfig(trucksOnly, streamForEvent(trucksOnly, EVENT), {
+    seed,
+    eventId: EVENT,
+    eventPatch: { riders: [] },
+    tuning: { ...ISOLATED, 'traffic.density': 1, 'traffic.densityOncoming': 0.5 },
+  });
+}
+
 it('finishes an input-driven highway ride that encounters a delivery truck and reloads its replay', () => {
+  const staged = deliveryRideConfig(1);
+  expect(staged.trafficTypes.find((t) => t.contentId === TRUCK)!.areaWeights?.[AREA]).toBeGreaterThan(0);
+  for (const t of staged.trafficTypes)
+    if (t.contentId !== TRUCK) expect(t.areaWeights?.[AREA] ?? 0, t.contentId).toBe(0);
+  expect(
+    staged.trafficTypes.map((t) => [t.contentId, t.weight]),
+    'the region mix outside the farm area is unchanged',
+  ).toEqual(config(1).trafficTypes.map((t) => [t.contentId, t.weight]));
   const search = firstSeed(
     'Iowa input-driven delivery encounter',
     seedRange(1, 8),
     (seed) => {
-      const c = config(seed);
+      const c = deliveryRideConfig(seed);
       const { sim, world } = createSimWithWorld(c);
       const player = world.movers.find((m) => c.riders[m.riderIndex]?.role === 'player')!;
       const bot = createBot();
@@ -123,6 +165,10 @@ it('finishes an input-driven highway ride that encounters a delivery truck and r
   expect(r.finish!.data['classified']).toBe(false);
   const recording = decodeReplay(JSON.parse(JSON.stringify(encodeReplay(r.recording))));
   const fresh = () => createSimWithWorld(configFromHeader(recording.header, r.c.road, r.c.route)).sim;
+  expect(recording.header.tuning['traffic.densityOncoming'], 'the header carries the staging').toBe(0.5);
+  expect(recording.header.config?.trafficTypes, 'the header carries the staged traffic mix').toEqual(
+    r.c.trafficTypes,
+  );
   const replay = createReplayController(recording).run(fresh());
   expect(replay.desync).toBeNull();
   expect(replay.finalHash).toBe(r.sim.hash());
@@ -131,13 +177,15 @@ it('finishes an input-driven highway ride that encounters a delivery truck and r
   const command = tampered.inputs[r.tamperTick]![0]!;
   command.steer = command.steer === 127 ? -127 : 127;
   expect(createReplayController(tampered).run(fresh()).desync).not.toBeNull();
+  // The staging is part of what the replay reproduces: the same inputs against the authored mix
+  // and oncoming density (no header config) do not reproduce the ride: its first hash differs.
+  const unstaged = createSimWithWorld(config(search.seed!)).sim;
+  const unstagedDesync = createReplayController(recording).run(unstaged).desync;
+  expect(unstagedDesync, 'unstaged world diverges').not.toBeNull();
   process.stdout.write(
-    `[examined] Iowa input-driven following/pass, seed ${search.seed}, bike ${r.c.riders.find((r) => r.role === 'player')!.bike.contentId}, encounters ${JSON.stringify([...r.encounters.entries()].filter(([, e]) => e.following && e.passed && !e.interrupted))}, finish tick ${r.sim.tick}, encoded/reloaded replay ${replay.checked} hashes, tamper tick ${r.tamperTick}\n`,
+    `[examined] Iowa input-driven following/pass, seed ${search.seed}, bike ${r.c.riders.find((r) => r.role === 'player')!.bike.contentId}, encounters ${JSON.stringify([...r.encounters.entries()].filter(([, e]) => e.following && e.passed && !e.interrupted))}, finish tick ${r.sim.tick}, encoded/reloaded replay ${replay.checked} hashes, tamper tick ${r.tamperTick}, unstaged replay desync at tick ${unstagedDesync!.tick}\n`,
   );
-  // Five full races and a replay: 98 s on CI once IA 136 had roadside wildlife (2026-10-25), about
-  // 81 s before it (scaled by the 36.8 s against 44.5 s measured locally), over the sim project's
-  // 90 s default. The same budget as the county rides.
-}, 120_000);
+});
 
 function body(c: ReturnType<typeof config>, mover: Mover, lengthM: number, widthM: number, heightM: number) {
   const point = c.road.toWorld(mover.pos.edge, mover.pos.s, mover.pos.d, 0);
