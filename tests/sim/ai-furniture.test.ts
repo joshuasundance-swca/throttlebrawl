@@ -15,7 +15,8 @@
 // no cop here.
 // - A rival's crashes on a piece of furniture that no rider's hit sent it into (a takedown is the game:
 //   a rider knocked into a tree is a fair kill) are near none, and so are a cop's;
-// - their uncredited riding-to-tumble falls are near the furniture-off level, a band over every race.
+// - their uncredited riding-to-tumble falls stay within one a race of the furniture-off level, a
+//   catastrophe guard: six races cannot resolve a smaller rise (measured below).
 // Valid combat takedowns are intentionally allowed. Raw crashes and already-down body contacts are
 // still reported, but no longer have an aggregate ceiling here. The real-controller post-shove
 // recovery check covers a recoverable escape separately; a combat credit alone does not prove that
@@ -184,6 +185,10 @@ describe('rivals and cops see the solid street furniture (the live check of #619
     expect(on.copFurniture).toBeLessThanOrEqual(1);
     // Compare actual uncredited first falls, not raw contacts minus every takedown. Counting a
     // later unrelated credit or an already-down contact cannot erase an earlier avoidable fall.
-    expect(on.uncreditedFirstFalls).toBeLessThanOrEqual(Math.ceil(off.uncreditedFirstFalls * 1.25) + 2);
+    // A catastrophe guard, at most one more per race than with the furniture off: over seeds 1 to 9
+    // (2026-10-25) the furniture added 0.28 a race (8 against 3 in 18 races), and rivals blind to it
+    // 0.56 (18 against 8), too close for six races to tell apart. The furniture crashes above are
+    // what catch the blind rivals on these seeds (5 against at most 2).
+    expect(on.uncreditedFirstFalls).toBeLessThanOrEqual(off.uncreditedFirstFalls + on.races);
   }, 900_000);
 });
