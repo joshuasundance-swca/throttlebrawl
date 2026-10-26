@@ -1,0 +1,19 @@
+{
+  "type": "traffic-type",
+  "id": "whitetail",
+  "name": "Whitetail Deer",
+  "category": "animal",
+  "tags": ["local"],
+  "lengthM": 1.8,
+  "widthM": 0.45,
+  "heightM": 1.5,
+  "cruiseMps": 4.0,
+  "hazard": "big",
+  "behaviour": { "roadside": "yields", "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-dog" }, "paintOptions": ["#8a6440", "#a47a4f", "#6e5034"] },
+  "meta": {
+    "status": "live",
+    "notes": "Iowa's big animal (like the PNW elk): it steps clear unhurried, and hitting it crashes you. Only the authored IA 136 wildlife zones use this type. Placeholder shape: the dog preset at deer size.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-25" }
+  }
+}

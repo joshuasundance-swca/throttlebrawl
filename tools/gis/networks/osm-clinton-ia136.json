@@ -106,6 +106,20 @@
               "d0": -14,
               "d1": -8,
               "item": "delivery-window"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "ia136-east-deer",
+              "s0": 300,
+              "s1": 330,
+              "d0": -8,
+              "d1": -7,
+              "params": {
+                "spawns": "animals",
+                "kinds": ["region-clinton:whitetail"],
+                "everyM": 10,
+                "maxPeds": 1
+              }
             }
           ]
         },
@@ -122,6 +136,29 @@
               "d0": 8,
               "d1": 10,
               "item": "bends-ahead"
+            },
+            {
+              "kind": "billboard",
+              "id": "clinton-turkey-sign",
+              "s0": 470,
+              "s1": 480,
+              "d0": 8,
+              "d1": 10,
+              "item": "turkey-crossing"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "ia136-middle-turkeys",
+              "s0": 600,
+              "s1": 630,
+              "d0": -8,
+              "d1": -7,
+              "params": {
+                "spawns": "animals",
+                "kinds": ["region-clinton:wild-turkey"],
+                "everyM": 10,
+                "maxPeds": 3
+              }
             }
           ]
         },
@@ -143,6 +180,29 @@
               "d0": 8,
               "d1": 14,
               "item": "grain-forecast"
+            },
+            {
+              "kind": "billboard",
+              "id": "clinton-deer-sign",
+              "s0": 760,
+              "s1": 770,
+              "d0": 8,
+              "d1": 10,
+              "item": "deer-crossing"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "ia136-west-deer",
+              "s0": 900,
+              "s1": 930,
+              "d0": 7,
+              "d1": 8,
+              "params": {
+                "spawns": "animals",
+                "kinds": ["region-clinton:whitetail"],
+                "everyM": 10,
+                "maxPeds": 2
+              }
             }
           ]
         }
@@ -219,7 +279,23 @@
         {
           "id": "osm-clinton-county-420th-dirt",
           "name": "420th Avenue",
-          "tags": ["rural"]
+          "tags": ["rural"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "county-dirt-turkeys",
+              "s0": 600,
+              "s1": 630,
+              "d0": 6,
+              "d1": 7,
+              "params": {
+                "spawns": "animals",
+                "kinds": ["region-clinton:wild-turkey"],
+                "everyM": 10,
+                "maxPeds": 3
+              }
+            }
+          ]
         },
         {
           "id": "osm-clinton-county-180th",

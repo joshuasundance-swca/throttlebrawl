@@ -80,6 +80,29 @@
       "d0": 8.0,
       "d1": 10.0,
       "item": "bends-ahead"
+    },
+    {
+      "kind": "billboard",
+      "id": "clinton-turkey-sign",
+      "s0": 470.0,
+      "s1": 480.0,
+      "d0": 8.0,
+      "d1": 10.0,
+      "item": "turkey-crossing"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "ia136-middle-turkeys",
+      "s0": 600.0,
+      "s1": 630.0,
+      "d0": -8.0,
+      "d1": -7.0,
+      "params": {
+        "spawns": "animals",
+        "kinds": ["region-clinton:wild-turkey"],
+        "everyM": 10,
+        "maxPeds": 3
+      }
     }
   ],
   "barriers": [],
