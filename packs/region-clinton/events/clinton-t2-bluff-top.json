@@ -9,6 +9,11 @@
   "lengths": [
     {
       "id": "standard",
+      "route": "osm-clinton-eagle-point-run",
+      "laps": 1
+    },
+    {
+      "id": "north",
       "route": "osm-clinton-eagle-north-run",
       "laps": 1
     }
@@ -29,7 +34,7 @@
   "cops": {
     "mode": "every-race",
     "baseCount": 1,
-    "patrolMax": 0,
+    "patrolMax": 2,
     "heat": true
   },
   "rules": {
@@ -60,7 +65,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A takedown hunt round Eagle Point's North Loop at dusk: three takedowns along the bluff top. A hunt, not a race to the line: at the career's pace the North Loop's crests throw a rider who takes them flat out every few hundred metres (2026-10-26, the test bot: 1 or 2 of 6 races to the line there ran past their time limit). Career chapter 4 (global tier 14): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "notes": "A takedown hunt round Eagle Point at dusk: three takedowns along the bluff top. The career races its North Loop length; the standard length is the Serpentine. A hunt, not a race to the line: at the career's pace the North Loop's crests throw a rider who takes them flat out every few hundred metres (2026-10-26, the test bot: 1 or 2 of 6 races to the line there ran past their time limit). Career chapter 4 (global tier 14): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

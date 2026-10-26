@@ -209,14 +209,22 @@ describe('the authored Pivot finale scoring and final payoff', () => {
         .title,
     ).toBe('BUSTED');
   });
-  it('grants all authored ending lines, free play and the actual award once, without a new region', () => {
+  // San Francisco was the last chapter until Iowa followed it (2026-10-26): the stake is read from the
+  // career file, the next region when it names one, free play when it names none.
+  const nextDef = defs.find((d) => d.regionKey === def.ending.next) ?? null;
+  it('grants all authored ending lines, free play, the region it opens and the actual award once', () => {
     const before = ready(),
       win = race();
     win.finish(ME);
     const first = win.settle(before);
     expect(first.report.map?.finale).toBe(true);
-    expect(first.report.teaser).toEqual({ lines: def.ending.lines, next: null, freePlayAfter: true });
-    expect(teaserView(defs, first.report)).toEqual({ lines: def.ending.lines, next: null });
+    expect(first.report.teaser).toEqual({
+      lines: def.ending.lines,
+      next: def.ending.next,
+      freePlayAfter: true,
+    });
+    expect(teaserView(defs, first.report)?.lines).toEqual(def.ending.lines);
+    expect(teaserView(defs, first.report)?.next?.name ?? null).toBe(nextDef?.regionName ?? null);
     expect(def.ending.lines.length).toBeGreaterThan(0);
     expect(awards.length).toBeGreaterThan(0);
     expect(first.report.unlocked).toEqual(awards.filter((key) => !before.bikes.owned.includes(key)));
@@ -233,7 +241,7 @@ describe('the authored Pivot finale scoring and final payoff', () => {
       .find((c) => c.id === node.id);
     expect(card?.kindLabel).toBe(`Region boss · ${rivalName}`);
     expect(card?.objective).toContain(objectiveText(REG, plan));
-    expect(card?.objective).toContain('Win for free play');
+    expect(card?.objective).toContain(nextDef ? `Win to open ${nextDef.regionName}.` : 'Win for free play');
     for (const award of awardEntries) expect(card?.objective).toContain(award.name);
     const r = race();
     r.finish(ME);
@@ -251,12 +259,14 @@ describe('the authored Pivot finale scoring and final payoff', () => {
     );
     expect(view.title).toBe(`${rivalName.toUpperCase()} BEATEN`);
     expect(view.objectives.find((o) => o.required)?.label).toBe(objectiveText(REG, plan));
-    expect(view.news).toContain('Free play is open.');
+    expect(view.news).toContain(nextDef ? `${nextDef.regionName} is open.` : 'Free play is open.');
     for (const award of awardEntries) expect(view.news.some((s) => s.includes(award.name))).toBe(true);
     const replayCard = careerView(REG, defs, first.profile, def.regionId)
       .tiers.flatMap((t) => t.nodes)
       .find((c) => c.id === node.id);
-    expect(replayCard?.objective).toContain('Free play is open.');
-    expect(replayCard?.objective).not.toContain('Win for free play');
+    expect(replayCard?.objective).toContain(
+      nextDef ? `${nextDef.regionName} is open.` : 'Free play is open.',
+    );
+    expect(replayCard?.objective).not.toContain(nextDef ? `Win to open` : 'Win for free play');
   });
 });

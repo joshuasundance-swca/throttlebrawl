@@ -33,6 +33,14 @@ const word =
   ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][count] ??
   String(count);
 const victory = `Beat ${rivalName} to the line, or knock ${rivalName} down ${word} times.`;
+// San Francisco was the last chapter until Iowa followed it (2026-10-26): the stake is the career file's,
+// the next region when it names one, free play when it names none.
+const nextName = def.ending.next
+  ? regions.find((r) => r.key === qualifyIn(def.pack, def.ending.next ?? ''))?.name
+  : undefined;
+if (def.ending.next && !nextName) throw new Error(`No region ${def.ending.next}`);
+const stake = nextName ? `Win to open ${nextName}.` : 'Win for free play';
+const opened = nextName ? `${nextName} is open.` : 'Free play is open.';
 const awards = def.unlocks
   .filter((u) => u.when.kind === 'boss-beaten')
   .map((u) => diskName('bikes', def.pack, u.grant));
@@ -160,7 +168,7 @@ for (const textSize of ['normal', 'large', 'largest']) {
         `REGION BOSS · ${rivalName.toUpperCase()}`,
       );
       await expect(page.locator('.career-detail .why').first()).toContainText(victory);
-      await expect(page.locator('.career-detail .why').first()).toContainText('Win for free play');
+      await expect(page.locator('.career-detail .why').first()).toContainText(stake);
       for (const name of awards)
         await expect(page.locator('.career-detail .why').first()).toContainText(name);
       // Exercise the horizontal measurement against the actual visible objective, then restore it.
@@ -211,10 +219,8 @@ for (const textSize of ['normal', 'large', 'largest']) {
       await expect(page.locator('#career-results-objectives')).toBeVisible();
       await expect(page.locator('#career-results-objectives li').filter({ hasText: victory })).toBeVisible();
       await expect(page.locator('#career-results-objectives')).toContainText(victory);
-      await expect(
-        page.locator('#career-results .career-news').filter({ hasText: 'Free play is open.' }),
-      ).toBeVisible();
-      await expect(page.locator('#career-results')).toContainText('Free play is open.');
+      await expect(page.locator('#career-results .career-news').filter({ hasText: opened })).toBeVisible();
+      await expect(page.locator('#career-results')).toContainText(opened);
       for (const name of awards) {
         await expect(page.locator('#career-results .career-news').filter({ hasText: name })).toBeVisible();
         await expect(page.locator('#career-results')).toContainText(name);
@@ -226,7 +232,8 @@ for (const textSize of ['normal', 'large', 'largest']) {
         await expect(page.locator('#career-teaser .teaser-line').filter({ hasText: line })).toBeVisible();
         await expect(page.locator('#career-teaser')).toContainText(line);
       }
-      await expect(page.locator('#career-teaser-next')).toHaveCount(0);
+      await expect(page.locator('#career-teaser-next')).toHaveCount(nextName ? 1 : 0);
+      if (nextName) await expect(page.locator('#career-teaser-next')).toContainText(nextName);
       await layout(page, '#career-teaser');
     } finally {
       await context.close();
