@@ -29,6 +29,8 @@ const RAW = import.meta.glob<unknown>(
     '!/packs/base/regions/*/roads/**',
     '!/packs/base/regions/*/routes/**',
     '!/packs/base/assets/**',
+    // The career maps ride with the career's lazy chunk (career/bundled.ts), not the first load.
+    '!/packs/base/careers/**',
   ],
   { eager: true, import: 'default' },
 );

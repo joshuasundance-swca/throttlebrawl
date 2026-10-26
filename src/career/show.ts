@@ -16,6 +16,7 @@
 import type { GrudgeRuleId } from '../core';
 import { packOf, type ContentRegistry } from '../content';
 import type { Profile } from '../save';
+import { careersOf } from './bundled';
 import { bare, careerDefs, qualify, type CareerDef, type EventPlan } from './defs';
 import type { ObjectiveSpec, ObjectiveStatus, RaceTally } from './race-log';
 import type { SettleReport } from './settle';
@@ -118,7 +119,7 @@ const ASK_KINDS: readonly AskDef['kind'][] = ['takedowns', 'style-cash', 'finish
 
 /** A career file's `show` block, read defensively. */
 export function showOf(reg: ContentRegistry, def: CareerDef): ShowText {
-  const show = obj(obj(reg.careers[def.key])['show']);
+  const show = obj(obj(careersOf(reg)[def.key])['show']);
   const paper = obj(show['paper']);
   const heads = obj(show['heads']);
   return {
@@ -185,7 +186,7 @@ export function askCashAt(cash: number, g: number): number {
 export function riderTexts(reg: ContentRegistry, defs: readonly CareerDef[]): Map<string, RiderTexts> {
   const out = new Map<string, RiderTexts>();
   for (const def of defs) {
-    const texts = obj(obj(reg.careers[def.key])['show'])['texts'];
+    const texts = obj(obj(careersOf(reg)[def.key])['show'])['texts'];
     for (const [id, raw] of Object.entries(obj(texts))) {
       const t = obj(raw);
       const won = str(t['won']);
@@ -282,7 +283,7 @@ export const RULE_CARDS: Readonly<Record<GrudgeRuleId, { name: string; line: str
 
 /** A rule's card: the career file's `show.rules[id]` (`name`, `line`) when whole, else the default. */
 export function ruleCard(reg: ContentRegistry, def: CareerDef | null, id: GrudgeRuleId): RuleCard {
-  const own = def ? obj(obj(obj(reg.careers[def.key])['show'])['rules'])[id] : undefined;
+  const own = def ? obj(obj(obj(careersOf(reg)[def.key])['show'])['rules'])[id] : undefined;
   const o = obj(own);
   const name = str(o['name']);
   const line = str(o['line']);

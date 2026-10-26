@@ -109,7 +109,7 @@ export function seasonPurseScale(season: number | undefined): number {
  */
 export function bikePrice(reg: ContentRegistry, def: CareerDef, bike: string | null): number {
   if (!bike) return 0;
-  const shops = [def.shop, ...(reg.careers ? careerDefs(reg).map((d) => d.shop) : [])];
+  const shops = [def.shop, ...careerDefs(reg).map((d) => d.shop)];
   const prices = shops.flatMap((shop) => shop.filter((i) => i.bike === bike).map((i) => i.priceCash));
   return prices.length ? Math.min(...prices) : 0;
 }
