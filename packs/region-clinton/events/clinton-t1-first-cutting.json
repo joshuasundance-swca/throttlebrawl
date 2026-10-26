@@ -1,0 +1,73 @@
+{
+  "type": "event",
+  "id": "clinton-t1-first-cutting",
+  "name": "First Cutting",
+  "kind": "classic-race",
+  "region": "clinton-iowa",
+  "timeOfDay": "noon",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-ia136-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["mara-vale", "base:chad-speedwell", "base:dial-up", "base:deacon-vane"],
+    "paceMps": 52.9
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "finish",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 5
+      },
+      "required": true
+    },
+    {
+      "id": "podium",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": false,
+      "rewardCash": 1450
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [9800, 5400, 3450, 1450, 1000, 500, 300],
+    "perTakedownCash": 450,
+    "perNearMissCash": 42,
+    "perAirtimeCash": 63,
+    "perOncomingSecondCash": 17,
+    "takedownComboScale": 0.5,
+    "perStealCash": 105
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The Iowa chapter's first race: IA 136 at noon, the first hay of the year on the shoulder. Like every chapter's opener, finishing is the win and the podium a bonus. Career chapter 4 (global tier 13): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

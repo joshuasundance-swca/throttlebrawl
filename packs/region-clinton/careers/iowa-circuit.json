@@ -1,0 +1,347 @@
+{
+  "type": "career",
+  "id": "iowa-circuit",
+  "name": "The County Line Circuit",
+  "region": "clinton-iowa",
+  "startingCash": 500,
+  "startingBike": "base:rustbucket-400",
+  "tutorialEvent": "clinton-t1-first-cutting",
+  "firstRun": "race-first",
+  "tiers": [
+    {
+      "id": "t1",
+      "name": "Planting",
+      "advance": { "requiredWins": 2 },
+      "boss": "content-farm",
+      "field": {
+        "paceShare": 0.74,
+        "aggression": 0.9,
+        "signatureGap": 1.1,
+        "health": 0.9,
+        "power": 0.9,
+        "rivalBike": "step-down"
+      }
+    },
+    {
+      "id": "t2",
+      "name": "Knee High",
+      "advance": { "requiredWins": 2 },
+      "boss": "no-bars",
+      "field": {
+        "paceShare": 0.78,
+        "aggression": 1.0,
+        "signatureGap": 1.0,
+        "health": 1.0,
+        "power": 1.0,
+        "rivalBike": "step-down"
+      }
+    },
+    {
+      "id": "t3",
+      "name": "Harvest",
+      "advance": { "requiredWins": 2 },
+      "boss": "tent-revival",
+      "field": {
+        "paceShare": 0.82,
+        "aggression": 1.1,
+        "signatureGap": 0.9,
+        "health": 1.1,
+        "power": 1.07,
+        "rivalBike": "best"
+      }
+    },
+    {
+      "id": "t4",
+      "name": "First Frost",
+      "advance": { "requiredWins": 2 },
+      "boss": "benchmark",
+      "field": {
+        "paceShare": 0.85,
+        "aggression": 1.2,
+        "signatureGap": 0.85,
+        "health": 1.2,
+        "power": 1.12,
+        "rivalBike": "best"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "first-cutting",
+      "event": "clinton-t1-first-cutting",
+      "length": "standard",
+      "tier": "t1",
+      "at": { "road": "osm-clinton-ia136-east-bends", "s": 60 },
+      "opens": ["osm-clinton-eagle-entry", "osm-clinton-eagle-south-loop"],
+      "claims": ["osm-clinton-ia136-east-bends", "osm-clinton-ia136-east-county-approach"]
+    },
+    {
+      "id": "scenic-overlook",
+      "event": "clinton-t1-scenic-overlook",
+      "length": "standard",
+      "tier": "t1",
+      "at": { "road": "osm-clinton-eagle-south-loop", "s": 400 },
+      "requires": ["first-cutting"],
+      "opens": ["osm-clinton-eagle-central-loop", "osm-clinton-eagle-north-loop"],
+      "claims": ["osm-clinton-eagle-entry", "osm-clinton-eagle-south-loop"]
+    },
+    {
+      "id": "content-farm",
+      "event": "clinton-t1-chad-grudge",
+      "length": "standard",
+      "tier": "t1",
+      "at": { "road": "osm-clinton-eagle-north-loop", "s": 600 },
+      "requires": ["first-cutting"],
+      "opens": ["osm-clinton-ia136-middle-bends", "osm-clinton-ia136-middle-county-return"],
+      "claims": ["osm-clinton-eagle-north-loop"]
+    },
+    {
+      "id": "county-line",
+      "event": "clinton-t2-county-line",
+      "length": "standard",
+      "tier": "t2",
+      "at": { "road": "osm-clinton-ia136-east-county-approach", "s": 800 },
+      "opens": ["osm-clinton-ia136-west-bends"],
+      "claims": ["osm-clinton-ia136-middle-bends", "osm-clinton-ia136-middle-county-return"]
+    },
+    {
+      "id": "bluff-top",
+      "event": "clinton-t2-bluff-top",
+      "length": "standard",
+      "tier": "t2",
+      "at": { "road": "osm-clinton-eagle-north-loop", "s": 300 },
+      "claims": ["osm-clinton-eagle-central-loop", "osm-clinton-eagle-north-loop"]
+    },
+    {
+      "id": "no-bars",
+      "event": "clinton-t2-dialup-grudge",
+      "length": "standard",
+      "tier": "t2",
+      "at": { "road": "osm-clinton-ia136-west-bends", "s": 600 },
+      "opens": [
+        "osm-clinton-county-420th-paved",
+        "osm-clinton-county-420th-dirt",
+        "osm-clinton-county-180th"
+      ],
+      "claims": ["osm-clinton-ia136-west-bends"]
+    },
+    {
+      "id": "harvest-traffic",
+      "event": "clinton-t3-harvest-traffic",
+      "length": "standard",
+      "tier": "t3",
+      "at": { "road": "osm-clinton-ia136-middle-bends", "s": 400 },
+      "claims": [
+        "osm-clinton-county-420th-paved",
+        "osm-clinton-county-420th-dirt",
+        "osm-clinton-county-180th"
+      ]
+    },
+    {
+      "id": "serpentine",
+      "event": "clinton-t3-serpentine",
+      "length": "standard",
+      "tier": "t3",
+      "at": { "road": "osm-clinton-eagle-south-loop", "s": 800 },
+      "claims": ["osm-clinton-eagle-south-loop"]
+    },
+    {
+      "id": "tent-revival",
+      "event": "clinton-t3-deacon-grudge",
+      "length": "standard",
+      "tier": "t3",
+      "at": { "road": "osm-clinton-eagle-central-loop", "s": 200 },
+      "claims": ["osm-clinton-eagle-entry", "osm-clinton-eagle-central-loop"]
+    },
+    {
+      "id": "out-of-county",
+      "event": "clinton-t4-out-of-county",
+      "length": "standard",
+      "tier": "t4",
+      "at": { "road": "osm-clinton-ia136-east-county-approach", "s": 1400 }
+    },
+    {
+      "id": "first-frost",
+      "event": "clinton-t4-first-frost",
+      "length": "standard",
+      "tier": "t4",
+      "at": { "road": "osm-clinton-eagle-north-loop", "s": 1100 }
+    },
+    {
+      "id": "benchmark",
+      "event": "clinton-boss-mara",
+      "length": "standard",
+      "tier": "t4",
+      "at": { "road": "osm-clinton-ia136-west-bends", "s": 1500 },
+      "claims": [
+        "osm-clinton-ia136-east-bends",
+        "osm-clinton-ia136-east-county-approach",
+        "osm-clinton-ia136-middle-bends",
+        "osm-clinton-ia136-middle-county-return",
+        "osm-clinton-ia136-west-bends"
+      ]
+    }
+  ],
+  "boss": "benchmark",
+  "secrets": [
+    {
+      "id": "county-detour",
+      "kind": "shortcut",
+      "name": "The county detour",
+      "at": { "road": "osm-clinton-county-420th-paved", "s": 150 },
+      "ref": "osm-clinton-ia136-run#osm-clinton-county-420th-paved"
+    },
+    {
+      "id": "pole-barn",
+      "kind": "station",
+      "name": "Pole Barn 87.5, pirate radio",
+      "at": { "road": "osm-clinton-ia136-middle-bends", "s": 600 },
+      "ref": "iowa-pole-barn",
+      "atFraction": 0.5
+    },
+    {
+      "id": "coffee-can",
+      "kind": "stash",
+      "name": "A coffee can of seed money",
+      "at": { "road": "osm-clinton-county-420th-dirt", "s": 500 },
+      "cash": 750
+    }
+  ],
+  "ending": {
+    "teaser": "next-region",
+    "freePlayAfter": true,
+    "lines": [
+      "MARA VALE CLOSES HER FIELD BOOK. SHE HAS NOTED IT.",
+      "THE CIRCUIT HAS RUN OUT OF COUNTY. FOR NOW.",
+      "FREE PLAY IS OPEN. THE SHOULDER IS GRAVEL. IT IS YOURS."
+    ]
+  },
+  "shop": [{ "bike": "base:rustbucket-400", "priceCash": 0, "unlockTier": "t1" }],
+  "paints": [
+    { "id": "barn-red", "name": "Barn Red", "hex": "#8b2a1d", "priceCash": 4000, "unlockTier": "t1" },
+    {
+      "id": "seed-corn",
+      "name": "Seed Corn Yellow",
+      "hex": "#e0b43c",
+      "priceCash": 4000,
+      "unlockTier": "t1"
+    },
+    { "id": "river-mud", "name": "River Mud", "hex": "#6b5a45", "priceCash": 6000, "unlockTier": "t2" },
+    {
+      "id": "elevator-grey",
+      "name": "Grain Elevator Grey",
+      "hex": "#a7a59c",
+      "priceCash": 6000,
+      "unlockTier": "t3"
+    },
+    {
+      "id": "blue-ribbon",
+      "name": "Blue Ribbon",
+      "hex": "#1f4fa0",
+      "priceCash": 18000,
+      "unlockTier": "t1",
+      "unlockSeason": 2
+    }
+  ],
+  "show": {
+    "receipts": {
+      "takedown": [
+        {
+          "id": "receipt-scoreboard",
+          "text": "{VEHICLE} 1, {RIVAL} 0. On {road}. The {vehicle} kept to its lane.",
+          "status": "live"
+        }
+      ],
+      "bust": [
+        {
+          "id": "receipt-incident-site",
+          "text": "INCIDENT SITE #{n}. Reported to the county. The county has noted it.",
+          "status": "live"
+        }
+      ]
+    },
+    "paper": { "name": "The Co-op Bulletin", "style": "rag", "tagline": "Pinned up by the seed prices" },
+    "heads": {
+      "boss": [
+        "{RIVAL} CLOSES FIELD BOOK; COUNTY RE-MEASURES",
+        "{RIVAL} BESTED ON IA 136; GRAVEL SHOULDER UNMOVED"
+      ],
+      "bust": ["RIDER FINED ${n}; DEPUTY CITES 'GENERAL ATTITUDE'"],
+      "secret": ["RIDER FINDS {SECRET}; CO-OP ASKS FOR RECEIPT"],
+      "down": ["{RIVAL} MEETS THE DITCH; DITCH WAS THERE FIRST", "{RIVAL} TAKES AN UNPLANNED FIELD TRIP"],
+      "air": ["RIDER CLEARS {n} RISES; COMBINE DRIVER DOES NOT LOOK UP"],
+      "miss": ["{n} NEAR MISSES; GRAIN TRUCK 'NOT IN A HURRY'"],
+      "win": ["RIDER WINS {EVENT}; PIE COMMITTEE TAKES NOTE", "{EVENT} TO OUT-OF-TOWNER; LOCALS WAVE ANYWAY"],
+      "lose": ["RIDER COMES {PLACE}; STILL INVITED TO THE FISH FRY"]
+    },
+    "asks": [
+      {
+        "id": "co-op",
+        "kind": "takedowns",
+        "n": 1,
+        "cash": 250,
+        "text": "The co-op wants a takedown for the bulletin board. Make it photogenic."
+      },
+      {
+        "id": "fair-reel",
+        "kind": "style-cash",
+        "n": 300,
+        "cash": 200,
+        "text": "The county fair needs footage before the tractor pull. $300 of style."
+      },
+      {
+        "id": "elevator",
+        "kind": "finish-place",
+        "n": 2,
+        "cash": 300,
+        "text": "The elevator closes at the finish. Top 2, or the beans wait till Monday."
+      }
+    ],
+    "gigs": [
+      {
+        "id": "sweet-corn",
+        "name": "Sweet corn run",
+        "need": "finish",
+        "n": 3,
+        "cash": 250,
+        "text": "A pickup bed of sweet corn for the church supper. It is picked this morning or it is not sweet corn."
+      },
+      {
+        "id": "fair-footage",
+        "name": "Fair footage",
+        "need": "airtime",
+        "n": 2,
+        "cash": 200,
+        "text": "The 4-H wants jumps for its slideshow. They will play it between the rabbits."
+      },
+      {
+        "id": "yield-sign",
+        "name": "Yield sign study",
+        "need": "nearMiss",
+        "n": 4,
+        "cash": 200,
+        "text": "The county engineer wants to know if anyone reads the yield signs. Be the data."
+      },
+      {
+        "id": "fence-line",
+        "name": "Fence-line dispute",
+        "need": "takedowns",
+        "n": 1,
+        "cash": 200,
+        "text": "Two neighbors disagree about a fence. One of them is paying you. Pick a rival."
+      }
+    ],
+    "texts": {
+      "mara-vale": {
+        "won": "Measured it twice. You were behind both times.",
+        "lost": "Noted. A foot over the line on the inside of every bend. I'll be filing that.",
+        "grudge": "You're on my plat now. {g} entries and counting."
+      }
+    }
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The County Line Circuit: clinton-iowa's career map, the fourth chapter (global tiers 13 to 16), opened when San Francisco's boss falls. Four tiers named for the farm year (Planting, Knee High, Harvest, First Frost), each two regular events and the tier's boss (Chad Speedwell's Content Farm with his collab rule, Dial-Up's No Bars with his Bad Connection, Deacon Vane's Tent Revival, and Mara Vale's Benchmark, the region boss and finale), on the region's three routes: IA 136, Eagle Point's Serpentine Drive and the North Loop run. The tier ladder of docs/content-packs.md sets every purse and pace; the best open bike is the Superbike 1000, so the shop sells no step-up bike (all six are sold by earlier chapters) and only paints are new. Secrets: the marked county detour as a shortcut and a stash on 420th Avenue's dirt. Rural Rush and the Survey Run stay Quick Play events. [default] every number and name.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-26" }
+  }
+}

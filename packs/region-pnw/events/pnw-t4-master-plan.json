@@ -1,0 +1,76 @@
+{
+  "type": "event",
+  "id": "pnw-t4-master-plan",
+  "name": "Master Plan",
+  "kind": "classic-race",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-longview-civic-triangle",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "old-growth",
+      "juniper-moss",
+      "base:deacon-vane",
+      "base:chad-speedwell",
+      "base:dial-up",
+      "base:kevin-from-accounting"
+    ],
+    "paceMps": 56.1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    },
+    {
+      "id": "win",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 1
+      },
+      "required": false,
+      "rewardCash": 550
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [3600, 2000, 1250, 550, 350, 200, 100],
+    "perTakedownCash": 325,
+    "perNearMissCash": 33,
+    "perAirtimeCash": 49,
+    "perOncomingSecondCash": 13,
+    "takedownComboScale": 0.5,
+    "perStealCash": 82
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A race to the line, full pack, through Longview's planned civic streets: the Washington diagonal or the longer Hudson and 20th grid, then the river bridge and the 30th Avenue finish. Top 3 is required; winning is the optional bonus. Longview's second career race (2026-10-26, the maintainer: \"yes I want the new content in career too\"): it takes Rainout's place in tier 4 with its field, purse and pace (global tier 8). [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

@@ -71,9 +71,25 @@ describe('Iowa named park encounter', () => {
   });
 
   it('removing the encounter restores the existing Race fallback without removing Iowa', () => {
-    const without = {
+    // Since the County Line Circuit (2026-10-26) Iowa also carries career grudges, which Quick Play
+    // offers after the Survey Run; the Race fallback is checked with those removed as well.
+    const careerGrudges = Object.keys(registry.events).filter((id) => {
+      const e = registry.events[id]!;
+      return id.startsWith('region-clinton:') && e.kind === 'grudge-match' && e.tier !== undefined;
+    });
+    expect(careerGrudges.length).toBeGreaterThan(0);
+    const withoutEncounter = {
       ...registry,
       events: Object.fromEntries(Object.entries(registry.events).filter(([id]) => id !== EVENT)),
+    };
+    const next = quickPlayEvent(withoutEncounter, REGION, 'grudge');
+    expect(next?.kind).toBe('grudge');
+    expect(careerGrudges).toContain(next?.eventId);
+    const without = {
+      ...registry,
+      events: Object.fromEntries(
+        Object.entries(registry.events).filter(([id]) => id !== EVENT && !careerGrudges.includes(id)),
+      ),
     };
     expect(quickPlayEvents(without, REGION).some((e) => e.kind === 'grudge')).toBe(false);
     expect(quickPlayEvent(without, REGION, 'grudge')).toMatchObject({ kind: 'race', eventId: RACE });
@@ -97,7 +113,8 @@ describe('Iowa named park encounter', () => {
       events: { ...registry.events, [EVENT]: { ...event, field: { ...event.field, riders: [] } } },
     };
     expect(quickPlayEvents(missingRival, REGION).some((e) => e.eventId === EVENT)).toBe(false);
-    expect(quickPlayEvent(missingRival, REGION, 'grudge')?.eventId).toBe(RACE);
+    // The refused encounter is never the pick; Iowa's next grudge (a career one) or Race is.
+    expect(quickPlayEvent(missingRival, REGION, 'grudge')?.eventId).not.toBe(EVENT);
     const wrongRival = {
       ...registry,
       events: {

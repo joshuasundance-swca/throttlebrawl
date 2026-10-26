@@ -1,0 +1,62 @@
+{
+  "type": "event",
+  "id": "clinton-t1-chad-grudge",
+  "name": "Content Farm",
+  "kind": "grudge-match",
+  "region": "clinton-iowa",
+  "timeOfDay": "noon",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-eagle-north-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:chad-speedwell"],
+    "paceMps": 54.3
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "base:chad-speedwell",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2,
+    "rule": "collab"
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 14700
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [1450, 1450],
+    "perTakedownCash": 550,
+    "perNearMissCash": 42,
+    "perAirtimeCash": 63,
+    "perOncomingSecondCash": 17,
+    "takedownComboScale": 0.5,
+    "perStealCash": 105
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Tier 1's boss: Chad Speedwell is filming a rural lifestyle series round the North Loop and needs a co-star. His collab rules: the most style at the line wins. Career chapter 4 (global tier 13): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

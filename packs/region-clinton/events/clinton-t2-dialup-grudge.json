@@ -1,0 +1,70 @@
+{
+  "type": "event",
+  "id": "clinton-t2-dialup-grudge",
+  "name": "No Bars",
+  "kind": "grudge-match",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-ia136-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:dial-up"],
+    "paceMps": 57.2
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "base:dial-up",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2,
+    "rule": "bad-connection"
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "params": {
+        "orKnockdowns": 2
+      },
+      "required": true,
+      "rewardCash": 17900
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [1800, 1800],
+    "perTakedownCash": 575,
+    "perNearMissCash": 44,
+    "perAirtimeCash": 65,
+    "perOncomingSecondCash": 17,
+    "takedownComboScale": 0.5,
+    "perStealCash": 109
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Tier 2's boss: Dial-Up on IA 136, where the signal comes and goes with the bends. His Bad Connection rule; beaten home or knocked down twice. Career chapter 4 (global tier 14): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

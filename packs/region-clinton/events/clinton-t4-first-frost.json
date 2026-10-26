@@ -1,0 +1,74 @@
+{
+  "type": "event",
+  "id": "clinton-t4-first-frost",
+  "name": "First Frost",
+  "kind": "classic-race",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-eagle-north-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "mara-vale",
+      "base:deacon-vane",
+      "base:chad-speedwell",
+      "base:dial-up",
+      "base:kevin-from-accounting"
+    ],
+    "paceMps": 60.8
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    },
+    {
+      "id": "win",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 1
+      },
+      "required": false,
+      "rewardCash": 2650
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [17750, 9750, 6200, 2650, 1800, 900, 550],
+    "perTakedownCash": 525,
+    "perNearMissCash": 47,
+    "perAirtimeCash": 71,
+    "perOncomingSecondCash": 19,
+    "takedownComboScale": 0.5,
+    "perStealCash": 118
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The last race to the line before the finale: Eagle Point's North Loop at dusk, top 3, a bonus for the win. Career chapter 4 (global tier 16): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

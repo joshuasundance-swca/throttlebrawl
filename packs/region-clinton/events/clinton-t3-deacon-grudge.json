@@ -1,0 +1,62 @@
+{
+  "type": "event",
+  "id": "clinton-t3-deacon-grudge",
+  "name": "Tent Revival",
+  "kind": "grudge-match",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-eagle-point-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:deacon-vane"],
+    "paceMps": 60.1
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "base:deacon-vane",
+    "winBy": "knockdowns",
+    "knockdownsToWin": 2,
+    "grudgeStakes": 2
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 21800
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [2200, 2200],
+    "perTakedownCash": 600,
+    "perNearMissCash": 45,
+    "perAirtimeCash": 68,
+    "perOncomingSecondCash": 18,
+    "takedownComboScale": 0.5,
+    "perStealCash": 114
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Tier 3's boss: Deacon Vane has pitched a tent in the park and is collecting souls on the Serpentine. Two knockdowns win it. Career chapter 4 (global tier 15): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

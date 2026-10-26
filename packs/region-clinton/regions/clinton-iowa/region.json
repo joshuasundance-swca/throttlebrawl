@@ -2,6 +2,7 @@
   "type": "region",
   "id": "clinton-iowa",
   "name": "Iowa",
+  "chapter": 4,
   "blurb": "River-town highways and tight park loops. The delivery window is closing.",
   "signStyle": "town",
   "networks": ["osm-clinton-ia136", "osm-clinton-eagle-point"],
