@@ -22,11 +22,12 @@ const LANES: LaneInfo[] = [
   { id: 'R0', dCenterM: 4.15, widthM: 1.5, direction: 1, kind: 'shoulder' },
 ];
 
-function route(lanes: readonly LaneInfo[] = LANES): RouteQueries {
+/** A straight test route; its finish lies along `dir`, as on a real route (riding away turns the bot round). */
+function route(lanes: readonly LaneInfo[] = LANES, dir: 1 | -1 = 1): RouteQueries {
   return {
     lanesAt: () => lanes,
     kappaAt: () => 0,
-    distanceToFinish: (_e, s) => 1000 - s,
+    distanceToFinish: (_e, s) => (dir === 1 ? 1000 - s : s),
     edgeLength: () => 1000,
   };
 }
@@ -91,7 +92,7 @@ describe('dev/bot: the BotController', () => {
     (dir) => {
       const run = (widthM: number, blocked = false) => {
         const bot = createBot();
-        const r = route([{ id: 'wide', dCenterM: 0, widthM, direction: dir, kind: 'shortcut' }]);
+        const r = route([{ id: 'wide', dCenterM: 0, widthM, direction: dir, kind: 'shortcut' }], dir);
         const me = mover(ME, { d: 0, speed: 0 });
         me.road.dir = dir;
         const lead = mover(5, { kind: 'vehicle', s: 100 + dir * 8, d: 0, speed: 0 });

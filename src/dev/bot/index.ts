@@ -177,6 +177,30 @@ const SHORTCUT_LINE_IN_M = 0.9;
  * lanes (playtest 4, run C's live check: 2 of 8 remounts, 191 and 217 of the next 240 ticks).
  */
 export const REMOUNT_OWN_SIDE_TICKS = 300;
+/**
+ * Riding away from the finish this long (ticks, on the road), the bot turns round with the game's own
+ * U-turn gesture (sim/riders/uturn.ts), as a player would: it slows under riders.uturnMps, taps the
+ * brake, taps it again and holds it with full lock, and keeps the lock until it faces the finish
+ * along the road. Eagle Point (2026-10-26): a jump off a Serpentine hairpin lands the rider on the
+ * leg below, facing back down it; the bot rode on the wrong way into the oncoming queue on the
+ * one-lane loop and stopped there for good (the Survey Run, 2 of 4 seeds never finished).
+ */
+export const WRONG_WAY_TICKS = 30;
+/** The gesture's taps and the gaps between them, ticks: under UTURN_TAP_MAX_S and UTURN_TAP_GAP_S. */
+const UTURN_TAP_TICKS = 8;
+/** It slows to this before the gesture, m/s: well under riders.uturnMps (12). */
+const UTURN_SLOW_MPS = 6;
+/** A turn that has not faced the finish by this many ticks is given up, and tried again later. */
+const UTURN_GIVE_UP_TICKS = 300;
+
+/** Whether riding on along the road (`dir`) takes the bot further from the finish. */
+function awayFromFinish(route: RouteQueries, edge: number, s: number, dir: 1 | -1): boolean {
+  const here = route.distanceToFinish(edge, s);
+  const len = route.edgeLength(edge);
+  if (!Number.isFinite(here) || !Number.isFinite(len)) return false;
+  const ahead = route.distanceToFinish(edge, Math.max(0, Math.min(len, s + dir * 2)));
+  return Number.isFinite(ahead) && ahead > here + 1;
+}
 
 type ShortcutZone = RouteProgress['shortcuts'][number];
 
@@ -336,6 +360,15 @@ export function createBot(): BotController {
   let stillTicks = 0;
   let filtering = false;
   let localYield: { edge: number; dir: 1 | -1; d: number; stopS: number } | null = null;
+  /** Ticks in a row riding away from the finish (WRONG_WAY_TICKS), negative while a given-up turn rests. */
+  let wrongTicks = 0;
+  /** The U-turn under way: its step, the tick it began and the tick the turn began, and the lock side. */
+  let uturn: {
+    phase: 'slow' | 'lift' | 'tap' | 'gap' | 'hold' | 'turn';
+    at: number;
+    start: number;
+    side: 1 | -1;
+  } | null = null;
   /** Each vehicle's place on the last tick the bot saw it (BACKING_MPS). */
   const lastSeen = new Map<number, { tick: number; edge: number; s: number }>();
   /** The vehicles moving back along the bot's way this tick while reading as stopped. */
@@ -659,6 +692,8 @@ export function createBot(): BotController {
         stillTicks = 0;
         filtering = false;
         localYield = null;
+        uturn = null;
+        wrongTicks = 0;
         return;
       }
       if (wasDown) {
@@ -673,6 +708,51 @@ export function createBot(): BotController {
       }
       if (me.mode === 'Airborne' || !me.grounded) {
         a.throttle = 1;
+        return;
+      }
+      // Facing away from the finish: turn round (WRONG_WAY_TICKS).
+      const away = awayFromFinish(route, me.road.edge, me.road.s, me.road.dir);
+      wrongTicks = away ? wrongTicks + 1 : Math.min(0, wrongTicks + 1);
+      if (!uturn && wrongTicks >= WRONG_WAY_TICKS) {
+        const toCentre = -me.road.d * me.road.dir;
+        uturn = { phase: 'slow', at: snap.tick, start: snap.tick, side: toCentre < 0 ? -1 : 1 };
+      }
+      if (uturn) {
+        const held = snap.tick - uturn.at;
+        const next = (phase: NonNullable<typeof uturn>['phase']) => {
+          if (uturn) uturn = { ...uturn, phase, at: snap.tick };
+        };
+        a.throttle = 0;
+        a.brake = 0;
+        a.steer = 0;
+        if (uturn.phase === 'slow') {
+          // Slow enough already: no brake this tick, or the press would count as the gesture's first tap.
+          if (me.speed <= UTURN_SLOW_MPS) next('lift');
+          else a.brake = 1;
+        } else if (uturn.phase === 'lift' || uturn.phase === 'gap') {
+          if (held >= UTURN_TAP_TICKS) next(uturn.phase === 'lift' ? 'tap' : 'hold');
+        } else if (uturn.phase === 'tap') {
+          a.brake = 1;
+          if (held >= UTURN_TAP_TICKS) next('gap');
+        } else if (uturn.phase === 'hold') {
+          a.brake = 1;
+          a.steer = uturn.side;
+          if (held >= 2 * UTURN_TAP_TICKS) next('turn');
+        } else {
+          // Turning: the brake held at full lock (it pivots, from a standstill on the spot) until it
+          // faces the finish lined up with the road.
+          a.brake = 1;
+          a.steer = uturn.side;
+          if (!away && Math.abs(me.road.yaw) < 0.3) {
+            uturn = null;
+            wrongTicks = 0;
+            ownSideUntil = snap.tick + REMOUNT_OWN_SIDE_TICKS;
+          }
+        }
+        if (uturn && snap.tick - uturn.start > UTURN_GIVE_UP_TICKS) {
+          uturn = null;
+          wrongTicks = -4 * WRONG_WAY_TICKS;
+        }
         return;
       }
       stillTicks = me.speed < 1 ? stillTicks + 1 : 0;
