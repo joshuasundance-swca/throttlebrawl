@@ -1,0 +1,71 @@
+{
+  "type": "event",
+  "id": "clinton-boss-mara",
+  "name": "Benchmark",
+  "kind": "grudge-match",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-ia136-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["mara-vale", "base:deacon-vane", "base:dial-up", "base:chad-speedwell"],
+    "paceMps": 63.6
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true,
+    "chaosSummon": true
+  },
+  "rules": {
+    "rival": "mara-vale",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 3
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "params": {
+        "orKnockdowns": 3
+      },
+      "required": true,
+      "rewardCash": 44400
+    }
+  ],
+  "tier": 4,
+  "finale": true,
+  "rewards": {
+    "byPlaceCash": [6650, 4450, 2650, 1800, 900],
+    "perTakedownCash": 625,
+    "perNearMissCash": 47,
+    "perAirtimeCash": 71,
+    "perOncomingSecondCash": 19,
+    "takedownComboScale": 0.5,
+    "perStealCash": 118
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Iowa's finale: Mara Vale, the county road surveyor, on the whole of IA 136 at dusk, the field the chapter has met. Beaten home or knocked down three times. The region boss pays 2.5 W of the sixteenth global tier through its beat-rival bonus. Career chapter 4 (global tier 16): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

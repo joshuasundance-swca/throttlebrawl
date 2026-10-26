@@ -1,0 +1,84 @@
+{
+  "type": "event",
+  "id": "clinton-t3-harvest-traffic",
+  "name": "Harvest Traffic",
+  "kind": "takedown-hunt",
+  "region": "clinton-iowa",
+  "timeOfDay": "noon",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-ia136-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "mara-vale",
+      "base:deacon-vane",
+      "base:kevin-from-accounting",
+      "base:chad-speedwell",
+      "base:dial-up"
+    ],
+    "paceMps": 58.6
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "targetCount": 3,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 3
+      },
+      "required": true,
+      "rewardCash": 14550
+    },
+    {
+      "id": "detour",
+      "kind": "ride-branch",
+      "params": {
+        "branch": "osm-clinton-county-420th-paved"
+      },
+      "required": false,
+      "rewardCash": 2200
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [4350, 2900, 1450, 750, 450, 300],
+    "perTakedownCash": 500,
+    "perNearMissCash": 45,
+    "perAirtimeCash": 68,
+    "perOncomingSecondCash": 18,
+    "takedownComboScale": 0.5,
+    "perStealCash": 114
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt on IA 136 in harvest season: three takedowns, and a bonus for taking the county detour. Career chapter 4 (global tier 15): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

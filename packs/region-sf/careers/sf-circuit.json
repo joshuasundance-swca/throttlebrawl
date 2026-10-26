@@ -282,9 +282,10 @@
     "freePlayAfter": true,
     "lines": [
       "PIVOT PIVOTS. TO WALKING.",
-      "NEXT: SOMEWHERE ELSE. THE CIRCUIT IS STILL DECIDING. IT HAS A DECK.",
+      "NEXT: IOWA. THE ROADS ARE STRAIGHT UNTIL THEY ARE NOT.",
       "FREE PLAY IS OPEN. EVERY ROAD IS YOURS."
-    ]
+    ],
+    "next": "region-clinton:clinton-iowa"
   },
   "shop": [
     { "bike": "base:rustbucket-400", "priceCash": 0, "unlockTier": "t1" },

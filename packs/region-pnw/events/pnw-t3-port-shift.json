@@ -1,0 +1,64 @@
+{
+  "type": "event",
+  "id": "pnw-t3-port-shift",
+  "name": "Port Shift",
+  "kind": "cop-escape",
+  "region": "pacific-northwest",
+  "timeOfDay": "dusk",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-longview-port-shift",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["old-growth", "base:kevin-from-accounting"],
+    "paceMps": 50
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "escapeBy": "distance",
+    "escapeDistanceM": 3000,
+    "copsFromStart": 2
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 2950
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [900, 600, 300, 150, 100, 50],
+    "perTakedownCash": 300,
+    "perNearMissCash": 31,
+    "perAirtimeCash": 46,
+    "perOncomingSecondCash": 12,
+    "takedownComboScale": 0.5,
+    "perStealCash": 77
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape on Longview's Port Shift at dusk: once the patrol is on you, ride 3 km of Industrial Way, Mount Solo and Ocean Beach Highway, or lose them. Longview's first career race (2026-10-26, the maintainer: \"yes I want the new content in career too\"): it takes Fir County Pursuit's place in tier 3 with its field, purse and pace (global tier 7). The sawmill haul keeps the Logging Spur hunt and Kevin's grudge. [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

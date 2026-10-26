@@ -1,0 +1,68 @@
+{
+  "type": "event",
+  "id": "clinton-t4-out-of-county",
+  "name": "Out of County",
+  "kind": "cop-escape",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-ia136-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["mara-vale", "base:dial-up"],
+    "paceMps": 60.8
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "escapeBy": "distance",
+    "escapeDistanceM": 3000,
+    "copsFromStart": 2
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 17750
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [5300, 3550, 1800, 900, 550, 350],
+    "perTakedownCash": 525,
+    "perNearMissCash": 47,
+    "perAirtimeCash": 71,
+    "perOncomingSecondCash": 19,
+    "takedownComboScale": 0.5,
+    "perStealCash": 118
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape on IA 136 at dusk: ride 3,000 m from the moment the patrol is on you. Career chapter 4 (global tier 16): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

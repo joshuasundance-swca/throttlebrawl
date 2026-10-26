@@ -1,0 +1,75 @@
+{
+  "type": "event",
+  "id": "clinton-t2-bluff-top",
+  "name": "Bluff Top",
+  "kind": "takedown-hunt",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-eagle-point-run",
+      "laps": 1
+    },
+    {
+      "id": "north",
+      "route": "osm-clinton-eagle-north-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "mara-vale",
+      "base:deacon-vane",
+      "base:chad-speedwell",
+      "base:dial-up",
+      "base:kevin-from-accounting"
+    ],
+    "paceMps": 55.8
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "targetCount": 3,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 3
+      },
+      "required": true,
+      "rewardCash": 11950
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [3600, 2400, 1200, 600, 350, 250],
+    "perTakedownCash": 475,
+    "perNearMissCash": 44,
+    "perAirtimeCash": 65,
+    "perOncomingSecondCash": 17,
+    "takedownComboScale": 0.5,
+    "perStealCash": 109
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt round Eagle Point at dusk: three takedowns along the bluff top. The career races its North Loop length; the standard length is the Serpentine. A hunt, not a race to the line: at the career's pace the North Loop's crests throw a rider who takes them flat out every few hundred metres (2026-10-26, the test bot: 1 or 2 of 6 races to the line there ran past their time limit). Career chapter 4 (global tier 14): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

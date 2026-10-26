@@ -1,0 +1,64 @@
+{
+  "type": "event",
+  "id": "clinton-t1-scenic-overlook",
+  "name": "Scenic Overlook",
+  "kind": "takedown-hunt",
+  "region": "clinton-iowa",
+  "timeOfDay": "noon",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-eagle-point-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:chad-speedwell", "base:kevin-from-accounting", "base:dial-up", "mara-vale"],
+    "paceMps": 52.9
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "targetCount": 2,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 2
+      },
+      "required": true,
+      "rewardCash": 9800
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [2950, 1950, 1000, 500, 300, 200],
+    "perTakedownCash": 450,
+    "perNearMissCash": 42,
+    "perAirtimeCash": 63,
+    "perOncomingSecondCash": 17,
+    "takedownComboScale": 0.5,
+    "perStealCash": 105
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt on Eagle Point Park's Serpentine Drive: two takedowns before the bluff-top loop runs out. Career chapter 4 (global tier 13): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

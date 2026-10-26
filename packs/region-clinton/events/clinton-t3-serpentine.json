@@ -1,0 +1,59 @@
+{
+  "type": "event",
+  "id": "clinton-t3-serpentine",
+  "name": "Serpentine",
+  "kind": "classic-race",
+  "region": "clinton-iowa",
+  "timeOfDay": "dusk",
+  "weather": "dry",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-clinton-eagle-point-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["mara-vale", "base:chad-speedwell", "base:dial-up", "base:kevin-from-accounting"],
+    "paceMps": 58.6
+  },
+  "traffic": {
+    "densityScale": 0.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [14550, 8000, 5100, 2200, 1450, 750, 450],
+    "perTakedownCash": 500,
+    "perNearMissCash": 45,
+    "perAirtimeCash": 68,
+    "perOncomingSecondCash": 18,
+    "takedownComboScale": 0.5,
+    "perStealCash": 114
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A race to the line on Eagle Point's Serpentine Drive at dusk, top 3. Career chapter 4 (global tier 15): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-26"
+    }
+  }
+}

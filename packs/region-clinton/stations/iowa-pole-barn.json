@@ -1,0 +1,50 @@
+{
+  "type": "station",
+  "id": "iowa-pole-barn",
+  "name": "Pole Barn 87.5 FM",
+  "genre": "funk",
+  "regions": ["clinton-iowa"],
+  "pirate": { "atFraction": 0.5, "radiusM": 320 },
+  "tracks": [
+    {
+      "id": "bean-walking",
+      "title": "Bean Walking",
+      "procedural": { "preset": "funk-band", "params": { "bpm": 104, "key": "E", "progression": "vamp" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "detasseling-season",
+      "title": "Detasseling Season",
+      "procedural": { "preset": "funk-band", "params": { "bpm": 112, "key": "A", "progression": "rush" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "grain-dryer-hum",
+      "title": "Grain Dryer Hum",
+      "procedural": { "preset": "funk-band", "params": { "bpm": 98, "key": "D", "progression": "pocket" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "seed-cap-strut",
+      "title": "Seed Cap Strut",
+      "procedural": { "preset": "funk-band", "params": { "bpm": 108, "key": "G", "progression": "mine" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "the-north-forty",
+      "title": "The North Forty",
+      "procedural": { "preset": "funk-band", "params": { "bpm": 116, "key": "C", "progression": "vamp" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Iowa's hidden PIRATE station: funk out of somebody's pole barn, heard only near one spot on the road (half way along the route, within 320 m), never on the dial; the County Line Circuit's station secret (2026-10-26). Code-made funk (src/audio/radio-compose-more.ts, preset funk-band), the same band as San Francisco's dial station, on its own seeds. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-26" }
+  }
+}

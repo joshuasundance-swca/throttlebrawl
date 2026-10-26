@@ -57,6 +57,14 @@ export function checkParking(eventId: string, length: string, route: string): vo
   const pulledOut: string[] = [];
   const spot = new Map<number, { s: number; d: number }>();
   let roadblockAt = -1;
+  // An escape's first cop is its active pursuer, not a waiting one: he starts 12 m behind the player
+  // and keeps that placement (sim/cops init and parkUnsafeReserves; docs/content-packs.md,
+  // `patrol-verge`). On a road with a shoulder he is off the lanes; on a one-lane road with none (Eagle
+  // Point's North Loop, an Iowa escape through the route picker, 2026-10-26) he is in its only lane,
+  // so he is held to pulling out within ESCAPE_LEAD_TICKS instead (he did at tick 192 there).
+  const escapeLead = config.event.kind === 'cop-escape' ? cops[0] : undefined;
+  let leadInLaneAt = -1;
+  let leadOutAt = -1;
   // The lot cop pulls out after cops.spawnDelayS (20 s on Normal) when the race brings him; since
   // playtest 2 the starting cops patrol up the road instead and pull out as the player arrives,
   // and the lot's cop waits for a speed trap or chaos. 30 s of every cop's wait is examined.
@@ -80,6 +88,7 @@ export function checkParking(eventId: string, length: string, route: string): vo
       const moved = last !== undefined && Math.hypot(cop.road.s - last.s, cop.road.d - last.d) > 0.005;
       if (cop.speed > 0.5 || moved) {
         waiting.delete(id); // pulled out
+        if (id === escapeLead) leadOutAt = t;
         pulledOut.push(
           `cop ${id} at ${(t / 60).toFixed(1)} s from s ${cop.road.s.toFixed(1)} d ${cop.road.d.toFixed(2)}`,
         );
@@ -89,6 +98,10 @@ export function checkParking(eventId: string, length: string, route: string): vo
       for (const l of lanes) {
         if (l.kind !== 'drive') continue;
         if (Math.abs(cop.road.d - l.dCenterM) < l.widthM / 2) {
+          if (id === escapeLead) {
+            if (leadInLaneAt < 0) leadInLaneAt = t;
+            continue;
+          }
           where.push(
             `tick ${t}: cop ${id} at s ${cop.road.s.toFixed(1)} d ${cop.road.d.toFixed(2)} in lane ${l.id}`,
           );
@@ -102,4 +115,12 @@ export function checkParking(eventId: string, length: string, route: string): vo
       `${waiting.size} still waiting at ${roadblockAt >= 0 ? `the roadblock, ${(roadblockAt / 60).toFixed(1)} s` : '30 s'}`,
   );
   expect(where.slice(0, 3)).toEqual([]);
+  if (leadInLaneAt >= 0) {
+    console.log(`[examined] ${eventId}: the escape lead started in a lane, pulled out at tick ${leadOutAt}`);
+    expect(leadOutAt, 'an escape lead in a lane gives chase in time').toBeGreaterThanOrEqual(0);
+    expect(leadOutAt, 'an escape lead in a lane gives chase in time').toBeLessThanOrEqual(ESCAPE_LEAD_TICKS);
+  }
 }
+
+/** How long an escape's lead cop may sit in a lane before he gives chase, ticks (4 s). */
+const ESCAPE_LEAD_TICKS = 240;

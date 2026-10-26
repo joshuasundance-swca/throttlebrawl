@@ -185,8 +185,8 @@
         "road": "pnw-trestle",
         "s": 425
       },
-      "opens": ["osm-gorge-crown-point-loops"],
-      "claims": ["pnw-trestle"]
+      "opens": ["osm-gorge-crown-point-loops", "osm-longview-industrial"],
+      "claims": ["pnw-trestle", "pnw-sawmill-flats"]
     },
     {
       "id": "gorge",
@@ -212,15 +212,22 @@
       "claims": ["osm-gorge-crown-point-loops"]
     },
     {
-      "id": "sawmill-pursuit",
-      "event": "pnw-t3-sawmill-pursuit",
+      "id": "port-shift",
+      "event": "pnw-t3-port-shift",
       "length": "standard",
       "tier": "t3",
       "at": {
-        "road": "pnw-sawmill-flats",
-        "s": 400
+        "road": "osm-longview-industrial",
+        "s": 300
       },
-      "claims": ["pnw-sawmill-flats"]
+      "opens": ["osm-longview-civic-approach", "osm-longview-civic-diagonal"],
+      "claims": [
+        "osm-longview-industrial",
+        "osm-longview-mount-solo",
+        "osm-longview-solo-connector",
+        "osm-longview-ocean-beach",
+        "osm-longview-38th"
+      ]
     },
     {
       "id": "deacon-grudge",
@@ -234,14 +241,24 @@
       "claims": ["osm-chuckanut-oyster-creek"]
     },
     {
-      "id": "rainout",
-      "event": "pnw-t4-rainout",
+      "id": "master-plan",
+      "event": "pnw-t4-master-plan",
       "length": "standard",
       "tier": "t4",
       "at": {
-        "road": "pnw-fogline-ridge",
-        "s": 800
-      }
+        "road": "osm-longview-civic-west-washington",
+        "s": 300
+      },
+      "claims": [
+        "osm-longview-civic-approach",
+        "osm-longview-civic-diagonal",
+        "osm-longview-civic-west-washington",
+        "osm-longview-civic-washington-bridge",
+        "osm-longview-civic-washington-west-bank",
+        "osm-longview-civic-30th",
+        "osm-longview-civic-hudson",
+        "osm-longview-civic-20th"
+      ]
     },
     {
       "id": "fire-watch",
@@ -504,7 +521,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.2; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the second chapter (global tiers 5 to 8), every tier names its boss (Juniper Moss, Kevin from Accounting, Deacon Vane, Old Growth) and the field level it asks, with 16 nodes. Five races are new: Bridge City, \"Reply All, Again\" (Kevin's grudge, the tier-2 boss), Rainout, Fire Watch and Weigh Station Closed. Playtest 3 (T10.5, the real-world content): the first tier's third race is Bridge City, downtown Portland at dusk, so the chapter opens in the city (it replaced Tulip Traffic on I-5), and the third tier holds a drift race, Crown Point Loops, whose target is capped by what the drift bot earns there. The shop sells the Grand Tourer 1100 (rank 4, tier 2) and the Supersport 900 (rank 5, tier 4) beside the dirt bike for $6,000; the Streetfighter and the Superbike are sold in the other regions' shops. Paints cost $1,500 to $2,500, and Wet Cedar Gloss opens from Season 2. [default] every number.",
+    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.2; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the second chapter (global tiers 5 to 8), every tier names its boss (Juniper Moss, Kevin from Accounting, Deacon Vane, Old Growth) and the field level it asks, with 16 nodes. Five races are new: Bridge City, \"Reply All, Again\" (Kevin's grudge, the tier-2 boss), Rainout, Fire Watch and Weigh Station Closed. Playtest 3 (T10.5, the real-world content): the first tier's third race is Bridge City, downtown Portland at dusk, so the chapter opens in the city (it replaced Tulip Traffic on I-5), and the third tier holds a drift race, Crown Point Loops, whose target is capped by what the drift bot earns there. The shop sells the Grand Tourer 1100 (rank 4, tier 2) and the Supersport 900 (rank 5, tier 4) beside the dirt bike for $6,000; the Streetfighter and the Superbike are sold in the other regions' shops. Paints cost $1,500 to $2,500, and Wet Cedar Gloss opens from Season 2. [default] every number. Longview reaches the career (2026-10-26, the maintainer: \"yes I want the new content in career too\"): Port Shift, a cop escape on Longview's port roads, takes Fir County Pursuit's place in tier 3, and Master Plan, a race to the line on the Civic Triangle, takes Rainout's in tier 4, each with the field, purse and pace of the race it replaced, so every real route keeps its races and the invented sawmill haul keeps two. Kevin's tier-2 grudge opens Longview's Industrial Way. The two replaced events stay in the pack, raced by no map.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

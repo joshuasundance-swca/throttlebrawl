@@ -231,9 +231,12 @@ describe('the career maps', () => {
         expect(teaser?.freePlayAfter).toBe(true);
         // Free play: every node is open to ride again.
         expect(def.nodes.every((n) => nodeState(def, progress, n) !== 'locked')).toBe(true);
-        // The boss's joke ride is in the garage now, and only now.
-        const secret = def.unlocks[0]?.grant ?? '';
-        expect(p.bikes.owned).toContain(secret);
+        // The boss's joke ride is in the garage now, and only now. The three secret joke rides
+        // (docs/product-spec.md, Bikes) are the first three chapters' boss prizes; Iowa, the fourth
+        // (2026-10-26), has no ride of its own yet, so a later chapter may grant none.
+        const secret = def.unlocks[0]?.grant;
+        if (secret) expect(p.bikes.owned).toContain(secret);
+        else expect(def.chapter, `${def.regionId} grants no joke ride`).toBeGreaterThan(3);
         console.log(
           `${def.regionId}: the rules' path ${order.join(' > ')}; teaser next ${teaser?.next ?? 'none'}`,
         );

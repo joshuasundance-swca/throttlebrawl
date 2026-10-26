@@ -130,11 +130,20 @@ for (const def of DEFS) {
     });
 
     it('the shop sells the starter, then each step-up bike a clear step up and pricier, its model in the pack', () => {
+      const stepUp = (bike: string) => (REG.bikes[bike]?.tags ?? []).includes('step-up');
       const shop = def.shop.filter((s) => s.priceCash > 0);
       const stepUps = shop
-        .filter((s) => (REG.bikes[s.bike]?.tags ?? []).includes('step-up'))
+        .filter((s) => stepUp(s.bike))
         .sort((a, b) => a.unlockTier - b.unlockTier || a.priceCash - b.priceCash);
-      expect(stepUps.length).toBeGreaterThanOrEqual(1);
+      // "Six bikes": each chapter sells step-up bikes until every one is on sale. A chapter after
+      // that (Iowa, the fourth, 2026-10-26) has none left to sell, so it may sell none.
+      const soldBefore = new Set(
+        DEFS.filter((d) => d.chapter < def.chapter).flatMap((d) =>
+          d.shop.filter((s) => s.priceCash > 0 && stepUp(s.bike)).map((s) => s.bike),
+        ),
+      );
+      const unsold = Object.keys(REG.bikes).filter((b) => stepUp(b) && !soldBefore.has(b));
+      expect(stepUps.length).toBeGreaterThanOrEqual(unsold.length > 0 ? 1 : 0);
       const top = (key: string) => REG.bikes[key]?.handling.topSpeedMps ?? 0;
       stepUps.forEach((s, i) => {
         if (i === 0) return;
