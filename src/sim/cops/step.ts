@@ -442,6 +442,16 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
   if (!mayStop && vWant < CRAWL_MPS && !clearOfLanes(config, pos)) {
     vWant = Math.min(CRAWL_MPS, bike.topSpeedMps);
     if (shoulder) dWant = shoulder.dCenterM;
+    else if (!target || gapAlongRoute(config, cop, target) < 0) {
+      // No shoulder to reach (Eagle Point's one-lane park loops, 2026-10-26): crawling on in the
+      // lane holds every car behind him, and the man he waits for behind them, at a walk. Ahead of
+      // his man, or with nobody to chase, he rides on at his patrol pace instead; behind his man he
+      // still slows to the crawl.
+      vWant = Math.min(
+        Math.max(CRAWL_MPS, config.event.paceMps * PATROL.paceShare * speedMultiplierOf(config)),
+        bike.topSpeedMps,
+      );
+    }
   }
   // The law avoids explicitly barred branches (sim/ai/branches.ts): a
   // branch the route bars to them (`aiTake` 0, or a gap with no `aiTake`: sim/ai/branches.ts) is
