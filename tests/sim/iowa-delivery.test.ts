@@ -134,7 +134,10 @@ it('finishes an input-driven highway ride that encounters a delivery truck and r
   process.stdout.write(
     `[examined] Iowa input-driven following/pass, seed ${search.seed}, bike ${r.c.riders.find((r) => r.role === 'player')!.bike.contentId}, encounters ${JSON.stringify([...r.encounters.entries()].filter(([, e]) => e.following && e.passed && !e.interrupted))}, finish tick ${r.sim.tick}, encoded/reloaded replay ${replay.checked} hashes, tamper tick ${r.tamperTick}\n`,
   );
-});
+  // Five full races and a replay: 98 s on CI once IA 136 had roadside wildlife (2026-10-25), about
+  // 81 s before it (scaled by the 36.8 s against 44.5 s measured locally), over the sim project's
+  // 90 s default. The same budget as the county rides.
+}, 120_000);
 
 function body(c: ReturnType<typeof config>, mover: Mover, lengthM: number, widthM: number, heightM: number) {
   const point = c.road.toWorld(mover.pos.edge, mover.pos.s, mover.pos.d, 0);
