@@ -15,6 +15,10 @@ import {
 import { buildRegistry, contentHashes, ContentError } from './registry';
 
 const ALL = import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' });
+/** Whether a pack file is a career map: those ride with the career's lazy chunk (career/bundled.ts). */
+const isCareerPath = (key: string) => /^\/packs\/[^/]+\/careers\//.test(key);
+/** Every pack file the game's registry carries once all road data is in: every file but the career maps. */
+const CARRIED = Object.fromEntries(Object.entries(ALL).filter(([key]) => !isCareerPath(key)));
 const CARRIED_PACKS = Object.keys(ALL)
   .filter((path) => /^\/packs\/[^/]+\/pack\.json$/.test(path))
   .map((path) => path.split('/')[2]!)
@@ -32,7 +36,7 @@ function sources(): PackSources & { fetched: string[] } {
       continue;
     }
     if (isRoadDataPath(path)) roadUrls[key] = `mem:${key}`;
-    else entries[key] = json;
+    else if (!isCareerPath(key)) entries[key] = json;
   }
   const fetched: string[] = [];
   return {
@@ -150,18 +154,21 @@ describe('content: region packs at runtime', () => {
     expect(src.fetched).toHaveLength(sfRoadFiles);
     await lib.loadRoads('region-sf');
     expect(src.fetched, 'fetched once').toHaveLength(sfRoadFiles);
-    // The other region is untouched, and the combined registry equals loading every file whole.
+    // The other region is untouched, and the combined registry equals loading every file whole, but
+    // the career maps (the career's lazy chunk carries them; the sim hash never counted them).
     expect(lib.hasRoads('region-pnw')).toBe(false);
     await lib.loadRoads('region-pnw');
     await lib.loadRoads('base');
     for (const pack of lib.packIds) await lib.loadRoads(pack);
-    expect(contentHashes(lib.registry())).toEqual(contentHashes(registryFromGlob(ALL)));
+    expect(contentHashes(lib.registry())).toEqual(contentHashes(registryFromGlob(CARRIED)));
+    expect(contentHashes(lib.registry()).sim).toBe(contentHashes(registryFromGlob(ALL)).sim);
+    expect(Object.keys(lib.registry().careers)).toEqual([]);
   });
 
   it('bundles the Keys hand-made roads and fetches its real roads on demand, the hash as before (run W-P)', async () => {
     const src = sources();
     const lib = createPackLibrary({ sources: src });
-    const whole = registryFromGlob(ALL);
+    const whole = registryFromGlob(CARRIED);
     // At boot: the hand-made Keys roads (the default race and the menu) but no real road.
     expect(lib.hasRoads('base')).toBe(false);
     expect(lib.registry().routes['base:m1-standard-run']).toBeDefined();

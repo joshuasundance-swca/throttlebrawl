@@ -16,6 +16,7 @@
 // a board's content reference is `<pack>:career/<career id>#<template id>`. [default]
 import type { ContentRegistry } from '../content';
 import { MAX_RECEIPTS, type Profile, type Receipt, type ReceiptKind } from '../save';
+import { careersOf } from './bundled';
 import { bare, type CareerDef, type EventPlan } from './defs';
 import type { RaceIncident, RaceTally } from './race-log';
 import { fill, hashOf } from './show';
@@ -58,7 +59,7 @@ export function receiptTemplates(
   reg: ContentRegistry,
   def: CareerDef,
 ): Record<ReceiptKind, ReceiptTemplate[]> {
-  const own = obj(obj(obj(reg.careers[def.key])['show'])['receipts']);
+  const own = obj(obj(obj(careersOf(reg)[def.key])['show'])['receipts']);
   const read = (kind: ReceiptKind) =>
     list(own[kind])
       .map(obj)
