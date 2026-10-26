@@ -12,7 +12,14 @@ import { buildSimConfig, streamForEvent } from '../../src/app/config';
 import { registryFromGlob } from '../../src/content';
 import { blankActions, botInput, createBot } from '../../src/dev/bot';
 import { createSimWithWorld } from '../../src/sim/create';
-import { COP_CHASING, CRAWL_MPS, copsState, gapAlongRoute, sideLanes } from '../../src/sim/cops';
+import {
+  clearOfLanes,
+  COP_CHASING,
+  CRAWL_MPS,
+  copsState,
+  gapAlongRoute,
+  sideLanes,
+} from '../../src/sim/cops';
 
 const REG = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const EVENT = 'region-clinton:clinton-mara-survey-run';
@@ -42,7 +49,8 @@ function ride(seed: number) {
     for (const id of st.cops) {
       const cop = world.movers[id];
       if (!cop || cop.mode !== 'Road') continue;
-      const noShoulder = !sideLanes(c, cop.pos).shoulder;
+      // In a lane of a road with no shoulder: a cop off the lanes (pulled clear, on the grass) holds nobody.
+      const noShoulder = !sideLanes(c, cop.pos).shoulder && !clearOfLanes(c, cop.pos);
       if (noShoulder) shoulderless++;
       const target = st.phase[id] === COP_CHASING ? world.movers[st.target[id] ?? -1] : undefined;
       const aheadOrAlone = !target || gapAlongRoute(c, cop, target) < -10;
@@ -87,7 +95,7 @@ describe('cops on a road with no shoulder (Eagle Point)', () => {
         )
         .join('; ')}\n`,
     );
-    // The check can see the case: cops do ride shoulderless lanes here.
+    // The check can see the case: cops do ride the lanes of shoulderless roads here.
     for (const r of runs) expect(r.shoulderless, `seed ${r.seed}`).toBeGreaterThan(600);
     // At most a second or two at the crawl while he gathers speed, never a crawl that lasts.
     for (const r of runs)

@@ -445,10 +445,13 @@ export function drive(world: World, config: SimConfig, st: CopsState, cop: Mover
     else if (!target || gapAlongRoute(config, cop, target) < 0) {
       // No shoulder to reach (Eagle Point's one-lane park loops, 2026-10-26): crawling on in the
       // lane holds every car behind him, and the man he waits for behind them, at a walk. Ahead of
-      // his man, or with nobody to chase, he rides on at his patrol pace instead; behind his man he
-      // still slows to the crawl.
+      // his man, or with nobody to chase, he rides on instead, at least as fast as the race's traffic
+      // cruises, so no car queues behind him (at his patrol pace alone, 11 m/s in the Survey Run, the
+      // cars still did); behind his man he still slows to the crawl.
+      let cruise = 0;
+      for (const t of config.trafficTypes) cruise = Math.max(cruise, t.cruiseMps);
       vWant = Math.min(
-        Math.max(CRAWL_MPS, config.event.paceMps * PATROL.paceShare * speedMultiplierOf(config)),
+        Math.max(CRAWL_MPS, cruise, config.event.paceMps * PATROL.paceShare * speedMultiplierOf(config)),
         bike.topSpeedMps,
       );
     }
