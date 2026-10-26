@@ -74,6 +74,29 @@
       "d0": 8.0,
       "d1": 14.0,
       "item": "grain-forecast"
+    },
+    {
+      "kind": "billboard",
+      "id": "clinton-deer-sign",
+      "s0": 760.0,
+      "s1": 770.0,
+      "d0": 8.0,
+      "d1": 10.0,
+      "item": "deer-crossing"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "ia136-west-deer",
+      "s0": 900.0,
+      "s1": 930.0,
+      "d0": 7.0,
+      "d1": 8.0,
+      "params": {
+        "spawns": "animals",
+        "kinds": ["region-clinton:whitetail"],
+        "everyM": 10,
+        "maxPeds": 2
+      }
     }
   ],
   "barriers": [],

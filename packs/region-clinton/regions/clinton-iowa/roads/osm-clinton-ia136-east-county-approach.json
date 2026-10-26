@@ -74,6 +74,20 @@
       "d0": -14.0,
       "d1": -8.0,
       "item": "delivery-window"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "ia136-east-deer",
+      "s0": 300.0,
+      "s1": 330.0,
+      "d0": -8.0,
+      "d1": -7.0,
+      "params": {
+        "spawns": "animals",
+        "kinds": ["region-clinton:whitetail"],
+        "everyM": 10,
+        "maxPeds": 1
+      }
     }
   ],
   "barriers": [],

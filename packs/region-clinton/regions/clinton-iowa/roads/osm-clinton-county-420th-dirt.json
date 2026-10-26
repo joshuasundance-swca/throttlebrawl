@@ -65,7 +65,22 @@
       "tag": "rural"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "county-dirt-turkeys",
+      "s0": 600.0,
+      "s1": 630.0,
+      "d0": 6.0,
+      "d1": 7.0,
+      "params": {
+        "spawns": "animals",
+        "kinds": ["region-clinton:wild-turkey"],
+        "everyM": 10,
+        "maxPeds": 3
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 344.0016,

@@ -57,7 +57,27 @@
       "text": "CURVES AHEAD. Freight stays on schedule. Allegedly.",
       "status": "live",
       "tags": ["site"]
+    },
+    {
+      "id": "deer-crossing",
+      "text": "DEER CROSSING. Mostly at dusk. Mostly.",
+      "status": "live",
+      "tags": ["site"]
+    },
+    {
+      "id": "turkey-crossing",
+      "text": "WILD TURKEYS. They will not be rushed.",
+      "status": "live",
+      "tags": ["site"]
     }
+  ],
+  "landingLines": [
+    { "id": "farmer-wave", "text": "A FARMER WAVED. ONE FINGER OFF THE WHEEL.", "status": "live" },
+    { "id": "knee-high", "text": "KNEE HIGH BY THE FOURTH. YOU: HIGHER.", "status": "live" },
+    { "id": "grain-elevator", "text": "THE GRAIN ELEVATOR SAW THAT", "status": "live" },
+    { "id": "turkey-witness", "text": "A TURKEY SAW THAT. IT WILL TELL NO ONE.", "status": "live" },
+    { "id": "blue-ribbon", "text": "BLUE RIBBON. PIE CATEGORY. CLOSE ENOUGH.", "status": "live" },
+    { "id": "co-op", "text": "THE CO-OP WILL HEAR ABOUT THIS", "status": "live" }
   ],
   "billboards": [
     {
@@ -84,7 +104,7 @@
   ],
   "meta": {
     "status": "live",
-    "notes": "Minimal Clinton identity for the first real-road prototype: open rural land and deciduous copses through the reusable rural scenery tag. No claim that the art reconstructs surveyed fields, property boundaries or individual buildings. Existing base traffic and regular riders; no career chapter yet.",
+    "notes": "Minimal Clinton identity for the first real-road prototype: open rural land and deciduous copses through the reusable rural scenery tag. No claim that the art reconstructs surveyed fields, property boundaries or individual buildings. Existing base traffic and regular riders; no career chapter yet. Whitetail deer and wild turkeys come only from authored IA 136 and county-road wildlife zones (2026-10-25); the regional animal pool stays empty so the farmstead places spawn nobody.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-15" }
   }
 }

@@ -1,0 +1,19 @@
+{
+  "type": "traffic-type",
+  "id": "wild-turkey",
+  "name": "Wild Turkey",
+  "category": "animal",
+  "tags": ["local"],
+  "lengthM": 1.0,
+  "widthM": 0.4,
+  "heightM": 1.0,
+  "cruiseMps": 2.4,
+  "hazard": "normal",
+  "behaviour": { "roadside": "dodges", "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-chicken" }, "paintOptions": ["#4a3a2c", "#6b4f35", "#2f2a26"] },
+  "meta": {
+    "status": "live",
+    "notes": "A roadside flock bird on the Iowa highway and the county dirt road. Only the authored wildlife zones use this type. The chicken preset at turkey size.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-25" }
+  }
+}
