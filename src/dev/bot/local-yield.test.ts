@@ -41,7 +41,8 @@ function scene(dir: 1 | -1 = 1, widthM = 5, moving = false, occupied = false) {
     lanesAt: () => [{ id: 'single', dCenterM: 0, widthM, direction: dir, kind: 'shortcut' }],
     kappaAt: () => 0,
     edgeLength: () => 1000,
-    distanceToFinish: (_e, s) => 1000 - s,
+    // The finish lies the way the bot rides, as on a real route (a bot riding away from it turns round).
+    distanceToFinish: (_e, s) => (dir === 1 ? 1000 - s : s),
   };
   const bot = createBot();
   const drive = (tick: number) => {
