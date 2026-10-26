@@ -188,6 +188,8 @@ function bundledSources(): PackSources {
         '!/packs/*/regions/*/roads/**',
         '!/packs/*/regions/*/routes/**',
         '!/packs/*/assets/**',
+        // The career maps ride with the career's lazy chunk (career/bundled.ts), not the first load.
+        '!/packs/*/careers/**',
       ],
       { eager: true, import: 'default' },
     ),

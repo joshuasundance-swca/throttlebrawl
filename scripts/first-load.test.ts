@@ -190,6 +190,16 @@ describe('the production build', { timeout: 120_000 }, () => {
       `[examined] ${firstChunks.length} first-load chunks for bundled road data: ${bundledRoads.length}`,
     );
     expect(bundledRoads).toEqual([]);
+    // The career maps ride with the career's lazy chunk (src/career/bundled.ts, 2026-10-26: about
+    // 9 KB of a first load at 499.0 of its 500 KB), and they do ship: in a lazy chunk.
+    const careerMap = /[\\/]packs[\\/][^\\/]+[\\/]careers[\\/][^\\/]+\.json$/;
+    const firstCareers = firstChunks.flatMap((c) => c.moduleIds.filter((id) => careerMap.test(id)));
+    const lazyCareers = lazyChunks.flatMap((c) => c.moduleIds.filter((id) => careerMap.test(id)));
+    console.log(
+      `[examined] career maps: ${firstCareers.length} in the first load, ${lazyCareers.length} in lazy chunks`,
+    );
+    expect(firstCareers).toEqual([]);
+    expect(lazyCareers.length).toBeGreaterThan(0);
 
     // Lane F1: every road data file the build ships is the pre-parse of its source plus verified
     // pinned inputs (Zod's output), since the page's loader no longer runs Zod on it;

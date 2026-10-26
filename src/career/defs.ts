@@ -5,6 +5,7 @@
 // ending's lines, a secret's name and cash) are read defensively. DOM-free.
 import { packOf, type Career, type ContentRegistry } from '../content';
 import { GRUDGE_RULE_IDS, TIER_RIVAL_BIKES, type TierRivalBike } from '../core';
+import { careersOf } from './bundled';
 import { OBJECTIVE_KINDS, type ObjectiveSpec, type RaceRules } from './race-log';
 
 /** A reference qualified by the pack that holds it (a bare id names an entry of that pack). */
@@ -197,7 +198,7 @@ function tierField(v: unknown): TierField | null {
 
 /** One career file, resolved. `key` is its registry key. */
 export function resolveCareer(reg: ContentRegistry, key: string): CareerDef {
-  const c = reg.careers[key];
+  const c = careersOf(reg)[key];
   if (!c) throw new Error(`no career ${key}`);
   return fromFile(reg, key, c);
 }
@@ -311,8 +312,9 @@ function fromFile(reg: ContentRegistry, key: string, c: Career): CareerDef {
  */
 export function careerDefs(reg: ContentRegistry): CareerDef[] {
   const byRegion = new Map<string, CareerDef>();
-  for (const key of Object.keys(reg.careers).sort()) {
-    const c = reg.careers[key];
+  const careers = careersOf(reg);
+  for (const key of Object.keys(careers).sort()) {
+    const c = careers[key];
     if (!c) continue;
     const def = fromFile(reg, key, c);
     if (!byRegion.has(def.regionKey)) byRegion.set(def.regionKey, def);

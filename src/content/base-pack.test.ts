@@ -33,7 +33,11 @@ describe('the Keys hand-made road data', () => {
 
   it('once in, makes the bundled base the base pack as authored without its real roads (every content hash holds)', () => {
     expect(baseRoadsLoaded()).toBe(true);
-    const expected = authored.filter((f) => !isRealRoadPath(f.path) && !f.path.startsWith('assets/'));
+    // The career map rides with the career's lazy chunk (career/bundled.ts), not the first load.
+    const expected = authored.filter(
+      (f) => !isRealRoadPath(f.path) && !f.path.startsWith('assets/') && !f.path.startsWith('careers/'),
+    );
+    expect(authored.some((f) => f.path.startsWith('careers/'))).toBe(true);
     expect(basePackFiles().map((f) => f.path)).toEqual(expected.map((f) => f.path));
     expect(basePackFiles()).toEqual(expected);
   });
