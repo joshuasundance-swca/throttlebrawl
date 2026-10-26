@@ -90,10 +90,10 @@
       "event": "clinton-t1-chad-grudge",
       "length": "standard",
       "tier": "t1",
-      "at": { "road": "osm-clinton-eagle-north-loop", "s": 600 },
+      "at": { "road": "osm-clinton-ia136-middle-bends", "s": 900 },
       "requires": ["first-cutting"],
-      "opens": ["osm-clinton-ia136-middle-bends", "osm-clinton-ia136-middle-county-return"],
-      "claims": ["osm-clinton-eagle-north-loop"]
+      "opens": ["osm-clinton-ia136-west-bends"],
+      "claims": ["osm-clinton-ia136-middle-bends", "osm-clinton-ia136-middle-county-return"]
     },
     {
       "id": "county-line",
@@ -101,8 +101,7 @@
       "length": "standard",
       "tier": "t2",
       "at": { "road": "osm-clinton-ia136-east-county-approach", "s": 800 },
-      "opens": ["osm-clinton-ia136-west-bends"],
-      "claims": ["osm-clinton-ia136-middle-bends", "osm-clinton-ia136-middle-county-return"]
+      "claims": ["osm-clinton-ia136-east-county-approach"]
     },
     {
       "id": "bluff-top",
@@ -165,7 +164,7 @@
       "event": "clinton-t4-first-frost",
       "length": "standard",
       "tier": "t4",
-      "at": { "road": "osm-clinton-eagle-north-loop", "s": 1100 }
+      "at": { "road": "osm-clinton-ia136-west-bends", "s": 300 }
     },
     {
       "id": "benchmark",
@@ -341,7 +340,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The County Line Circuit: clinton-iowa's career map, the fourth chapter (global tiers 13 to 16), opened when San Francisco's boss falls. Four tiers named for the farm year (Planting, Knee High, Harvest, First Frost), each two regular events and the tier's boss (Chad Speedwell's Content Farm with his collab rule, Dial-Up's No Bars with his Bad Connection, Deacon Vane's Tent Revival, and Mara Vale's Benchmark, the region boss and finale), on the region's three routes: IA 136, Eagle Point's Serpentine Drive and the North Loop run. The tier ladder of docs/content-packs.md sets every purse and pace; the best open bike is the Superbike 1000, so the shop sells no step-up bike (all six are sold by earlier chapters) and only paints are new. Secrets: the marked county detour as a shortcut and a stash on 420th Avenue's dirt. Rural Rush and the Survey Run stay Quick Play events. [default] every number and name.",
+    "notes": "The County Line Circuit: clinton-iowa's career map, the fourth chapter (global tiers 13 to 16), opened when San Francisco's boss falls. Four tiers named for the farm year (Planting, Knee High, Harvest, First Frost), each two regular events and the tier's boss (Chad Speedwell's Content Farm with his collab rule, Dial-Up's No Bars with his Bad Connection, Deacon Vane's Tent Revival, and Mara Vale's Benchmark, the region boss and finale), on the region's three routes: IA 136 carries the races to the line, the chases and the finale; Eagle Point's Serpentine Drive a hunt, a race and Deacon's grudge; the North Loop a hunt. The park races leave out the county patrol (its one-lane loops have no shoulder for a waiting patrol cop) and the North Loop holds no race to the line (its crests at the career's pace), both measured with the test bot on 2026-10-26. The tier ladder of docs/content-packs.md sets every purse and pace; the best open bike is the Superbike 1000, so the shop sells no step-up bike (all six are sold by earlier chapters) and only paints are new. Secrets: the marked county detour as a shortcut and a stash on 420th Avenue's dirt. Rural Rush and the Survey Run stay Quick Play events. [default] every number and name.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-26" }
   }
 }

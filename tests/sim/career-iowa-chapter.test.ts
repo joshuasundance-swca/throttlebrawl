@@ -76,6 +76,10 @@ describe('Iowa, the fourth chapter', () => {
     const picks = Object.fromEntries(quickPlayEvents(REG, iowa.regionKey).map((q) => [q.kind, q.eventId]));
     expect(picks['race']).toBe('region-clinton:clinton-ia136-race');
     expect(picks['grudge']).toBe('region-clinton:clinton-mara-survey-run');
+    // Iowa had no hunt or escape before its chapter; Quick Play now offers its first-tier ones.
+    const careerEvents = new Set(iowa.nodes.map((n) => n.event));
+    expect(careerEvents).toContain(picks['hunt']);
+    expect(careerEvents).toContain(picks['escape']);
   });
 });
 

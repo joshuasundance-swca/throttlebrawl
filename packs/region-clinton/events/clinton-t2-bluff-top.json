@@ -2,7 +2,7 @@
   "type": "event",
   "id": "clinton-t2-bluff-top",
   "name": "Bluff Top",
-  "kind": "classic-race",
+  "kind": "takedown-hunt",
   "region": "clinton-iowa",
   "timeOfDay": "dusk",
   "weather": "dry",
@@ -29,23 +29,28 @@
   "cops": {
     "mode": "every-race",
     "baseCount": 1,
-    "patrolMax": 2,
+    "patrolMax": 0,
     "heat": true
   },
-  "rules": {},
+  "rules": {
+    "targetCount": 3,
+    "targets": "any",
+    "endOnCount": true
+  },
   "objectives": [
     {
-      "id": "top-3",
-      "kind": "finish-place",
+      "id": "takedowns",
+      "kind": "takedowns",
       "params": {
-        "maxPlace": 3
+        "count": 3
       },
-      "required": true
+      "required": true,
+      "rewardCash": 11950
     }
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [11950, 6550, 4200, 1800, 1200, 600, 350],
+    "byPlaceCash": [3600, 2400, 1200, 600, 350, 250],
     "perTakedownCash": 475,
     "perNearMissCash": 44,
     "perAirtimeCash": 65,
@@ -55,7 +60,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A race to the line round Eagle Point's North Loop at dusk, top 3. Career chapter 4 (global tier 14): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "notes": "A takedown hunt round Eagle Point's North Loop at dusk: three takedowns along the bluff top. A hunt, not a race to the line: at the career's pace the North Loop's crests throw a rider who takes them flat out every few hundred metres (2026-10-26, the test bot: 1 or 2 of 6 races to the line there ran past their time limit). Career chapter 4 (global tier 14): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

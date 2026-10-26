@@ -9,7 +9,7 @@
   "lengths": [
     {
       "id": "standard",
-      "route": "osm-clinton-eagle-north-run",
+      "route": "osm-clinton-ia136-run",
       "laps": 1
     }
   ],
@@ -19,6 +19,11 @@
   },
   "traffic": {
     "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
   },
   "cops": {
     "mode": "every-race",
@@ -52,7 +57,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Tier 1's boss: Chad Speedwell is filming a rural lifestyle series round the North Loop and needs a co-star. His collab rules: the most style at the line wins. Career chapter 4 (global tier 13): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "notes": "Tier 1's boss: Chad Speedwell is filming a rural lifestyle series on IA 136 and needs a co-star; the county detour's stunt truck is right there. His collab rules: the most style at the line wins. Career chapter 4 (global tier 13): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

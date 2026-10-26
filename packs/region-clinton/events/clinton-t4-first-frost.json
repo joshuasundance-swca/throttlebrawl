@@ -9,7 +9,7 @@
   "lengths": [
     {
       "id": "standard",
-      "route": "osm-clinton-eagle-north-run",
+      "route": "osm-clinton-ia136-run",
       "laps": 1
     }
   ],
@@ -25,6 +25,11 @@
   },
   "traffic": {
     "densityScale": 0.8
+  },
+  "modifiers": {
+    "pool": ["iowa-hay-truck"],
+    "maxPerRace": 1,
+    "chanceScale": 1
   },
   "cops": {
     "mode": "every-race",
@@ -64,7 +69,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The last race to the line before the finale: Eagle Point's North Loop at dusk, top 3, a bonus for the win. Career chapter 4 (global tier 16): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
+    "notes": "The last race to the line before the finale: IA 136 at dusk with the year's last loads on the road, top 3, a bonus for the win. Career chapter 4 (global tier 16): the purse, the style rewards and the rival pace follow the tier ladder (docs/content-packs.md, Career). [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

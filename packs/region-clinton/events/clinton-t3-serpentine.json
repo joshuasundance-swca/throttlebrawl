@@ -23,7 +23,7 @@
   "cops": {
     "mode": "every-race",
     "baseCount": 1,
-    "patrolMax": 2,
+    "patrolMax": 0,
     "heat": true
   },
   "rules": {},
