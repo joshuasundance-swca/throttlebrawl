@@ -193,8 +193,12 @@ const UTURN_SLOW_MPS = 6;
 /** A turn that has not faced the finish by this many ticks is given up, and tried again later. */
 const UTURN_GIVE_UP_TICKS = 300;
 
-/** Whether riding on along the road (`dir`) takes the bot further from the finish. */
+/**
+ * Whether riding on along the road (`dir`) takes the bot further from the finish. A road that cannot
+ * say (a hand-built fixture without the distance queries) never reads as the wrong way.
+ */
 function awayFromFinish(route: RouteQueries, edge: number, s: number, dir: 1 | -1): boolean {
+  if (typeof route.distanceToFinish !== 'function' || typeof route.edgeLength !== 'function') return false;
   const here = route.distanceToFinish(edge, s);
   const len = route.edgeLength(edge);
   if (!Number.isFinite(here) || !Number.isFinite(len)) return false;
@@ -362,6 +366,8 @@ export function createBot(): BotController {
   let localYield: { edge: number; dir: 1 | -1; d: number; stopS: number } | null = null;
   /** Ticks in a row riding away from the finish (WRONG_WAY_TICKS), negative while a given-up turn rests. */
   let wrongTicks = 0;
+  /** The sim tick wrongTicks last counted: a tick looked at again (a countdown's repeated look) counts once. */
+  let wrongTick = -1;
   /** The U-turn under way: its step, the tick it began and the tick the turn began, and the lock side. */
   let uturn: {
     phase: 'slow' | 'lift' | 'tap' | 'gap' | 'hold' | 'turn';
@@ -712,7 +718,10 @@ export function createBot(): BotController {
       }
       // Facing away from the finish: turn round (WRONG_WAY_TICKS).
       const away = awayFromFinish(route, me.road.edge, me.road.s, me.road.dir);
-      wrongTicks = away ? wrongTicks + 1 : Math.min(0, wrongTicks + 1);
+      if (snap.tick !== wrongTick) {
+        wrongTick = snap.tick;
+        wrongTicks = away ? wrongTicks + 1 : Math.min(0, wrongTicks + 1);
+      }
       if (!uturn && wrongTicks >= WRONG_WAY_TICKS) {
         const toCentre = -me.road.d * me.road.dir;
         uturn = { phase: 'slow', at: snap.tick, start: snap.tick, side: toCentre < 0 ? -1 : 1 };
